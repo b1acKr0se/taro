@@ -228,7 +228,7 @@ function ProjectView({
           ) : phoneTab === "inbox" ? (
             <Inbox projects={all} theme={theme} compact onOpenTicket={onOpenElsewhere} />
           ) : phoneTab === "stats" ? (
-            <StatsView project={project} theme={theme} />
+            <StatsView project={project} theme={theme} compact />
           ) : (
             boardView
           )}
@@ -254,7 +254,7 @@ function ProjectView({
             }}
           />
         </View>
-        <View style={{ flex: 1, minHeight: 0 }}>{rightPane === "stats" ? <StatsView project={project} theme={theme} /> : boardView}</View>
+        <View style={{ flex: 1, minHeight: 0 }}>{rightPane === "stats" ? <StatsView project={project} theme={theme} compact={false} /> : boardView}</View>
       </View>
     </View>
   );
