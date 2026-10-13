@@ -31,7 +31,7 @@ import {
 } from "./shared/contracts";
 import { ProjectSettingsSchema } from "./shared/project";
 import { Actions } from "./server/actions";
-import { fetchLiveAgent } from "./server/agents";
+import { fetchLiveAgent, isMidTurn } from "./server/agents";
 import { dismissSuggestion, invalidateBoards, loadBoard, loadTicketDetail } from "./server/board";
 import type { PaseoApi } from "./server/host-types";
 import { PluginState } from "./server/state";
@@ -65,6 +65,12 @@ export default function contribute(server: PluginServerContext) {
           if (repaired > 0) console.log(`[taro] reconciled ${repaired} agents after start`);
         })
         .catch((error: unknown) => console.error("[taro] reconcile after start failed:", error));
+      void stats
+        .dropFinishedTurns(async (agentId) => {
+          const agent = await fetchLiveAgent(paseo, agentId);
+          return agent !== null && isMidTurn(agent);
+        })
+        .catch((error: unknown) => console.error("[taro] dropping finished turn starts failed:", error));
     }
     return kept;
   };
@@ -186,8 +192,8 @@ export default function contribute(server: PluginServerContext) {
   });
 
   server.handle(loadStats, async ({ project }) => ({ tickets: (await stats.all(project)).map((ticket) => summarize(ticket)) }));
-  const removeTurnStartHook = server.on("agent.turn_started", ({ agent }) => {
-    stats.turnStarted(agent.id);
+  const removeTurnStartHook = server.on("agent.turn_started", async ({ agent }) => {
+    await stats.turnStarted(agent.id).catch((error: unknown) => console.error(`[taro] recording ${agent.id}'s turn start:`, error));
   });
 
   // Supervision (decisions 28, 30, 35, 36): every Taro agent's turn end.
@@ -196,6 +202,8 @@ export default function contribute(server: PluginServerContext) {
     await supervisor.onTurnEnded(paseo, agent, outcome, timeline, turnId).catch((error: unknown) => {
       console.error(`[taro] supervising ${agent.id}:`, error);
     });
+    // Supervision took the start of a Taro agent's turn; drop any left (agents outside Taro).
+    await stats.discardTurnStart(agent.id).catch(() => undefined);
     invalidateBoards();
   });
 
