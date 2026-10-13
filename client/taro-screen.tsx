@@ -15,9 +15,10 @@ import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { catchUp, compactManager, tellManager, type Card, type ProjectSummary } from "../shared/contracts";
+import { withoutDecisionBlocks } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import { AgentChat } from "./agent-chat";
-import { AsksYou } from "./asks-you";
+import { AskedHere, AsksYou } from "./asks-you";
 import { useBoard, useRefreshBoard } from "./board-data";
 import { ProjectBoard } from "./board";
 import { ContextMeter } from "./context-meter";
@@ -378,6 +379,7 @@ function ManagerPane({
     return (
       <View style={{ flex: 1 }}>
         {header}
+        <AsksYou decisions={decisions} acceptance={null} theme={theme} compact={compact} onChanged={onChanged} />
         <Text style={{ color: theme.colors.foregroundMuted, padding: SPACE.lg }}>This project has no manager running. Start one from the project's settings (⚙).</Text>
       </View>
     );
@@ -397,6 +399,8 @@ function ManagerPane({
         theme={theme}
         compact={compact}
         placeholder="Tell the manager what you need…"
+        transformText={withoutDecisionBlocks}
+        decorateRow={(text) => <AskedHere text={text} open={decisions} theme={theme} />}
         onSend={async (text) => {
           await tell({ project, text });
         }}

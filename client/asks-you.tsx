@@ -11,6 +11,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { acceptTicket, loadTicket, requestChanges, type Card } from "../shared/contracts";
+import { parseDecisionBlocks } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import { DecisionCard } from "./decision-card";
 import { errorText, pullRequestLabel } from "./format";
@@ -66,6 +67,29 @@ export function AsksYou({
           ))}
         </ScrollView>
       )}
+    </View>
+  );
+}
+
+/**
+ * Where a message asked one of the pinned decisions: a line pointing up at it, in place of a
+ * second copy of the card. Nothing for a message whose decisions are no longer open.
+ */
+export function AskedHere({ text, open, theme }: { text: string; open: readonly StoredDecision[]; theme: PluginTheme }) {
+  const asked = parseDecisionBlocks(text)
+    .map((block) => open.find((decision) => decision.id === block.id))
+    .filter((decision) => decision !== undefined);
+  if (asked.length === 0) return null;
+  return (
+    <View style={{ gap: SPACE.xs }}>
+      {asked.map((decision) => (
+        <View key={decision.key} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm }}>
+          <Icon name="ArrowUp" size={13} color={theme.colors.statusWarning} />
+          <Text style={{ flex: 1, color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small }} numberOfLines={2}>
+            Asked you: {decision.question} · answer it above
+          </Text>
+        </View>
+      ))}
     </View>
   );
 }

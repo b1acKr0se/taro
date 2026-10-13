@@ -164,7 +164,8 @@ export function TicketCard({
         {call.kind === "acceptance" && call.evidence !== null ? <Text style={styles.muted} numberOfLines={1}>{call.evidence}</Text> : null}
         <Pressable accessibilityRole="button" accessibilityLabel={`${callAction(call)}: ${call.text}`} style={styles.call} onPress={onOpen}>
           <Icon name={look.icon} size={13} color={look.color} />
-          <Text style={styles.callText} numberOfLines={1}>
+          {/* Two lines: a narrow column still reads the question, and a long one cannot grow the card. */}
+          <Text style={styles.callText} numberOfLines={2}>
             {call.text}
           </Text>
           {call.kind === "decision" && call.more > 0 ? <Text style={styles.muted}>+{call.more}</Text> : null}

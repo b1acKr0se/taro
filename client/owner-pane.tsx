@@ -8,14 +8,13 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
-import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 
 import { tellAgent, type Card } from "../shared/contracts";
-import { decisionBlocksAsText, parseDecisionBlocks, withoutDecisionBlocks } from "../shared/reports";
+import { decisionBlocksAsText, withoutDecisionBlocks } from "../shared/reports";
 import { AgentChat } from "./agent-chat";
-import { AcceptancePanel, AsksYou } from "./asks-you";
+import { AcceptancePanel, AskedHere, AsksYou } from "./asks-you";
 import { ContextMeter } from "./context-meter";
 import { defaultPaneAgent, paneAgents, paneAgentJob, roleIcon } from "./pane-agents";
 import { PaneHeader } from "./pane-header";
@@ -60,7 +59,6 @@ export function OwnerPane({
   const now = useNow();
   const chosenId = chosen?.card === card.id ? chosen.agent : null;
   const shown = agents.find((agent) => agent.id === chosenId) ?? defaultPaneAgent(agents) ?? agents[0] ?? null;
-  const openByDecisionId = useMemo(() => new Map(card.decisions.map((decision) => [decision.id, decision])), [card.decisions]);
   const inset = compact ? SPACE.md : SPACE.lg;
   const accepting = card.status === "Awaiting acceptance" && card.owner !== null;
   return (
@@ -122,25 +120,7 @@ export function OwnerPane({
               await tell({ agentId: shown.id, text });
             }}
             transformText={withoutDecisionBlocks}
-            decorateRow={(text) => {
-              const asked = parseDecisionBlocks(text)
-                .map((decision) => openByDecisionId.get(decision.id))
-                .filter((decision) => decision !== undefined);
-              if (asked.length === 0) return null;
-              // The card itself is pinned above the chat; here a line marks where it was asked.
-              return (
-                <View style={{ gap: SPACE.xs }}>
-                  {asked.map((decision) => (
-                    <View key={decision.key} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm }}>
-                      <Icon name="ArrowUp" size={13} color={theme.colors.statusWarning} />
-                      <Text style={{ flex: 1, color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small }} numberOfLines={2}>
-                        Asked you: {decision.question} · answer it above
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              );
-            }}
+            decorateRow={(text) => <AskedHere text={text} open={card.decisions} theme={theme} />}
             actions={<ContextMeter theme={theme} used={shown.brief.contextUsedTokens} max={shown.brief.contextMaxTokens} />}
           />
         ) : (
