@@ -53,7 +53,8 @@ acceptance, and raise an `investigation-done` decision.
   brief. Self-check it first: every criterion has a concrete check, no placeholders, nothing
   contradicts, everything traces to the approved spec.
 - Pick each helper's model and thinking by the task's difficulty from the allowed list: mechanical
-  → the cheapest; routine implementation → middle; risky or hard → the strongest. Start them with
+  → the cheapest; routine implementation → middle; risky or hard → the strongest. A model the user
+  named (in the brief or in your chat) wins over this. Start them with
   `reference/paseo.md`; record them in EXECUTION.
 - The plugin delivers each helper's report to you. Verify it: the report must hold real command
   output; rerun the checks yourself; review the commit range (`git diff --stat` first, then the

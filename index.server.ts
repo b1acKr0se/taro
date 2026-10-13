@@ -3,6 +3,7 @@ import type { PluginServerContext } from "@getpaseo/plugin/server";
 import {
   acceptTicket,
   answerDecision,
+  loadStats,
   catchUp,
   compactAgent,
   dismissSuggestion as dismissSuggestionRpc,
@@ -33,6 +34,8 @@ import { fetchLiveAgent } from "./server/agents";
 import { dismissSuggestion, invalidateBoards, loadBoard, loadTicketDetail } from "./server/board";
 import type { PaseoApi } from "./server/host-types";
 import { PluginState } from "./server/state";
+import { Stats } from "./server/stats";
+import { summarize } from "./shared/stats";
 import { Supervisor, identityFromLabels } from "./server/supervision";
 import { sessionEnvironment } from "./server/environment";
 import { readTextIfPresent, writeTextAtomically } from "./server/files";
@@ -46,8 +49,9 @@ import { TrackerWatch } from "./server/tracker-watch";
 export default function contribute(server: PluginServerContext) {
   const trackers = new TrackerWatch();
   const state = new PluginState();
-  const supervisor = new Supervisor(state);
-  const actions = new Actions(state, supervisor, trackers);
+  const stats = new Stats();
+  const supervisor = new Supervisor(state, stats);
+  const actions = new Actions(state, supervisor, trackers, stats);
   // The server half is given Paseo only inside handlers and hooks; keep the first one for timers.
   let kept: PaseoApi | null = null;
   const keep = (paseo: PaseoApi): PaseoApi => {
@@ -165,6 +169,11 @@ export default function contribute(server: PluginServerContext) {
     return {};
   });
 
+  server.handle(loadStats, async ({ project }) => ({ tickets: (await stats.all(project)).map((ticket) => summarize(ticket)) }));
+  const removeTurnStartHook = server.on("agent.turn_started", ({ agent }) => {
+    stats.turnStarted(agent.id);
+  });
+
   // Supervision (decisions 28, 30, 35, 36): every Taro agent's turn end.
   const removeTurnHook = server.on("agent.turn_ended", async ({ agent, outcome, timeline, turnId }, { paseo }) => {
     keep(paseo);
@@ -183,6 +192,7 @@ export default function contribute(server: PluginServerContext) {
 
   return () => {
     removeTurnHook();
+    removeTurnStartHook();
     removeSessionHook();
     trackers.stop();
   };

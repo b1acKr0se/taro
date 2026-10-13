@@ -198,3 +198,27 @@ export const dismissSuggestion = defineRpc({
   input: z.object({ project: ProjectNameSchema, label: z.string(), prompt: z.string() }),
   output: Empty,
 });
+
+// ── Stats ───────────────────────────────────────────────────────────────────
+
+export const StatsSummarySchema = z.object({
+  project: z.string(),
+  ticket: z.string(),
+  title: z.string(),
+  status: z.string(),
+  wallMs: z.number(),
+  byStatus: z.record(z.string(), z.number()),
+  waitingOnUserMs: z.number(),
+  agentActiveMs: z.number(),
+  turns: z.number(),
+  agents: z.number(),
+  costUsd: z.number().nullable(),
+  nudges: z.number(),
+  decisions: z.number(),
+});
+
+export const loadStats = defineRpc({
+  name: "taro.stats.load",
+  input: z.object({ project: ProjectNameSchema.nullable() }),
+  output: z.object({ tickets: z.array(StatsSummarySchema) }),
+});

@@ -17,6 +17,7 @@ import { sendFromPlugin, sendWithoutInterrupting } from "./send";
 import type { PluginState } from "./state";
 import { identityFromLabels, type Supervisor } from "./supervision";
 import { appendTicketNote, latestRecord, listTickets, viewTicket } from "./tickets";
+import type { Stats } from "./stats";
 import type { TrackerWatch } from "./tracker-watch";
 
 export class Actions {
@@ -27,6 +28,7 @@ export class Actions {
     private readonly state: PluginState,
     private readonly supervisor: Supervisor,
     private readonly trackers: TrackerWatch,
+    private readonly stats: Stats,
   ) {}
 
   async answerDecision(paseo: PaseoApi, key: string, label: string | null, text: string): Promise<void> {
@@ -176,6 +178,11 @@ export class Actions {
     const tickets = await listTickets(paths.tracker);
     const previous = this.lastStatuses.get(project) ?? new Map<string, string>();
     this.lastStatuses.set(project, new Map(tickets.map((ticket) => [ticket.id, ticket.status])));
+    const at = new Date().toISOString();
+    for (const ticket of tickets) {
+      const before = previous.get(ticket.id) ?? null;
+      if (before !== ticket.status) await this.stats.transition(project, ticket.id, ticket.title, before, ticket.status, at);
+    }
     const done = tickets.filter((ticket) => ticket.status === "Done" && previous.get(ticket.id) !== "Done");
     for (const ticket of done) {
       await this.cleanUp(paseo, project, ticket.id);
@@ -191,6 +198,11 @@ export class Actions {
     const workspaces = new Set<string>();
     for (const agent of agents) {
       if (isMidTurn(agent)) continue;
+      const usage = agent.lastUsage;
+      const statsTicket = agent.labels[TARO_LABELS.ticket] ?? ticket;
+      for (const target of new Set([statsTicket, ticket])) {
+        await this.stats.agentFinal(project, target, agent.id, usage?.totalCostUsd ?? null, usage?.contextWindowUsedTokens ?? null).catch(() => undefined);
+      }
       if (agent.labels[TARO_LABELS.role] === "owner" && agent.workspaceId !== null && agent.workspaceId !== undefined) workspaces.add(agent.workspaceId);
       await paseo.agents.ref(agent.id).archive().catch(() => undefined);
       await this.state.forgetAgent(agent.id);

@@ -25,7 +25,10 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
    facts, out of scope). Add `-l investigation` when it is one. Read the id back.
 2. Append **DISPATCH-INTENT** (unique token, intended branch `taro/<id-lowercase>`).
 3. Create the owner's worktree workspace and start the owner (`reference/paseo.md`), with the
-   project's owner model, thinking and mode from AGENTS.md. Before retrying an uncertain launch,
+   project's owner model, thinking and mode from AGENTS.md — the strongest model by default.
+   **The user's words win:** if the request names a model ("use sonnet for this", "a cheap model is
+   fine"), start the owner with that model, and pass any model the user named for helpers into the
+   brief. Before retrying an uncertain launch,
    check `paseo workspace ls --json` and `paseo ls -g --label taro.ticket=<ID> --json` so you never
    start two owners for one ticket.
 4. The owner's prompt is: "You are the Taro task owner for <ID>. Read <skill>/SKILL.md and

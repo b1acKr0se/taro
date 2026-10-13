@@ -13,6 +13,7 @@ import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { readProjectConfig } from "./projects";
 import { isPluginMessageId, sendCommand, sendFromPlugin } from "./send";
 import type { PluginState } from "./state";
+import type { Stats } from "./stats";
 
 export interface TaroIdentity {
   project: string;
@@ -100,13 +101,18 @@ export async function currentOwner(paseo: PaseoApi, project: string, ticket: str
 }
 
 export class Supervisor {
-  constructor(private readonly state: PluginState) {}
+  constructor(
+    private readonly state: PluginState,
+    private readonly stats: Stats,
+  ) {}
 
   async onTurnEnded(paseo: PaseoApi, hookAgent: HookAgent, outcome: TurnOutcome, timeline: readonly TimelineItem[], turnId: string | null): Promise<void> {
     const live = await fetchLiveAgent(paseo, hookAgent.id);
     if (live === null) return;
     const identity = identityFromLabels(live.labels, live.title ?? null);
     if (identity === null) return;
+    const model = live.model === null || live.model === undefined ? live.provider : `${live.provider}/${live.model}`;
+    await this.stats.turnEnded(identity.project, identity.ticket, { id: live.id, role: identity.role, model, title: identity.title }).catch(() => undefined);
     const now = new Date().toISOString();
     const closing = closingText(timeline);
     // Reports are deduplicated by their text: turn ids ("foreground-turn-1") may repeat, and the
@@ -168,6 +174,7 @@ export class Supervisor {
         return record.stallCount === 1;
       });
       if (nudge) {
+        if (identity.ticket !== null) await this.stats.count(identity.project, identity.ticket, "nudges").catch(() => undefined);
         await sendFromPlugin(paseo, live.id, await message(TEMPLATES.nudge));
         return;
       }
@@ -239,6 +246,7 @@ export class Supervisor {
   }
 
   private async storeDecisions(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, decisions: readonly ParsedDecision[], now: string): Promise<void> {
+    const newlyAsked: string[] = [];
     const corrections = await this.state.updateDecisions((stored) => {
       const problems: string[] = [];
       for (const decision of decisions) {
@@ -264,6 +272,7 @@ export class Supervisor {
         const existing = stored[index];
         if (existing === undefined) {
           stored.push(next);
+          if (identity.ticket !== null) newlyAsked.push(identity.ticket);
           if (decision.problems.length > 0) problems.push(...decision.problems);
         } else if (existing.status !== "open" && sameQuestion(existing, decision)) {
           // The same block seen again (a repeated message, a replayed turn) does not reopen an answered decision.
@@ -274,6 +283,7 @@ export class Supervisor {
       }
       return problems;
     });
+    for (const ticket of newlyAsked) await this.stats.count(identity.project, ticket, "decisions").catch(() => undefined);
     if (corrections.length > 0) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.decisionCorrection, { problems: [...new Set(corrections)].join("; ") }));
     }
