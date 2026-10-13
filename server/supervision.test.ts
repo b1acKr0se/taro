@@ -396,4 +396,17 @@ describe("Supervisor.onTurnEnded delivers a subagent's report", () => {
     await supervisor().onTurnEnded({} as PaseoApi, { id: agent.id, parentAgentId: owner.id } as unknown as HookAgent, { kind: "completed" } as unknown as TurnOutcome, items(userTurn, reply), null, undefined);
     expect(vi.mocked(sendFromPlugin).mock.calls.map(([, id, text]) => [id, text])).toEqual([[owner.id, `report:${job}:done: tests pass`]]);
   });
+
+  it("names a report held from before TR-017, stored with the role `helper`, as an implementer's", async () => {
+    const held = { project: "taro", role: "owner", heldReports: [{ fromAgentId: "helper-1", role: "helper", title: "TR-3 · helper: x", ticket: "TR-3", text: "done: built", turnId: "t1" }], compaction: "none" };
+    const agents: Record<string, unknown> = { [owner.id]: held };
+    const state = {
+      agent: async (agentId: string) => agents[agentId] ?? null,
+      updateAgent: async <T>(agentId: string, _initial: () => AgentState, change: (record: AgentState) => T) => change(agents[agentId] as AgentState),
+    } as unknown as PluginState;
+    vi.mocked(sendFromPlugin).mockClear();
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+    expect(await taro.flushHeldReports({} as PaseoApi, owner.id)).toBe(true);
+    expect(vi.mocked(sendFromPlugin).mock.calls.map(([, id, text]) => [id, text])).toEqual([[owner.id, "report:implementer:done: built"]]);
+  });
 });

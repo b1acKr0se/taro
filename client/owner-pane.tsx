@@ -13,13 +13,13 @@ import { decisionBlocksAsText, parseDecisionBlocks, withoutDecisionBlocks } from
 import { AgentChat } from "./agent-chat";
 import { ContextMeter } from "./context-meter";
 import { DecisionCard } from "./decision-card";
-import { defaultPaneAgent, paneAgents, paneAgentJob } from "./pane-agents";
+import { defaultPaneAgent, paneAgents, paneAgentJob, roleIcon } from "./pane-agents";
 import { PaneHeader } from "./pane-header";
 import { SPACE } from "./spacing";
 import { TicketView } from "./ticket-view";
 import { FONT_SIZE } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
-import { AgentChips, roleIcon } from "./agent-chips";
+import { AgentChips } from "./agent-chips";
 import { useNow } from "./use-now";
 
 const ARCHIVED_NOTE = "Finished — this agent is archived; its conversation is read-only.";

@@ -26,6 +26,13 @@ export function paneAgentJob(role: PaneAgentRole): string {
   return role;
 }
 
+/** The Lucide icon for an agent's job; an archived owner is no longer the one in charge. */
+export function roleIcon(agent: Pick<PaneAgent, "role" | "live">): string {
+  if (agent.role === "owner") return agent.live ? "Crown" : "UserRound";
+  if (agent.role === "implementer") return "Wrench";
+  return agent.role === "researcher" ? "Search" : "ShieldCheck";
+}
+
 function capitalised(text: string): string {
   return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 }

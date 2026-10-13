@@ -46,12 +46,13 @@ alternatives proposal.
 ticket (what you did, evidence with commands and `file:line`, recommendation), move to Awaiting
 acceptance, and raise an `investigation-done` decision.
 
-## Subagents (high complexity)
+## Subagents
 
 The agents you launch are **subagents**, each named by its job in its label, title and brief:
-an **implementer** builds a task (`roles/implementer.md`), a **reviewer** reviews (`roles/reviewer.md`),
-a **researcher** finds something out without changing code (`roles/researcher.md`). Never call one a
-"helper".
+an **implementer** builds a task at high complexity (`roles/implementer.md`), a **reviewer** reviews
+(`roles/reviewer.md`, see Review), a **researcher** finds something out without changing code when
+answering a question yourself would fill your context (`roles/researcher.md`, any level). Never call
+one a "helper".
 
 - One implementer per task, **one at a time** in your workspace (a new tab), each with a filled
   **definition of done** (`templates/definition-of-done.md`) written into the child ticket or its

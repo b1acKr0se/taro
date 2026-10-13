@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { AgentBrief, Card } from "../shared/contracts";
 import type { SubagentRole } from "../shared/project";
-import { defaultPaneAgent, paneAgentDetail, paneAgentState, paneAgents, taskOfTitle, waitingOnText } from "./pane-agents";
+import { defaultPaneAgent, paneAgentDetail, paneAgentState, paneAgents, roleIcon, taskOfTitle, waitingOnText } from "./pane-agents";
 
 function brief(id: string, title: string | null = null): AgentBrief {
   return {
@@ -31,6 +31,13 @@ function past(id: string, role: "owner" | SubagentRole, title: string | null = n
 function card(parts: Partial<Pick<Card, "owner" | "subagents" | "pastAgents">>): Pick<Card, "owner" | "subagents" | "pastAgents"> {
   return { owner: null, subagents: [], pastAgents: [], ...parts };
 }
+
+describe("roleIcon", () => {
+  it("draws each job, and a live owner apart from an archived one", () => {
+    const roles = [["owner", true], ["owner", false], ["implementer", true], ["reviewer", true], ["researcher", false]] as const;
+    expect(roles.map(([role, live]) => roleIcon({ role, live }))).toEqual(["Crown", "UserRound", "Wrench", "ShieldCheck", "Search"]);
+  });
+});
 
 describe("paneAgents", () => {
   it("is empty for a ticket that never had an agent", () => {
