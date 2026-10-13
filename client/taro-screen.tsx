@@ -286,7 +286,7 @@ function ProjectView({
         {layout.ticketBeside && openCard !== null ? (
           <View style={{ width: "42%", minWidth: 360, borderLeftWidth: 1, borderLeftColor: theme.colors.border, backgroundColor: theme.colors.surface0 }}>
             <PaneHeader theme={theme} title={`${openCard.id} · ticket`} icon="ClipboardList" />
-            <TicketView project={project} ticket={openCard.id} theme={theme} />
+            <TicketView key={openCard.id} project={project} ticket={openCard.id} theme={theme} />
           </View>
         ) : null}
       </View>
@@ -362,6 +362,8 @@ function ManagerPane({
         <Text style={{ color: theme.colors.statusWarning, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm }}>Ticket sync paused; see Needs you on the board.</Text>
       )}
       <AgentChat
+        // A restarted manager is another agent: a fresh chat, not the last one's words for a frame.
+        key={manager.id}
         agent={{ id: manager.id, updatedAt: manager.updatedAt, pendingPermissions: manager.pendingPermissions, status: manager.status }}
         theme={theme}
         compact={compact}

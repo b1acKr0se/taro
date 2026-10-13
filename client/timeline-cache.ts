@@ -35,3 +35,8 @@ export class TimelineCache<Value> {
     return this.values.size;
   }
 }
+
+/** Whether a timeline read may replace the cached one: a failed read's empty page must not blank a good conversation. */
+export function cacheable(read: { error?: string | null | undefined }): boolean {
+  return read.error === undefined || read.error === null || read.error === "";
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { TimelineCache } from "./timeline-cache";
+import { TimelineCache, cacheable } from "./timeline-cache";
 
 describe("TimelineCache", () => {
   it("gives back what was stored, and nothing for an agent never read", () => {
@@ -33,5 +33,17 @@ describe("TimelineCache", () => {
     const cache = new TimelineCache<string>(0);
     cache.set("a", "1");
     expect(cache.size).toBe(0);
+  });
+});
+
+describe("cacheable", () => {
+  it("keeps a read without an error", () => {
+    expect(cacheable({})).toBe(true);
+    expect(cacheable({ error: null })).toBe(true);
+    expect(cacheable({ error: "" })).toBe(true);
+  });
+
+  it("does not let a failed read replace the cached conversation", () => {
+    expect(cacheable({ error: "agent not found" })).toBe(false);
   });
 });

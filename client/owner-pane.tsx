@@ -93,7 +93,7 @@ export function OwnerPane({
       </View>
       <View style={{ flex: 1 }}>
         {tab === "ticket" ? (
-          <TicketView project={project} ticket={card.id} theme={theme} />
+          <TicketView key={card.id} project={project} ticket={card.id} theme={theme} />
         ) : shown === null ? (
           <Text style={{ color: theme.colors.foregroundMuted, padding: SPACE.lg }}>
             {card.ownerElsewhere !== null ? `Its owner runs on ${card.ownerElsewhere}.` : "No owner is running for this ticket."}

@@ -1,7 +1,7 @@
 import { usePaseo } from "@getpaseo/plugin/client";
 import { useEffect, useRef, useState } from "react";
 
-import { TimelineCache } from "./timeline-cache";
+import { TimelineCache, cacheable } from "./timeline-cache";
 import type { TimelinePage, TimelineEntry } from "./transcript-rows";
 
 /** Wait for a pause in the stream before re-reading, so one burst is one read. */
@@ -92,7 +92,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
       try {
         const page = await timeline.refetch({ direction: "tail", limit, projection: "projected" });
         if (!alive) return;
-        cache.set(id, { entries: page.entries, agent: page.agent ?? cache.get(id)?.agent ?? null, hasOlder: page.hasOlder });
+        if (cacheable(page)) cache.set(id, { entries: page.entries, agent: page.agent ?? cache.get(id)?.agent ?? null, hasOlder: page.hasOlder });
         setEntries(page.entries);
         if (page.agent !== null) setAgent(page.agent);
         setHasOlder(page.hasOlder);
