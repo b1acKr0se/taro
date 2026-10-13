@@ -5,14 +5,14 @@
  * finished its key stats.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
-import { useRpc } from "@getpaseo/plugin/client";
+import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { acceptTicket, compactAgent, nudgeAgent, relaunchOwner, requestChanges, type Card, type StatsSummary } from "../shared/contracts";
 import { DecisionCard } from "./decision-card";
-import { errorText, formatCost, formatDuration, formatTokenCount, relativeTime } from "./format";
+import { errorText, formatCost, pullRequestLabel, formatDuration, formatTokenCount, relativeTime } from "./format";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { Chip, IconButton } from "./ui";
 
@@ -127,6 +127,13 @@ export function TicketCard({
         <Text style={styles.status} numberOfLines={3}>
           {card.stalledReason}
         </Text>
+      )}
+      {card.pullRequest === null ? null : (
+        <Pressable accessibilityRole="link" onPress={() => void openExternalUrl(card.pullRequest ?? "").catch((caught: unknown) => toast.error(errorText(caught)))}>
+          <Text style={styles.link} numberOfLines={1}>
+            {pullRequestLabel(card.pullRequest)}
+          </Text>
+        </Pressable>
       )}
       {stats === null ? null : (
         <Text style={styles.muted} numberOfLines={1}>

@@ -6,7 +6,7 @@ import { stat } from "node:fs/promises";
 import { hostname } from "node:os";
 
 import { boardColumn, complexityOf } from "../shared/board";
-import { executionMachine } from "../shared/execution";
+import { executionMachine, pullRequestUrl } from "../shared/execution";
 import type { Board, Card, TicketDetailView } from "../shared/contracts";
 import { TARO_LABELS } from "../shared/project";
 import { boardAlerts } from "../shared/recovery";
@@ -25,14 +25,16 @@ import { listTickets, viewTicket } from "./tickets";
 
 const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing", "Awaiting acceptance", "Blocked"]);
 
-/** The host an EXECUTION record names, when it names one other than this machine. */
-async function ownerHostElsewhere(trackerPath: string, ticketId: string): Promise<string | null> {
+const UNDER_REVIEW = new Set(["Reviewing", "Awaiting acceptance"]);
+
+/** What only the ticket's records say: the host an EXECUTION record names, when not this machine, and its pull request. */
+async function recordedFacts(trackerPath: string, ticketId: string): Promise<{ hostElsewhere: string | null; pullRequest: string | null }> {
   try {
     const detail = await viewTicket(trackerPath, ticketId);
     const host = executionMachine(detail.implementationNotes);
-    return host !== null && host !== hostname() ? host : null;
+    return { hostElsewhere: host !== null && host !== hostname() ? host : null, pullRequest: pullRequestUrl(detail.implementationNotes, detail.finalSummary) };
   } catch {
-    return null;
+    return { hostElsewhere: null, pullRequest: null };
   }
 }
 
@@ -88,7 +90,10 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
       const ownerState = owner === null ? null : agentStates[owner.id] ?? null;
       const finished = ticket.status === "Done" || ticket.status === "Cancelled";
       const ticketDecisions = finished ? [] : openDecisions.filter((decision) => decision.ticket === ticket.id);
-      const elsewhere = owner === null && UNDER_WAY.has(ticket.status) ? await ownerHostElsewhere(paths.tracker, ticket.id) : null;
+      const needsHost = owner === null && UNDER_WAY.has(ticket.status);
+      // Reading a ticket spawns the Backlog CLI, so only for cards that show what it holds.
+      const facts = needsHost || UNDER_REVIEW.has(ticket.status) ? await recordedFacts(paths.tracker, ticket.id) : null;
+      const elsewhere = needsHost ? facts?.hostElsewhere ?? null : null;
       const children = tickets
         .filter((candidate) => candidate.parentTaskId === ticket.id)
         .map((child) => ({ id: child.id, title: child.title, status: child.status }));
@@ -115,6 +120,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
         updatedAt: ticket.updatedAt,
         owner: owner === null ? null : agentBrief(owner),
         ownerElsewhere: elsewhere,
+        pullRequest: facts?.pullRequest ?? null,
         lastStatus: ownerState?.lastStatus ?? null,
         stalled: ownerState?.stalled ?? false,
         stalledReason: ownerState?.stalled === true ? ownerState.stalledReason : null,

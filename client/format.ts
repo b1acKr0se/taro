@@ -80,3 +80,9 @@ export function formatCost(usd: number | null): string {
   if (usd > 0 && usd < 0.005) return "<$0.01";
   return `$${usd.toFixed(2)}`;
 }
+
+/** "PR #42 · owner/repo" for a GitHub-style pull request URL, else the URL itself. */
+export function pullRequestLabel(url: string): string {
+  const match = /\/([^/]+\/[^/]+)\/pull\/(\d+)$/.exec(url);
+  return match === null ? url : `PR #${match[2]} · ${match[1]}`;
+}

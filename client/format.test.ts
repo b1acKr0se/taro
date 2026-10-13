@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatCost, formatDuration } from "./format";
+import { formatCost, formatDuration, pullRequestLabel } from "./format";
 
 describe("formatDuration", () => {
   it("writes nothing as a dash", () => {
@@ -28,5 +28,16 @@ describe("formatCost", () => {
     expect(formatCost(0.004)).toBe("<$0.01");
     expect(formatCost(0.005)).toBe("$0.01");
     expect(formatCost(12.345)).toBe("$12.35");
+  });
+});
+
+describe("pullRequestLabel", () => {
+  it("shortens a pull request URL to its number and repository", () => {
+    expect(pullRequestLabel("https://github.com/o/r/pull/42")).toBe("PR #42 · o/r");
+    expect(pullRequestLabel("https://ghe.example.com/team/app/pull/7")).toBe("PR #7 · team/app");
+  });
+
+  it("keeps anything else as it is", () => {
+    expect(pullRequestLabel("https://example.com/merge-requests/3")).toBe("https://example.com/merge-requests/3");
   });
 });

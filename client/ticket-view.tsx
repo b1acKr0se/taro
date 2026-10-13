@@ -1,6 +1,7 @@
 /** The ticket beside its owner's chat: status, criteria, plan, records, final summary. */
 import type { PluginTheme } from "@getpaseo/plugin";
-import { useRpc } from "@getpaseo/plugin/client";
+import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
+import { useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { ScrollView, Text, View } from "react-native";
@@ -12,6 +13,7 @@ import { FONT_SIZE } from "./type-scale";
 
 export function TicketView({ project, ticket, theme }: { project: string; ticket: string; theme: PluginTheme }) {
   const load = useRpc(loadTicket);
+  const toast = useToast();
   const detail = useQuery({ queryKey: ["taro", "ticket", project, ticket], queryFn: () => load({ project, ticket }), refetchInterval: 6_000 });
   const { colors } = theme;
   const styles = useMemo(
@@ -28,6 +30,8 @@ export function TicketView({ project, ticket, theme }: { project: string; ticket
   const data = detail.data;
   if (data === undefined) return <Text style={[styles.muted, { padding: 14 }]}>Loading the ticket…</Text>;
   const noop = () => undefined;
+  // The delivery names the PR; the user opens it from here before accepting (decision 34).
+  const openLink = (url: string) => void openExternalUrl(url).catch((caught: unknown) => toast.error(errorText(caught)));
   return (
     <ScrollView contentContainerStyle={styles.body}>
       <Text style={styles.text}>
@@ -69,7 +73,7 @@ export function TicketView({ project, ticket, theme }: { project: string; ticket
       {data.finalSummary === null ? null : (
         <View style={{ gap: 4 }}>
           <Text style={styles.heading}>DELIVERY</Text>
-          <Markdown source={data.finalSummary} theme={theme} onOpenLink={noop} />
+          <Markdown source={data.finalSummary} theme={theme} onOpenLink={openLink} />
         </View>
       )}
       {data.notes === null ? null : (

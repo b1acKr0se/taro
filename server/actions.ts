@@ -6,7 +6,7 @@
  */
 import { randomUUID } from "node:crypto";
 
-import { executionWorkspace } from "../shared/execution";
+import { executionWorkspace, pullRequestMergeInstruction } from "../shared/execution";
 import { TARO_LABELS, TICKET_STATUSES } from "../shared/project";
 import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents } from "./agents";
 import { taroEnvironment } from "./environment";
@@ -110,7 +110,7 @@ export class Actions {
     if (investigation) mergeInstruction = "Record ACCEPTANCE with my words and set the ticket Done.";
     else if (!config.acceptAlsoMerges) mergeInstruction = "Do not merge; record ACCEPTANCE with my words and set the ticket Done.";
     else if (config.delivery === "pull-request")
-      mergeInstruction = "Merge it now as roles/owner.md says (only if the head is still the recorded review head), confirm it merged, then record ACCEPTANCE and set the ticket Done.";
+      mergeInstruction = pullRequestMergeInstruction(detail.implementationNotes, detail.finalSummary);
     else
       mergeInstruction = `Fast-forward ${config.baseBranch} to your branch in the main checkout (${config.repoPath}), only if it fast-forwards cleanly; then record ACCEPTANCE and set the ticket Done.`;
     await sendWithoutInterrupting(paseo, owner.id, await message(TEMPLATES.accept, { ticket, mergeInstruction }));
