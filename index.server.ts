@@ -14,6 +14,7 @@ import {
   nudgeAgent,
   relaunchOwner,
   requestChanges,
+  resolveTrackerSync as resolveTrackerSyncRpc,
   tellAgent,
   checkPrerequisites as checkPrerequisitesRpc,
   compactManager as compactManagerRpc,
@@ -85,9 +86,11 @@ export default function contribute(server: PluginServerContext) {
       configs.map(async (config) => {
         const manager = await fetchLiveAgent(paseo, config.managerAgentId);
         const board = await loadBoard(paseo, state, config.project).catch(() => null);
+        const trackerSyncProblem = trackers.syncProblem(config.project);
         const needsYou =
-          board === null ? 0 : board.cards.filter((card) => card.column === "needs-you" || card.column === "stalled").length + board.managerDecisions.length;
-        return { config, manager: manager === null ? null : agentBrief(manager), trackerSyncProblem: trackers.syncProblem(config.project), needsYou };
+          (board === null ? 0 : board.cards.filter((card) => card.column === "needs-you" || card.column === "stalled").length + board.managerDecisions.length) +
+          (trackerSyncProblem === null ? 0 : 1);
+        return { config, manager: manager === null ? null : agentBrief(manager), trackerSyncProblem, needsYou };
       }),
     );
     return { taroHome: await taroHome(), projects };
@@ -155,6 +158,10 @@ export default function contribute(server: PluginServerContext) {
     return {};
   });
   server.handle(relaunchOwner, async ({ project, ticket }, { paseo }) => ({ agentId: await actions.relaunchOwner(keep(paseo), project, ticket) }));
+  server.handle(resolveTrackerSyncRpc, async ({ project, resolution }) => {
+    await requireProjectConfig(project);
+    return { problem: await trackers.resolve(project, resolution) };
+  });
   server.handle(acceptTicket, async ({ project, ticket }, { paseo }) => {
     await actions.accept(keep(paseo), project, ticket);
     return {};

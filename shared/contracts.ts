@@ -26,11 +26,23 @@ export const AgentBriefSchema = z.object({
 });
 export type AgentBrief = z.infer<typeof AgentBriefSchema>;
 
+/** Why ticket sync with the remote is paused (decision 31): a conflict on tickets, or git failing outright. */
+export const TrackerSyncProblemSchema = z.object({
+  kind: z.enum(["conflict", "failed"]),
+  message: z.string(),
+  /** Tickets changed both here and on the remote. */
+  tickets: z.array(z.string()),
+});
+export type TrackerSyncProblem = z.infer<typeof TrackerSyncProblemSchema>;
+
+export const SyncResolutionSchema = z.enum(["keep-local", "keep-remote", "retry"]);
+export type SyncResolution = z.infer<typeof SyncResolutionSchema>;
+
 export const ProjectSummarySchema = z.object({
   config: ProjectConfigSchema,
   manager: AgentBriefSchema.nullable(),
-  trackerSyncProblem: z.string().nullable(),
-  /** Cards in Needs you or Stalled, for the sidebar badge and tabs. */
+  trackerSyncProblem: TrackerSyncProblemSchema.nullable(),
+  /** Cards in Needs you or Stalled, plus a paused ticket sync, for the sidebar badge and tabs. */
   needsYou: z.number().int(),
 });
 export type ProjectSummary = z.infer<typeof ProjectSummarySchema>;
@@ -188,6 +200,11 @@ export const relaunchOwner = defineRpc({
   output: z.object({ agentId: z.string() }),
 });
 export const acceptTicket = defineRpc({ name: "taro.ticket.accept", input: z.object({ project: ProjectNameSchema, ticket: z.string() }), output: Empty });
+export const resolveTrackerSync = defineRpc({
+  name: "taro.tracker.resolve-sync",
+  input: z.object({ project: ProjectNameSchema, resolution: SyncResolutionSchema }),
+  output: z.object({ problem: TrackerSyncProblemSchema.nullable() }),
+});
 export const requestChanges = defineRpc({
   name: "taro.ticket.request-changes",
   input: z.object({ project: ProjectNameSchema, ticket: z.string(), text: z.string().min(1) }),

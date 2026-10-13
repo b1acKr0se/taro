@@ -2,18 +2,29 @@
  * The plugin is the tracker's only committer (decision 31): each project's
  * `tracker/backlog/` is watched, and changes are committed a few seconds
  * after the last write. With remote sync on, each commit is pushed after a
- * pull; a failure is kept and shown, and retried on the next change.
+ * pull; a failure is kept and shown until a later commit syncs or the user
+ * resolves it. A failed sync is not retried on file changes alone: the
+ * plugin's own rebase and abort rewrite the tracker's files, which would
+ * otherwise pull again every few seconds.
  */
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
 
 import { listProjectConfigs, projectPaths } from "./projects";
 import { serialized } from "./serialize";
-import { commitTracker, syncTracker } from "./tracker";
+import type { SyncResolution, TrackerSyncProblem } from "../shared/contracts";
+import { commitTracker, syncTracker, type SyncStrategy } from "./tracker";
 
 const DEBOUNCE_MS = 5_000;
 
 export type TrackerChangeListener = (project: string) => void;
+export type TrackerSyncer = (trackerPath: string, strategy?: SyncStrategy) => Promise<TrackerSyncProblem | null>;
+
+const RESOLUTION_STRATEGIES: Readonly<Record<SyncResolution, SyncStrategy>> = {
+  "keep-local": "keep-local",
+  "keep-remote": "keep-remote",
+  retry: "rebase",
+};
 
 interface Watched {
   watcher: FSWatcher;
@@ -22,15 +33,17 @@ interface Watched {
 
 export class TrackerWatch {
   private readonly watched = new Map<string, Watched>();
-  private readonly syncProblems = new Map<string, string>();
+  private readonly syncProblems = new Map<string, TrackerSyncProblem>();
   private readonly listeners = new Set<TrackerChangeListener>();
+
+  constructor(private readonly sync: TrackerSyncer = syncTracker) {}
 
   onChange(listener: TrackerChangeListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
 
-  syncProblem(project: string): string | null {
+  syncProblem(project: string): TrackerSyncProblem | null {
     return this.syncProblems.get(project) ?? null;
   }
 
@@ -68,16 +81,31 @@ export class TrackerWatch {
       const paths = await projectPaths(project);
       try {
         const committed = await commitTracker(paths.tracker);
-        if (config.trackerSync === "remote" && (committed !== null || this.syncProblems.has(project))) {
-          const result = await syncTracker(paths.tracker);
-          if (result.ok) this.syncProblems.delete(project);
-          else this.syncProblems.set(project, result.reason);
-        }
+        if (config.trackerSync !== "remote") this.syncProblems.delete(project);
+        else if (committed !== null) await this.syncAndRecord(project, paths.tracker, "rebase");
       } catch (error) {
         console.error(`[taro] committing ${project}'s tracker failed: ${error instanceof Error ? error.message : String(error)}`);
       }
       for (const listener of this.listeners) listener(project);
     });
+  }
+
+  /** The user's answer to a paused sync: commit anything pending, then pull with their choice and push. */
+  resolve(project: string, resolution: SyncResolution): Promise<TrackerSyncProblem | null> {
+    return serialized(`tracker:${project}`, async () => {
+      const paths = await projectPaths(project);
+      await commitTracker(paths.tracker);
+      const problem = await this.syncAndRecord(project, paths.tracker, RESOLUTION_STRATEGIES[resolution]);
+      for (const listener of this.listeners) listener(project);
+      return problem;
+    });
+  }
+
+  private async syncAndRecord(project: string, trackerPath: string, strategy: SyncStrategy): Promise<TrackerSyncProblem | null> {
+    const problem = await this.sync(trackerPath, strategy);
+    if (problem === null) this.syncProblems.delete(project);
+    else this.syncProblems.set(project, problem);
+    return problem;
   }
 
   stop(): void {

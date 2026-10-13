@@ -8,8 +8,9 @@ import { access, constants, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 
+import type { TrackerSyncProblem } from "../shared/contracts";
 import { TICKET_STATUSES } from "../shared/project";
-import { commandError, runChecked, runCommand } from "./process";
+import { commandError, runChecked, runCommand, type CommandResult } from "./process";
 
 export const TRACKER_BRANCH = "taro/backlog";
 
@@ -180,14 +181,52 @@ export function ticketIdInPath(path: string): string | null {
   return match?.[1] === undefined ? null : match[1].toUpperCase();
 }
 
-/** Pulls (rebase) and pushes `taro/backlog`; returns a sentence on conflict instead of throwing. */
-export async function syncTracker(trackerPath: string): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const pull = await runCommand("git", ["-C", trackerPath, "pull", "--rebase", "--autostash", "origin", TRACKER_BRANCH], { timeoutMs: 120_000 });
+/**
+ * How a pull settles lines changed on both sides: plain rebase stops on them;
+ * the others let one side win in those lines only (in a rebase, "theirs" is
+ * the local commits being replayed).
+ */
+export type SyncStrategy = "rebase" | "keep-local" | "keep-remote";
+
+const STRATEGY_OPTIONS: Readonly<Record<SyncStrategy, readonly string[]>> = {
+  rebase: [],
+  "keep-local": ["-X", "theirs"],
+  "keep-remote": ["-X", "ours"],
+};
+
+/**
+ * Pulls (rebase) and pushes `taro/backlog`; returns null when in sync, or the
+ * problem instead of throwing. A conflicting rebase is aborted, so the tracker
+ * stays on its branch with nothing lost.
+ */
+export async function syncTracker(trackerPath: string, strategy: SyncStrategy = "rebase"): Promise<TrackerSyncProblem | null> {
+  const pull = await runCommand(
+    "git",
+    ["-C", trackerPath, "pull", "--rebase", "--autostash", ...STRATEGY_OPTIONS[strategy], "origin", TRACKER_BRANCH],
+    { timeoutMs: 120_000 },
+  );
   if (pull.code !== 0 && !/couldn't find remote ref/i.test(pull.stderr)) {
+    const unmerged = await runCommand("git", ["-C", trackerPath, "diff", "--name-only", "--diff-filter=U"], { timeoutMs: 30_000 });
+    const files = unmerged.stdout.split("\n").map((line) => line.trim()).filter((line) => line !== "");
     await runCommand("git", ["-C", trackerPath, "rebase", "--abort"], { timeoutMs: 30_000 });
-    return { ok: false, reason: `pull failed: ${commandError(pull)}` };
+    if (files.length > 0) return conflictProblem(files);
+    return { kind: "failed", message: `Pulling from origin failed: ${gitComplaint(pull)}`, tickets: [] };
   }
   const push = await runCommand("git", ["-C", trackerPath, "push", "-u", "origin", TRACKER_BRANCH], { timeoutMs: 120_000 });
-  if (push.code !== 0) return { ok: false, reason: `push failed: ${commandError(push)}` };
-  return { ok: true };
+  if (push.code !== 0) return { kind: "failed", message: `Pushing to origin failed: ${gitComplaint(push)}`, tickets: [] };
+  return null;
+}
+
+export function conflictProblem(files: readonly string[]): TrackerSyncProblem {
+  const tickets = [...new Set(files.map(ticketIdInPath).filter((id): id is string => id !== null))].sort();
+  const others = files.filter((file) => ticketIdInPath(file) === null);
+  const named = [...tickets, ...others];
+  const subject = named.length <= 3 ? named.join(", ") : `${named.slice(0, 3).join(", ")} and ${named.length - 3} more`;
+  return { kind: "conflict", message: `${subject} changed both here and on the remote.`, tickets };
+}
+
+/** Git's own reason (its fatal/error line), not the progress chatter that comes first on stderr. */
+export function gitComplaint(result: CommandResult): string {
+  const lines = `${result.stderr}\n${result.stdout}`.split("\n").map((line) => line.trim());
+  return lines.find((line) => /^(fatal|error):/i.test(line)) ?? commandError(result);
 }
