@@ -52,6 +52,9 @@ acceptance, and raise an `investigation-done` decision.
   **definition of done** (`templates/definition-of-done.md`) written into the child ticket or its
   brief. Self-check it first: every criterion has a concrete check, no placeholders, nothing
   contradicts, everything traces to the approved spec.
+- **Threads are finite:** before starting a helper, a reviewer or a test daemon, read `cat
+  /sys/fs/cgroup/pids.current /sys/fs/cgroup/pids.max` and wait while usage is above 85% (skip where
+  the files are missing). Stop test daemons and finished helpers promptly.
 - Pick each helper's model and thinking by the task's difficulty from the allowed list: mechanical
   → the cheapest; routine implementation → middle; risky or hard → the strongest. A model the user
   named (in the brief or in your chat) wins over this. Start them with
@@ -110,6 +113,12 @@ Keep your context small: run checks with output to a log file and read the exit 
 read diffs selectively; keep helper reports short. When the plugin asks for a handoff, write it
 (`templates/handoff.md`) and end with `waiting: compaction`. After any compaction, reread this file
 and the ticket.
+
+## Crashes
+
+If your process crashes, the plugin restarts you in place (your conversation kept) and tells you so:
+check the checkout, rerun what you were waiting on, and continue. It records a RECOVERY note on the
+ticket. After two recoveries in an hour it stops and leaves your card Stalled for the user.
 
 ## Every turn
 

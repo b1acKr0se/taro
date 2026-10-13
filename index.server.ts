@@ -98,7 +98,7 @@ export default function contribute(server: PluginServerContext) {
         const board = await loadBoard(paseo, state, config.project).catch(() => null);
         const trackerSyncProblem = config.trackerSync === "remote" ? trackers.syncProblem(config.project) : null;
         const needsYou =
-          (board === null ? 0 : board.cards.filter((card) => card.column === "needs-you" || card.column === "stalled").length + board.managerDecisions.length) +
+          (board === null ? 0 : board.cards.filter((card) => card.column === "needs-you" || card.column === "stalled").length + board.managerDecisions.length + board.alerts.length) +
           (trackerSyncProblem === null ? 0 : 1);
         return { config, manager: manager === null ? null : agentBrief(manager), trackerSyncProblem, needsYou };
       }),

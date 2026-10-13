@@ -79,3 +79,23 @@ export function headroomNeedsYou(headroom: Headroom | null, now: number): boolea
   if (headroom === null || !headroom.high || headroom.highSince === null) return false;
   return now - Date.parse(headroom.highSince) >= HEADROOM_ALERT_AFTER_MS;
 }
+
+/** Something for the user that belongs to no ticket card: shown at the top of the board and in the Inbox. */
+export const BoardAlertSchema = z.object({ id: z.string(), text: z.string() });
+export type BoardAlert = z.infer<typeof BoardAlertSchema>;
+
+/** The project's alerts: threads high for a while, and a manager the plugin stopped recovering. */
+export function boardAlerts(headroom: Headroom | null, managerStalledReason: string | null, now: number): BoardAlert[] {
+  const alerts: BoardAlert[] = [];
+  if (headroom !== null && headroomNeedsYou(headroom, now)) {
+    const percent = Math.round((headroom.current / headroom.max) * 100);
+    alerts.push({
+      id: "headroom",
+      text: `The host is at ${headroom.current} of ${headroom.max} threads (${percent}%) and has been above ${Math.round(HEADROOM_HIGH_RATIO * 100)}% for a while. Crash recovery and new dispatches wait until it falls; stopping idle agents, test daemons or other sessions frees threads.`,
+    });
+  }
+  if (managerStalledReason !== null) {
+    alerts.push({ id: "manager-crashed", text: `The manager is stopped. ${managerStalledReason} Restart it from the project's settings.` });
+  }
+  return alerts;
+}

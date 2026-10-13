@@ -9,10 +9,12 @@ import { boardColumn, complexityOf } from "../shared/board";
 import { executionMachine } from "../shared/execution";
 import type { Board, Card, TicketDetailView } from "../shared/contracts";
 import { TARO_LABELS } from "../shared/project";
+import { boardAlerts } from "../shared/recovery";
 import { decisionsOfLiveAgents, type StoredDecision } from "../shared/state";
 import { currentSuggestions, parseSuggestions, suggestionKey } from "../shared/suggestions";
 import { projectAgents } from "./agents";
 import { statePath } from "./data-dir";
+import { readHeadroom } from "./headroom";
 import { readJsonIfPresent, readTextIfPresent, writeJsonAtomically } from "./files";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import { projectPaths } from "./projects";
@@ -58,11 +60,12 @@ export function invalidateBoards(): void {
 
 async function readBoard(paseo: PaseoApi, state: PluginState, project: string): Promise<Board> {
   const paths = await projectPaths(project);
-  const [tickets, agents, decisions, agentStates] = await Promise.all([
+  const [tickets, agents, decisions, agentStates, headroom] = await Promise.all([
     listTickets(paths.tracker),
     projectAgents(paseo, project),
     state.allDecisions(),
     state.allAgents(),
+    readHeadroom(),
   ]);
 
   const byTicket = new Map<string, PaseoAgent[]>();
@@ -113,17 +116,22 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
         ownerElsewhere: elsewhere,
         lastStatus: ownerState?.lastStatus ?? null,
         stalled: ownerState?.stalled ?? false,
+        stalledReason: ownerState?.stalled === true ? ownerState.stalledReason : null,
         decisions: ticketDecisions,
         helpers: helpers.map(agentBrief),
       };
     }),
   );
 
+  const manager = agents.find((agent) => agent.labels[TARO_LABELS.role] === "manager" && agentStates[agent.id]?.stalled === true);
+  const managerState = manager === undefined ? null : agentStates[manager.id] ?? null;
   return {
     project,
     cards,
     managerDecisions: openDecisions.filter((decision) => decision.ticket === null),
     suggestions: await readSuggestions(project, tickets),
+    headroom,
+    alerts: boardAlerts(headroom, managerState?.stalledReason ?? null, Date.now()),
     loadedAt: new Date().toISOString(),
   };
 }

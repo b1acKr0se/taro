@@ -206,7 +206,7 @@ function ProjectView({
       remembered.phoneTab = value;
       setPhoneTab(value);
     };
-    const needsYou = (board.data?.cards ?? []).filter((card) => card.column === "needs-you").length + (summary.trackerSyncProblem === null ? 0 : 1);
+    const needsYou = (board.data?.cards ?? []).filter((card) => card.column === "needs-you").length + (board.data?.alerts.length ?? 0) + (summary.trackerSyncProblem === null ? 0 : 1);
     return (
       <View style={{ flex: 1 }}>
         <View style={{ padding: 8 }}>

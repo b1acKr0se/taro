@@ -12,6 +12,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { COLUMN_IDS, COLUMN_TITLES, type ColumnId } from "../shared/board";
 import { dismissSuggestion, tellManager, type Card, type ProjectSummary } from "../shared/contracts";
+import { AlertCard } from "./alert-card";
 import { useBoard, useRefreshBoard } from "./board-data";
 import { DecisionCard } from "./decision-card";
 import { errorText } from "./format";
@@ -113,6 +114,9 @@ export function ProjectBoard({
           }}
         />
       )}
+      {(board.data?.alerts ?? []).map((alert) => (
+        <AlertCard key={alert.id} alert={alert} theme={theme} compact={compact} />
+      ))}
       {(board.data?.managerDecisions ?? []).map((decision) => (
         <DecisionCard key={decision.key} decision={decision} theme={theme} compact={compact} onAnswered={refresh} showAgent />
       ))}

@@ -153,6 +153,11 @@ export class Supervisor {
       record.title = identity.title;
       record.lastTurnEndedAt = now;
       if (status !== null) record.lastStatus = { ...status, at: now };
+      // Working again after the plugin gave up on its crashes (the user restarted it by hand).
+      if (outcome.kind === "completed" && record.stalledReason !== null) {
+        record.stalled = false;
+        record.stalledReason = null;
+      }
       return record.compaction;
     });
 

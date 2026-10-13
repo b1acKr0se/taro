@@ -123,6 +123,11 @@ export function TicketCard({
           {card.lastStatus.state}: {card.lastStatus.text} · {relativeTime(card.lastStatus.at)}
         </Text>
       )}
+      {card.stalledReason === null ? null : (
+        <Text style={styles.status} numberOfLines={3}>
+          {card.stalledReason}
+        </Text>
+      )}
       {stats === null ? null : (
         <Text style={styles.muted} numberOfLines={1}>
           {formatDuration(stats.wallMs)} wall · {formatDuration(stats.agentActiveMs)} active · {stats.turns} turn{stats.turns === 1 ? "" : "s"} · {formatCost(stats.costUsd)}

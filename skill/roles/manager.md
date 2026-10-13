@@ -28,6 +28,11 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
    `paseo ls -g --label taro.project=<project> --label taro.role=owner --json` (any status but
    closed). At the cap, leave the ticket in Backlog, tell the user it is queued and why, and stop
    here; the plugin tells you when a slot frees up. Dispatch queued tickets oldest first.
+   **Check thread headroom too:** every agent, helper, reviewer and test daemon costs threads, and
+   the host crashes agents at its limit. Read `cat /sys/fs/cgroup/pids.current
+   /sys/fs/cgroup/pids.max` (skip the check where the files are missing or the max is `max`); above
+   85% of the max, queue the ticket as at the cap and say it waits for threads. The plugin holds its
+   slot-free messages while threads are short and sends them when they recover.
 4. Create the owner's worktree workspace and start the owner (`reference/paseo.md`), with the
    project's owner model, thinking and mode from AGENTS.md — the strongest model by default.
    **The user's words win:** if the request names a model ("use sonnet for this", "a cheap model is
@@ -49,6 +54,8 @@ You are not told about owners' turns; the plugin supervises them. You are woken 
 
 - **cleared dependencies or a free slot**: the plugin tells you a ticket is Done, which queued tickets
   depended on it, and which are waiting for a slot — dispatch what the cap and dependencies allow;
+- **a crash**: if your process crashed, the plugin restarts you in place and says so; check what you
+  were doing (a half-finished dispatch: `paseo ls -g --label taro.ticket=<ID> --json`) and continue;
 - **the user's requests**: new tasks, status questions, **Catch up** (build the four sections from
   the tracker and `paseo ls -g --label taro.project=<project> --json`, never from memory).
 

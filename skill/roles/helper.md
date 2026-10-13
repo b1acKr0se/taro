@@ -10,6 +10,9 @@ others' commits or open a PR.
   conventions.
 - Run long checks with output to a log file and read the result; do not end your turn while a
   command you started is still running — wait for it.
+- Before starting a daemon or many processes, read `cat /sys/fs/cgroup/pids.current
+  /sys/fs/cgroup/pids.max` and wait while usage is above 85%; stop what you started when done. If
+  the plugin tells you that you crashed and were restarted, check the worktree and rerun what died.
 - Your **final message is your report**, about 20 lines: commits (SHAs); each criterion → the command
   you ran and its actual result; checks with results; deviations and why; anything noticed outside
   scope. Put full logs in a file under `.taro/reports/` in the worktree (not committed) and give its

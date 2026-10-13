@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { hasHeadroom, headroomNeedsYou, isCrash, isHigh, mayRecover, parsePids, recentRecoveries } from "./recovery";
+import { boardAlerts, hasHeadroom, headroomNeedsYou, isCrash, isHigh, mayRecover, parsePids, recentRecoveries } from "./recovery";
 
 describe("isCrash", () => {
   it("recognises the texts Paseo reports when the Claude process dies", () => {
@@ -74,5 +74,28 @@ describe("headroom", () => {
     expect(headroomNeedsYou(high(119), now)).toBe(false);
     expect(headroomNeedsYou(high(120), now)).toBe(true);
     expect(headroomNeedsYou({ ...high(600), highSince: null }, now)).toBe(false);
+  });
+});
+
+describe("boardAlerts", () => {
+  const now = Date.parse("2026-10-13T12:00:00Z");
+  const since = (seconds: number) => new Date(now - seconds * 1000).toISOString();
+
+  it("is empty when all is well or the limit is unknown", () => {
+    expect(boardAlerts(null, null, now)).toEqual([]);
+    expect(boardAlerts({ current: 100, max: 2048, high: false, highSince: null }, null, now)).toEqual([]);
+  });
+
+  it("names the usage once it has stayed high", () => {
+    expect(boardAlerts({ current: 1900, max: 2048, high: true, highSince: since(30) }, null, now)).toEqual([]);
+    const [alert] = boardAlerts({ current: 1900, max: 2048, high: true, highSince: since(300) }, null, now);
+    expect(alert?.id).toBe("headroom");
+    expect(alert?.text).toContain("1900 of 2048 threads (93%)");
+  });
+
+  it("reports a manager the plugin stopped recovering", () => {
+    expect(boardAlerts(null, "Crashed: crashed 3 times within an hour.", now)).toEqual([
+      { id: "manager-crashed", text: "The manager is stopped. Crashed: crashed 3 times within an hour. Restart it from the project's settings." },
+    ]);
   });
 });

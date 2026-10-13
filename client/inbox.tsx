@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 
 import { listOpenDecisions, type Card, type ProjectSummary } from "../shared/contracts";
+import { AlertCard } from "./alert-card";
 import { useBoard, useRefreshBoard } from "./board-data";
 import { walkOrder } from "./walk-order";
 import { DecisionCard } from "./decision-card";
@@ -86,7 +87,7 @@ export function Inbox({
   );
 }
 
-/** One project's paused ticket sync and tickets that need you (acceptance, blockers) or are stalled; decisions are listed above. */
+/** One project's paused ticket sync, alerts (threads, a crashed manager), and tickets that need you (acceptance, blockers) or are stalled; decisions are listed above. */
 function InboxProject({
   summary,
   theme,
@@ -104,7 +105,8 @@ function InboxProject({
   const cards = board.data?.cards ?? [];
   const waiting = cards.filter((card) => (card.column === "needs-you" && card.decisions.length === 0) || card.column === "stalled");
   const syncProblem = summary.trackerSyncProblem;
-  if (waiting.length === 0 && syncProblem === null) return null;
+  const alerts = board.data?.alerts ?? [];
+  if (waiting.length === 0 && syncProblem === null && alerts.length === 0) return null;
   return (
     <View style={{ gap: 8 }}>
       <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "700" }}>{project.toUpperCase()}</Text>
@@ -120,6 +122,9 @@ function InboxProject({
           }}
         />
       )}
+      {alerts.map((alert) => (
+        <AlertCard key={alert.id} alert={alert} theme={theme} compact={compact} />
+      ))}
       {waiting.map((card) => (
         <TicketCard
           key={card.id}

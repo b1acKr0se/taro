@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { ColumnIdSchema } from "./board";
 import { ProjectConfigSchema, ProjectNameSchema, ProjectSettingsSchema } from "./project";
+import { BoardAlertSchema, HeadroomSchema } from "./recovery";
 import { LastStatusSchema, StoredDecisionSchema } from "./state";
 
 const Empty = z.object({});
@@ -133,6 +134,8 @@ export const CardSchema = z.object({
   ownerElsewhere: z.string().nullable(),
   lastStatus: LastStatusSchema.nullable(),
   stalled: z.boolean(),
+  /** Why the plugin left it stalled, when the status line does not say (a crash past the recovery limit). */
+  stalledReason: z.string().nullable(),
   decisions: z.array(StoredDecisionSchema),
   helpers: z.array(AgentBriefSchema),
 });
@@ -143,6 +146,9 @@ export const BoardSchema = z.object({
   cards: z.array(CardSchema),
   managerDecisions: z.array(StoredDecisionSchema),
   suggestions: z.array(SuggestionSchema),
+  /** The host's thread usage, or null where it publishes no limit (TR-012). */
+  headroom: HeadroomSchema.nullable(),
+  alerts: z.array(BoardAlertSchema),
   loadedAt: z.string(),
 });
 export type Board = z.infer<typeof BoardSchema>;
