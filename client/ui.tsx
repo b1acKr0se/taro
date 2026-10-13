@@ -5,8 +5,8 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
-import { useMemo } from "react";
-import { ActivityIndicator, Platform, Pressable, Text, View } from "react-native";
+import { useEffect, useMemo, useRef } from "react";
+import { ActivityIndicator, Animated, Easing, Platform, Pressable, Text, View } from "react-native";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 
 /** A fixed-width font on every platform; iOS has no font named "monospace". */
@@ -90,19 +90,20 @@ export function Segmented<Value extends string>({
   const colors = theme.colors;
   const styles = useMemo(
     () => ({
+      // A quiet track with the chosen segment raised on it, rather than a block of accent colour.
       frame: {
         flexDirection: "row" as const,
-        height: 28,
+        alignSelf: "flex-start" as const,
+        height: 30,
+        padding: 2,
+        gap: 2,
         borderRadius: 8,
-        borderWidth: 1,
-        borderColor: colors.border,
         backgroundColor: colors.surface1,
-        overflow: "hidden" as const,
       },
-      segment: { flexDirection: "row" as const, alignItems: "center" as const, gap: 6, paddingHorizontal: 12 },
-      selected: { backgroundColor: colors.accent },
-      label: { color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "500" as const },
-      labelSelected: { color: colors.accentForeground, fontWeight: "600" as const },
+      segment: { flexDirection: "row" as const, alignItems: "center" as const, gap: 6, paddingHorizontal: 10, borderRadius: 6 },
+      selected: { backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+      label: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, fontWeight: "500" as const },
+      labelSelected: { color: colors.foreground, fontWeight: "600" as const },
     }),
     [colors],
   );
@@ -118,7 +119,7 @@ export function Segmented<Value extends string>({
             style={[styles.segment, selected ? styles.selected : null]}
             onPress={() => onChange(option.value)}
           >
-            {option.icon === undefined ? null : <Icon name={option.icon} size={14} color={selected ? colors.accentForeground : colors.foregroundMuted} />}
+            {option.icon === undefined ? null : <Icon name={option.icon} size={14} color={selected ? colors.foreground : colors.foregroundMuted} />}
             <Text style={[styles.label, selected ? styles.labelSelected : null]}>{option.label}</Text>
           </Pressable>
         );
@@ -128,8 +129,8 @@ export function Segmented<Value extends string>({
 }
 
 /**
- * A multi-select as a wrapping row of chips, styled like `Segmented`: a
- * selected chip is filled with the accent colour.
+ * A multi-select as a wrapping row of chips: a selected chip is filled with
+ * the accent colour, since it is a setting turned on rather than a view chosen.
  */
 export function ToggleChips({
   theme,
@@ -213,6 +214,32 @@ export function JumpToEnd({ theme, onPress }: { theme: PluginTheme; onPress: () 
       <Pressable accessibilityRole="button" accessibilityLabel="Scroll to the latest" onPress={onPress} style={styles.button}>
         <Icon name="ChevronDown" size={20} color={colors.foreground} />
       </Pressable>
+    </View>
+  );
+}
+
+/**
+ * A thin bar across the top of a pane while it re-reads what it already shows (TR-018). It keeps
+ * its height when idle, so the content under it does not jump as it comes and goes.
+ */
+export function LoadingBar({ theme, active }: { theme: PluginTheme; active: boolean }) {
+  const progress = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!active) return;
+    progress.setValue(0);
+    const loop = Animated.loop(Animated.timing(progress, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.quad), useNativeDriver: false }));
+    loop.start();
+    return () => loop.stop();
+  }, [active, progress]);
+  const left = progress.interpolate({ inputRange: [0, 1], outputRange: ["-35%", "100%"] });
+  return (
+    <View
+      style={{ height: 2, overflow: "hidden" }}
+      accessibilityRole="progressbar"
+      accessibilityLabel={active ? "Loading" : undefined}
+      accessibilityElementsHidden={!active}
+    >
+      {active ? <Animated.View style={{ position: "absolute", top: 0, bottom: 0, width: "35%", left, backgroundColor: theme.colors.accent }} /> : null}
     </View>
   );
 }

@@ -15,28 +15,15 @@ import { useKeyboardOverlap } from "./keyboard";
 import { isSendKey, type WebKeyPressEvent } from "./keys";
 import { Markdown } from "./markdown";
 import { PermissionCard, usePendingRequests } from "./permission-card";
-import { transcriptRows, type TranscriptRow } from "./transcript-rows";
+import { groupRows, toolRunSummary, type Group } from "./tool-runs";
+import { transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
-import { IconButton, JumpToEnd, MONOSPACE, Spinner, errorText } from "./ui";
+import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
 import { SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
 
-const TOOL_RUN_VISIBLE = 2;
 const INPUT_HEIGHT = 110;
 const INPUT_HEIGHT_COMPACT = 76;
-
-type Group = { key: string; row: TranscriptRow } | { key: string; tools: Extract<TranscriptRow, { kind: "tool" }>[] };
-
-function groupRows(rows: readonly TranscriptRow[]): Group[] {
-  const groups: Group[] = [];
-  for (const row of rows) {
-    const last = groups[groups.length - 1];
-    if (row.kind === "tool" && last !== undefined && "tools" in last) last.tools.push(row);
-    else if (row.kind === "tool") groups.push({ key: row.key, tools: [row] });
-    else groups.push({ key: row.key, row });
-  }
-  return groups;
-}
 
 export interface ChatAgent {
   id: string;
@@ -149,18 +136,23 @@ export function AgentChat({
       userText: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) },
       agentRow: { alignSelf: "stretch" as const, gap: SPACE.sm },
       line: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm - 2 },
-      // A run of tool calls is the agent working, not talking: a quiet block with a rule, apart from its prose.
-      toolRun: {
-        gap: SPACE.xs,
-        padding: SPACE.sm,
-        borderRadius: 8,
-        borderLeftWidth: 2,
-        borderLeftColor: colors.border,
-        backgroundColor: colors.surface1,
+      // A run of tool calls is the agent working, not talking: one quiet line until the reader opens it.
+      toolRun: { alignSelf: "flex-start" as const, maxWidth: "100%" as const, gap: SPACE.xs },
+      toolHead: {
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: SPACE.sm - 2,
+        paddingHorizontal: SPACE.sm,
+        paddingVertical: SPACE.xs,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: colors.border,
       },
+      toolList: { gap: SPACE.xs, marginLeft: SPACE.md, paddingLeft: SPACE.sm, borderLeftWidth: 1, borderLeftColor: colors.border },
+      toolLatest: { flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontFamily: MONOSPACE },
       lineText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
       toolText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontFamily: MONOSPACE },
-      more: { color: colors.accent, fontSize: FONT_SIZE.caption },
+      toolTitle: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
       error: { color: colors.statusDanger, fontSize: FONT_SIZE.small },
       hint: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center" as const, padding: SPACE.lg },
       composerFrame: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface0 },
@@ -196,27 +188,57 @@ export function AgentChat({
   function renderGroup(group: Group) {
     if ("tools" in group) {
       const open = openGroups.has(group.key);
-      const shown = open ? group.tools : group.tools.slice(-TOOL_RUN_VISIBLE);
-      const hidden = group.tools.length - shown.length;
+      const summary = toolRunSummary(group.tools);
+      const lone = group.tools.length === 1;
+      const toggle = () =>
+        setOpenGroups((current) => {
+          const next = new Set(current);
+          if (open) next.delete(group.key);
+          else next.add(group.key);
+          return next;
+        });
       return (
         <View key={group.key} style={styles.toolRun}>
-          {hidden > 0 ? (
-            <Pressable accessibilityRole="button" onPress={() => setOpenGroups((current) => new Set([...current, group.key]))}>
-              <Text style={styles.more}>+ {hidden} more tool call{hidden === 1 ? "" : "s"}</Text>
-            </Pressable>
-          ) : null}
-          {shown.map((tool) => (
-            <View key={tool.key} style={styles.line}>
-              {tool.status === "running" ? (
-                <Spinner size={11} color={theme.colors.foregroundMuted} />
-              ) : (
-                <Icon name={tool.status === "failed" ? "X" : "Wrench"} size={11} color={tool.status === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
-              )}
-              <Text style={styles.toolText} numberOfLines={1}>
-                {tool.text}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: open }}
+            accessibilityLabel={lone ? summary.title : `${summary.title}, ${open ? "fold" : "show"}`}
+            disabled={lone}
+            style={[styles.toolHead, summary.state === "failed" ? { borderColor: theme.colors.statusDanger } : null]}
+            onPress={toggle}
+          >
+            {summary.state === "running" ? (
+              <Spinner size={11} color={theme.colors.foregroundMuted} />
+            ) : (
+              <Icon name={summary.state === "failed" ? "X" : "Wrench"} size={11} color={summary.state === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
+            )}
+            <Text style={lone ? styles.toolLatest : styles.toolTitle} numberOfLines={1}>
+              {summary.title}
+              {summary.failed > 0 && !lone ? ` · ${summary.failed} failed` : ""}
+            </Text>
+            {summary.latest === null || open ? null : (
+              <Text style={styles.toolLatest} numberOfLines={1}>
+                {summary.latest}
               </Text>
+            )}
+            {lone ? null : <Icon name={open ? "ChevronDown" : "ChevronRight"} size={12} color={theme.colors.foregroundMuted} />}
+          </Pressable>
+          {open && !lone ? (
+            <View style={styles.toolList}>
+              {group.tools.map((tool) => (
+                <View key={tool.key} style={styles.line}>
+                  {tool.status === "running" ? (
+                    <Spinner size={11} color={theme.colors.foregroundMuted} />
+                  ) : (
+                    <Icon name={tool.status === "failed" ? "X" : "Dot"} size={11} color={tool.status === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
+                  )}
+                  <Text style={styles.toolText} numberOfLines={1}>
+                    {tool.text}
+                  </Text>
+                </View>
+              ))}
             </View>
-          ))}
+          ) : null}
         </View>
       );
     }
@@ -255,6 +277,8 @@ export function AgentChat({
 
   return (
     <View ref={pane} style={[styles.pane, { paddingBottom: keyboard }]}>
+      {/* Re-reading behind the conversation already drawn (cached, or the last agent's read). */}
+      <LoadingBar theme={theme} active={timeline.loading && groups.length > 0} />
       <View style={styles.transcript}>
         <ScrollView {...follow.scrollProps} style={styles.transcript} contentContainerStyle={styles.transcriptBody}>
           {timeline.error === null ? null : <Text style={styles.error}>{timeline.error}</Text>}
