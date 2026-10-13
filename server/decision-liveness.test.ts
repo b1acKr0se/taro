@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { StoredDecision } from "../shared/state";
 import { Actions } from "./actions";
-import { isAgentLive, listTaroAgents, projectAgents } from "./agents";
+import { isAgentLive, listTaroAgents, projectAgents, projectAgentsIncludingArchived } from "./agents";
 import { invalidateBoards, liveOpenDecisions, loadBoard } from "./board";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import { sendFromPlugin } from "./send";
@@ -19,6 +19,7 @@ vi.mock("./agents", async (original) => ({
   ...(await original<typeof import("./agents")>()),
   fetchLiveAgent: vi.fn(),
   projectAgents: vi.fn(),
+  projectAgentsIncludingArchived: vi.fn(),
   listTaroAgents: vi.fn(async () => []),
   isMidTurn: () => false,
 }));
@@ -151,7 +152,7 @@ describe("loadBoard", () => {
   it("shows a ticket's and the manager's decisions only from agents Paseo still lists", async () => {
     invalidateBoards();
     const live = { id: "new-owner", status: "idle", provider: "claude", pendingPermissions: [], updatedAt: "2026-10-13T12:00:00Z", labels: { "taro.role": "owner", "taro.ticket": "TR-5" } };
-    vi.mocked(projectAgents).mockResolvedValue([live as unknown as PaseoAgent]);
+    vi.mocked(projectAgentsIncludingArchived).mockResolvedValue([live as unknown as PaseoAgent]);
     const managerDecision = (agentId: string) => ({ ...stored(agentId), key: `${agentId}:priority`, ticket: null }) as StoredDecision;
     const decisions = [stored("old-owner"), stored("new-owner"), managerDecision("old-manager"), stored("old-owner", "other")];
     const board = await loadBoard({} as PaseoApi, { ...stateOver(decisions), allAgents: async () => ({}) } as unknown as PluginState, "taro");

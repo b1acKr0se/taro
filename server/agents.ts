@@ -2,7 +2,11 @@
 import { TARO_LABELS, type Role } from "../shared/project";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 
-export async function listTaroAgents(paseo: PaseoApi, labels: Readonly<Record<string, string>>): Promise<PaseoAgent[]> {
+export async function listTaroAgents(
+  paseo: PaseoApi,
+  labels: Readonly<Record<string, string>>,
+  options: { includeArchived?: boolean } = {},
+): Promise<PaseoAgent[]> {
   const agents: PaseoAgent[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < 20; page++) {
@@ -14,11 +18,17 @@ export async function listTaroAgents(paseo: PaseoApi, labels: Readonly<Record<st
     if (!result.pageInfo.hasMore || result.pageInfo.nextCursor === null) break;
     cursor = result.pageInfo.nextCursor;
   }
+  if (options.includeArchived === true) return agents;
   return agents.filter((agent) => agent.archivedAt === null || agent.archivedAt === undefined);
 }
 
 export async function projectAgents(paseo: PaseoApi, project: string, role?: Role): Promise<PaseoAgent[]> {
   return listTaroAgents(paseo, { [TARO_LABELS.project]: project, ...(role === undefined ? {} : { [TARO_LABELS.role]: role }) });
+}
+
+/** Like `projectAgents`, but archived agents too: a finished ticket shows who worked on it. */
+export async function projectAgentsIncludingArchived(paseo: PaseoApi, project: string): Promise<PaseoAgent[]> {
+  return listTaroAgents(paseo, { [TARO_LABELS.project]: project }, { includeArchived: true });
 }
 
 /** The live agent with this id, or null when Paseo has none (or it is archived). */

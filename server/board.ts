@@ -8,11 +8,13 @@ import { hostname } from "node:os";
 import { boardColumn, complexityOf } from "../shared/board";
 import { executionMachine, pullRequestUrl } from "../shared/execution";
 import type { Board, Card, TicketDetailView } from "../shared/contracts";
+import { latestMilestone, type Milestone } from "../shared/milestones";
+import { pastTicketAgents } from "../shared/past-agents";
 import { TARO_LABELS } from "../shared/project";
 import { boardAlerts } from "../shared/recovery";
 import { decisionsOfLiveAgents, type StoredDecision } from "../shared/state";
 import { currentSuggestions, parseSuggestions, suggestionKey } from "../shared/suggestions";
-import { projectAgents } from "./agents";
+import { projectAgents, projectAgentsIncludingArchived } from "./agents";
 import { statePath } from "./data-dir";
 import { readHeadroom } from "./headroom";
 import { readJsonIfPresent, readTextIfPresent, writeJsonAtomically } from "./files";
@@ -25,16 +27,21 @@ import { listTickets, viewTicket } from "./tickets";
 
 const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing", "Awaiting acceptance", "Blocked"]);
 
-const UNDER_REVIEW = new Set(["Reviewing", "Awaiting acceptance"]);
-
-/** What only the ticket's records say: the host an EXECUTION record names, when not this machine, and its pull request. */
-async function recordedFacts(trackerPath: string, ticketId: string): Promise<{ hostElsewhere: string | null; pullRequest: string | null }> {
+/** What only the ticket's records say: the host an EXECUTION record names, when not this machine, its pull request and its latest MILESTONE. */
+async function recordedFacts(
+  trackerPath: string,
+  ticketId: string,
+): Promise<{ hostElsewhere: string | null; pullRequest: string | null; latestMilestone: Milestone | null }> {
   try {
     const detail = await viewTicket(trackerPath, ticketId);
     const host = executionMachine(detail.implementationNotes);
-    return { hostElsewhere: host !== null && host !== hostname() ? host : null, pullRequest: pullRequestUrl(detail.implementationNotes, detail.finalSummary) };
+    return {
+      hostElsewhere: host !== null && host !== hostname() ? host : null,
+      pullRequest: pullRequestUrl(detail.implementationNotes, detail.finalSummary),
+      latestMilestone: latestMilestone(detail.implementationNotes),
+    };
   } catch {
-    return { hostElsewhere: null, pullRequest: null };
+    return { hostElsewhere: null, pullRequest: null, latestMilestone: null };
   }
 }
 
@@ -62,19 +69,23 @@ export function invalidateBoards(): void {
 
 async function readBoard(paseo: PaseoApi, state: PluginState, project: string): Promise<Board> {
   const paths = await projectPaths(project);
-  const [tickets, agents, decisions, agentStates, headroom] = await Promise.all([
+  const [tickets, everyAgent, decisions, agentStates, headroom] = await Promise.all([
     listTickets(paths.tracker),
-    projectAgents(paseo, project),
+    projectAgentsIncludingArchived(paseo, project),
     state.allDecisions(),
     state.allAgents(),
     readHeadroom(),
   ]);
 
+  const isArchived = (agent: PaseoAgent): boolean => agent.archivedAt !== null && agent.archivedAt !== undefined;
+  const agents = everyAgent.filter((agent) => !isArchived(agent));
   const byTicket = new Map<string, PaseoAgent[]>();
-  for (const agent of agents) {
+  const archivedByTicket = new Map<string, PaseoAgent[]>();
+  for (const agent of everyAgent) {
     const ticket = agent.labels[TARO_LABELS.ticket];
     if (ticket === undefined) continue;
-    byTicket.set(ticket, [...(byTicket.get(ticket) ?? []), agent]);
+    const target = isArchived(agent) ? archivedByTicket : byTicket;
+    target.set(ticket, [...(target.get(ticket) ?? []), agent]);
   }
   // Only questions a live agent asked: one archived outside the plugin may not be withdrawn yet.
   const openDecisions = decisionsOfLiveAgents(
@@ -92,8 +103,17 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
       const ticketDecisions = finished ? [] : openDecisions.filter((decision) => decision.ticket === ticket.id);
       const needsHost = owner === null && UNDER_WAY.has(ticket.status);
       // Reading a ticket spawns the Backlog CLI, so only for cards that show what it holds.
-      const facts = needsHost || UNDER_REVIEW.has(ticket.status) ? await recordedFacts(paths.tracker, ticket.id) : null;
+      // The latest milestone widens this to every under-way ticket, still bounded by that set.
+      const facts = needsHost || UNDER_WAY.has(ticket.status) ? await recordedFacts(paths.tracker, ticket.id) : null;
       const elsewhere = needsHost ? facts?.hostElsewhere ?? null : null;
+      const archivedAgents = archivedByTicket.get(ticket.id) ?? [];
+      const pastById = new Map(archivedAgents.map((agent) => [agent.id, agent]));
+      const past = pastTicketAgents(
+        archivedAgents.map((agent) => ({ id: agent.id, role: agent.labels[TARO_LABELS.role] ?? "", archivedAt: agent.archivedAt, updatedAt: agent.updatedAt })),
+      ).flatMap((entry) => {
+        const agent = pastById.get(entry.id);
+        return agent === undefined ? [] : [{ ...agentBrief(agent), role: entry.role, archivedAt: entry.archivedAt }];
+      });
       const children = tickets
         .filter((candidate) => candidate.parentTaskId === ticket.id)
         .map((child) => ({ id: child.id, title: child.title, status: child.status }));
@@ -126,6 +146,8 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
         stalledReason: ownerState?.stalled === true ? ownerState.stalledReason : null,
         decisions: ticketDecisions,
         helpers: helpers.map(agentBrief),
+        pastAgents: past,
+        latestMilestone: UNDER_WAY.has(ticket.status) ? facts?.latestMilestone ?? null : null,
       };
     }),
   );
