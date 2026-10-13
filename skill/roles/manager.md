@@ -26,7 +26,8 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
 2. Append **DISPATCH-INTENT** (unique token, intended branch `taro/<id-lowercase>`).
 3. **Respect the cap on owners running at once** (AGENTS.md). Count live owners with
    `paseo ls -g --label taro.project=<project> --label taro.role=owner --json` (any status but
-   closed). At the cap, leave the ticket in Backlog, tell the user it is queued and why, and stop
+   closed), leaving out owners whose ticket is Done: the plugin archives them once their last turn
+   ends. At the cap, leave the ticket in Backlog, tell the user it is queued and why, and stop
    here; the plugin tells you when a slot frees up. Dispatch queued tickets oldest first.
    **Check thread headroom too:** every agent, subagent and test daemon costs threads, and
    the host crashes agents at its limit. Read `cat /sys/fs/cgroup/pids.current

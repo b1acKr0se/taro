@@ -1,14 +1,15 @@
 /**
  * What the user does from the Taro screen: answer a decision, accept or
  * request changes, nudge, compact or relaunch an owner (decisions 28, 30, 34).
- * Plus the clean-up when a ticket reaches Done and the manager's wake-up for
+ * Plus releasing a Done ticket's agents and workspaces (TR-024) and the manager's wake-up for
  * tickets whose dependencies cleared.
  */
 import { randomUUID } from "node:crypto";
 
+import { doneTicketOf, planRelease } from "../shared/done-release";
 import { executionWorkspace, pullRequestMergeInstruction } from "../shared/execution";
 import { TARO_LABELS, TICKET_STATUSES } from "../shared/project";
-import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents } from "./agents";
+import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
 import { taroEnvironment } from "./environment";
 import type { PaseoApi } from "./host-types";
 import { bypassModeId } from "./models";
@@ -25,6 +26,8 @@ import type { TrackerWatch } from "./tracker-watch";
 export class Actions {
   /** Last seen status per project and ticket, to notice transitions to Done. */
   private readonly lastStatuses = new Map<string, Map<string, string>>();
+  /** The release running per project, so two never archive the same agents at once. */
+  private readonly releasing = new Map<string, Promise<void>>();
 
   constructor(
     private readonly state: PluginState,
@@ -185,7 +188,7 @@ export class Actions {
     }
   }
 
-  /** Called after every tracker commit: cleans up tickets that reached Done and wakes the manager for cleared dependencies. */
+  /** Called after every tracker commit: releases Done tickets' agents and wakes the manager for cleared dependencies. */
   async onTrackerChanged(paseo: PaseoApi, project: string): Promise<void> {
     const paths = await projectPaths(project);
     const tickets = await listTickets(paths.tracker);
@@ -197,43 +200,89 @@ export class Actions {
       if (before !== ticket.status) await this.stats.transition(project, ticket.id, ticket.title, before, ticket.status, at);
     }
     const done = tickets.filter((ticket) => ticket.status === "Done" && previous.get(ticket.id) !== "Done");
+    // Every Done ticket, not only the new ones: a transition missed during a reload still releases its agents.
+    await this.releaseDoneTickets(paseo, project, done.map((ticket) => ticket.id));
     for (const ticket of done) {
-      await this.cleanUp(paseo, project, ticket.id);
       await this.wakeManagerForDependents(paseo, project, ticket.id, tickets.filter((candidate) => candidate.status !== "Done" && candidate.status !== "Cancelled").map((candidate) => candidate.id));
     }
   }
 
-  private async cleanUp(paseo: PaseoApi, project: string, ticket: string): Promise<void> {
-    const agents = (await projectAgents(paseo, project)).filter((agent) => {
-      const label = agent.labels[TARO_LABELS.ticket];
-      return label === ticket || (label !== undefined && label.startsWith(`${ticket}.`));
-    });
-    const workspaces = new Set<string>();
-    for (const agent of agents) {
-      if (isMidTurn(agent)) continue;
+  /** An agent's turn ended: if its ticket is Done (it was mid-turn when Done landed), release it now. */
+  async onAgentTurnEnded(paseo: PaseoApi, agentId: string): Promise<void> {
+    const agent = await fetchLiveAgent(paseo, agentId);
+    const project = agent?.labels[TARO_LABELS.project];
+    if (agent === null || project === undefined) return;
+    const statuses = this.lastStatuses.get(project);
+    if (statuses === undefined) return;
+    const done = new Set([...statuses].filter(([, status]) => status === "Done").map(([ticket]) => ticket));
+    if (doneTicketOf(agent.labels[TARO_LABELS.ticket], done) !== null) await this.releaseDoneTickets(paseo, project, []);
+  }
+
+  /** After a start: releases agents left behind by Done tickets while the plugin was not watching. */
+  async releaseAfterStart(paseo: PaseoApi): Promise<void> {
+    await this.primeStatuses();
+    for (const config of await listProjectConfigs()) {
+      if (!this.lastStatuses.has(config.project)) continue;
+      await this.releaseDoneTickets(paseo, config.project, []).catch((error: unknown) => {
+        console.error(`[taro] releasing ${config.project}'s Done tickets after start:`, error);
+      });
+    }
+  }
+
+  /**
+   * Archives the idle agents of every Done ticket, and their owners' workspaces once empty; an agent
+   * mid-turn waits for its turn end (TR-024). `newlyDone` tickets have their open questions withdrawn
+   * even when no agent is left. Queued per project, since a turn end and a commit may arrive together.
+   */
+  private releaseDoneTickets(paseo: PaseoApi, project: string, newlyDone: readonly string[]): Promise<void> {
+    const run = (this.releasing.get(project) ?? Promise.resolve()).then(() => this.release(paseo, project, newlyDone));
+    this.releasing.set(project, run.catch(() => undefined));
+    return run;
+  }
+
+  private async release(paseo: PaseoApi, project: string, newlyDone: readonly string[]): Promise<void> {
+    const statuses = this.lastStatuses.get(project) ?? new Map<string, string>();
+    const done = new Set([...statuses].filter(([, status]) => status === "Done").map(([ticket]) => ticket));
+    if (done.size === 0) return;
+    const agents = await projectAgents(paseo, project);
+    const config = await requireProjectConfig(project);
+    const planWith = (archivedOwnerWorkspaces: ReadonlySet<string>) => planRelease(done, agents, { isMidTurn, managerWorkspaceId: config.managerWorkspaceId, archivedOwnerWorkspaces });
+    let plan = planWith(new Set());
+    // Past owners' workspaces matter only when a subagent outlived its owner; asked for only then.
+    if (plan.archive.some((entry) => entry.agent.labels[TARO_LABELS.role] !== "owner")) {
+      const pastOwners = (await projectArchivedAgents(paseo, project).catch(() => [])).filter(
+        (agent) => agent.labels[TARO_LABELS.role] === "owner" && doneTicketOf(agent.labels[TARO_LABELS.ticket], done) !== null,
+      );
+      plan = planWith(new Set(pastOwners.flatMap((agent) => (agent.workspaceId ? [agent.workspaceId] : []))));
+    }
+
+    for (const { agent, ticket } of plan.archive) {
       const usage = agent.lastUsage;
       const statsTicket = agent.labels[TARO_LABELS.ticket] ?? ticket;
       for (const target of new Set([statsTicket, ticket])) {
         await this.stats.agentFinal(project, target, agent.id, usage?.totalCostUsd ?? null, usage?.contextWindowUsedTokens ?? null).catch(() => undefined);
       }
-      if (agent.labels[TARO_LABELS.role] === "owner" && agent.workspaceId !== null && agent.workspaceId !== undefined) workspaces.add(agent.workspaceId);
       await paseo.agents.ref(agent.id).archive().catch(() => undefined);
       await this.state.forgetAgent(agent.id);
     }
-    const config = await requireProjectConfig(project);
-    for (const workspaceId of workspaces) {
-      if (workspaceId === config.managerWorkspaceId) continue;
+    for (const workspaceId of plan.workspaces) {
       await paseo.workspaces.archive(workspaceId).catch((error: unknown) => {
-        console.warn(`[taro] could not archive ${ticket}'s workspace: ${error instanceof Error ? error.message : String(error)}`);
+        console.warn(`[taro] could not archive workspace ${workspaceId}: ${error instanceof Error ? error.message : String(error)}`);
       });
     }
     // Questions about a finished ticket are moot.
-    await this.state.updateDecisions((decisions) => {
-      for (const decision of decisions) {
-        if (decision.project === project && decision.status === "open" && (decision.ticket === ticket || decision.ticket?.startsWith(`${ticket}.`) === true)) decision.status = "withdrawn";
-      }
-    });
-    console.log(`[taro] ${project}: ${ticket} is Done; archived ${agents.length} agents and ${workspaces.size} workspaces`);
+    const finished = new Set([...newlyDone, ...plan.archive.map((entry) => entry.ticket), ...plan.waiting.flatMap((agent) => doneTicketOf(agent.labels[TARO_LABELS.ticket], done) ?? [])]);
+    if (finished.size > 0) {
+      await this.state.updateDecisions((decisions) => {
+        for (const decision of decisions) {
+          if (decision.project === project && decision.status === "open" && decision.ticket !== null && doneTicketOf(decision.ticket, finished) !== null) decision.status = "withdrawn";
+        }
+      });
+    }
+    if (plan.archive.length > 0 || newlyDone.length > 0) {
+      const tickets = [...new Set([...newlyDone, ...plan.archive.map((entry) => entry.ticket)])].join(", ") || "Done tickets";
+      console.log(`[taro] ${project}: ${tickets}: archived ${plan.archive.length} agents and ${plan.workspaces.length} workspaces; ${plan.waiting.length} mid-turn, archived when their turn ends`);
+    }
   }
 
   private async wakeManagerForDependents(paseo: PaseoApi, project: string, ticket: string, openTickets: readonly string[]): Promise<void> {

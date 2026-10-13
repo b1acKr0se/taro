@@ -71,6 +71,8 @@ export default function contribute(server: PluginServerContext) {
           if (repaired > 0) console.log(`[taro] reconciled ${repaired} agents after start`);
         })
         .catch((error: unknown) => console.error("[taro] reconcile after start failed:", error));
+      // Done tickets whose agents were left open (a missed transition, or an owner mid-turn at a reload).
+      void actions.releaseAfterStart(paseo).catch((error: unknown) => console.error("[taro] releasing Done tickets after start failed:", error));
       void stats
         .dropFinishedTurns(async (agentId) => turnMayStillEnd(await fetchLiveAgent(paseo, agentId), startedAt))
         .catch((error: unknown) => console.error("[taro] dropping finished turn starts failed:", error));
@@ -235,6 +237,10 @@ export default function contribute(server: PluginServerContext) {
     const activeMs = await taking;
     await supervisor.onTurnEnded(paseo, agent, outcome, timeline, turnId, activeMs).catch((error: unknown) => {
       console.error(`[taro] supervising ${agent.id}:`, error);
+    });
+    // After supervision has read the turn: an agent mid-turn when its ticket reached Done is released now (TR-024).
+    await actions.onAgentTurnEnded(paseo, agent.id).catch((error: unknown) => {
+      console.error(`[taro] releasing ${agent.id} after its turn:`, error);
     });
     invalidateBoards();
   });
