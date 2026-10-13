@@ -28,6 +28,8 @@ export class Actions {
   private readonly lastStatuses = new Map<string, Map<string, string>>();
   /** The release running per project, so two never archive the same agents at once. */
   private readonly releasing = new Map<string, Promise<void>>();
+  /** Agents already archived here: Paseo may still list one for a moment after archiving it. */
+  private readonly released = new Set<string>();
 
   constructor(
     private readonly state: PluginState,
@@ -244,7 +246,7 @@ export class Actions {
     const statuses = this.lastStatuses.get(project) ?? new Map<string, string>();
     const done = new Set([...statuses].filter(([, status]) => status === "Done").map(([ticket]) => ticket));
     if (done.size === 0) return;
-    const agents = await projectAgents(paseo, project);
+    const agents = (await projectAgents(paseo, project)).filter((agent) => !this.released.has(agent.id));
     const config = await requireProjectConfig(project);
     const planWith = (archivedOwnerWorkspaces: ReadonlySet<string>) => planRelease(done, agents, { isMidTurn, managerWorkspaceId: config.managerWorkspaceId, archivedOwnerWorkspaces });
     let plan = planWith(new Set());
@@ -262,7 +264,7 @@ export class Actions {
       for (const target of new Set([statsTicket, ticket])) {
         await this.stats.agentFinal(project, target, agent.id, usage?.totalCostUsd ?? null, usage?.contextWindowUsedTokens ?? null).catch(() => undefined);
       }
-      await paseo.agents.ref(agent.id).archive().catch(() => undefined);
+      if (await paseo.agents.ref(agent.id).archive().then(() => true, () => false)) this.released.add(agent.id);
       await this.state.forgetAgent(agent.id);
     }
     for (const workspaceId of plan.workspaces) {

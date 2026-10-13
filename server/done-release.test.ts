@@ -89,6 +89,30 @@ describe("Done releases the ticket's agents", () => {
     expect(archivedAgents).toEqual(["owner"]);
   });
 
+  it("archives an agent once although Paseo still lists it for a moment after archiving", async () => {
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Done")]);
+    await actions.primeStatuses();
+    const owner = agent("owner", "DM-1", "owner", "ws-1");
+    vi.mocked(projectAgents).mockImplementation(async () => [owner]);
+    vi.mocked(fetchLiveAgent).mockImplementation(async () => owner);
+    await Promise.all([actions.onTrackerChanged(paseo, "demo"), actions.onAgentTurnEnded(paseo, "owner")]);
+    expect(archivedAgents).toEqual(["owner"]);
+    expect(archivedWorkspaces).toEqual(["ws-1"]);
+  });
+
+  it("tries again on the next release when archiving failed", async () => {
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Done")]);
+    await actions.primeStatuses();
+    live = [agent("owner", "DM-1", "owner", "ws-1")];
+    let failures = 1;
+    const archive = paseo.agents.ref("owner").archive;
+    paseo.agents.ref = (() => ({ archive: async () => (failures-- > 0 ? Promise.reject(new Error("busy")) : archive()) })) as unknown as PaseoApi["agents"]["ref"];
+    await actions.onTrackerChanged(paseo, "demo");
+    expect(archivedAgents).toEqual([]);
+    await actions.onAgentTurnEnded(paseo, "owner");
+    expect(archivedAgents).toEqual(["owner"]);
+  });
+
   it("leaves an agent alone at its turn end while its ticket is open", async () => {
     vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "In Progress")]);
     await actions.primeStatuses();
