@@ -17,6 +17,7 @@ import { defaultPaneAgent, paneAgents, type PaneAgent, paneAgentJob } from "./pa
 import { PaneHeader } from "./pane-header";
 import { SPACE } from "./spacing";
 import { TicketView } from "./ticket-view";
+import { FONT_SIZE } from "./type-scale";
 import { IconButton, Segmented, ToggleChips } from "./ui";
 
 const ARCHIVED_NOTE = "Finished — this agent is archived; its conversation is read-only.";
@@ -73,6 +74,10 @@ export function OwnerPane({
           ]}
           onChange={(value: "chat" | "ticket") => setTab(value)}
         />
+        {/* Archived agents here do not mean the work stopped: the current owner may run elsewhere. */}
+        {tab === "chat" && shown !== null && card.owner === null && card.ownerElsewhere !== null ? (
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small }}>Its current owner runs on {card.ownerElsewhere}.</Text>
+        ) : null}
         {tab === "chat" && agents.length > 1 ? (
           <ToggleChips
             theme={theme}

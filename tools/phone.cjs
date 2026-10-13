@@ -1,9 +1,9 @@
-// node phone.cjs <playwright> <out.png> [click text...] — Paseo's web app at phone size; opens the menu, then Taro.
+// node phone.cjs <playwright> <out.png> [click text...] — Paseo's web app at phone size; opens the menu, then Taro. COLOR_SCHEME=dark for the dark theme.
 const [, , playwrightPath, out, ...clicks] = process.argv;
 const { chromium } = require(playwrightPath);
 (async () => {
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, colorScheme: process.env.COLOR_SCHEME === "dark" ? "dark" : "light" });
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
   await page.goto(process.env.TARO_WEB_URL ?? "http://127.0.0.1:6799/", { waitUntil: "networkidle" }).catch(() => {});
