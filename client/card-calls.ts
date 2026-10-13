@@ -1,6 +1,6 @@
 /**
  * What a board card asks of the user, one line each (TR-022). The card only names the call; it is
- * answered where its context is: pinned above the owner's chat. Pure.
+ * answered where its context is: in the owner's chat, under the message that asked it. Pure.
  */
 import type { Card } from "../shared/contracts";
 import { evidenceSummary } from "../shared/evidence";

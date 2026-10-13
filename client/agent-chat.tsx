@@ -8,9 +8,11 @@ import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Platform, Pressable, SafeAreaView, ScrollView, Text, View } from "react-native";
+import { Platform, Pressable, SafeAreaView, ScrollView, Text, View, type LayoutRectangle } from "react-native";
 
 import { listSentImages, type SentImagesMessage } from "../shared/contracts";
+import type { StoredDecision } from "../shared/state";
+import { DecisionCard } from "./decision-card";
 import { drafts } from "./draft";
 import { useFollowEnd } from "./follow-end";
 import { ImageThumbnail } from "./image-view";
@@ -19,6 +21,7 @@ import { isSendKey, type WebKeyPressEvent } from "./keys";
 import { Markdown } from "./markdown";
 import { PermissionCard, usePendingRequests } from "./permission-card";
 import { matchSentImages } from "./sent-images";
+import { offsetShowingRowEnd, placeDecisions, rowEndOnScreen } from "./inline-decisions";
 import { groupRows, toolRunSummary, type Group } from "./tool-runs";
 import { transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
@@ -64,6 +67,7 @@ export function AgentChat({
   readOnly,
   decorateRow,
   transformText,
+  asks,
 }: {
   agent: ChatAgent;
   theme: PluginTheme;
@@ -72,6 +76,12 @@ export function AgentChat({
   decorateRow?: (text: string, key: string) => ReactNode;
   /** Rewrites an agent message before it is drawn (drops decision blocks drawn as cards). */
   transformText?: (text: string) => string;
+  /**
+   * This agent's open decisions (TR-026): each drawn as a card under the message that asked it and
+   * answered there, the first brought into view on opening, and a jump link at the composer while it
+   * is off screen. No pinned area.
+   */
+  asks?: { decisions: readonly StoredDecision[]; onAnswered: () => void };
 } & ChatComposer) {
   const toast = useToast();
   const timeline = useAgentTimeline(agent.id, `${agent.updatedAt}:${agent.pendingPermissions}`);
@@ -80,7 +90,45 @@ export function AgentChat({
   // The newest entry's position, not the count: the timeline is a tail and stops growing in length.
   const sentImages = useSentImages(agent.id, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0);
   const rowImages = useMemo(() => matchSentImages(rows, sentImages), [rows, sentImages]);
-  const follow = useFollowEnd();
+  const places = useMemo(
+    () => (asks === undefined || asks.decisions.length === 0 ? null : placeDecisions(rows.filter((row) => row.kind === "mate"), asks.decisions)),
+    [rows, asks?.decisions],
+  );
+  const firstKey = places?.first?.key ?? null;
+  /** Where each open decision's message (or the cards at the end) lies in the transcript, by decision key. */
+  const decisionLayouts = useRef(new Map<string, LayoutRectangle>());
+  const [firstOnScreen, setFirstOnScreen] = useState(true);
+  const follow = useFollowEnd((offset, viewportHeight) => {
+    const layout = firstKey === null ? undefined : decisionLayouts.current.get(firstKey);
+    setFirstOnScreen(layout === undefined || rowEndOnScreen(layout.y, layout.height, offset, viewportHeight));
+  });
+
+  /** Brings the first open decision into view once, and says whether the jump link is needed. */
+  function placeFirst(): void {
+    const layout = firstKey === null ? undefined : decisionLayouts.current.get(firstKey);
+    if (firstKey === null || layout === undefined) return;
+    follow.revealRow(firstKey, layout, offsetShowingRowEnd);
+    setFirstOnScreen(rowEndOnScreen(layout.y, layout.height, follow.offset.current, follow.viewport.current));
+  }
+
+  function noteLayout(decisions: readonly StoredDecision[], layout: LayoutRectangle): void {
+    decisions.forEach((decision) => decisionLayouts.current.set(decision.key, layout));
+    placeFirst();
+  }
+
+  // Answering the first makes another first, whose row may not lay out again.
+  useEffect(placeFirst, [firstKey]);
+
+  function jumpToFirst(): void {
+    const layout = firstKey === null ? undefined : decisionLayouts.current.get(firstKey);
+    if (layout !== undefined) follow.scrollTo(offsetShowingRowEnd(layout.y, layout.height, follow.viewport.current));
+  }
+
+  function decisionCards(decisions: readonly StoredDecision[]) {
+    return decisions.map((decision) => (
+      <DecisionCard key={decision.key} decision={decision} theme={theme} compact={compact} onAnswered={asks?.onAnswered ?? (() => undefined)} />
+    ));
+  }
   const { pending, respond } = usePendingRequests(agent.id, timeline.agent?.pendingPermissions, follow.pin);
   const [draft, setDraftState] = useState(() => drafts.get(agent.id));
   const [sending, setSending] = useState(false);
@@ -269,13 +317,16 @@ export function AgentChat({
           </View>
         );
       }
-      case "mate":
+      case "mate": {
+        const asked = places?.byRow.get(row.key) ?? [];
         return (
-          <View key={row.key} style={styles.agentRow}>
+          <View key={row.key} style={styles.agentRow} onLayout={asked.length === 0 ? undefined : (event) => noteLayout(asked, event.nativeEvent.layout)}>
             <Markdown source={transformText === undefined ? row.text : transformText(row.text)} theme={theme} onOpenLink={openLink} />
             {decorateRow === undefined ? null : decorateRow(row.text, row.key)}
+            {decisionCards(asked)}
           </View>
         );
+      }
       case "error":
         return (
           <Text key={row.key} style={styles.error}>
@@ -304,6 +355,11 @@ export function AgentChat({
           ) : (
             groups.map(renderGroup)
           )}
+          {places === null || places.unplaced.length === 0 ? null : (
+            <View style={styles.agentRow} onLayout={(event) => noteLayout(places.unplaced, event.nativeEvent.layout)}>
+              {decisionCards(places.unplaced)}
+            </View>
+          )}
           {pending.map((request) => (
             <View key={request.id} onLayout={(event) => follow.reveal(request.id, event.nativeEvent.layout)}>
               <PermissionCard request={request} theme={theme} compact={compact} onRespond={(response) => respond(request.id, response)} onOpenLink={openLink} />
@@ -320,6 +376,15 @@ export function AgentChat({
           </View>
         ) : (
           <View style={styles.composer}>
+            {places?.first === null || places === null || firstOnScreen ? null : (
+              <Pressable accessibilityRole="button" accessibilityLabel={`Show the question: ${places.first.question}`} style={styles.quick} onPress={jumpToFirst}>
+                <Icon name="Hand" size={13} color={places.first.blocking ? theme.colors.statusWarning : theme.colors.foregroundMuted} />
+                <Text style={[styles.lineText, { color: theme.colors.foreground }]} numberOfLines={1}>
+                  {places.first.question}
+                </Text>
+                <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Show</Text>
+              </Pressable>
+            )}
             {actions === undefined ? null : <View style={styles.quick}>{actions}</View>}
             <View style={styles.inputRow}>
               <TextInput

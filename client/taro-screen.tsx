@@ -18,7 +18,6 @@ import { catchUp, compactManager, tellManager, type Card, type ProjectSummary } 
 import { withoutDecisionBlocks } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import { AgentChat } from "./agent-chat";
-import { AskedHere, AsksYou } from "./asks-you";
 import { useBoard, useRefreshBoard } from "./board-data";
 import { ProjectBoard } from "./board";
 import { ContextMeter } from "./context-meter";
@@ -266,7 +265,7 @@ function ProjectView({
       compact={compact}
       selectedTicket={ticket}
       onOpenTicket={(card) => onTicket(card.id)}
-      // The manager's questions are answered above its chat: on a phone its tab, on a wide screen the left pane.
+      // The manager's questions are answered in its chat: on a phone its tab, on a wide screen the left pane.
       onOpenManager={() => (compact ? choosePhoneTab("manager") : onTicket(null))}
     />
   );
@@ -352,7 +351,7 @@ function ManagerPane({
   onChanged,
 }: {
   summary: ProjectSummary;
-  /** The manager's open decisions, pinned above its chat (TR-022). */
+  /** The manager's open decisions, drawn in its chat where it asked them (TR-026). */
   decisions: readonly StoredDecision[];
   theme: PluginTheme;
   compact: boolean;
@@ -379,7 +378,6 @@ function ManagerPane({
     return (
       <View style={{ flex: 1 }}>
         {header}
-        <AsksYou decisions={decisions} theme={theme} compact={compact} onChanged={onChanged} />
         <Text style={{ color: theme.colors.foregroundMuted, padding: SPACE.lg }}>This project has no manager running. Start one from the project's settings (⚙).</Text>
       </View>
     );
@@ -391,7 +389,6 @@ function ManagerPane({
       {summary.trackerSyncProblem === null ? null : (
         <Text style={{ color: theme.colors.statusWarning, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm }}>Ticket sync paused; see Needs you on the board.</Text>
       )}
-      <AsksYou decisions={decisions} theme={theme} compact={compact} onChanged={onChanged} />
       <AgentChat
         // A restarted manager is another agent: a fresh chat, not the last one's words for a frame.
         key={manager.id}
@@ -400,7 +397,7 @@ function ManagerPane({
         compact={compact}
         placeholder="Tell the manager what you need…"
         transformText={withoutDecisionBlocks}
-        decorateRow={(text) => <AskedHere text={text} open={decisions} theme={theme} />}
+        asks={{ decisions, onAnswered: onChanged }}
         onSend={async (text) => {
           await tell({ project, text });
         }}

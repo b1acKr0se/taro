@@ -28,7 +28,11 @@ export function isAtEnd(offsetY: number, viewportHeight: number, liveHeight: num
   return offsetY + viewportHeight >= end - END_SLACK;
 }
 
-export function useFollowEnd() {
+/**
+ * `onScrolled` hears every scroll and viewport change (the offset and the visible height), for
+ * anything that depends on what is on screen.
+ */
+export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: number) => void) {
   const scroller = useRef<ScrollView>(null);
   const pinnedToEnd = useRef(true);
   /** The transcript's visible height, to tell whether a card fits in it. */
@@ -37,6 +41,8 @@ export function useFollowEnd() {
   const revealed = useRef(new Set<string>());
   /** The content height last reported by `onContentSizeChange` — what the end was last followed to. */
   const knownHeight = useRef(0);
+  /** The scroll offset last reported. */
+  const offset = useRef(0);
   /** Whether the reader is away from the end, for the button that brings them back. */
   const [away, setAway] = useState(false);
 
@@ -81,6 +87,28 @@ export function useFollowEnd() {
     }, 0);
   }
 
+  /**
+   * Brings a row somewhere up the transcript into view once (an open decision drawn under the message
+   * that asked it), its end at the bottom of the screen; the end of the transcript is no longer
+   * followed unless the row is the last thing in it. `layout` is in the transcript's coordinates.
+   */
+  function revealRow(id: string, layout: LayoutRectangle, showingEnd: (top: number, height: number, viewportHeight: number) => number): void {
+    if (revealed.current.has(id)) return;
+    revealed.current.add(id);
+    setTimeout(() => {
+      const atEnd = knownHeight.current > 0 && layout.y + layout.height >= knownHeight.current - END_SLACK;
+      pinnedToEnd.current = atEnd;
+      if (atEnd) scroller.current?.scrollToEnd({ animated: false });
+      else scroller.current?.scrollTo({ y: showingEnd(layout.y, layout.height, viewport.current), animated: false });
+    }, 0);
+  }
+
+  /** Scrolls to an offset the reader asked for (a jump link), leaving the end unfollowed. */
+  function scrollTo(y: number): void {
+    pinnedToEnd.current = false;
+    scroller.current?.scrollTo({ y, animated: true });
+  }
+
   /** Spread onto the transcript's `ScrollView`. */
   const scrollProps = {
     ref: scroller,
@@ -89,6 +117,8 @@ export function useFollowEnd() {
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
       pinnedToEnd.current = isAtEnd(contentOffset.y, layoutMeasurement.height, contentSize.height, knownHeight.current);
       setAway(!pinnedToEnd.current);
+      offset.current = contentOffset.y;
+      onScrolled?.(contentOffset.y, layoutMeasurement.height);
     },
     onContentSizeChange(_width: number, height: number): void {
       knownHeight.current = height;
@@ -96,8 +126,9 @@ export function useFollowEnd() {
     },
     onLayout(event: LayoutChangeEvent): void {
       viewport.current = event.nativeEvent.layout.height;
+      onScrolled?.(offset.current, viewport.current);
     },
   };
 
-  return { pin, keepAtEnd, reveal, away, jumpToEnd, scrollProps };
+  return { pin, keepAtEnd, reveal, revealRow, scrollTo, away, jumpToEnd, scrollProps, offset, viewport };
 }

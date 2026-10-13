@@ -42,7 +42,7 @@ export function ProjectBoard({
   compact: boolean;
   selectedTicket: string | null;
   onOpenTicket: (card: Card) => void;
-  /** Shows the manager's chat, where its decisions are pinned. */
+  /** Shows the manager's chat, where its decisions are answered. */
   onOpenManager: () => void;
 }) {
   const project = summary.config.project;

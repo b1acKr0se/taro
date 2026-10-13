@@ -1,21 +1,21 @@
 /**
  * A ticket beside the board (decision 6): the conversation of one of its
  * agents — the live owner, a subagent, or an archived agent read-only — or its
- * ticket, and a way back to the manager. Its open decisions are pinned above the
- * chat (TR-022), the transcript marking where each was asked; a delivered ticket's
- * Accept / Request changes sit in a row at the composer (TR-026).
+ * ticket, and a way back to the manager. Nothing is pinned above the chat (TR-026):
+ * each open decision is a card under the message that asked it, and a delivered
+ * ticket's Accept / Request changes sit in a row at the composer.
  * With the board hidden the ticket sits in its own panel beside, so the pane is the chat alone.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
+import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 import { tellAgent, type Card } from "../shared/contracts";
 import { decisionBlocksAsText, withoutDecisionBlocks } from "../shared/reports";
 import { AgentChat } from "./agent-chat";
 import { AcceptanceRow } from "./acceptance-row";
-import { AskedHere, AsksYou } from "./asks-you";
 import { ContextMeter } from "./context-meter";
 import { Evidence } from "./evidence-view";
 import { defaultPaneAgent, paneAgents, paneAgentJob, roleIcon } from "./pane-agents";
@@ -53,7 +53,7 @@ export function OwnerPane({
   onShowBoard: (() => void) | null;
 }) {
   const tell = useRpc(tellAgent);
-  // Kept with the card it was chosen on: opening another ticket (its Answer → or Review →) starts on Chat, where its asks are pinned.
+  // Kept with the card it was chosen on: opening another ticket (its Answer → or Review →) starts on Chat, where its asks are answered.
   const [chosenTab, setTab] = useState<{ card: string; tab: "chat" | "ticket" } | null>(null);
   const tab = ticketBeside || chosenTab?.card !== card.id ? "chat" : chosenTab.tab;
   // Remembered with the card it was made on, so opening another ticket starts from its default agent.
@@ -64,6 +64,10 @@ export function OwnerPane({
   const shown = agents.find((agent) => agent.id === chosenId) ?? defaultPaneAgent(agents) ?? agents[0] ?? null;
   const inset = compact ? SPACE.md : SPACE.lg;
   const accepting = card.status === "Awaiting acceptance" && card.owner !== null;
+  const shownAsks = useMemo(() => card.decisions.filter((decision) => decision.agentId === shown?.id), [card.decisions, shown?.id]);
+  // A question another of the ticket's agents asked is answered in that agent's chat.
+  const askedElsewhere = card.decisions.find((decision) => decision.agentId !== shown?.id && agents.some((agent) => agent.id === decision.agentId));
+  const askedElsewhereBy = askedElsewhere === undefined ? undefined : agents.find((agent) => agent.id === askedElsewhere.agentId);
   return (
     <View style={{ flex: 1 }}>
       <PaneHeader
@@ -96,9 +100,6 @@ export function OwnerPane({
           <AgentChips theme={theme} agents={agents} selectedId={shown?.id ?? null} now={now} onSelect={(agentId) => setChosen({ card: card.id, agent: agentId })} />
         ) : null}
       </View>
-      {tab === "chat" ? (
-        <AsksYou decisions={card.decisions} theme={theme} compact={compact} onChanged={onChanged} />
-      ) : null}
       <View style={{ flex: 1 }}>
         {tab === "ticket" ? (
           <TicketView key={card.id} project={project} ticket={card.id} theme={theme} />
@@ -117,23 +118,38 @@ export function OwnerPane({
               await tell({ agentId: shown.id, text });
             }}
             transformText={withoutDecisionBlocks}
-            decorateRow={(text) => <AskedHere text={text} open={card.decisions} theme={theme} />}
+            asks={{ decisions: shownAsks, onAnswered: onChanged }}
             actions={
-              // Request changes sends the owner's draft, so the row sits on the owner's composer only.
-              accepting && shown.id === card.owner?.id ? (
-                <AcceptanceRow
-                  card={card}
-                  project={project}
-                  agentId={shown.id}
-                  theme={theme}
-                  compact={compact}
-                  evidence={<Evidence project={project} ticket={card.id} theme={theme} />}
-                  trailing={<ContextMeter theme={theme} used={shown.brief.contextUsedTokens} max={shown.brief.contextMaxTokens} />}
-                  onChanged={onChanged}
-                />
-              ) : (
-                <ContextMeter theme={theme} used={shown.brief.contextUsedTokens} max={shown.brief.contextMaxTokens} />
-              )
+              <>
+                {askedElsewhere === undefined || askedElsewhereBy === undefined ? null : (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => setChosen({ card: card.id, agent: askedElsewhereBy.id })}
+                    style={{ width: "100%", flexDirection: "row", alignItems: "center", gap: SPACE.sm }}
+                  >
+                    <Icon name="Hand" size={13} color={askedElsewhere.blocking ? theme.colors.statusWarning : theme.colors.foregroundMuted} />
+                    <Text style={{ flex: 1, color: theme.colors.foreground, fontSize: FONT_SIZE.caption }} numberOfLines={1}>
+                      {askedElsewhere.question}
+                    </Text>
+                    <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Open {askedElsewhereBy.label}</Text>
+                  </Pressable>
+                )}
+                {/* Request changes sends the owner's draft, so the row sits on the owner's composer only. */}
+                {accepting && shown.id === card.owner?.id ? (
+                  <AcceptanceRow
+                    card={card}
+                    project={project}
+                    agentId={shown.id}
+                    theme={theme}
+                    compact={compact}
+                    evidence={<Evidence project={project} ticket={card.id} theme={theme} />}
+                    trailing={<ContextMeter theme={theme} used={shown.brief.contextUsedTokens} max={shown.brief.contextMaxTokens} />}
+                    onChanged={onChanged}
+                  />
+                ) : (
+                  <ContextMeter theme={theme} used={shown.brief.contextUsedTokens} max={shown.brief.contextMaxTokens} />
+                )}
+              </>
             }
           />
         ) : (
