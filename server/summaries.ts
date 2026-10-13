@@ -25,21 +25,33 @@ export interface ModelOption {
   defaultThinking: string;
 }
 
-/** Every selectable model of every available provider, as `provider/model`. */
-export async function listModelOptions(paseo: PaseoApi): Promise<ModelOption[]> {
+/** Providers that are enabled and not known to be broken (a provider still loading counts). */
+export async function usableProviders(paseo: PaseoApi): Promise<{ provider: string; label: string }[]> {
   const snapshot = await paseo.providers.snapshot();
-  const options: ModelOption[] = [];
-  for (const entry of snapshot.entries) {
-    if (entry.status !== "ready" || !entry.enabled) continue;
-    for (const model of entry.models ?? []) {
-      if (model.isSelectable === false) continue;
-      options.push({
-        id: `${entry.provider}/${model.id}`,
-        label: `${entry.label ?? entry.provider} · ${model.label}`,
-        thinkingOptions: (model.thinkingOptions ?? []).map((option) => option.id),
-        defaultThinking: model.defaultThinkingOptionId ?? "",
-      });
-    }
-  }
-  return options;
+  return snapshot.entries
+    .filter((entry) => entry.enabled && entry.status !== "unavailable" && entry.status !== "error")
+    .map((entry) => ({ provider: entry.provider, label: entry.label ?? entry.provider }));
+}
+
+/** Every selectable model of every usable provider, as `provider/model`. A provider that cannot list is left out. */
+export async function listModelOptions(paseo: PaseoApi): Promise<ModelOption[]> {
+  const providers = await usableProviders(paseo);
+  const lists = await Promise.all(
+    providers.map(async ({ provider, label }) => {
+      try {
+        const result = await paseo.providers.listModels(provider);
+        return (result.models ?? [])
+          .filter((model) => model.isSelectable !== false)
+          .map((model) => ({
+            id: `${provider}/${model.id}`,
+            label: `${label} · ${model.label}`,
+            thinkingOptions: (model.thinkingOptions ?? []).map((option) => option.id),
+            defaultThinking: model.defaultThinkingOptionId ?? "",
+          }));
+      } catch {
+        return [];
+      }
+    }),
+  );
+  return lists.flat();
 }

@@ -2,6 +2,7 @@
 import { paseoCli } from "./cli";
 import type { PaseoApi } from "./host-types";
 import { runCommand } from "./process";
+import { usableProviders } from "./summaries";
 import { backlogBinary } from "./tracker";
 
 export interface PrerequisiteCheck {
@@ -39,9 +40,8 @@ export async function checkPrerequisites(paseo: PaseoApi): Promise<PrerequisiteC
   });
 
   try {
-    const snapshot = await paseo.providers.snapshot();
-    const ready = snapshot.entries.filter((entry) => entry.status === "ready" && entry.enabled).map((entry) => entry.provider);
-    checks.push({ name: "Agent providers", ok: ready.length > 0, detail: ready.length > 0 ? ready.join(", ") : "no provider is ready" });
+    const usable = (await usableProviders(paseo)).map((entry) => entry.provider);
+    checks.push({ name: "Agent providers", ok: usable.length > 0, detail: usable.length > 0 ? usable.join(", ") : "no provider is available" });
   } catch (error) {
     checks.push({ name: "Agent providers", ok: false, detail: error instanceof Error ? error.message : String(error) });
   }
