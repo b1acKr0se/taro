@@ -174,6 +174,45 @@ export class Supervisor {
     await this.maybeStartCompaction(paseo, live, identity);
   }
 
+  /**
+   * After a reload or restart (decision 37): re-read each idle Taro agent's
+   * latest turn the plugin did not see end, rebuild its status line, and deliver
+   * helper reports that finished while the plugin was down. No nudges here.
+   */
+  async reconcile(paseo: PaseoApi, projects: readonly string[]): Promise<number> {
+    let repaired = 0;
+    for (const project of projects) {
+      const agents = await listTaroAgents(paseo, { [TARO_LABELS.project]: project });
+      for (const agent of agents) {
+        if (isMidTurn(agent) || agent.status === "closed") continue;
+        const identity = identityFromLabels(agent.labels, agent.title ?? null);
+        if (identity === null) continue;
+        const known = await this.state.agent(agent.id);
+        // Seen by the hook already (its clock and Paseo's differ by moments, hence the minute's slack).
+        const seenAt = known?.lastTurnEndedAt === null || known?.lastTurnEndedAt === undefined ? Number.NaN : Date.parse(known.lastTurnEndedAt);
+        if (!Number.isNaN(seenAt) && seenAt >= Date.parse(agent.updatedAt) - 60_000) continue;
+        const page = await paseo.agents.ref(agent.id).timeline.refetch({ direction: "tail", limit: 40, projection: "projected" }).catch(() => null);
+        if (page === null) continue;
+        const items = page.entries.map((entry) => entry.item);
+        const lastUser = items.map((item) => item.type).lastIndexOf("user_message");
+        const turn = items.slice(lastUser === -1 ? 0 : lastUser);
+        const closing = closingText(turn);
+        const status = parseStatusLine(closing);
+        await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
+          record.lastTurnEndedAt = agent.updatedAt;
+          if (status !== null) record.lastStatus = { ...status, at: agent.updatedAt };
+        });
+        const decisions = parseDecisionBlocks(allAssistantText(turn));
+        if (decisions.length > 0) await this.storeDecisions(paseo, agent, identity, decisions, agent.updatedAt);
+        if (identity.role === "helper" || identity.role === "reviewer") {
+          await this.deliverReport(paseo, agent, identity, closing, `${agent.id}:${agent.updatedAt}`, agent.labels["paseo.parent-agent-id"] ?? null);
+        }
+        repaired += 1;
+      }
+    }
+    return repaired;
+  }
+
   private async reloadText(identity: TaroIdentity): Promise<string> {
     return message(TEMPLATES.reload, { skill: await skillDirectory(), ticket: identity.ticket ?? "your ticket" });
   }

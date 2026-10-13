@@ -52,6 +52,7 @@ export function AgentChat({
   onSend,
   actions,
   decorateRow,
+  transformText,
 }: {
   agent: ChatAgent;
   theme: PluginTheme;
@@ -63,6 +64,8 @@ export function AgentChat({
   actions?: ReactNode;
   /** Draws extra content under an agent message (decision cards). */
   decorateRow?: (text: string, key: string) => ReactNode;
+  /** Rewrites an agent message before it is drawn (drops decision blocks drawn as cards). */
+  transformText?: (text: string) => string;
 }) {
   const toast = useToast();
   const timeline = useAgentTimeline(agent.id, `${agent.updatedAt}:${agent.pendingPermissions}`);
@@ -194,7 +197,7 @@ export function AgentChat({
       case "mate":
         return (
           <View key={row.key} style={styles.agentRow}>
-            <Markdown source={row.text} theme={theme} onOpenLink={openLink} />
+            <Markdown source={transformText === undefined ? row.text : transformText(row.text)} theme={theme} onOpenLink={openLink} />
             {decorateRow === undefined ? null : decorateRow(row.text, row.key)}
           </View>
         );

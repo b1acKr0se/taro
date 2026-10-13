@@ -50,7 +50,19 @@ export default function contribute(server: PluginServerContext) {
   const actions = new Actions(state, supervisor, trackers);
   // The server half is given Paseo only inside handlers and hooks; keep the first one for timers.
   let kept: PaseoApi | null = null;
-  const keep = (paseo: PaseoApi): PaseoApi => (kept ??= paseo);
+  const keep = (paseo: PaseoApi): PaseoApi => {
+    if (kept === null) {
+      kept = paseo;
+      // The first Paseo handle after a start: catch up on turns that ended while the plugin was down.
+      void listProjectConfigs()
+        .then((configs) => supervisor.reconcile(paseo, configs.map((config) => config.project)))
+        .then((repaired) => {
+          if (repaired > 0) console.log(`[taro] reconciled ${repaired} agents after start`);
+        })
+        .catch((error: unknown) => console.error("[taro] reconcile after start failed:", error));
+    }
+    return kept;
+  };
   void actions.primeStatuses().catch((error: unknown) => console.error("[taro] could not read ticket statuses:", error));
   trackers.onChange((project) => {
     if (kept === null) return;

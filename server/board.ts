@@ -59,7 +59,8 @@ export async function loadBoard(paseo: PaseoApi, state: PluginState, project: st
       const owner = newest(ticketAgents.filter((agent) => agent.labels[TARO_LABELS.role] === "owner" && agent.status !== "closed"));
       const helpers = ticketAgents.filter((agent) => agent.labels[TARO_LABELS.role] === "helper" || agent.labels[TARO_LABELS.role] === "reviewer");
       const ownerState = owner === null ? null : agentStates[owner.id] ?? null;
-      const ticketDecisions = openDecisions.filter((decision) => decision.ticket === ticket.id);
+      const finished = ticket.status === "Done" || ticket.status === "Cancelled";
+      const ticketDecisions = finished ? [] : openDecisions.filter((decision) => decision.ticket === ticket.id);
       const elsewhere = owner === null && UNDER_WAY.has(ticket.status) ? await ownerHostElsewhere(paths.tracker, ticket.id) : null;
       const children = tickets
         .filter((candidate) => candidate.parentTaskId === ticket.id)

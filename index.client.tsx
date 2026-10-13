@@ -4,6 +4,7 @@ import { tellManager } from "./shared/contracts";
 import { TARO_SCREEN_ID } from "./client/screen";
 import { TaroScreen } from "./client/taro-screen";
 import { TaroSidebarItem } from "./client/sidebar";
+import { TicketPanel } from "./client/ticket-panel";
 
 type CommandRpc = PluginWorkspaceCommandContext["rpc"];
 
@@ -21,6 +22,15 @@ export default function contribute(client: PluginClientContext) {
     Component: TaroScreen,
   });
   client.addSidebarHeaderItem({ id: TARO_SCREEN_ID, title: "Taro", Component: TaroSidebarItem });
+
+  client.addWorkspacePanel({
+    id: "taro-ticket",
+    title: "Ticket",
+    icon: "ClipboardList",
+    context: "agent",
+    locations: ["workspace", "explorer"],
+    Component: TicketPanel,
+  });
 
   client.addCommandCenterItem({
     id: "open-taro",

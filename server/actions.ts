@@ -158,7 +158,15 @@ export class Actions {
     for (const config of await listProjectConfigs()) {
       if (this.lastStatuses.has(config.project)) continue;
       const tickets = await listTickets((await projectPaths(config.project)).tracker).catch(() => null);
-      if (tickets !== null) this.lastStatuses.set(config.project, new Map(tickets.map((ticket) => [ticket.id, ticket.status])));
+      if (tickets === null) continue;
+      this.lastStatuses.set(config.project, new Map(tickets.map((ticket) => [ticket.id, ticket.status])));
+      // Questions left open on tickets that finished while the plugin was not watching are moot.
+      const finished = new Set(tickets.filter((ticket) => ticket.status === "Done" || ticket.status === "Cancelled").map((ticket) => ticket.id));
+      await this.state.updateDecisions((decisions) => {
+        for (const decision of decisions) {
+          if (decision.project === config.project && decision.status === "open" && decision.ticket !== null && finished.has(decision.ticket)) decision.status = "withdrawn";
+        }
+      });
     }
   }
 
@@ -194,6 +202,12 @@ export class Actions {
         console.warn(`[taro] could not archive ${ticket}'s workspace: ${error instanceof Error ? error.message : String(error)}`);
       });
     }
+    // Questions about a finished ticket are moot.
+    await this.state.updateDecisions((decisions) => {
+      for (const decision of decisions) {
+        if (decision.project === project && decision.status === "open" && (decision.ticket === ticket || decision.ticket?.startsWith(`${ticket}.`) === true)) decision.status = "withdrawn";
+      }
+    });
     console.log(`[taro] ${project}: ${ticket} is Done; archived ${agents.length} agents and ${workspaces.size} workspaces`);
   }
 
