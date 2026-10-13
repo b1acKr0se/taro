@@ -17,6 +17,7 @@ import { AgentChat } from "./agent-chat";
 import { AcceptanceRow } from "./acceptance-row";
 import { AskedHere, AsksYou } from "./asks-you";
 import { ContextMeter } from "./context-meter";
+import { Evidence } from "./evidence-view";
 import { defaultPaneAgent, paneAgents, paneAgentJob, roleIcon } from "./pane-agents";
 import { PaneHeader } from "./pane-header";
 import { SPACE } from "./spacing";
@@ -126,6 +127,7 @@ export function OwnerPane({
                   agentId={shown.id}
                   theme={theme}
                   compact={compact}
+                  evidence={<Evidence project={project} ticket={card.id} theme={theme} />}
                   trailing={<ContextMeter theme={theme} used={shown.brief.contextUsedTokens} max={shown.brief.contextMaxTokens} />}
                   onChanged={onChanged}
                 />

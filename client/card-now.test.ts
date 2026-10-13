@@ -75,6 +75,7 @@ function card(parts: Partial<Card>): Card {
     subagents: [],
     pastAgents: [],
     latestMilestone: null,
+    evidence: null,
     ...parts,
   };
 }
@@ -112,6 +113,15 @@ describe("cardNowLine", () => {
       NOW,
     );
     expect(line).toEqual({ kind: "call", call: { kind: "decision", text: "Approve the plan?", blocking: true, more: 1 }, more: 3 });
+  });
+
+  it("says a delivery with incomplete evidence is not ready, naming what is missing", () => {
+    const evidence = { checks: [], review: null, screenshots: [], screenshotsNone: null, missing: ["checks", "review"], complete: false };
+    expect(cardNowLine(card({ status: "Awaiting acceptance", column: "needs-you", evidence }), NOW)).toEqual({
+      kind: "call",
+      call: { kind: "acceptance", text: "Not ready to accept", evidence: "Evidence missing: checks, review" },
+      more: 0,
+    });
   });
 
   it("shows acceptance alone with nothing more", () => {

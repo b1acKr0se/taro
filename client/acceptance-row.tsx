@@ -1,7 +1,8 @@
 /**
  * A delivered ticket's Accept / Request changes, in a row at the owner's composer (TR-026): nothing
  * is pinned above the chat. Request changes sends what the user typed in the composer; Delivery
- * opens the PR, the delivery summary and the evidence over the bottom of the chat.
+ * opens the PR, the delivery summary and the evidence over the bottom of the chat. While the evidence
+ * is incomplete Accept is withheld (the server refuses it too) and the row names what is missing.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
@@ -11,6 +12,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { acceptTicket, loadTicket, requestChanges, type Card } from "../shared/contracts";
+import { evidenceSummary } from "../shared/evidence";
 import { drafts } from "./draft";
 import { errorText, pullRequestLabel } from "./format";
 import { Markdown } from "./markdown";
@@ -55,6 +57,7 @@ export function AcceptanceRow({
   const [draft, setDraft] = useState(() => drafts.get(agentId));
   const { colors } = theme;
   const summary = detail.data?.finalSummary ?? null;
+  const ready = card.evidence === null || card.evidence.complete;
   const changeText = draft.trim();
   const openLink = (url: string) => void openExternalUrl(url).catch((caught: unknown) => toast.error(errorText(caught)));
 
@@ -100,11 +103,18 @@ export function AcceptanceRow({
         </ScrollView>
       ) : null}
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: SPACE.sm }}>
-        <Icon name="PackageCheck" size={14} color={colors.accent} />
-        <Text style={{ color: colors.accent, fontSize: FONT_SIZE.micro, fontWeight: "700", letterSpacing: 0.5 }}>READY TO ACCEPT</Text>
+        <Icon name={ready ? "PackageCheck" : "PackageX"} size={14} color={ready ? colors.accent : colors.statusWarning} />
+        <Text style={{ color: ready ? colors.accent : colors.statusWarning, fontSize: FONT_SIZE.micro, fontWeight: "700", letterSpacing: 0.5 }}>{ready ? "READY TO ACCEPT" : "NOT READY TO ACCEPT"}</Text>
         <IconButton icon={open ? "ChevronDown" : "ChevronUp"} label="Delivery" showLabel theme={theme} onPress={() => setOpen((value) => !value)} />
+        {ready || card.evidence === null ? null : (
+          <Text style={{ flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption }} numberOfLines={2}>
+            {evidenceSummary(card.evidence)}
+          </Text>
+        )}
         <View style={{ flex: 1 }} />
-        <IconButton icon="Check" label="Accept" showLabel tone="accent" theme={theme} disabled={busy} onPress={() => void run(() => accept({ project, ticket: card.id }), `Accepted ${card.id}.`)} />
+        {ready ? (
+          <IconButton icon="Check" label="Accept" showLabel tone="accent" theme={theme} disabled={busy} onPress={() => void run(() => accept({ project, ticket: card.id }), `Accepted ${card.id}.`)} />
+        ) : null}
         <IconButton
           icon="MessageSquare"
           label="Request changes"
