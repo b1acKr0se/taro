@@ -158,7 +158,9 @@ export function TicketCard({
         call.kind === "decision"
           ? { icon: "Hand", color: call.blocking ? colors.statusWarning : colors.foregroundMuted }
           : call.kind === "acceptance"
-            ? { icon: "PackageCheck", color: colors.accent }
+            ? card.evidence !== null && !card.evidence.complete
+              ? { icon: "PackageX", color: colors.statusWarning }
+              : { icon: "PackageCheck", color: colors.accent }
             : { icon: "KeyRound", color: colors.statusWarning };
       const text = call.kind === "acceptance" && call.evidence !== null ? `${call.text} · ${call.evidence}` : call.text;
       return (
