@@ -5,6 +5,7 @@
  */
 import { z } from "zod";
 
+import { isSubagentRole, roleFromLabel, TARO_LABELS } from "./project";
 import type { StatusState } from "./reports";
 
 export const COLUMN_IDS = ["needs-you", "working", "stalled", "queued", "done"] as const;
@@ -75,6 +76,55 @@ function recordedColumn(status: string): ColumnId {
   if (status === "Awaiting acceptance" || status === "Blocked") return "needs-you";
   if (UNDER_WAY.has(status)) return "working";
   return "queued";
+}
+
+/** The fields of a live agent the board joins a card on. */
+export interface JoinedAgent {
+  labels: Readonly<Record<string, string>>;
+  title?: string | null;
+  status: string;
+  updatedAt: string;
+  pendingPermissions: readonly unknown[];
+}
+
+export interface TicketAgents<Agent> {
+  owner: Agent | null;
+  subagents: Agent[];
+  /** Whose live state places the card. */
+  columnAgent: Agent | null;
+}
+
+/**
+ * The live agents on a ticket, from agents grouped by their ticket label. A child has no owner of
+ * its own (decision 32): its parent's owner works it through subagents labelled with the child, or
+ * labelled with the parent and titled with the child's id ("TR-1.01 · implementer: …"), and a busy
+ * one of those places the card, so the child is Stalled only when none of them is alive.
+ */
+export function ticketAgents<Agent extends JoinedAgent>(
+  ticketId: string,
+  parentId: string | null,
+  byTicket: ReadonlyMap<string, readonly Agent[]>,
+): TicketAgents<Agent> {
+  const own = byTicket.get(ticketId) ?? [];
+  const parents = parentId === null ? [] : byTicket.get(parentId) ?? [];
+  const namedForChild = parents.filter((agent) => agent.title?.startsWith(`${ticketId} `) === true);
+  const subagents = [...own, ...namedForChild].filter((agent) => {
+    const role = roleFromLabel(agent.labels[TARO_LABELS.role]);
+    return role !== null && isSubagentRole(role);
+  });
+  const owner = newestOwner(own) ?? newestOwner(parents);
+  if (parentId === null) return { owner, subagents, columnAgent: owner };
+  const asking = newest(subagents.filter((agent) => agent.pendingPermissions.length > 0));
+  const running = newest(subagents.filter((agent) => agent.status === "running" || agent.status === "initializing"));
+  return { owner, subagents, columnAgent: asking ?? running ?? owner };
+}
+
+function newestOwner<Agent extends JoinedAgent>(agents: readonly Agent[]): Agent | null {
+  return newest(agents.filter((agent) => agent.labels[TARO_LABELS.role] === "owner" && agent.status !== "closed"));
+}
+
+function newest<Agent extends JoinedAgent>(agents: readonly Agent[]): Agent | null {
+  return [...agents].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
 }
 
 /** The complexity label the owner set (`complexity-low` → `low`), or null. */

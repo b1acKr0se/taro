@@ -87,6 +87,20 @@ describe("loadBoard", () => {
     ]);
   });
 
+  it("draws a child under way from the parent owner's implementer titled with the child (TR-025)", async () => {
+    vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "In Progress"), { ...ticket("TR-1.01", "In Progress"), parentTaskId: "TR-1" }] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    const implementer = { ...agent("builder", "implementer", "TR-1", "2026-10-13T14:58:00Z"), title: "TR-1.01 · implementer: building the list", status: "running" } as PaseoAgent;
+    vi.mocked(projectAgents).mockResolvedValue([agent("owner-live", "owner", "TR-1", "2026-10-13T14:50:00Z"), implementer]);
+    const board = await loadBoard({} as PaseoApi, state([]), "taro");
+    const child = board.cards.find((card) => card.id === "TR-1.01");
+    expect(child?.column).toBe("working");
+    expect(child?.owner?.id).toBe("owner-live");
+    expect(child?.subagents.map((subagent) => subagent.id)).toEqual(["builder"]);
+    vi.mocked(projectAgents).mockResolvedValue([]);
+    invalidateBoards();
+    expect((await loadBoard({} as PaseoApi, state([]), "taro")).cards.find((card) => card.id === "TR-1.01")?.column).toBe("stalled");
+  });
+
   it("reads the latest milestone of under-way tickets only", async () => {
     const board = await loadBoard({} as PaseoApi, state([]), "taro");
     expect(board.cards[0]?.latestMilestone).toEqual({ kind: "MILESTONE", time: "2026-10-13T14:30Z", text: "tests green" });

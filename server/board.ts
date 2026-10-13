@@ -5,7 +5,7 @@
 import { stat } from "node:fs/promises";
 import { hostname } from "node:os";
 
-import { boardColumn, complexityOf } from "../shared/board";
+import { boardColumn, complexityOf, ticketAgents } from "../shared/board";
 import { executionMachine, pullRequestUrl } from "../shared/execution";
 import type { Board, Card, TicketDetailView } from "../shared/contracts";
 import { latestMilestone, type Milestone } from "../shared/milestones";
@@ -75,10 +75,6 @@ function cachedArchivedAgents(paseo: PaseoApi, project: string): Promise<PaseoAg
   return agents;
 }
 
-function newest(agents: readonly PaseoAgent[]): PaseoAgent | null {
-  return [...agents].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
-}
-
 /** One read serves every caller for a moment: the screen, the Inbox and the sidebar all poll. */
 const BOARD_CACHE_MS = 2_000;
 const boardCache = new Map<string, { at: number; board: Promise<Board> }>();
@@ -130,9 +126,8 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
 
   const cards: Card[] = await Promise.all(
     tickets.map(async (ticket) => {
-      const ticketAgents = byTicket.get(ticket.id) ?? [];
-      const owner = newest(ticketAgents.filter((agent) => agent.labels[TARO_LABELS.role] === "owner" && agent.status !== "closed"));
-      const subagents = ticketAgents.flatMap((agent) => {
+      const { owner, subagents: liveSubagents, columnAgent } = ticketAgents(ticket.id, ticket.parentTaskId, byTicket);
+      const subagents = liveSubagents.flatMap((agent) => {
         const role = roleFromLabel(agent.labels[TARO_LABELS.role]);
         return role !== null && isSubagentRole(role) ? [{ ...agentBrief(agent), role }] : [];
       });
@@ -161,7 +156,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
         column: boardColumn({
           status: ticket.status,
           ownerElsewhere: elsewhere !== null,
-          agent: owner === null ? null : { status: owner.status, pendingPermissions: owner.pendingPermissions.length },
+          agent: columnAgent === null ? null : { status: columnAgent.status, pendingPermissions: columnAgent.pendingPermissions.length },
           lastStatus: ownerState?.lastStatus?.state ?? null,
           openBlockingDecisions: ticketDecisions.filter((decision) => decision.blocking).length,
           stalledAfterNudge: ownerState?.stalled ?? false,

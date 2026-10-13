@@ -32,7 +32,8 @@ paseo run -d --workspace <your workspaceId> --provider <model> [--thinking <id>]
   --json "<brief: an implementer's is its definition of done>"
 ```
 
-`<job>` is what the subagent does: `implementer`, `reviewer` or `researcher`. Name it by that job in
+`<ID>` is the ticket the subagent works on: a child's id for work on a child ticket, so its card
+shows the subagent and its state. `<job>` is what the subagent does: `implementer`, `reviewer` or `researcher`. Name it by that job in
 its title and brief too, never "helper". `<task>` is what it is doing, in words the user understands
 at a glance, as a phrase starting with a verb in -ing: `building the board columns, cards and Ticket
 tab`, `checking the whole branch`. The board shows it as "Implementer building the board columns… ·
