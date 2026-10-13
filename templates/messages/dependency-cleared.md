@@ -1,2 +1,2 @@
-<!-- Sent to the manager when a ticket reaches Done. Placeholders: ticket, dependents, queued. -->
-{{ticket}} is Done, so an owner slot is free: its owner no longer counts towards the cap, even before the plugin archives it. Tickets that depended on it: {{dependents}}. Tickets still waiting in Backlog: {{queued}}. Dispatch what the cap on owners and the dependencies now allow, oldest first.
+<!-- Sent to the manager when a ticket is Done or stops holding an owner slot (TR-029). Placeholders: ticket, status, dependents, queued, counting, cap, countingTickets. -->
+{{ticket}} is now {{status}}. Tickets that depended on it: {{dependents}}. Tickets still waiting in Backlog: {{queued}}. Owners counting towards the cap: {{counting}} of {{cap}} ({{countingTickets}}); owners of tickets in Awaiting acceptance, Done or Cancelled, and children, do not count, even while they are alive. Dispatch what the cap on owners and the dependencies now allow, oldest first.
