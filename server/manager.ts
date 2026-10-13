@@ -41,6 +41,7 @@ export async function projectValues(config: ProjectConfig): Promise<Record<strin
     helperModels: config.helperModels.length === 0 ? config.owner.model : config.helperModels.join(", "),
     delivery: config.delivery,
     acceptAlsoMerges: config.acceptAlsoMerges ? "yes" : "no",
+    maxParallelOwners: String(config.maxParallelOwners),
   };
 }
 

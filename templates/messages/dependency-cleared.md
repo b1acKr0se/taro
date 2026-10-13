@@ -1,2 +1,2 @@
-<!-- Sent to the manager when a ticket others depend on reaches Done. -->
-{{ticket}} is Done. These queued tickets depended on it: {{dependents}}. Dispatch any whose dependencies are now all Done.
+<!-- Sent to the manager when a ticket reaches Done. Placeholders: ticket, dependents, queued. -->
+{{ticket}} is Done, so an owner slot is free. Tickets that depended on it: {{dependents}}. Tickets still waiting in Backlog: {{queued}}. Dispatch what the cap on owners and the dependencies now allow, oldest first.

@@ -230,11 +230,13 @@ export class Actions {
       const detail = await viewTicket(paths.tracker, id).catch(() => null);
       if (detail !== null && detail.dependencies.includes(ticket)) dependents.push(id);
     }
-    if (dependents.length === 0) return;
+    const tickets = await listTickets(paths.tracker);
+    const queued = tickets.filter((candidate) => candidate.status === "Backlog" && candidate.parentTaskId === null).map((candidate) => candidate.id);
+    if (dependents.length === 0 && queued.length === 0) return;
     const config = await requireProjectConfig(project);
     const manager = await fetchLiveAgent(paseo, config.managerAgentId);
     if (manager === null) return;
-    await sendFromPlugin(paseo, manager.id, await message(TEMPLATES.dependencyCleared, { ticket, dependents: dependents.join(", ") }));
+    await sendFromPlugin(paseo, manager.id, await message(TEMPLATES.dependencyCleared, { ticket, dependents: dependents.length === 0 ? "none" : dependents.join(", "), queued: queued.length === 0 ? "none" : queued.join(", ") }));
   }
 
   /** Statuses this plugin knows; used to sanity-check a ticket a user moved by hand. */

@@ -22,6 +22,7 @@ Read now, in order:
 | Paseo project id of the repository | `{{paseoProjectId}}` |
 | Task owner model | `{{ownerModel}}` (thinking: {{ownerThinking}}, mode: `{{ownerMode}}`) |
 | Models owners may give helpers | {{helperModels}} |
+| Owners running at once (at most) | {{maxParallelOwners}} |
 | Delivery | {{delivery}} |
 | Accept also merges | {{acceptAlsoMerges}} |
 | Skill | `{{skill}}` |

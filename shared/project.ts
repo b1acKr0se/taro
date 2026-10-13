@@ -61,6 +61,8 @@ export const ProjectSettingsSchema = z.object({
   acceptAlsoMerges: z.boolean().default(true),
   trackerSync: TrackerSyncSchema.default("local"),
   compactThresholdTokens: z.number().int().positive().default(250_000),
+  /** Task owners running at once; the manager queues the rest (every agent costs host threads and money). */
+  maxParallelOwners: z.number().int().min(1).max(20).default(3),
 });
 export type ProjectSettings = z.infer<typeof ProjectSettingsSchema>;
 

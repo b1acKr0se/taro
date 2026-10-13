@@ -38,6 +38,7 @@ interface Draft {
   acceptAlsoMerges: boolean;
   trackerSync: "local" | "remote";
   compactThresholdTokens: string;
+  maxParallelOwners: string;
 }
 
 function draftFrom(config: ProjectConfig | null, defaultModel: string): Draft {
@@ -55,6 +56,7 @@ function draftFrom(config: ProjectConfig | null, defaultModel: string): Draft {
     acceptAlsoMerges: config?.acceptAlsoMerges ?? true,
     trackerSync: config?.trackerSync ?? "local",
     compactThresholdTokens: String(config?.compactThresholdTokens ?? 250_000),
+    maxParallelOwners: String(config?.maxParallelOwners ?? 3),
   };
 }
 
@@ -70,6 +72,7 @@ function settingsFrom(draft: Draft): ProjectSettings {
     acceptAlsoMerges: draft.acceptAlsoMerges,
     trackerSync: draft.trackerSync,
     compactThresholdTokens: Number.parseInt(draft.compactThresholdTokens, 10) || 250_000,
+    maxParallelOwners: Math.max(1, Number.parseInt(draft.maxParallelOwners, 10) || 3),
   };
 }
 
@@ -193,6 +196,7 @@ export function ProjectSetup({
         <SettingsInput label="Task owner model" hint="the top tier is recommended" initialValue={draft.ownerModel} onChangeText={(text) => update("ownerModel", text)} />
         <SettingsInput label="Task owner thinking" initialValue={draft.ownerThinking} onChangeText={(text) => update("ownerThinking", text)} />
         <SettingsInput label="Models owners may give helpers" hint="comma-separated; owners pick per task by difficulty" initialValue={draft.helperModels} onChangeText={(text) => update("helperModels", text)} />
+        <SettingsInput label="Owners running at once" hint="the manager queues the rest; each agent costs host resources" initialValue={draft.maxParallelOwners} onChangeText={(text) => update("maxParallelOwners", text)} />
         <SettingsInput label="Compact owners above (tokens)" initialValue={draft.compactThresholdTokens} onChangeText={(text) => update("compactThresholdTokens", text)} />
         <SettingsRow label="Permissions" hint="task owners and helpers run in bypass mode" />
       </SettingsSection>

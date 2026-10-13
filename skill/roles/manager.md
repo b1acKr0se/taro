@@ -24,27 +24,31 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
    the user's intent nearly verbatim, then your notes (related tickets and PRs, likely areas, known
    facts, out of scope). Add `-l investigation` when it is one. Read the id back.
 2. Append **DISPATCH-INTENT** (unique token, intended branch `taro/<id-lowercase>`).
-3. Create the owner's worktree workspace and start the owner (`reference/paseo.md`), with the
+3. **Respect the cap on owners running at once** (AGENTS.md). Count live owners with
+   `paseo ls -g --label taro.project=<project> --label taro.role=owner --json` (any status but
+   closed). At the cap, leave the ticket in Backlog, tell the user it is queued and why, and stop
+   here; the plugin tells you when a slot frees up. Dispatch queued tickets oldest first.
+4. Create the owner's worktree workspace and start the owner (`reference/paseo.md`), with the
    project's owner model, thinking and mode from AGENTS.md — the strongest model by default.
    **The user's words win:** if the request names a model ("use sonnet for this", "a cheap model is
    fine"), start the owner with that model, and pass any model the user named for helpers into the
    brief. Before retrying an uncertain launch,
    check `paseo workspace ls --json` and `paseo ls -g --label taro.ticket=<ID> --json` so you never
    start two owners for one ticket.
-4. The owner's prompt is: "You are the Taro task owner for <ID>. Read <skill>/SKILL.md and
+5. The owner's prompt is: "You are the Taro task owner for <ID>. Read <skill>/SKILL.md and
    <skill>/roles/owner.md now." followed by the project facts it needs (repository, base branch,
    tracker, skill path, delivery, accept-also-merges, allowed helper models), the standing orders
    that apply, and the brief.
-5. Append **EXECUTION** (owner agent id, workspace id, worktree, branch, `hostname`).
-6. Reply in one line: the ticket id and title, and that its owner is in the "<ID> · <title>" tab.
+6. Append **EXECUTION** (owner agent id, workspace id, worktree, branch, `hostname`).
+7. Reply in one line: the ticket id and title, and that its owner is in the "<ID> · <title>" tab.
    End with `done: dispatched <ID>`.
 
 ## While work runs
 
 You are not told about owners' turns; the plugin supervises them. You are woken for:
 
-- **cleared dependencies**: the plugin tells you a ticket is Done and which queued tickets depended
-  on it — dispatch those whose dependencies are now all Done;
+- **cleared dependencies or a free slot**: the plugin tells you a ticket is Done, which queued tickets
+  depended on it, and which are waiting for a slot — dispatch what the cap and dependencies allow;
 - **the user's requests**: new tasks, status questions, **Catch up** (build the four sections from
   the tracker and `paseo ls -g --label taro.project=<project> --json`, never from memory).
 
