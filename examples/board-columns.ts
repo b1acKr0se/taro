@@ -1,11 +1,11 @@
 /**
- * Sketch: how a card's board column is derived from the recorded ticket and the
- * live Paseo agent (decision 9). Not wired up or tested.
+ * Sketch: how a card's board column is derived (decisions 9, 28, 30, 40; spec §5).
+ * Not wired up or tested.
  *
- * Live agent state wins for urgent facts (a permission request, an error, a
- * running turn); otherwise the recorded Backlog.md status decides. "Stalled" is
- * the case only the join can see: the ticket says work is under way, but the
- * agent stopped without recording why it waits.
+ * Inputs come from three places: the ticket's Backlog.md status, the live Paseo agent, and
+ * the plugin's own state (the owner's last status line and its open decisions). Live state
+ * wins for urgent facts; otherwise the recorded status decides. "Stalled" is the case only
+ * the join can see: the ticket says work is under way but nobody is on it.
  */
 
 export type ColumnId = "needs-you" | "working" | "stalled" | "queued" | "done";
@@ -21,38 +21,38 @@ export type TicketStatus =
   | "Cancelled"
   | "Done";
 
-export interface RecordedTicket {
-  id: string;
+export type StatusLineState = "working" | "waiting" | "blocked" | "done" | "failed";
+
+export interface CardInputs {
   status: TicketStatus;
-  /** Set when the owner recorded that it waits on the user (a question, plan approval, a blocker). */
-  waitingOnUser: boolean;
-  /** Set when the owner recorded an outside wait it expects to clear (CI, a long command). */
-  waitingOnOutside: boolean;
-  dependenciesOpen: boolean;
+  /** The owner runs on another machine (EXECUTION record names another daemon). */
+  ownerElsewhere: boolean;
+  /** The live owner on this daemon, or null when there is none. */
+  agent: { status: "initializing" | "idle" | "running" | "error" | "closed"; pendingPermissions: number } | null;
+  /** From the owner's last turn, kept by the plugin. */
+  lastStatusLine: StatusLineState | null;
+  openBlockingDecisions: number;
+  /** Two consecutive stalls after the plugin's nudge. */
+  stalledAfterNudge: boolean;
 }
 
-export interface LiveAgent {
-  status: "initializing" | "idle" | "running" | "error" | "closed";
-  pendingPermissions: number;
-}
+export function boardColumn(card: CardInputs): ColumnId {
+  if (card.status === "Done" || card.status === "Cancelled") return "done";
+  if (card.ownerElsewhere) return recordedColumn(card.status);
 
-export function boardColumn(ticket: RecordedTicket, agent: LiveAgent | null): ColumnId {
-  if (ticket.status === "Done" || ticket.status === "Cancelled") return "done";
+  const agent = card.agent;
+  if (agent !== null && agent.pendingPermissions > 0) return "needs-you";
+  if (agent !== null && (agent.status === "running" || agent.status === "initializing")) return "working";
 
-  if (agent !== null) {
-    if (agent.pendingPermissions > 0) return "needs-you";
-    if (agent.status === "running" || agent.status === "initializing") return "working";
-  }
+  if (card.openBlockingDecisions > 0) return "needs-you";
+  if (card.status === "Awaiting acceptance" || card.status === "Blocked") return "needs-you";
+  if (card.lastStatusLine === "blocked") return "needs-you";
 
-  if (ticket.status === "Awaiting acceptance" || ticket.waitingOnUser) return "needs-you";
-  if (ticket.status === "Blocked") return "needs-you";
-
-  const underWay = ticket.status === "Planning" || ticket.status === "In Progress" || ticket.status === "Reviewing";
+  const underWay = card.status === "Planning" || card.status === "In Progress" || card.status === "Reviewing";
   if (underWay) {
-    // The ticket says someone is on it. Without a live agent (gone, errored, or
-    // idle) and without a recorded reason to wait, nobody is.
     if (agent === null || agent.status === "error" || agent.status === "closed") return "stalled";
-    if (agent.status === "idle" && !ticket.waitingOnOutside) return "stalled";
+    if (card.lastStatusLine === "failed" || card.stalledAfterNudge) return "stalled";
+    // Idle while waiting on something outside itself, or between the nudge and its answer.
     return "working";
   }
 
@@ -60,9 +60,9 @@ export function boardColumn(ticket: RecordedTicket, agent: LiveAgent | null): Co
   return "queued";
 }
 
-/**
- * Caveat for multi-machine use: an agent on another machine is invisible to the
- * local daemon (agent === null), so a teammate's In Progress ticket would read
- * as stalled. The real implementation must check the ticket's recorded
- * machine/daemon before calling it stalled and fall back to the recorded status.
- */
+/** A teammate's owner is invisible to this daemon: never call it stalled. */
+function recordedColumn(status: TicketStatus): ColumnId {
+  if (status === "Awaiting acceptance" || status === "Blocked") return "needs-you";
+  if (status === "Planning" || status === "In Progress" || status === "Reviewing") return "working";
+  return "queued";
+}

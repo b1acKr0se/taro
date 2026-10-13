@@ -10,16 +10,18 @@ This repository replaces the original instruction-only Taro
 (`github.com/b1acKr0se/taro`, kept for reference in `reference/taro-original/`).
 Nothing from it needs to be preserved or migrated.
 
-**Status: design.** The UI is settled at mockup level (v1); the agent workflow is the
-next discussion. No plugin code yet.
+**Status: ready to implement.** UI (mockup v1) and workflow are settled (decisions 1–41),
+the Paseo hooks the design relies on are verified, and `docs/spec.md` turns it into
+components, formats and build phases. No plugin code yet.
 
 ## Read first
 
 | Document | What it holds |
 | --- | --- |
+| [docs/spec.md](docs/spec.md) | What to build: components, files, agents, tickets, hooks, RPCs, skill, build phases |
 | [docs/decisions.md](docs/decisions.md) | Every decision made so far, with the reason |
 | [docs/ui-design.md](docs/ui-design.md) | The chosen UI (desktop, phone, onboarding, settings) with screenshots |
-| [docs/open-questions.md](docs/open-questions.md) | What is still undecided — start the workflow discussion here |
+| [docs/open-questions.md](docs/open-questions.md) | What was verified, what is postponed, follow-ups |
 | [docs/prior-art-firstmate.md](docs/prior-art-firstmate.md) | Analysis of the FirstMate Paseo plugin: what we take and what we don't |
 | [docs/paseo-plugin-api.md](docs/paseo-plugin-api.md) | The Paseo 0.11 plugin surfaces this design relies on |
 
