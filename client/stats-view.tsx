@@ -12,7 +12,9 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { TICKET_STATUSES } from "../shared/project";
 import { compareTickets, parentOf, projectTotals, type ProjectTotals } from "../shared/stats";
 import { errorText, formatCost, formatDuration } from "./format";
+import { SectionHeading } from "./badges";
 import { useStats } from "./queries";
+import { SPACE } from "./spacing";
 import { FONT_SIZE } from "./type-scale";
 
 const STATUS_ORDER: readonly string[] = TICKET_STATUSES;
@@ -43,16 +45,16 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
   const styles = useMemo(
     () => ({
       root: { flex: 1, minHeight: 0 },
-      table: { width: ticketWidth + statusWidth + NUMBERS_WIDTH + 24, padding: 12 },
-      row: { flexDirection: "row" as const, alignItems: "center" as const, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: colors.border },
+      table: { width: ticketWidth + statusWidth + NUMBERS_WIDTH + 2 * SPACE.lg, padding: SPACE.lg, paddingTop: SPACE.md },
+      row: { flexDirection: "row" as const, alignItems: "center" as const, paddingVertical: SPACE.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
       header: { color: colors.foregroundMuted, fontSize: FONT_SIZE.micro, fontWeight: "700" as const },
-      cell: { color: colors.foreground, fontSize: FONT_SIZE.small, paddingRight: 8 },
-      total: { color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "700" as const, paddingRight: 8 },
+      cell: { color: colors.foreground, fontSize: FONT_SIZE.small, paddingRight: SPACE.sm },
+      total: { color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "700" as const, paddingRight: SPACE.sm },
       id: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
       under: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
-      detail: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, paddingVertical: 6, paddingLeft: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
-      note: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, padding: 12 },
-      error: { color: colors.statusDanger, padding: 12 },
+      detail: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, paddingVertical: SPACE.sm, paddingLeft: SPACE.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+      note: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, padding: SPACE.lg },
+      error: { color: colors.statusDanger, padding: SPACE.lg },
     }),
     [colors, ticketWidth, statusWidth],
   );
@@ -77,6 +79,9 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
 
   return (
     <ScrollView style={styles.root}>
+      <View style={{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg }}>
+        <SectionHeading theme={theme} icon="ChartColumn" text={`Time and cost · ${ticketsLabel}`} />
+      </View>
       <ScrollView horizontal contentContainerStyle={styles.table}>
         <View>
           <View style={styles.row}>
@@ -107,7 +112,7 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
             return (
               <View key={summary.ticket}>
                 <Pressable accessibilityRole="button" style={styles.row} onPress={() => setOpen(expanded ? null : summary.ticket)}>
-                  <View style={{ width: ticketWidth, paddingLeft: child ? 14 : 0, paddingRight: 8 }}>
+                  <View style={{ width: ticketWidth, paddingLeft: child ? SPACE.lg : 0, paddingRight: SPACE.sm }}>
                     <Text style={styles.cell} numberOfLines={1}>
                       <Text style={styles.id}>
                         {expanded ? "▾" : "▸"} {summary.ticket}

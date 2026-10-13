@@ -11,9 +11,11 @@ import { ScrollView, Text, View } from "react-native";
 
 import { listOpenDecisions, type Card, type ProjectSummary } from "../shared/contracts";
 import { AlertCard } from "./alert-card";
+import { SectionHeading } from "./badges";
 import { useBoard, useRefreshBoard } from "./board-data";
 import { walkOrder } from "./walk-order";
 import { DecisionCard } from "./decision-card";
+import { SPACE } from "./spacing";
 import { SyncProblemCard } from "./sync-problem-card";
 import { TicketCard } from "./ticket-card";
 import { FONT_SIZE } from "./type-scale";
@@ -36,20 +38,21 @@ export function Inbox({
   const [step, setStep] = useState(0);
   const ordered = useMemo(() => walkOrder(decisions.data?.decisions ?? []), [decisions.data]);
   const { colors } = theme;
-  const heading = { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "700" as const, letterSpacing: 0.5 };
   const refetch = () => void decisions.refetch();
 
   if (walking) {
     const current = ordered[Math.min(step, ordered.length - 1)];
     return (
-      <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ padding: 14, gap: 10, maxWidth: 760, width: "100%", alignSelf: "center" }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Text style={[heading, { flex: 1 }]}>
-            WALK ME THROUGH · {ordered.length === 0 ? "nothing open" : `${Math.min(step, ordered.length - 1) + 1} of ${ordered.length}`}
-          </Text>
+      <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ padding: SPACE.lg, gap: SPACE.md, maxWidth: 760, width: "100%", alignSelf: "center" }}>
+        <SectionHeading
+          theme={theme}
+          icon="ListChecks"
+          color={colors.accent}
+          text={`Walk me through · ${ordered.length === 0 ? "nothing open" : `${Math.min(step, ordered.length - 1) + 1} of ${ordered.length}`}`}
+        >
           <IconButton icon="ChevronRight" label="Skip" showLabel theme={theme} disabled={step >= ordered.length - 1} onPress={() => setStep((value) => value + 1)} />
           <IconButton icon="X" label="Done" showLabel theme={theme} onPress={() => setWalking(false)} />
-        </View>
+        </SectionHeading>
         {current === undefined ? (
           <Text style={{ color: colors.foregroundMuted }}>Every decision is answered.</Text>
         ) : (
@@ -60,9 +63,8 @@ export function Inbox({
   }
 
   return (
-    <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ padding: 14, gap: 12 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <Text style={[heading, { flex: 1 }]}>DECISIONS · {ordered.length}</Text>
+    <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ padding: SPACE.lg, gap: SPACE.lg }}>
+      <SectionHeading theme={theme} icon="MessageCircleQuestion" text={`Decisions · ${ordered.length}`} color={ordered.length === 0 ? colors.foregroundMuted : colors.statusWarning}>
         <IconButton
           icon="ListChecks"
           label="Walk me through"
@@ -75,7 +77,7 @@ export function Inbox({
             setWalking(true);
           }}
         />
-      </View>
+      </SectionHeading>
       {ordered.length === 0 ? <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small }}>No open decisions.</Text> : null}
       {ordered.map((decision) => (
         <DecisionCard key={decision.key} decision={decision} theme={theme} compact={compact} showAgent onAnswered={refetch} />
@@ -108,8 +110,8 @@ function InboxProject({
   const alerts = board.data?.alerts ?? [];
   if (waiting.length === 0 && syncProblem === null && alerts.length === 0) return null;
   return (
-    <View style={{ gap: 8 }}>
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "700" }}>{project.toUpperCase()}</Text>
+    <View style={{ gap: SPACE.md }}>
+      <SectionHeading theme={theme} icon="FolderKanban" text={project} />
       {syncProblem === null ? null : (
         <SyncProblemCard
           project={project}

@@ -9,7 +9,7 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import type { PluginScreenProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
-import { useToast } from "@getpaseo/plugin/client/react-native";
+import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
@@ -24,6 +24,7 @@ import { OwnerPane } from "./owner-pane";
 import { PaneHeader } from "./pane-header";
 import { ProjectSetup } from "./project-setup";
 import { useProjects, useRefreshProjects } from "./queries";
+import { SPACE } from "./spacing";
 import { StatsView } from "./stats-view";
 import { FONT_SIZE } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
@@ -67,21 +68,37 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   const styles = useMemo(
     () => ({
       root: { flex: 1, backgroundColor: colors.surface0 },
-      tabs: { flexDirection: "row" as const, gap: 4, paddingHorizontal: 10, paddingTop: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
-      tab: { paddingHorizontal: 12, paddingVertical: 8, borderTopLeftRadius: 8, borderTopRightRadius: 8 },
+      tabs: { flexDirection: "row" as const, gap: SPACE.xs, paddingHorizontal: SPACE.md, paddingTop: SPACE.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
+      tab: {
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: SPACE.sm,
+        paddingHorizontal: SPACE.lg,
+        paddingVertical: SPACE.md,
+        borderTopLeftRadius: 8,
+        borderTopRightRadius: 8,
+      },
       tabActive: { backgroundColor: colors.surface2 },
-      tabText: { color: colors.foreground, fontSize: FONT_SIZE.body },
+      tabText: { color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" as const },
       tabMuted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.body },
+      badge: { minWidth: 18, alignItems: "center" as const, paddingHorizontal: SPACE.xs + 1, borderRadius: 9, backgroundColor: colors.statusWarning },
+      badgeText: { color: colors.surface0, fontSize: FONT_SIZE.micro, fontWeight: "700" as const },
       body: { flex: 1, minHeight: 0 },
-      error: { color: colors.statusDanger, padding: 16 },
+      error: { color: colors.statusDanger, padding: SPACE.lg },
     }),
     [colors],
   );
 
-  function tab(key: string, label: string, active: boolean, onPress: () => void) {
+  function tab(key: string, label: string, icon: string, active: boolean, onPress: () => void, count = 0) {
     return (
-      <Pressable key={key} accessibilityRole="tab" style={[styles.tab, active ? styles.tabActive : null]} onPress={onPress}>
-        <Text style={active ? styles.tabText : styles.tabMuted}>{label}</Text>
+      <Pressable key={key} accessibilityRole="tab" accessibilityLabel={label === "" ? "Add a project" : label} style={[styles.tab, active ? styles.tabActive : null]} onPress={onPress}>
+        <Icon name={icon} size={15} color={active ? colors.foreground : colors.foregroundMuted} />
+        {label === "" ? null : <Text style={active ? styles.tabText : styles.tabMuted}>{label}</Text>}
+        {count > 0 ? (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{count}</Text>
+          </View>
+        ) : null}
       </Pressable>
     );
   }
@@ -90,22 +107,24 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
     // A phone: the project pill row only; Manager · Inbox · Board live inside the project view.
     <ScrollView horizontal style={{ flexGrow: 0 }} contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
       {list.map((summary) =>
-        tab(summary.config.project, summary.config.project, showing !== "setup" && current?.config.project === summary.config.project, () => choose(summary.config.project, "project")),
+        tab(summary.config.project, summary.config.project, "FolderKanban", showing !== "setup" && current?.config.project === summary.config.project, () => choose(summary.config.project, "project")),
       )}
-      {tab("+", "＋", showing === "setup", () => choose(selected, "setup"))}
+      {tab("+", "", "Plus", showing === "setup", () => choose(selected, "setup"))}
     </ScrollView>
   ) : (
     <ScrollView horizontal style={{ flexGrow: 0 }} contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
-      {list.length === 0 ? null : tab("inbox", "Inbox", showing === "inbox", () => choose(selected, "inbox"))}
+      {list.length === 0 ? null : tab("inbox", "Inbox", "Inbox", showing === "inbox", () => choose(selected, "inbox"))}
       {list.map((summary) =>
         tab(
           summary.config.project,
-          summary.needsYou > 0 ? `${summary.config.project} · ${summary.needsYou}` : summary.config.project,
+          summary.config.project,
+          "FolderKanban",
           (showing === "project" || showing === "settings") && current?.config.project === summary.config.project,
           () => choose(summary.config.project, "project"),
+          summary.needsYou,
         ),
       )}
-      {tab("+", "＋ project", showing === "setup", () => choose(selected, "setup"))}
+      {tab("+", "project", "Plus", showing === "setup", () => choose(selected, "setup"))}
     </ScrollView>
   );
 
@@ -209,15 +228,15 @@ function ProjectView({
     const needsYou = (board.data?.cards ?? []).filter((card) => card.column === "needs-you").length + (board.data?.alerts.length ?? 0) + (summary.trackerSyncProblem === null ? 0 : 1);
     return (
       <View style={{ flex: 1 }}>
-        <View style={{ padding: 8 }}>
+        <View style={{ paddingHorizontal: SPACE.md, paddingTop: SPACE.md, paddingBottom: SPACE.xs }}>
           <Segmented
             theme={theme}
             value={phoneTab}
             options={[
-              { value: "manager", label: "Manager" },
-              { value: "inbox", label: needsYou > 0 ? `Inbox ${needsYou}` : "Inbox" },
-              { value: "board", label: "Board" },
-              { value: "stats", label: "Stats" },
+              { value: "manager", label: "Manager", icon: "Bot" },
+              { value: "inbox", label: needsYou > 0 ? `Inbox ${needsYou}` : "Inbox", icon: "Inbox" },
+              { value: "board", label: "Board", icon: "LayoutDashboard" },
+              { value: "stats", label: "Stats", icon: "ChartColumn" },
             ]}
             onChange={choosePhoneTab}
           />
@@ -238,15 +257,15 @@ function ProjectView({
   }
   return (
     <View style={{ flex: 1, flexDirection: "row" }}>
-      <View style={{ width: "40%", minWidth: 340, borderRightWidth: 1, borderRightColor: theme.colors.border }}>{left}</View>
-      <View style={{ flex: 1 }}>
-        <View style={{ paddingHorizontal: 10, paddingTop: 10, flexDirection: "row" }}>
+      <View style={{ width: "40%", minWidth: 340, borderRightWidth: 1, borderRightColor: theme.colors.border, backgroundColor: theme.colors.surface0 }}>{left}</View>
+      <View style={{ flex: 1, backgroundColor: theme.colors.surface0 }}>
+        <View style={{ paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md, flexDirection: "row", borderBottomWidth: 1, borderBottomColor: theme.colors.border }}>
           <Segmented
             theme={theme}
             value={rightPane}
             options={[
-              { value: "board", label: "Board" },
-              { value: "stats", label: "Stats" },
+              { value: "board", label: "Board", icon: "LayoutDashboard" },
+              { value: "stats", label: "Stats", icon: "ChartColumn" },
             ]}
             onChange={(value) => {
               remembered.rightPane = value;
@@ -289,7 +308,7 @@ function ManagerPane({
     return (
       <View style={{ flex: 1 }}>
         {header}
-        <Text style={{ color: theme.colors.foregroundMuted, padding: 16 }}>This project has no manager running. Start one from the project's settings (⚙).</Text>
+        <Text style={{ color: theme.colors.foregroundMuted, padding: SPACE.lg }}>This project has no manager running. Start one from the project's settings (⚙).</Text>
       </View>
     );
   }
@@ -298,7 +317,7 @@ function ManagerPane({
     <View style={{ flex: 1 }}>
       {header}
       {summary.trackerSyncProblem === null ? null : (
-        <Text style={{ color: theme.colors.statusWarning, paddingHorizontal: 12, paddingVertical: 6 }}>Ticket sync paused; see Needs you on the board.</Text>
+        <Text style={{ color: theme.colors.statusWarning, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm }}>Ticket sync paused; see Needs you on the board.</Text>
       )}
       <AgentChat
         agent={{ id: manager.id, updatedAt: manager.updatedAt, pendingPermissions: manager.pendingPermissions, status: manager.status }}
