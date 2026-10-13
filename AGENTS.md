@@ -12,8 +12,10 @@ Taro project, so the plugin you change is the one supervising you: change it car
   the root other than the two entries fails Paseo's compile.
 - No runtime dependencies: everything is a devDependency (`server/host-imports.test.ts` guards it).
   Paseo types come from `server/host-types.ts`, never `@getpaseo/client` in reachable code.
-- RPC wire names match `/^[a-z][a-z0-9._-]*$/`. Colours only from `theme.colors`. In client code,
-  never capture a `for…of` loop variable in a closure (Hermes); use `.map`.
+- RPC wire names match `/^[a-z][a-z0-9._-]*$/`. Colours only from `theme.colors`.
+- Client code reaches the phone's Hermes from source, without Metro: no classes (use a factory
+  function returning an object), and never capture a `for…of` loop variable in a closure (use
+  `.map`). `server/client-bundle.test.ts` compiles the client as Paseo does and fails on either.
 - Agent-facing text lives in `skill/` (what agents read) and `templates/` (what the plugin writes or
   sends), never in code.
 - Comments explain why, briefly. Full identifiers, no abbreviations.

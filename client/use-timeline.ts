@@ -1,7 +1,7 @@
 import { usePaseo } from "@getpaseo/plugin/client";
 import { useEffect, useRef, useState } from "react";
 
-import { TimelineCache, cacheable } from "./timeline-cache";
+import { cacheable, createTimelineCache } from "./timeline-cache";
 import type { TimelinePage, TimelineEntry } from "./transcript-rows";
 
 /** Wait for a pause in the stream before re-reading, so one burst is one read. */
@@ -27,7 +27,7 @@ export interface AgentTimeline {
 type CachedRead = Pick<AgentTimeline, "entries" | "agent" | "hasOlder">;
 
 /** Module-wide, so it outlives the chat: the host remounts the screen and the pane on every switch. */
-const cache = new TimelineCache<CachedRead>();
+const cache = createTimelineCache<CachedRead>();
 
 /**
  * The daemon's timeline for one agent, re-read shortly after any stream event.
