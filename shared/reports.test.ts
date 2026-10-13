@@ -89,3 +89,155 @@ describe("parseDecisionBlocks", () => {
     expect(decision?.problems).toEqual(["recommended names no option"]);
   });
 });
+
+/** TR-007's scope-approval block, verbatim from its owner's transcript (agent 0a0ed21c): the card showed only "|". */
+const TR_007_BLOCK = [
+  "```decision",
+  "id: scope-approval",
+  "question: Approve the plan to save turn start times to disk for TR-007?",
+  "why: |",
+  "  Turn start times would be saved in state/stats.json next to the ticket data, under the same lock. A turn that spans a reload then gets its full duration. Older stats files that lack the new field still load.",
+  "  When the plugin starts, it drops the saved start of any agent that is no longer mid-turn, because that turn ended while the plugin was down; pairing it with a later end would overcount.",
+  "  A vitest test covers three cases: a reload mid-turn, a missing start, and a dropped stale start. I'll also check it on a throwaway daemon and record the result in the build log. Complexity is medium because this touches stored data, so it gets one independent review.",
+  "  Not included: correcting TR-001's existing figures, or turns that start and end while the plugin is down (those still go uncounted).",
+  "blocking: true",
+  "options:",
+  "  - label: Approve",
+  "    prompt: Approve",
+  "    consequence: I build it as proposed",
+  "  - label: Change…",
+  "    prompt: Change…",
+  "  - label: Split into children",
+  "    prompt: Split into children",
+  "recommended: Approve",
+  "reason: Paseo's turn-end hook gives no timestamps, so saving the start times is the only reliable source that doesn't need an extra fetch on every turn",
+  "```",
+  "",
+  "waiting: scope approval for TR-007",
+].join("\n");
+
+function decisionOf(...lines: string[]) {
+  const [decision] = parseDecisionBlocks(["```decision", ...lines, "```"].join("\n"));
+  if (decision === undefined) throw new Error("no decision parsed");
+  return decision;
+}
+
+describe("parseDecisionBlocks multi-line values", () => {
+  it("keeps every line of TR-007's literal why", () => {
+    const [decision] = parseDecisionBlocks(TR_007_BLOCK);
+    expect(decision?.why).toBe(
+      [
+        "Turn start times would be saved in state/stats.json next to the ticket data, under the same lock. A turn that spans a reload then gets its full duration. Older stats files that lack the new field still load.",
+        "When the plugin starts, it drops the saved start of any agent that is no longer mid-turn, because that turn ended while the plugin was down; pairing it with a later end would overcount.",
+        "A vitest test covers three cases: a reload mid-turn, a missing start, and a dropped stale start. I'll also check it on a throwaway daemon and record the result in the build log. Complexity is medium because this touches stored data, so it gets one independent review.",
+        "Not included: correcting TR-001's existing figures, or turns that start and end while the plugin is down (those still go uncounted).",
+      ].join("\n"),
+    );
+    expect(decision).toMatchObject({ id: "scope-approval", blocking: true, recommended: "Approve", problems: [] });
+    expect(decision?.options).toEqual([
+      { label: "Approve", prompt: "Approve", consequence: "I build it as proposed" },
+      { label: "Change…", prompt: "Change…", consequence: "" },
+      { label: "Split into children", prompt: "Split into children", consequence: "" },
+    ]);
+  });
+
+  it("reads | and > for every top-level field", () => {
+    const decision = decisionOf(
+      "id: >-",
+      "  fee-storage",
+      "question: >",
+      "  Store fees per trade",
+      "  or aggregate hourly?",
+      "why: |",
+      "  Hourly loses audit.",
+      "",
+      "  Per trade is bigger.",
+      "blocking: |-",
+      "  true",
+      "options:",
+      "  - label: Per trade",
+      "recommended: >",
+      "  Per trade",
+      "reason: |+",
+      "  audits need it",
+      "",
+      "default: >",
+      "  Per",
+      "  trade",
+    );
+    expect(decision).toMatchObject({
+      id: "fee-storage",
+      question: "Store fees per trade or aggregate hourly?",
+      why: "Hourly loses audit.\n\nPer trade is bigger.",
+      blocking: true,
+      recommended: "Per trade",
+      reason: "audits need it",
+      default: "Per trade",
+      problems: [],
+    });
+  });
+
+  it("reads | and > for every option field, including the one on the - line", () => {
+    const decision = decisionOf(
+      "id: x",
+      "question: Q",
+      "options:",
+      "  - label: >",
+      "      Per",
+      "      trade",
+      "    prompt: |",
+      "      Store fees per trade.",
+      "      Keep the audit.",
+      "    consequence: >-",
+      "      full",
+      "      audit",
+      "  - label: Hourly",
+      "    prompt: |",
+      "    consequence: small",
+      "recommended: Per trade",
+      "reason: r",
+    );
+    expect(decision.options).toEqual([
+      { label: "Per trade", prompt: "Store fees per trade.\nKeep the audit.", consequence: "full audit" },
+      { label: "Hourly", prompt: "Hourly", consequence: "small" },
+    ]);
+    expect(decision.problems).toEqual([]);
+  });
+
+  it("reads a scalar list item written over several lines", () => {
+    const decision = decisionOf("id: x", "question: Q", "options:", "  - |", "    A", "    B", "recommended: A", "reason: r");
+    expect(decision.options).toEqual([{ label: "A\nB", prompt: "A\nB", consequence: "" }]);
+  });
+
+  it("folds > the YAML way: blank lines and more-indented lines keep their breaks", () => {
+    const decision = decisionOf("why: >", "  one", "  two", "", "  three", "    indented", "  four");
+    expect(decision.why).toBe("one two\nthree\n  indented\nfour");
+  });
+
+  it("honours an indentation indicator and keeps content that looks like a key or a comment", () => {
+    const decision = decisionOf("why: |2  # a header comment", "    indented line", "  options: none", "  # not a comment here", "question: Q");
+    expect(decision.why).toBe("  indented line\noptions: none\n# not a comment here");
+    expect(decision.question).toBe("Q");
+    expect(decision.options).toEqual([]);
+  });
+
+  it("folds plain and quoted values continued on indented lines", () => {
+    const decision = decisionOf(
+      "question: Store fees per trade",
+      "  or aggregate hourly?",
+      'why: "Hourly loses audit;',
+      '  per-trade is \\"bigger\\""',
+      "reason:",
+      "  audits need it",
+      "options:",
+      "  - label: Per",
+      "      trade",
+      "    consequence: 'it''s",
+      "      full'",
+    );
+    expect(decision.question).toBe("Store fees per trade or aggregate hourly?");
+    expect(decision.why).toBe('Hourly loses audit; per-trade is "bigger"');
+    expect(decision.reason).toBe("audits need it");
+    expect(decision.options).toEqual([{ label: "Per trade", prompt: "Per trade", consequence: "it's full" }]);
+  });
+});

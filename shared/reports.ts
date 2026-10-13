@@ -81,31 +81,104 @@ function unquote(value: string): string {
   return trimmed.replace(/\s+#\s.*$/, "").trim();
 }
 
+const KEY_VALUE = /^([A-Za-z_]+)\s*:\s*(.*)$/;
+/** A block scalar header: `|` or `>`, then chomping and indentation indicators in either order, then an optional comment. */
+const BLOCK_HEADER = /^([|>])([+-]?)([1-9]?)([+-]?)\s*(?:#.*)?$/;
+
+function indentOf(line: string): number {
+  return line.length - line.trimStart().length;
+}
+
+/**
+ * YAML folding: lines join with a space, each blank line becomes a line
+ * break, and lines more indented than the rest keep their breaks.
+ */
+function fold(lines: string[]): string {
+  let text = "";
+  let previous: string | null = null;
+  let blanks = 0;
+  for (const line of lines) {
+    if (line.trim() === "") {
+      blanks++;
+      continue;
+    }
+    if (previous !== null) {
+      const keepsBreak = /^\s/.test(previous) || /^\s/.test(line);
+      text += blanks > 0 ? "\n".repeat(blanks) : keepsBreak ? "\n" : " ";
+    }
+    text += line;
+    previous = line;
+    blanks = 0;
+  }
+  return text;
+}
+
+/**
+ * The value starting after `key:` on line `start - 1`, with the lines that
+ * continue it: every following line indented past `keyColumn` (blank lines
+ * included). Handles `|` / `>` block scalars and plain or quoted values
+ * written over several lines. Trailing line breaks are dropped whatever the
+ * chomping indicator says, since values are shown as text and matched
+ * against labels.
+ */
+function readValue(lines: string[], start: number, keyColumn: number, rest: string): { value: string; next: number } {
+  let next = start;
+  for (let index = start; index < lines.length; index++) {
+    const line = lines[index] ?? "";
+    if (line.trim() === "") continue;
+    if (indentOf(line) <= keyColumn) break;
+    next = index + 1;
+  }
+  const continuation = lines.slice(start, next);
+  const header = BLOCK_HEADER.exec(rest.trim());
+  if (header !== null) {
+    const indicator = header[3] ?? "";
+    const firstContent = continuation.find((line) => line.trim() !== "");
+    const contentIndent = indicator !== "" ? keyColumn + Number(indicator) : firstContent === undefined ? 0 : indentOf(firstContent);
+    // A line indented less than the content but past the key is lenient input, kept without its indentation.
+    const content = continuation.map((line) => (indentOf(line) >= contentIndent ? line.slice(contentIndent) : line.trimStart()));
+    const text = header[1] === "|" ? content.join("\n") : fold(content);
+    return { value: text.replace(/\s+$/, ""), next };
+  }
+  const first = rest.trim();
+  const quoted = first.startsWith('"') || first.startsWith("'");
+  // A comment line ends a plain value in YAML; inside quotes it is text.
+  const parts = continuation.map((line) => line.trim()).filter((line) => quoted || !line.startsWith("#"));
+  return { value: unquote(fold(first === "" ? parts : [first, ...parts])), next };
+}
+
 /**
  * A lenient reader for the block's small YAML shape: top-level `key: value`
- * pairs and an `options:` list of `- label: …` maps. Agents write it, so
- * anything unexpected is skipped rather than failing the whole block.
+ * pairs and an `options:` list of `- label: …` maps, where any value may run
+ * over several lines. Agents write it, so anything unexpected is skipped
+ * rather than failing the whole block.
  */
 export function parseDecisionBody(body: string): ParsedDecision {
   const fields: Record<string, string> = {};
   const options: Record<string, string>[] = [];
   let inOptions = false;
   let current: Record<string, string> | null = null;
-  for (const rawLine of body.split("\n")) {
+  const lines = body.split("\n");
+  let index = 0;
+  while (index < lines.length) {
+    const rawLine = lines[index] ?? "";
+    index++;
     if (rawLine.trim() === "" || rawLine.trim().startsWith("#")) continue;
-    const indented = /^\s/.test(rawLine);
+    const indent = indentOf(rawLine);
     const line = rawLine.trim();
-    if (!indented) {
+    if (indent === 0) {
       inOptions = false;
       current = null;
-      const pair = /^([A-Za-z_]+)\s*:\s*(.*)$/.exec(line);
+      const pair = KEY_VALUE.exec(line);
       if (pair?.[1] === undefined) continue;
       const key = pair[1].toLowerCase();
       if (key === "options" && (pair[2] ?? "").trim() === "") {
         inOptions = true;
         continue;
       }
-      fields[key] = unquote(pair[2] ?? "");
+      const read = readValue(lines, index, 0, pair[2] ?? "");
+      fields[key] = read.value;
+      index = read.next;
       continue;
     }
     if (!inOptions) continue;
@@ -113,20 +186,33 @@ export function parseDecisionBody(body: string): ParsedDecision {
     if (item !== null) {
       current = {};
       options.push(current);
-      const inline = /^([A-Za-z_]+)\s*:\s*(.*)$/.exec(item[1] ?? "");
-      if (inline?.[1] !== undefined) current[inline[1].toLowerCase()] = unquote(inline[2] ?? "");
-      else if ((item[1] ?? "").trim() !== "") current.label = unquote(item[1] ?? "");
+      const content = item[1] ?? "";
+      const inline = KEY_VALUE.exec(content);
+      if (inline?.[1] !== undefined) {
+        const read = readValue(lines, index, indent + line.length - content.length, inline[2] ?? "");
+        current[inline[1].toLowerCase()] = read.value;
+        index = read.next;
+      } else if (content.trim() !== "") {
+        const read = readValue(lines, index, indent, content);
+        current.label = read.value;
+        index = read.next;
+      }
       continue;
     }
-    const pair = /^([A-Za-z_]+)\s*:\s*(.*)$/.exec(line);
-    if (pair?.[1] !== undefined && current !== null) current[pair[1].toLowerCase()] = unquote(pair[2] ?? "");
+    const pair = KEY_VALUE.exec(line);
+    if (pair?.[1] !== undefined && current !== null) {
+      const read = readValue(lines, index, indent, pair[2] ?? "");
+      current[pair[1].toLowerCase()] = read.value;
+      index = read.next;
+    }
   }
 
   const problems: string[] = [];
   const parsedOptions: DecisionOption[] = [];
   for (const option of options) {
     const label = option.label ?? "";
-    const prompt = option.prompt ?? label;
+    // An empty prompt (`prompt: |` with nothing under it) sends the label.
+    const prompt = option.prompt === undefined || option.prompt === "" ? label : option.prompt;
     if (label === "") {
       problems.push("an option has no label");
       continue;

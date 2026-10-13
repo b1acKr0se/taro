@@ -49,6 +49,8 @@ default: Per trade         # what you do if the user does not answer (non-blocki
   choice the user did not, a child breakdown, a merge, anything destructive, a review dispute you
   cannot settle.
 - An option whose `prompt` ends with `…` asks the user to type (e.g. `Change…`).
+- A long value (any field, option fields too) may span lines as a YAML block scalar: `why: |`
+  keeps the line breaks, `why: >` joins the lines into one paragraph; indent the lines under it.
 - To withdraw a decision: a block with the same `id` and `status: withdrawn`.
 
 ### Presets
