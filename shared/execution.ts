@@ -70,6 +70,14 @@ export function pullRequestUrl(notes: string | null, finalSummary: string | null
   );
 }
 
+/**
+ * The final summary as the user reads it: without the record header an owner writes before it
+ * ("FINAL 2026-10-13T17:50Z —"), which is for the tracker, not for reading.
+ */
+export function finalSummaryBody(finalSummary: string): string {
+  return finalSummary.replace(/^\s*\**FINAL\**(?:\s+\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?)?\s*(?:[\u2014\u2013:-]+\s*)?/, "").trim();
+}
+
 /** What Accept tells the owner of a pull-request ticket: the PR and head to merge, or not to merge at all. */
 export function pullRequestMergeInstruction(notes: string | null, finalSummary: string | null): string {
   const head = reviewHead(notes);

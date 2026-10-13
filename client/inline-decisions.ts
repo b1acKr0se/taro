@@ -2,7 +2,7 @@
  * Where an agent's open decisions sit in its conversation (TR-026): no pinned area, each drawn under
  * the message that asked it and answered there. Pure.
  */
-import { parseDecisionBlocks } from "../shared/reports";
+import { parseDecisionBlocks, parseStatusLine } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import { walkOrder } from "./walk-order";
 
@@ -41,19 +41,41 @@ export function placeDecisions(rows: readonly { key: string; text: string }[], o
   return { byRow, unplaced, first: walkOrder(open)[0] ?? null };
 }
 
-/** How much of a decision card must show for it to count as on screen, in points. */
-const VISIBLE_SLACK = 60;
-
 /**
- * Whether the bottom of a row (where its decision cards are drawn) is on screen. `rowTop` and
- * `rowHeight` are in the transcript's content coordinates.
+ * The message where an owner presented its delivery, under which the acceptance card is drawn: the
+ * newest one ending `done:`. Null when no loaded message does (the card goes at the transcript end).
  */
-export function rowEndOnScreen(rowTop: number, rowHeight: number, scrollOffset: number, viewportHeight: number): boolean {
-  const end = rowTop + rowHeight;
-  return end > scrollOffset + VISIBLE_SLACK && end - VISIBLE_SLACK < scrollOffset + viewportHeight;
+export function deliveryRowKey(rows: readonly { key: string; text: string }[]): string | null {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index];
+    if (row !== undefined && parseStatusLine(row.text)?.state === "done") return row.key;
+  }
+  return null;
 }
 
-/** The scroll offset that puts a row's end, with its decision cards, at the bottom of the screen. */
-export function offsetShowingRowEnd(rowTop: number, rowHeight: number, viewportHeight: number): number {
-  return Math.max(0, rowTop + rowHeight - viewportHeight + 16);
+/** How much of a card must show for it to count as on screen, in points. */
+const VISIBLE_SLACK = 60;
+
+/** Room kept under a revealed card: the jump-to-end button floats over the transcript's foot. */
+const BOTTOM_ROOM = 56;
+
+/** Room kept above a card shown from its top. */
+const TOP_ROOM = 8;
+
+/**
+ * Whether enough of a card (a decision or the acceptance card) is on screen to see it. `cardTop`
+ * and `cardHeight` are in the transcript's content coordinates.
+ */
+export function cardOnScreen(cardTop: number, cardHeight: number, scrollOffset: number, viewportHeight: number): boolean {
+  const visible = Math.min(cardTop + cardHeight, scrollOffset + viewportHeight) - Math.max(cardTop, scrollOffset);
+  return visible >= Math.min(VISIBLE_SLACK, cardHeight);
+}
+
+/**
+ * The scroll offset that shows a card: its end above the jump-to-end button when it fits on the
+ * screen, else its top, where its heading is (the rest is read by scrolling down).
+ */
+export function offsetShowingCard(cardTop: number, cardHeight: number, viewportHeight: number): number {
+  if (cardHeight + BOTTOM_ROOM + TOP_ROOM > viewportHeight) return Math.max(0, cardTop - TOP_ROOM);
+  return Math.max(0, cardTop + cardHeight - viewportHeight + BOTTOM_ROOM);
 }

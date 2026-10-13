@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { executionMachine, executionWorkspace, noteRecords, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "./execution";
+import { executionMachine, executionWorkspace, finalSummaryBody, noteRecords, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "./execution";
 
 const managerRecord = "EXECUTION 2026-10-13T11:22Z — owner agent d86f, workspace wks_67ddffd9312aa95a, machine devbox, worktree /w/tr-001";
 // As a Haiku owner wrote it on the throwaway daemon: the relaunch could not find its workspace (TR-001).
@@ -127,5 +127,20 @@ describe("pullRequestMergeInstruction", () => {
     expect(pullRequestMergeInstruction("EXECUTION x — pr: https://github.com/o/r/pull/9", null)).toMatch(/^Do not merge: .*no review-head and PR https:\/\/github.com\/o\/r\/pull\/9/);
     expect(pullRequestMergeInstruction(`EXECUTION x — review-head: ${head}`, null)).toMatch(new RegExp(`^Do not merge: .*review-head ${head} and no PR URL`));
     expect(pullRequestMergeInstruction(null, null)).toMatch(/^Do not merge/);
+  });
+});
+
+describe("finalSummaryBody", () => {
+  it("drops the record header", () => {
+    expect(finalSummaryBody("FINAL 2026-10-13T17:50Z \u2014 Notes sync on save.\n\n## Limitations\n- none")).toBe("Notes sync on save.\n\n## Limitations\n- none");
+    expect(finalSummaryBody("FINAL 2026-10-13 - Notes sync on save.")).toBe("Notes sync on save.");
+    expect(finalSummaryBody("**FINAL** \u2014 Notes sync on save.")).toBe("Notes sync on save.");
+    expect(finalSummaryBody("FINAL\nNotes sync on save.")).toBe("Notes sync on save.");
+  });
+
+  it("keeps a summary without a header, and the word elsewhere", () => {
+    expect(finalSummaryBody("Notes sync on save. FINAL 2026-10-13 is when.")).toBe("Notes sync on save. FINAL 2026-10-13 is when.");
+    expect(finalSummaryBody("Finally, notes sync.")).toBe("Finally, notes sync.");
+    expect(finalSummaryBody("")).toBe("");
   });
 });

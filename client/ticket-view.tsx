@@ -10,6 +10,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { loadTicket } from "../shared/contracts";
+import { finalSummaryBody } from "../shared/execution";
 import { ticketMilestones, type Milestone } from "../shared/milestones";
 import { PhaseBadge, SectionHeading } from "./badges";
 import { EvidenceBlock } from "./evidence-view";
@@ -121,7 +122,7 @@ export function TicketView({ project, ticket, theme }: { project: string; ticket
             </View>,
           )}
       {data.evidence === null ? null : section("ClipboardCheck", "Evidence", <EvidenceBlock evidence={data.evidence} theme={theme} />)}
-      {data.finalSummary === null ? null : section("PackageCheck", "Delivery", <Markdown source={data.finalSummary} theme={theme} onOpenLink={openLink} />)}
+      {data.finalSummary === null ? null : section("PackageCheck", "Delivery", <Markdown source={finalSummaryBody(data.finalSummary)} theme={theme} onOpenLink={openLink} />)}
       {milestones.length === 0 ? null : section("Flag", "Milestones", <Timeline milestones={milestones} theme={theme} />)}
       {data.notes === null
         ? null

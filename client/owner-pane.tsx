@@ -15,9 +15,9 @@ import { Pressable, Text, View } from "react-native";
 import { tellAgent, type Card } from "../shared/contracts";
 import { decisionBlocksAsText, withoutDecisionBlocks } from "../shared/reports";
 import { AgentChat } from "./agent-chat";
-import { AcceptanceRow } from "./acceptance-row";
+import { AcceptanceCard } from "./acceptance-card";
+import { acceptanceReady } from "./card-calls";
 import { ContextMeter } from "./context-meter";
-import { Evidence } from "./evidence-view";
 import { defaultPaneAgent, paneAgents, paneAgentJob, roleIcon } from "./pane-agents";
 import { PaneHeader } from "./pane-header";
 import { SPACE } from "./spacing";
@@ -113,12 +113,21 @@ export function OwnerPane({
             agent={{ id: shown.id, updatedAt: shown.brief.updatedAt, pendingPermissions: shown.brief.pendingPermissions, status: shown.brief.status }}
             theme={theme}
             compact={compact}
-            placeholder={accepting && shown.id === card.owner?.id ? `Talk to ${card.id}'s owner, or type the changes you want…` : `Talk to ${card.id}'s ${paneAgentJob(shown.role)}…`}
+            placeholder={`Talk to ${card.id}'s ${paneAgentJob(shown.role)}…`}
             onSend={async (text) => {
               await tell({ agentId: shown.id, text });
             }}
             transformText={withoutDecisionBlocks}
             asks={{ decisions: shownAsks, onAnswered: onChanged }}
+            delivery={
+              accepting && shown.id === card.owner?.id
+                ? {
+                    card: <AcceptanceCard card={card} project={project} theme={theme} compact={compact} onChanged={onChanged} />,
+                    label: acceptanceReady(card) ? `${card.id} is ready to accept` : `${card.id} is not ready to accept`,
+                    ready: acceptanceReady(card),
+                  }
+                : undefined
+            }
             actions={
               <>
                 {askedElsewhere === undefined || askedElsewhereBy === undefined ? null : (
@@ -134,21 +143,7 @@ export function OwnerPane({
                     <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Open {askedElsewhereBy.label}</Text>
                   </Pressable>
                 )}
-                {/* Request changes sends the owner's draft, so the row sits on the owner's composer only. */}
-                {accepting && shown.id === card.owner?.id ? (
-                  <AcceptanceRow
-                    card={card}
-                    project={project}
-                    agentId={shown.id}
-                    theme={theme}
-                    compact={compact}
-                    evidence={<Evidence project={project} ticket={card.id} theme={theme} />}
-                    trailing={<ContextMeter theme={theme} used={shown.brief.contextUsedTokens} max={shown.brief.contextMaxTokens} />}
-                    onChanged={onChanged}
-                  />
-                ) : (
-                  <ContextMeter theme={theme} used={shown.brief.contextUsedTokens} max={shown.brief.contextMaxTokens} />
-                )}
+                <ContextMeter theme={theme} used={shown.brief.contextUsedTokens} max={shown.brief.contextMaxTokens} />
               </>
             }
           />

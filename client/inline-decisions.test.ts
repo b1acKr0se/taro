@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { StoredDecision } from "../shared/state";
-import { offsetShowingRowEnd, placeDecisions, rowEndOnScreen } from "./inline-decisions";
+import { cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
 
 function decision(id: string, parts: Partial<StoredDecision> = {}): StoredDecision {
   return {
@@ -96,22 +96,49 @@ describe("placeDecisions", () => {
   });
 });
 
-describe("rowEndOnScreen", () => {
-  it("is on screen when the row's end is inside the viewport with room for a card", () => {
-    expect(rowEndOnScreen(100, 200, 0, 600)).toBe(true);
-    expect(rowEndOnScreen(100, 200, 200, 600)).toBe(true);
+describe("cardOnScreen", () => {
+  it("is on screen when enough of the card shows", () => {
+    expect(cardOnScreen(100, 200, 0, 600)).toBe(true);
+    expect(cardOnScreen(100, 200, 200, 600)).toBe(true);
+    // A card taller than the screen, shown from its top.
+    expect(cardOnScreen(100, 1500, 92, 600)).toBe(true);
+    // A card shorter than the slack, wholly shown.
+    expect(cardOnScreen(100, 40, 0, 600)).toBe(true);
   });
 
-  it("is off screen above and below", () => {
-    expect(rowEndOnScreen(100, 200, 260, 600)).toBe(false);
-    expect(rowEndOnScreen(1000, 200, 0, 600)).toBe(false);
-    expect(rowEndOnScreen(560, 120, 0, 600)).toBe(false);
+  it("is off screen above and below, or with only a sliver showing", () => {
+    expect(cardOnScreen(100, 200, 300, 600)).toBe(false);
+    expect(cardOnScreen(1000, 200, 0, 600)).toBe(false);
+    expect(cardOnScreen(560, 120, 0, 600)).toBe(false);
+    expect(cardOnScreen(100, 200, 260, 600)).toBe(false);
   });
 });
 
-describe("offsetShowingRowEnd", () => {
-  it("puts the row's end at the bottom, never before the top", () => {
-    expect(offsetShowingRowEnd(1000, 200, 600)).toBe(616);
-    expect(offsetShowingRowEnd(0, 100, 600)).toBe(0);
+describe("offsetShowingCard", () => {
+  it("puts a card that fits above the jump-to-end button, never before the top", () => {
+    expect(offsetShowingCard(1000, 200, 600)).toBe(656);
+    expect(offsetShowingCard(0, 100, 600)).toBe(0);
+  });
+
+  it("shows a card taller than the screen from its top", () => {
+    expect(offsetShowingCard(1000, 900, 600)).toBe(992);
+    expect(offsetShowingCard(1000, 537, 600)).toBe(992);
+    expect(offsetShowingCard(1000, 536, 600)).toBe(1000 + 536 - 600 + 56);
+  });
+});
+
+describe("deliveryRowKey", () => {
+  it("is the newest message ending done:", () => {
+    const rows = [
+      { key: "r1", text: "First pass.\n\ndone: SC-002 ready for acceptance" },
+      { key: "r2", text: "Fixed the names.\n\ndone: SC-002 ready again" },
+      { key: "r3", text: "Thanks.\n\nwaiting: acceptance" },
+    ];
+    expect(deliveryRowKey(rows)).toBe("r2");
+  });
+
+  it("is null when nothing loaded presented", () => {
+    expect(deliveryRowKey([])).toBeNull();
+    expect(deliveryRowKey([{ key: "r1", text: "The build is done: all green.\n\nworking: tests" }])).toBeNull();
   });
 });

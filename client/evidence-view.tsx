@@ -1,7 +1,7 @@
 /**
  * The judged evidence of a ticket (TR-021): its checks, the review outcome, small screenshots and,
  * when incomplete, what is missing. No border, padding or heading of its own: the caller places it
- * (the Ticket tab's Evidence section, the Delivery view at the owner's composer).
+ * (the Ticket tab's Evidence section, the acceptance card in the owner's chat).
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -34,7 +34,7 @@ export function EvidenceBlock({
 }: {
   evidence: EvidenceView;
   theme: PluginTheme;
-  /** `lines`: a line per check (the Ticket tab); `inline`: checks and review on one line (the Delivery view). */
+  /** `lines`: a line per check, wrapped whole (the Ticket tab, the acceptance card); `inline`: checks and review on two lines at most. */
   layout?: "inline" | "lines";
   thumbnailHeight?: number;
 }) {
@@ -53,19 +53,19 @@ export function EvidenceBlock({
       ) : (
         <>
           {evidence.checks.map((check, index) => (
-            <Text key={index} numberOfLines={1} style={text}>
+            <Text key={index} style={text}>
               {check.command} — {check.result}
             </Text>
           ))}
           {evidence.review === null ? null : (
-            <Text numberOfLines={1} style={text}>
+            <Text style={text}>
               Review: {evidence.review}
             </Text>
           )}
         </>
       )}
       {evidence.screenshots.length === 0 && evidence.screenshotsNone !== null ? (
-        <Text numberOfLines={1} style={muted}>
+        <Text style={muted}>
           No screenshots: {evidence.screenshotsNone}
         </Text>
       ) : null}

@@ -1,0 +1,145 @@
+/**
+ * A delivered ticket's acceptance, drawn inline under the message where its owner presented it
+ * (TR-026), like a question: the delivery summary, the evidence, then Accept and Request changes… at
+ * its foot. Nothing is pinned and nothing is clipped. While the evidence is incomplete Accept is
+ * withheld (the server refuses it too) and the card names what is missing.
+ */
+import type { PluginTheme } from "@getpaseo/plugin";
+import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
+import { Icon, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
+import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { Pressable, Text, View } from "react-native";
+
+import { acceptTicket, loadTicket, requestChanges, type Card } from "../shared/contracts";
+import { evidenceSummary } from "../shared/evidence";
+import { finalSummaryBody } from "../shared/execution";
+import { acceptanceReady } from "./card-calls";
+import { EvidenceBlock } from "./evidence-view";
+import { errorText, pullRequestLabel } from "./format";
+import { Markdown } from "./markdown";
+import { SPACE } from "./spacing";
+import { FONT_SIZE, lineHeightFor } from "./type-scale";
+import { IconButton } from "./ui";
+
+export function AcceptanceCard({ card, project, theme, compact, onChanged }: { card: Card; project: string; theme: PluginTheme; compact: boolean; onChanged: () => void }) {
+  const toast = useToast();
+  const load = useRpc(loadTicket);
+  const accept = useRpc(acceptTicket);
+  const changes = useRpc(requestChanges);
+  // The same query as the Ticket tab and the evidence, so they share one fetch.
+  const detail = useQuery({ queryKey: ["taro", "ticket", project, card.id], queryFn: () => load({ project, ticket: card.id }), refetchInterval: 6_000 });
+  const [writing, setWriting] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const { colors } = theme;
+  const summary = detail.data?.finalSummary === null || detail.data?.finalSummary === undefined ? null : finalSummaryBody(detail.data.finalSummary);
+  const evidence = detail.data?.evidence ?? null;
+  const ready = acceptanceReady(card);
+  const openLink = (url: string) => void openExternalUrl(url).catch((caught: unknown) => toast.error(errorText(caught)));
+  const styles = useMemo(
+    () => ({
+      card: { borderWidth: 1, borderColor: ready ? colors.accent : colors.statusWarning, borderRadius: 10, padding: compact ? 10 : 12, gap: SPACE.sm + 2, backgroundColor: colors.surface1 },
+      head: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "center" as const, gap: SPACE.sm },
+      state: { color: ready ? colors.accent : colors.statusWarning, fontSize: FONT_SIZE.micro, fontWeight: "700" as const, letterSpacing: 0.5 },
+      muted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
+      section: { color: colors.foregroundMuted, fontSize: FONT_SIZE.micro, fontWeight: "700" as const, letterSpacing: 0.5 },
+      rule: { height: 1, backgroundColor: colors.border },
+      foot: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "center" as const, gap: SPACE.sm },
+      input: {
+        color: colors.foreground,
+        fontSize: FONT_SIZE.small,
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderRadius: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        minHeight: 64,
+        backgroundColor: colors.surface0,
+        textAlignVertical: "top" as const,
+      },
+    }),
+    [colors, compact, ready],
+  );
+
+  async function run(action: () => Promise<unknown>, done: string): Promise<void> {
+    setBusy(true);
+    try {
+      await action();
+      toast.show(done, { variant: "success" });
+      onChanged();
+    } catch (caught) {
+      toast.error(errorText(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.head}>
+        <Icon name={ready ? "PackageCheck" : "PackageX"} size={14} color={ready ? colors.accent : colors.statusWarning} />
+        <Text style={styles.state}>{ready ? `${card.id} IS READY TO ACCEPT` : `${card.id} IS NOT READY TO ACCEPT`}</Text>
+        {card.pullRequest === null ? null : (
+          <Pressable accessibilityRole="link" onPress={() => openLink(card.pullRequest ?? "")} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs }}>
+            <Icon name="GitPullRequest" size={12} color={colors.accent} />
+            <Text style={{ color: colors.accent, fontSize: FONT_SIZE.caption }}>{pullRequestLabel(card.pullRequest)}</Text>
+          </Pressable>
+        )}
+      </View>
+      {summary === null || summary === "" ? (
+        <Text style={styles.muted}>{detail.isLoading ? "Loading the delivery…" : "No delivery summary recorded."}</Text>
+      ) : (
+        <Markdown source={summary} theme={theme} onOpenLink={openLink} />
+      )}
+      {evidence === null ? null : (
+        <>
+          <View style={styles.rule} />
+          <Text style={styles.section}>EVIDENCE</Text>
+          <EvidenceBlock evidence={evidence} theme={theme} layout="lines" />
+        </>
+      )}
+      {/* The evidence names what is missing itself; until it loads, the card's summary does. */}
+      {ready || evidence !== null || card.evidence === null ? null : <Text style={[styles.muted, { color: colors.statusWarning }]}>{evidenceSummary(card.evidence)}</Text>}
+      <View style={styles.rule} />
+      {writing ? (
+        <TextInput
+          value={typed}
+          onChangeText={setTyped}
+          placeholder="What should change?"
+          placeholderTextColor={colors.foregroundMuted}
+          multiline
+          autoFocus
+          style={styles.input}
+        />
+      ) : null}
+      <View style={styles.foot}>
+        {ready && !writing ? (
+          <IconButton icon="Check" label="Accept" showLabel tone="accent" theme={theme} disabled={busy} onPress={() => void run(() => accept({ project, ticket: card.id }), `Accepted ${card.id}.`)} />
+        ) : null}
+        {writing ? (
+          <>
+            <IconButton
+              icon="Send"
+              label="Send changes"
+              showLabel
+              tone="accent"
+              theme={theme}
+              disabled={busy || typed.trim() === ""}
+              onPress={() =>
+                void run(async () => {
+                  await changes({ project, ticket: card.id, text: typed.trim() });
+                  setTyped("");
+                  setWriting(false);
+                }, "Sent to the owner.")
+              }
+            />
+            <IconButton icon="X" label="Cancel" showLabel theme={theme} disabled={busy} onPress={() => setWriting(false)} />
+          </>
+        ) : (
+          <IconButton icon="MessageSquare" label="Request changes…" showLabel theme={theme} disabled={busy} onPress={() => setWriting(true)} />
+        )}
+      </View>
+    </View>
+  );
+}

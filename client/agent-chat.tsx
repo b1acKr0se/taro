@@ -21,7 +21,7 @@ import { isSendKey, type WebKeyPressEvent } from "./keys";
 import { Markdown } from "./markdown";
 import { PermissionCard, usePendingRequests } from "./permission-card";
 import { matchSentImages } from "./sent-images";
-import { offsetShowingRowEnd, placeDecisions, rowEndOnScreen } from "./inline-decisions";
+import { cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
 import { groupRows, toolRunSummary, type Group } from "./tool-runs";
 import { transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
@@ -68,6 +68,7 @@ export function AgentChat({
   decorateRow,
   transformText,
   asks,
+  delivery,
 }: {
   agent: ChatAgent;
   theme: PluginTheme;
@@ -82,6 +83,12 @@ export function AgentChat({
    * is off screen. No pinned area.
    */
   asks?: { decisions: readonly StoredDecision[]; onAnswered: () => void };
+  /**
+   * A delivered ticket's acceptance card (TR-026), drawn under the message where the owner presented
+   * it and handled like a question: brought into view on opening when nothing is asked, and `label`
+   * as a jump link at the composer while it is off screen. `ready`: Accept is offered.
+   */
+  delivery?: { card: ReactNode; label: string; ready: boolean } | undefined;
 } & ChatComposer) {
   const toast = useToast();
   const timeline = useAgentTimeline(agent.id, `${agent.updatedAt}:${agent.pendingPermissions}`);
@@ -90,44 +97,57 @@ export function AgentChat({
   // The newest entry's position, not the count: the timeline is a tail and stops growing in length.
   const sentImages = useSentImages(agent.id, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0);
   const rowImages = useMemo(() => matchSentImages(rows, sentImages), [rows, sentImages]);
-  const places = useMemo(
-    () => (asks === undefined || asks.decisions.length === 0 ? null : placeDecisions(rows.filter((row) => row.kind === "mate"), asks.decisions)),
-    [rows, asks?.decisions],
-  );
-  const firstKey = places?.first?.key ?? null;
-  /** Where each open decision's message (or the cards at the end) lies in the transcript, by decision key. */
-  const decisionLayouts = useRef(new Map<string, LayoutRectangle>());
+  const mateRows = useMemo(() => rows.filter((row) => row.kind === "mate"), [rows]);
+  const places = useMemo(() => (asks === undefined || asks.decisions.length === 0 ? null : placeDecisions(mateRows, asks.decisions)), [mateRows, asks?.decisions]);
+  const deliveryKey = useMemo(() => (delivery === undefined ? null : deliveryRowKey(mateRows)), [mateRows, delivery === undefined]);
+  /** The acceptance card's place in the layouts, beside the decisions' keys. */
+  const deliveryTarget = `delivery:${agent.id}`;
+  /** What is brought into view and jumped to: the first open question, else the acceptance card. */
+  const firstKey = places?.first?.key ?? (delivery === undefined ? null : deliveryTarget);
+  /** Where each card lies in the transcript, by decision key (or the acceptance card's). */
+  const cardLayouts = useRef(new Map<string, LayoutRectangle>());
+  /** A message row's place in the transcript, and its cards' place in the row, by row key. */
+  const rowLayouts = useRef(new Map<string, LayoutRectangle>());
+  const rowCardLayouts = useRef(new Map<string, LayoutRectangle>());
   const [firstOnScreen, setFirstOnScreen] = useState(true);
   /**
-   * The decision brought into view when this agent's pane opened. Only it is scrolled to: a question
+   * The card brought into view when this agent's pane opened. Only it is scrolled to: a question
    * asked later, or the next after an answer, gets the jump link and leaves the reader where they are.
    */
-  const openingDecision = useRef<{ agentId: string; key: string } | null>(null);
+  const openingCard = useRef<{ agentId: string; key: string } | null>(null);
   const follow = useFollowEnd((offset, viewportHeight) => {
-    const layout = firstKey === null ? undefined : decisionLayouts.current.get(firstKey);
-    setFirstOnScreen(layout === undefined || rowEndOnScreen(layout.y, layout.height, offset, viewportHeight));
+    const layout = firstKey === null ? undefined : cardLayouts.current.get(firstKey);
+    setFirstOnScreen(layout === undefined || cardOnScreen(layout.y, layout.height, offset, viewportHeight));
   });
 
   /** Brings the first open decision into view on opening, and says whether the jump link is needed. */
   function placeFirst(): void {
-    const layout = firstKey === null ? undefined : decisionLayouts.current.get(firstKey);
+    const layout = firstKey === null ? undefined : cardLayouts.current.get(firstKey);
     if (firstKey === null || layout === undefined) return;
-    if (openingDecision.current?.agentId !== agent.id) openingDecision.current = { agentId: agent.id, key: firstKey };
-    if (openingDecision.current.key === firstKey) follow.revealRow(firstKey, layout, offsetShowingRowEnd);
-    setFirstOnScreen(rowEndOnScreen(layout.y, layout.height, follow.offset.current, follow.viewport.current));
+    if (openingCard.current?.agentId !== agent.id) openingCard.current = { agentId: agent.id, key: firstKey };
+    if (openingCard.current.key === firstKey) follow.revealRow(firstKey, layout, offsetShowingCard);
+    setFirstOnScreen(cardOnScreen(layout.y, layout.height, follow.offset.current, follow.viewport.current));
   }
 
-  function noteLayout(decisions: readonly StoredDecision[], layout: LayoutRectangle): void {
-    decisions.forEach((decision) => decisionLayouts.current.set(decision.key, layout));
+  function noteLayout(keys: readonly string[], layout: LayoutRectangle): void {
+    keys.forEach((key) => cardLayouts.current.set(key, layout));
     placeFirst();
+  }
+
+  /** Cards under a message: placed by the row (which moves as rows above lay out) plus their place in it. */
+  function noteRowLayout(rowKey: string, keys: readonly string[], part: "row" | "cards", layout: LayoutRectangle): void {
+    (part === "row" ? rowLayouts : rowCardLayouts).current.set(rowKey, layout);
+    const row = rowLayouts.current.get(rowKey);
+    const cards = rowCardLayouts.current.get(rowKey);
+    if (row !== undefined && cards !== undefined) noteLayout(keys, { x: row.x + cards.x, y: row.y + cards.y, width: cards.width, height: cards.height });
   }
 
   // Answering the first makes another first, whose row may not lay out again: the jump link needs to know.
   useEffect(placeFirst, [firstKey]);
 
   function jumpToFirst(): void {
-    const layout = firstKey === null ? undefined : decisionLayouts.current.get(firstKey);
-    if (layout !== undefined) follow.scrollTo(offsetShowingRowEnd(layout.y, layout.height, follow.viewport.current));
+    const layout = firstKey === null ? undefined : cardLayouts.current.get(firstKey);
+    if (layout !== undefined) follow.scrollTo(offsetShowingCard(layout.y, layout.height, follow.viewport.current));
   }
 
   function decisionCards(decisions: readonly StoredDecision[]) {
@@ -325,11 +345,18 @@ export function AgentChat({
       }
       case "mate": {
         const asked = places?.byRow.get(row.key) ?? [];
+        const presented = delivery !== undefined && row.key === deliveryKey;
+        const targets = [...asked.map((decision) => decision.key), ...(presented ? [deliveryTarget] : [])];
         return (
-          <View key={row.key} style={styles.agentRow} onLayout={asked.length === 0 ? undefined : (event) => noteLayout(asked, event.nativeEvent.layout)}>
+          <View key={row.key} style={styles.agentRow} onLayout={targets.length === 0 ? undefined : (event) => noteRowLayout(row.key, targets, "row", event.nativeEvent.layout)}>
             <Markdown source={transformText === undefined ? row.text : transformText(row.text)} theme={theme} onOpenLink={openLink} />
             {decorateRow === undefined ? null : decorateRow(row.text, row.key)}
-            {decisionCards(asked)}
+            {targets.length === 0 ? null : (
+              <View style={styles.agentRow} onLayout={(event) => noteRowLayout(row.key, targets, "cards", event.nativeEvent.layout)}>
+                {decisionCards(asked)}
+                {presented ? delivery.card : null}
+              </View>
+            )}
           </View>
         );
       }
@@ -362,8 +389,14 @@ export function AgentChat({
             groups.map(renderGroup)
           )}
           {places === null || places.unplaced.length === 0 ? null : (
-            <View style={styles.agentRow} onLayout={(event) => noteLayout(places.unplaced, event.nativeEvent.layout)}>
+            <View style={styles.agentRow} onLayout={(event) => noteLayout(places.unplaced.map((decision) => decision.key), event.nativeEvent.layout)}>
               {decisionCards(places.unplaced)}
+            </View>
+          )}
+          {/* The message that presented the delivery is older than the loaded timeline. */}
+          {delivery === undefined || deliveryKey !== null ? null : (
+            <View style={styles.agentRow} onLayout={(event) => noteLayout([deliveryTarget], event.nativeEvent.layout)}>
+              {delivery.card}
             </View>
           )}
           {pending.map((request) => (
@@ -382,6 +415,15 @@ export function AgentChat({
           </View>
         ) : (
           <View style={styles.composer}>
+            {firstOnScreen || places !== null || delivery === undefined ? null : (
+              <Pressable accessibilityRole="button" accessibilityLabel={`Show: ${delivery.label}`} style={styles.quick} onPress={jumpToFirst}>
+                <Icon name={delivery.ready ? "PackageCheck" : "PackageX"} size={13} color={delivery.ready ? theme.colors.accent : theme.colors.statusWarning} />
+                <Text style={[styles.lineText, { color: theme.colors.foreground }]} numberOfLines={1}>
+                  {delivery.label}
+                </Text>
+                <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Show</Text>
+              </Pressable>
+            )}
             {places?.first === null || places === null || firstOnScreen ? null : (
               <Pressable accessibilityRole="button" accessibilityLabel={`Show the question: ${places.first.question}`} style={styles.quick} onPress={jumpToFirst}>
                 <Icon name="Hand" size={13} color={places.first.blocking ? theme.colors.statusWarning : theme.colors.foregroundMuted} />

@@ -24,8 +24,10 @@ export function parseStatusLine(message: string): StatusLine | null {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line !== "" && !line.startsWith("```"));
-  for (const line of lines.slice(-STATUS_TAIL_LINES).reverse()) {
-    const match = /^[`*_]*(working|waiting|blocked|done|failed)[`*_]*\s*:\s*(.+?)[`*_]*$/i.exec(line);
+  // No for…of: the screen reads status lines too, and Hermes mis-scopes its loop variable.
+  const tail = lines.slice(-STATUS_TAIL_LINES).reverse();
+  for (let index = 0; index < tail.length; index += 1) {
+    const match = /^[`*_]*(working|waiting|blocked|done|failed)[`*_]*\s*:\s*(.+?)[`*_]*$/i.exec(tail[index] ?? "");
     if (match?.[1] !== undefined && match[2] !== undefined) {
       return { state: match[1].toLowerCase() as StatusState, text: match[2].trim() };
     }

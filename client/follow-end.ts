@@ -111,19 +111,19 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
   }
 
   /**
-   * Brings a row somewhere up the transcript into view (an open decision drawn under the message that
-   * asked it), its end at the bottom of the screen, and stops following the end; scrolling back down
-   * follows it again. The transcript is still laying out when the pane opens — rows below arrive, and
-   * a cached transcript is redrawn — so for a moment after the first call each new layout of the row
-   * scrolls to it again. `layout` is in the transcript's coordinates.
+   * Brings a card somewhere up the transcript into view (an open decision under the message that
+   * asked it, or the acceptance card), where `showing` puts it, and stops following the end;
+   * scrolling back down follows it again. The transcript is still laying out when the pane opens —
+   * rows below arrive, and a cached transcript is redrawn — so for a moment after the first call each
+   * new layout of the card scrolls to it again. `layout` is in the transcript's coordinates.
    */
-  function revealRow(id: string, layout: LayoutRectangle, showingEnd: (top: number, height: number, viewportHeight: number) => number): void {
+  function revealRow(id: string, layout: LayoutRectangle, showing: (top: number, height: number, viewportHeight: number) => number): void {
     const first = revealedAt.current.get(id);
     const now = Date.now();
     if (first === undefined) revealedAt.current.set(id, now);
     else if (!revealsAgain(first, now, readerScrolled.current)) return;
     pinnedToEnd.current = false;
-    const y = showingEnd(layout.y, layout.height, viewport.current);
+    const y = showing(layout.y, layout.height, viewport.current);
     revealOffsets.current.push(y);
     setTimeout(() => scroller.current?.scrollTo({ y, animated: false }), 0);
   }
