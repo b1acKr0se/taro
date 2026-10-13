@@ -95,9 +95,10 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
   (status Reviewing). Reviewers post findings and you post your fix summary as PR comments. When
   review is done, mark the PR ready. With only a self-review, open it ready. CI is not a gate.
 - **local-only delivery:** leave a clean branch that fast-forwards from the base branch.
-- Record `review-head: <sha>` (`gh pr view <url> --json headRefOid`) in EXECUTION, write the FINAL
-  summary (`--final-summary`) and move to **Awaiting acceptance**. The user accepts or requests
-  changes from the card.
+- Record `pr: <url>` and `review-head: <sha>` (the full `headRefOid` from `gh pr view <url> --json
+  headRefOid`) in a new EXECUTION record; Accept reads both from there. Write the FINAL summary
+  (`--final-summary`) and move to **Awaiting acceptance**. The user accepts or requests changes
+  from the card.
 - **Request changes:** the user's words arrive as a message. Back to In Progress; size the fix like
   a new task; return to Awaiting acceptance with a new review head.
 - **Accept:** if the message says to merge (accept-also-merges), merge only when the PR's
