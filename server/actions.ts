@@ -258,19 +258,35 @@ export class Actions {
       plan = planWith(new Set(pastOwners.flatMap((agent) => (agent.workspaceId ? [agent.workspaceId] : []))));
     }
 
+    let archivedAgents = 0;
     for (const { agent, ticket } of plan.archive) {
       const usage = agent.lastUsage;
       const statsTicket = agent.labels[TARO_LABELS.ticket] ?? ticket;
       for (const target of new Set([statsTicket, ticket])) {
         await this.stats.agentFinal(project, target, agent.id, usage?.totalCostUsd ?? null, usage?.contextWindowUsedTokens ?? null).catch(() => undefined);
       }
-      if (await paseo.agents.ref(agent.id).archive().then(() => true, () => false)) this.released.add(agent.id);
+      if (!(await paseo.agents.ref(agent.id).archive().then(() => true, () => false))) continue;
+      archivedAgents += 1;
+      this.released.add(agent.id);
       await this.state.forgetAgent(agent.id);
     }
-    for (const workspaceId of plan.workspaces) {
-      await paseo.workspaces.archive(workspaceId).catch((error: unknown) => {
-        console.warn(`[taro] could not archive workspace ${workspaceId}: ${error instanceof Error ? error.message : String(error)}`);
-      });
+    // Paseo archives a workspace with every agent in it: keep one where any agent still lives (the
+    // user's own, without Taro labels, or one whose archive just failed and is retried next time).
+    const occupied =
+      plan.workspaces.length === 0
+        ? new Set<string>()
+        : await listTaroAgents(paseo, {}).then(
+            (all) => new Set(all.filter((agent) => !this.released.has(agent.id)).flatMap((agent) => (agent.workspaceId ? [agent.workspaceId] : []))),
+            () => new Set(plan.workspaces),
+          );
+    let archivedWorkspaces = 0;
+    for (const workspaceId of plan.workspaces.filter((candidate) => !occupied.has(candidate))) {
+      await paseo.workspaces.archive(workspaceId).then(
+        () => {
+          archivedWorkspaces += 1;
+        },
+        (error: unknown) => console.warn(`[taro] could not archive workspace ${workspaceId}: ${error instanceof Error ? error.message : String(error)}`),
+      );
     }
     // Questions about a finished ticket are moot.
     const finished = new Set([...newlyDone, ...plan.archive.map((entry) => entry.ticket), ...plan.waiting.flatMap((agent) => doneTicketOf(agent.labels[TARO_LABELS.ticket], done) ?? [])]);
@@ -282,8 +298,15 @@ export class Actions {
       });
     }
     if (plan.archive.length > 0 || newlyDone.length > 0) {
-      const tickets = [...new Set([...newlyDone, ...plan.archive.map((entry) => entry.ticket)])].join(", ") || "Done tickets";
-      console.log(`[taro] ${project}: ${tickets}: archived ${plan.archive.length} agents and ${plan.workspaces.length} workspaces; ${plan.waiting.length} mid-turn, archived when their turn ends`);
+      const tickets = [...new Set([...newlyDone, ...plan.archive.map((entry) => entry.ticket)])].join(", ");
+      const failed = plan.archive.length - archivedAgents;
+      const kept = plan.workspaces.filter((candidate) => occupied.has(candidate)).length;
+      console.log(
+        `[taro] ${project}: ${tickets}: archived ${archivedAgents} agents and ${archivedWorkspaces} workspaces` +
+          (failed > 0 ? `; ${failed} failed to archive, retried on the next release` : "") +
+          (kept > 0 ? `; kept ${kept} workspaces another agent still uses` : "") +
+          `; ${plan.waiting.length} mid-turn, archived when their turn ends`,
+      );
     }
   }
 

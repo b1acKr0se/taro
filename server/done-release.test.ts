@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Actions } from "./actions";
-import { fetchLiveAgent, projectAgents, projectArchivedAgents } from "./agents";
+import { fetchLiveAgent, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
@@ -17,6 +17,7 @@ vi.mock("./agents", async (original) => ({
   fetchLiveAgent: vi.fn(async () => null),
   projectAgents: vi.fn(),
   projectArchivedAgents: vi.fn(async () => []),
+  listTaroAgents: vi.fn(),
 }));
 vi.mock("./projects", () => ({
   listProjectConfigs: async () => [{ project: "demo" }],
@@ -30,6 +31,8 @@ const agent = (id: string, ticketId: string, role: string, workspaceId: string, 
   ({ id, status, workspaceId, labels: { "taro.project": "demo", "taro.role": role, "taro.ticket": ticketId }, lastUsage: null }) as unknown as PaseoAgent;
 
 let live: PaseoAgent[];
+/** Agents in Paseo without Taro's labels, such as the user's own. */
+let others: PaseoAgent[];
 let archivedAgents: string[];
 let archivedWorkspaces: string[];
 let paseo: PaseoApi;
@@ -37,10 +40,12 @@ let actions: Actions;
 
 beforeEach(() => {
   live = [];
+  others = [];
   archivedAgents = [];
   archivedWorkspaces = [];
   vi.mocked(projectAgents).mockImplementation(async () => [...live]);
   vi.mocked(projectArchivedAgents).mockImplementation(async () => []);
+  vi.mocked(listTaroAgents).mockImplementation(async () => [...live, ...others]);
   vi.mocked(fetchLiveAgent).mockImplementation(async (_paseo, id) => live.find((candidate) => candidate.id === id) ?? null);
   paseo = {
     agents: {
@@ -100,17 +105,43 @@ describe("Done releases the ticket's agents", () => {
     expect(archivedWorkspaces).toEqual(["ws-1"]);
   });
 
-  it("tries again on the next release when archiving failed", async () => {
+  it("counts only real archives, keeps the workspace of a failed one and tries again on the next release", async () => {
     vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Done")]);
     await actions.primeStatuses();
     live = [agent("owner", "DM-1", "owner", "ws-1")];
     let failures = 1;
     const archive = paseo.agents.ref("owner").archive;
     paseo.agents.ref = (() => ({ archive: async () => (failures-- > 0 ? Promise.reject(new Error("busy")) : archive()) })) as unknown as PaseoApi["agents"]["ref"];
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     await actions.onTrackerChanged(paseo, "demo");
     expect(archivedAgents).toEqual([]);
+    expect(archivedWorkspaces).toEqual([]);
+    expect(log).toHaveBeenLastCalledWith(expect.stringContaining("archived 0 agents and 0 workspaces; 1 failed to archive, retried on the next release; kept 1 workspaces"));
     await actions.onAgentTurnEnded(paseo, "owner");
     expect(archivedAgents).toEqual(["owner"]);
+    expect(archivedWorkspaces).toEqual(["ws-1"]);
+    expect(log).toHaveBeenLastCalledWith("[taro] demo: DM-1: archived 1 agents and 1 workspaces; 0 mid-turn, archived when their turn ends");
+    log.mockRestore();
+  });
+
+  it("keeps a workspace where an agent without Taro's labels still lives", async () => {
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Done")]);
+    await actions.primeStatuses();
+    live = [agent("owner", "DM-1", "owner", "ws-1")];
+    others = [{ id: "mine", status: "idle", workspaceId: "ws-1", labels: {} } as unknown as PaseoAgent];
+    await actions.onTrackerChanged(paseo, "demo");
+    expect(archivedAgents).toEqual(["owner"]);
+    expect(archivedWorkspaces).toEqual([]);
+  });
+
+  it("keeps the workspaces when Paseo cannot list its agents", async () => {
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Done")]);
+    await actions.primeStatuses();
+    live = [agent("owner", "DM-1", "owner", "ws-1")];
+    vi.mocked(listTaroAgents).mockRejectedValue(new Error("offline"));
+    await actions.onTrackerChanged(paseo, "demo");
+    expect(archivedAgents).toEqual(["owner"]);
+    expect(archivedWorkspaces).toEqual([]);
   });
 
   it("leaves an agent alone at its turn end while its ticket is open", async () => {
