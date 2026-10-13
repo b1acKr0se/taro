@@ -1,9 +1,9 @@
 /**
  * The project's board (decision 9): Needs you · Working · Stalled · Queued ·
  * Done, always all five, side by side as equal panels on a wide screen; on a
- * phone one column at a time behind chips. The manager's own open decisions sit above it, and its
- * suggestions in a card of their own that sends one to the manager when tapped. Done
- * cards carry their ticket's key stats.
+ * phone one column at a time behind chips. The manager's own open decisions sit above it, one line
+ * each that opens the manager's chat where they are answered (TR-022), and its suggestions in a card
+ * of their own that sends one to the manager when tapped. Done cards carry their ticket's key stats.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -16,7 +16,6 @@ import { dismissSuggestion, tellManager, type Card, type ProjectSummary } from "
 import { AlertCard } from "./alert-card";
 import { SectionHeading } from "./badges";
 import { useBoard, useRefreshBoard } from "./board-data";
-import { DecisionCard } from "./decision-card";
 import { errorText } from "./format";
 import { useStats } from "./queries";
 import { SPACE } from "./spacing";
@@ -36,12 +35,15 @@ export function ProjectBoard({
   compact,
   selectedTicket,
   onOpenTicket,
+  onOpenManager,
 }: {
   summary: ProjectSummary;
   theme: PluginTheme;
   compact: boolean;
   selectedTicket: string | null;
   onOpenTicket: (card: Card) => void;
+  /** Shows the manager's chat, where its decisions are pinned. */
+  onOpenManager: () => void;
 }) {
   const project = summary.config.project;
   const board = useBoard(project);
@@ -59,6 +61,20 @@ export function ProjectBoard({
       // On a phone the list it sits in already has the padding.
       top: { paddingHorizontal: compact ? 0 : SPACE.lg, paddingTop: compact ? 0 : SPACE.lg, gap: SPACE.md },
       section: { gap: SPACE.sm },
+      ask: {
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: SPACE.sm,
+        paddingHorizontal: SPACE.md,
+        paddingVertical: SPACE.sm,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.surface1,
+      },
+      askText: { flex: 1, color: colors.foreground, fontSize: FONT_SIZE.small },
+      askNote: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
+      askAction: { color: colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
       columns: { flexDirection: "row" as const, gap: SPACE.md, padding: SPACE.lg, alignItems: "flex-start" as const },
       panel: { backgroundColor: colors.surface1, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: SPACE.md, gap: SPACE.md },
       columnHead: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm, paddingBottom: SPACE.xs },
@@ -152,6 +168,7 @@ export function ProjectBoard({
       <View style={styles.top}>
         {syncProblem === null ? null : (
           <SyncProblemCard
+            startFolded
             project={project}
             problem={syncProblem}
             theme={theme}
@@ -174,7 +191,20 @@ export function ProjectBoard({
           <View style={styles.section}>
             <SectionHeading theme={theme} icon="MessageCircleQuestion" text="The manager asks" color={colors.statusWarning} />
             {managerDecisions.map((decision) => (
-              <DecisionCard key={decision.key} decision={decision} theme={theme} compact={compact} onAnswered={refresh} showAgent />
+              <Pressable
+                key={decision.key}
+                accessibilityRole="button"
+                accessibilityLabel={`Answer the manager: ${decision.question}`}
+                style={[styles.ask, decision.blocking ? { borderColor: withAlpha(colors.statusWarning, 0.6) } : null]}
+                onPress={onOpenManager}
+              >
+                <Icon name="Hand" size={13} color={decision.blocking ? colors.statusWarning : colors.foregroundMuted} />
+                <Text style={styles.askText} numberOfLines={1}>
+                  {decision.question}
+                </Text>
+                {compact ? null : <Text style={styles.askNote}>{decision.blocking ? "blocking" : "not blocking"}</Text>}
+                <Text style={styles.askAction}>Answer →</Text>
+              </Pressable>
             ))}
           </View>
         )}

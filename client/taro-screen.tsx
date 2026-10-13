@@ -15,7 +15,9 @@ import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { catchUp, compactManager, tellManager, type Card, type ProjectSummary } from "../shared/contracts";
+import type { StoredDecision } from "../shared/state";
 import { AgentChat } from "./agent-chat";
+import { AsksYou } from "./asks-you";
 import { useBoard, useRefreshBoard } from "./board-data";
 import { ProjectBoard } from "./board";
 import { ContextMeter } from "./context-meter";
@@ -226,10 +228,23 @@ function ProjectView({
     setBoardHiddenState(hidden);
   };
   const onShowBoard = compact || layout.board ? null : () => setBoardHidden(false);
+  const choosePhoneTab = (value: PhoneTab) => {
+    remembered.phoneTab = value;
+    setPhoneTab(value);
+  };
 
   const left =
     openCard === null ? (
-      <ManagerPane summary={summary} theme={theme} compact={compact} onSettings={onSettings} onOpenAgent={onOpenAgent} onShowBoard={onShowBoard} />
+      <ManagerPane
+        summary={summary}
+        decisions={board.data?.managerDecisions ?? []}
+        theme={theme}
+        compact={compact}
+        onSettings={onSettings}
+        onOpenAgent={onOpenAgent}
+        onShowBoard={onShowBoard}
+        onChanged={refreshBoard}
+      />
     ) : (
       <OwnerPane
         card={openCard}
@@ -243,14 +258,20 @@ function ProjectView({
         onShowBoard={onShowBoard}
       />
     );
-  const boardView = <ProjectBoard summary={summary} theme={theme} compact={compact} selectedTicket={ticket} onOpenTicket={(card) => onTicket(card.id)} />;
+  const boardView = (
+    <ProjectBoard
+      summary={summary}
+      theme={theme}
+      compact={compact}
+      selectedTicket={ticket}
+      onOpenTicket={(card) => onTicket(card.id)}
+      // The manager's questions are answered above its chat: on a phone its tab, on a wide screen the left pane.
+      onOpenManager={() => (compact ? choosePhoneTab("manager") : onTicket(null))}
+    />
+  );
 
   if (compact) {
     if (openCard !== null) return left;
-    const choosePhoneTab = (value: PhoneTab) => {
-      remembered.phoneTab = value;
-      setPhoneTab(value);
-    };
     const needsYou = (board.data?.cards ?? []).filter((card) => card.column === "needs-you").length + (board.data?.alerts.length ?? 0) + (summary.trackerSyncProblem === null ? 0 : 1);
     return (
       <View style={{ flex: 1 }}>
@@ -321,19 +342,24 @@ function ProjectView({
 
 function ManagerPane({
   summary,
+  decisions,
   theme,
   compact,
   onSettings,
   onOpenAgent,
   onShowBoard,
+  onChanged,
 }: {
   summary: ProjectSummary;
+  /** The manager's open decisions, pinned above its chat (TR-022). */
+  decisions: readonly StoredDecision[];
   theme: PluginTheme;
   compact: boolean;
   onSettings: () => void;
   onOpenAgent: ((agentId: string) => void) | null;
   /** Brings the hidden board back; null while it shows. */
   onShowBoard: (() => void) | null;
+  onChanged: () => void;
 }) {
   const toast = useToast();
   const tell = useRpc(tellManager);
@@ -363,6 +389,7 @@ function ManagerPane({
       {summary.trackerSyncProblem === null ? null : (
         <Text style={{ color: theme.colors.statusWarning, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm }}>Ticket sync paused; see Needs you on the board.</Text>
       )}
+      <AsksYou decisions={decisions} acceptance={null} theme={theme} compact={compact} onChanged={onChanged} />
       <AgentChat
         // A restarted manager is another agent: a fresh chat, not the last one's words for a frame.
         key={manager.id}

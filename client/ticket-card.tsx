@@ -1,18 +1,19 @@
 /**
  * One ticket on the board (decision 10): id, title, phase and complexity
- * badges, the owner's live state and last status line, its open decisions as
- * buttons, children progress, the actions its column calls for, and once
- * finished its key stats.
+ * badges, the owner's live state and last status line, children progress, one
+ * line per thing it asks of you (TR-022: answered pinned above the owner's
+ * chat, which the line opens), the one-tap actions its column calls for, and
+ * once finished its key stats.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
-import { Icon, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
+import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import { acceptTicket, compactAgent, nudgeAgent, relaunchOwner, requestChanges, type Card, type StatsSummary } from "../shared/contracts";
+import { compactAgent, nudgeAgent, relaunchOwner, type Card, type StatsSummary } from "../shared/contracts";
 import { PhaseBadge } from "./badges";
-import { DecisionCard } from "./decision-card";
+import { callAction, cardCalls, type CardCall } from "./card-calls";
 import { errorText, formatCost, pullRequestLabel, formatDuration, formatTokenCount, relativeTime } from "./format";
 import { waitingOnText } from "./pane-agents";
 import { SPACE } from "./spacing";
@@ -42,12 +43,9 @@ export function TicketCard({
   onChanged: () => void;
 }) {
   const toast = useToast();
-  const accept = useRpc(acceptTicket);
-  const changes = useRpc(requestChanges);
   const nudge = useRpc(nudgeAgent);
   const relaunch = useRpc(relaunchOwner);
   const compactRpc = useRpc(compactAgent);
-  const [changeText, setChangeText] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [childrenOpen, setChildrenOpen] = useState(false);
   const now = useNow();
@@ -76,19 +74,10 @@ export function TicketCard({
       link: { color: colors.accent, fontSize: FONT_SIZE.caption },
       track: { height: 3, borderRadius: 2, backgroundColor: colors.surface2, overflow: "hidden" as const },
       childRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm, paddingLeft: SPACE.sm },
-      calls: { gap: SPACE.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: SPACE.sm },
-      input: {
-        color: colors.foreground,
-        fontSize: FONT_SIZE.small,
-        borderWidth: 1,
-        borderColor: colors.border,
-        borderRadius: 8,
-        paddingHorizontal: SPACE.md,
-        paddingVertical: SPACE.sm,
-        minHeight: 60,
-        backgroundColor: colors.surface1,
-        textAlignVertical: "top" as const,
-      },
+      calls: { gap: SPACE.xs, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: SPACE.sm },
+      call: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm, paddingVertical: SPACE.xxs },
+      callText: { flex: 1, color: colors.foreground, fontSize: FONT_SIZE.small },
+      callAction: { color: colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
     }),
     [colors, compact, selected],
   );
@@ -118,7 +107,7 @@ export function TicketCard({
             ? colors.statusWarning
             : colors.foregroundMuted;
   const childrenDone = card.children.filter((child) => child.status === "Done").length;
-  const awaiting = card.status === "Awaiting acceptance";
+  const calls = cardCalls(card);
 
   const head = (
     <View style={styles.head}>
@@ -161,7 +150,29 @@ export function TicketCard({
   const milestone = (card.column === "working" || card.column === "stalled") && card.latestMilestone !== null ? card.latestMilestone : null;
   // From the subagents' labels and Paseo status: what the owner is waiting on while they run.
   const waitingOn = waitingOnText(card, now);
-  const hasCalls = card.decisions.length > 0 || (awaiting && owner !== null) || card.column === "stalled";
+  const hasCalls = calls.length > 0 || card.column === "stalled";
+
+  function callLine(call: CardCall) {
+    const look =
+      call.kind === "decision"
+        ? { icon: "Hand", color: call.blocking ? colors.statusWarning : colors.foregroundMuted }
+        : call.kind === "acceptance"
+          ? { icon: "PackageCheck", color: colors.accent }
+          : { icon: "KeyRound", color: colors.statusWarning };
+    return (
+      <View key={call.kind} style={{ gap: SPACE.xxs }}>
+        {call.kind === "acceptance" && call.evidence !== null ? <Text style={styles.muted} numberOfLines={1}>{call.evidence}</Text> : null}
+        <Pressable accessibilityRole="button" accessibilityLabel={`${callAction(call)}: ${call.text}`} style={styles.call} onPress={onOpen}>
+          <Icon name={look.icon} size={13} color={look.color} />
+          <Text style={styles.callText} numberOfLines={1}>
+            {call.text}
+          </Text>
+          {call.kind === "decision" && call.more > 0 ? <Text style={styles.muted}>+{call.more}</Text> : null}
+          <Text style={styles.callAction}>{callAction(call)} →</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   return (
     <Pressable accessibilityRole="button" onPress={onOpen} style={styles.card}>
@@ -253,36 +264,7 @@ export function TicketCard({
       )}
       {hasCalls ? (
         <View style={styles.calls}>
-          {card.decisions.map((decision) => (
-            <DecisionCard key={decision.key} decision={decision} theme={theme} compact={compact} onAnswered={onChanged} />
-          ))}
-          {awaiting && owner !== null ? (
-            changeText === null ? (
-              <View style={styles.row}>
-                <IconButton icon="Check" label="Accept" showLabel tone="accent" theme={theme} disabled={busy} onPress={() => void run(() => accept({ project, ticket: card.id }), `Accepted ${card.id}.`)} />
-                <IconButton icon="MessageSquare" label="Request changes…" showLabel theme={theme} disabled={busy} onPress={() => setChangeText("")} />
-              </View>
-            ) : (
-              <View style={{ gap: SPACE.sm }}>
-                <TextInput value={changeText} onChangeText={setChangeText} placeholder="What should change?" placeholderTextColor={colors.foregroundMuted} multiline style={styles.input} />
-                <View style={styles.row}>
-                  <IconButton
-                    icon="Send"
-                    label="Send changes"
-                    showLabel
-                    tone="accent"
-                    theme={theme}
-                    disabled={busy || changeText.trim() === ""}
-                    onPress={() => void run(async () => {
-                      await changes({ project, ticket: card.id, text: changeText });
-                      setChangeText(null);
-                    }, "Sent to the owner.")}
-                  />
-                  <IconButton icon="X" label="Cancel" showLabel theme={theme} onPress={() => setChangeText(null)} />
-                </View>
-              </View>
-            )
-          ) : null}
+          {calls.map(callLine)}
           {card.column === "stalled" ? (
             <View style={styles.row}>
               {owner !== null && owner.status !== "error" ? (

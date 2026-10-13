@@ -3,10 +3,11 @@
  * tickets changed on both sides, and the ways out — keep this machine's or the
  * remote's version where both changed the same lines, or retry after fixing it
  * elsewhere. Edits that do not overlap are kept from both sides either way.
+ * On the board it starts folded to its heading and message (TR-022) and opens in place.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
-import { useToast } from "@getpaseo/plugin/client/react-native";
+import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
@@ -35,6 +36,7 @@ export function SyncProblemCard({
   theme,
   compact,
   onOpenTicket,
+  startFolded = false,
 }: {
   project: string;
   problem: TrackerSyncProblem;
@@ -42,11 +44,13 @@ export function SyncProblemCard({
   compact: boolean;
   /** Opens a ticket named in the conflict; null where tickets cannot be opened. */
   onOpenTicket: ((ticket: string) => void) | null;
+  startFolded?: boolean;
 }) {
   const toast = useToast();
   const resolve = useRpc(resolveTrackerSync);
   const refreshProjects = useRefreshProjects();
   const [busy, setBusy] = useState(false);
+  const [folded, setFolded] = useState(startFolded);
   const { colors } = theme;
   const styles = useMemo(
     () => ({
@@ -61,6 +65,7 @@ export function SyncProblemCard({
       option: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, maxWidth: "100%" as const, flexShrink: 1 },
       optionLabel: { color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "600" as const },
       consequence: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
+      resolve: { color: colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
     }),
     [colors, compact],
   );
@@ -82,30 +87,42 @@ export function SyncProblemCard({
   const conflict = problem.kind === "conflict";
   return (
     <View style={styles.card}>
-      <Text style={styles.heading}>TICKET SYNC PAUSED · {project.toUpperCase()}</Text>
-      <Text style={styles.message}>{problem.message}</Text>
-      <Text style={styles.note}>
-        {conflict
-          ? "Tickets are still saved here; they stop going to the remote until you choose. Edits that do not overlap are kept from both sides."
-          : "Tickets are still saved here; they stop going to the remote until it works again."}
-      </Text>
-      {problem.tickets.length === 0 ? null : (
-        <View style={styles.tickets}>
-          {problem.tickets.map((ticket) => (
-            <Pressable key={ticket} accessibilityRole="button" disabled={onOpenTicket === null} style={styles.ticket} onPress={() => onOpenTicket?.(ticket)}>
-              <Text style={styles.ticketText}>{ticket}</Text>
-            </Pressable>
-          ))}
+      <Pressable accessibilityRole="button" accessibilityState={{ expanded: !folded }} onPress={() => setFolded((value) => !value)} style={{ gap: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Text style={[styles.heading, { flex: 1 }]}>TICKET SYNC PAUSED · {project.toUpperCase()}</Text>
+          <Text style={styles.resolve}>{folded ? "Resolve" : "Fold"}</Text>
+          <Icon name={folded ? "ChevronDown" : "ChevronUp"} size={14} color={colors.accent} />
         </View>
+        <Text style={styles.message} numberOfLines={folded ? 1 : undefined}>
+          {problem.message}
+        </Text>
+      </Pressable>
+      {folded ? null : (
+        <>
+          <Text style={styles.note}>
+            {conflict
+              ? "Tickets are still saved here; they stop going to the remote until you choose. Edits that do not overlap are kept from both sides."
+              : "Tickets are still saved here; they stop going to the remote until it works again."}
+          </Text>
+          {problem.tickets.length === 0 ? null : (
+            <View style={styles.tickets}>
+              {problem.tickets.map((ticket) => (
+                <Pressable key={ticket} accessibilityRole="button" disabled={onOpenTicket === null} style={styles.ticket} onPress={() => onOpenTicket?.(ticket)}>
+                  <Text style={styles.ticketText}>{ticket}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+          <View style={styles.options}>
+            {(conflict ? CONFLICT_CHOICES : FAILURE_CHOICES).map((choice) => (
+              <Pressable key={choice.resolution} accessibilityRole="button" disabled={busy} style={styles.option} onPress={() => void choose(choice)}>
+                <Text style={styles.optionLabel}>{choice.label}</Text>
+                <Text style={styles.consequence}>{choice.consequence}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
       )}
-      <View style={styles.options}>
-        {(conflict ? CONFLICT_CHOICES : FAILURE_CHOICES).map((choice) => (
-          <Pressable key={choice.resolution} accessibilityRole="button" disabled={busy} style={styles.option} onPress={() => void choose(choice)}>
-            <Text style={styles.optionLabel}>{choice.label}</Text>
-            <Text style={styles.consequence}>{choice.consequence}</Text>
-          </Pressable>
-        ))}
-      </View>
     </View>
   );
 }
