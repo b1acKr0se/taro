@@ -29,7 +29,7 @@ const NUMBER_COLUMNS: ReadonlyArray<{ key: string; label: string; width: number;
   { key: "nudges", label: "Nudges", width: 60, value: (counted) => String(counted.nudges) },
   { key: "decisions", label: "Decisions", width: 72, value: (counted) => String(counted.decisions) },
   { key: "recoveries", label: "Recoveries", width: 80, value: (counted) => String(counted.recoveries) },
-  { key: "idle-compactions", label: "Idle compactions", width: 116, value: (counted) => String(counted.idleCompactions) },
+  { key: "idle-compactions", label: "Idle compactions", width: 132, value: (counted) => String(counted.idleCompactions) },
 ];
 
 const NUMBERS_WIDTH = NUMBER_COLUMNS.reduce((total, column) => total + column.width, 0);
