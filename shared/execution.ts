@@ -34,30 +34,40 @@ export function executionMachine(notes: string | null): string | null {
   return newestExecutionMatch(notes, /\b(?:machine|host(?:name)?)\b[\s:=`*"']*([A-Za-z0-9][A-Za-z0-9._-]*)/i)?.replace(/\.+$/, "") ?? null;
 }
 
-/**
- * The review head the owner recorded (`review-head: <sha>`), newest first. Owners write it into a
- * fresh EXECUTION record or an existing one, sometimes in a MILESTONE, so any record counts.
- */
-export function reviewHead(notes: string | null): string | null {
+/** The last match's first group in the newest record that has one. */
+function newestRecordMatch(notes: string | null, pattern: RegExp): string | null {
   const records = noteRecords(notes);
   for (let index = records.length - 1; index >= 0; index--) {
-    const matches = [...(records[index] ?? "").matchAll(/\breview[ _-]?head\b[\s:=`*"']*([0-9a-f]{7,40})\b/gi)];
+    const matches = [...(records[index] ?? "").matchAll(pattern)];
     const last = matches[matches.length - 1]?.[1];
-    if (last !== undefined) return last.toLowerCase();
+    if (last !== undefined) return last;
   }
   return null;
 }
 
+/**
+ * The review head the owner recorded (`review-head: <sha>`), newest first. Owners write it into a
+ * fresh EXECUTION record or an existing one, sometimes in a MILESTONE, so any record counts. Only a
+ * full sha: `gh pr merge --match-head-commit` refuses a short one, and owners mention the head
+ * abbreviated in later notes ("review-head 1960d60… recorded"), which must not replace it.
+ */
+export function reviewHead(notes: string | null): string | null {
+  return newestRecordMatch(notes, /\breview[ _-]?head\b[\s:=`*"']*([0-9a-f]{40})(?![0-9a-z])/gi)?.toLowerCase() ?? null;
+}
+
 const PULL_REQUEST_URL = /https?:\/\/[^\s)<>`"'\]]+\/pull\/\d+/g;
 
-/** The ticket's pull request: the newest PR URL in the notes, else one in the final summary. */
+/**
+ * The ticket's pull request: the newest one recorded as `pr: <url>`; else the newest PR URL in the
+ * notes, then in the final summary. The label wins because notes also cite other projects' PRs.
+ */
 export function pullRequestUrl(notes: string | null, finalSummary: string | null): string | null {
-  const records = noteRecords(notes);
-  for (let index = records.length - 1; index >= 0; index--) {
-    const matches = (records[index] ?? "").match(PULL_REQUEST_URL);
-    if (matches !== null) return matches[matches.length - 1] ?? null;
-  }
-  return finalSummary?.match(PULL_REQUEST_URL)?.[0] ?? null;
+  return (
+    newestRecordMatch(notes, new RegExp(`\\bpr\\b[*\\s]*[:=][\\s\`*"']*(${PULL_REQUEST_URL.source})`, "gi")) ??
+    newestRecordMatch(notes, new RegExp(`(${PULL_REQUEST_URL.source})`, "g")) ??
+    finalSummary?.match(PULL_REQUEST_URL)?.[0] ??
+    null
+  );
 }
 
 /** What Accept tells the owner of a pull-request ticket: the PR and head to merge, or not to merge at all. */

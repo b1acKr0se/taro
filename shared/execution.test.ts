@@ -55,38 +55,56 @@ describe("noteRecords", () => {
 });
 
 describe("reviewHead", () => {
-  it("reads the sha however the record spells it", () => {
-    expect(reviewHead("EXECUTION x — review-head: 3f9a2c1d")).toBe("3f9a2c1d");
-    expect(reviewHead("EXECUTION x — review head `3F9A2C1D4E5F`.")).toBe("3f9a2c1d4e5f");
-    expect(reviewHead("EXECUTION x — **review-head:** 0123456789abcdef0123456789abcdef01234567")).toBe("0123456789abcdef0123456789abcdef01234567");
-    expect(reviewHead("MILESTONE m — pushed; review_head=abcdef1")).toBe("abcdef1");
+  const full = "0123456789abcdef0123456789abcdef01234567";
+  const other = "fedcba9876543210fedcba9876543210fedcba98";
+
+  it("reads a full sha however the record spells it", () => {
+    expect(reviewHead(`EXECUTION x — review-head: ${full}`)).toBe(full);
+    expect(reviewHead(`EXECUTION x — review head \`${full.toUpperCase()}\`.`)).toBe(full);
+    expect(reviewHead(`EXECUTION x — **review-head:** ${full}`)).toBe(full);
+    expect(reviewHead(`MILESTONE m — pushed; review_head=${full}`)).toBe(full);
+    expect(reviewHead(`EXECUTION x — pr: https://github.com/o/r/pull/1\nreview-head: ${full}`)).toBe(full);
   });
 
   it("takes the newest recorded head, after a request for changes", () => {
-    const notes = ["EXECUTION a — review-head: aaaaaaa", "CHANGES-REQUESTED b — the user: \"rename it\"", "EXECUTION c — review-head: bbbbbbb"].join("\n\n");
-    expect(reviewHead(notes)).toBe("bbbbbbb");
-    expect(reviewHead("EXECUTION a — review-head: aaaaaaa, then review-head: ccccccc")).toBe("ccccccc");
+    const notes = [`EXECUTION a — review-head: ${other}`, "CHANGES-REQUESTED b — the user: \"rename it\"", `EXECUTION c — review-head: ${full}`].join("\n\n");
+    expect(reviewHead(notes)).toBe(full);
+    expect(reviewHead(`EXECUTION a — review-head: ${other}, then review-head: ${full}`)).toBe(full);
   });
 
-  it("finds none when no head or only a short or non-hex value is named", () => {
+  it("keeps the full head when a later note mentions it abbreviated (review of TR-013)", () => {
+    const notes = [`EXECUTION a — pr: https://github.com/o/r/pull/1, review-head: ${full}`, "MILESTONE b — ready; review-head 0123456… recorded with pr:"].join("\n\n");
+    expect(reviewHead(notes)).toBe(full);
+    expect(reviewHead(`EXECUTION a — review-head: ${full}\n\nMILESTONE b — review-head: 0123456789ab`)).toBe(full);
+  });
+
+  it("finds none when only a short, longer or non-hex value is named", () => {
     expect(reviewHead(null)).toBeNull();
     expect(reviewHead("")).toBeNull();
-    expect(reviewHead("EXECUTION x — review-head: abc")).toBeNull();
+    expect(reviewHead("EXECUTION x — review-head: 1960d60")).toBeNull();
+    expect(reviewHead(`EXECUTION x — review-head: ${full}ab`)).toBeNull();
     expect(reviewHead("EXECUTION x — review-head: pending")).toBeNull();
-    expect(reviewHead("EXECUTION x — base main @ 8c7762741a169f74")).toBeNull();
+    expect(reviewHead(`EXECUTION x — base main @ ${full}`)).toBeNull();
   });
 });
 
 describe("pullRequestUrl", () => {
   it("takes the newest PR named in the notes", () => {
-    const notes = ["MILESTONE a — draft PR https://github.com/o/r/pull/7 opened", "EXECUTION b — pr: https://github.com/o/r/pull/9, review-head: abcdef1"].join("\n\n");
+    const notes = ["MILESTONE a — draft PR https://github.com/o/r/pull/7 opened", "MILESTONE b — moved to https://github.com/o/r/pull/9"].join("\n\n");
     expect(pullRequestUrl(notes, null)).toBe("https://github.com/o/r/pull/9");
+  });
+
+  it("prefers the recorded pr: over PRs cited later (review of TR-013)", () => {
+    const notes = ["EXECUTION a — pr: https://github.com/o/r/pull/9, review-head: x", "MILESTONE b — blocked on https://github.com/x/y/pull/88; upstream PR https://github.com/x/y/pull/89"].join("\n\n");
+    expect(pullRequestUrl(notes, null)).toBe("https://github.com/o/r/pull/9");
+    expect(pullRequestUrl("EXECUTION a — **PR:** https://github.com/o/r/pull/3", null)).toBe("https://github.com/o/r/pull/3");
+    expect(pullRequestUrl("EXECUTION a — pr: https://github.com/o/r/pull/3\n\nEXECUTION b — pr=https://github.com/o/r/pull/4", null)).toBe("https://github.com/o/r/pull/4");
   });
 
   it("stops at punctuation and markdown around the URL", () => {
     expect(pullRequestUrl("EXECUTION x — PR (https://ghe.example.com/o/r/pull/12).", null)).toBe("https://ghe.example.com/o/r/pull/12");
     expect(pullRequestUrl("EXECUTION x — [PR](https://github.com/o/r/pull/3)", null)).toBe("https://github.com/o/r/pull/3");
-    expect(pullRequestUrl("EXECUTION x — `https://github.com/o/r/pull/4`", null)).toBe("https://github.com/o/r/pull/4");
+    expect(pullRequestUrl("EXECUTION x — pr: `https://github.com/o/r/pull/4`", null)).toBe("https://github.com/o/r/pull/4");
   });
 
   it("falls back to the final summary, and finds none otherwise", () => {
