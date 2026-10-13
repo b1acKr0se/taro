@@ -1,14 +1,14 @@
 /**
  * The full-page project setup (decisions 13, 14): prerequisite checks, project,
- * agents, delivery, standing orders. The same page edits an existing project.
+ * agents, delivery, limits, standing orders. The same page edits an existing project.
+ * Drawn as section cards with descriptions (TR-019); the form's logic is in shared/setup-form.ts.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
-import { ScrollView, useToast } from "@getpaseo/plugin/client/react-native";
-import { SettingsAction, SettingsInput, SettingsRow, SettingsSection, SettingsSelect, SettingsSwitch } from "@getpaseo/plugin/client/ui";
+import { Icon, ScrollView, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 import {
   checkPrerequisites,
@@ -21,76 +21,28 @@ import {
   writeStandingOrders,
 } from "../shared/contracts";
 import { modelOptions as modelPickerOptions, thinkingAfterModelChange, thinkingOptions, toggleSubagentModel } from "../shared/model-picker";
-import type { ProjectConfig, ProjectSettings } from "../shared/project";
-import { ToggleChips } from "./ui";
-import { FONT_SIZE } from "./type-scale";
+import type { ProjectConfig } from "../shared/project";
+import { draftFrom, settingsFrom, setupProblems, ticketExample, type SetupDraft } from "../shared/setup-form";
 import { errorText } from "./format";
+import { CheckLine, ChoiceCards, Dropdown, Field, FixedValue, FormSection, TextField, TWO_COLUMN_MIN_WIDTH } from "./settings-form";
+import { SPACE } from "./spacing";
+import { FONT_SIZE, lineHeightFor } from "./type-scale";
+import { IconButton, ToggleChips } from "./ui";
 
-interface Draft {
-  project: string;
-  repoPath: string;
-  baseBranch: string;
-  ticketPrefix: string;
-  managerModel: string;
-  managerThinking: string;
-  ownerModel: string;
-  ownerThinking: string;
-  subagentModels: string[];
-  delivery: "pull-request" | "local-only";
-  acceptAlsoMerges: boolean;
-  trackerSync: "local" | "remote";
-  compactThresholdTokens: string;
-  idleCompactThresholdTokens: string;
-  maxParallelOwners: string;
-}
-
-/** A new project's model fields start empty and take the default once the model list arrives. */
-function draftFrom(config: ProjectConfig | null): Draft {
-  return {
-    project: config?.project ?? "",
-    repoPath: config?.repoPath ?? "",
-    baseBranch: config?.baseBranch ?? "main",
-    ticketPrefix: config?.ticketPrefix ?? "",
-    managerModel: config?.manager.model ?? "",
-    managerThinking: config?.manager.thinking ?? "",
-    ownerModel: config?.owner.model ?? "",
-    ownerThinking: config?.owner.thinking ?? "",
-    subagentModels: config?.subagentModels ?? [],
-    delivery: config?.delivery ?? "pull-request",
-    acceptAlsoMerges: config?.acceptAlsoMerges ?? true,
-    trackerSync: config?.trackerSync ?? "local",
-    compactThresholdTokens: String(config?.compactThresholdTokens ?? 250_000),
-    idleCompactThresholdTokens: String(config?.idleCompactThresholdTokens ?? 200_000),
-    maxParallelOwners: String(config?.maxParallelOwners ?? 3),
-  };
-}
-
-function settingsFrom(draft: Draft, defaultModel: string): ProjectSettings {
-  return {
-    repoPath: draft.repoPath.trim(),
-    baseBranch: draft.baseBranch.trim(),
-    ticketPrefix: draft.ticketPrefix.trim().toUpperCase(),
-    manager: { model: draft.managerModel || defaultModel, thinking: draft.managerThinking },
-    owner: { model: draft.ownerModel || defaultModel, thinking: draft.ownerThinking },
-    subagentModels: draft.subagentModels,
-    delivery: draft.delivery,
-    acceptAlsoMerges: draft.acceptAlsoMerges,
-    trackerSync: draft.trackerSync,
-    compactThresholdTokens: Number.parseInt(draft.compactThresholdTokens, 10) || 250_000,
-    idleCompactThresholdTokens: Number.parseInt(draft.idleCompactThresholdTokens, 10) || 200_000,
-    maxParallelOwners: Math.max(1, Number.parseInt(draft.maxParallelOwners, 10) || 3),
-  };
-}
+const PAGE_MAX_WIDTH = 760;
 
 export function ProjectSetup({
   theme,
   existing,
   onDone,
+  onCancel,
 }: {
   theme: PluginTheme;
   /** The project being edited, or null to add one. */
   existing: ProjectConfig | null;
   onDone: (project: string) => void;
+  /** Leaves without saving; null when there is nowhere to go back to (no project yet). */
+  onCancel: (() => void) | null;
 }) {
   const toast = useToast();
   const prerequisitesRpc = useRpc(checkPrerequisites);
@@ -109,9 +61,13 @@ export function ProjectSetup({
     () => modelOptions.find((option) => /opus/i.test(option.id))?.id ?? modelOptions[0]?.id ?? "claude/claude-opus-5-5",
     [modelOptions],
   );
-  const [draft, setDraft] = useState<Draft>(() => draftFrom(existing));
+  const [draft, setDraft] = useState<SetupDraft>(() => draftFrom(existing));
   const [orders, setOrders] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // A field shows its problem once typed in, so a fresh form is not a wall of red; the footer says why saving is off.
+  const [touched, setTouched] = useState<ReadonlySet<keyof SetupDraft>>(() => new Set());
+  const [width, setWidth] = useState(0);
+  const wide = width >= TWO_COLUMN_MIN_WIDTH;
 
   useEffect(() => {
     if (existing === null) return;
@@ -127,8 +83,13 @@ export function ProjectSetup({
     }));
   }, [defaultModel, modelOptions.length]);
 
-  function update<Key extends keyof Draft>(key: Key, value: Draft[Key]): void {
+  const problems = setupProblems(draft, existing === null);
+  const valid = Object.keys(problems).length === 0;
+  const problem = (key: keyof SetupDraft): string | null => (touched.has(key) ? (problems[key] ?? null) : null);
+
+  function update<Key extends keyof SetupDraft>(key: Key, value: SetupDraft[Key]): void {
     setDraft((current) => ({ ...current, [key]: value }));
+    setTouched((current) => (current.has(key) ? current : new Set(current).add(key)));
   }
 
   function chooseModel(role: "manager" | "owner", model: string): void {
@@ -172,136 +133,260 @@ export function ProjectSetup({
     }
   }
 
-  const modelHint = models.isLoading ? "loading the model list…" : modelOptions.length === 0 ? "no provider listed models; saved values are kept" : undefined;
-  const muted = { color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small };
+  const colors = theme.colors;
+  const modelHint = models.isLoading ? "Loading the model list…" : modelOptions.length === 0 ? "No provider listed models; saved values are kept." : null;
+  const checks = prerequisites.data?.checks ?? [];
+  // An existing project passed its checks when it was added; its page shows them again only when one fails.
+  const showChecks = existing === null || checks.some((check) => !check.ok);
+  const example = ticketExample(existing?.ticketPrefix ?? draft.ticketPrefix);
+  const branch = draft.baseBranch.trim() === "" ? "the base branch" : draft.baseBranch.trim();
+  const muted = { color: colors.foregroundMuted, fontSize: FONT_SIZE.small };
+
+  const modelRow = (role: "manager" | "owner", label: string) => {
+    const model = role === "manager" ? draft.managerModel : draft.ownerModel;
+    const thinking = role === "manager" ? draft.managerThinking : draft.ownerThinking;
+    return (
+      <View style={{ flexDirection: wide ? "row" : "column", gap: SPACE.sm }}>
+        <View style={{ flex: wide ? 2 : undefined }}>
+          <Dropdown theme={theme} title={`${label} model`} value={model} options={modelPickerOptions(modelOptions, [model])} onChange={(value) => chooseModel(role, value)} />
+        </View>
+        <View style={{ flex: wide ? 1 : undefined }}>
+          <Dropdown
+            theme={theme}
+            title={`${label} thinking`}
+            value={thinking}
+            options={thinkingOptions(modelOptions, model, thinking)}
+            onChange={(value) => update(role === "manager" ? "managerThinking" : "ownerThinking", value)}
+          />
+        </View>
+      </View>
+    );
+  };
 
   return (
-    <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ padding: 16, gap: 16, maxWidth: 760, width: "100%", alignSelf: "center" }}>
-      <SettingsSection title="Before you start">
-        {(prerequisites.data?.checks ?? []).map((check) => (
-          <SettingsRow key={check.name} label={`${check.ok ? "✓" : "✗"} ${check.name}`} hint={check.detail} />
-        ))}
-        {prerequisites.isLoading ? <SettingsRow label="Checking…" /> : null}
-      </SettingsSection>
+    <ScrollView
+      automaticallyAdjustKeyboardInsets
+      onLayout={(event) => setWidth(Math.min(PAGE_MAX_WIDTH, event.nativeEvent.layout.width))}
+      contentContainerStyle={{ padding: SPACE.lg, paddingBottom: SPACE.xxl * 2, gap: SPACE.lg, maxWidth: PAGE_MAX_WIDTH, width: "100%", alignSelf: "center" }}
+    >
+      <View style={{ gap: SPACE.sm }}>
+        {onCancel === null ? null : (
+          <Pressable accessibilityRole="link" onPress={onCancel} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs, alignSelf: "flex-start" }}>
+            <Icon name="ChevronLeft" size={14} color={colors.accent} />
+            <Text style={{ color: colors.accent, fontSize: FONT_SIZE.small }}>{existing === null ? "Back" : `Back to ${existing.project}`}</Text>
+          </Pressable>
+        )}
+        <Text style={{ color: colors.foreground, fontSize: wide ? FONT_SIZE.display : FONT_SIZE.heading, fontWeight: "700" }}>
+          {existing === null ? "Add a project" : `${existing.project} settings`}
+        </Text>
+        <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) }}>
+          {existing === null
+            ? "Taro gives the project its own ticket tracker and a manager. You talk to the manager; it looks into each request, files a ticket and starts a task owner."
+            : "Changes apply to agents started from now on. Running agents keep their settings."}
+        </Text>
+      </View>
 
-      <SettingsSection title="Project">
-        {existing === null ? (
-          <SettingsInput label="Name" hint="lowercase, used for folders and labels" initialValue={draft.project} onChangeText={(text) => update("project", text)} placeholder="shop" />
-        ) : (
-          <SettingsRow label="Name" hint={existing.project} />
-        )}
-        {existing === null ? (
-          <SettingsInput label="Repository" hint="absolute path of a local git checkout" initialValue={draft.repoPath} onChangeText={(text) => update("repoPath", text)} placeholder="/home/you/code/app" />
-        ) : (
-          <SettingsRow label="Repository" hint={existing.repoPath} />
-        )}
-        <SettingsInput label="Base branch" initialValue={draft.baseBranch} onChangeText={(text) => update("baseBranch", text)} />
-        {existing === null ? (
-          <SettingsInput label="Ticket prefix" hint="capital letters, e.g. SH" initialValue={draft.ticketPrefix} onChangeText={(text) => update("ticketPrefix", text)} />
-        ) : (
-          <SettingsRow label="Ticket prefix" hint={existing.ticketPrefix} />
-        )}
-        <SettingsSelect
-          label="Tickets"
-          hint="the taro/backlog branch, kept on this machine or synced with the remote"
-          value={draft.trackerSync}
-          options={[
-            { label: "This machine only", value: "local" },
-            { label: "Synced with the remote", value: "remote" },
-          ]}
-          onValueChange={(value) => update("trackerSync", value)}
-        />
-      </SettingsSection>
+      {showChecks ? (
+        <FormSection theme={theme} icon="ListChecks" title="Before you start" description="What Taro needs on this machine.">
+          <View style={{ gap: SPACE.sm }}>
+            {checks.map((check) => (
+              <CheckLine key={check.name} theme={theme} ok={check.ok} name={check.name} detail={check.detail} />
+            ))}
+            {prerequisites.isLoading ? <Text style={muted}>Checking…</Text> : null}
+          </View>
+        </FormSection>
+      ) : null}
 
-      <SettingsSection title="Agents">
-        <SettingsSelect
-          label="Manager model"
-          {...(modelHint === undefined ? {} : { hint: modelHint })}
-          value={draft.managerModel}
-          options={modelPickerOptions(modelOptions, [draft.managerModel])}
-          onValueChange={(value) => chooseModel("manager", value)}
-        />
-        <SettingsSelect
-          label="Manager thinking"
-          value={draft.managerThinking}
-          options={thinkingOptions(modelOptions, draft.managerModel, draft.managerThinking)}
-          onValueChange={(value) => update("managerThinking", value)}
-        />
-        <SettingsSelect
-          label="Task owner model"
-          hint={modelHint ?? "the top tier is recommended"}
-          value={draft.ownerModel}
-          options={modelPickerOptions(modelOptions, [draft.ownerModel])}
-          onValueChange={(value) => chooseModel("owner", value)}
-        />
-        <SettingsSelect
-          label="Task owner thinking"
-          value={draft.ownerThinking}
-          options={thinkingOptions(modelOptions, draft.ownerModel, draft.ownerThinking)}
-          onValueChange={(value) => update("ownerThinking", value)}
-        />
-        <SettingsRow label="Models owners may give subagents" hint="owners pick per task by difficulty; none selected means the owner's own model" />
-        {/* Below the row, not inside it: a row's trailing slot squeezes its label to one letter wide. */}
-        <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
+      <FormSection theme={theme} icon="FolderGit2" title="Project" description="The repository Taro works in and where its tickets live.">
+        <Field theme={theme} wide={wide} label="Name" hint={existing === null ? "Lowercase letters, digits and dashes; used for folders and labels." : null} error={problem("project")}>
+          {existing === null ? (
+            <TextField theme={theme} accessibilityLabel="Name" value={draft.project} onChangeText={(text) => update("project", text)} placeholder="shop" invalid={problem("project") !== null} />
+          ) : (
+            <FixedValue theme={theme} text={existing.project} />
+          )}
+        </Field>
+        <Field theme={theme} wide={wide} label="Repository" hint={existing === null ? "The absolute path of a local git checkout." : null} error={problem("repoPath")}>
+          {existing === null ? (
+            <TextField
+              theme={theme}
+              accessibilityLabel="Repository"
+              value={draft.repoPath}
+              onChangeText={(text) => update("repoPath", text)}
+              placeholder="/home/you/code/shop"
+              invalid={problem("repoPath") !== null}
+            />
+          ) : (
+            <FixedValue theme={theme} text={existing.repoPath} monospace />
+          )}
+        </Field>
+        <Field
+          theme={theme}
+          wide={wide}
+          label="Base branch · ticket prefix"
+          hint={`Work branches off ${branch}.${example === null ? "" : ` Tickets look like ${example}.`}`}
+          error={problem("baseBranch") ?? problem("ticketPrefix")}
+        >
+          <View style={{ flexDirection: "row", gap: SPACE.sm, alignItems: "flex-start" }}>
+            <View style={{ flex: 1 }}>
+              <TextField theme={theme} accessibilityLabel="Base branch" value={draft.baseBranch} onChangeText={(text) => update("baseBranch", text)} invalid={problem("baseBranch") !== null} />
+            </View>
+            <View style={{ width: 110 }}>
+              {existing === null ? (
+                <TextField
+                  theme={theme}
+                  accessibilityLabel="Ticket prefix"
+                  value={draft.ticketPrefix}
+                  onChangeText={(text) => update("ticketPrefix", text.toUpperCase())}
+                  placeholder="SH"
+                  invalid={problem("ticketPrefix") !== null}
+                />
+              ) : (
+                <FixedValue theme={theme} text={existing.ticketPrefix} />
+              )}
+            </View>
+          </View>
+        </Field>
+        <Field theme={theme} wide={wide} label="Tickets">
+          <ChoiceCards
+            theme={theme}
+            value={draft.trackerSync}
+            onChange={(value) => update("trackerSync", value)}
+            options={[
+              { value: "local", title: "This machine only", description: "The taro/backlog branch stays in this checkout; nothing is pushed." },
+              { value: "remote", title: "Synced with the remote", description: "Ticket changes are pushed to the taro/backlog branch, so other machines see the same board." },
+            ]}
+          />
+        </Field>
+      </FormSection>
+
+      <FormSection theme={theme} icon="Bot" title="Agents" description="The models Taro starts its agents with. Task owners and their subagents run in bypass mode.">
+        <Field theme={theme} wide={wide} label="Manager" hint={modelHint ?? "Reads and routes your requests, so a mid-size model is enough."}>
+          {modelRow("manager", "Manager")}
+        </Field>
+        <Field theme={theme} wide={wide} label="Task owner" hint={modelHint ?? "Plans, builds and delivers each ticket; the top tier is recommended."}>
+          {modelRow("owner", "Task owner")}
+        </Field>
+        <Field
+          theme={theme}
+          wide={wide}
+          label="Subagent models"
+          hint="Owners pick from these per task by difficulty: the cheapest for mechanical work, the strongest for hard problems. None selected means the owner's own model."
+        >
           <ToggleChips
             theme={theme}
             selected={draft.subagentModels}
             options={modelPickerOptions(modelOptions, draft.subagentModels)}
             onToggle={(value) => setDraft((current) => ({ ...current, subagentModels: toggleSubagentModel(current.subagentModels, value) }))}
           />
-        </View>
-        <SettingsInput label="Owners running at once" hint="the manager queues the rest; each agent costs host resources" initialValue={draft.maxParallelOwners} onChangeText={(text) => update("maxParallelOwners", text)} />
-        <SettingsInput label="Compact owners above (tokens)" initialValue={draft.compactThresholdTokens} onChangeText={(text) => update("compactThresholdTokens", text)} />
-        <SettingsInput
-          label="Compact idle agents above (tokens)"
-          hint="an owner or the manager idle for 55 minutes, before its prompt cache expires"
-          initialValue={draft.idleCompactThresholdTokens}
-          onChangeText={(text) => update("idleCompactThresholdTokens", text)}
-        />
-        <SettingsRow label="Permissions" hint="task owners and their subagents run in bypass mode" />
-      </SettingsSection>
+        </Field>
+      </FormSection>
 
-      <SettingsSection title="Delivery">
-        <SettingsSelect
-          label="Delivery"
-          value={draft.delivery}
-          options={[
-            { label: "Pull request", value: "pull-request" },
-            { label: "Local branch only", value: "local-only" },
-          ]}
-          onValueChange={(value) => update("delivery", value)}
-        />
-        <SettingsSwitch label="Accept also merges" hint="pressing Accept lets the owner merge after checking the head is unchanged" value={draft.acceptAlsoMerges} onValueChange={(value) => update("acceptAlsoMerges", value)} />
-      </SettingsSection>
+      <FormSection theme={theme} icon="GitPullRequest" title="How work is delivered" description="Where a task owner stops, and what pressing Accept does.">
+        <Field theme={theme} wide={wide} label="Finish line">
+          <ChoiceCards
+            theme={theme}
+            value={draft.delivery}
+            onChange={(value) => update("delivery", value)}
+            options={[
+              { value: "pull-request", title: "Pull request", description: "The owner pushes its branch, opens a pull request, has it reviewed and marks it ready." },
+              { value: "local-only", title: "Local branch only", description: "The owner leaves a clean branch that fast-forwards from the base branch. Nothing is pushed." },
+            ]}
+          />
+        </Field>
+        <Field theme={theme} wide={wide} label="Merging">
+          <ChoiceCards
+            theme={theme}
+            value={draft.acceptAlsoMerges ? "on-accept" : "manual"}
+            onChange={(value) => update("acceptAlsoMerges", value === "on-accept")}
+            options={[
+              { value: "on-accept", title: "Merge when accepted", description: "After you press Accept, the owner merges once it has checked the reviewed head is unchanged." },
+              { value: "manual", title: "You merge", description: "Accept closes the ticket; merging stays with you." },
+            ]}
+          />
+        </Field>
+      </FormSection>
+
+      <FormSection theme={theme} icon="Gauge" title="Limits" description="How much runs at once, and when long conversations are compacted.">
+        <Field theme={theme} wide={wide} label="Owners running at once" hint="The manager queues the rest; every agent costs host resources and money." error={problem("maxParallelOwners")}>
+          <TextField
+            theme={theme}
+            accessibilityLabel="Owners running at once"
+            value={draft.maxParallelOwners}
+            onChangeText={(text) => update("maxParallelOwners", text)}
+            invalid={problem("maxParallelOwners") !== null}
+          />
+        </Field>
+        <Field theme={theme} wide={wide} label="Compact owners above" hint="Tokens of context; a busy owner above this is asked to hand off and compact." error={problem("compactThresholdTokens")}>
+          <TextField
+            theme={theme}
+            accessibilityLabel="Compact owners above"
+            value={draft.compactThresholdTokens}
+            onChangeText={(text) => update("compactThresholdTokens", text)}
+            invalid={problem("compactThresholdTokens") !== null}
+          />
+        </Field>
+        <Field
+          theme={theme}
+          wide={wide}
+          label="Compact idle agents above"
+          hint="Tokens of context; an owner or the manager idle for 55 minutes is compacted before its prompt cache expires."
+          error={problem("idleCompactThresholdTokens")}
+        >
+          <TextField
+            theme={theme}
+            accessibilityLabel="Compact idle agents above"
+            value={draft.idleCompactThresholdTokens}
+            onChangeText={(text) => update("idleCompactThresholdTokens", text)}
+            invalid={problem("idleCompactThresholdTokens") !== null}
+          />
+        </Field>
+      </FormSection>
 
       {existing === null ? null : (
-        <SettingsSection title="Standing orders">
+        <FormSection
+          theme={theme}
+          icon="ScrollText"
+          title="Standing orders"
+          tag="optional"
+          description="Rules for this project on top of the repository's own instructions; the manager copies the ones that apply into every brief."
+        >
           {orders === null ? (
-            <SettingsRow label="Loading…" />
+            <Text style={muted}>Loading…</Text>
           ) : (
-            <SettingsInput label="Orders" hint="the manager copies the ones that apply into every brief" initialValue={orders} onChangeText={setOrders} />
+            <TextField theme={theme} accessibilityLabel="Standing orders" value={orders} onChangeText={setOrders} placeholder="e.g. Run the end-to-end tests before delivering." multiline />
           )}
-        </SettingsSection>
+        </FormSection>
       )}
 
       {existing === null ? null : (
-        <SettingsSection title="Manager">
-          <SettingsAction label="Start the manager" hint="when it has none" actionLabel="Start" disabled={busy} onPress={() => void managerAction("launch")} />
-          <SettingsAction label="Restart the manager" hint="archives it and starts a fresh one; tickets are kept" actionLabel="Restart" disabled={busy} onPress={() => void managerAction("restart")} />
-        </SettingsSection>
+        <FormSection theme={theme} icon="UserCog" title="Manager" description="Start a manager when the project has none, or restart it fresh. Tickets are kept either way.">
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: SPACE.sm }}>
+            <IconButton theme={theme} icon="Play" label="Start the manager" showLabel disabled={busy} onPress={() => void managerAction("launch")} />
+            <IconButton theme={theme} icon="RotateCcw" label="Restart the manager" showLabel disabled={busy} onPress={() => void managerAction("restart")} />
+          </View>
+        </FormSection>
       )}
 
-      <SettingsSection title={existing === null ? "Add the project" : "Save"}>
-        <SettingsAction
-          label={existing === null ? "Create the tracker and start the manager" : "Save these settings"}
-          actionLabel={busy ? "Working…" : existing === null ? "Add project" : "Save"}
-          disabled={busy}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center", gap: SPACE.sm }}>
+        {valid ? null : (
+          <Text style={[muted, { flexGrow: 1, flexBasis: 200 }]}>
+            {existing === null ? "Fill in the project's name, repository and ticket prefix to continue." : "Fix the fields marked in red to save."}
+          </Text>
+        )}
+        {onCancel === null ? null : <IconButton theme={theme} icon="X" label="Cancel" showLabel disabled={busy} onPress={onCancel} />}
+        <IconButton
+          theme={theme}
+          tone="accent"
+          icon={existing === null ? "Rocket" : "Check"}
+          label={busy ? "Working…" : existing === null ? "Create tracker and start manager" : "Save"}
+          showLabel
+          disabled={busy || !valid}
           onPress={() => void submit()}
         />
-      </SettingsSection>
-      <View>
-        <Text style={muted}>Tickets live on the taro/backlog branch of the repository, in a separate checkout Taro manages.</Text>
       </View>
+      <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption) }}>
+        Tickets live on the taro/backlog branch of the repository, in a separate checkout Taro manages.
+      </Text>
     </ScrollView>
   );
 }

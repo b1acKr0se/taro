@@ -145,6 +145,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
           refresh();
           choose(project, "project");
         }}
+        onCancel={current === null ? null : () => choose(current.config.project, "project")}
       />
     );
   } else if (showing === "inbox" && !layout.compact) {
@@ -160,6 +161,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
           refresh();
           choose(project, "project");
         }}
+        onCancel={() => choose(current.config.project, "project")}
       />
     );
   } else {
