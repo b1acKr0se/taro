@@ -1,7 +1,7 @@
 /** Stats on disk (`state/stats.json`), written as tickets move and agents work. */
 import { z } from "zod";
 
-import { parentOf, TicketStatsSchema, type TicketStats } from "../shared/stats";
+import { parentOf, ProjectStatsSchema, TicketStatsSchema, type ProjectStats, type TicketStats } from "../shared/stats";
 import { isMidTurn } from "./agents";
 import { statePath } from "./data-dir";
 import { readJsonIfPresent, writeJsonAtomically } from "./files";
@@ -10,6 +10,7 @@ import { serialized } from "./serialize";
 // Turn starts are kept on disk so a turn that spans a plugin reload or daemon restart keeps its duration.
 const StatsFileSchema = z.object({
   tickets: z.record(z.string(), TicketStatsSchema).default({}),
+  projects: z.record(z.string(), ProjectStatsSchema).default({}),
   turnStarts: z.record(z.string(), z.string()).default({}),
 });
 type StatsFile = z.infer<typeof StatsFileSchema>;
@@ -36,7 +37,7 @@ export class Stats {
   private async load(): Promise<StatsFile> {
     if (this.file === null) {
       const parsed = StatsFileSchema.safeParse((await readJsonIfPresent(statePath("stats.json")).catch(() => null)) ?? {});
-      this.file = parsed.success ? parsed.data : { tickets: {}, turnStarts: {} };
+      this.file = parsed.success ? parsed.data : { tickets: {}, projects: {}, turnStarts: {} };
     }
     return this.file;
   }
@@ -147,9 +148,25 @@ export class Stats {
     });
   }
 
-  count(project: string, ticket: string, field: "nudges" | "decisions" | "recoveries"): Promise<void> {
+  count(project: string, ticket: string, field: "nudges" | "decisions" | "recoveries" | "idleCompactions"): Promise<void> {
     return this.update(project, ticket, (stats) => {
       stats[field] += 1;
     });
+  }
+
+  countProject(project: string, field: keyof ProjectStats): Promise<void> {
+    return this.modify((file) => {
+      const stats = file.projects[project] ?? ProjectStatsSchema.parse({});
+      stats[field] += 1;
+      file.projects[project] = stats;
+      return true;
+    });
+  }
+
+  /** Per-project counts (the manager's), summed over every project when `project` is null. */
+  async projectCounts(project: string | null): Promise<ProjectStats> {
+    const all = (await this.load()).projects;
+    const picked = project === null ? Object.values(all) : [all[project] ?? ProjectStatsSchema.parse({})];
+    return { idleCompactions: picked.reduce((total, stats) => total + stats.idleCompactions, 0) };
   }
 }

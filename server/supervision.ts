@@ -4,6 +4,9 @@
  * decisions and status lines, delivers helpers' reports to the ticket's current
  * owner, nudges a stalled owner once, and runs the compaction pipeline.
  */
+import { join } from "node:path";
+
+import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compaction";
 import { RoleSchema, TARO_LABELS, type Role } from "../shared/project";
 import { isCrash } from "../shared/recovery";
 import { hashText, parseDecisionBlocks, parseStatusLine, sameQuestion, type ParsedDecision } from "../shared/reports";
@@ -11,7 +14,7 @@ import { withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDec
 import { fetchLiveAgent, isMidTurn, listTaroAgents } from "./agents";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
-import { readProjectConfig } from "./projects";
+import { projectPaths, readProjectConfig } from "./projects";
 import { isPluginMessageId, sendCommand, sendFromPlugin } from "./send";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
@@ -70,6 +73,11 @@ export function autoCompactedThisTurn(timeline: readonly TimelineItem[]): boolea
   return currentTurn(timeline).some((item) => item.type === "compaction" && item.status === "completed" && item.trigger !== "manual");
 }
 
+/** The manager has no ticket: its handoff is a file in the project's home, beside its AGENTS.md. */
+async function managerHandoffPath(project: string): Promise<string> {
+  return join((await projectPaths(project)).home, "manager-handoff.md");
+}
+
 export function freshState(identity: TaroIdentity): AgentState {
   return {
     project: identity.project,
@@ -84,6 +92,7 @@ export function freshState(identity: TaroIdentity): AgentState {
     deliveredTurns: [],
     heldReports: [],
     compaction: "none",
+    idleCompaction: "none",
     lastTurnEndedAt: null,
   };
 }
@@ -143,6 +152,7 @@ export class Supervisor {
       record.ticket = identity.ticket;
       record.title = identity.title;
       record.lastTurnEndedAt = now;
+      record.idleCompaction = idleCompactionAfterTurn(record.idleCompaction, record.compaction);
       if (status !== null) record.lastStatus = { ...status, at: now };
       // Working again after the plugin gave up on its crashes (the user restarted it by hand).
       if (outcome.kind === "completed" && record.stalledReason !== null) {
@@ -164,9 +174,9 @@ export class Supervisor {
       if (outcome.kind === "completed") await this.deliverReport(paseo, live, identity, closing, turnKey, hookAgent.parentAgentId);
       return;
     }
-    if (identity.role !== "owner") return;
+    if (identity.role !== "owner" && identity.role !== "manager") return;
 
-    // Compaction pipeline (decision 35): handoff → /compact → reload.
+    // Compaction pipeline (decision 35): handoff → /compact → reload. The manager gets it only when idle (TR-015).
     if (stage === "handoff") {
       await this.setStage(live.id, identity, "compacting");
       await sendCommand(paseo, live.id, `/compact ${await message(TEMPLATES.compactInstructions)}`);
@@ -177,6 +187,7 @@ export class Supervisor {
       await sendFromPlugin(paseo, live.id, await this.reloadText(identity));
       return;
     }
+    if (identity.role !== "owner") return;
     if (autoCompactedThisTurn(timeline)) {
       await sendFromPlugin(paseo, live.id, await this.reloadText(identity));
       return;
@@ -254,6 +265,9 @@ export class Supervisor {
   }
 
   private async reloadText(identity: TaroIdentity): Promise<string> {
+    if (identity.role === "manager") {
+      return message(TEMPLATES.managerReload, { skill: await skillDirectory(), handoff: await managerHandoffPath(identity.project) });
+    }
     return message(TEMPLATES.reload, { skill: await skillDirectory(), ticket: identity.ticket ?? "your ticket" });
   }
 
@@ -384,17 +398,54 @@ export class Supervisor {
     await this.startCompaction(paseo, owner.id, identity, used);
   }
 
-  /** Step 1 of compaction; also the card's Compact button. */
-  async startCompaction(paseo: PaseoApi, ownerId: string, identity: TaroIdentity, usedTokens: number | null): Promise<void> {
-    await this.setStage(ownerId, identity, "handoff");
-    await sendFromPlugin(
-      paseo,
-      ownerId,
-      await message(TEMPLATES.handoffRequest, {
-        usedTokens: usedTokens === null ? "large" : `${Math.round(usedTokens / 1000)}k`,
-        ticket: identity.ticket ?? "your ticket",
-        skill: await skillDirectory(),
-      }),
-    );
+  /**
+   * Idle compaction (TR-015): starts the pipeline for each owner and manager left idle
+   * about an hour above the project's idle threshold. Run by a timer; returns how many it started.
+   */
+  async compactIdleAgents(paseo: PaseoApi, projects: readonly string[], now: number, afterMs: number): Promise<number> {
+    let started = 0;
+    for (const project of projects) {
+      const config = await readProjectConfig(project);
+      if (config === null) continue;
+      for (const agent of await listTaroAgents(paseo, { [TARO_LABELS.project]: project })) {
+        const identity = identityFromLabels(agent.labels, agent.title ?? null);
+        if (identity === null) continue;
+        const known = await this.state.agent(agent.id);
+        const due = idleCompactionDue(
+          {
+            role: identity.role,
+            status: agent.status,
+            pendingPermissions: agent.pendingPermissions.length,
+            stage: known?.compaction ?? "none",
+            idle: known?.idleCompaction ?? "none",
+            lastTurnEndedAt: known?.lastTurnEndedAt ?? null,
+            usedTokens: agent.lastUsage?.contextWindowUsedTokens,
+          },
+          config.idleCompactThresholdTokens,
+          now,
+          afterMs,
+        );
+        if (!due) continue;
+        await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
+          record.idleCompaction = "running";
+        });
+        await this.startCompaction(paseo, agent.id, identity, agent.lastUsage?.contextWindowUsedTokens ?? null);
+        if (identity.role === "manager") await this.stats.countProject(project, "idleCompactions").catch(() => undefined);
+        else if (identity.ticket !== null) await this.stats.count(project, identity.ticket, "idleCompactions").catch(() => undefined);
+        started += 1;
+      }
+    }
+    return started;
+  }
+
+  /** Step 1 of compaction; also an owner card's Compact button. */
+  async startCompaction(paseo: PaseoApi, agentId: string, identity: TaroIdentity, usedTokens: number | null): Promise<void> {
+    await this.setStage(agentId, identity, "handoff");
+    const size = usedTokens === null ? "large" : `${Math.round(usedTokens / 1000)}k`;
+    const text =
+      identity.role === "manager"
+        ? await message(TEMPLATES.managerHandoffRequest, { usedTokens: size, handoff: await managerHandoffPath(identity.project) })
+        : await message(TEMPLATES.handoffRequest, { usedTokens: size, ticket: identity.ticket ?? "your ticket", skill: await skillDirectory() });
+    await sendFromPlugin(paseo, agentId, text);
   }
 }

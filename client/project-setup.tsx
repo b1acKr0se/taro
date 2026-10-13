@@ -40,6 +40,7 @@ interface Draft {
   acceptAlsoMerges: boolean;
   trackerSync: "local" | "remote";
   compactThresholdTokens: string;
+  idleCompactThresholdTokens: string;
   maxParallelOwners: string;
 }
 
@@ -59,6 +60,7 @@ function draftFrom(config: ProjectConfig | null): Draft {
     acceptAlsoMerges: config?.acceptAlsoMerges ?? true,
     trackerSync: config?.trackerSync ?? "local",
     compactThresholdTokens: String(config?.compactThresholdTokens ?? 250_000),
+    idleCompactThresholdTokens: String(config?.idleCompactThresholdTokens ?? 100_000),
     maxParallelOwners: String(config?.maxParallelOwners ?? 3),
   };
 }
@@ -75,6 +77,7 @@ function settingsFrom(draft: Draft, defaultModel: string): ProjectSettings {
     acceptAlsoMerges: draft.acceptAlsoMerges,
     trackerSync: draft.trackerSync,
     compactThresholdTokens: Number.parseInt(draft.compactThresholdTokens, 10) || 250_000,
+    idleCompactThresholdTokens: Number.parseInt(draft.idleCompactThresholdTokens, 10) || 100_000,
     maxParallelOwners: Math.max(1, Number.parseInt(draft.maxParallelOwners, 10) || 3),
   };
 }
@@ -249,6 +252,12 @@ export function ProjectSetup({
         </View>
         <SettingsInput label="Owners running at once" hint="the manager queues the rest; each agent costs host resources" initialValue={draft.maxParallelOwners} onChangeText={(text) => update("maxParallelOwners", text)} />
         <SettingsInput label="Compact owners above (tokens)" initialValue={draft.compactThresholdTokens} onChangeText={(text) => update("compactThresholdTokens", text)} />
+        <SettingsInput
+          label="Compact idle agents above (tokens)"
+          hint="an owner or the manager idle for 55 minutes, before its prompt cache expires"
+          initialValue={draft.idleCompactThresholdTokens}
+          onChangeText={(text) => update("idleCompactThresholdTokens", text)}
+        />
         <SettingsRow label="Permissions" hint="task owners and helpers run in bypass mode" />
       </SettingsSection>
 

@@ -22,6 +22,7 @@ describe("summarize", () => {
       nudges: 1,
       decisions: 2,
       recoveries: 1,
+      idleCompactions: 2,
     });
     expect(summary.wallMs).toBe(45 * 60_000);
     expect(summary.byStatus).toEqual({ Backlog: 60_000, Planning: 240_000, "In Progress": 600_000, "Awaiting acceptance": 1_800_000, Done: 0 });
@@ -31,6 +32,7 @@ describe("summarize", () => {
     expect(summary.costUsd).toBe(1.75);
     expect(summary.status).toBe("Done");
     expect(summary.recoveries).toBe(1);
+    expect(summary.idleCompactions).toBe(2);
   });
 });
 
@@ -50,13 +52,14 @@ function row(ticket: string, values: Partial<TicketSummary> = {}): TicketSummary
     nudges: 0,
     decisions: 0,
     recoveries: 0,
+    idleCompactions: 0,
     ...values,
   };
 }
 
 describe("projectTotals", () => {
   it("is all zeros and no cost for no tickets", () => {
-    expect(projectTotals([])).toEqual({ tickets: 0, wallMs: 0, waitingOnUserMs: 0, agentActiveMs: 0, turns: 0, agents: 0, costUsd: null, nudges: 0, decisions: 0, recoveries: 0 });
+    expect(projectTotals([])).toEqual({ tickets: 0, wallMs: 0, waitingOnUserMs: 0, agentActiveMs: 0, turns: 0, agents: 0, costUsd: null, nudges: 0, decisions: 0, recoveries: 0, idleCompactions: 0 });
   });
 
   it("adds top-level tickets and skips a cost nobody reported", () => {
@@ -65,7 +68,7 @@ describe("projectTotals", () => {
       row("AP-2", { wallMs: 2_000, waitingOnUserMs: 0, agentActiveMs: 700, turns: 4, agents: 2, costUsd: null }),
       row("AP-3", { costUsd: 0 }),
     ]);
-    expect(totals).toEqual({ tickets: 3, wallMs: 3_000, waitingOnUserMs: 100, agentActiveMs: 1_200, turns: 7, agents: 3, costUsd: 1.25, nudges: 1, decisions: 2, recoveries: 1 });
+    expect(totals).toEqual({ tickets: 3, wallMs: 3_000, waitingOnUserMs: 100, agentActiveMs: 1_200, turns: 7, agents: 3, costUsd: 1.25, nudges: 1, decisions: 2, recoveries: 1, idleCompactions: 0 });
   });
 
   it("does not count a child's agents, turns, cost or time twice, but adds its nudges, decisions and recoveries", () => {
@@ -74,6 +77,13 @@ describe("projectTotals", () => {
       row("AP-9.1", { wallMs: 4_000, agentActiveMs: 400, turns: 4, agents: 1, costUsd: 1, nudges: 2, decisions: 1, recoveries: 2 }),
     ]);
     expect(totals).toMatchObject({ tickets: 2, wallMs: 10_000, agentActiveMs: 900, turns: 9, agents: 3, costUsd: 3, nudges: 3, decisions: 1, recoveries: 3 });
+  });
+
+  it("adds every ticket's idle compactions, children's too, and the manager's", () => {
+    const tickets = [row("AP-9", { idleCompactions: 1 }), row("AP-9.1", { idleCompactions: 2 })];
+    expect(projectTotals(tickets).idleCompactions).toBe(3);
+    expect(projectTotals(tickets, 4).idleCompactions).toBe(7);
+    expect(projectTotals([], 1).idleCompactions).toBe(1);
   });
 });
 

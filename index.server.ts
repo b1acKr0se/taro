@@ -39,6 +39,7 @@ import { Recovery } from "./server/recovery";
 import { PluginState } from "./server/state";
 import { Stats, turnMayStillEnd } from "./server/stats";
 import { summarize } from "./shared/stats";
+import { idleCompactAfterMs } from "./shared/idle-compaction";
 import { Supervisor, identityFromLabels } from "./server/supervision";
 import { sessionEnvironment } from "./server/environment";
 import { readTextIfPresent, writeTextAtomically } from "./server/files";
@@ -88,6 +89,27 @@ export default function contribute(server: PluginServerContext) {
   void trackers.refresh().catch((error: unknown) => {
     console.error("[taro] could not start tracker watches:", error);
   });
+
+  // Idle compaction (TR-015): once a minute, so an agent is caught inside its 55–60 minute window.
+  const idleAfterMs = idleCompactAfterMs(process.env.TARO_IDLE_COMPACT_AFTER_SECONDS);
+  let checkingIdle = false;
+  const idleTimer = setInterval(() => {
+    if (kept === null || checkingIdle) return;
+    const paseo = kept;
+    checkingIdle = true;
+    void listProjectConfigs()
+      .then((configs) => supervisor.compactIdleAgents(paseo, configs.map((config) => config.project), Date.now(), idleAfterMs))
+      .then((started) => {
+        if (started > 0) {
+          console.log(`[taro] started idle compaction for ${started} agents`);
+          invalidateBoards();
+        }
+      })
+      .catch((error: unknown) => console.error("[taro] idle compaction check failed:", error))
+      .finally(() => {
+        checkingIdle = false;
+      });
+  }, 60_000);
 
   server.handle(listProjects, async (_input, { paseo }) => {
     keep(paseo);
@@ -196,7 +218,10 @@ export default function contribute(server: PluginServerContext) {
     return {};
   });
 
-  server.handle(loadStats, async ({ project }) => ({ tickets: (await stats.all(project)).map((ticket) => summarize(ticket)) }));
+  server.handle(loadStats, async ({ project }) => ({
+    tickets: (await stats.all(project)).map((ticket) => summarize(ticket)),
+    managerIdleCompactions: (await stats.projectCounts(project)).idleCompactions,
+  }));
   const removeTurnStartHook = server.on("agent.turn_started", async ({ agent }) => {
     await stats.turnStarted(agent.id).catch((error: unknown) => console.error(`[taro] recording ${agent.id}'s turn start:`, error));
   });
@@ -238,6 +263,7 @@ export default function contribute(server: PluginServerContext) {
     removeTurnStartHook();
     removeArchiveHook();
     removeSessionHook();
+    clearInterval(idleTimer);
     recovery.dispose();
     trackers.stop();
   };

@@ -29,8 +29,17 @@ export const TicketStatsSchema = z.object({
   decisions: z.number().int().default(0),
   /** Automatic recoveries of this ticket's agents from a crash (TR-012). */
   recoveries: z.number().int().default(0),
+  /** Owners compacted after an hour idle (TR-015). */
+  idleCompactions: z.number().int().default(0),
 });
 export type TicketStats = z.infer<typeof TicketStatsSchema>;
+
+/** What the plugin counts per project rather than per ticket: the manager has no ticket. */
+export const ProjectStatsSchema = z.object({
+  /** The manager compacted after an hour idle (TR-015). */
+  idleCompactions: z.number().int().default(0),
+});
+export type ProjectStats = z.infer<typeof ProjectStatsSchema>;
 
 export interface TicketSummary {
   project: string;
@@ -51,6 +60,7 @@ export interface TicketSummary {
   nudges: number;
   decisions: number;
   recoveries: number;
+  idleCompactions: number;
 }
 
 export function summarize(stats: TicketStats, now: number = Date.now()): TicketSummary {
@@ -84,6 +94,7 @@ export function summarize(stats: TicketStats, now: number = Date.now()): TicketS
     nudges: stats.nudges,
     decisions: stats.decisions,
     recoveries: stats.recoveries,
+    idleCompactions: stats.idleCompactions,
   };
 }
 
@@ -98,6 +109,7 @@ export interface ProjectTotals {
   nudges: number;
   decisions: number;
   recoveries: number;
+  idleCompactions: number;
 }
 
 /** A child ticket (`TR-3.1`) whose parent is `TR-3`, or null. */
@@ -108,10 +120,10 @@ export function parentOf(ticket: string): string | null {
 /**
  * A project's totals. A child's agents, turns and cost are recorded on its
  * parent too (see `server/stats.ts`), and its time falls inside the parent's,
- * so those add up top-level tickets only; nudges, decisions and recoveries are recorded on
- * one ticket each, so they add up every ticket.
+ * so those add up top-level tickets only; nudges, decisions, recoveries and idle compactions are
+ * recorded on one ticket each, so they add up every ticket, plus the manager's idle compactions.
  */
-export function projectTotals(summaries: readonly TicketSummary[]): ProjectTotals {
+export function projectTotals(summaries: readonly TicketSummary[], managerIdleCompactions: number = 0): ProjectTotals {
   const topLevel = summaries.filter((summary) => parentOf(summary.ticket) === null);
   const costs = topLevel.map((summary) => summary.costUsd).filter((cost): cost is number => cost !== null);
   const sum = (list: readonly TicketSummary[], pick: (summary: TicketSummary) => number) => list.reduce((total, summary) => total + pick(summary), 0);
@@ -126,6 +138,7 @@ export function projectTotals(summaries: readonly TicketSummary[]): ProjectTotal
     nudges: sum(summaries, (summary) => summary.nudges),
     decisions: sum(summaries, (summary) => summary.decisions),
     recoveries: sum(summaries, (summary) => summary.recoveries),
+    idleCompactions: managerIdleCompactions + sum(summaries, (summary) => summary.idleCompactions),
   };
 }
 

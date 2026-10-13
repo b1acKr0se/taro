@@ -1,7 +1,7 @@
 /**
  * A project's Stats tab: a totals row, then a row per ticket with its wall
  * time, agent time, time waiting on the user, turns, agents, cost, nudges,
- * decisions and crash recoveries. Tapping a ticket shows its time per status. The table scrolls
+ * decisions, crash recoveries and idle compactions (the totals add the manager's). Tapping a ticket shows its time per status. The table scrolls
  * sideways when the screen is narrower than it; on a phone the status sits
  * under the title so the first numbers fit.
  */
@@ -29,6 +29,7 @@ const NUMBER_COLUMNS: ReadonlyArray<{ key: string; label: string; width: number;
   { key: "nudges", label: "Nudges", width: 60, value: (counted) => String(counted.nudges) },
   { key: "decisions", label: "Decisions", width: 72, value: (counted) => String(counted.decisions) },
   { key: "recoveries", label: "Recoveries", width: 80, value: (counted) => String(counted.recoveries) },
+  { key: "idle-compactions", label: "Idle compactions", width: 116, value: (counted) => String(counted.idleCompactions) },
 ];
 
 const NUMBERS_WIDTH = NUMBER_COLUMNS.reduce((total, column) => total + column.width, 0);
@@ -57,7 +58,7 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
   );
 
   const tickets = useMemo(() => [...(stats.data?.tickets ?? [])].sort((left, right) => compareTickets(left.ticket, right.ticket)), [stats.data]);
-  const totals = useMemo(() => projectTotals(tickets), [tickets]);
+  const totals = useMemo(() => projectTotals(tickets, stats.data?.managerIdleCompactions ?? 0), [tickets, stats.data]);
 
   if (stats.error !== null && stats.data === undefined) return <Text style={styles.error}>{errorText(stats.error)}</Text>;
   if (stats.data === undefined) return <Text style={styles.note}>Loading…</Text>;

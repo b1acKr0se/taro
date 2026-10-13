@@ -25,6 +25,8 @@ export const TEMPLATES = {
   handoffRequest: "messages/handoff-request.md",
   compactInstructions: "messages/compact-instructions.md",
   reload: "messages/reload.md",
+  managerHandoffRequest: "messages/manager-handoff-request.md",
+  managerReload: "messages/manager-reload.md",
   relaunchOwner: "messages/relaunch-owner.md",
   accept: "messages/accept.md",
   requestChanges: "messages/request-changes.md",

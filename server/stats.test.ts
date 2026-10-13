@@ -97,6 +97,28 @@ describe("turn durations", () => {
   });
 });
 
+describe("idle compaction counts", () => {
+  it("count an owner's on its ticket and the manager's on its project, surviving a reload", async () => {
+    await new Stats().count("taro", "TR-1", "idleCompactions");
+    await new Stats().countProject("taro", "idleCompactions");
+    await new Stats().countProject("taro", "idleCompactions");
+    await new Stats().countProject("other", "idleCompactions");
+    const stats = new Stats();
+    expect((await stats.all("taro"))[0]?.idleCompactions).toBe(1);
+    expect(await stats.projectCounts("taro")).toEqual({ idleCompactions: 2 });
+    expect(await stats.projectCounts(null)).toEqual({ idleCompactions: 3 });
+    expect(await stats.projectCounts("none-yet")).toEqual({ idleCompactions: 0 });
+  });
+
+  it("read as zero from a file written before they were counted", async () => {
+    await mkdir(join(home, "plugin-data", "taro", "state"), { recursive: true });
+    await writeFile(join(home, "plugin-data", "taro", "state", "stats.json"), JSON.stringify({ tickets: { "taro:TR-1": { project: "taro", ticket: "TR-1" } } }));
+    const stats = new Stats();
+    expect((await stats.all("taro"))[0]?.idleCompactions).toBe(0);
+    expect(await stats.projectCounts("taro")).toEqual({ idleCompactions: 0 });
+  });
+});
+
 describe("stats file", () => {
   it("loads a file written before turn starts were stored, keeping its tickets", async () => {
     await mkdir(join(home, "plugin-data", "taro", "state"), { recursive: true });

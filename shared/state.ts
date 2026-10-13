@@ -2,6 +2,7 @@
 import { z } from "zod";
 
 import { ParsedDecisionSchema, StatusStateSchema } from "./reports";
+import { IdleCompactionSchema } from "./idle-compaction";
 import { RoleSchema } from "./project";
 
 export const DecisionAnswerSchema = z.object({
@@ -58,6 +59,7 @@ export const AgentStateSchema = z.object({
   /** Reports from this owner's helpers, waiting until it is idle. */
   heldReports: z.array(HeldReportSchema).default([]),
   compaction: CompactionStageSchema.default("none"),
+  idleCompaction: IdleCompactionSchema.default("none"),
   lastTurnEndedAt: z.string().nullable().default(null),
 });
 export type AgentState = z.infer<typeof AgentStateSchema>;

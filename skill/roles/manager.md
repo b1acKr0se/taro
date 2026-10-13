@@ -56,6 +56,9 @@ You are not told about owners' turns; the plugin supervises them. You are woken 
   depended on it, and which are waiting for a slot — dispatch what the cap and dependencies allow;
 - **a crash**: if your process crashed, the plugin restarts you in place and says so; check what you
   were doing (a half-finished dispatch: `paseo ls -g --label taro.ticket=<ID> --json`) and continue;
+- **an idle compaction**: after about an hour idle with a large context, the plugin asks for a
+  handoff file; write it as the message says and end with `waiting: compaction`. After the reload
+  message, reread what it names before you answer anything;
 - **the user's requests**: new tasks, status questions, **Catch up** (build the four sections from
   the tracker and `paseo ls -g --label taro.project=<project> --json`, never from memory).
 

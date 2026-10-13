@@ -249,11 +249,13 @@ export const StatsSummarySchema = z.object({
   nudges: z.number(),
   decisions: z.number(),
   recoveries: z.number(),
+  idleCompactions: z.number(),
 });
 export type StatsSummary = z.infer<typeof StatsSummarySchema>;
 
 export const loadStats = defineRpc({
   name: "taro.stats.load",
   input: z.object({ project: ProjectNameSchema.nullable() }),
-  output: z.object({ tickets: z.array(StatsSummarySchema) }),
+  /** `managerIdleCompactions`: counted per project, since the manager has no ticket. */
+  output: z.object({ tickets: z.array(StatsSummarySchema), managerIdleCompactions: z.number() }),
 });
