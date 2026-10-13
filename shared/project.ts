@@ -17,18 +17,18 @@ export const SUBAGENT_ROLES = ["implementer", "reviewer", "researcher"] as const
 export type Role = (typeof ROLES)[number];
 export type SubagentRole = (typeof SUBAGENT_ROLES)[number];
 
-/** The role a `taro.role` label value names; agents started before TR-017 say `helper`, which was an implementer. */
+/** Reads a stored or labelled role; agents started before TR-017 say `helper`, which was an implementer. */
+export const RoleSchema = z.preprocess((value) => (value === "helper" ? "implementer" : value), z.enum(ROLES));
+
+/** The role a `taro.role` label value names, or null for an agent that is not Taro's. */
 export function roleFromLabel(value: string | undefined): Role | null {
-  if (value === "helper") return "implementer";
-  return (ROLES as readonly string[]).includes(value ?? "") ? (value as Role) : null;
+  const role = RoleSchema.safeParse(value);
+  return role.success ? role.data : null;
 }
 
 export function isSubagentRole(role: string): role is SubagentRole {
   return (SUBAGENT_ROLES as readonly string[]).includes(role);
 }
-
-/** Reads a stored or labelled role, the legacy `helper` included. */
-export const RoleSchema = z.preprocess((value) => (value === "helper" ? "implementer" : value), z.enum(ROLES));
 
 /** Taro's Backlog.md statuses, Done last (Backlog treats the last as terminal). */
 export const TICKET_STATUSES = [

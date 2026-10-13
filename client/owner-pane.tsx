@@ -1,6 +1,6 @@
 /**
  * A ticket beside the board (decision 6): the conversation of one of its
- * agents — the live owner with decision cards drawn inline, a helper, or an
+ * agents — the live owner with decision cards drawn inline, a subagent, or an
  * archived agent read-only — or its ticket, and a way back to the manager.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
