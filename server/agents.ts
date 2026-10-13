@@ -11,7 +11,8 @@ export async function listTaroAgents(
   let cursor: string | null = null;
   for (let page = 0; page < 20; page++) {
     const result: Awaited<ReturnType<PaseoApi["agents"]["list"]>> = await paseo.agents.list({
-      filter: { labels: { ...labels } },
+      // Paseo leaves archived agents out unless asked; a finished ticket's agents are all archived.
+      filter: { labels: { ...labels }, ...(options.includeArchived === true ? { includeArchived: true } : {}) },
       page: cursor === null ? { limit: 200 } : { limit: 200, cursor },
     });
     for (const entry of result.entries) agents.push(entry.agent);
