@@ -14,7 +14,7 @@ import { TARO_LABELS } from "../shared/project";
 import { boardAlerts } from "../shared/recovery";
 import { decisionsOfLiveAgents, type StoredDecision } from "../shared/state";
 import { currentSuggestions, parseSuggestions, suggestionKey } from "../shared/suggestions";
-import { projectAgents, projectAgentsIncludingArchived } from "./agents";
+import { projectAgents, projectArchivedAgents } from "./agents";
 import { statePath } from "./data-dir";
 import { readHeadroom } from "./headroom";
 import { readJsonIfPresent, readTextIfPresent, writeJsonAtomically } from "./files";
@@ -45,6 +45,36 @@ async function recordedFacts(
   }
 }
 
+/**
+ * Records change only when the ticket file does, so a read is reused while `updatedAt` holds.
+ * The tracker stamps whole minutes, so a short age bound still catches two notes in one minute.
+ */
+const FACTS_CACHE_MS = 60_000;
+const factsCache = new Map<string, { updatedAt: string; at: number; facts: Promise<Awaited<ReturnType<typeof recordedFacts>>> }>();
+
+function cachedRecordedFacts(trackerPath: string, ticketId: string, updatedAt: string | null): ReturnType<typeof recordedFacts> {
+  if (updatedAt === null) return recordedFacts(trackerPath, ticketId);
+  const key = `${trackerPath}\n${ticketId}`;
+  const cached = factsCache.get(key);
+  if (cached !== undefined && cached.updatedAt === updatedAt && Date.now() - cached.at < FACTS_CACHE_MS) return cached.facts;
+  const facts = recordedFacts(trackerPath, ticketId);
+  factsCache.set(key, { updatedAt, at: Date.now(), facts });
+  return facts;
+}
+
+/** Archived agents only feed the finished-agents chips and grow without end, so they are listed less often than live ones. */
+const ARCHIVED_CACHE_MS = 30_000;
+const archivedCache = new Map<string, { at: number; agents: Promise<PaseoAgent[]> }>();
+
+function cachedArchivedAgents(paseo: PaseoApi, project: string): Promise<PaseoAgent[]> {
+  const cached = archivedCache.get(project);
+  if (cached !== undefined && Date.now() - cached.at < ARCHIVED_CACHE_MS) return cached.agents;
+  const agents = projectArchivedAgents(paseo, project);
+  archivedCache.set(project, { at: Date.now(), agents });
+  agents.catch(() => archivedCache.delete(project));
+  return agents;
+}
+
 function newest(agents: readonly PaseoAgent[]): PaseoAgent | null {
   return [...agents].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
 }
@@ -65,28 +95,33 @@ export function loadBoard(paseo: PaseoApi, state: PluginState, project: string):
 /** Forgets cached boards after an action, so the next read shows its effect. */
 export function invalidateBoards(): void {
   boardCache.clear();
+  factsCache.clear();
+  archivedCache.clear();
+}
+
+function groupByTicket(agents: readonly PaseoAgent[]): Map<string, PaseoAgent[]> {
+  const byTicket = new Map<string, PaseoAgent[]>();
+  for (const agent of agents) {
+    const ticket = agent.labels[TARO_LABELS.ticket];
+    if (ticket !== undefined) byTicket.set(ticket, [...(byTicket.get(ticket) ?? []), agent]);
+  }
+  return byTicket;
 }
 
 async function readBoard(paseo: PaseoApi, state: PluginState, project: string): Promise<Board> {
   const paths = await projectPaths(project);
-  const [tickets, everyAgent, decisions, agentStates, headroom] = await Promise.all([
+  // Live agents come from their own list, so a long archive can never push a live owner past its page limit.
+  const [tickets, agents, archived, decisions, agentStates, headroom] = await Promise.all([
     listTickets(paths.tracker),
-    projectAgentsIncludingArchived(paseo, project),
+    projectAgents(paseo, project),
+    cachedArchivedAgents(paseo, project).catch(() => []),
     state.allDecisions(),
     state.allAgents(),
     readHeadroom(),
   ]);
 
-  const isArchived = (agent: PaseoAgent): boolean => agent.archivedAt !== null && agent.archivedAt !== undefined;
-  const agents = everyAgent.filter((agent) => !isArchived(agent));
-  const byTicket = new Map<string, PaseoAgent[]>();
-  const archivedByTicket = new Map<string, PaseoAgent[]>();
-  for (const agent of everyAgent) {
-    const ticket = agent.labels[TARO_LABELS.ticket];
-    if (ticket === undefined) continue;
-    const target = isArchived(agent) ? archivedByTicket : byTicket;
-    target.set(ticket, [...(target.get(ticket) ?? []), agent]);
-  }
+  const byTicket = groupByTicket(agents);
+  const archivedByTicket = groupByTicket(archived);
   // Only questions a live agent asked: one archived outside the plugin may not be withdrawn yet.
   const openDecisions = decisionsOfLiveAgents(
     decisions.filter((decision) => decision.project === project),
@@ -102,9 +137,8 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
       const finished = ticket.status === "Done" || ticket.status === "Cancelled";
       const ticketDecisions = finished ? [] : openDecisions.filter((decision) => decision.ticket === ticket.id);
       const needsHost = owner === null && UNDER_WAY.has(ticket.status);
-      // Reading a ticket spawns the Backlog CLI, so only for cards that show what it holds.
-      // The latest milestone widens this to every under-way ticket, still bounded by that set.
-      const facts = UNDER_WAY.has(ticket.status) ? await recordedFacts(paths.tracker, ticket.id) : null;
+      // Reading a ticket spawns the Backlog CLI: only under-way cards show what it holds, and only once per change.
+      const facts = UNDER_WAY.has(ticket.status) ? await cachedRecordedFacts(paths.tracker, ticket.id, ticket.updatedAt) : null;
       const elsewhere = needsHost ? facts?.hostElsewhere ?? null : null;
       const archivedAgents = archivedByTicket.get(ticket.id) ?? [];
       const pastById = new Map(archivedAgents.map((agent) => [agent.id, agent]));

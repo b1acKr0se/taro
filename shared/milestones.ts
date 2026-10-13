@@ -22,9 +22,31 @@ function milestoneOf(record: string): Milestone | null {
   return { kind: match[1] ?? "", time: match[2] ?? null, text };
 }
 
+/** The records the skill and the plugin write; any other name needs a time to count as a record. */
+export const RECORD_KINDS: ReadonlySet<string> = new Set([
+  "MILESTONE",
+  "EXECUTION",
+  "APPROVAL",
+  "REVIEW",
+  "FINAL",
+  "ACCEPTANCE",
+  "RECOVERY",
+  "ANSWER",
+  "HANDOFF",
+  "DISPATCH-INTENT",
+]);
+
 /** Every record in a ticket's notes, in note order (notes are append-only, so oldest first). */
 export function ticketMilestones(notes: string | null): Milestone[] {
-  return noteRecords(notes).flatMap((record) => {
+  // A body line opening with capitals ("README updated") splits off as a record; join it back.
+  const records: string[] = [];
+  for (const record of noteRecords(notes)) {
+    const milestone = milestoneOf(record);
+    const continuation = milestone !== null && milestone.time === null && !RECORD_KINDS.has(milestone.kind);
+    if (continuation && records.length > 0) records[records.length - 1] += `\n${record}`;
+    else records.push(record);
+  }
+  return records.flatMap((record) => {
     const milestone = milestoneOf(record);
     return milestone === null ? [] : [milestone];
   });

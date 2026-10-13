@@ -27,9 +27,10 @@ export async function projectAgents(paseo: PaseoApi, project: string, role?: Rol
   return listTaroAgents(paseo, { [TARO_LABELS.project]: project, ...(role === undefined ? {} : { [TARO_LABELS.role]: role }) });
 }
 
-/** Like `projectAgents`, but archived agents too: a finished ticket shows who worked on it. */
-export async function projectAgentsIncludingArchived(paseo: PaseoApi, project: string): Promise<PaseoAgent[]> {
-  return listTaroAgents(paseo, { [TARO_LABELS.project]: project }, { includeArchived: true });
+/** Only the project's archived agents: a finished ticket shows who worked on it. */
+export async function projectArchivedAgents(paseo: PaseoApi, project: string): Promise<PaseoAgent[]> {
+  const agents = await listTaroAgents(paseo, { [TARO_LABELS.project]: project }, { includeArchived: true });
+  return agents.filter((agent) => agent.archivedAt !== null && agent.archivedAt !== undefined);
 }
 
 /** The live agent with this id, or null when Paseo has none (or it is archived). */

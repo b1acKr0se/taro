@@ -45,6 +45,18 @@ describe("ticketMilestones", () => {
     const notes = "DISPATCH-INTENT 2026-10-13T10:00Z — x\nWHATEVER 2026-10-13T11:00Z — y\nRECOVERY 2026-10-13T12:00Z — z";
     expect(ticketMilestones(notes).map((milestone) => milestone.kind)).toEqual(["DISPATCH-INTENT", "WHATEVER", "RECOVERY"]);
   });
+
+  it("joins a body line that opens with capitals to its record", () => {
+    const notes = "MILESTONE 2026-10-13T14:02Z — tests green\nREADME updated, API docs next\nAPI: done\nREVIEW — r";
+    expect(ticketMilestones(notes)).toEqual([
+      { kind: "MILESTONE", time: "2026-10-13T14:02Z", text: "tests green README updated, API docs next API: done" },
+      { kind: "REVIEW", time: null, text: "r" },
+    ]);
+  });
+
+  it("keeps a timeless unknown name as a record when nothing comes before it", () => {
+    expect(ticketMilestones("NOTE — first\nMILESTONE — m").map((milestone) => milestone.kind)).toEqual(["NOTE", "MILESTONE"]);
+  });
 });
 
 describe("latestMilestone", () => {
@@ -56,5 +68,9 @@ describe("latestMilestone", () => {
   it("picks the last MILESTONE", () => {
     const notes = "MILESTONE 2026-10-13T10:00Z — one\nREVIEW 2026-10-13T11:00Z — r\nMILESTONE 2026-10-13T12:00Z — two\nEXECUTION — e";
     expect(latestMilestone(notes)).toEqual({ kind: "MILESTONE", time: "2026-10-13T12:00Z", text: "two" });
+  });
+
+  it("keeps a continuation line that opens with capitals", () => {
+    expect(latestMilestone("MILESTONE 2026-10-13T10:00Z — built\nCSS tidied")?.text).toBe("built CSS tidied");
   });
 });
