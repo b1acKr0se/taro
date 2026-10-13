@@ -145,7 +145,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
         stalled: ownerState?.stalled ?? false,
         stalledReason: ownerState?.stalled === true ? ownerState.stalledReason : null,
         decisions: ticketDecisions,
-        helpers: helpers.map(agentBrief),
+        helpers: helpers.map((agent) => ({ ...agentBrief(agent), role: agent.labels[TARO_LABELS.role] === "reviewer" ? ("reviewer" as const) : ("helper" as const) })),
         pastAgents: past,
         latestMilestone: UNDER_WAY.has(ticket.status) ? facts?.latestMilestone ?? null : null,
       };

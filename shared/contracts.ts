@@ -25,6 +25,8 @@ export const AgentBriefSchema = z.object({
   updatedAt: z.string(),
   contextUsedTokens: z.number().nullable(),
   contextMaxTokens: z.number().nullable(),
+  /** When Paseo created it: a subagent's running time on the card and in the owner pane. */
+  createdAt: z.string().nullable().default(null),
 });
 export type AgentBrief = z.infer<typeof AgentBriefSchema>;
 
@@ -140,7 +142,8 @@ export const CardSchema = z.object({
   /** Why the plugin left it stalled, when the status line does not say (a crash past the recovery limit). */
   stalledReason: z.string().nullable(),
   decisions: z.array(StoredDecisionSchema),
-  helpers: z.array(AgentBriefSchema),
+  /** The ticket's live subagents, with the job their `taro.role` label names. */
+  helpers: z.array(AgentBriefSchema.extend({ role: z.enum(["helper", "reviewer"]).default("helper") })),
   /** The ticket's archived owner, helpers and reviewers, newest first (a finished ticket keeps its history). */
   pastAgents: z.array(AgentBriefSchema.extend({ role: z.enum(["owner", "helper", "reviewer"]), archivedAt: z.string() })).default([]),
   /** The newest MILESTONE record, read for tickets that are under way. */

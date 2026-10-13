@@ -32,6 +32,11 @@ paseo run -d --workspace <your workspaceId> --provider <model> [--thinking <id>]
   --json "<definition of done>"
 ```
 
+`<task>` is what the agent is doing, in words the user understands at a glance, as a phrase starting
+with a verb in -ing: `building the board columns, cards and Ticket tab`, `checking the whole branch`.
+The board shows it as "Implementer building the board columns… · 26m"; never a bare "step 3" (a
+step number may follow as a hint: `…, 2 of 3`).
+
 Use `taro.role=reviewer` for reviewers. Bypass mode ids: Claude `bypassPermissions`, Codex
 `full-access`. Models: `paseo provider models <provider> --json`; pick from the project's allowed
 list. Parallel children only: create their own worktree first (as for an owner, branching from your

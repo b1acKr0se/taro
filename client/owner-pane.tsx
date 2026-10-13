@@ -13,19 +13,16 @@ import { decisionBlocksAsText, parseDecisionBlocks, withoutDecisionBlocks } from
 import { AgentChat } from "./agent-chat";
 import { ContextMeter } from "./context-meter";
 import { DecisionCard } from "./decision-card";
-import { defaultPaneAgent, paneAgents, type PaneAgent, paneAgentJob } from "./pane-agents";
+import { defaultPaneAgent, paneAgents, paneAgentJob } from "./pane-agents";
 import { PaneHeader } from "./pane-header";
 import { SPACE } from "./spacing";
 import { TicketView } from "./ticket-view";
 import { FONT_SIZE } from "./type-scale";
-import { IconButton, Segmented, ToggleChips } from "./ui";
+import { IconButton, Segmented } from "./ui";
+import { AgentChips, roleIcon } from "./agent-chips";
+import { useNow } from "./use-now";
 
 const ARCHIVED_NOTE = "Finished — this agent is archived; its conversation is read-only.";
-
-function roleIcon(agent: PaneAgent): string {
-  if (agent.role === "owner") return agent.live ? "Crown" : "UserRound";
-  return agent.role === "helper" ? "Wrench" : "ShieldCheck";
-}
 
 export function OwnerPane({
   card,
@@ -49,6 +46,7 @@ export function OwnerPane({
   // Remembered with the card it was made on, so opening another ticket starts from its default agent.
   const [chosen, setChosen] = useState<{ card: string; agent: string } | null>(null);
   const agents = useMemo(() => paneAgents(card), [card.owner, card.helpers, card.pastAgents]);
+  const now = useNow();
   const chosenId = chosen?.card === card.id ? chosen.agent : null;
   const shown = agents.find((agent) => agent.id === chosenId) ?? defaultPaneAgent(agents) ?? agents[0] ?? null;
   const openByDecisionId = useMemo(() => new Map(card.decisions.map((decision) => [decision.id, decision])), [card.decisions]);
@@ -79,12 +77,7 @@ export function OwnerPane({
           <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small }}>Its current owner runs on {card.ownerElsewhere}.</Text>
         ) : null}
         {tab === "chat" && agents.length > 1 ? (
-          <ToggleChips
-            theme={theme}
-            selected={shown === null ? [] : [shown.id]}
-            options={agents.map((agent) => ({ value: agent.id, label: agent.label, icon: roleIcon(agent) }))}
-            onToggle={(agentId) => setChosen({ card: card.id, agent: agentId })}
-          />
+          <AgentChips theme={theme} agents={agents} selectedId={shown?.id ?? null} now={now} onSelect={(agentId) => setChosen({ card: card.id, agent: agentId })} />
         ) : null}
       </View>
       <View style={{ flex: 1 }}>

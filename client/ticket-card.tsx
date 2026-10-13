@@ -14,9 +14,11 @@ import { acceptTicket, compactAgent, nudgeAgent, relaunchOwner, requestChanges, 
 import { PhaseBadge } from "./badges";
 import { DecisionCard } from "./decision-card";
 import { errorText, formatCost, pullRequestLabel, formatDuration, formatTokenCount, relativeTime } from "./format";
+import { waitingOnText } from "./pane-agents";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { Chip, IconButton } from "./ui";
+import { useNow } from "./use-now";
 import { statusStateLook, toneColor } from "./visual-meta";
 
 export function TicketCard({
@@ -48,6 +50,7 @@ export function TicketCard({
   const [changeText, setChangeText] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [childrenOpen, setChildrenOpen] = useState(false);
+  const now = useNow();
   const { colors } = theme;
   const styles = useMemo(
     () => ({
@@ -156,6 +159,8 @@ export function TicketCard({
 
   const statusLook = card.lastStatus === null ? null : statusStateLook(card.lastStatus.state);
   const milestone = (card.column === "working" || card.column === "stalled") && card.latestMilestone !== null ? card.latestMilestone : null;
+  // From the subagents' labels and Paseo status: what the owner is waiting on while they run.
+  const waitingOn = waitingOnText(card, now);
   const hasCalls = card.decisions.length > 0 || (awaiting && owner !== null) || card.column === "stalled";
 
   return (
@@ -167,6 +172,16 @@ export function TicketCard({
           {card.complexity === null ? null : <Chip theme={theme} icon="Gauge" text={card.complexity} color={colors.foregroundMuted} />}
           {card.investigation ? <Chip theme={theme} icon="Search" text="investigation" color={colors.accent} /> : null}
           {card.ownerElsewhere === null ? null : <Chip theme={theme} icon="Monitor" text={`on ${card.ownerElsewhere}`} color={colors.foregroundMuted} />}
+        </View>
+      )}
+      {waitingOn === null ? null : (
+        <View style={styles.line}>
+          <View style={styles.lineIcon}>
+            <Icon name="Hourglass" size={13} color={colors.statusSuccess} />
+          </View>
+          <Text style={[styles.status, { color: colors.foreground }]} numberOfLines={2}>
+            {waitingOn}
+          </Text>
         </View>
       )}
       {milestone === null ? null : (
