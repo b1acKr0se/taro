@@ -13,7 +13,7 @@ import { Pressable, Text, View } from "react-native";
 
 import { compactAgent, nudgeAgent, relaunchOwner, type Card, type StatsSummary } from "../shared/contracts";
 import { PhaseBadge } from "./badges";
-import { callAction } from "./card-calls";
+import { acceptanceReady, callAction } from "./card-calls";
 import { cardFooterParts, cardNowLine, offersCompact, type NowLine } from "./card-now";
 import { errorText, formatCost, pullRequestLabel, formatDuration, relativeTime } from "./format";
 import { SPACE } from "./spacing";
@@ -158,9 +158,9 @@ export function TicketCard({
         call.kind === "decision"
           ? { icon: "Hand", color: call.blocking ? colors.statusWarning : colors.foregroundMuted }
           : call.kind === "acceptance"
-            ? card.evidence !== null && !card.evidence.complete
-              ? { icon: "PackageX", color: colors.statusWarning }
-              : { icon: "PackageCheck", color: colors.accent }
+            ? acceptanceReady(card)
+              ? { icon: "PackageCheck", color: colors.accent }
+              : { icon: "PackageX", color: colors.statusWarning }
             : { icon: "KeyRound", color: colors.statusWarning };
       const text = call.kind === "acceptance" && call.evidence !== null ? `${call.text} · ${call.evidence}` : call.text;
       return (

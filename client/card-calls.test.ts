@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Card } from "../shared/contracts";
 import type { StoredDecision } from "../shared/state";
-import { callAction, cardCalls } from "./card-calls";
+import { acceptanceReady, callAction, cardCalls } from "./card-calls";
 
 const owner = {
   id: "agent-1",
@@ -120,5 +120,16 @@ describe("cardCalls", () => {
     const calls = cardCalls(card({ status: "Awaiting acceptance", decisions: [decision({})], owner: { ...owner, pendingPermissions: 1 } }));
     expect(calls.map((call) => call.kind)).toEqual(["decision", "acceptance", "permission"]);
     expect(calls.map(callAction)).toEqual(["Answer", "Review", "Allow…"]);
+  });
+});
+
+describe("acceptanceReady", () => {
+  const evidence = { checks: [], review: null, screenshots: [], screenshotsNone: null, missing: ["a check"], complete: false };
+  it("is ready without an evidence record to judge, and with complete evidence", () => {
+    expect(acceptanceReady({ evidence: null })).toBe(true);
+    expect(acceptanceReady({ evidence: { ...evidence, missing: [], complete: true } })).toBe(true);
+  });
+  it("withholds Accept while the evidence is incomplete", () => {
+    expect(acceptanceReady({ evidence })).toBe(false);
   });
 });

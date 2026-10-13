@@ -13,6 +13,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { acceptTicket, loadTicket, requestChanges, type Card } from "../shared/contracts";
 import { evidenceSummary } from "../shared/evidence";
+import { acceptanceReady } from "./card-calls";
 import { drafts } from "./draft";
 import { errorText, pullRequestLabel } from "./format";
 import { Markdown } from "./markdown";
@@ -57,7 +58,7 @@ export function AcceptanceRow({
   const [draft, setDraft] = useState(() => drafts.get(agentId));
   const { colors } = theme;
   const summary = detail.data?.finalSummary ?? null;
-  const ready = card.evidence === null || card.evidence.complete;
+  const ready = acceptanceReady(card);
   const changeText = draft.trim();
   const openLink = (url: string) => void openExternalUrl(url).catch((caught: unknown) => toast.error(errorText(caught)));
 

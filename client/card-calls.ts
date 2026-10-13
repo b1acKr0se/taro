@@ -21,13 +21,19 @@ export function cardCalls(card: Card): CardCall[] {
   if (first !== undefined) calls.push({ kind: "decision", text: first.question, blocking: first.blocking, more: open.length - 1 });
   // Accepting messages the owner, so without one there is nothing to press.
   if (card.status === "Awaiting acceptance" && card.owner !== null) {
-    // Incomplete evidence withholds Accept, so the card does not call it ready.
-    const ready = card.evidence === null || card.evidence.complete;
-    calls.push({ kind: "acceptance", text: ready ? "Ready to accept" : "Not ready to accept", evidence: card.evidence === null ? null : evidenceSummary(card.evidence) });
+    calls.push({ kind: "acceptance", text: acceptanceReady(card) ? "Ready to accept" : "Not ready to accept", evidence: card.evidence === null ? null : evidenceSummary(card.evidence) });
   }
   const permissions = card.owner?.pendingPermissions ?? 0;
   if (permissions > 0) calls.push({ kind: "permission", text: permissions === 1 ? "Waiting on a permission" : `Waiting on ${permissions} permissions` });
   return calls;
+}
+
+/**
+ * Whether Accept may be offered: incomplete evidence withholds it (the server refuses it too). One
+ * test for the card's wording and icon and the composer row's Accept, so they cannot disagree.
+ */
+export function acceptanceReady(card: Pick<Card, "evidence">): boolean {
+  return card.evidence === null || card.evidence.complete;
 }
 
 /** The link at the end of a call's line. */
