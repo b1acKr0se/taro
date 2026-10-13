@@ -83,6 +83,9 @@ export class Recovery {
       const error = agent.lastError ?? "";
       if (agent.status !== "error" || !isCrash(error)) continue;
       if (Date.now() - Date.parse(agent.updatedAt) > RECOVERY_WINDOW_MS) continue;
+      // Given up on already: a restart must not record it again.
+      const known = await this.state.agent(agent.id);
+      if (known !== null && known.stalledReason !== null) continue;
       const identity = identityFromLabels(agent.labels, agent.title ?? null);
       if (identity === null) continue;
       await this.onCrash(paseo, agent, identity, error);

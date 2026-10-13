@@ -103,6 +103,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
           lastStatus: ownerState?.lastStatus?.state ?? null,
           openBlockingDecisions: ticketDecisions.filter((decision) => decision.blocking).length,
           stalledAfterNudge: ownerState?.stalled ?? false,
+          crashedOut: ownerState?.stalled === true && ownerState.stalledReason !== null,
         }),
         labels: ticket.labels,
         complexity: complexityOf(ticket.labels),

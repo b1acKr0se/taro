@@ -230,4 +230,20 @@ describe("Recovery", () => {
     await vi.advanceTimersByTimeAsync(5_000);
     expect(reloads()).toEqual(["owner-new"]);
   });
+
+  it("after a start, leaves an agent it already gave up on without recording it again", async () => {
+    const owner = agent("owner-1", "owner", "TR-5");
+    vi.mocked(fetchLiveAgent).mockResolvedValue(owner);
+    const { recovery, agents } = setUp();
+    for (let crash = 0; crash < 3; crash++) {
+      await crashed(recovery, owner);
+      await vi.advanceTimersByTimeAsync(20_000);
+    }
+    const notes = vi.mocked(appendTicketNote).mock.calls.length;
+    expect(agents["owner-1"]?.stalled).toBe(true);
+    expect(await recovery.recoverLeftovers(paseo, [owner])).toBe(0);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(vi.mocked(appendTicketNote).mock.calls).toHaveLength(notes);
+    expect(reloads()).toHaveLength(2);
+  });
 });

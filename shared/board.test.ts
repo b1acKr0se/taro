@@ -29,6 +29,15 @@ describe("boardColumn", () => {
     expect(boardColumn({ ...base, lastStatus: "failed" })).toBe("stalled");
   });
 
+  it("calls an owner past its crash-recovery limit Stalled whatever the ticket's status, until it runs again", () => {
+    const crashed = { ...base, agent: { status: "error", pendingPermissions: 0 }, crashedOut: true };
+    expect(boardColumn({ ...crashed, status: "Awaiting acceptance" })).toBe("stalled");
+    expect(boardColumn({ ...crashed, openBlockingDecisions: 1 })).toBe("stalled");
+    expect(boardColumn({ ...crashed, status: "Backlog" })).toBe("stalled");
+    expect(boardColumn({ ...crashed, agent: { status: "running", pendingPermissions: 0 } })).toBe("working");
+    expect(boardColumn({ ...crashed, status: "Done" })).toBe("done");
+  });
+
   it("keeps an owner waiting on something outside itself in Working", () => {
     expect(boardColumn(base)).toBe("working");
   });

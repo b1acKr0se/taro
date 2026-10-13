@@ -28,6 +28,8 @@ export interface CardInputs {
   openBlockingDecisions: number;
   /** Two stalls in a row, the second after the plugin's nudge. */
   stalledAfterNudge: boolean;
+  /** The owner crashed past the automatic recovery limit (TR-012): only the user can bring it back. */
+  crashedOut?: boolean;
 }
 
 const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing"]);
@@ -39,6 +41,7 @@ export function boardColumn(card: CardInputs): ColumnId {
   const agent = card.agent;
   if (agent !== null && agent.pendingPermissions > 0) return "needs-you";
   if (agent !== null && (agent.status === "running" || agent.status === "initializing")) return "working";
+  if (card.crashedOut === true) return "stalled";
 
   if (card.openBlockingDecisions > 0) return "needs-you";
   if (card.status === "Awaiting acceptance" || card.status === "Blocked") return "needs-you";
