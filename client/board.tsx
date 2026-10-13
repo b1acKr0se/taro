@@ -56,7 +56,8 @@ export function ProjectBoard({
   const styles = useMemo(
     () => ({
       root: { flex: 1, minHeight: 0, backgroundColor: colors.surface0 },
-      top: { paddingHorizontal: compact ? SPACE.md : SPACE.lg, paddingTop: compact ? SPACE.md : SPACE.lg, gap: SPACE.md },
+      // On a phone the list it sits in already has the padding.
+      top: { paddingHorizontal: compact ? 0 : SPACE.lg, paddingTop: compact ? 0 : SPACE.lg, gap: SPACE.md },
       section: { gap: SPACE.sm },
       columns: { flexDirection: "row" as const, gap: SPACE.md, padding: SPACE.lg, alignItems: "flex-start" as const },
       panel: { backgroundColor: colors.surface1, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: SPACE.md, gap: SPACE.md },
@@ -180,8 +181,9 @@ export function ProjectBoard({
         {suggestions.length === 0 ? null : (
           <View style={styles.suggestionsCard}>
             <SectionHeading theme={theme} icon="Lightbulb" text="Suggested next" color={colors.accent}>
-              <Text style={styles.suggestionsHint}>tap one to send it to the manager</Text>
+              {compact ? null : <Text style={styles.suggestionsHint}>tap one to send it to the manager</Text>}
             </SectionHeading>
+            {compact ? <Text style={styles.suggestionsHint}>Tap one to send it to the manager.</Text> : null}
             <View style={styles.suggestions}>
               {suggestions.map((suggestion) => (
                 <View key={`${suggestion.label}:${suggestion.prompt}`} style={styles.suggestion}>

@@ -14,6 +14,7 @@ import { ticketMilestones, type Milestone } from "../shared/milestones";
 import { PhaseBadge, SectionHeading } from "./badges";
 import { errorText } from "./format";
 import { Markdown } from "./markdown";
+import { withAlpha } from "./tint";
 import { milestoneRows } from "./milestone-rows";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
@@ -21,7 +22,7 @@ import { Chip, MONOSPACE } from "./ui";
 import { recordKindLook, toneColor } from "./visual-meta";
 
 /** The timeline's dot, the rail column it sits in, and the clock column before it. */
-const DOT = 8;
+const DOT = 10;
 const RAIL = 16;
 const CLOCK = 40;
 /** A long record shows this many lines until tapped. */
@@ -154,13 +155,14 @@ function Timeline({ milestones, theme }: { milestones: readonly Milestone[]; the
   const { colors } = theme;
   const rows = useMemo(() => milestoneRows(milestones), [milestones]);
   const [open, setOpen] = useState<ReadonlySet<number>>(new Set());
+  const line = withAlpha(colors.foregroundMuted, 0.35);
   const caption = { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption) };
 
   function rail(first: boolean, last: boolean, dot: ReactNode) {
     return (
       <View style={{ width: RAIL, alignItems: "center" }}>
         {/* The rail joins the dots: it starts at the first and stops at the last. */}
-        <View style={{ position: "absolute", top: first ? 7 : 0, bottom: last ? undefined : 0, height: last ? 7 : undefined, width: 1, backgroundColor: colors.border }} />
+        <View style={{ position: "absolute", left: RAIL / 2 - 1, top: first ? 8 : 0, bottom: last ? undefined : 0, height: last ? 8 : undefined, width: 2, backgroundColor: line }} />
         {dot}
       </View>
     );
@@ -196,12 +198,12 @@ function Timeline({ milestones, theme }: { milestones: readonly Milestone[]; the
                 last,
                 <View
                   style={{
-                    marginTop: 4,
+                    marginTop: 3,
                     width: DOT,
                     height: DOT,
                     borderRadius: DOT / 2,
-                    borderWidth: 1,
-                    borderColor: row.key ? color : colors.border,
+                    borderWidth: 2,
+                    borderColor: row.key ? color : colors.foregroundMuted,
                     backgroundColor: row.key ? color : colors.surface0,
                   }}
                 />,
