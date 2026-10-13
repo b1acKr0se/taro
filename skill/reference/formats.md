@@ -11,7 +11,7 @@ The **last line of every turn's final message**:
 | State | Means | Example |
 | --- | --- | --- |
 | `working` | You are mid-task and stopping only because the turn ended. Avoid it: the plugin treats it as a stall and nudges you. | `working: tests half written` |
-| `waiting` | You wait on something **outside yourself** — the user, a helper, a running command. Say what. | `waiting: helper SH-012.2 implementing the API` |
+| `waiting` | You wait on something **outside yourself** — the user, a subagent, a running command. Say what. | `waiting: implementer SH-012.2 building the API` |
 | `blocked` | You cannot continue without someone else clearing an obstacle. Say what and who. | `blocked: needs a DATABASE_URL for integration tests` |
 | `done` | Your job (or this phase of it) is finished. | `done: PR https://github.com/o/r/pull/42 ready for acceptance` |
 | `failed` | You could not do it and stopped. Say why. | `failed: the reproduction needs hardware we do not have` |

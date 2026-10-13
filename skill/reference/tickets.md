@@ -50,7 +50,7 @@ never rewrite history.
 
 - **DISPATCH-INTENT** (manager, before launching): ticket, unique token, intended branch.
 - **EXECUTION**: owner agent id, workspace id, machine (`hostname`), worktree path, branch, base
-  SHA; later the helpers (agent id, role, task) and `review-head: <sha>`.
+  SHA; later the subagents (agent id, job, task) and `review-head: <sha>`.
 - **APPROVAL**: the user's exact words, time, and what they approved (scope and criteria).
 - **MILESTONE**: what happened, decisions, commit or uncommitted state, checks run with results,
   next step. Before a long command: its log path and expected duration.

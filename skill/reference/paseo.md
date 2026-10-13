@@ -22,26 +22,26 @@ paseo run -d --workspace <workspaceId> --provider <ownerModel> [--thinking <id>]
 # → agentId
 ```
 
-## A helper or reviewer (task owner only)
+## A subagent (task owner only)
 
 ```bash
 paseo run -d --workspace <your workspaceId> --provider <model> [--thinking <id>] --mode <bypass mode> \
-  --title "<ID> · <role>: <task>" \
-  --label taro.project=<project> --label taro.role=helper --label taro.ticket=<ID> \
+  --title "<ID> · <job>: <task>" \
+  --label taro.project=<project> --label taro.role=<job> --label taro.ticket=<ID> \
   --env BACKLOG_CWD=<tracker> --env TARO_TRACKER=<tracker> --env TARO_PROJECT=<project> --env TARO_SKILL=<skill> \
-  --json "<definition of done>"
+  --json "<brief: an implementer's is its definition of done>"
 ```
 
-`<task>` is what the agent is doing, in words the user understands at a glance, as a phrase starting
-with a verb in -ing: `building the board columns, cards and Ticket tab`, `checking the whole branch`.
-The board shows it as "Implementer building the board columns… · 26m"; never a bare "step 3" (a
-step number may follow as a hint: `…, 2 of 3`).
+`<job>` is what the subagent does: `implementer`, `reviewer` or `researcher`. Name it by that job in
+its title and brief too, never "helper". `<task>` is what it is doing, in words the user understands
+at a glance, as a phrase starting with a verb in -ing: `building the board columns, cards and Ticket
+tab`, `checking the whole branch`. The board shows it as "Implementer building the board columns… ·
+26m"; never a bare "step 3" (a step number may follow as a hint: `…, 2 of 3`).
 
-Use `taro.role=reviewer` for reviewers. Bypass mode ids: Claude `bypassPermissions`, Codex
-`full-access`. Models: `paseo provider models <provider> --json`; pick from the project's allowed
-list. Parallel children only: create their own worktree first (as for an owner, branching from your
-parent branch) and run them there.
+Bypass mode ids: Claude `bypassPermissions`, Codex `full-access`. Models: `paseo provider models
+<provider> --json`; pick from the project's allowed list. Parallel children only: create their own
+worktree first (as for an owner, branching from your parent branch) and run them there.
 
-The plugin delivers each helper's final message to you when its turn ends; you do not need to poll.
-To look anyway: `paseo inspect <agentId> --json`, `paseo logs <agentId>`. To steer a helper:
+The plugin delivers each subagent's final message to you when its turn ends; you do not need to poll.
+To look anyway: `paseo inspect <agentId> --json`, `paseo logs <agentId>`. To steer a subagent:
 `paseo send <agentId> "<message>"`. To end one: `paseo archive <agentId>`.

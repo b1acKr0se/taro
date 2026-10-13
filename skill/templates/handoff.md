@@ -4,6 +4,6 @@ HANDOFF <ISO timestamp>
 - Done so far: <commits / results, with SHAs>
 - Open threads: <unfinished work, pending questions>
 - Decisions and approvals: <each with the user's exact words>
-- Helpers in flight: <agent id — role — task — expected report>
+- Subagents in flight: <agent id — job — task — expected report>
 - Checkout: <branch, HEAD SHA, uncommitted changes or clean>
 - Next step: <the very next action>

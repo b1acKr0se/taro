@@ -1,6 +1,6 @@
 <!--
-Template the task owner fills for every helper (decision 33), written into the child ticket
-or the helper's brief. It is the helper's whole brief.
+Template the task owner fills for every implementer (decision 33), written into the child ticket
+or the implementer's brief. It is the implementer's whole brief.
 Before dispatch the owner self-checks it: every criterion has a concrete check, no
 placeholders, no contradictions, every criterion traces to the approved spec.
 After `done` the owner verifies: the report holds real command output, the owner reruns the
@@ -10,7 +10,7 @@ checks and reviews the commit range; a report without evidence goes back.
 
 ## Context
 Parent: <ID> — <one line>. Spec: <path to the parent ticket>.
-Earlier children delivered: <only the interfaces or helpers this child uses, with file:line>.
+Earlier children delivered: <only the interfaces or functions this child uses, with file:line>.
 
 ## Acceptance criteria
 1. <observable behaviour> — proven by: `<exact test name or command>`

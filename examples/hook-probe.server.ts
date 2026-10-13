@@ -1,6 +1,6 @@
 /**
  * The throwaway plugin that verified the hooks the design relies on (Paseo 0.11.2,
- * 2026-10-13): `agent.turn_ended` carries the full final assistant message and the helper's
+ * 2026-10-13): `agent.turn_ended` carries the full final assistant message and the subagent's
  * `parentAgentId`; `before` hooks see the working directory and title (not labels); env set in
  * `before("agent.session_open")` reaches the agent and overrides `agent.create`'s.
  */

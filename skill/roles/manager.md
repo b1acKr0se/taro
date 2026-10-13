@@ -28,7 +28,7 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
    `paseo ls -g --label taro.project=<project> --label taro.role=owner --json` (any status but
    closed). At the cap, leave the ticket in Backlog, tell the user it is queued and why, and stop
    here; the plugin tells you when a slot frees up. Dispatch queued tickets oldest first.
-   **Check thread headroom too:** every agent, helper, reviewer and test daemon costs threads, and
+   **Check thread headroom too:** every agent, subagent and test daemon costs threads, and
    the host crashes agents at its limit. Read `cat /sys/fs/cgroup/pids.current
    /sys/fs/cgroup/pids.max` (skip the check where the files are missing or the max is `max`); above
    85% of the max, queue the ticket as at the cap and say it waits for threads. The plugin holds its
@@ -36,14 +36,14 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
 4. Create the owner's worktree workspace and start the owner (`reference/paseo.md`), with the
    project's owner model, thinking and mode from AGENTS.md — the strongest model by default.
    **The user's words win:** if the request names a model ("use sonnet for this", "a cheap model is
-   fine"), start the owner with that model, and pass any model the user named for helpers into the
+   fine"), start the owner with that model, and pass any model the user named for subagents into the
    brief. Before retrying an uncertain launch,
    check `paseo workspace ls --json` and `paseo ls -g --label taro.ticket=<ID> --json` so you never
    start two owners for one ticket.
 5. The owner's prompt is: "You are the Taro task owner for <ID>. Read <skill>/SKILL.md and
    <skill>/roles/owner.md now." followed by the project facts it needs (repository, base branch,
-   tracker, skill path, delivery, accept-also-merges, allowed helper models), the standing orders
-   that apply, and the brief.
+   tracker, skill path, delivery, accept-also-merges, models owners may give subagents), the
+   standing orders that apply, and the brief.
 6. Append **EXECUTION** (owner agent id, workspace id, worktree, branch, `hostname`).
 7. Reply in one line: the ticket id and title, and that its owner is in the "<ID> · <title>" tab.
    End with `done: dispatched <ID>`.

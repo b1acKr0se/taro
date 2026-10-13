@@ -1,6 +1,6 @@
 ---
 name: taro
-description: Taro's workflow for Paseo agents — a manager per project files Backlog.md tickets, a task owner owns each ticket from proposal to accepted delivery, helpers and reviewers work to an explicit definition of done.
+description: Taro's workflow for Paseo agents — a manager per project files Backlog.md tickets, a task owner owns each ticket from proposal to accepted delivery, subagents (implementers, reviewers, researchers) work to an explicit definition of done.
 ---
 
 # Taro
@@ -9,18 +9,20 @@ Taro runs software work through agents inside **Paseo**, one project at a time:
 
 - the **manager** triages the user's requests, files tickets and starts task owners;
 - a **task owner** owns one ticket from proposal to the user's acceptance, and talks to the user directly;
-- **helpers** build parts of a ticket, and **reviewers** review it, each to an explicit brief.
+- **subagents**, which an owner launches and names by their job: **implementers** build parts of a
+  ticket, **reviewers** review it, **researchers** find things out; each works to an explicit brief.
 
 The **Taro plugin** watches every agent: it reads your status line and decision blocks, shows them
-to the user as cards, nudges stalled agents, delivers helpers' reports to their owner, and commits
+to the user as cards, nudges stalled agents, delivers subagents' reports to their owner, and commits
 the tracker. Write for it exactly as `reference/formats.md` says.
 
 ## Read your role
 
 - Manager: `roles/manager.md`
 - Task owner: `roles/owner.md`
-- Helper: `roles/helper.md`
+- Implementer: `roles/implementer.md`
 - Reviewer: `roles/reviewer.md`
+- Researcher: `roles/researcher.md`
 
 Read only your role and the references it names.
 

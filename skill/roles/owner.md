@@ -23,7 +23,7 @@ ones) — they outrank defaults here. Then follow the flow.
    | trivial | the request fully determines the change (exact value, typo, rename) | one line of scope | you | self |
    | low | small and clear, one area | 3–6 lines: change, criteria, assumptions | you | self |
    | medium | a feature in one subsystem | half a page: decisions, criteria, short plan | you | one independent round |
-   | high | several subsystems, contracts, real ambiguity | full spec: decisions, numbered criteria, task list or children | helpers | up to two rounds |
+   | high | several subsystems, contracts, real ambiguity | full spec: decisions, numbered criteria, task list or children | implementers | up to two rounds |
 
    **Risk floor:** anything touching contracts, money or fee math, auth, or stored data is at least
    medium.
@@ -34,7 +34,7 @@ ones) — they outrank defaults here. Then follow the flow.
    code before approval except a throwaway check when feasibility is unknown. Changed scope needs a
    new approval; details inside the scope do not.
 5. **Build** (In Progress; save a starting MILESTONE first). Low/medium: you write the code. High:
-   helpers (below). Commit as you go, following the repository's conventions.
+   implementers (below). Commit as you go, following the repository's conventions.
 6. **Review** (below), then deliver (below).
 
 **Bugs:** reproduce first (end to end; separate trigger from symptom; compare with a path that
@@ -46,29 +46,34 @@ alternatives proposal.
 ticket (what you did, evidence with commands and `file:line`, recommendation), move to Awaiting
 acceptance, and raise an `investigation-done` decision.
 
-## Helpers (high complexity)
+## Subagents (high complexity)
 
-- One helper per task, **one at a time** in your workspace (a new tab), each with a filled
+The agents you launch are **subagents**, each named by its job in its label, title and brief:
+an **implementer** builds a task (`roles/implementer.md`), a **reviewer** reviews (`roles/reviewer.md`),
+a **researcher** finds something out without changing code (`roles/researcher.md`). Never call one a
+"helper".
+
+- One implementer per task, **one at a time** in your workspace (a new tab), each with a filled
   **definition of done** (`templates/definition-of-done.md`) written into the child ticket or its
   brief. Self-check it first: every criterion has a concrete check, no placeholders, nothing
   contradicts, everything traces to the approved spec.
-- **Threads are finite:** before starting a helper, a reviewer or a test daemon, read `cat
+- **Threads are finite:** before starting a subagent or a test daemon, read `cat
   /sys/fs/cgroup/pids.current /sys/fs/cgroup/pids.max` and wait while usage is above 85% (skip where
-  the files are missing). Stop test daemons and finished helpers promptly.
-- Pick each helper's model and thinking by the task's difficulty from the allowed list: mechanical
+  the files are missing). Stop test daemons and finished subagents promptly.
+- Pick each subagent's model and thinking by the task's difficulty from the allowed list: mechanical
   → the cheapest; routine implementation → middle; risky or hard → the strongest. A model the user
   named (in the brief or in your chat) wins over this. Start them with
   `reference/paseo.md`; record them in EXECUTION.
-- The plugin delivers each helper's report to you. Verify it: the report must hold real command
+- The plugin delivers each subagent's report to you. Verify it: the report must hold real command
   output; rerun the checks yourself; review the commit range (`git diff --stat` first, then the
-  risky files). A report without evidence goes back to the helper.
+  risky files). A report without evidence goes back to the subagent.
 
 ## Children (decision 32)
 
 Split only high-complexity work with distinct deliverables. The breakdown is part of your proposal,
 so one approval covers both (a later split needs a `child-breakdown` decision). Create children with
 `backlog task create … -p <your id>`. Default: children run one at a time in **your** worktree, each
-by a helper committing onto your branch; you review each child's commits against its definition of
+by an implementer committing onto your branch; you review each child's commits against its definition of
 done and mark it Done. Parallel children (approved in the proposal) get their own worktree and
 branch, merged locally into yours when done. A child touching contracts, money, auth or stored data
 gets its own independent reviewer before it is Done. Children's questions come to you; bring real
@@ -78,7 +83,7 @@ decisions to the user.
 
 - **trivial / low:** self-review — reread your whole diff against the criteria, apply the finding
   rule below, run the full checks, fix what you find.
-- **medium:** one independent reviewer (`roles/reviewer.md`), started like a helper with
+- **medium:** one independent reviewer (`roles/reviewer.md`), started like an implementer with
   `taro.role=reviewer` and the strongest model for risky code.
 - **high:** a reviewer over the combined diff; a second round only if the first found a blocker;
   then escalate with a `review-dispute` decision rather than loop.
@@ -111,7 +116,7 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
 ## Context (decision 35)
 
 Keep your context small: run checks with output to a log file and read the exit code and failures;
-read diffs selectively; keep helper reports short. When the plugin asks for a handoff, write it
+read diffs selectively; keep subagents' reports short. When the plugin asks for a handoff, write it
 (`templates/handoff.md`) and end with `waiting: compaction`. After any compaction, reread this file
 and the ticket.
 
