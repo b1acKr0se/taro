@@ -38,8 +38,9 @@ interface Watched {
 export class TrackerWatch {
   private readonly watched = new Map<string, Watched>();
   private readonly syncProblems = new Map<string, TrackerSyncProblem>();
-  /** When each project last synced (any kind), or claimed a board-read pull. */
+  /** When each project last finished a sync (any kind), or claimed a board-read pull. */
   private readonly lastSync = new Map<string, number>();
+  private readonly pulling = new Set<string>();
   private readonly listeners = new Set<TrackerChangeListener>();
 
   constructor(
@@ -121,14 +122,18 @@ export class TrackerWatch {
    * them. Returns the background pull so tests can await it.
    */
   pullIfDue(project: string): Promise<void> {
-    if (this.syncProblems.get(project)?.kind === "conflict") return Promise.resolve();
+    // A hanging remote takes up to two minutes to time out; queuing another pull behind it would hold up commits and Retry.
+    if (this.pulling.has(project) || this.syncProblems.get(project)?.kind === "conflict") return Promise.resolve();
     const last = this.lastSync.get(project);
     if (last !== undefined && this.now() - last < PULL_INTERVAL_MS) return Promise.resolve();
     // Claimed before any await: the screen, Inbox and sidebar read together and must queue one pull, not three.
     this.lastSync.set(project, this.now());
-    return this.pull(project).catch((error: unknown) => {
-      console.error(`[taro] pulling ${project}'s tracker failed: ${error instanceof Error ? error.message : String(error)}`);
-    });
+    this.pulling.add(project);
+    return this.pull(project)
+      .catch((error: unknown) => {
+        console.error(`[taro] pulling ${project}'s tracker failed: ${error instanceof Error ? error.message : String(error)}`);
+      })
+      .finally(() => this.pulling.delete(project));
   }
 
   private pull(project: string): Promise<void> {
@@ -148,8 +153,13 @@ export class TrackerWatch {
   }
 
   private async syncAndRecord(project: string, trackerPath: string, strategy: SyncStrategy): Promise<TrackerSyncProblem | null> {
-    this.lastSync.set(project, this.now());
-    const problem = await this.sync(trackerPath, strategy);
+    let problem: TrackerSyncProblem | null;
+    try {
+      problem = await this.sync(trackerPath, strategy);
+    } finally {
+      // Counted from the end, so a slow remote still gets a quiet minute between pulls.
+      this.lastSync.set(project, this.now());
+    }
     if (problem === null) this.syncProblems.delete(project);
     else this.syncProblems.set(project, problem);
     return problem;

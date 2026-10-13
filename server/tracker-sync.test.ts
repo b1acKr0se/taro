@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TrackerSyncProblem } from "../shared/contracts";
 import { conflictProblem, gitComplaint, syncTracker, TRACKER_BRANCH, type SyncStrategy } from "./tracker";
@@ -317,6 +317,29 @@ describe("TrackerWatch sync triggers", () => {
       await watch.pullIfDue("demo");
       expect(calls).toEqual(["rebase", "rebase"]);
       expect(watch.syncProblem("demo")).toBeNull();
+    });
+
+    it("does not queue a second pull behind a slow one, and waits a minute after it ends", async () => {
+      let release = (): void => undefined;
+      const slow = new TrackerWatch(
+        async (_trackerPath, strategy) => {
+          calls.push(strategy);
+          await new Promise<void>((resolve) => (release = resolve));
+          return null;
+        },
+        () => clock,
+      );
+      const first = slow.pullIfDue("demo");
+      await vi.waitFor(() => expect(calls).toEqual(["rebase"]));
+      clock += 90_000;
+      await slow.pullIfDue("demo");
+      release();
+      await first;
+      expect(calls).toEqual(["rebase"]);
+
+      clock += 59_999;
+      await slow.pullIfDue("demo");
+      expect(calls).toEqual(["rebase"]);
     });
 
     it("never pulls a local-only project", async () => {
