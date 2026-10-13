@@ -1,6 +1,6 @@
 /**
- * How full the first mate's context window is, drawn beside the chat's
- * buttons the way Paseo's composer draws its own: a ring filling clockwise
+ * How full the first mate's context window is, drawn inside the composer
+ * beside its send button the way Paseo's composer draws its own: a ring filling clockwise
  * from the top, coloured at the same thresholds, with the share and the
  * token counts in a tooltip.
  *
@@ -18,8 +18,8 @@ import { Pressable, Text, View } from "react-native";
 import { contextPercent, contextTone, formatTokenCount } from "./format";
 import { FONT_SIZE } from "./type-scale";
 
-/** The icon size the chat's buttons use, and Paseo's stroke. */
-const RING_SIZE = 14;
+/** Sized to read beside the composer's round send button, with Paseo's stroke. */
+const RING_SIZE = 16;
 const RING_STROKE = 2;
 
 /**

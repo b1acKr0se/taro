@@ -166,6 +166,7 @@ export function AgentChat({
   const { pending, respond } = usePendingRequests(agent.id, timeline.agent?.pendingPermissions, follow.pin);
   const [draft, setDraftState] = useState(() => drafts.get(agent.id));
   const [sending, setSending] = useState(false);
+  const [typing, setTyping] = useState(false);
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set());
   const pane = useRef<View>(null);
   const keyboard = useKeyboardOverlap(pane);
@@ -254,7 +255,15 @@ export function AgentChat({
       error: { color: colors.statusDanger, fontSize: FONT_SIZE.small },
       hint: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center" as const, padding: SPACE.lg },
       composerFrame: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface0 },
-      composer: { width: "100%" as const, maxWidth: CHAT_MAX_WIDTH, alignSelf: "center" as const, padding: SPACE.md, gap: SPACE.sm },
+      // The transcript's side padding, so the box lines up with the messages above it.
+      composer: {
+        width: "100%" as const,
+        maxWidth: CHAT_MAX_WIDTH,
+        alignSelf: "center" as const,
+        paddingHorizontal: compact ? SPACE.md : SPACE.lg,
+        paddingVertical: SPACE.md,
+        gap: SPACE.sm,
+      },
       quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
       // One box, as in Paseo's composer: the text, then the context ring and the send button inside it.
       inputBox: { borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.surface1 },
@@ -267,6 +276,8 @@ export function AgentChat({
         paddingTop: SPACE.sm + 2,
         paddingBottom: 0,
         textAlignVertical: "top" as const,
+        // The box shows focus (below), not the field inside it: a browser's outline would cut the box in two.
+        outlineWidth: 0,
       },
       inputTools: {
         flexDirection: "row" as const,
@@ -293,8 +304,9 @@ export function AgentChat({
         gap: SPACE.sm,
         paddingHorizontal: compact ? SPACE.md : SPACE.lg,
         paddingVertical: SPACE.md,
-        backgroundColor: colors.surface1,
       },
+      // The band spans the pane; only its note is held to the reading width.
+      readOnlyBand: { backgroundColor: colors.surface1 },
       readOnlyText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
     };
   }, [theme, compact]);
@@ -441,9 +453,11 @@ export function AgentChat({
       </View>
       <SafeAreaView style={styles.composerFrame}>
         {readOnly !== undefined ? (
-          <View style={styles.readOnly}>
-            <Icon name="Archive" size={14} color={theme.colors.foregroundMuted} />
-            <Text style={styles.readOnlyText}>{readOnly.note}</Text>
+          <View style={styles.readOnlyBand}>
+            <View style={styles.readOnly}>
+              <Icon name="Archive" size={14} color={theme.colors.foregroundMuted} />
+              <Text style={styles.readOnlyText}>{readOnly.note}</Text>
+            </View>
           </View>
         ) : (
           <View style={styles.composer}>
@@ -466,10 +480,12 @@ export function AgentChat({
               </Pressable>
             )}
             {actions === undefined ? null : <View style={styles.quick}>{actions}</View>}
-            <View style={styles.inputBox}>
+            <View style={[styles.inputBox, typing ? { borderColor: theme.colors.accent } : null]}>
               <TextInput
                 value={draft}
                 onChangeText={setDraft}
+                onFocus={() => setTyping(true)}
+                onBlur={() => setTyping(false)}
                 placeholder={submitOnEnter ? `${placeholder} (Enter sends, Shift+Enter for a new line)` : placeholder}
                 placeholderTextColor={theme.colors.foregroundMuted}
                 multiline
