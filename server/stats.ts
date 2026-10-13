@@ -1,14 +1,13 @@
 /** Stats on disk (`state/stats.json`), written as tickets move and agents work. */
 import { z } from "zod";
 
-import { TicketStatsSchema, type TicketStats } from "../shared/stats";
+import { parentOf, TicketStatsSchema, type TicketStats } from "../shared/stats";
 import { statePath } from "./data-dir";
 import { readJsonIfPresent, writeJsonAtomically } from "./files";
 import { serialized } from "./serialize";
 
 const StatsFileSchema = z.object({ tickets: z.record(z.string(), TicketStatsSchema).default({}) });
 
-/** A child ticket's agents and turns count toward its parent as well as itself. */
 function keyFor(project: string, ticket: string): string {
   return `${project}:${ticket}`;
 }
@@ -51,13 +50,14 @@ export class Stats {
     this.turnStarts.set(agentId, Date.now());
   }
 
+  /** A child ticket's agents and turns count toward its parent as well as itself (`projectTotals` relies on it). */
   async turnEnded(project: string, ticket: string | null, agent: { id: string; role: string; model: string | null; title: string | null }): Promise<void> {
     const started = this.turnStarts.get(agent.id);
     this.turnStarts.delete(agent.id);
     if (ticket === null) return;
     const tickets = [ticket];
-    const parent = /^(.*)\.\d+$/.exec(ticket)?.[1];
-    if (parent !== undefined) tickets.push(parent);
+    const parent = parentOf(ticket);
+    if (parent !== null) tickets.push(parent);
     for (const target of tickets) {
       await this.update(project, target, (stats) => {
         const record = stats.agents[agent.id] ?? { agentId: agent.id, role: agent.role, model: agent.model, title: agent.title, turns: 0, activeMs: 0, costUsd: null, contextTokens: null };
