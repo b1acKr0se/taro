@@ -20,9 +20,17 @@ describe("matchSentImages", () => {
     expect(Object.fromEntries(matched)).toEqual({ "1": [A], "3": [B, C] });
   });
 
-  it("leaves unmatched rows out", () => {
+  it("leaves unmatched rows out, counting repeats from the newest", () => {
     const matched = matchSentImages([captain("1", "hello"), captain("2", "look"), captain("3", "look")], [{ text: "look", images: [A] }]);
-    expect(Object.fromEntries(matched)).toEqual({ "2": [A] });
+    expect(Object.fromEntries(matched)).toEqual({ "3": [A] });
+  });
+
+  it("still matches when older rows have fallen out of the chat's tail", () => {
+    const matched = matchSentImages([captain("9", "continue")], [
+      { text: "continue", images: [A] },
+      { text: "continue", images: [B] },
+    ]);
+    expect(Object.fromEntries(matched)).toEqual({ "9": [B] });
   });
 
   it("matches a message with no words to the row drawn as (attachments)", () => {

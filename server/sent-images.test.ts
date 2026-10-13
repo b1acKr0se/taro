@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -35,6 +35,14 @@ async function session(lines: string[]): Promise<string> {
 }
 
 describe("readSentImages", () => {
+  it("reads a session again once it has grown", async () => {
+    const path = await session([user([{ type: "text", text: "first" }, image(RED)])]);
+    const directory = join(base, "images");
+    expect((await readSentImages(path, directory)).map((message) => message.text)).toEqual(["first"]);
+    await appendFile(path, `${user([{ type: "text", text: "second" }, image(BLUE)])}\n`);
+    expect((await readSentImages(path, directory)).map((message) => message.text)).toEqual(["first", "second"]);
+  });
+
   it("returns only the user's messages with images, in order, text joined and trimmed", async () => {
     const path = await session([
       user("plain words, no blocks"),

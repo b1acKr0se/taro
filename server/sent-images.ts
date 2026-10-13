@@ -5,7 +5,7 @@
  */
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -95,9 +95,27 @@ async function storeImage(directory: string, mimeType: string, data: string): Pr
   return path;
 }
 
-/** The user's messages with images in a Claude session file, in order; none when the file is missing. */
+/** The last read of each session file, reused while its size and modification time hold. */
+const readCache = new Map<string, { stamp: string; messages: Promise<SentImagesMessage[]> }>();
+
+/**
+ * The user's messages with images in a Claude session file, in order; none when the file is missing.
+ * The chat asks again whenever its timeline grows, so an unchanged file is not read twice.
+ */
 export async function readSentImages(sessionPath: string, directory = sentImagesDirectory()): Promise<SentImagesMessage[]> {
-  if (!(await exists(sessionPath))) return [];
+  const info = await stat(sessionPath).catch(() => null);
+  if (info === null) return [];
+  const key = `${sessionPath}\n${directory}`;
+  const stamp = `${info.size}:${info.mtimeMs}`;
+  const cached = readCache.get(key);
+  if (cached !== undefined && cached.stamp === stamp) return cached.messages;
+  const messages = scanSession(sessionPath, directory);
+  readCache.set(key, { stamp, messages });
+  messages.catch(() => readCache.delete(key));
+  return messages;
+}
+
+async function scanSession(sessionPath: string, directory: string): Promise<SentImagesMessage[]> {
   const messages: SentImagesMessage[] = [];
   const lines = createInterface({ input: createReadStream(sessionPath, { encoding: "utf8" }), crlfDelay: Infinity });
   for await (const line of lines) {

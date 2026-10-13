@@ -1,7 +1,9 @@
 /**
  * Which images the captain sent with which message. Paseo's timeline keeps only a message's words,
- * so the images come from `taro.agent.sent-images` and are matched to the chat's rows by text: the
- * n-th captain row with some words takes the n-th sent message with the same words.
+ * so the images come from `taro.agent.sent-images` and are matched to the chat's rows by text,
+ * counting from the newest: the n-th last captain row with some words takes the n-th last sent
+ * message with the same words. The chat holds only the timeline's tail, so counting from the start
+ * would shift once older rows fall out of it.
  */
 import type { SentImagesMessage } from "../shared/contracts";
 import { ATTACHMENTS_ONLY } from "./transcript-rows";
@@ -20,12 +22,13 @@ export function matchSentImages(
   });
   const seen = new Map<string, number>();
   const matched = new Map<string, SentImage[]>();
-  rows.forEach((row) => {
+  [...rows].reverse().forEach((row) => {
     if (row.kind !== "captain") return;
     const text = row.text === ATTACHMENTS_ONLY ? "" : row.text.trim();
-    const index = seen.get(text) ?? 0;
-    seen.set(text, index + 1);
-    const images = byText.get(text)?.[index];
+    const fromEnd = seen.get(text) ?? 0;
+    seen.set(text, fromEnd + 1);
+    const sent = byText.get(text) ?? [];
+    const images = sent[sent.length - 1 - fromEnd];
     if (images !== undefined && images.length > 0) matched.set(row.key, images);
   });
   return matched;
