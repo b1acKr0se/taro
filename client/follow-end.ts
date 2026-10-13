@@ -9,6 +9,9 @@
 import { useRef, useState } from "react";
 import type { LayoutChangeEvent, LayoutRectangle, NativeScrollEvent, NativeSyntheticEvent, ScrollView } from "react-native";
 
+/** How long after a row is first revealed its re-layouts still scroll to it: the transcript settling. */
+const SETTLE_MS = 1500;
+
 /** How close to the end still counts as being there, in points. */
 const END_SLACK = 40;
 
@@ -37,6 +40,8 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
   const pinnedToEnd = useRef(true);
   /** The transcript's visible height, to tell whether a card fits in it. */
   const viewport = useRef(0);
+  /** When each row revealed by `revealRow` was first brought into view. */
+  const revealedAt = useRef(new Map<string, number>());
   /** Cards already brought into view, so one is scrolled to once, not on every re-layout. */
   const revealed = useRef(new Set<string>());
   /** The content height last reported by `onContentSizeChange` — what the end was last followed to. */
@@ -88,19 +93,19 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
   }
 
   /**
-   * Brings a row somewhere up the transcript into view once (an open decision drawn under the message
-   * that asked it), its end at the bottom of the screen; the end of the transcript is no longer
-   * followed unless the row is the last thing in it. `layout` is in the transcript's coordinates.
+   * Brings a row somewhere up the transcript into view (an open decision drawn under the message that
+   * asked it), its end at the bottom of the screen, and stops following the end; scrolling back down
+   * follows it again. The transcript is still laying out when the pane opens — rows below arrive, and
+   * a cached transcript is redrawn — so for a moment after the first call each new layout of the row
+   * scrolls to it again. `layout` is in the transcript's coordinates.
    */
   function revealRow(id: string, layout: LayoutRectangle, showingEnd: (top: number, height: number, viewportHeight: number) => number): void {
-    if (revealed.current.has(id)) return;
-    revealed.current.add(id);
-    setTimeout(() => {
-      const atEnd = knownHeight.current > 0 && layout.y + layout.height >= knownHeight.current - END_SLACK;
-      pinnedToEnd.current = atEnd;
-      if (atEnd) scroller.current?.scrollToEnd({ animated: false });
-      else scroller.current?.scrollTo({ y: showingEnd(layout.y, layout.height, viewport.current), animated: false });
-    }, 0);
+    const first = revealedAt.current.get(id);
+    const now = Date.now();
+    if (first === undefined) revealedAt.current.set(id, now);
+    else if (now - first > SETTLE_MS) return;
+    pinnedToEnd.current = false;
+    setTimeout(() => scroller.current?.scrollTo({ y: showingEnd(layout.y, layout.height, viewport.current), animated: false }), 0);
   }
 
   /** Scrolls to an offset the reader asked for (a jump link), leaving the end unfollowed. */
