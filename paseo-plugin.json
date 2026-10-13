@@ -1,0 +1,8 @@
+{
+  "id": "taro",
+  "name": "Taro",
+  "description": "A manager per project files tickets; a task owner agent owns each ticket from proposal to accepted delivery",
+  "requirements": {
+    "paseo": ">=0.11.2"
+  }
+}

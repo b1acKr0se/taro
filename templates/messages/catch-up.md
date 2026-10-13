@@ -1,0 +1,2 @@
+<!-- Sent by the Catch up button. -->
+Catch me up on {{project}}: build a fresh snapshot from the tracker and the live agents (never from chat memory), change nothing, and answer with these four sections, each always present — Needs me (decisions, acceptances, blockers only I can clear), Recently done, Underway (one line per live ticket: phase and latest milestone), Next (queued or blocked work with its blocker). One line per item, full PR URLs.

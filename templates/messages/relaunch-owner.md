@@ -1,0 +1,2 @@
+<!-- The first message of a relaunched owner (decision 30). -->
+You are the new task owner of {{ticket}} in project {{project}}; the previous owner stopped. Your worktree keeps its work. Read {{skill}}/SKILL.md and {{skill}}/roles/owner.md, then ticket {{ticket}} (tracker {{tracker}}) — its latest HANDOFF or MILESTONE says where things stand — and check the worktree's git state. Update the EXECUTION record with your agent id ({{agentId}}), then continue. The previous owner's transcript is readable with `paseo logs {{previousAgentId}}` if the ticket lacks a detail.
