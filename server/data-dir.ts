@@ -24,3 +24,13 @@ export function dataPath(entry: string): string {
 export function statePath(entry: string): string {
   return join(pluginDataDirectory(), "state", entry);
 }
+
+/** Screenshots and other evidence an agent attaches to a ticket's acceptance (TR-021). */
+export function evidenceDirectory(): string {
+  return join(pluginDataDirectory(), "evidence");
+}
+
+/** Images the user sent an agent, copied out of the agent's session, one file per content hash. */
+export function sentImagesDirectory(): string {
+  return join(pluginDataDirectory(), "images");
+}

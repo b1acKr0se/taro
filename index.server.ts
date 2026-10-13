@@ -22,7 +22,9 @@ import {
   launchManager as launchManagerRpc,
   listModels,
   listProjects,
+  listSentImages,
   onboardProject as onboardProjectRpc,
+  readImageRpc,
   readProjectConfig as readProjectConfigRpc,
   readStandingOrders,
   restartManager as restartManagerRpc,
@@ -45,8 +47,10 @@ import { sessionEnvironment } from "./server/environment";
 import { readTextIfPresent, writeTextAtomically } from "./server/files";
 import { catchUpText, compactManager, launchManager, restartManager, tellManager, writeManagerInstructions } from "./server/manager";
 import { onboardProject } from "./server/onboard";
+import { readImage } from "./server/images";
 import { checkPrerequisites } from "./server/prerequisites";
 import { listProjectConfigs, projectPaths, requireProjectConfig, taroHome, updateProjectConfig } from "./server/projects";
+import { sentImagesOf } from "./server/sent-images";
 import { agentBrief, listModelOptions } from "./server/summaries";
 import { TrackerWatch } from "./server/tracker-watch";
 
@@ -219,6 +223,9 @@ export default function contribute(server: PluginServerContext) {
     invalidateBoards();
     return {};
   });
+
+  server.handle(readImageRpc, async ({ path }) => ({ image: await readImage(path) }));
+  server.handle(listSentImages, async ({ agentId }, { paseo }) => ({ messages: await sentImagesOf(paseo, agentId) }));
 
   server.handle(loadStats, async ({ project }) => ({
     tickets: (await stats.all(project)).map((ticket) => summarize(ticket)),

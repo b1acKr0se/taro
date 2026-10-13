@@ -12,6 +12,8 @@
  */
 import type { usePaseo } from "@getpaseo/plugin/client";
 
+import { imageLineOf } from "./markdown-parse";
+
 type PaseoApi = ReturnType<typeof usePaseo>;
 export type TimelinePage = Awaited<ReturnType<ReturnType<PaseoApi["agents"]["ref"]>["timeline"]["refetch"]>>;
 export type TimelineEntry = TimelinePage["entries"][number];
@@ -24,6 +26,9 @@ export type TranscriptRow =
   | { key: string; kind: "event"; text: string }
   | { key: string; kind: "tool"; text: string; status: ToolCallItem["status"] }
   | { key: string; kind: "error"; text: string };
+
+/** A captain row's text when the message had attachments and no words. */
+export const ATTACHMENTS_ONLY = "(attachments)";
 
 /** Envelopes a message is wrapped in when it did not come from the captain. */
 const ENVELOPES = ["paseo-system", "taro"] as const;
@@ -118,6 +123,15 @@ export function rowKey(entry: TimelineEntry): string {
 }
 
 /**
+ * An image the agent read arrives as an assistant message of its own, `![Image](file://…)`; in a
+ * merged row it keeps a line to itself, with a blank line on each side, so it parses as an image.
+ */
+function appendAssistantText(text: string, piece: string): string {
+  if (imageLineOf(piece) === null) return text + piece;
+  return `${text.trim() === "" ? "" : `${text.replace(/\s+$/, "")}\n\n`}${piece.trim()}\n\n`;
+}
+
+/**
  * Timeline entries to rows. Consecutive assistant messages are one row, since
  * a streamed reply can arrive in several pieces that split anywhere.
  */
@@ -130,14 +144,14 @@ export function transcriptRows(entries: readonly TimelineEntry[]): TranscriptRow
       case "user_message": {
         const summary = injectedSummary(item.text, item.clientMessageId);
         // A message of attachments alone has no words; the row still says the captain sent something.
-        const text = item.text.trim() === "" ? "(attachments)" : item.text;
+        const text = item.text.trim() === "" ? ATTACHMENTS_ONLY : item.text;
         rows.push(summary === null ? { key, kind: "captain", text } : { key, kind: "event", text: summary });
         break;
       }
       case "assistant_message": {
         const last = rows[rows.length - 1];
-        if (last !== undefined && last.kind === "mate") last.text += item.text;
-        else rows.push({ key, kind: "mate", text: item.text });
+        if (last !== undefined && last.kind === "mate") last.text = appendAssistantText(last.text, item.text);
+        else rows.push({ key, kind: "mate", text: appendAssistantText("", item.text) });
         break;
       }
       case "tool_call":

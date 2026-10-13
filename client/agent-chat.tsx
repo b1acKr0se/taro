@@ -4,17 +4,21 @@
  * (MIT), without attachments. The full session is one press away in Paseo.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
-import { openExternalUrl } from "@getpaseo/plugin/client";
+import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Platform, Pressable, SafeAreaView, ScrollView, Text, View } from "react-native";
 
+import { listSentImages, type SentImagesMessage } from "../shared/contracts";
 import { drafts } from "./draft";
 import { useFollowEnd } from "./follow-end";
+import { ImageThumbnail } from "./image-view";
 import { useKeyboardOverlap } from "./keyboard";
 import { isSendKey, type WebKeyPressEvent } from "./keys";
 import { Markdown } from "./markdown";
 import { PermissionCard, usePendingRequests } from "./permission-card";
+import { matchSentImages } from "./sent-images";
 import { groupRows, toolRunSummary, type Group } from "./tool-runs";
 import { transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
@@ -73,6 +77,9 @@ export function AgentChat({
   const timeline = useAgentTimeline(agent.id, `${agent.updatedAt}:${agent.pendingPermissions}`);
   const rows = useMemo(() => transcriptRows(timeline.entries), [timeline.entries]);
   const groups = useMemo(() => groupRows(rows), [rows]);
+  // The newest entry's position, not the count: the timeline is a tail and stops growing in length.
+  const sentImages = useSentImages(agent.id, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0);
+  const rowImages = useMemo(() => matchSentImages(rows, sentImages), [rows, sentImages]);
   const follow = useFollowEnd();
   const { pending, respond } = usePendingRequests(agent.id, timeline.agent?.pendingPermissions, follow.pin);
   const [draft, setDraftState] = useState(() => drafts.get(agent.id));
@@ -133,6 +140,7 @@ export function AgentChat({
         paddingHorizontal: SPACE.md,
         paddingVertical: SPACE.sm + 2,
       },
+      userImages: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, marginTop: SPACE.sm },
       userText: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) },
       agentRow: { alignSelf: "stretch" as const, gap: SPACE.sm },
       line: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm - 2 },
@@ -244,14 +252,23 @@ export function AgentChat({
     }
     const row = group.row;
     switch (row.kind) {
-      case "captain":
+      case "captain": {
+        const images = rowImages.get(row.key);
         return (
           <View key={row.key} style={styles.user}>
             <Text selectable style={styles.userText}>
               {row.text}
             </Text>
+            {images === undefined ? null : (
+              <View style={styles.userImages}>
+                {images.map((image, index) => (
+                  <ImageThumbnail key={index} source={image.path} alt="Sent image" theme={theme} />
+                ))}
+              </View>
+            )}
           </View>
         );
+      }
       case "mate":
         return (
           <View key={row.key} style={styles.agentRow}>
@@ -330,3 +347,16 @@ export function AgentChat({
     </View>
   );
 }
+
+/** The images the captain sent this agent, re-read whenever the conversation grows. */
+function useSentImages(agentId: string, newestEntry: number) {
+  const list = useRpc(listSentImages);
+  const query = useQuery({
+    queryKey: ["taro", "sent-images", agentId, newestEntry] as const,
+    queryFn: () => list({ agentId }),
+    placeholderData: (previous) => previous,
+  });
+  return query.data?.messages ?? EMPTY_SENT;
+}
+
+const EMPTY_SENT: readonly SentImagesMessage[] = [];

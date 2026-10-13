@@ -4,10 +4,11 @@
  * A client bundle may import only the modules the host provides, so no
  * Markdown library is reachable, and the host has no renderer of its own to
  * lend. This covers what a first mate's reply actually uses — headings,
- * lists, fenced code, quotes, rules, pipe tables, and bold, code and links
- * inline, with the home's files it names linked (`./file-links`) — and
- * renders anything else as a plain paragraph. It is a trimmed copy of
- * `github-board/client/markdown.tsx`, without the HTML, `<details>` and image
+ * lists, fenced code, quotes, rules, pipe tables, a line of images (an
+ * image the agent read, `./image-view`), and bold, code and links inline,
+ * with the home's files it names linked (`./file-links`) — and renders
+ * anything else as a plain paragraph. It is a trimmed copy of
+ * `github-board/client/markdown.tsx`, without the HTML and `<details>`
  * handling an issue body needs and an agent's reply does not; there is no
  * workspace root to share one from.
  *
@@ -18,6 +19,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useMemo, type ReactNode } from "react";
 import { Text, View } from "react-native";
 
+import { ImageThumbnail } from "./image-view";
 import { inlineTokens, type FileLookup } from "./file-links";
 import { parseMarkdown, type Block } from "./markdown-parse";
 import { MONOSPACE } from "./ui";
@@ -43,6 +45,7 @@ interface MarkdownStyles {
   tableRow: object;
   tableCell: object;
   tableHeader: object;
+  images: object;
 }
 
 function useMarkdownStyles(theme: PluginTheme, fontSize: number): MarkdownStyles {
@@ -76,6 +79,7 @@ function useMarkdownStyles(theme: PluginTheme, fontSize: number): MarkdownStyles
       tableRow: { flexDirection: "row" as const, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
       tableCell: { flex: 1, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.xs },
       tableHeader: { fontWeight: "600" as const },
+      images: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm },
     }),
     [theme, fontSize],
   );
@@ -85,6 +89,7 @@ const noFiles: FileLookup = () => null;
 
 /** What a press on an inline link does, and which paths are files to link. */
 interface InlineContext {
+  theme: PluginTheme;
   lookup: FileLookup;
   onOpenLink: (url: string) => void;
   onOpenFile: ((path: string) => void) | null;
@@ -170,6 +175,14 @@ function renderBlocks(blocks: Block[], styles: MarkdownStyles, context: InlineCo
         );
       case "rule":
         return <View key={index} style={styles.rule} />;
+      case "image":
+        return (
+          <View key={index} style={styles.images}>
+            {block.images.map((image, imageIndex) => (
+              <ImageThumbnail key={imageIndex} source={image.src} alt={image.alt} theme={context.theme} />
+            ))}
+          </View>
+        );
       case "table":
         return (
           <View key={index} style={styles.table}>
@@ -215,5 +228,5 @@ export function Markdown({
   const styles = useMarkdownStyles(theme, fontSize);
   const blocks = useMemo(() => parseMarkdown(source), [source]);
   // Blocks a little further apart than lines, so paragraphs and lists read as separate thoughts.
-  return <View style={{ gap: SPACE.sm + 2 }}>{renderBlocks(blocks, styles, { lookup: files, onOpenLink, onOpenFile })}</View>;
+  return <View style={{ gap: SPACE.sm + 2 }}>{renderBlocks(blocks, styles, { theme, lookup: files, onOpenLink, onOpenFile })}</View>;
 }

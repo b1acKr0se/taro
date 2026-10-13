@@ -1,6 +1,6 @@
 /**
  * The block half of `./markdown`: a first mate's reply as headings, lists,
- * code, quotes, rules, tables and paragraphs. Pure, so `./file-links` walks
+ * code, quotes, rules, tables, images and paragraphs. Pure, so `./file-links` walks
  * exactly the text the renderer draws inline — never a fenced code block.
  */
 
@@ -11,7 +11,14 @@ export type Block =
   | { kind: "code"; text: string }
   | { kind: "quote"; blocks: Block[] }
   | { kind: "rule" }
-  | { kind: "table"; header: string[]; rows: string[][] };
+  | { kind: "table"; header: string[]; rows: string[][] }
+  /** A line that is only images, as the image an agent read arrives (TR-021). */
+  | { kind: "image"; images: ImageReference[] };
+
+export interface ImageReference {
+  alt: string;
+  src: string;
+}
 
 export interface ListItem {
   marker: string;
@@ -21,11 +28,33 @@ export interface ListItem {
 
 const LIST_LINE = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
 const TASK_PREFIX = /^\[([ xX])\]\s+/;
+/** `![alt](src)`, either part with backslash escapes (`\]`, `\)`). */
+const IMAGE_SOURCE = String.raw`!\[((?:[^\]\\\n]|\\.)*)\]\(((?:[^)\\\s]|\\.)*)\)`;
+const IMAGE_LINE = new RegExp(String.raw`^\s*(?:${IMAGE_SOURCE}\s*)+$`);
 const TABLE_SEPARATOR = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
 
 function tableCells(line: string): string[] {
   const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
-  return trimmed.split(/(?<!\\)\|/).map((cell) => cell.trim().replace(/\\\|/g, "|"));
+  return trimmed.split(/(?<!\\)\|/).map((cell) => imagesAsAlt(cell.trim().replace(/\\\|/g, "|")));
+}
+
+function unescape(text: string): string {
+  return text.replace(/\\(.)/g, "$1");
+}
+
+/** The images of a line that is nothing but images, or null. */
+export function imageLineOf(line: string): ImageReference[] | null {
+  if (!IMAGE_LINE.test(line)) return null;
+  return [...line.matchAll(new RegExp(IMAGE_SOURCE, "g"))].map((match) => ({ alt: unescape(match[1] ?? ""), src: unescape(match[2] ?? "") }));
+}
+
+/** An image inside running text, as its alt text in brackets; inline code is left as written. */
+export function imagesAsAlt(text: string): string {
+  if (!text.includes("![")) return text;
+  return text
+    .split(/(`[^`\n]+`)/)
+    .map((part, index) => (index % 2 === 1 ? part : part.replace(new RegExp(IMAGE_SOURCE, "g"), (_whole, alt: string) => `[${unescape(alt)}]`)))
+    .join("");
 }
 
 function listItemOf(line: string): ListItem | null {
@@ -39,7 +68,7 @@ function listItemOf(line: string): ListItem | null {
     glyph = task[1] === " " ? "☐" : "☑";
     text = text.slice(task[0].length);
   }
-  return { marker: glyph, depth: Math.floor((match[1] ?? "").replace(/\t/g, "  ").length / 2), text };
+  return { marker: glyph, depth: Math.floor((match[1] ?? "").replace(/\t/g, "  ").length / 2), text: imagesAsAlt(text) };
 }
 
 /** Line by line: a fence runs to the next fence, a blank line ends whatever else is open. */
@@ -54,7 +83,7 @@ function parseBlocks(lines: string[]): Block[] {
   let quote: string[] = [];
 
   function flush(): void {
-    if (paragraph.length > 0) blocks.push({ kind: "paragraph", text: paragraph.join("\n") });
+    if (paragraph.length > 0) blocks.push({ kind: "paragraph", text: imagesAsAlt(paragraph.join("\n")) });
     if (list.length > 0) blocks.push({ kind: "list", items: list });
     if (quote.length > 0) blocks.push({ kind: "quote", blocks: parseBlocks(quote) });
     paragraph = [];
@@ -86,7 +115,7 @@ function parseBlocks(lines: string[]): Block[] {
     const heading = /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
     if (heading !== null) {
       flush();
-      blocks.push({ kind: "heading", level: (heading[1] ?? "#").length, text: heading[2] ?? "" });
+      blocks.push({ kind: "heading", level: (heading[1] ?? "#").length, text: imagesAsAlt(heading[2] ?? "") });
       continue;
     }
     if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) {
@@ -106,6 +135,12 @@ function parseBlocks(lines: string[]): Block[] {
       blocks.push({ kind: "table", header, rows });
       continue;
     }
+    const images = imageLineOf(line);
+    if (images !== null) {
+      flush();
+      blocks.push({ kind: "image", images });
+      continue;
+    }
     const item = listItemOf(line);
     if (item !== null) {
       if (paragraph.length > 0 || quote.length > 0) flush();
@@ -120,7 +155,7 @@ function parseBlocks(lines: string[]): Block[] {
     // A wrapped continuation of the list item above it.
     if (list.length > 0 && /^\s+/.test(line)) {
       const last = list[list.length - 1];
-      if (last !== undefined) last.text = `${last.text}\n${line.trim()}`;
+      if (last !== undefined) last.text = `${last.text}\n${imagesAsAlt(line.trim())}`;
       continue;
     }
     if (list.length > 0 || quote.length > 0) flush();

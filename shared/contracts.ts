@@ -268,3 +268,24 @@ export const loadStats = defineRpc({
   /** `managerIdleCompactions`: counted per project, since the manager has no ticket. */
   output: z.object({ tickets: z.array(StatsSummarySchema), managerIdleCompactions: z.number() }),
 });
+
+/** An image Taro shows (evidence, a sent image, one an agent read), base64; null when it may not be served. */
+export const readImageRpc = defineRpc({
+  name: "taro.image.read",
+  input: z.object({ path: z.string() }),
+  output: z.object({ image: z.object({ mimeType: z.string(), data: z.string() }).nullable() }),
+});
+
+export const SentImagesMessageSchema = z.object({
+  /** The message's words as Paseo's timeline has them. */
+  text: z.string(),
+  images: z.array(z.object({ path: z.string(), mimeType: z.string() })),
+});
+export type SentImagesMessage = z.infer<typeof SentImagesMessageSchema>;
+
+/** The user's messages to an agent that carried images, in order (Claude agents only). */
+export const listSentImages = defineRpc({
+  name: "taro.agent.sent-images",
+  input: z.object({ agentId: z.string() }),
+  output: z.object({ messages: z.array(SentImagesMessageSchema) }),
+});
