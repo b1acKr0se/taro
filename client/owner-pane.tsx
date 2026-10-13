@@ -1,9 +1,9 @@
 /**
  * A ticket beside the board (decision 6): the conversation of one of its
  * agents — the live owner, a subagent, or an archived agent read-only — or its
- * ticket, and a way back to the manager. What the ticket asks of you (its open
- * decisions, acceptance) is pinned above the chat (TR-022); the transcript marks
- * where each was asked.
+ * ticket, and a way back to the manager. Its open decisions are pinned above the
+ * chat (TR-022), the transcript marking where each was asked; a delivered ticket's
+ * Accept / Request changes sit in a row at the composer (TR-026).
  * With the board hidden the ticket sits in its own panel beside, so the pane is the chat alone.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
@@ -14,7 +14,8 @@ import { Text, View } from "react-native";
 import { tellAgent, type Card } from "../shared/contracts";
 import { decisionBlocksAsText, withoutDecisionBlocks } from "../shared/reports";
 import { AgentChat } from "./agent-chat";
-import { AcceptancePanel, AskedHere, AsksYou } from "./asks-you";
+import { AcceptanceRow } from "./acceptance-row";
+import { AskedHere, AsksYou } from "./asks-you";
 import { ContextMeter } from "./context-meter";
 import { defaultPaneAgent, paneAgents, paneAgentJob, roleIcon } from "./pane-agents";
 import { PaneHeader } from "./pane-header";
@@ -95,13 +96,7 @@ export function OwnerPane({
         ) : null}
       </View>
       {tab === "chat" ? (
-        <AsksYou
-          decisions={card.decisions}
-          acceptance={accepting ? <AcceptancePanel card={card} project={project} theme={theme} compact={compact} onChanged={onChanged} /> : null}
-          theme={theme}
-          compact={compact}
-          onChanged={onChanged}
-        />
+        <AsksYou decisions={card.decisions} theme={theme} compact={compact} onChanged={onChanged} />
       ) : null}
       <View style={{ flex: 1 }}>
         {tab === "ticket" ? (
@@ -116,13 +111,28 @@ export function OwnerPane({
             agent={{ id: shown.id, updatedAt: shown.brief.updatedAt, pendingPermissions: shown.brief.pendingPermissions, status: shown.brief.status }}
             theme={theme}
             compact={compact}
-            placeholder={`Talk to ${card.id}'s ${paneAgentJob(shown.role)}…`}
+            placeholder={accepting && shown.id === card.owner?.id ? `Talk to ${card.id}'s owner, or type the changes you want…` : `Talk to ${card.id}'s ${paneAgentJob(shown.role)}…`}
             onSend={async (text) => {
               await tell({ agentId: shown.id, text });
             }}
             transformText={withoutDecisionBlocks}
             decorateRow={(text) => <AskedHere text={text} open={card.decisions} theme={theme} />}
-            actions={<ContextMeter theme={theme} used={shown.brief.contextUsedTokens} max={shown.brief.contextMaxTokens} />}
+            actions={
+              // Request changes sends the owner's draft, so the row sits on the owner's composer only.
+              accepting && shown.id === card.owner?.id ? (
+                <AcceptanceRow
+                  card={card}
+                  project={project}
+                  agentId={shown.id}
+                  theme={theme}
+                  compact={compact}
+                  trailing={<ContextMeter theme={theme} used={shown.brief.contextUsedTokens} max={shown.brief.contextMaxTokens} />}
+                  onChanged={onChanged}
+                />
+              ) : (
+                <ContextMeter theme={theme} used={shown.brief.contextUsedTokens} max={shown.brief.contextMaxTokens} />
+              )
+            }
           />
         ) : (
           <AgentChat

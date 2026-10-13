@@ -379,7 +379,7 @@ function ManagerPane({
     return (
       <View style={{ flex: 1 }}>
         {header}
-        <AsksYou decisions={decisions} acceptance={null} theme={theme} compact={compact} onChanged={onChanged} />
+        <AsksYou decisions={decisions} theme={theme} compact={compact} onChanged={onChanged} />
         <Text style={{ color: theme.colors.foregroundMuted, padding: SPACE.lg }}>This project has no manager running. Start one from the project's settings (⚙).</Text>
       </View>
     );
@@ -391,7 +391,7 @@ function ManagerPane({
       {summary.trackerSyncProblem === null ? null : (
         <Text style={{ color: theme.colors.statusWarning, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm }}>Ticket sync paused; see Needs you on the board.</Text>
       )}
-      <AsksYou decisions={decisions} acceptance={null} theme={theme} compact={compact} onChanged={onChanged} />
+      <AsksYou decisions={decisions} theme={theme} compact={compact} onChanged={onChanged} />
       <AgentChat
         // A restarted manager is another agent: a fresh chat, not the last one's words for a frame.
         key={manager.id}
