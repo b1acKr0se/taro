@@ -150,21 +150,21 @@ describe("Supervisor.onTurnEnded after an automatic compaction", () => {
     it(`sends the reload once for a ${provider} automatic compaction`, async () => {
       const taro = supervisor();
       const first = items(userTurn, compaction, reply);
-      await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, first, null);
+      await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, first, null, undefined);
       expect(reloads()).toBe(1);
       expect(vi.mocked(sendFromPlugin).mock.calls[0]?.[2]).toBe("reload:TR-9");
 
       // The reload's own turn, and any later one: the compaction is still in the stored timeline.
-      await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, items(...first, reloadTurn, reply), null);
-      await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, items(...first, reloadTurn, reply, userTurn, reply), null);
+      await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, items(...first, reloadTurn, reply), null, undefined);
+      await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, items(...first, reloadTurn, reply, userTurn, reply), null, undefined);
       expect(reloads()).toBe(1);
     });
   }
 
   it("sends no reload for a manual or still-loading compaction", async () => {
     const taro = supervisor();
-    await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, items(userTurn, claudeManual, reply), null);
-    await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, items(userTurn, codexLoading, reply), null);
+    await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, items(userTurn, claudeManual, reply), null, undefined);
+    await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, items(userTurn, codexLoading, reply), null, undefined);
     expect(reloads()).toBe(0);
   });
 });

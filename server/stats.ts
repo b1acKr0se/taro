@@ -78,22 +78,22 @@ export class Stats {
     });
   }
 
-  /** Removes and returns the agent's stored turn start (ms), if any. */
-  private takeTurnStart(agentId: string): Promise<number | undefined> {
-    let started: number | undefined;
+  /**
+   * Removes the agent's stored turn start and returns how long the turn ran until now, if it had one.
+   * Queued in call order with the other stats work, so a turn end must call it before anything that
+   * could drop the start is queued.
+   */
+  takeTurnDuration(agentId: string): Promise<number | undefined> {
+    const endedAt = Date.now();
+    let duration: number | undefined;
     return this.modify((file) => {
       const at = file.turnStarts[agentId];
       if (at === undefined) return false;
       delete file.turnStarts[agentId];
-      const parsed = Date.parse(at);
-      started = Number.isNaN(parsed) ? undefined : parsed;
+      const started = Date.parse(at);
+      duration = Number.isNaN(started) ? undefined : Math.max(0, endedAt - started);
       return true;
-    }).then(() => started);
-  }
-
-  /** Forgets a turn start nobody recorded an end for (an agent outside Taro), so the file does not grow. */
-  async discardTurnStart(agentId: string): Promise<void> {
-    await this.takeTurnStart(agentId);
+    }).then(() => duration);
   }
 
   /**
@@ -119,9 +119,11 @@ export class Stats {
     return dropped;
   }
 
-  /** A child ticket's agents and turns count toward its parent as well as itself (`projectTotals` relies on it). */
-  async turnEnded(project: string, ticket: string | null, agent: { id: string; role: string; model: string | null; title: string | null }): Promise<void> {
-    const started = await this.takeTurnStart(agent.id);
+  /**
+   * `activeMs` is what `takeTurnDuration` returned when the turn ended. A child ticket's agents and
+   * turns count toward its parent as well as itself (`projectTotals` relies on it).
+   */
+  async turnEnded(project: string, ticket: string | null, agent: { id: string; role: string; model: string | null; title: string | null }, activeMs: number | undefined): Promise<void> {
     if (ticket === null) return;
     const tickets = [ticket];
     const parent = parentOf(ticket);
@@ -130,7 +132,7 @@ export class Stats {
       await this.update(project, target, (stats) => {
         const record = stats.agents[agent.id] ?? { agentId: agent.id, role: agent.role, model: agent.model, title: agent.title, turns: 0, activeMs: 0, costUsd: null, contextTokens: null };
         record.turns += 1;
-        if (started !== undefined) record.activeMs += Math.max(0, Date.now() - started);
+        if (activeMs !== undefined) record.activeMs += activeMs;
         stats.agents[agent.id] = record;
       });
     }

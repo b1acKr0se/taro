@@ -196,12 +196,14 @@ export default function contribute(server: PluginServerContext) {
 
   // Supervision (decisions 28, 30, 35, 36): every Taro agent's turn end.
   const removeTurnHook = server.on("agent.turn_ended", async ({ agent, outcome, timeline, turnId }, { paseo }) => {
+    // Every agent's turn start is taken here, first: queued before `keep` can queue the drop of stale
+    // starts, and before supervision prompts the agent into a new turn whose start must survive.
+    const taking = stats.takeTurnDuration(agent.id).catch(() => undefined);
     keep(paseo);
-    await supervisor.onTurnEnded(paseo, agent, outcome, timeline, turnId).catch((error: unknown) => {
+    const activeMs = await taking;
+    await supervisor.onTurnEnded(paseo, agent, outcome, timeline, turnId, activeMs).catch((error: unknown) => {
       console.error(`[taro] supervising ${agent.id}:`, error);
     });
-    // Supervision took the start of a Taro agent's turn; drop any left (agents outside Taro).
-    await stats.discardTurnStart(agent.id).catch(() => undefined);
     invalidateBoards();
   });
 

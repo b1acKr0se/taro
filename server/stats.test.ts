@@ -9,6 +9,11 @@ const agent = { id: "agent-1", role: "owner", model: "claude/claude-sonnet-5-5",
 const start = Date.parse("2026-10-13T10:00:00Z");
 let home = "";
 
+/** What the turn-end hook does: take the duration, then record the turn. */
+async function endTurn(stats: Stats, ticket: string | null, ended = agent): Promise<void> {
+  await stats.turnEnded("taro", ticket, ended, await stats.takeTurnDuration(ended.id));
+}
+
 async function statsFile(): Promise<{ tickets: Record<string, { agents: Record<string, { turns: number; activeMs: number }> }>; turnStarts: Record<string, string> }> {
   return JSON.parse(await readFile(join(home, "plugin-data", "taro", "state", "stats.json"), "utf8"));
 }
@@ -30,7 +35,7 @@ describe("turn durations", () => {
   it("survive a reload: a fresh Stats on the same files pairs the end with the stored start", async () => {
     await new Stats().turnStarted(agent.id);
     vi.setSystemTime(start + 11.9 * 60_000);
-    await new Stats().turnEnded("taro", "TR-1", agent);
+    await endTurn(new Stats(), "TR-1");
     const file = await statsFile();
     expect(file.tickets["taro:TR-1"]?.agents[agent.id]).toMatchObject({ turns: 1, activeMs: 11.9 * 60_000 });
     expect(file.turnStarts).toEqual({});
@@ -40,14 +45,14 @@ describe("turn durations", () => {
     const stats = new Stats();
     await stats.turnStarted(agent.id);
     vi.setSystemTime(start + 5_000);
-    await stats.turnEnded("taro", "TR-1.2", agent);
+    await endTurn(stats, "TR-1.2");
     const file = await statsFile();
     expect(file.tickets["taro:TR-1.2"]?.agents[agent.id]?.activeMs).toBe(5_000);
     expect(file.tickets["taro:TR-1"]?.agents[agent.id]?.activeMs).toBe(5_000);
   });
 
   it("count a turn without a recorded start, with no duration", async () => {
-    await new Stats().turnEnded("taro", "TR-1", agent);
+    await endTurn(new Stats(), "TR-1");
     expect((await statsFile()).tickets["taro:TR-1"]?.agents[agent.id]).toMatchObject({ turns: 1, activeMs: 0 });
   });
 
@@ -55,7 +60,7 @@ describe("turn durations", () => {
     const stats = new Stats();
     await stats.turnStarted(agent.id);
     vi.setSystemTime(start - 1_000);
-    await stats.turnEnded("taro", "TR-1", agent);
+    await endTurn(stats, "TR-1");
     expect((await statsFile()).tickets["taro:TR-1"]?.agents[agent.id]?.activeMs).toBe(0);
   });
 
@@ -65,15 +70,30 @@ describe("turn durations", () => {
     vi.setSystemTime(start + 60_000);
     await stats.turnStarted(agent.id);
     vi.setSystemTime(start + 90_000);
-    await stats.turnEnded("taro", "TR-1", agent);
+    await endTurn(stats, "TR-1");
     expect((await statsFile()).tickets["taro:TR-1"]?.agents[agent.id]?.activeMs).toBe(30_000);
   });
 
-  it("forget the start of an agent outside Taro", async () => {
+  it("forget the start of an agent outside Taro (no ticket) at its end", async () => {
     const stats = new Stats();
     await stats.turnStarted("other");
-    await stats.discardTurnStart("other");
-    expect((await statsFile()).turnStarts).toEqual({});
+    await endTurn(stats, null, { ...agent, id: "other" });
+    const file = await statsFile();
+    expect(file.turnStarts).toEqual({});
+    expect(file.tickets).toEqual({});
+  });
+
+  it("keep the start of a turn that begins while the previous end is being recorded (a nudge)", async () => {
+    const stats = new Stats();
+    await stats.turnStarted(agent.id);
+    vi.setSystemTime(start + 10_000);
+    const activeMs = await stats.takeTurnDuration(agent.id);
+    vi.setSystemTime(start + 11_000);
+    await stats.turnStarted(agent.id);
+    await stats.turnEnded("taro", "TR-1", agent, activeMs);
+    const file = await statsFile();
+    expect(file.tickets["taro:TR-1"]?.agents[agent.id]?.activeMs).toBe(10_000);
+    expect(file.turnStarts).toEqual({ [agent.id]: new Date(start + 11_000).toISOString() });
   });
 });
 
@@ -86,7 +106,7 @@ describe("stats file", () => {
     expect((await stats.all("taro"))[0]?.agents[agent.id]).toMatchObject({ turns: 3, activeMs: 1_000 });
     await stats.turnStarted(agent.id);
     vi.setSystemTime(start + 2_000);
-    await stats.turnEnded("taro", "TR-1", agent);
+    await endTurn(stats, "TR-1");
     expect((await statsFile()).tickets["taro:TR-1"]?.agents[agent.id]).toMatchObject({ turns: 4, activeMs: 3_000 });
   });
 });
@@ -99,7 +119,7 @@ describe("dropFinishedTurns", () => {
     expect(await stats.dropFinishedTurns(async (agentId) => agentId === "running")).toBe(1);
     expect(Object.keys((await statsFile()).turnStarts)).toEqual(["running"]);
     vi.setSystemTime(start + 60 * 60_000);
-    await stats.turnEnded("taro", "TR-1", { ...agent, id: "idle" });
+    await endTurn(stats, "TR-1", { ...agent, id: "idle" });
     expect((await statsFile()).tickets["taro:TR-1"]?.agents.idle).toMatchObject({ turns: 1, activeMs: 0 });
   });
 
@@ -115,6 +135,17 @@ describe("dropFinishedTurns", () => {
     });
     expect(dropped).toBe(0);
     expect((await statsFile()).turnStarts).toEqual({ unknown: new Date(start).toISOString(), restarted: new Date(start + 1_000).toISOString() });
+  });
+
+  it("never drops a start a turn end took first, even when the agent looks idle", async () => {
+    await new Stats().turnStarted(agent.id);
+    const stats = new Stats();
+    vi.setSystemTime(start + 30_000);
+    const taking = stats.takeTurnDuration(agent.id);
+    const dropping = stats.dropFinishedTurns(async () => false);
+    await stats.turnEnded("taro", "TR-1", agent, await taking);
+    expect(await dropping).toBe(0);
+    expect((await statsFile()).tickets["taro:TR-1"]?.agents[agent.id]?.activeMs).toBe(30_000);
   });
 
   it("does nothing without stored starts", async () => {

@@ -117,13 +117,13 @@ export class Supervisor {
     private readonly stats: Stats,
   ) {}
 
-  async onTurnEnded(paseo: PaseoApi, hookAgent: HookAgent, outcome: TurnOutcome, timeline: readonly TimelineItem[], turnId: string | null): Promise<void> {
+  async onTurnEnded(paseo: PaseoApi, hookAgent: HookAgent, outcome: TurnOutcome, timeline: readonly TimelineItem[], turnId: string | null, activeMs: number | undefined): Promise<void> {
     const live = await fetchLiveAgent(paseo, hookAgent.id);
     if (live === null) return;
     const identity = identityFromLabels(live.labels, live.title ?? null);
     if (identity === null) return;
     const model = live.model === null || live.model === undefined ? live.provider : `${live.provider}/${live.model}`;
-    await this.stats.turnEnded(identity.project, identity.ticket, { id: live.id, role: identity.role, model, title: identity.title }).catch(() => undefined);
+    await this.stats.turnEnded(identity.project, identity.ticket, { id: live.id, role: identity.role, model, title: identity.title }, activeMs).catch(() => undefined);
     const now = new Date().toISOString();
     // The hook passes the agent's whole stored timeline: earlier turns' blocks would reopen answered
     // decisions, their user words would close new ones, and a turn without text would reuse their reply.
