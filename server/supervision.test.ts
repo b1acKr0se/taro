@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentState, StoredDecision } from "../shared/state";
-import { fetchLiveAgent } from "./agents";
+import { fetchLiveAgent, listTaroAgents } from "./agents";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
 import { sendFromPlugin } from "./send";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
 import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, humanMessages, identityFromLabels, Supervisor } from "./supervision";
 
-vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: async () => [] }));
+vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
 vi.mock("./package-files", () => ({
   TEMPLATES: { reload: "reload", nudge: "nudge" },
@@ -271,5 +271,36 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     const failed = { kind: "failed" } as unknown as TurnOutcome;
     await taro.onTurnEnded({} as PaseoApi, hookAgent, failed, items(human("go"), reply, human("again"), { type: "tool_call", callId: "c2", name: "shell", status: "failed" }), null, undefined);
     expect(agents[owner.id]?.lastStatus).toBeNull();
+  });
+});
+
+// TR-009: an archived or relaunched agent's questions can never be answered.
+describe("Supervisor withdraws decisions of agents that are no longer live", () => {
+  function stored(agentId: string, project = "taro"): StoredDecision {
+    return { key: `${agentId}:scope-approval`, id: "scope-approval", agentId, project, status: "open" } as unknown as StoredDecision;
+  }
+
+  function supervisorOver(decisions: StoredDecision[]): Supervisor {
+    const state = {
+      allDecisions: async () => decisions,
+      updateDecisions: async <T>(change: (stored: StoredDecision[]) => T) => change(decisions),
+      agent: async () => null,
+      updateAgent: async () => undefined,
+    } as unknown as PluginState;
+    return new Supervisor(state, {} as Stats);
+  }
+
+  it("withdraws every open decision of an archived agent and no one else's", async () => {
+    const decisions = [stored("old-owner"), stored("new-owner")];
+    expect(await supervisorOver(decisions).withdrawDecisionsOf("old-owner")).toBe(1);
+    expect(decisions.map((decision) => decision.status)).toEqual(["withdrawn", "open"]);
+  });
+
+  it("at start, withdraws the project's decisions of agents Paseo no longer lists, keeping closed ones", async () => {
+    // A closed agent is listed (not archived) and resumes when answered; the archived one is not listed.
+    vi.mocked(listTaroAgents).mockResolvedValueOnce([{ id: "closed-owner", status: "closed", labels: {} } as unknown as PaseoAgent]);
+    const decisions = [stored("archived-owner"), stored("closed-owner"), stored("archived-elsewhere", "other")];
+    await supervisorOver(decisions).reconcile({} as PaseoApi, ["taro"]);
+    expect(decisions.map((decision) => decision.status)).toEqual(["withdrawn", "open", "open"]);
   });
 });

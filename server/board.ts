@@ -9,6 +9,7 @@ import { boardColumn, complexityOf } from "../shared/board";
 import { executionMachine } from "../shared/execution";
 import type { Board, Card, TicketDetailView } from "../shared/contracts";
 import { TARO_LABELS } from "../shared/project";
+import { decisionsOfLiveAgents, type StoredDecision } from "../shared/state";
 import { currentSuggestions, parseSuggestions, suggestionKey } from "../shared/suggestions";
 import { projectAgents } from "./agents";
 import { statePath } from "./data-dir";
@@ -70,7 +71,11 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
     if (ticket === undefined) continue;
     byTicket.set(ticket, [...(byTicket.get(ticket) ?? []), agent]);
   }
-  const openDecisions = decisions.filter((decision) => decision.project === project && decision.status === "open");
+  // Only questions a live agent asked: one archived outside the plugin may not be withdrawn yet.
+  const openDecisions = decisionsOfLiveAgents(
+    decisions.filter((decision) => decision.project === project),
+    new Set(agents.map((agent) => agent.id)),
+  );
 
   const cards: Card[] = await Promise.all(
     tickets.map(async (ticket) => {
@@ -121,6 +126,14 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
     suggestions: await readSuggestions(project, tickets),
     loadedAt: new Date().toISOString(),
   };
+}
+
+/** Open decisions across one project (or all), from live agents only, for the Inbox and the ticket panel. */
+export async function liveOpenDecisions(paseo: PaseoApi, state: PluginState, project: string | null): Promise<StoredDecision[]> {
+  const open = (await state.allDecisions()).filter((decision) => decision.status === "open" && (project === null || decision.project === project));
+  const projects = [...new Set(open.map((decision) => decision.project))];
+  const live = new Set((await Promise.all(projects.map((name) => projectAgents(paseo, name)))).flat().map((agent) => agent.id));
+  return decisionsOfLiveAgents(open, live);
 }
 
 export async function loadTicketDetail(project: string, ticketId: string): Promise<TicketDetailView> {

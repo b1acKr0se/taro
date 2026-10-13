@@ -32,7 +32,7 @@ import {
 import { ProjectSettingsSchema } from "./shared/project";
 import { Actions } from "./server/actions";
 import { fetchLiveAgent } from "./server/agents";
-import { dismissSuggestion, invalidateBoards, loadBoard, loadTicketDetail } from "./server/board";
+import { dismissSuggestion, invalidateBoards, liveOpenDecisions, loadBoard, loadTicketDetail } from "./server/board";
 import type { PaseoApi } from "./server/host-types";
 import { PluginState } from "./server/state";
 import { Stats, turnMayStillEnd } from "./server/stats";
@@ -155,9 +155,7 @@ export default function contribute(server: PluginServerContext) {
     invalidateBoards();
     return {};
   });
-  server.handle(listOpenDecisions, async ({ project }) => ({
-    decisions: (await state.allDecisions()).filter((decision) => decision.status === "open" && (project === null || decision.project === project)),
-  }));
+  server.handle(listOpenDecisions, async ({ project }, { paseo }) => ({ decisions: await liveOpenDecisions(keep(paseo), state, project) }));
   server.handle(tellAgent, async ({ agentId, text }, { paseo }) => {
     await actions.tellAgent(keep(paseo), agentId, text);
     return {};
@@ -207,6 +205,18 @@ export default function contribute(server: PluginServerContext) {
     invalidateBoards();
   });
 
+  // An archived agent's questions are withdrawn, whoever archived it (decisions of dead agents message no one).
+  const removeArchiveHook = server.on("agent.archived", async ({ agent }) => {
+    const withdrawn = await supervisor.withdrawDecisionsOf(agent.id).catch((error: unknown) => {
+      console.error(`[taro] withdrawing ${agent.id}'s decisions:`, error);
+      return 0;
+    });
+    if (withdrawn > 0) {
+      console.log(`[taro] ${agent.id} was archived; withdrew ${withdrawn} open decisions`);
+      invalidateBoards();
+    }
+  });
+
   // Every Taro agent knows where its tracker and skill are, on create and on resume (decision 38).
   const removeSessionHook = server.before("agent.session_open", async ({ request }, { paseo }) => {
     const environment = await sessionEnvironment(paseo, request.agentId, request.cwd).catch(() => null);
@@ -217,6 +227,7 @@ export default function contribute(server: PluginServerContext) {
   return () => {
     removeTurnHook();
     removeTurnStartHook();
+    removeArchiveHook();
     removeSessionHook();
     trackers.stop();
   };

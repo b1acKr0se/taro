@@ -1,0 +1,60 @@
+import { describe, expect, it } from "vitest";
+
+import { decisionsOfLiveAgents, withdrawOpenDecisions, type StoredDecision } from "./state";
+
+function decision(agentId: string, id: string, status: StoredDecision["status"] = "open", project = "taro"): StoredDecision {
+  return {
+    id,
+    question: `${id}?`,
+    why: "",
+    blocking: true,
+    options: [{ label: "Yes", prompt: "Yes", consequence: "" }],
+    recommended: "Yes",
+    reason: "",
+    default: "",
+    withdrawn: false,
+    problems: [],
+    key: `${agentId}:${id}`,
+    project,
+    ticket: "TR-5",
+    agentId,
+    agentRole: "owner",
+    agentTitle: null,
+    askedAt: "2026-10-13T12:00:00.000Z",
+    status,
+    answer: null,
+  };
+}
+
+describe("decisionsOfLiveAgents", () => {
+  it("keeps only open decisions whose agent is live", () => {
+    const decisions = [decision("old-owner", "scope-approval"), decision("new-owner", "scope-approval"), decision("new-owner", "merge", "answered")];
+    expect(decisionsOfLiveAgents(decisions, new Set(["new-owner"])).map((kept) => kept.key)).toEqual(["new-owner:scope-approval"]);
+  });
+
+  it("shows nothing when no agent is live, and nothing from nothing", () => {
+    expect(decisionsOfLiveAgents([decision("a", "x")], new Set())).toEqual([]);
+    expect(decisionsOfLiveAgents([], new Set(["a"]))).toEqual([]);
+  });
+});
+
+describe("withdrawOpenDecisions", () => {
+  it("withdraws the matching open decisions and counts them", () => {
+    const decisions = [decision("old-owner", "scope-approval"), decision("old-owner", "complexity"), decision("new-owner", "scope-approval")];
+    expect(withdrawOpenDecisions(decisions, (candidate) => candidate.agentId === "old-owner")).toBe(2);
+    expect(decisions.map((candidate) => candidate.status)).toEqual(["withdrawn", "withdrawn", "open"]);
+  });
+
+  it("leaves answered decisions as answered, keeping their record", () => {
+    const decisions = [decision("old-owner", "scope-approval", "answered")];
+    expect(withdrawOpenDecisions(decisions, () => true)).toBe(0);
+    expect(decisions[0]?.status).toBe("answered");
+  });
+
+  it("withdraws nothing from an empty list or when nothing matches", () => {
+    expect(withdrawOpenDecisions([], () => true)).toBe(0);
+    const decisions = [decision("a", "x")];
+    expect(withdrawOpenDecisions(decisions, () => false)).toBe(0);
+    expect(decisions[0]?.status).toBe("open");
+  });
+});

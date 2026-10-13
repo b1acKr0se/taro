@@ -6,7 +6,7 @@
  */
 import { RoleSchema, TARO_LABELS, type Role } from "../shared/project";
 import { hashText, parseDecisionBlocks, parseStatusLine, type ParsedDecision } from "../shared/reports";
-import type { AgentState, HeldReport, StoredDecision } from "../shared/state";
+import { withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDecision } from "../shared/state";
 import { fetchLiveAgent, isMidTurn, listTaroAgents } from "./agents";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
@@ -207,6 +207,9 @@ export class Supervisor {
     let repaired = 0;
     for (const project of projects) {
       const agents = await listTaroAgents(paseo, { [TARO_LABELS.project]: project });
+      // Agents archived (or removed) while the plugin was down: their questions can no longer be answered.
+      const live = new Set(agents.map((agent) => agent.id));
+      await this.state.updateDecisions((stored) => withdrawOpenDecisions(stored, (decision) => decision.project === project && !live.has(decision.agentId)));
       for (const agent of agents) {
         if (isMidTurn(agent) || agent.status === "closed") continue;
         const identity = identityFromLabels(agent.labels, agent.title ?? null);
@@ -234,6 +237,11 @@ export class Supervisor {
       }
     }
     return repaired;
+  }
+
+  /** An archived agent never reads an answer, whoever archived it: the plugin, the user, the CLI. */
+  async withdrawDecisionsOf(agentId: string): Promise<number> {
+    return this.state.updateDecisions((stored) => withdrawOpenDecisions(stored, (decision) => decision.agentId === agentId));
   }
 
   private async reloadText(identity: TaroIdentity): Promise<string> {

@@ -57,3 +57,19 @@ export const AgentStateSchema = z.object({
   lastTurnEndedAt: z.string().nullable().default(null),
 });
 export type AgentState = z.infer<typeof AgentStateSchema>;
+
+/** Open decisions whose agent Paseo still has unarchived: answering any other would message no one. */
+export function decisionsOfLiveAgents<T extends Pick<StoredDecision, "agentId" | "status">>(decisions: readonly T[], liveAgentIds: ReadonlySet<string>): T[] {
+  return decisions.filter((decision) => decision.status === "open" && liveAgentIds.has(decision.agentId));
+}
+
+/** Marks the open decisions `matches` picks as withdrawn; returns how many it withdrew. */
+export function withdrawOpenDecisions(decisions: StoredDecision[], matches: (decision: StoredDecision) => boolean): number {
+  let withdrawn = 0;
+  for (const decision of decisions) {
+    if (decision.status !== "open" || !matches(decision)) continue;
+    decision.status = "withdrawn";
+    withdrawn += 1;
+  }
+  return withdrawn;
+}

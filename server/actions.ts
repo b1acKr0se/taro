@@ -35,6 +35,10 @@ export class Actions {
   async answerDecision(paseo: PaseoApi, key: string, label: string | null, text: string): Promise<void> {
     const decision = await this.state.decision(key);
     if (decision === null) throw new Error("That decision is no longer open.");
+    if ((await fetchLiveAgent(paseo, decision.agentId)) === null) {
+      await this.supervisor.withdrawDecisionsOf(decision.agentId);
+      throw new Error("The agent that asked this is archived or gone, so nothing was sent; its open questions are withdrawn.");
+    }
     const option = label === null ? null : decision.options.find((candidate) => candidate.label === label) ?? null;
     const words = (option?.prompt ?? text).trim();
     if (words === "") throw new Error("Type an answer or press an option.");
@@ -128,7 +132,11 @@ export class Actions {
     }
     if (workspaceId === null) throw new Error(`Cannot tell which workspace ${ticket} used; its EXECUTION record names none.`);
     if (previous !== null && isMidTurn(previous)) throw new Error("Its owner is running; nudge or interrupt it instead.");
-    if (previous !== null) await paseo.agents.ref(previous.id).archive().catch(() => undefined);
+    if (previous !== null) {
+      await paseo.agents.ref(previous.id).archive().catch(() => undefined);
+      // The archive hook does this too; done here as well so the new owner never appears beside the old questions.
+      await this.supervisor.withdrawDecisionsOf(previous.id);
+    }
 
     const detail = await viewTicket(paths.tracker, ticket);
     const agentId = randomUUID();
