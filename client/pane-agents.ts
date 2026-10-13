@@ -118,7 +118,8 @@ export function paneAgentDetail(agent: PaneAgent, now: number): string {
  * the owner waits on, in the words of the subagent's title: the one started last, and how many more
  * run beside it.
  */
-export function waitingOnText(card: Pick<Card, "subagents">, now: number): string | null {
+/** The newest running subagent: what it does, how long it has run, and how many others run beside it. */
+export function waitingOn(card: Pick<Card, "subagents">, now: number): { text: string; running: string | null; more: number } | null {
   const running = card.subagents
     .filter((subagent) => subagent.status === "running" || subagent.status === "initializing")
     .sort((left, right) => (right.createdAt ?? "").localeCompare(left.createdAt ?? ""));
@@ -126,7 +127,15 @@ export function waitingOnText(card: Pick<Card, "subagents">, now: number): strin
   if (newest === undefined) return null;
   const started = Date.parse(newest.createdAt ?? "");
   const task = taskOfTitle(newest.title);
-  const parts = [task === "" ? capitalised(paneAgentJob(newest.role)) : doingText(newest.role, task), Number.isFinite(started) ? formatDuration(Math.max(0, now - started)) : null];
-  const more = running.length - 1;
-  return `${parts.filter((part) => part !== null).join(" · ")}${more > 0 ? ` (+${more} more)` : ""}`;
+  return {
+    text: task === "" ? capitalised(paneAgentJob(newest.role)) : doingText(newest.role, task),
+    running: Number.isFinite(started) ? formatDuration(Math.max(0, now - started)) : null,
+    more: running.length - 1,
+  };
+}
+
+export function waitingOnText(card: Pick<Card, "subagents">, now: number): string | null {
+  const waiting = waitingOn(card, now);
+  if (waiting === null) return null;
+  return `${[waiting.text, waiting.running].filter((part) => part !== null).join(" · ")}${waiting.more > 0 ? ` (+${waiting.more} more)` : ""}`;
 }

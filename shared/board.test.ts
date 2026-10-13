@@ -15,6 +15,16 @@ describe("boardColumn", () => {
     expect(boardColumn({ ...base, status: "Awaiting acceptance", agent: { status: "running", pendingPermissions: 0 } })).toBe("working");
   });
 
+  it("places an accepted delivery like work under way, not under Needs you (TR-031)", () => {
+    const accepted = { ...base, status: "Awaiting acceptance", accepted: true };
+    expect(boardColumn({ ...accepted, agent: { status: "idle", pendingPermissions: 0 } })).toBe("working");
+    expect(boardColumn({ ...accepted, agent: { status: "running", pendingPermissions: 0 } })).toBe("working");
+    expect(boardColumn({ ...accepted, agent: null })).toBe("stalled");
+    expect(boardColumn({ ...accepted, agent: { status: "idle", pendingPermissions: 0 }, openBlockingDecisions: 1 })).toBe("needs-you");
+    expect(boardColumn({ ...accepted, ownerElsewhere: true, agent: null })).toBe("working");
+    expect(boardColumn({ ...base, status: "Awaiting acceptance", accepted: false, agent: { status: "idle", pendingPermissions: 0 } })).toBe("needs-you");
+  });
+
   it("puts questions, acceptance and blockers under Needs you", () => {
     expect(boardColumn({ ...base, openBlockingDecisions: 1 })).toBe("needs-you");
     expect(boardColumn({ ...base, status: "Awaiting acceptance" })).toBe("needs-you");

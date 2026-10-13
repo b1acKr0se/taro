@@ -17,7 +17,7 @@ import { SectionHeading } from "./badges";
 import { useBoard, useRefreshBoard } from "./board-data";
 import { walkOrder } from "./walk-order";
 import { DecisionCard, askedBy } from "./decision-card";
-import { SPACE } from "./spacing";
+import { paneGutter, SPACE } from "./spacing";
 import { SyncProblemCard } from "./sync-problem-card";
 import { TicketCard } from "./ticket-card";
 import { FONT_SIZE } from "./type-scale";
@@ -45,7 +45,7 @@ export function Inbox({
   if (walking) {
     const current = ordered[Math.min(step, ordered.length - 1)];
     return (
-      <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ padding: SPACE.lg, gap: SPACE.md, maxWidth: 760, width: "100%", alignSelf: "center" }}>
+      <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ paddingVertical: SPACE.lg, paddingHorizontal: paneGutter(compact), gap: SPACE.md, maxWidth: 760, width: "100%", alignSelf: "center" }}>
         <SectionHeading
           theme={theme}
           icon="ListChecks"
@@ -65,7 +65,7 @@ export function Inbox({
   }
 
   return (
-    <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ padding: SPACE.lg, gap: SPACE.lg }}>
+    <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ paddingVertical: SPACE.lg, paddingHorizontal: paneGutter(compact), gap: SPACE.lg }}>
       <SectionHeading theme={theme} icon="MessageCircleQuestion" text={`Decisions · ${ordered.length}`} color={ordered.length === 0 ? colors.foregroundMuted : colors.statusWarning}>
         <IconButton
           icon="ListChecks"

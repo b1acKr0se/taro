@@ -1,9 +1,9 @@
 /**
- * One ticket on the board (decision 10, TR-026): id, phase and live dot, the title, one line for
- * what is happening now (`card-now.ts`: why it stalled, what it asks of you — answered in the owner's
- * pane, which the line opens — the subagent it waits on, or its last status), children folded to one
- * line, and one muted footer (complexity, context, subagents, PR, and Nudge / Relaunch / Compact when
- * they apply). Once finished: what it was and what it cost.
+ * One ticket on the board (decision 10, TR-026, TR-031): id, phase and live dot, the title, what is
+ * happening now (`card-now.ts`: a headline read whole, a muted detail under it, and the action —
+ * Answer, Review, Allow, or Nudge and Relaunch — on its own line, all in one column beside the icon),
+ * children folded to one line, and one muted footer (complexity, context, subagents, PR, and Compact
+ * when it applies). Once finished: what it was and what it cost.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
@@ -13,10 +13,11 @@ import { Pressable, Text, View } from "react-native";
 
 import { compactAgent, nudgeAgent, relaunchOwner, type Card, type StatsSummary } from "../shared/contracts";
 import { PhaseBadge } from "./badges";
-import { acceptanceReady, callAction } from "./card-calls";
+import { acceptanceReady } from "./card-calls";
 import { cardFooterParts, cardNowLine, offersCompact, type NowLine } from "./card-now";
-import { errorText, formatCost, pullRequestLabel, formatDuration, relativeTime } from "./format";
+import { errorText, formatCost, pullRequestLabel, formatDuration } from "./format";
 import { SPACE } from "./spacing";
+import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { IconButton } from "./ui";
 import { useNow } from "./use-now";
@@ -64,10 +65,25 @@ export function TicketCard({
       head: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "center" as const, gap: SPACE.sm },
       id: { flexGrow: 1, flexShrink: 0, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
       title: { color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" as const, lineHeight: lineHeightFor(FONT_SIZE.body) },
+      // The icon keeps a column of its own, so a wrapped headline, its detail and the action all start at one edge.
       line: { flexDirection: "row" as const, alignItems: "flex-start" as const, gap: SPACE.sm },
-      lineIcon: { marginTop: 3 },
-      status: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
-      danger: { flex: 1, color: colors.statusDanger, fontSize: FONT_SIZE.small, fontWeight: "600" as const, lineHeight: lineHeightFor(FONT_SIZE.small) },
+      lineIcon: { width: 14, paddingTop: (lineHeightFor(FONT_SIZE.small) - 13) / 2 },
+      lineText: { flex: 1, minWidth: 0, gap: SPACE.xxs },
+      headline: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
+      strong: { color: colors.foreground, fontWeight: "600" as const },
+      danger: { color: colors.statusDanger, fontWeight: "600" as const },
+      detail: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption) },
+      actions: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, marginTop: SPACE.xs },
+      action: {
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: SPACE.xs,
+        paddingHorizontal: SPACE.sm,
+        paddingVertical: SPACE.xxs,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: withAlpha(colors.accent, 0.45),
+      },
       dot: { width: 8, height: 8, borderRadius: 4 },
       row: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
       muted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
@@ -75,8 +91,7 @@ export function TicketCard({
       track: { width: 44, height: 3, borderRadius: 2, backgroundColor: colors.surface2, overflow: "hidden" as const },
       childRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm, paddingLeft: SPACE.sm },
       footer: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "center" as const, gap: SPACE.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: SPACE.sm },
-      callText: { flex: 1, color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
-      callAction: { color: colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
+      actionText: { color: colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
     }),
     [colors, compact, selected],
   );
@@ -148,54 +163,66 @@ export function TicketCard({
   const nowLine = cardNowLine(card, now);
   const footer = cardFooterParts(card);
   const compactOffered = offersCompact(card);
-  const stalled = card.column === "stalled";
-  const hasFooter = footer.length > 0 || card.pullRequest !== null || compactOffered || stalled;
+  const hasFooter = footer.length > 0 || card.pullRequest !== null || compactOffered;
+
+  function lineLook(line: NowLine): { icon: string; color: string; headline: object | null } {
+    switch (line.kind) {
+      case "call": {
+        const call = line.call;
+        if (call.kind === "decision") return { icon: "Hand", color: call.blocking ? colors.statusWarning : colors.foregroundMuted, headline: styles.strong };
+        if (call.kind === "permission") return { icon: "KeyRound", color: colors.statusWarning, headline: styles.strong };
+        return acceptanceReady(card) ? { icon: "PackageCheck", color: colors.accent, headline: styles.strong } : { icon: "PackageX", color: colors.statusWarning, headline: styles.strong };
+      }
+      case "stalled":
+        return { icon: "CircleAlert", color: colors.statusDanger, headline: styles.danger };
+      case "accepted":
+        return { icon: "GitMerge", color: colors.statusSuccess, headline: styles.strong };
+      case "subagent":
+        return { icon: "Hourglass", color: colors.statusSuccess, headline: { color: colors.foreground } };
+      case "elsewhere":
+        return { icon: "Monitor", color: colors.foregroundMuted, headline: null };
+      case "status": {
+        const status = statusStateLook(line.state);
+        return { icon: status.icon, color: toneColor(theme, status.tone), headline: null };
+      }
+    }
+  }
 
   function nowRow(line: NowLine) {
-    if (line.kind === "call") {
-      const call = line.call;
-      const look =
-        call.kind === "decision"
-          ? { icon: "Hand", color: call.blocking ? colors.statusWarning : colors.foregroundMuted }
-          : call.kind === "acceptance"
-            ? acceptanceReady(card)
-              ? { icon: "PackageCheck", color: colors.accent }
-              : { icon: "PackageX", color: colors.statusWarning }
-            : { icon: "KeyRound", color: colors.statusWarning };
-      const text = call.kind === "acceptance" && call.evidence !== null ? `${call.text} · ${call.evidence}` : call.text;
-      return (
-        <Pressable accessibilityRole="button" accessibilityLabel={`${callAction(call)}: ${text}`} style={styles.line} onPress={onOpen}>
-          <View style={styles.lineIcon}>
-            <Icon name={look.icon} size={13} color={look.color} />
-          </View>
-          {/* Two lines: a narrow column still reads the question, and a long one cannot grow the card. */}
-          <Text style={styles.callText} numberOfLines={2}>
-            {text}
-          </Text>
-          {line.more > 0 ? <Text style={styles.muted}>+{line.more}</Text> : null}
-          <Text style={styles.callAction}>{callAction(call)} →</Text>
-        </Pressable>
-      );
-    }
-    const look =
-      line.kind === "stalled"
-        ? { icon: "CircleAlert", color: colors.statusDanger, style: styles.danger }
-        : line.kind === "subagent"
-          ? { icon: "Hourglass", color: colors.statusSuccess, style: [styles.status, { color: colors.foreground }] }
-          : (() => {
-              const status = statusStateLook(line.state);
-              return { icon: status.icon, color: toneColor(theme, status.tone), style: styles.status };
-            })();
-    const at = line.kind === "subagent" ? null : line.at;
+    const look = lineLook(line);
+    const ownerAlive = owner !== null && owner.status !== "error";
     return (
       <View style={styles.line}>
         <View style={styles.lineIcon}>
           <Icon name={look.icon} size={13} color={look.color} />
         </View>
-        <Text style={look.style} numberOfLines={2}>
-          {line.text}
-          {at === null ? "" : ` · ${relativeTime(at, now)}`}
-        </Text>
+        <View style={styles.lineText}>
+          {/* Read whole: a long question wraps; four lines keep one card from filling the column. */}
+          <Text style={[styles.headline, look.headline]} numberOfLines={4}>
+            {line.headline}
+          </Text>
+          {line.detail === null ? null : (
+            <Text style={styles.detail} numberOfLines={3}>
+              {line.detail}
+            </Text>
+          )}
+          {line.kind === "call" ? (
+            <View style={styles.actions}>
+              <Pressable accessibilityRole="button" accessibilityLabel={`${line.action}: ${line.headline}`} style={styles.action} onPress={onOpen}>
+                <Text style={styles.actionText}>{line.action}</Text>
+                <Icon name="ArrowRight" size={12} color={colors.accent} />
+              </Pressable>
+            </View>
+          ) : null}
+          {line.kind === "stalled" ? (
+            <View style={styles.actions}>
+              {ownerAlive ? (
+                <IconButton icon="Zap" label="Nudge" showLabel theme={theme} disabled={busy} onPress={() => void run(() => nudge({ agentId: owner.id }), "Nudged.")} />
+              ) : null}
+              <IconButton icon="RotateCcw" label="Relaunch" showLabel theme={theme} disabled={busy} onPress={() => void run(() => relaunch({ project, ticket: card.id }), "A fresh owner is starting.")} />
+            </View>
+          ) : null}
+        </View>
       </View>
     );
   }
@@ -230,12 +257,6 @@ export function TicketCard({
       )}
       {hasFooter ? (
         <View style={styles.footer}>
-          {stalled && owner !== null && owner.status !== "error" ? (
-            <IconButton icon="Zap" label="Nudge" showLabel theme={theme} disabled={busy} onPress={() => void run(() => nudge({ agentId: owner.id }), "Nudged.")} />
-          ) : null}
-          {stalled ? (
-            <IconButton icon="RotateCcw" label="Relaunch" showLabel theme={theme} disabled={busy} onPress={() => void run(() => relaunch({ project, ticket: card.id }), "A fresh owner is starting.")} />
-          ) : null}
           <Text style={[styles.muted, { flexShrink: 1 }]} numberOfLines={1}>
             {footer.join(" · ")}
           </Text>

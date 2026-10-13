@@ -27,7 +27,7 @@ import { groupRows, toolRunSummary, type Group } from "./tool-runs";
 import { transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
-import { CHAT_MAX_WIDTH, COMPOSER_CONTROL_SIZE, SPACE } from "./spacing";
+import { CHAT_MAX_WIDTH, COMPOSER_CONTROL_SIZE, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
 
 /** The text area inside the composer box, above its row of the context ring and the send button. */
@@ -216,7 +216,8 @@ export function AgentChat({
         width: "100%" as const,
         maxWidth: CHAT_MAX_WIDTH,
         alignSelf: "center" as const,
-        padding: compact ? SPACE.md : SPACE.lg,
+        paddingVertical: compact ? SPACE.md : SPACE.lg,
+        paddingHorizontal: paneGutter(compact),
         gap: compact ? SPACE.md : SPACE.lg,
       },
       user: {
@@ -258,7 +259,7 @@ export function AgentChat({
         width: "100%" as const,
         maxWidth: CHAT_MAX_WIDTH,
         alignSelf: "center" as const,
-        paddingHorizontal: compact ? SPACE.md : SPACE.lg,
+        paddingHorizontal: paneGutter(compact),
         paddingVertical: SPACE.md,
         gap: SPACE.sm,
       },
@@ -301,7 +302,7 @@ export function AgentChat({
         flexDirection: "row" as const,
         alignItems: "center" as const,
         gap: SPACE.sm,
-        paddingHorizontal: compact ? SPACE.md : SPACE.lg,
+        paddingHorizontal: paneGutter(compact),
         paddingVertical: SPACE.md,
       },
       // The band spans the pane; only its note is held to the reading width.

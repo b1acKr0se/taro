@@ -7,7 +7,7 @@ import { hostname } from "node:os";
 
 import { boardColumn, complexityOf, ticketAgents } from "../shared/board";
 import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
-import { executionMachine, pullRequestUrl } from "../shared/execution";
+import { acceptedRecord, executionMachine, pullRequestUrl, type AcceptedRecord } from "../shared/execution";
 import type { Board, Card, TicketDetailView } from "../shared/contracts";
 import { latestMilestone, type Milestone } from "../shared/milestones";
 import { pastTicketAgents } from "../shared/past-agents";
@@ -33,7 +33,7 @@ const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing", "Awaiting acc
 async function recordedFacts(
   trackerPath: string,
   ticketId: string,
-): Promise<{ hostElsewhere: string | null; pullRequest: string | null; latestMilestone: Milestone | null; evidenceRecord: ParsedEvidence | null }> {
+): Promise<{ hostElsewhere: string | null; pullRequest: string | null; latestMilestone: Milestone | null; evidenceRecord: ParsedEvidence | null; accepted: AcceptedRecord | null }> {
   try {
     const detail = await viewTicket(trackerPath, ticketId);
     const host = executionMachine(detail.implementationNotes);
@@ -42,9 +42,10 @@ async function recordedFacts(
       pullRequest: pullRequestUrl(detail.implementationNotes, detail.finalSummary),
       latestMilestone: latestMilestone(detail.implementationNotes),
       evidenceRecord: parseEvidence(detail.implementationNotes),
+      accepted: acceptedRecord(detail.implementationNotes),
     };
   } catch {
-    return { hostElsewhere: null, pullRequest: null, latestMilestone: null, evidenceRecord: null };
+    return { hostElsewhere: null, pullRequest: null, latestMilestone: null, evidenceRecord: null, accepted: null };
   }
 }
 
@@ -142,6 +143,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
       const facts = UNDER_WAY.has(ticket.status) ? await cachedRecordedFacts(paths.tracker, ticket.id, ticket.updatedAt) : null;
       const investigation = ticket.labels.includes("investigation");
       // The record is cached with the other facts; whether its screenshot files exist is read each time.
+      const accepted = ticket.status === "Awaiting acceptance" ? facts?.accepted ?? null : null;
       const evidence = ticket.status === "Awaiting acceptance" && facts !== null ? await judgeTicketEvidence(project, ticket.id, facts.evidenceRecord, investigation) : null;
       const elsewhere = needsHost ? facts?.hostElsewhere ?? null : null;
       const archivedAgents = archivedByTicket.get(ticket.id) ?? [];
@@ -167,6 +169,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
           openBlockingDecisions: ticketDecisions.filter((decision) => decision.blocking).length,
           stalledAfterNudge: ownerState?.stalled ?? false,
           crashedOut: ownerState?.stalled === true && ownerState.stalledReason !== null,
+          accepted: accepted !== null,
         }),
         labels: ticket.labels,
         complexity: complexityOf(ticket.labels),
@@ -187,6 +190,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
         pastAgents: past,
         latestMilestone: UNDER_WAY.has(ticket.status) ? facts?.latestMilestone ?? null : null,
         evidence,
+        accepted,
       };
     }),
   );

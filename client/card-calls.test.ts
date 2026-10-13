@@ -68,6 +68,7 @@ function card(parts: Partial<Card>): Card {
     pastAgents: [],
     latestMilestone: null,
     evidence: null,
+    accepted: null,
     ...parts,
   };
 }
@@ -98,6 +99,7 @@ describe("cardCalls", () => {
   it("offers acceptance only while an owner can hear it", () => {
     expect(cardCalls(card({ status: "Awaiting acceptance" }))).toEqual([{ kind: "acceptance", text: "Ready to accept", evidence: null }]);
     expect(cardCalls(card({ status: "Awaiting acceptance", owner: null }))).toEqual([]);
+    expect(cardCalls(card({ status: "Awaiting acceptance", accepted: { at: "2026-01-01T00:00:00Z", merging: "into main" } }))).toEqual([]);
   });
 
   it("carries the evidence in one line, and is not ready while it is incomplete", () => {
@@ -119,7 +121,7 @@ describe("cardCalls", () => {
   it("lists every kind at once in a fixed order: decision, acceptance, permission", () => {
     const calls = cardCalls(card({ status: "Awaiting acceptance", decisions: [decision({})], owner: { ...owner, pendingPermissions: 1 } }));
     expect(calls.map((call) => call.kind)).toEqual(["decision", "acceptance", "permission"]);
-    expect(calls.map(callAction)).toEqual(["Answer", "Review", "Allow…"]);
+    expect(calls.map(callAction)).toEqual(["Answer", "Review", "Allow"]);
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { executionMachine, executionWorkspace, finalSummaryBody, noteRecords, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "./execution";
+import { acceptedRecord, acceptedRecordText, executionMachine, executionWorkspace, finalSummaryBody, noteRecords, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "./execution";
 
 const managerRecord = "EXECUTION 2026-10-13T11:22Z — owner agent d86f, workspace wks_67ddffd9312aa95a, machine devbox, worktree /w/tr-001";
 // As a Haiku owner wrote it on the throwaway daemon: the relaunch could not find its workspace (TR-001).
@@ -142,5 +142,30 @@ describe("finalSummaryBody", () => {
     expect(finalSummaryBody("Notes sync on save. FINAL 2026-10-13 is when.")).toBe("Notes sync on save. FINAL 2026-10-13 is when.");
     expect(finalSummaryBody("Finally, notes sync.")).toBe("Finally, notes sync.");
     expect(finalSummaryBody("")).toBe("");
+  });
+});
+
+describe("acceptedRecord", () => {
+  const evidence = "EVIDENCE 2026-01-05T10:00Z — before FINAL\ncheck: npm test — 37 passed";
+
+  it("is null without an ACCEPTED record", () => {
+    expect(acceptedRecord(null)).toBeNull();
+    expect(acceptedRecord(evidence)).toBeNull();
+  });
+
+  it("reads back what the plugin writes, with and without a merge", () => {
+    expect(acceptedRecord(`${evidence}\n${acceptedRecordText("2026-01-05T11:00:00.000Z", "into main")}`)).toEqual({ at: "2026-01-05T11:00:00.000Z", merging: "into main" });
+    expect(acceptedRecord(`${evidence}\n${acceptedRecordText("2026-01-05T11:00:00.000Z", null)}`)).toEqual({ at: "2026-01-05T11:00:00.000Z", merging: null });
+  });
+
+  it("keeps the newest acceptance through the owner's later milestones", () => {
+    const notes = `${acceptedRecordText("2026-01-05T11:00Z", "the pull request")}\nMILESTONE 2026-01-05T11:05Z — merging`;
+    expect(acceptedRecord(notes)?.merging).toBe("the pull request");
+  });
+
+  it("is void once changes were requested or the owner delivered again", () => {
+    const accepted = acceptedRecordText("2026-01-05T11:00Z", "into main");
+    expect(acceptedRecord(`${accepted}\nCHANGES-REQUESTED 2026-01-05T11:10Z — the user: "no"`)).toBeNull();
+    expect(acceptedRecord(`${accepted}\n${evidence}`)).toBeNull();
   });
 });

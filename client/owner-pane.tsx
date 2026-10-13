@@ -19,7 +19,7 @@ import { AcceptanceCard } from "./acceptance-card";
 import { acceptanceReady } from "./card-calls";
 import { defaultPaneAgent, paneAgents, paneAgentJob, roleIcon } from "./pane-agents";
 import { PaneHeader } from "./pane-header";
-import { SPACE } from "./spacing";
+import { paneGutter, SPACE } from "./spacing";
 import { TicketView } from "./ticket-view";
 import { FONT_SIZE } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
@@ -61,8 +61,9 @@ export function OwnerPane({
   const now = useNow();
   const chosenId = chosen?.card === card.id ? chosen.agent : null;
   const shown = agents.find((agent) => agent.id === chosenId) ?? defaultPaneAgent(agents) ?? agents[0] ?? null;
-  const inset = compact ? SPACE.md : SPACE.lg;
-  const accepting = card.status === "Awaiting acceptance" && card.owner !== null;
+  const inset = paneGutter(compact);
+  // Once accepted the owner is merging: nothing is left to accept (TR-031).
+  const accepting = card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null;
   const shownAsks = useMemo(() => card.decisions.filter((decision) => decision.agentId === shown?.id), [card.decisions, shown?.id]);
   // A question another of the ticket's agents asked is answered in that agent's chat.
   const askedElsewhere = card.decisions.find((decision) => decision.agentId !== shown?.id && agents.some((agent) => agent.id === decision.agentId));
@@ -76,7 +77,7 @@ export function OwnerPane({
         icon={shown === null ? "Bot" : roleIcon(shown)}
       >
         {shown !== null && onOpenAgent !== null ? <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(shown.id)} /> : null}
-        <IconButton icon="ArrowLeft" label="Back to the manager" showLabel={!compact} theme={theme} onPress={onBack} />
+        <IconButton icon="ArrowLeft" label="Back to Manager" showLabel={!compact} theme={theme} onPress={onBack} />
         {onShowBoard === null ? null : <IconButton icon="PanelRightOpen" label="Show the board" theme={theme} onPress={onShowBoard} />}
       </PaneHeader>
       <View style={{ paddingHorizontal: inset, paddingVertical: SPACE.sm, gap: SPACE.sm }}>

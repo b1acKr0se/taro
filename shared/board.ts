@@ -46,12 +46,16 @@ export interface CardInputs {
   stalledAfterNudge: boolean;
   /** The owner crashed past the automatic recovery limit (TR-012): only the user can bring it back. */
   crashedOut?: boolean;
+  /** The user pressed Accept and the owner has not set Done yet (TR-031): it is merging, not waiting on the user. */
+  accepted?: boolean;
 }
 
 const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing"]);
 
-export function boardColumn(card: CardInputs): ColumnId {
-  if (card.status === "Done" || card.status === "Cancelled") return "done";
+export function boardColumn(input: CardInputs): ColumnId {
+  if (input.status === "Done" || input.status === "Cancelled") return "done";
+  // Accepted, the delivery is the owner's to finish: placed like work under way.
+  const card = input.accepted === true && input.status === "Awaiting acceptance" ? { ...input, status: "In Progress" } : input;
   if (card.ownerElsewhere) return recordedColumn(card.status);
 
   const agent = card.agent;

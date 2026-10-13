@@ -87,3 +87,32 @@ export function pullRequestMergeInstruction(notes: string | null, finalSummary: 
     return `Do not merge: the ticket records ${head === null ? "no review-head" : `review-head ${head}`} and ${url === null ? "no PR URL" : `PR ${url}`}. Record both in EXECUTION and present it again.`;
   return `Merge ${url} now as roles/owner.md says, only if its headRefOid is still the recorded review head ${head} (gh pr merge ${url} --match-head-commit ${head}); confirm it merged, then record ACCEPTANCE and set the ticket Done. If the head moved, do not merge; present it again.`;
 }
+
+/** What the plugin records when the user presses Accept (TR-031): when, and what the owner merges, if anything. */
+export interface AcceptedRecord {
+  at: string;
+  /** "into main", "the pull request", or null when the owner only closes the ticket. */
+  merging: string | null;
+}
+
+export function acceptedRecordText(at: string, merging: string | null): string {
+  return `ACCEPTED ${at} — the user accepted; merging: ${merging ?? "none"}`;
+}
+
+/**
+ * The newest ACCEPTED record, unless the owner delivered again or the user asked for changes since
+ * (a later EVIDENCE or CHANGES-REQUESTED record): until the owner sets Done, the card says it merges.
+ */
+export function acceptedRecord(notes: string | null): AcceptedRecord | null {
+  const records = noteRecords(notes);
+  for (let index = records.length - 1; index >= 0; index--) {
+    const record = records[index] ?? "";
+    if (/^(?:EVIDENCE|CHANGES-REQUESTED)\b/.test(record)) return null;
+    const match = /^ACCEPTED\s+(\S+)[^\n]*?merging:\s*([^\n]+)/.exec(record);
+    if (match !== null) {
+      const merging = (match[2] ?? "").trim();
+      return { at: match[1] ?? "", merging: merging === "none" || merging === "" ? null : merging };
+    }
+  }
+  return null;
+}

@@ -18,7 +18,7 @@ import { SectionHeading } from "./badges";
 import { useBoard, useRefreshBoard } from "./board-data";
 import { errorText } from "./format";
 import { useStats } from "./queries";
-import { SPACE } from "./spacing";
+import { paneGutter, SPACE } from "./spacing";
 import { SyncProblemCard } from "./sync-problem-card";
 import { TicketCard } from "./ticket-card";
 import { withAlpha } from "./tint";
@@ -59,7 +59,7 @@ export function ProjectBoard({
     () => ({
       root: { flex: 1, minHeight: 0, backgroundColor: colors.surface0 },
       // On a phone the list it sits in already has the padding.
-      top: { paddingHorizontal: compact ? 0 : SPACE.lg, paddingTop: compact ? 0 : SPACE.lg, gap: SPACE.md },
+      top: { paddingHorizontal: compact ? 0 : paneGutter(false), paddingTop: compact ? 0 : SPACE.lg, gap: SPACE.md },
       section: { gap: SPACE.sm },
       ask: {
         flexDirection: "row" as const,
@@ -75,7 +75,7 @@ export function ProjectBoard({
       askText: { flex: 1, color: colors.foreground, fontSize: FONT_SIZE.small },
       askNote: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
       askAction: { color: colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
-      columns: { flexDirection: "row" as const, gap: SPACE.md, padding: SPACE.lg, alignItems: "flex-start" as const },
+      columns: { flexDirection: "row" as const, gap: SPACE.lg, paddingVertical: SPACE.lg, paddingHorizontal: paneGutter(false), alignItems: "flex-start" as const },
       panel: { backgroundColor: colors.surface1, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: SPACE.md, gap: SPACE.md },
       columnHead: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm, paddingBottom: SPACE.xs },
       columnTitle: { fontSize: FONT_SIZE.body, fontWeight: "700" as const },

@@ -4,7 +4,7 @@ import { Icon } from "@getpaseo/plugin/client/react-native";
 import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 
-import { SPACE } from "./spacing";
+import { paneGutter, SPACE } from "./spacing";
 import { FONT_SIZE } from "./type-scale";
 
 export function PaneHeader({
@@ -28,7 +28,7 @@ export function PaneHeader({
         flexDirection: "row",
         alignItems: "center",
         gap: SPACE.sm,
-        paddingHorizontal: SPACE.lg,
+        paddingHorizontal: paneGutter(false),
         paddingVertical: SPACE.md,
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.border,

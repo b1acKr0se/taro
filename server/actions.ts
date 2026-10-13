@@ -7,7 +7,7 @@
 import { randomUUID } from "node:crypto";
 
 import { doneTicketOf, planRelease } from "../shared/done-release";
-import { executionWorkspace, pullRequestMergeInstruction } from "../shared/execution";
+import { acceptedRecordText, executionWorkspace, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
 import { shouldWakeManager, statusChanges, ticketsCountingTowardsCap, type StatusChange } from "../shared/owner-cap";
 import { TARO_LABELS, TICKET_STATUSES } from "../shared/project";
 import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
@@ -116,18 +116,25 @@ export class Actions {
   async accept(paseo: PaseoApi, project: string, ticket: string): Promise<void> {
     const config = await requireProjectConfig(project);
     const owner = await this.requireOwner(paseo, project, ticket);
-    const detail = await viewTicket((await projectPaths(project)).tracker, ticket);
+    const paths = await projectPaths(project);
+    const detail = await viewTicket(paths.tracker, ticket);
     // Nothing reaches the owner while the evidence is incomplete.
     await requireCompleteEvidence(project, ticket, detail.implementationNotes, detail.labels);
     const investigation = detail.labels.includes("investigation");
     let mergeInstruction: string;
+    // What the card says while the owner finishes (TR-031); null when nothing is merged.
+    let merging: string | null = null;
     if (investigation) mergeInstruction = "Record ACCEPTANCE with my words and set the ticket Done.";
     else if (!config.acceptAlsoMerges) mergeInstruction = "Do not merge; record ACCEPTANCE with my words and set the ticket Done.";
-    else if (config.delivery === "pull-request")
+    else if (config.delivery === "pull-request") {
       mergeInstruction = pullRequestMergeInstruction(detail.implementationNotes, detail.finalSummary);
-    else
+      if (reviewHead(detail.implementationNotes) !== null && pullRequestUrl(detail.implementationNotes, detail.finalSummary) !== null) merging = "the pull request";
+    } else {
       mergeInstruction = `Fast-forward ${config.baseBranch} to your branch in the main checkout (${config.repoPath}), only if it fast-forwards cleanly; then record ACCEPTANCE and set the ticket Done.`;
+      merging = `into ${config.baseBranch}`;
+    }
     await sendWithoutInterrupting(paseo, owner.id, await message(TEMPLATES.accept, { ticket, mergeInstruction }));
+    await appendTicketNote(paths.tracker, ticket, acceptedRecordText(new Date().toISOString(), merging)).catch(() => undefined);
   }
 
   async requestChanges(paseo: PaseoApi, project: string, ticket: string, text: string): Promise<void> {

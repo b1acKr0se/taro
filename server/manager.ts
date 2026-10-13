@@ -17,7 +17,7 @@ import { ensureTaroProject } from "./taro-project";
 import { taroEnvironment } from "./environment";
 
 export function managerTitle(project: string): string {
-  return `${project} · manager`;
+  return `${project} · Manager`;
 }
 
 /** The values every manager-facing template is filled from. */

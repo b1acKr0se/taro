@@ -362,8 +362,8 @@ export function ProjectSetup({
       {existing === null ? null : (
         <FormSection theme={theme} icon="UserCog" title="Manager" description="Start a manager when the project has none, or restart it fresh. Tickets are kept either way.">
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: SPACE.sm }}>
-            <IconButton theme={theme} icon="Play" label="Start the manager" showLabel disabled={busy} onPress={() => void managerAction("launch")} />
-            <IconButton theme={theme} icon="RotateCcw" label="Restart the manager" showLabel disabled={busy} onPress={() => void managerAction("restart")} />
+            <IconButton theme={theme} icon="Play" label="Start Manager" showLabel disabled={busy} onPress={() => void managerAction("launch")} />
+            <IconButton theme={theme} icon="RotateCcw" label="Restart Manager" showLabel disabled={busy} onPress={() => void managerAction("restart")} />
           </View>
         </FormSection>
       )}
@@ -379,7 +379,7 @@ export function ProjectSetup({
           theme={theme}
           tone="accent"
           icon={existing === null ? "Rocket" : "Check"}
-          label={busy ? "Working…" : existing === null ? "Create tracker and start manager" : "Save"}
+          label={busy ? "Working…" : existing === null ? "Create tracker and start Manager" : "Save"}
           showLabel
           disabled={busy || !valid}
           onPress={() => void submit()}

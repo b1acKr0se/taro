@@ -19,8 +19,8 @@ export function cardCalls(card: Card): CardCall[] {
   const open = walkOrder(card.decisions.filter((decision) => decision.status === "open"));
   const first = open[0];
   if (first !== undefined) calls.push({ kind: "decision", text: first.question, blocking: first.blocking, more: open.length - 1 });
-  // Accepting messages the owner, so without one there is nothing to press.
-  if (card.status === "Awaiting acceptance" && card.owner !== null) {
+  // Accepting messages the owner, so without one there is nothing to press; once accepted, nothing is left to press.
+  if (card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null) {
     calls.push({ kind: "acceptance", text: acceptanceReady(card) ? "Ready to accept" : "Not ready to accept", evidence: card.evidence === null ? null : evidenceSummary(card.evidence) });
   }
   const permissions = card.owner?.pendingPermissions ?? 0;
@@ -38,5 +38,5 @@ export function acceptanceReady(card: Pick<Card, "evidence">): boolean {
 
 /** The link at the end of a call's line. */
 export function callAction(call: CardCall): string {
-  return call.kind === "decision" ? "Answer" : call.kind === "acceptance" ? "Review" : "Allow…";
+  return call.kind === "decision" ? "Answer" : call.kind === "acceptance" ? "Review" : "Allow";
 }

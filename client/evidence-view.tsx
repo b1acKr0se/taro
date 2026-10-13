@@ -11,7 +11,7 @@ import { Text, View } from "react-native";
 import { loadTicket, type EvidenceView } from "../shared/contracts";
 import { ImageThumbnail } from "./image-view";
 import { SPACE } from "./spacing";
-import { FONT_SIZE } from "./type-scale";
+import { FONT_SIZE, lineHeightFor } from "./type-scale";
 
 const SCREENSHOT_HEIGHT = 72;
 
@@ -39,11 +39,11 @@ export function EvidenceBlock({
   thumbnailHeight?: number;
 }) {
   const { colors } = theme;
-  const text = { color: colors.foreground, fontSize: FONT_SIZE.small };
-  const muted = { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption };
+  const text = { color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) };
+  const muted = { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption) };
   const inline = [...evidence.checks.map((check) => `✓ ${check.command} — ${check.result}`), ...(evidence.review === null ? [] : [`review: ${evidence.review}`])];
   return (
-    <View style={{ gap: SPACE.xs }}>
+    <View style={{ gap: layout === "lines" ? SPACE.sm : SPACE.xs }}>
       {layout === "inline" ? (
         inline.length === 0 ? null : (
           <Text numberOfLines={2} style={text}>

@@ -18,7 +18,7 @@ import { errorText } from "./format";
 import { Markdown } from "./markdown";
 import { withAlpha } from "./tint";
 import { milestoneRows } from "./milestone-rows";
-import { SPACE } from "./spacing";
+import { paneGutter, SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { Chip, MONOSPACE } from "./ui";
 import { recordKindLook, toneColor } from "./visual-meta";
@@ -40,7 +40,7 @@ export function TicketView({ project, ticket, theme }: { project: string; ticket
   const { colors } = theme;
   const styles = useMemo(
     () => ({
-      body: { padding: SPACE.lg, gap: SPACE.xl },
+      body: { paddingVertical: SPACE.lg, paddingHorizontal: paneGutter(false), gap: SPACE.xl },
       section: { gap: SPACE.sm },
       row: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "center" as const, gap: SPACE.sm },
       line: { flexDirection: "row" as const, alignItems: "flex-start" as const, gap: SPACE.sm },

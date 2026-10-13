@@ -27,7 +27,7 @@ import { PaneHeader } from "./pane-header";
 import { projectLayout } from "./pane-layout";
 import { ProjectSetup } from "./project-setup";
 import { useProjects, useRefreshProjects } from "./queries";
-import { SPACE } from "./spacing";
+import { paneGutter, SPACE } from "./spacing";
 import { StatsView } from "./stats-view";
 import { TicketView } from "./ticket-view";
 import { FONT_SIZE } from "./type-scale";
@@ -73,8 +73,25 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   const styles = useMemo(
     () => ({
       root: { flex: 1, backgroundColor: colors.surface0 },
-      tabsFrame: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: colors.border },
-      tabs: { flexDirection: "row" as const, gap: SPACE.lg, paddingHorizontal: SPACE.lg },
+      // The project tabs scroll; New project stays at the bar's right end, apart from them (TR-031).
+      tabBar: { flexDirection: "row" as const, alignItems: "center" as const, borderBottomWidth: 1, borderBottomColor: colors.border, paddingRight: paneGutter(false) },
+      tabsFrame: { flexGrow: 1, flexShrink: 1 },
+      newProject: {
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: SPACE.xs,
+        marginLeft: SPACE.md,
+        paddingHorizontal: SPACE.md,
+        paddingVertical: SPACE.xs,
+        borderRadius: 7,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.surface1,
+      },
+      newProjectActive: { borderColor: colors.accent },
+      newProjectRound: { paddingHorizontal: SPACE.xs + 2, paddingVertical: SPACE.xs + 2, borderRadius: 16 },
+      newProjectText: { color: colors.foreground, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
+      tabs: { flexDirection: "row" as const, gap: SPACE.lg, paddingHorizontal: paneGutter(false) },
       // Flat tabs: the chosen one is marked by its text and a line under it, not by a box.
       tab: {
         flexDirection: "row" as const,
@@ -99,9 +116,9 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
 
   function tab(key: string, label: string, icon: string, active: boolean, onPress: () => void, count = 0) {
     return (
-      <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: active }} accessibilityLabel={label === "" ? "Add a project" : label} style={[styles.tab, active ? styles.tabActive : null]} onPress={onPress}>
+      <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: active }} accessibilityLabel={label} style={[styles.tab, active ? styles.tabActive : null]} onPress={onPress}>
         <Icon name={icon} size={15} color={active ? colors.foreground : colors.foregroundMuted} />
-        {label === "" ? null : <Text style={active ? styles.tabText : styles.tabMuted}>{label}</Text>}
+        <Text style={active ? styles.tabText : styles.tabMuted}>{label}</Text>
         {count > 0 ? (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{count}</Text>
@@ -111,13 +128,26 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
     );
   }
 
-  const tabs = layout.compact ? (
+  const settingUp = showing === "setup";
+  const newProject = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="New project"
+      accessibilityState={{ selected: settingUp }}
+      style={[styles.newProject, layout.compact ? styles.newProjectRound : null, settingUp ? styles.newProjectActive : null]}
+      onPress={() => choose(selected, "setup")}
+    >
+      <Icon name="Plus" size={layout.compact ? 16 : 13} color={settingUp ? colors.accent : colors.foreground} />
+      {layout.compact ? null : <Text style={styles.newProjectText}>New project</Text>}
+    </Pressable>
+  );
+
+  const projectTabs = layout.compact ? (
     // A phone: the project pill row only; Manager · Inbox · Board live inside the project view.
     <ScrollView horizontal style={styles.tabsFrame} contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
       {list.map((summary) =>
-        tab(summary.config.project, summary.config.project, "FolderKanban", showing !== "setup" && current?.config.project === summary.config.project, () => choose(summary.config.project, "project")),
+        tab(summary.config.project, summary.config.project, "FolderKanban", !settingUp && current?.config.project === summary.config.project, () => choose(summary.config.project, "project")),
       )}
-      {tab("+", "", "Plus", showing === "setup", () => choose(selected, "setup"))}
     </ScrollView>
   ) : (
     <ScrollView horizontal style={styles.tabsFrame} contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
@@ -132,8 +162,13 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
           summary.needsYou,
         ),
       )}
-      {tab("+", "project", "Plus", showing === "setup", () => choose(selected, "setup"))}
     </ScrollView>
+  );
+  const tabs = (
+    <View style={styles.tabBar}>
+      {projectTabs}
+      {newProject}
+    </View>
   );
 
   let body;
@@ -367,7 +402,7 @@ function ManagerPane({
   const project = summary.config.project;
   const manager = summary.manager;
   const header = (
-    <PaneHeader theme={theme} title={`${project} · manager`}>
+    <PaneHeader theme={theme} title={`${project} · Manager`}>
       {manager !== null && onOpenAgent !== null ? <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(manager.id)} /> : null}
       <IconButton icon="Settings" label="Project settings" theme={theme} onPress={onSettings} />
       {onShowBoard === null ? null : <IconButton icon="PanelRightOpen" label="Show the board" showLabel theme={theme} onPress={onShowBoard} />}
