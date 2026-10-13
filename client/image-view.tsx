@@ -18,23 +18,17 @@ import { FONT_SIZE } from "./type-scale";
 import {
   DOUBLE_TAP_MS,
   FIT,
-  clampTransform,
-  distanceOf,
-  doubleTapAt,
-  fitOf,
+  frameOf,
+  gestureEnd,
+  gestureMove,
+  gestureStart,
   isAtFit,
-  isDoubleTap,
-  isOutsideImage,
-  isTap,
-  maxScale,
-  middleOf,
-  panBy,
-  pinchTo,
-  swipeTarget,
+  isZoomedIn,
+  tapOutcome,
   toggleRealSize,
   wheelAt,
   zoomPercent,
-  type Pinch,
+  type Gesture,
   type Point,
   type Size,
   type Tap,
@@ -200,16 +194,6 @@ interface WebDocument {
 const WHEEL_LINE = 16;
 const SETTLE_MS = 180;
 
-/** Where a gesture began, and what it has done so far. */
-interface GestureState {
-  start: Transform;
-  from: Point;
-  startedAt: number;
-  pinch: Pinch | null;
-  /** Two fingers touched during this gesture: its end is neither a tap nor a swipe. */
-  pinched: boolean;
-}
-
 function GalleryPage({
   image,
   index,
@@ -231,24 +215,30 @@ function GalleryPage({
   const natural = useImageSize(uri);
   const label = labelOf(image.alt);
   const [stage, setStage] = useState<Size>({ width: 0, height: 0 });
-  const fitted = natural === null ? { width: 0, height: 0, pointsPerPixel: 1 } : fitOf(stage, natural);
-  const maximum = maxScale(fitted.pointsPerPixel);
-  const [transform, setTransform] = useState<Transform>(FIT);
+  const frame = useMemo(() => frameOf(stage, natural), [stage, natural]);
+  // Only what the header reads is state, so a moving finger does not re-render the page.
+  const [percent, setPercent] = useState(0);
+  const [atFit, setAtFit] = useState(true);
   const translateX = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(1)).current;
   const stageRef = useRef<View>(null);
   // Gesture handlers are made once and read the latest of everything through this.
-  const live = useRef({ stage, fitted, maximum, index, count, onIndex, onClose, transform: FIT, origin: { x: 0, y: 0 } });
-  live.current = { ...live.current, stage, fitted, maximum, index, count, onIndex, onClose };
-  const gesture = useRef<GestureState | null>(null);
+  const live = useRef({ frame, index, count, onIndex, onClose, transform: FIT, origin: { x: 0, y: 0 } });
+  live.current = { ...live.current, frame, index, count, onIndex, onClose };
+  const gesture = useRef<Gesture | null>(null);
   const lastTap = useRef<Tap | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setPercent(zoomPercent(live.current.transform, frame.pointsPerPixel));
+  }, [frame.pointsPerPixel]);
 
   /** Shows a transform at once (following fingers) or eased (a tap, a button, a snap back). */
   function show(next: Transform, eased: boolean): void {
     live.current.transform = next;
-    setTransform(next);
+    setPercent(zoomPercent(next, live.current.frame.pointsPerPixel));
+    setAtFit(isAtFit(next));
     if (!eased) {
       translateX.setValue(next.x);
       translateY.setValue(next.y);
@@ -264,35 +254,41 @@ function GalleryPage({
   const showRef = useRef(show);
   showRef.current = show;
 
+  /** Stops an easing under a new touch and takes the image from where it is, not where it was heading. */
+  function holdStill(): void {
+    const held = { ...live.current.transform };
+    translateX.stopAnimation((value) => {
+      held.x = value;
+    });
+    translateY.stopAnimation((value) => {
+      held.y = value;
+    });
+    scale.stopAnimation((value) => {
+      held.scale = value;
+    });
+    live.current.transform = held;
+  }
+
   /** A touch in stage coordinates, measured from the stage's centre. */
   function stagePoint(pageX: number, pageY: number): Point {
-    const { origin, stage: size } = live.current;
-    return { x: pageX - origin.x - size.width / 2, y: pageY - origin.y - size.height / 2 };
+    const { origin, frame: bounds } = live.current;
+    return { x: pageX - origin.x - bounds.stage.width / 2, y: pageY - origin.y - bounds.stage.height / 2 };
   }
   function pointsOf(event: GestureResponderEvent): Point[] {
     const touches = event.nativeEvent.touches;
     if (touches.length === 0) return [stagePoint(event.nativeEvent.pageX, event.nativeEvent.pageY)];
     return touches.map((touch) => stagePoint(touch.pageX, touch.pageY));
   }
-  function pinchOf(points: Point[]): Pinch | null {
-    const [first, second] = points;
-    if (first === undefined || second === undefined) return null;
-    return { start: live.current.transform, distance: distanceOf(first, second), middle: middleOf(first, second) };
-  }
 
   function onTap(at: Point): void {
     const tap = { at, time: Date.now() };
-    const { transform: current, stage: size, fitted: fit, maximum: most } = live.current;
-    if (isDoubleTap(lastTap.current, tap)) {
-      lastTap.current = null;
-      if (closeTimer.current !== null) clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-      showRef.current(doubleTapAt(current, at, size, fit, most), true);
-      return;
-    }
-    lastTap.current = tap;
-    // A tap on the backdrop closes, after waiting to see that it is not the first of a double-tap.
-    if (isOutsideImage(at, current, fit)) closeTimer.current = setTimeout(() => live.current.onClose(), DOUBLE_TAP_MS);
+    const outcome = tapOutcome(lastTap.current, tap, live.current.transform, live.current.frame);
+    if (closeTimer.current !== null) clearTimeout(closeTimer.current);
+    closeTimer.current = null;
+    lastTap.current = outcome.kind === "zoom" ? null : tap;
+    if (outcome.kind === "zoom") showRef.current(outcome.transform, true);
+    // Waits to see that this is not the first of a double-tap.
+    else if (outcome.kind === "close") closeTimer.current = setTimeout(() => live.current.onClose(), DOUBLE_TAP_MS);
   }
 
   const responder = useRef(
@@ -301,58 +297,30 @@ function GalleryPage({
       onMoveShouldSetPanResponder: () => true,
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (event) => {
-        translateX.stopAnimation();
-        translateY.stopAnimation();
-        scale.stopAnimation();
-        const points = pointsOf(event);
-        const pinch = pinchOf(points);
-        gesture.current = { start: live.current.transform, from: points[0] ?? { x: 0, y: 0 }, startedAt: Date.now(), pinch, pinched: pinch !== null };
+        holdStill();
+        gesture.current = gestureStart(live.current.transform, pointsOf(event), Date.now());
       },
       onPanResponderMove: (event) => {
-        const state = gesture.current;
-        if (state === null) return;
-        const { stage: size, fitted: fit, maximum: most, count: total } = live.current;
-        const points = pointsOf(event);
-        const [first, second] = points;
-        if (first === undefined) return;
-        if (second !== undefined) {
-          if (state.pinch === null) state.pinch = pinchOf(points);
-          state.pinched = true;
-          if (state.pinch !== null) showRef.current(clampTransform(pinchTo(state.pinch, distanceOf(first, second), middleOf(first, second)), size, fit, most), false);
-          return;
-        }
-        if (state.pinch !== null) {
-          // One finger lifted: the other carries on panning from here.
-          state.pinch = null;
-          state.start = live.current.transform;
-          state.from = first;
-        }
-        const delta = { x: first.x - state.from.x, y: first.y - state.from.y };
-        if (!isAtFit(state.start)) showRef.current(clampTransform(panBy(state.start, delta), size, fit, most), false);
-        // At fit a sideways drag carries the image with the finger, to swipe to its neighbour.
-        else if (!state.pinched && total > 1) showRef.current({ scale: 1, x: delta.x, y: 0 }, false);
+        if (gesture.current === null) return;
+        const { transform: current, count: total, frame: bounds } = live.current;
+        const step = gestureMove(gesture.current, current, pointsOf(event), total, bounds);
+        gesture.current = step.gesture;
+        if (step.transform !== null) showRef.current(step.transform, false);
       },
-      onPanResponderRelease: (event, moved) => {
+      onPanResponderRelease: (_event, moved) => {
         const state = gesture.current;
         gesture.current = null;
         if (state === null) return;
-        const { transform: current, stage: size, index: at, count: total } = live.current;
-        if (state.pinched) {
-          if (isAtFit(current)) showRef.current(FIT, true);
-          return;
-        }
-        if (isTap(moved.dx, moved.dy, Date.now() - state.startedAt)) {
-          onTap(state.from);
-          return;
-        }
-        if (!isAtFit(state.start)) return;
-        const target = swipeTarget(at, total, moved.dx, moved.vx, size.width);
-        if (target !== at) live.current.onIndex(target);
-        else showRef.current(FIT, true);
+        const { transform: current, index: at, count: total, frame: bounds } = live.current;
+        const end = gestureEnd(state, current, moved, Date.now(), at, total, bounds);
+        if (end.kind === "tap") onTap(end.at);
+        else if (end.kind === "show") live.current.onIndex(end.index);
+        else if (end.kind === "settle") showRef.current(end.transform, true);
       },
       onPanResponderTerminate: () => {
+        const state = gesture.current;
         gesture.current = null;
-        if (isAtFit(live.current.transform)) showRef.current(FIT, true);
+        if (state !== null && !isZoomedIn(state.start)) showRef.current(state.start, true);
       },
     }),
   ).current;
@@ -373,10 +341,10 @@ function GalleryPage({
       event.preventDefault();
       const box = element?.getBoundingClientRect();
       if (box === undefined) return;
-      const { transform: current, stage: size, fitted: fit, maximum: most } = live.current;
+      holdStill();
       const at = { x: event.clientX - box.left - box.width / 2, y: event.clientY - box.top - box.height / 2 };
       const delta = event.deltaMode === 1 ? event.deltaY * WHEEL_LINE : event.deltaY;
-      showRef.current(wheelAt(current, delta, event.ctrlKey, at, size, fit, most), false);
+      showRef.current(wheelAt(live.current.transform, delta, event.ctrlKey, at, live.current.frame), false);
     }
     function onKey(event: WebKeyEvent): void {
       const { index: at, count: total } = live.current;
@@ -399,7 +367,6 @@ function GalleryPage({
     });
   }
 
-  const atFit = isAtFit(transform);
   const button = { paddingHorizontal: SPACE.md, paddingVertical: SPACE.xs, borderRadius: 6, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface1 };
   const buttonText = { color: colors.foreground, fontSize: FONT_SIZE.small };
   const arrow = {
@@ -426,13 +393,13 @@ function GalleryPage({
         </Text>
         {natural === null ? null : (
           <>
-            <Text accessibilityLabel={`Zoom ${zoomPercent(transform, fitted.pointsPerPixel)} percent`} style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small }}>
-              {zoomPercent(transform, fitted.pointsPerPixel)}%
+            <Text accessibilityLabel={`Zoom ${percent} percent`} style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small }}>
+              {percent}%
             </Text>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={atFit ? "Show at real size" : "Fit to screen"}
-              onPress={() => show(toggleRealSize(transform, fitted.pointsPerPixel, stage, fitted, maximum), true)}
+              onPress={() => show(toggleRealSize(live.current.transform, frame), true)}
               style={button}
             >
               <Text style={buttonText}>{atFit ? "100%" : "Fit"}</Text>
@@ -451,14 +418,14 @@ function GalleryPage({
       >
         {uri === null ? (
           <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center", marginTop: SPACE.xl }}>Image not available</Text>
-        ) : uri === undefined || natural === null || fitted.width === 0 ? null : (
+        ) : uri === undefined || frame.fitted.width === 0 ? null : (
           <Animated.View
             style={{
               position: "absolute",
-              left: (stage.width - fitted.width) / 2,
-              top: (stage.height - fitted.height) / 2,
-              width: fitted.width,
-              height: fitted.height,
+              left: (stage.width - frame.fitted.width) / 2,
+              top: (stage.height - frame.fitted.height) / 2,
+              width: frame.fitted.width,
+              height: frame.fitted.height,
               transform: [{ translateX }, { translateY }, { scale }],
             }}
           >
