@@ -126,6 +126,60 @@ export function Segmented<Value extends string>({
 }
 
 /**
+ * A multi-select as a wrapping row of chips, styled like `Segmented`: a
+ * selected chip is filled with the accent colour.
+ */
+export function ToggleChips({
+  theme,
+  selected,
+  options,
+  onToggle,
+}: {
+  theme: PluginTheme;
+  selected: readonly string[];
+  options: ReadonlyArray<{ value: string; label: string }>;
+  onToggle: (value: string) => void;
+}) {
+  const colors = theme.colors;
+  const styles = useMemo(
+    () => ({
+      frame: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 6 },
+      chip: {
+        justifyContent: "center" as const,
+        height: 28,
+        paddingHorizontal: 10,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.surface1,
+      },
+      chipSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
+      label: { color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "500" as const },
+      labelSelected: { color: colors.accentForeground, fontWeight: "600" as const },
+    }),
+    [colors],
+  );
+  return (
+    <View style={styles.frame}>
+      {options.map((option) => {
+        const isSelected = selected.includes(option.value);
+        return (
+          <Pressable
+            key={option.value}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: isSelected }}
+            style={[styles.chip, isSelected ? styles.chipSelected : null]}
+            onPress={() => onToggle(option.value)}
+          >
+            <Text style={[styles.label, isSelected ? styles.labelSelected : null]}>{option.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/**
  * The round button over a transcript's foot that goes back to its end, shown
  * while the reader is scrolled away from it — as in Paseo's own agent view.
  * Its parent must be the transcript's frame; it positions itself in it.

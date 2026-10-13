@@ -20,7 +20,9 @@ import {
   writeProjectSettings,
   writeStandingOrders,
 } from "../shared/contracts";
+import { modelOptions as modelPickerOptions, thinkingAfterModelChange, thinkingOptions, toggleHelper } from "../shared/model-picker";
 import type { ProjectConfig, ProjectSettings } from "../shared/project";
+import { ToggleChips } from "./ui";
 import { FONT_SIZE } from "./type-scale";
 import { errorText } from "./format";
 
@@ -33,7 +35,7 @@ interface Draft {
   managerThinking: string;
   ownerModel: string;
   ownerThinking: string;
-  helperModels: string;
+  helperModels: string[];
   delivery: "pull-request" | "local-only";
   acceptAlsoMerges: boolean;
   trackerSync: "local" | "remote";
@@ -41,17 +43,18 @@ interface Draft {
   maxParallelOwners: string;
 }
 
-function draftFrom(config: ProjectConfig | null, defaultModel: string): Draft {
+/** A new project's model fields start empty and take the default once the model list arrives. */
+function draftFrom(config: ProjectConfig | null): Draft {
   return {
     project: config?.project ?? "",
     repoPath: config?.repoPath ?? "",
     baseBranch: config?.baseBranch ?? "main",
     ticketPrefix: config?.ticketPrefix ?? "",
-    managerModel: config?.manager.model ?? defaultModel,
+    managerModel: config?.manager.model ?? "",
     managerThinking: config?.manager.thinking ?? "",
-    ownerModel: config?.owner.model ?? defaultModel,
+    ownerModel: config?.owner.model ?? "",
     ownerThinking: config?.owner.thinking ?? "",
-    helperModels: config?.helperModels.join(", ") ?? "",
+    helperModels: config?.helperModels ?? [],
     delivery: config?.delivery ?? "pull-request",
     acceptAlsoMerges: config?.acceptAlsoMerges ?? true,
     trackerSync: config?.trackerSync ?? "local",
@@ -60,14 +63,14 @@ function draftFrom(config: ProjectConfig | null, defaultModel: string): Draft {
   };
 }
 
-function settingsFrom(draft: Draft): ProjectSettings {
+function settingsFrom(draft: Draft, defaultModel: string): ProjectSettings {
   return {
     repoPath: draft.repoPath.trim(),
     baseBranch: draft.baseBranch.trim(),
     ticketPrefix: draft.ticketPrefix.trim().toUpperCase(),
-    manager: { model: draft.managerModel.trim(), thinking: draft.managerThinking.trim() },
-    owner: { model: draft.ownerModel.trim(), thinking: draft.ownerThinking.trim() },
-    helperModels: draft.helperModels.split(",").map((model) => model.trim()).filter((model) => model !== ""),
+    manager: { model: draft.managerModel || defaultModel, thinking: draft.managerThinking },
+    owner: { model: draft.ownerModel || defaultModel, thinking: draft.ownerThinking },
+    helperModels: draft.helperModels,
     delivery: draft.delivery,
     acceptAlsoMerges: draft.acceptAlsoMerges,
     trackerSync: draft.trackerSync,
@@ -103,7 +106,7 @@ export function ProjectSetup({
     () => modelOptions.find((option) => /opus/i.test(option.id))?.id ?? modelOptions[0]?.id ?? "claude/claude-opus-5-5",
     [modelOptions],
   );
-  const [draft, setDraft] = useState<Draft>(() => draftFrom(existing, defaultModel));
+  const [draft, setDraft] = useState<Draft>(() => draftFrom(existing));
   const [orders, setOrders] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -112,19 +115,36 @@ export function ProjectSetup({
     void readOrders({ project: existing.project }).then((result) => setOrders(result.text)).catch(() => setOrders(""));
   }, [existing?.project]);
 
+  useEffect(() => {
+    if (modelOptions.length === 0) return;
+    setDraft((current) => ({
+      ...current,
+      managerModel: current.managerModel || defaultModel,
+      ownerModel: current.ownerModel || defaultModel,
+    }));
+  }, [defaultModel, modelOptions.length]);
+
   function update<Key extends keyof Draft>(key: Key, value: Draft[Key]): void {
     setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function chooseModel(role: "manager" | "owner", model: string): void {
+    setDraft((current) =>
+      role === "manager"
+        ? { ...current, managerModel: model, managerThinking: thinkingAfterModelChange(modelOptions, model, current.managerThinking) }
+        : { ...current, ownerModel: model, ownerThinking: thinkingAfterModelChange(modelOptions, model, current.ownerThinking) },
+    );
   }
 
   async function submit(): Promise<void> {
     setBusy(true);
     try {
       if (existing === null) {
-        const result = await onboard({ project: draft.project.trim(), settings: settingsFrom(draft), startManager: true });
+        const result = await onboard({ project: draft.project.trim(), settings: settingsFrom(draft, defaultModel), startManager: true });
         toast.show(`${result.config.project} added; its manager is starting.`, { variant: "success" });
         onDone(result.config.project);
       } else {
-        await save({ project: existing.project, settings: settingsFrom(draft) });
+        await save({ project: existing.project, settings: settingsFrom(draft, defaultModel) });
         if (orders !== null) await writeOrders({ project: existing.project, text: orders });
         toast.show("Saved.", { variant: "success" });
         onDone(existing.project);
@@ -149,7 +169,7 @@ export function ProjectSetup({
     }
   }
 
-  const modelHint = modelOptions.length === 0 ? "provider/model" : `e.g. ${modelOptions.slice(0, 3).map((option) => option.id).join(", ")}`;
+  const modelHint = models.isLoading ? "loading the model list…" : modelOptions.length === 0 ? "no provider listed models; saved values are kept" : undefined;
   const muted = { color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small };
 
   return (
@@ -191,11 +211,40 @@ export function ProjectSetup({
       </SettingsSection>
 
       <SettingsSection title="Agents">
-        <SettingsInput label="Manager model" hint={modelHint} initialValue={draft.managerModel} onChangeText={(text) => update("managerModel", text)} />
-        <SettingsInput label="Manager thinking" hint="empty for the provider's default" initialValue={draft.managerThinking} onChangeText={(text) => update("managerThinking", text)} />
-        <SettingsInput label="Task owner model" hint="the top tier is recommended" initialValue={draft.ownerModel} onChangeText={(text) => update("ownerModel", text)} />
-        <SettingsInput label="Task owner thinking" initialValue={draft.ownerThinking} onChangeText={(text) => update("ownerThinking", text)} />
-        <SettingsInput label="Models owners may give helpers" hint="comma-separated; owners pick per task by difficulty" initialValue={draft.helperModels} onChangeText={(text) => update("helperModels", text)} />
+        <SettingsSelect
+          label="Manager model"
+          {...(modelHint === undefined ? {} : { hint: modelHint })}
+          value={draft.managerModel}
+          options={modelPickerOptions(modelOptions, [draft.managerModel])}
+          onValueChange={(value) => chooseModel("manager", value)}
+        />
+        <SettingsSelect
+          label="Manager thinking"
+          value={draft.managerThinking}
+          options={thinkingOptions(modelOptions, draft.managerModel, draft.managerThinking)}
+          onValueChange={(value) => update("managerThinking", value)}
+        />
+        <SettingsSelect
+          label="Task owner model"
+          hint={modelHint ?? "the top tier is recommended"}
+          value={draft.ownerModel}
+          options={modelPickerOptions(modelOptions, [draft.ownerModel])}
+          onValueChange={(value) => chooseModel("owner", value)}
+        />
+        <SettingsSelect
+          label="Task owner thinking"
+          value={draft.ownerThinking}
+          options={thinkingOptions(modelOptions, draft.ownerModel, draft.ownerThinking)}
+          onValueChange={(value) => update("ownerThinking", value)}
+        />
+        <SettingsRow label="Models owners may give helpers" hint="owners pick per task by difficulty; none selected means the owner's own model">
+          <ToggleChips
+            theme={theme}
+            selected={draft.helperModels}
+            options={modelPickerOptions(modelOptions, draft.helperModels)}
+            onToggle={(value) => setDraft((current) => ({ ...current, helperModels: toggleHelper(current.helperModels, value) }))}
+          />
+        </SettingsRow>
         <SettingsInput label="Owners running at once" hint="the manager queues the rest; each agent costs host resources" initialValue={draft.maxParallelOwners} onChangeText={(text) => update("maxParallelOwners", text)} />
         <SettingsInput label="Compact owners above (tokens)" initialValue={draft.compactThresholdTokens} onChangeText={(text) => update("compactThresholdTokens", text)} />
         <SettingsRow label="Permissions" hint="task owners and helpers run in bypass mode" />
