@@ -35,6 +35,12 @@ export async function fetchLiveAgent(paseo: PaseoApi, agentId: string): Promise<
   }
 }
 
+/** Whether Paseo says the agent is archived or unknown; a failed lookup throws rather than answering yes. */
+export async function isAgentGone(paseo: PaseoApi, agentId: string): Promise<boolean> {
+  const refreshed = await paseo.agents.ref(agentId).refresh();
+  return refreshed === null || (refreshed.agent.archivedAt !== null && refreshed.agent.archivedAt !== undefined);
+}
+
 export function isMidTurn(agent: { status: string }): boolean {
   return agent.status === "running" || agent.status === "initializing";
 }

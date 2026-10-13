@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 
 import { executionWorkspace } from "../shared/execution";
 import { TARO_LABELS, TICKET_STATUSES } from "../shared/project";
-import { fetchLiveAgent, isMidTurn, listTaroAgents, projectAgents } from "./agents";
+import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents } from "./agents";
 import { taroEnvironment } from "./environment";
 import type { PaseoApi } from "./host-types";
 import { bypassModeId } from "./models";
@@ -35,7 +35,8 @@ export class Actions {
   async answerDecision(paseo: PaseoApi, key: string, label: string | null, text: string): Promise<void> {
     const decision = await this.state.decision(key);
     if (decision === null) throw new Error("That decision is no longer open.");
-    if ((await fetchLiveAgent(paseo, decision.agentId)) === null) {
+    // Withdrawal is final, so only Paseo's own word that the agent is gone counts, not a failed lookup.
+    if (await isAgentGone(paseo, decision.agentId)) {
       await this.supervisor.withdrawDecisionsOf(decision.agentId);
       throw new Error("The agent that asked this is archived or gone, so nothing was sent; its open questions are withdrawn.");
     }
