@@ -1,0 +1,324 @@
+<!doctype html>
+<!-- TR-026 options: one clear hierarchy per board card, and a compact acceptance panel.
+     Fake data only. Open with ?frame=<name>; mockup/tr-026-shots.cjs renders every frame. -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { --bg:#161616; --s0:#1c1c1c; --s1:#222; --s2:#2c2c2c; --b:#333; --fg:#ececec; --mu:#9a9a9a;
+          --ac:#e0855a; --warn:#d6a35c; --ok:#5fb87a; --bad:#e06c6c; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:13px/1.45 -apple-system, "Segoe UI", Inter, sans-serif; }
+  .frame { display:none; min-height:100vh; flex-direction:column; }
+  .frame.on { display:flex; }
+  .title { padding:12px 16px 0; font-size:15px; font-weight:700; }
+  .sub { padding:2px 16px 0; color:var(--mu); font-size:12px; max-width:1300px; }
+  .muted { color:var(--mu); } .small { font-size:12px; }
+  .btn { border:1px solid var(--b); background:var(--s1); color:var(--fg); border-radius:7px; padding:4px 10px; font-size:12px; display:inline-flex; gap:6px; align-items:center; white-space:nowrap; }
+  .btn.ac { border-color:var(--ac); color:var(--ac); }
+  .btn.solid { background:var(--ok); border-color:var(--ok); color:#102010; font-weight:600; }
+  .btn.sm { padding:2px 8px; font-size:11px; }
+  .btn.ic { padding:2px 6px; }
+  .badge { border:1px solid; border-radius:5px; padding:0 6px; font-size:11px; font-weight:600; white-space:nowrap; }
+  .b-plan { color:var(--ok); border-color:#5fb87a66; } .b-prog { color:var(--ac); border-color:#e0855a66; }
+  .b-back { color:var(--mu); border-color:#555; } .b-await { color:var(--warn); border-color:#d6a35c66; } .b-done { color:var(--mu); border-color:#444; }
+  .board { display:flex; gap:12px; padding:14px 16px; align-items:flex-start; }
+  .panel { flex:1; min-width:0; background:var(--s1); border:1px solid var(--b); border-radius:12px; padding:10px; display:flex; flex-direction:column; gap:10px; }
+  .ph { display:flex; gap:8px; align-items:center; font-weight:700; font-size:14px; }
+  .ph .n { color:var(--mu); font-weight:400; }
+  .card { border:1px solid var(--b); border-radius:10px; padding:10px 12px; background:var(--s0); display:flex; flex-direction:column; gap:6px; }
+  .hd { display:flex; gap:6px; align-items:center; flex-wrap:wrap; color:var(--mu); font-size:11px; font-weight:600; }
+  .grow { flex:1; }
+  .dot { width:8px; height:8px; border-radius:4px; display:inline-block; }
+  .t { font-weight:600; }
+  .now { display:flex; gap:7px; align-items:flex-start; font-size:12px; }
+  .now .tx { flex:1; min-width:0; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .now.ok .i { color:var(--ok); } .now.bad { color:var(--bad); font-weight:600; } .now.ask .i { color:var(--warn); }
+  .go { color:var(--ac); font-size:12px; white-space:nowrap; font-weight:600; }
+  .foot { display:flex; gap:6px; align-items:center; color:var(--mu); font-size:11px; border-top:1px solid var(--b); padding-top:6px; }
+  .kids { display:flex; gap:6px; align-items:center; color:var(--mu); font-size:11px; }
+  .track { width:44px; height:3px; border-radius:2px; background:var(--s2); overflow:hidden; display:inline-block; }
+  .track i { display:block; height:3px; background:var(--ok); }
+  .pill { border-radius:999px; background:var(--s2); padding:0 7px; font-size:11px; color:var(--mu); font-weight:500; }
+  .pill.warn { color:var(--warn); background:#d6a35c22; }
+  .legend { margin:0 16px 14px; border:1px dashed #555; border-radius:10px; padding:10px 14px; color:var(--mu); font-size:12px; }
+  .legend b { color:var(--fg); }
+  .legend ol { margin:4px 0 0; padding-left:18px; }
+  .panes { display:flex; gap:16px; padding:14px 16px; flex:1; }
+  .pane { flex:1; min-width:0; border:1px solid var(--b); border-radius:12px; background:var(--s0); display:flex; flex-direction:column; overflow:hidden; height:600px; }
+  .pane .cap2 { padding:6px 12px; font-size:11px; color:var(--mu); background:var(--s1); border-bottom:1px solid var(--b); }
+  .phead { padding:10px 14px; border-bottom:1px solid var(--b); display:flex; gap:8px; align-items:center; }
+  .seg { display:inline-flex; border:1px solid var(--b); border-radius:8px; overflow:hidden; margin:8px 14px 0; align-self:flex-start; }
+  .seg span { padding:3px 10px; font-size:12px; } .seg span.on { background:var(--s2); font-weight:600; }
+  .chat { flex:1; padding:10px 14px; display:flex; flex-direction:column; gap:10px; overflow:hidden; }
+  .bubble { align-self:flex-end; background:var(--s2); border-radius:10px; padding:8px 10px; max-width:80%; }
+  .tool { color:var(--mu); font-size:12px; font-family:ui-monospace, monospace; }
+  .composer { margin:8px 12px 12px; border:1px solid var(--b); border-radius:10px; padding:10px; color:var(--mu); min-height:54px; }
+  .actions { display:flex; gap:6px; align-items:center; margin:0 12px; }
+  .bar { margin:8px 12px 0; border:1px solid var(--ok); border-radius:9px; background:var(--s1); padding:6px 10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .bar.top { border-radius:9px 9px 0 0; }
+  .lab { color:var(--ok); font-weight:700; font-size:11px; letter-spacing:.4px; white-space:nowrap; }
+  .bar .ev { color:var(--mu); font-size:12px; flex:1; min-width:120px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .open { margin:0 12px; border:1px solid var(--ok); border-top:none; border-radius:0 0 9px 9px; background:var(--s1); padding:8px 10px; display:flex; flex-direction:column; gap:8px; font-size:12px; }
+  .evi { border:1px solid var(--b); border-radius:7px; padding:6px 8px; display:flex; flex-direction:column; gap:3px; background:var(--s0); }
+  .evi .h { font-size:10px; font-weight:700; color:var(--mu); letter-spacing:.4px; }
+  .shots { display:flex; gap:6px; } .shot { border:1px dashed #555; border-radius:5px; width:70px; height:44px; color:#777; font-size:10px; display:flex; align-items:center; justify-content:center; }
+  .input { border:1px solid var(--b); border-radius:7px; padding:6px 8px; color:var(--mu); background:var(--s0); flex:1; }
+  .tv { padding:10px 14px; display:flex; flex-direction:column; gap:10px; overflow:hidden; }
+  .sec { font-size:11px; font-weight:700; color:var(--mu); letter-spacing:.4px; }
+  .phone { width:390px; flex:none; height:720px; }
+</style>
+</head>
+<body>
+
+<!-- ============ PART 1 — option A: one "now" line + one footer ============ -->
+<div class="frame" id="cards-a">
+  <div class="title">Part 1 · Option A — title, one “now” line, one muted footer</div>
+  <div class="sub">Each card: head (live dot · id · phase) · title · ONE line saying what is happening now · children folded to one line · one footer (complexity · context · subagents · PR, Compact at its end only when needed). Milestones leave the card (they are on the Ticket tab).</div>
+  <div class="board">
+    <div class="panel"><div class="ph">✋ Needs you <span class="n">2</span></div>
+      <div class="card">
+        <div class="hd"><span class="dot" style="background:#777"></span>NA-031<span class="grow"></span><span class="badge b-plan">Planning</span></div>
+        <div class="t">Offline drafts</div>
+        <div class="now ask"><span class="i">✋</span><span class="tx">Approve the NA-031 plan?</span><span class="go">Answer →</span></div>
+        <div class="foot">medium · ctx 42k</div>
+      </div>
+      <div class="card">
+        <div class="hd"><span class="dot" style="background:#777"></span>NA-022<span class="grow"></span><span class="badge b-await">Awaiting acceptance</span></div>
+        <div class="t">Markdown export</div>
+        <div class="now ask"><span class="i" style="color:var(--ok)">📦</span><span class="tx">Ready to accept · checks green · review passed</span><span class="go">Review →</span></div>
+        <div class="foot">low · <span style="color:var(--ac)">PR #48</span></div>
+      </div>
+    </div>
+    <div class="panel"><div class="ph">∿ Working <span class="n">3</span></div>
+      <div class="card">
+        <div class="hd"><span class="dot" style="background:#777"></span>NA-027<span class="grow"></span><span class="badge b-prog">In Progress</span></div>
+        <div class="t">Sync conflicts between devices</div>
+        <div class="now ok"><span class="i">⏳</span><span class="tx">Implementer building NA-027.01 · 12m</span></div>
+        <div class="kids">▸ <span class="track"><i style="width:33%"></i></span> 1/3 children done</div>
+        <div class="foot">high · ctx 153k · 1 subagent<span class="grow"></span><span class="btn sm">⤡ Compact</span></div>
+      </div>
+      <div class="card">
+        <div class="hd"><span class="dot" style="background:var(--ok)"></span>NA-027.01 <span style="font-weight:400">↳ NA-027</span><span class="grow"></span><span class="badge b-prog">In Progress</span></div>
+        <div class="t">Merge edits made offline</div>
+        <div class="now ok"><span class="i">⏳</span><span class="tx">Implementer running · 12m</span></div>
+      </div>
+      <div class="card">
+        <div class="hd"><span class="dot" style="background:var(--ok)"></span>NA-029<span class="grow"></span><span class="badge b-prog">In Progress</span></div>
+        <div class="t">Search highlighting</div>
+        <div class="now"><span class="i muted">◷</span><span class="tx muted">Running the search tests · 2m ago</span></div>
+        <div class="foot">medium · ctx 61k</div>
+      </div>
+    </div>
+    <div class="panel"><div class="ph" style="color:var(--bad)">⊘ Stalled <span class="n">1</span></div>
+      <div class="card">
+        <div class="hd"><span class="dot" style="background:#777"></span>NA-024<span class="grow"></span><span class="badge b-prog">In Progress</span></div>
+        <div class="t">Reminder notifications</div>
+        <div class="now bad"><span>⚠</span><span class="tx">Idle 14m without a status line; nudged once</span></div>
+        <div class="foot"><span class="btn sm">⚡ Nudge</span><span class="btn sm">↺ Relaunch</span><span class="grow"></span>ctx 88k</div>
+      </div>
+    </div>
+    <div class="panel"><div class="ph">◷ Queued <span class="n">1</span></div>
+      <div class="card">
+        <div class="hd"><span class="dot" style="background:#555"></span>NA-033<span class="grow"></span><span class="badge b-back">Backlog</span></div>
+        <div class="t">Tag colours</div>
+        <div class="foot">low</div>
+      </div>
+    </div>
+    <div class="panel"><div class="ph">✓ Done <span class="n">9</span></div>
+      <div class="card">
+        <div class="hd"><span class="dot" style="background:#555"></span>NA-019<span class="grow"></span><span class="badge b-done">Done</span></div>
+        <div class="t">Note pinning</div>
+        <div class="foot">24m wall · 19m active · 9 turns · $6.20</div>
+      </div>
+    </div>
+  </div>
+  <div class="legend"><b>The “now” line is the first of:</b>
+    <ol><li>stalled: the reason, in red (Nudge / Relaunch sit in the footer)</li>
+    <li>it asks you: the first call (decision, acceptance, permission) with Answer → / Review → / Allow… →</li>
+    <li>a subagent runs: “Implementer building NA-027.01 · 12m”</li>
+    <li>otherwise: the owner’s last status line · time ago</li></ol>
+    Dropped from cards: the latest milestone (Ticket tab), the status line under a running subagent, the complexity chip (plain text in the footer). Children: one line, tap to list them (each child is also its own card).</div>
+</div>
+
+<!-- ============ PART 1 — option B: three lines, signals in the head ============ -->
+<div class="frame" id="cards-b">
+  <div class="title">Part 1 · Option B — three lines; children and context become small pills in the head</div>
+  <div class="sub">Each card is head · title · “now” line, nothing else, except Nudge / Relaunch on a stalled card. Children show as a “1/3” pill; context only appears when it is high (amber pill). Compact moves off the card into the owner’s chat, beside the context meter (as the manager pane already has it).</div>
+  <div class="board">
+    <div class="panel"><div class="ph">✋ Needs you <span class="n">2</span></div>
+      <div class="card">
+        <div class="hd"><span class="dot" style="background:#777"></span>NA-031 <span class="pill">medium</span><span class="grow"></span><span class="badge b-plan">Planning</span></div>
+        <div class="t">Offline drafts</div>
+        <div class="now ask"><span class="i">✋</span><span class="tx">Approve the NA-031 plan?</span><span class="go">Answer →</span></div>
+      </div>
+      <div class="card">
+        <div class="hd"><span class="dot" style="background:#777"></span>NA-022 <span class="pill">low</span><span class="grow"></span><span class="badge b-await">Awaiting acceptance</span></div>
+        <div class="t">Markdown export</div>
+        <div class="now ask"><span class="i" style="color:var(--ok)">📦</span><span class="tx">Ready to accept · checks green · review passed</span><span class="go">Review →</span></div>
+      </div>
+    </div>
+    <div class="panel"><div class="ph">∿ Working <span class="n">3</span></div>
+      <div class="card">
+        <div class="hd"><span class="dot" style="background:#777"></span>NA-027 <span class="pill">high</span><span class="pill">⑂ 1/3</span><span class="pill warn">ctx 153k</span><span class="grow"></span><span class="badge b-prog">In Progress</span></div>
+        <div class="t">Sync conflicts between devices</div>
+        <div class="now ok"><span class="i">⏳</span><span class="tx">Implementer building NA-027.01 · 12m</span></div>
+      </div>
+      <div class="card">
+        <div class="hd"><span class="dot" style="background:var(--ok)"></span>NA-027.01 <span style="font-weight:400">↳ NA-027</span><span class="grow"></span><span class="badge b-prog">In Progress</span></div>
+        <div class="t">Merge edits made offline</div>
+        <div class="now ok"><span class="i">⏳</span><span class="tx">Implementer running · 12m</span></div>
+      </div>
+      <div class="card">
+        <div class="hd"><span class="dot" style="background:var(--ok)"></span>NA-029 <span class="pill">medium</span><span class="grow"></span><span class="badge b-prog">In Progress</span></div>
+        <div class="t">Search highlighting</div>
+        <div class="now"><span class="i muted">◷</span><span class="tx muted">Running the search tests · 2m ago</span></div>
+      </div>
+    </div>
+    <div class="panel"><div class="ph" style="color:var(--bad)">⊘ Stalled <span class="n">1</span></div>
+      <div class="card">
+        <div class="hd"><span class="dot" style="background:#777"></span>NA-024 <span class="pill">medium</span><span class="grow"></span><span class="badge b-prog">In Progress</span></div>
+        <div class="t">Reminder notifications</div>
+        <div class="now bad"><span>⚠</span><span class="tx">Idle 14m without a status line; nudged once</span></div>
+        <div style="display:flex;gap:6px"><span class="btn sm">⚡ Nudge</span><span class="btn sm">↺ Relaunch</span></div>
+      </div>
+    </div>
+    <div class="panel"><div class="ph">◷ Queued <span class="n">1</span></div>
+      <div class="card">
+        <div class="hd"><span class="dot" style="background:#555"></span>NA-033 <span class="pill">low</span><span class="grow"></span><span class="badge b-back">Backlog</span></div>
+        <div class="t">Tag colours</div>
+      </div>
+    </div>
+    <div class="panel"><div class="ph">✓ Done <span class="n">9</span></div>
+      <div class="card">
+        <div class="hd"><span class="dot" style="background:#555"></span>NA-019<span class="grow"></span><span class="badge b-done">Done</span></div>
+        <div class="t">Note pinning</div>
+        <div class="now muted"><span class="tx">24m wall · 19m active · 9 turns · $6.20</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="legend"><b>Same “now” line rule as A.</b> Tapping the ⑂ 1/3 pill lists the children under it; tapping the amber context pill opens the owner’s chat, where Compact sits beside the context meter. The PR link lives in the acceptance panel and the Ticket tab. Trade-off: the calmest board, but Compact is one tap further away.</div>
+</div>
+
+<!-- ============ PART 2 — option A: slim bar that expands ============ -->
+<div class="frame" id="accept-a">
+  <div class="title">Part 2 · Option A — a slim bar above the chat that expands</div>
+  <div class="sub">One row: “Ready to accept”, the one-line evidence (TR-021.02 fills it), Details ▾, Accept, Request changes…. Details opens the delivery summary and the full evidence under the bar (at most ~40% of the pane, scrolls). Request changes… turns the row into a text field in place.</div>
+  <div class="panes">
+    <div class="pane"><div class="cap2">Folded (default) — about one line of the chat</div>
+      <div class="phead"><b>NA-022 · Markdown export</b><span class="muted small">Owner · idle</span></div>
+      <div class="seg"><span class="on">Chat</span><span>Ticket</span></div>
+      <div class="bar"><span>📦</span><span class="lab">READY TO ACCEPT</span><span class="ev">PR #48 · checks green (typecheck, 41 tests) · review passed · 2 screenshots</span><span class="btn sm">Details ▾</span><span class="btn sm solid">✓ Accept</span><span class="btn sm">Request changes…</span></div>
+      <div class="chat">
+        <div class="tool">$ npm test &gt; /tmp/test.log; echo $?</div>
+        <div>All checks pass. I opened PR #48 with the exporter and two screenshots of the exported file.</div>
+        <div class="bubble">Does it keep the note's tags?</div>
+        <div>Yes — tags become a front-matter list. The test <code>export keeps tags</code> covers it.</div>
+        <div>done: PR #48 ready for acceptance</div>
+      </div>
+      <div class="composer">Talk to NA-022's owner…</div>
+    </div>
+    <div class="pane"><div class="cap2">Details open</div>
+      <div class="phead"><b>NA-022 · Markdown export</b><span class="muted small">Owner · idle</span></div>
+      <div class="seg"><span class="on">Chat</span><span>Ticket</span></div>
+      <div class="bar top"><span>📦</span><span class="lab">READY TO ACCEPT</span><span class="ev">PR #48 · checks green · review passed</span><span class="btn sm">Details ▴</span><span class="btn sm solid">✓ Accept</span><span class="btn sm">Request changes…</span></div>
+      <div class="open">
+        <div>Notes export to Markdown from the note menu; tags become front matter, images are copied beside the file. Branch taro/na-022, PR #48.</div>
+        <div class="evi"><div class="h">EVIDENCE</div><div>✓ typecheck · ✓ 41 tests · ✓ lint</div><div>Review: one round, 2 findings fixed</div><div class="shots"><div class="shot">screenshot</div><div class="shot">screenshot</div></div></div>
+      </div>
+      <div class="chat"><div>All checks pass. I opened PR #48 with the exporter and two screenshots of the exported file.</div></div>
+      <div class="composer">Talk to NA-022's owner…</div>
+    </div>
+    <div class="pane"><div class="cap2">Request changes… pressed</div>
+      <div class="phead"><b>NA-022 · Markdown export</b><span class="muted small">Owner · idle</span></div>
+      <div class="seg"><span class="on">Chat</span><span>Ticket</span></div>
+      <div class="bar"><span>📦</span><span class="input">Keep the original file names for images…</span><span class="btn sm ac">Send changes</span><span class="btn sm ic">✕</span></div>
+      <div class="chat">
+        <div class="tool">$ npm test &gt; /tmp/test.log; echo $?</div>
+        <div>All checks pass. I opened PR #48 with the exporter and two screenshots of the exported file.</div>
+        <div class="bubble">Does it keep the note's tags?</div>
+        <div>Yes — tags become a front-matter list.</div>
+      </div>
+      <div class="composer">Talk to NA-022's owner…</div>
+    </div>
+  </div>
+</div>
+
+<div class="frame" id="accept-a-phone">
+  <div class="title">Part 2 · Option A on a phone — the bar wraps to two short rows</div>
+  <div class="panes" style="justify-content:flex-start">
+    <div class="pane phone"><div class="cap2">Folded</div>
+      <div class="phead"><b>NA-022 · Markdown export</b></div>
+      <div class="seg"><span class="on">Chat</span><span>Ticket</span></div>
+      <div class="bar"><span>📦</span><span class="lab">READY TO ACCEPT</span><span class="ev">checks green · review passed</span><span class="btn sm">▾</span><div style="display:flex;gap:6px;width:100%"><span class="btn sm solid">✓ Accept</span><span class="btn sm">Request changes…</span></div></div>
+      <div class="chat"><div>All checks pass. I opened PR #48 with the exporter and two screenshots of the exported file.</div><div class="bubble">Does it keep the note's tags?</div><div>Yes — tags become a front-matter list.</div><div>done: PR #48 ready for acceptance</div></div>
+      <div class="composer">Talk to NA-022's owner…</div>
+    </div>
+    <div class="pane phone"><div class="cap2">Details open</div>
+      <div class="phead"><b>NA-022 · Markdown export</b></div>
+      <div class="seg"><span class="on">Chat</span><span>Ticket</span></div>
+      <div class="bar top"><span>📦</span><span class="lab">READY TO ACCEPT</span><span class="ev">checks green · review passed</span><span class="btn sm">▴</span><div style="display:flex;gap:6px;width:100%"><span class="btn sm solid">✓ Accept</span><span class="btn sm">Request changes…</span></div></div>
+      <div class="open"><div>Notes export to Markdown from the note menu; tags become front matter. PR #48.</div><div class="evi"><div class="h">EVIDENCE</div><div>✓ typecheck · ✓ 41 tests · ✓ lint</div><div class="shots"><div class="shot">screenshot</div><div class="shot">screenshot</div></div></div></div>
+      <div class="chat"><div>All checks pass. I opened PR #48…</div></div>
+      <div class="composer">Talk to NA-022's owner…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PART 2 — option B: in the ticket view ============ -->
+<div class="frame" id="accept-b">
+  <div class="title">Part 2 · Option B — acceptance lives in the Ticket view; the chat keeps a one-line pointer</div>
+  <div class="sub">The chat shows only “Ready to accept · Review →”. The Ticket tab (or the ticket panel beside the chat when the board is hidden) opens with the delivery, evidence and Accept / Request changes at its top. On a phone, accepting means switching to the Ticket tab.</div>
+  <div class="panes">
+    <div class="pane"><div class="cap2">Chat</div>
+      <div class="phead"><b>NA-022 · Markdown export</b><span class="muted small">Owner · idle</span></div>
+      <div class="seg"><span class="on">Chat</span><span>Ticket</span></div>
+      <div class="bar"><span>📦</span><span class="lab">READY TO ACCEPT</span><span class="ev">checks green · review passed</span><span class="go">Review →</span></div>
+      <div class="chat"><div class="tool">$ npm test &gt; /tmp/test.log; echo $?</div><div>All checks pass. I opened PR #48 with the exporter and two screenshots of the exported file.</div><div class="bubble">Does it keep the note's tags?</div><div>Yes — tags become a front-matter list.</div><div>done: PR #48 ready for acceptance</div></div>
+      <div class="composer">Talk to NA-022's owner…</div>
+    </div>
+    <div class="pane"><div class="cap2">Ticket (after Review →)</div>
+      <div class="phead"><b>NA-022 · Markdown export</b></div>
+      <div class="seg"><span>Chat</span><span class="on">Ticket</span></div>
+      <div class="tv">
+        <div style="border:1px solid var(--ok);border-radius:9px;padding:8px 10px;display:flex;flex-direction:column;gap:8px;background:var(--s1)">
+          <div class="lab">📦 READY TO ACCEPT · <span style="color:var(--ac)">PR #48</span></div>
+          <div class="small">Notes export to Markdown from the note menu; tags become front matter, images are copied beside the file.</div>
+          <div class="evi"><div class="h">EVIDENCE</div><div class="small">✓ typecheck · ✓ 41 tests · ✓ lint · review passed</div><div class="shots"><div class="shot">screenshot</div><div class="shot">screenshot</div></div></div>
+          <div style="display:flex;gap:6px"><span class="btn sm solid">✓ Accept</span><span class="btn sm">Request changes…</span></div>
+        </div>
+        <div class="sec">ACCEPTANCE CRITERIA · 4/4</div><div class="small muted">☑ Export from the note menu<br>☑ Tags kept as front matter<br>☑ Images copied beside the file<br>☑ Tests cover empty notes</div>
+        <div class="sec">TIMELINE</div><div class="small muted">14:02 Final · 13:40 Review · 12:10 Approval</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PART 2 — option C: at the composer ============ -->
+<div class="frame" id="accept-c">
+  <div class="title">Part 2 · Option C — Accept / Request changes sit at the composer; nothing above the chat</div>
+  <div class="sub">The composer’s action row gets Accept and Request changes; typing in the composer and pressing Request changes sends that text as the change request. “Delivery ▴” opens the summary and evidence over the bottom of the chat.</div>
+  <div class="panes">
+    <div class="pane"><div class="cap2">Default</div>
+      <div class="phead"><b>NA-022 · Markdown export</b><span class="muted small">Owner · idle</span></div>
+      <div class="seg"><span class="on">Chat</span><span>Ticket</span></div>
+      <div class="chat"><div class="tool">$ npm test &gt; /tmp/test.log; echo $?</div><div>All checks pass. I opened PR #48 with the exporter and two screenshots of the exported file.</div><div class="bubble">Does it keep the note's tags?</div><div>Yes — tags become a front-matter list.</div><div>done: PR #48 ready for acceptance</div></div>
+      <div class="actions"><span class="lab">READY TO ACCEPT</span><span class="btn sm">Delivery ▴</span><span class="grow"></span><span class="btn sm solid">✓ Accept</span><span class="btn sm">Request changes</span></div>
+      <div class="composer">Talk to NA-022's owner, or type the changes you want…</div>
+    </div>
+    <div class="pane"><div class="cap2">Delivery ▴ open</div>
+      <div class="phead"><b>NA-022 · Markdown export</b><span class="muted small">Owner · idle</span></div>
+      <div class="seg"><span class="on">Chat</span><span>Ticket</span></div>
+      <div class="chat" style="justify-content:flex-end"><div class="open" style="border:1px solid var(--ok);border-radius:9px;margin:0"><div><b>PR #48</b> — Notes export to Markdown from the note menu; tags become front matter.</div><div class="evi"><div class="h">EVIDENCE</div><div>✓ typecheck · ✓ 41 tests · ✓ lint · review passed</div><div class="shots"><div class="shot">screenshot</div><div class="shot">screenshot</div></div></div></div></div>
+      <div class="actions"><span class="lab">READY TO ACCEPT</span><span class="btn sm">Delivery ▾</span><span class="grow"></span><span class="btn sm solid">✓ Accept</span><span class="btn sm">Request changes</span></div>
+      <div class="composer">Talk to NA-022's owner, or type the changes you want…</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const name = new URLSearchParams(location.search).get("frame") || "cards-a";
+  document.getElementById(name).classList.add("on");
+</script>
+</body>
+</html>
