@@ -1,0 +1,5 @@
+#!/bin/sh
+# The stub GitHub CLI (gh.mjs beside it). Put this directory first on PATH; state goes to
+# $GH_STUB_STATE, else a `state` directory beside the script.
+here=$(dirname "$(readlink -f "$0")")
+GH_STUB_STATE=${GH_STUB_STATE:-$here/state} exec node "$here/gh.mjs" "$@"
