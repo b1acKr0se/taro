@@ -44,8 +44,9 @@ and `Cancelled`. Trivial tasks go from Backlog straight to In Progress.
 
 ## Records
 
-Append these to the notes, each starting with its name and an ISO timestamp, e.g.
-`MILESTONE 2026-10-13T14:02Z — …`. Append; never rewrite history.
+Append these to the notes, each starting with its name and the real current time from
+`date -u +%Y-%m-%dT%H:%MZ` (never a guessed time), e.g. `MILESTONE 2026-10-13T14:02Z — …`. Append;
+never rewrite history.
 
 - **DISPATCH-INTENT** (manager, before launching): ticket, unique token, intended branch.
 - **EXECUTION**: owner agent id, workspace id, machine (`hostname`), worktree path, branch, base

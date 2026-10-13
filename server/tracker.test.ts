@@ -65,3 +65,14 @@ describe("pluginPathIn", () => {
     expect(pluginPathIn("nope", "taro")).toBeNull();
   });
 });
+
+import { sameQuestion } from "./supervision";
+
+describe("sameQuestion", () => {
+  const asked = { question: "Approve?", blocking: true, options: [{ label: "Approve", prompt: "Approve it", consequence: "" }] };
+  it("matches an identical block and not a changed one", () => {
+    expect(sameQuestion(asked, { ...asked, options: [{ label: "Approve", prompt: "Approve it", consequence: "different note" }] })).toBe(true);
+    expect(sameQuestion(asked, { ...asked, question: "Approve the new scope?" })).toBe(false);
+    expect(sameQuestion(asked, { ...asked, blocking: false })).toBe(false);
+  });
+});
