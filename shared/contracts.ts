@@ -185,8 +185,16 @@ export const findAgentTicket = defineRpc({
 
 export const answerDecision = defineRpc({
   name: "taro.decision.answer",
-  input: z.object({ key: z.string(), label: z.string().nullable(), text: z.string() }),
+  /** `from` names where the user answered, for the ANSWER record. */
+  input: z.object({ key: z.string(), label: z.string().nullable(), text: z.string(), from: z.enum(["screen", "tab"]).default("screen") }),
   output: Empty,
+});
+
+/** One agent's stored decision by its block id, for the card inside that agent's own tab. */
+export const getDecision = defineRpc({
+  name: "taro.decision.get",
+  input: z.object({ agentId: z.string(), id: z.string() }),
+  output: z.object({ decision: StoredDecisionSchema.nullable(), agentLive: z.boolean() }),
 });
 
 export const listOpenDecisions = defineRpc({

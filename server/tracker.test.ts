@@ -66,7 +66,7 @@ describe("pluginPathIn", () => {
   });
 });
 
-import { sameQuestion } from "./supervision";
+import { sameQuestion } from "../shared/reports";
 
 describe("sameQuestion", () => {
   const asked = { question: "Approve?", blocking: true, options: [{ label: "Approve", prompt: "Approve it", consequence: "" }] };

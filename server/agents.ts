@@ -44,3 +44,12 @@ export async function isAgentGone(paseo: PaseoApi, agentId: string): Promise<boo
 export function isMidTurn(agent: { status: string }): boolean {
   return agent.status === "running" || agent.status === "initializing";
 }
+
+/** For display only: a failed lookup counts as live, so a hiccup does not hide an open card. */
+export async function isAgentLive(paseo: PaseoApi, agentId: string): Promise<boolean> {
+  try {
+    return !(await isAgentGone(paseo, agentId));
+  } catch {
+    return true;
+  }
+}

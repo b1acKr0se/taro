@@ -34,7 +34,7 @@ export class Actions {
     private readonly recovery: Recovery,
   ) {}
 
-  async answerDecision(paseo: PaseoApi, key: string, label: string | null, text: string): Promise<void> {
+  async answerDecision(paseo: PaseoApi, key: string, label: string | null, text: string, from: "screen" | "tab" = "screen"): Promise<void> {
     const decision = await this.state.decision(key);
     if (decision === null) throw new Error("That decision is no longer open.");
     // Withdrawal is final, so only Paseo's own word that the agent is gone counts, not a failed lookup.
@@ -57,7 +57,7 @@ export class Actions {
     });
     if (decision.ticket !== null) {
       const paths = await projectPaths(decision.project);
-      await appendTicketNote(paths.tracker, decision.ticket, `ANSWER ${at} — ${decision.id}: "${decision.question}" → ${option === null ? `"${words}"` : `${option.label} ("${words}")`} (the user, from the Taro screen)`).catch(
+      await appendTicketNote(paths.tracker, decision.ticket, `ANSWER ${at} — ${decision.id}: "${decision.question}" → ${option === null ? `"${words}"` : `${option.label} ("${words}")`} (the user, from ${from === "tab" ? "the agent's tab" : "the Taro screen"})`).catch(
         (error: unknown) => console.warn(`[taro] could not record the answer on ${decision.ticket}: ${error instanceof Error ? error.message : String(error)}`),
       );
     }

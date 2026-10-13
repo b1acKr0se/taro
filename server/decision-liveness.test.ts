@@ -3,11 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { StoredDecision } from "../shared/state";
 import { Actions } from "./actions";
-import { listTaroAgents, projectAgents } from "./agents";
+import { isAgentLive, listTaroAgents, projectAgents } from "./agents";
 import { invalidateBoards, liveOpenDecisions, loadBoard } from "./board";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import { sendFromPlugin } from "./send";
 import type { Recovery } from "./recovery";
+import { appendTicketNote } from "./tickets";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
 import { Supervisor } from "./supervision";
@@ -117,6 +118,32 @@ describe("Actions.answerDecision", () => {
       expect(sendFromPlugin).toHaveBeenCalledTimes(1);
       expect(decisions[0]?.status).toBe("answered");
     }
+  });
+
+  it("records where the user answered in the ANSWER note", async () => {
+    const live = paseoWhere(async () => ({ agent: { id: "owner", status: "idle", archivedAt: null } }));
+    for (const [from, words] of [
+      ["tab", "the agent's tab"],
+      [undefined, "the Taro screen"],
+    ] as const) {
+      vi.mocked(appendTicketNote).mockClear();
+      await actionsOver([stored("owner")]).answerDecision(live, key, "Approve", "", from);
+      expect(vi.mocked(appendTicketNote).mock.calls[0]?.[2]).toMatch(new RegExp(`^ANSWER .*\\(the user, from ${words}\\)$`));
+    }
+  });
+});
+
+describe("isAgentLive", () => {
+  const paseoWhere = (refresh: () => Promise<unknown>) => ({ agents: { ref: () => ({ refresh }) } }) as unknown as PaseoApi;
+
+  it("is false only when Paseo says the agent is archived or unknown", async () => {
+    expect(await isAgentLive(paseoWhere(async () => ({ agent: { id: "a", archivedAt: null } })), "a")).toBe(true);
+    expect(await isAgentLive(paseoWhere(async () => ({ agent: { id: "a", archivedAt: "2026-10-13T12:00:00Z" } })), "a")).toBe(false);
+    expect(await isAgentLive(paseoWhere(async () => null), "a")).toBe(false);
+  });
+
+  it("counts a failed lookup as live, so a hiccup does not hide an open card", async () => {
+    expect(await isAgentLive(paseoWhere(async () => Promise.reject(new Error("timeout"))), "a")).toBe(true);
   });
 });
 

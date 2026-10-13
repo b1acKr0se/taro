@@ -6,7 +6,7 @@
  */
 import { RoleSchema, TARO_LABELS, type Role } from "../shared/project";
 import { isCrash } from "../shared/recovery";
-import { hashText, parseDecisionBlocks, parseStatusLine, type ParsedDecision } from "../shared/reports";
+import { hashText, parseDecisionBlocks, parseStatusLine, sameQuestion, type ParsedDecision } from "../shared/reports";
 import { withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDecision } from "../shared/state";
 import { fetchLiveAgent, isMidTurn, listTaroAgents } from "./agents";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
@@ -68,15 +68,6 @@ export function currentTurn(timeline: readonly TimelineItem[]): readonly Timelin
  */
 export function autoCompactedThisTurn(timeline: readonly TimelineItem[]): boolean {
   return currentTurn(timeline).some((item) => item.type === "compaction" && item.status === "completed" && item.trigger !== "manual");
-}
-
-/** Whether a block asks exactly what a stored decision asked. */
-export function sameQuestion(left: Pick<ParsedDecision, "question" | "options" | "blocking">, right: Pick<ParsedDecision, "question" | "options" | "blocking">): boolean {
-  return (
-    left.question === right.question &&
-    left.blocking === right.blocking &&
-    JSON.stringify(left.options.map((option) => [option.label, option.prompt])) === JSON.stringify(right.options.map((option) => [option.label, option.prompt]))
-  );
 }
 
 export function freshState(identity: TaroIdentity): AgentState {

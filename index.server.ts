@@ -3,6 +3,7 @@ import type { PluginServerContext } from "@getpaseo/plugin/server";
 import {
   acceptTicket,
   answerDecision,
+  getDecision,
   loadStats,
   catchUp,
   compactAgent,
@@ -31,7 +32,7 @@ import {
 } from "./shared/contracts";
 import { ProjectSettingsSchema } from "./shared/project";
 import { Actions } from "./server/actions";
-import { fetchLiveAgent } from "./server/agents";
+import { fetchLiveAgent, isAgentLive } from "./server/agents";
 import { dismissSuggestion, invalidateBoards, liveOpenDecisions, loadBoard, loadTicketDetail } from "./server/board";
 import type { PaseoApi } from "./server/host-types";
 import { Recovery } from "./server/recovery";
@@ -153,10 +154,15 @@ export default function contribute(server: PluginServerContext) {
     const identity = agent === null ? null : identityFromLabels(agent.labels, agent.title ?? null);
     return { project: identity?.project ?? null, ticket: identity?.ticket ?? null, role: identity?.role ?? null };
   });
-  server.handle(answerDecision, async ({ key, label, text }, { paseo }) => {
-    await actions.answerDecision(keep(paseo), key, label, text);
+  server.handle(answerDecision, async ({ key, label, text, from }, { paseo }) => {
+    await actions.answerDecision(keep(paseo), key, label, text, from);
     invalidateBoards();
     return {};
+  });
+  server.handle(getDecision, async ({ agentId, id }, { paseo }) => {
+    const decision = await state.decision(`${agentId}:${id}`);
+    // Only an open decision's card depends on the agent still being there.
+    return { decision, agentLive: decision?.status === "open" ? await isAgentLive(keep(paseo), agentId) : true };
   });
   server.handle(listOpenDecisions, async ({ project }, { paseo }) => ({ decisions: await liveOpenDecisions(keep(paseo), state, project) }));
   server.handle(tellAgent, async ({ agentId, text }, { paseo }) => {

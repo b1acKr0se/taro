@@ -1,6 +1,8 @@
 import type { PluginClientContext, PluginWorkspaceCommandContext } from "@getpaseo/plugin/client";
 
 import { tellManager } from "./shared/contracts";
+import { DECISION_BLOCK_KIND, DECISION_TEXT_KIND, decisionTimelineItems } from "./shared/decision-view";
+import { DecisionBlockItem, DecisionBlockSchema, DecisionTextItem, DecisionTextSchema } from "./client/decision-timeline";
 import { TARO_SCREEN_ID } from "./client/screen";
 import { TaroScreen } from "./client/taro-screen";
 import { TaroSidebarItem } from "./client/sidebar";
@@ -52,6 +54,17 @@ export default function contribute(client: PluginClientContext) {
       return tellProjectManager(rpc, args);
     },
   });
+
+  // Decision blocks as cards inside Paseo's own agent tab; without the plugin they stay plain text.
+  client.addTimelineTransformer({
+    id: "taro-decisions",
+    query: { itemType: "assistant_message" },
+    transform({ item, phase }) {
+      return decisionTimelineItems(item.text, phase);
+    },
+  });
+  client.addTimelineRenderer({ kind: DECISION_TEXT_KIND, version: 1, schema: DecisionTextSchema, Component: DecisionTextItem });
+  client.addTimelineRenderer({ kind: DECISION_BLOCK_KIND, version: 1, schema: DecisionBlockSchema, Component: DecisionBlockItem });
 
   return () => {};
 }

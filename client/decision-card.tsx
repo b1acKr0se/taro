@@ -31,6 +31,8 @@ export function DecisionCard({
   compact,
   onAnswered,
   showAgent = false,
+  answeredFrom = "screen",
+  readOnlyNote = null,
 }: {
   decision: StoredDecision;
   theme: PluginTheme;
@@ -38,6 +40,10 @@ export function DecisionCard({
   onAnswered: () => void;
   /** Names who asked (in the Inbox and Walk me through). */
   showAgent?: boolean;
+  /** Where the card is, for the ANSWER record. */
+  answeredFrom?: "screen" | "tab";
+  /** Set when the card cannot be answered: the buttons are inert and this replaces the answer box. */
+  readOnlyNote?: string | null;
 }) {
   const toast = useToast();
   const answer = useRpc(answerDecision);
@@ -89,7 +95,7 @@ export function DecisionCard({
   async function send(label: string | null, text: string): Promise<void> {
     setBusy(true);
     try {
-      await answer({ key: decision.key, label, text });
+      await answer({ key: decision.key, label, text, from: answeredFrom });
       setTyped("");
       onAnswered();
     } catch (caught) {
@@ -128,7 +134,7 @@ export function DecisionCard({
             <Pressable
               key={option.label}
               accessibilityRole="button"
-              disabled={busy}
+              disabled={busy || readOnlyNote !== null}
               style={[styles.option, isRecommended ? styles.recommended : null]}
               onPress={() => press(option.label, option.prompt)}
             >
@@ -142,17 +148,21 @@ export function DecisionCard({
       {decision.reason === "" ? null : <Text style={styles.reason}>Why recommended: {decision.reason}</Text>}
       {!decision.blocking && decision.default !== "" ? <Text style={styles.defaultNote}>Going with “{decision.default}” unless you say otherwise.</Text> : null}
       {decision.problems.length > 0 ? <Text style={styles.problems}>Incomplete block: {decision.problems.join("; ")}</Text> : null}
-      <View style={styles.row}>
-        <TextInput
-          value={typed}
-          onChangeText={setTyped}
-          placeholder="Answer in your own words…"
-          placeholderTextColor={colors.foregroundMuted}
-          multiline
-          style={styles.input}
-        />
-        <IconButton icon="Send" label="Send answer" theme={theme} disabled={busy || typed.trim() === ""} onPress={() => void send(null, typed)} />
-      </View>
+      {readOnlyNote !== null ? (
+        <Text style={styles.defaultNote}>{readOnlyNote}</Text>
+      ) : (
+        <View style={styles.row}>
+          <TextInput
+            value={typed}
+            onChangeText={setTyped}
+            placeholder="Answer in your own words…"
+            placeholderTextColor={colors.foregroundMuted}
+            multiline
+            style={styles.input}
+          />
+          <IconButton icon="Send" label="Send answer" theme={theme} disabled={busy || typed.trim() === ""} onPress={() => void send(null, typed)} />
+        </View>
+      )}
     </View>
   );
 }

@@ -71,6 +71,33 @@ export function withoutDecisionBlocks(message: string): string {
   return message.replace(/\r\n?/g, "\n").replace(FENCE, "").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+export type MessageSegment = { kind: "text"; text: string } | { kind: "decision"; decision: ParsedDecision };
+
+/**
+ * A message cut into its text and its decision blocks, in order, for drawing
+ * the blocks as cards inside the text; null when it holds no block. Blank text
+ * between blocks is dropped.
+ */
+export function decisionMessageSegments(message: string): MessageSegment[] | null {
+  const normalized = message.replace(/\r\n?/g, "\n");
+  const segments: MessageSegment[] = [];
+  let from = 0;
+  for (const match of normalized.matchAll(FENCE)) {
+    if (match[1] === undefined || match.index === undefined) continue;
+    pushText(segments, normalized.slice(from, match.index));
+    segments.push({ kind: "decision", decision: parseDecisionBody(match[1]) });
+    from = match.index + match[0].length;
+  }
+  if (segments.length === 0) return null;
+  pushText(segments, normalized.slice(from));
+  return segments;
+}
+
+function pushText(segments: MessageSegment[], text: string): void {
+  const trimmed = text.replace(/\n{3,}/g, "\n\n").trim();
+  if (trimmed !== "") segments.push({ kind: "text", text: trimmed });
+}
+
 function unquote(value: string): string {
   const trimmed = value.trim();
   if (trimmed.length >= 2 && ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'")))) {
@@ -240,6 +267,15 @@ export function parseDecisionBody(body: string): ParsedDecision {
     withdrawn: /^withdrawn$/i.test(fields.status ?? ""),
     problems,
   };
+}
+
+/** Whether a block asks exactly what a stored decision asked. */
+export function sameQuestion(left: Pick<ParsedDecision, "question" | "options" | "blocking">, right: Pick<ParsedDecision, "question" | "options" | "blocking">): boolean {
+  return (
+    left.question === right.question &&
+    left.blocking === right.blocking &&
+    JSON.stringify(left.options.map((option) => [option.label, option.prompt])) === JSON.stringify(right.options.map((option) => [option.label, option.prompt]))
+  );
 }
 
 /** A short stable hash, for ids of blocks that forgot theirs. */
