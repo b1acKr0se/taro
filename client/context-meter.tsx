@@ -16,17 +16,21 @@ import { useMemo, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { contextPercent, contextTone, formatTokenCount } from "./format";
+import { COMPOSER_CONTROL_SIZE } from "./spacing";
 import { FONT_SIZE } from "./type-scale";
 
-/** Sized to read beside the composer's round send button, with Paseo's stroke. */
-const RING_SIZE = 16;
-const RING_STROKE = 2;
+/** Most of the send button's size, so the ring carries the same visual weight beside it. */
+const RING_SIZE = 20;
+const RING_STROKE = 2.5;
 
 /**
  * The uncoloured sides of a half ring. Not a colour of the palette, so not
  * a theme token: it is the absence of one, the same in every theme.
  */
 const NONE = "transparent";
+
+/** The unfilled ring, drawn in the muted text colour at this strength: visible like Paseo's track, quieter than the fill. */
+const TRACK_OPACITY = 0.35;
 
 export function ProgressRing({
   percent,
@@ -53,7 +57,8 @@ export function ProgressRing({
   const half = { position: "absolute" as const, top: 0, width: size / 2, height: size, overflow: "hidden" as const };
   return (
     <View style={{ width: size, height: size }}>
-      <View style={[ring, { left: 0, borderColor: track }]} />
+      {/* Dimmed rather than a darker colour: the theme's border colour all but vanishes inside the composer. */}
+      <View style={[ring, { left: 0, borderColor: track, opacity: TRACK_OPACITY }]} />
       {/*
         Bottom and left coloured: 135°–315°, turned by 45° to sit wholly in the hidden left half, then on by
         the share. Not drawn at all for nothing used, where its edge would show as a hairline on the seam.
@@ -121,10 +126,10 @@ export function ContextMeter({
   const styles = useMemo(() => {
     const { colors } = theme;
     return {
-      meter: { width: 28, height: 28, alignItems: "center" as const, justifyContent: "center" as const },
+      meter: { width: COMPOSER_CONTROL_SIZE, height: COMPOSER_CONTROL_SIZE, alignItems: "center" as const, justifyContent: "center" as const },
       tip: {
         position: "absolute" as const,
-        bottom: 34,
+        bottom: COMPOSER_CONTROL_SIZE + 6,
         right: 0,
         width: TIP_WIDTH,
         gap: 2,
@@ -162,7 +167,7 @@ export function ContextMeter({
         if (!hovering.current) setOpen((current) => !current);
       }}
     >
-      <ProgressRing percent={percent} color={tone} track={theme.colors.border} />
+      <ProgressRing percent={percent} color={tone} track={theme.colors.foregroundMuted} />
       {open ? (
         <View style={styles.tip} pointerEvents="none">
           <Text style={styles.title} numberOfLines={1}>

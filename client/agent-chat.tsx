@@ -27,14 +27,12 @@ import { groupRows, toolRunSummary, type Group } from "./tool-runs";
 import { transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
-import { CHAT_MAX_WIDTH, SPACE } from "./spacing";
+import { CHAT_MAX_WIDTH, COMPOSER_CONTROL_SIZE, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
 
 /** The text area inside the composer box, above its row of the context ring and the send button. */
 const INPUT_HEIGHT = 72;
 const INPUT_HEIGHT_COMPACT = 44;
-/** The round send button, as in Paseo's composer. */
-const SEND_SIZE = 30;
 
 export interface ChatAgent {
   id: string;
@@ -287,10 +285,11 @@ export function AgentChat({
         paddingHorizontal: SPACE.sm,
         paddingBottom: SPACE.sm,
       },
+      // Round, as in Paseo's composer, and the size of the ring's box beside it.
       send: {
-        width: SEND_SIZE,
-        height: SEND_SIZE,
-        borderRadius: SEND_SIZE / 2,
+        width: COMPOSER_CONTROL_SIZE,
+        height: COMPOSER_CONTROL_SIZE,
+        borderRadius: COMPOSER_CONTROL_SIZE / 2,
         alignItems: "center" as const,
         justifyContent: "center" as const,
         backgroundColor: colors.accent,
@@ -510,7 +509,7 @@ export function AgentChat({
                   style={[styles.send, { opacity: nothingToSend ? 0.5 : 1 }]}
                   onPress={sendDraft}
                 >
-                  <Icon name="ArrowUp" size={16} color={theme.colors.accentForeground} />
+                  <Icon name="ArrowUp" size={15} color={theme.colors.accentForeground} />
                 </Pressable>
               </View>
             </View>
