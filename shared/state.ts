@@ -61,6 +61,8 @@ export const AgentStateSchema = z.object({
   compaction: CompactionStageSchema.default("none"),
   idleCompaction: IdleCompactionSchema.default("none"),
   lastTurnEndedAt: z.string().nullable().default(null),
+  /** The missing-evidence set the owner was last told about, so each distinct set is sent once. */
+  evidenceReminded: z.string().nullable().default(null),
 });
 export type AgentState = z.infer<typeof AgentStateSchema>;
 

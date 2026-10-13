@@ -1,0 +1,86 @@
+// TR-021.02: evidence judged against the ticket's folder, the Accept guard and the Ticket tab's detail.
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { loadTicketDetail } from "./board";
+import { requireCompleteEvidence, ticketEvidence, ticketEvidenceDirectory } from "./evidence";
+import { viewTicket } from "./tickets";
+
+vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: "/tracker" }) }));
+vi.mock("./tickets", () => ({ listTickets: vi.fn(), viewTicket: vi.fn() }));
+
+const complete = [
+  "EVIDENCE 2026-10-13T11:00Z — before FINAL",
+  "check: npm test — 3 passed",
+  "review: self-review — clean",
+  "screenshot: list-phone.png — the list on a phone",
+].join("\n");
+
+let home: string;
+let previousHome: string | undefined;
+
+beforeEach(async () => {
+  previousHome = process.env.PASEO_HOME;
+  home = await mkdtemp(join(tmpdir(), "taro-evidence-"));
+  process.env.PASEO_HOME = home;
+});
+
+afterEach(async () => {
+  if (previousHome === undefined) delete process.env.PASEO_HOME;
+  else process.env.PASEO_HOME = previousHome;
+  await rm(home, { recursive: true, force: true });
+});
+
+async function addShot(name: string): Promise<void> {
+  const folder = ticketEvidenceDirectory("notes", "NA-1");
+  await mkdir(folder, { recursive: true });
+  await writeFile(join(folder, name), "png");
+}
+
+describe("ticketEvidence", () => {
+  it("finds the screenshot file in <evidence>/<project>/<ticket> and gives its absolute path", async () => {
+    await addShot("list-phone.png");
+    const evidence = await ticketEvidence("notes", "NA-1", complete, []);
+    expect(evidence.complete).toBe(true);
+    expect(evidence.screenshots[0]?.path).toBe(join(home, "plugin-data", "taro", "evidence", "notes", "NA-1", "list-phone.png"));
+  });
+
+  it("names the screenshot file that is not there", async () => {
+    const evidence = await ticketEvidence("notes", "NA-1", complete, []);
+    expect(evidence.missing).toEqual(["screenshot file list-phone.png"]);
+  });
+});
+
+describe("requireCompleteEvidence", () => {
+  it("refuses with what is missing, and lets complete evidence through", async () => {
+    await expect(requireCompleteEvidence("notes", "NA-1", null, [])).rejects.toThrow(/an EVIDENCE record/);
+    await expect(requireCompleteEvidence("notes", "NA-1", complete, [])).rejects.toThrow(/screenshot file list-phone\.png/);
+    await addShot("list-phone.png");
+    await expect(requireCompleteEvidence("notes", "NA-1", complete, [])).resolves.toBeUndefined();
+  });
+
+  it("asks an investigation only for a check", async () => {
+    await expect(requireCompleteEvidence("notes", "NA-1", "EVIDENCE 2026-10-13T11:00Z — x\ncheck: grep foo — 2 hits", ["investigation"])).resolves.toBeUndefined();
+  });
+});
+
+describe("loadTicketDetail evidence", () => {
+  function detail(status: string, implementationNotes: string | null) {
+    vi.mocked(viewTicket).mockResolvedValue({
+      id: "NA-1", title: "t", status, labels: [], description: null, acceptanceCriteria: [], implementationPlan: null, implementationNotes,
+      finalSummary: null, dependencies: [], subtasks: [],
+    } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+  }
+
+  it("carries evidence once a record exists or the ticket awaits acceptance, else null", async () => {
+    detail("In Progress", null);
+    expect((await loadTicketDetail("notes", "NA-1")).evidence).toBeNull();
+    detail("Awaiting acceptance", null);
+    expect((await loadTicketDetail("notes", "NA-1")).evidence?.missing).toEqual(["an EVIDENCE record"]);
+    detail("In Progress", complete);
+    expect((await loadTicketDetail("notes", "NA-1")).evidence?.checks).toHaveLength(1);
+  });
+});

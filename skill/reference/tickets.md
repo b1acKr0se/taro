@@ -56,7 +56,22 @@ never rewrite history.
   next step. Before a long command: its log path and expected duration.
 - **HANDOFF**: before compaction or stopping (template: `templates/handoff.md`).
 - **REVIEW**: reviewer, revision, verdict, findings with your valid/invalid verdict and evidence.
-- **FINAL**: delivered behaviour, revision, PR URL, evidence per criterion, review result,
-  limitations. Also set with `--final-summary`.
+- **EVIDENCE**: what the user sees before Accept; the newest record counts. One fact per line,
+  label in any case, separator ` — ` (` -- ` and ` - ` also work):
+  `check: <command> — <result>` (one or more), `review: <outcome>`,
+  `screenshot: <file name> — <caption>` (a bare name; the file is in `$TARO_EVIDENCE/<ID>/`), or
+  `screenshots: none — <reason>`. A change needs a check, a review line and screenshots (or none with
+  a reason); an investigation needs a check. Accept is refused until it is complete.
+
+      EVIDENCE 2026-01-05T10:00Z — before FINAL
+      check: npm test — 37 files, 360 passed
+      review: one independent round (Sonnet) — 1 blocker, fixed
+      screenshot: notes-list-desktop.png — the list on a wide screen
+      screenshot: notes-list-phone.png — the same on a phone
+
+  `$TARO_EVIDENCE` is `$PASEO_HOME/plugin-data/taro/evidence/<project>` when unset
+  (`~/.paseo/…` without `PASEO_HOME`).
+- **FINAL**: delivered behaviour, revision, PR URL, evidence per criterion (see EVIDENCE), review
+  result, limitations. Also set with `--final-summary`.
 - **ACCEPTANCE**: the user's words, time, accepted revision and PR, merge result.
 - **ANSWER**: written by the plugin when the user answers a decision.

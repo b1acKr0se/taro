@@ -6,6 +6,7 @@ import { stat } from "node:fs/promises";
 import { hostname } from "node:os";
 
 import { boardColumn, complexityOf, ticketAgents } from "../shared/board";
+import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
 import { executionMachine, pullRequestUrl } from "../shared/execution";
 import type { Board, Card, TicketDetailView } from "../shared/contracts";
 import { latestMilestone, type Milestone } from "../shared/milestones";
@@ -16,6 +17,7 @@ import { decisionsOfLiveAgents, type StoredDecision } from "../shared/state";
 import { currentSuggestions, parseSuggestions, suggestionKey } from "../shared/suggestions";
 import { projectAgents, projectArchivedAgents } from "./agents";
 import { statePath } from "./data-dir";
+import { judgeTicketEvidence, ticketEvidence } from "./evidence";
 import { readHeadroom } from "./headroom";
 import { readJsonIfPresent, readTextIfPresent, writeJsonAtomically } from "./files";
 import type { PaseoAgent, PaseoApi } from "./host-types";
@@ -27,11 +29,11 @@ import { listTickets, viewTicket } from "./tickets";
 
 const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing", "Awaiting acceptance", "Blocked"]);
 
-/** What only the ticket's records say: the host an EXECUTION record names, when not this machine, its pull request and its latest MILESTONE. */
+/** What only the ticket's records say: the host an EXECUTION record names, when not this machine, its pull request, its latest MILESTONE and its EVIDENCE record. */
 async function recordedFacts(
   trackerPath: string,
   ticketId: string,
-): Promise<{ hostElsewhere: string | null; pullRequest: string | null; latestMilestone: Milestone | null }> {
+): Promise<{ hostElsewhere: string | null; pullRequest: string | null; latestMilestone: Milestone | null; evidenceRecord: ParsedEvidence | null }> {
   try {
     const detail = await viewTicket(trackerPath, ticketId);
     const host = executionMachine(detail.implementationNotes);
@@ -39,9 +41,10 @@ async function recordedFacts(
       hostElsewhere: host !== null && host !== hostname() ? host : null,
       pullRequest: pullRequestUrl(detail.implementationNotes, detail.finalSummary),
       latestMilestone: latestMilestone(detail.implementationNotes),
+      evidenceRecord: parseEvidence(detail.implementationNotes),
     };
   } catch {
-    return { hostElsewhere: null, pullRequest: null, latestMilestone: null };
+    return { hostElsewhere: null, pullRequest: null, latestMilestone: null, evidenceRecord: null };
   }
 }
 
@@ -137,6 +140,9 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
       const needsHost = owner === null && UNDER_WAY.has(ticket.status);
       // Reading a ticket spawns the Backlog CLI: only under-way cards show what it holds, and only once per change.
       const facts = UNDER_WAY.has(ticket.status) ? await cachedRecordedFacts(paths.tracker, ticket.id, ticket.updatedAt) : null;
+      const investigation = ticket.labels.includes("investigation");
+      // The record is cached with the other facts; whether its screenshot files exist is read each time.
+      const evidence = ticket.status === "Awaiting acceptance" && facts !== null ? await judgeTicketEvidence(project, ticket.id, facts.evidenceRecord, investigation) : null;
       const elsewhere = needsHost ? facts?.hostElsewhere ?? null : null;
       const archivedAgents = archivedByTicket.get(ticket.id) ?? [];
       const pastById = new Map(archivedAgents.map((agent) => [agent.id, agent]));
@@ -164,7 +170,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
         }),
         labels: ticket.labels,
         complexity: complexityOf(ticket.labels),
-        investigation: ticket.labels.includes("investigation"),
+        investigation,
         parent: ticket.parentTaskId,
         children,
         acceptanceDone: ticket.acceptanceCriteriaCompleted,
@@ -180,6 +186,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
         subagents,
         pastAgents: past,
         latestMilestone: UNDER_WAY.has(ticket.status) ? facts?.latestMilestone ?? null : null,
+        evidence,
       };
     }),
   );
@@ -207,6 +214,7 @@ export async function liveOpenDecisions(paseo: PaseoApi, state: PluginState, pro
 
 export async function loadTicketDetail(project: string, ticketId: string): Promise<TicketDetailView> {
   const detail = await viewTicket((await projectPaths(project)).tracker, ticketId);
+  const hasRecord = parseEvidence(detail.implementationNotes) !== null;
   return {
     id: detail.id,
     title: detail.title,
@@ -219,6 +227,7 @@ export async function loadTicketDetail(project: string, ticketId: string): Promi
     finalSummary: detail.finalSummary,
     dependencies: detail.dependencies,
     children: detail.subtasks.map((child) => ({ id: child.id, title: child.title, status: child.status ?? null })),
+    evidence: hasRecord || detail.status === "Awaiting acceptance" ? await ticketEvidence(project, detail.id, detail.implementationNotes, detail.labels) : null,
   };
 }
 

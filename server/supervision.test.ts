@@ -4,6 +4,7 @@ import type { AgentState, StoredDecision } from "../shared/state";
 import { fetchLiveAgent, listTaroAgents } from "./agents";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
 import { sendFromPlugin } from "./send";
+import { viewTicket } from "./tickets";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
@@ -12,11 +13,12 @@ import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, huma
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report" },
+  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing" },
   skillDirectory: async () => "/skill",
-  message: async (path: string, values: Record<string, string> = {}) => (path === "report" ? `report:${values.role}:${values.report}` : `${path}:${values.ticket ?? ""}`),
+  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : `${path}:${values.ticket ?? ""}`),
 }));
-vi.mock("./projects", () => ({ readProjectConfig: async () => null }));
+vi.mock("./projects", () => ({ readProjectConfig: async () => null, projectPaths: async () => ({ tracker: "/tracker" }) }));
+vi.mock("./tickets", () => ({ viewTicket: vi.fn() }));
 
 const recovery = { onCrash: vi.fn(async () => undefined), recoverLeftovers: async () => 0 } as unknown as Recovery;
 
@@ -408,5 +410,81 @@ describe("Supervisor.onTurnEnded delivers a subagent's report", () => {
     const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
     expect(await taro.flushHeldReports({} as PaseoApi, owner.id)).toBe(true);
     expect(vi.mocked(sendFromPlugin).mock.calls.map(([, id, text]) => [id, text])).toEqual([[owner.id, "report:implementer:done: built"]]);
+  });
+});
+
+describe("Supervisor.onTurnEnded reminds about missing evidence", () => {
+  const owner = {
+    id: "owner-3",
+    provider: "claude",
+    model: "sonnet",
+    title: "TR-9 · x",
+    status: "idle",
+    labels: { "taro.project": "taro", "taro.role": "owner", "taro.ticket": "TR-9" },
+  };
+  const hookAgent = { id: owner.id, parentAgentId: null } as unknown as HookAgent;
+  const completed = { kind: "completed" } as unknown as TurnOutcome;
+  const waiting = [{ type: "user_message", text: "carry on" }, { type: "assistant_message", text: "waiting: acceptance" }] as unknown as TimelineItem[];
+  const recordWith = (...lines: string[]) => ["EVIDENCE 2026-10-13T11:00Z — x", ...lines].join("\n");
+
+  let taro: Supervisor;
+
+  function ticket(status: string, implementationNotes: string | null): void {
+    vi.mocked(viewTicket).mockResolvedValue({ status, labels: ["investigation"], implementationNotes } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+  }
+
+  async function turn(): Promise<void> {
+    await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, waiting, null, undefined);
+  }
+
+  function reminders(): string[] {
+    return vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("evidence-missing:"));
+  }
+
+  beforeEach(() => {
+    const agents: Record<string, AgentState> = {};
+    const state = {
+      allDecisions: async () => [],
+      updateDecisions: async <T>(change: (decisions: never[]) => T) => change([]),
+      agent: async (agentId: string) => agents[agentId] ?? null,
+      updateAgent: async <T>(agentId: string, initial: () => AgentState, change: (record: AgentState) => T) => {
+        const record = agents[agentId] ?? initial();
+        agents[agentId] = record;
+        return change(record);
+      },
+    } as unknown as PluginState;
+    taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+    vi.mocked(fetchLiveAgent).mockResolvedValue(owner as unknown as PaseoAgent);
+    vi.mocked(sendFromPlugin).mockClear();
+  });
+
+  it("sends once per distinct missing set, again after it changes, and again after a complete one clears it", async () => {
+    ticket("Awaiting acceptance", null);
+    await turn();
+    await turn();
+    expect(reminders()).toEqual(["evidence-missing:TR-9:- an EVIDENCE record"]);
+
+    ticket("Awaiting acceptance", recordWith("review: self"));
+    await turn();
+    expect(reminders()).toHaveLength(2);
+    expect(reminders()[1]).toBe("evidence-missing:TR-9:- a check with its result");
+    await turn();
+    expect(reminders()).toHaveLength(2);
+
+    ticket("Awaiting acceptance", recordWith("check: grep foo — 2 hits"));
+    await turn();
+    ticket("Awaiting acceptance", recordWith("review: self"));
+    await turn();
+    expect(reminders()).toHaveLength(3);
+  });
+
+  it("never sends for a complete record or a ticket that is not Awaiting acceptance", async () => {
+    ticket("Awaiting acceptance", recordWith("check: grep foo — 2 hits"));
+    await turn();
+    ticket("In Progress", null);
+    await turn();
+    ticket("Reviewing", recordWith("review: self"));
+    await turn();
+    expect(reminders()).toEqual([]);
   });
 });

@@ -8,6 +8,7 @@ import { relative, isAbsolute } from "node:path";
 
 import { TARO_LABELS } from "../shared/project";
 import type { PaseoApi } from "./host-types";
+import { projectEvidenceDirectory } from "./evidence";
 import { skillDirectory } from "./package-files";
 import { projectPaths, projectsDirectory } from "./projects";
 
@@ -17,6 +18,7 @@ export async function taroEnvironment(project: string, trackerPath: string): Pro
     TARO_PROJECT: project,
     TARO_TRACKER: trackerPath,
     TARO_SKILL: await skillDirectory(),
+    TARO_EVIDENCE: projectEvidenceDirectory(project),
   };
 }
 

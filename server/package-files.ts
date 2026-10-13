@@ -35,6 +35,7 @@ export const TEMPLATES = {
   crashRecovery: "messages/crash-recovery.md",
   subagentCrashed: "messages/subagent-crashed.md",
   headroomRecovered: "messages/headroom-recovered.md",
+  evidenceMissing: "messages/evidence-missing.md",
 } as const;
 
 export type TemplatePath = (typeof TEMPLATES)[keyof typeof TEMPLATES];

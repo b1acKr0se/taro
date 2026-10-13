@@ -101,6 +101,17 @@ describe("loadBoard", () => {
     expect((await loadBoard({} as PaseoApi, state([]), "taro")).cards.find((card) => card.id === "TR-1.01")?.column).toBe("stalled");
   });
 
+  it("judges evidence for Awaiting acceptance cards only", async () => {
+    vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "Awaiting acceptance"), ticket("TR-3", "In Progress")] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    vi.mocked(viewTicket).mockResolvedValue({
+      implementationNotes: "EVIDENCE 2026-10-13T14:00Z — x\ncheck: npm test — ok\nreview: self\nscreenshots: none — no visible change",
+      finalSummary: "",
+    } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+    const board = await loadBoard({} as PaseoApi, state([]), "taro");
+    expect(board.cards[0]?.evidence).toMatchObject({ complete: true, missing: [], screenshotsNone: "no visible change" });
+    expect(board.cards[1]?.evidence).toBeNull();
+  });
+
   it("reads the latest milestone of under-way tickets only", async () => {
     const board = await loadBoard({} as PaseoApi, state([]), "taro");
     expect(board.cards[0]?.latestMilestone).toEqual({ kind: "MILESTONE", time: "2026-10-13T14:30Z", text: "tests green" });

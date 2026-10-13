@@ -120,6 +120,17 @@ export const listModels = defineRpc({
 
 export const SuggestionSchema = z.object({ label: z.string(), prompt: z.string() });
 
+/** The judged EVIDENCE record (shared/evidence.ts) with each screenshot's absolute path on the daemon. */
+export const EvidenceViewSchema = z.object({
+  checks: z.array(z.object({ command: z.string(), result: z.string() })),
+  review: z.string().nullable(),
+  screenshots: z.array(z.object({ file: z.string(), caption: z.string(), present: z.boolean(), path: z.string() })),
+  screenshotsNone: z.string().nullable(),
+  missing: z.array(z.string()),
+  complete: z.boolean(),
+});
+export type EvidenceView = z.infer<typeof EvidenceViewSchema>;
+
 export const CardSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -149,6 +160,8 @@ export const CardSchema = z.object({
   pastAgents: z.array(AgentBriefSchema.extend({ role: z.enum(["owner", ...SUBAGENT_ROLES]), archivedAt: z.string() })).default([]),
   /** The newest MILESTONE record, read for tickets that are under way. */
   latestMilestone: MilestoneSchema.nullable().default(null),
+  /** The judged evidence, set only while the ticket is Awaiting acceptance. */
+  evidence: EvidenceViewSchema.nullable().default(null),
 });
 export type Card = z.infer<typeof CardSchema>;
 
@@ -178,6 +191,8 @@ export const TicketDetailSchema = z.object({
   finalSummary: z.string().nullable(),
   dependencies: z.array(z.string()),
   children: z.array(z.object({ id: z.string(), title: z.string(), status: z.string().nullable() })),
+  /** The judged evidence, when the notes hold an EVIDENCE record or the ticket is Awaiting acceptance. */
+  evidence: EvidenceViewSchema.nullable().default(null),
 });
 export type TicketDetailView = z.infer<typeof TicketDetailSchema>;
 

@@ -67,6 +67,7 @@ function card(parts: Partial<Card>): Card {
     subagents: [],
     pastAgents: [],
     latestMilestone: null,
+    evidence: null,
     ...parts,
   };
 }

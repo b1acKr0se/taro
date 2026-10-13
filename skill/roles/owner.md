@@ -44,7 +44,8 @@ alternatives proposal.
 
 **Investigations** (`investigation` label): no code changes and no PR. Write findings into the
 ticket (what you did, evidence with commands and `file:line`, recommendation), move to Awaiting
-acceptance, and raise an `investigation-done` decision.
+acceptance, and raise an `investigation-done` decision. Before FINAL, record an EVIDENCE record with
+at least one `check:` line (format: `reference/tickets.md`).
 
 ## Subagents
 
@@ -101,6 +102,9 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
   (status Reviewing). Reviewers post findings and you post your fix summary as PR comments. When
   review is done, mark the PR ready. With only a self-review, open it ready. CI is not a gate.
 - **local-only delivery:** leave a clean branch that fast-forwards from the base branch.
+- Before FINAL, write an EVIDENCE record (`reference/tickets.md`): checks with results, the review
+  outcome, and screenshots in `$TARO_EVIDENCE/<ID>/` (desktop and phone for visible changes) or
+  `screenshots: none` with a reason. The plugin refuses Accept until it is complete.
 - Record `pr: <url>` and `review-head: <sha>` (the full `headRefOid` from `gh pr view <url> --json
   headRefOid`) in a new EXECUTION record; Accept reads both from there. Write the FINAL summary
   (`--final-summary`) and move to **Awaiting acceptance**. The user accepts or requests changes

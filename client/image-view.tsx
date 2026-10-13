@@ -64,7 +64,7 @@ function useAspectRatio(uri: string | null | undefined): number | null {
   return ratio;
 }
 
-export function ImageThumbnail({ source, alt, theme }: { source: string; alt: string; theme: PluginTheme }) {
+export function ImageThumbnail({ source, alt, theme, height = THUMBNAIL_HEIGHT }: { source: string; alt: string; theme: PluginTheme; /** The thumbnail's height; its width follows the image. */ height?: number }) {
   const kind = useMemo(() => sourceOf(source), [source]);
   const uri = useImageUri(kind);
   const ratio = useAspectRatio(uri);
@@ -72,8 +72,8 @@ export function ImageThumbnail({ source, alt, theme }: { source: string; alt: st
   const { colors } = theme;
   const label = alt.trim() === "" ? "Image" : alt;
   const frame = {
-    height: THUMBNAIL_HEIGHT,
-    width: THUMBNAIL_HEIGHT * (ratio ?? 4 / 3),
+    height,
+    width: height * (ratio ?? 4 / 3),
     maxWidth: "100%" as const,
     borderRadius: 8,
     borderWidth: 1,

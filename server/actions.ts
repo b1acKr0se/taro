@@ -11,6 +11,7 @@ import { executionWorkspace, pullRequestMergeInstruction } from "../shared/execu
 import { TARO_LABELS, TICKET_STATUSES } from "../shared/project";
 import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
 import { taroEnvironment } from "./environment";
+import { requireCompleteEvidence } from "./evidence";
 import type { PaseoApi } from "./host-types";
 import { bypassModeId } from "./models";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
@@ -115,6 +116,8 @@ export class Actions {
     const config = await requireProjectConfig(project);
     const owner = await this.requireOwner(paseo, project, ticket);
     const detail = await viewTicket((await projectPaths(project)).tracker, ticket);
+    // Nothing reaches the owner while the evidence is incomplete.
+    await requireCompleteEvidence(project, ticket, detail.implementationNotes, detail.labels);
     const investigation = detail.labels.includes("investigation");
     let mergeInstruction: string;
     if (investigation) mergeInstruction = "Record ACCEPTANCE with my words and set the ticket Done.";
