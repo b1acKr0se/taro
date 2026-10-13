@@ -1,7 +1,11 @@
 /**
  * One decision an agent asked (decision 28): the question, why it matters,
- * the options as buttons with the recommended one marked, the default for a
- * non-blocking decision, and a box for answering in your own words.
+ * the options as a light radio list (label, then a muted description; the
+ * recommended one tagged with its reason), the default for a non-blocking
+ * decision, a box for your own words, and Submit / Dismiss. TR-030: the
+ * side-by-side option boxes broke on long text and phones; the list follows
+ * Claude Code's question prompt, and Submit sends the picked option with any
+ * typed words (TR-028).
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -10,8 +14,11 @@ import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { answerDecision } from "../shared/contracts";
+import { decisionOptionRows, decisionSubmit } from "../shared/decision-view";
 import type { StoredDecision } from "../shared/state";
 import { errorText } from "./format";
+import { SPACE } from "./spacing";
+import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { IconButton } from "./ui";
 
@@ -42,25 +49,29 @@ export function DecisionCard({
   showAgent?: boolean;
   /** Where the card is, for the ANSWER record. */
   answeredFrom?: "screen" | "tab";
-  /** Set when the card cannot be answered: the buttons are inert and this replaces the answer box. */
+  /** Set when the card cannot be answered: the options are inert and this replaces the answer box. */
   readOnlyNote?: string | null;
 }) {
   const toast = useToast();
   const answer = useRpc(answerDecision);
   const [typed, setTyped] = useState("");
+  const [picked, setPicked] = useState<number | null>(null);
   const [whyOpen, setWhyOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const { colors } = theme;
+  const optionRows = useMemo(() => decisionOptionRows(decision), [decision]);
+  const submit = decisionSubmit(optionRows.rows, picked, typed);
+  const answerable = readOnlyNote === null;
   // A card that cannot be answered does not ask for the user.
-  const waiting = decision.blocking && readOnlyNote === null;
+  const waiting = decision.blocking && answerable;
   const styles = useMemo(
     () => ({
       card: {
         borderWidth: 1,
         borderColor: waiting ? colors.statusWarning : colors.border,
         borderRadius: 10,
-        padding: compact ? 10 : 12,
-        gap: 8,
+        padding: compact ? SPACE.md : SPACE.lg,
+        gap: SPACE.md,
         backgroundColor: colors.surface1,
       },
       who: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
@@ -68,52 +79,59 @@ export function DecisionCard({
       more: { color: colors.accent, fontSize: FONT_SIZE.caption },
       question: { color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" as const, lineHeight: lineHeightFor(FONT_SIZE.body) },
       why: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
-      options: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 6 },
-      option: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, maxWidth: "100%" as const, flexShrink: 1 },
-      recommended: { borderColor: colors.accent, backgroundColor: colors.surface2 },
-      optionLabel: { color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "600" as const },
-      consequence: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
-      badge: { color: colors.accent, fontSize: FONT_SIZE.micro, fontWeight: "600" as const },
+      // No box or fill per option: a radio, the label, a muted description, and space between.
+      options: { gap: SPACE.xxs },
+      option: { flexDirection: "row" as const, alignItems: "flex-start" as const, gap: SPACE.md, paddingVertical: SPACE.sm, paddingHorizontal: SPACE.xxs, borderRadius: 6 },
+      radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, borderColor: colors.foregroundMuted, alignItems: "center" as const, justifyContent: "center" as const, marginTop: 1 },
+      radioPicked: { borderColor: colors.accent },
+      radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
+      optionText: { flex: 1, minWidth: 0, gap: SPACE.xxs },
+      optionHead: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "center" as const, gap: 6 },
+      optionLabel: { color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small), flexShrink: 1 },
+      optionLabelPicked: { fontWeight: "600" as const },
+      description: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption) },
+      badge: {
+        color: colors.accent,
+        fontSize: FONT_SIZE.micro,
+        lineHeight: FONT_SIZE.micro + 4,
+        fontWeight: "600" as const,
+        borderWidth: 1,
+        borderColor: withAlpha(colors.accent, 0.4),
+        borderRadius: 4,
+        paddingHorizontal: SPACE.xs,
+        overflow: "hidden" as const,
+      },
       reason: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontStyle: "italic" as const },
       defaultNote: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
       problems: { color: colors.statusWarning, fontSize: FONT_SIZE.caption },
-      row: { flexDirection: "row" as const, gap: 6, alignItems: "flex-end" as const },
       input: {
-        flex: 1,
         color: colors.foreground,
         fontSize: FONT_SIZE.small,
         borderWidth: 1,
         borderColor: colors.border,
         borderRadius: 8,
         paddingHorizontal: 10,
-        paddingVertical: 6,
-        minHeight: 34,
+        paddingVertical: SPACE.sm,
+        minHeight: 38,
         backgroundColor: colors.surface0,
       },
+      actions: { flexDirection: "row" as const, gap: SPACE.sm, alignItems: "center" as const },
     }),
     [colors, compact, waiting],
   );
 
-  async function send(label: string | null, text: string): Promise<void> {
+  async function send(): Promise<void> {
     setBusy(true);
     try {
-      await answer({ key: decision.key, label, text, from: answeredFrom });
+      await answer({ key: decision.key, label: submit.label, text: submit.text, from: answeredFrom });
       setTyped("");
+      setPicked(null);
       onAnswered();
     } catch (caught) {
       toast.error(errorText(caught));
     } finally {
       setBusy(false);
     }
-  }
-
-  function press(label: string, prompt: string): void {
-    // An option ending with "…" asks for the user's own words; once typed, they go with the option.
-    if (typed.trim() === "" && (prompt.trim().endsWith("\u2026") || label.trim().endsWith("\u2026"))) {
-      setTyped(prompt.replace(/\u2026\s*$/, "").trim() + " ");
-      return;
-    }
-    void send(label, typed);
   }
 
   return (
@@ -129,41 +147,55 @@ export function DecisionCard({
           {decision.why.length < WHY_FOLD_CHARACTERS ? null : <Text style={styles.more}>{whyOpen ? "less" : "more"}</Text>}
         </Pressable>
       )}
-      <View style={styles.options}>
-        {decision.options.map((option) => {
-          const isRecommended = option.label === decision.recommended;
+      <View style={styles.options} accessibilityRole="radiogroup">
+        {optionRows.rows.map((row, index) => {
+          const isPicked = picked === index;
           return (
             <Pressable
-              key={option.label}
-              accessibilityRole="button"
-              disabled={busy || readOnlyNote !== null}
-              style={[styles.option, isRecommended ? styles.recommended : null]}
-              onPress={() => press(option.label, option.prompt)}
+              key={`${index}:${row.label}`}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: isPicked, disabled: busy || !answerable }}
+              accessibilityLabel={row.recommended ? `${row.label}, recommended` : row.label}
+              disabled={busy || !answerable}
+              style={styles.option}
+              // Pressing the picked option again unpicks it, leaving only the typed words.
+              onPress={() => setPicked(isPicked ? null : index)}
             >
-              {isRecommended ? <Text style={styles.badge}>RECOMMENDED</Text> : null}
-              <Text style={styles.optionLabel}>{option.label}</Text>
-              {option.consequence === "" ? null : <Text style={styles.consequence}>{option.consequence}</Text>}
+              <View style={[styles.radio, isPicked ? styles.radioPicked : null]}>{isPicked ? <View style={styles.radioDot} /> : null}</View>
+              <View style={styles.optionText}>
+                <View style={styles.optionHead}>
+                  <Text style={[styles.optionLabel, isPicked ? styles.optionLabelPicked : null]}>{row.label}</Text>
+                  {row.recommended ? <Text style={styles.badge}>Recommended</Text> : null}
+                </View>
+                {row.consequence === "" ? null : <Text style={styles.description}>{row.consequence}</Text>}
+                {row.reason === "" ? null : <Text style={styles.description}>Why: {row.reason}</Text>}
+              </View>
             </Pressable>
           );
         })}
       </View>
-      {decision.reason === "" ? null : <Text style={styles.reason}>Why recommended: {decision.reason}</Text>}
-      {!decision.blocking && readOnlyNote === null && decision.default !== "" ? <Text style={styles.defaultNote}>Going with “{decision.default}” unless you say otherwise.</Text> : null}
+      {optionRows.looseReason === "" ? null : <Text style={styles.reason}>Why recommended: {optionRows.looseReason}</Text>}
+      {!decision.blocking && answerable && decision.default !== "" ? <Text style={styles.defaultNote}>Going with “{decision.default}” unless you say otherwise.</Text> : null}
       {decision.problems.length > 0 ? <Text style={styles.problems}>Incomplete block: {decision.problems.join("; ")}</Text> : null}
-      {readOnlyNote !== null ? (
+      {!answerable ? (
         <Text style={styles.defaultNote}>{readOnlyNote}</Text>
       ) : (
-        <View style={styles.row}>
+        <>
           <TextInput
             value={typed}
             onChangeText={setTyped}
-            placeholder="Answer in your own words…"
+            placeholder={submit.placeholder}
             placeholderTextColor={colors.foregroundMuted}
             multiline
             style={styles.input}
           />
-          <IconButton icon="Send" label="Send answer" theme={theme} disabled={busy || typed.trim() === ""} onPress={() => void send(null, typed)} />
-        </View>
+          <View style={styles.actions}>
+            <IconButton icon="Check" label="Submit" showLabel tone="accent" theme={theme} disabled={busy || !submit.enabled} onPress={() => void send()} />
+            {picked === null && typed === "" ? null : (
+              <IconButton icon="X" label="Dismiss" showLabel theme={theme} disabled={busy} onPress={() => { setPicked(null); setTyped(""); }} />
+            )}
+          </View>
+        </>
       )}
     </View>
   );

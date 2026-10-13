@@ -74,3 +74,42 @@ export function decisionTimelineItems(text: string, phase: "streaming" | "comple
 export function untrackedDecision(block: ParsedDecision, agentId: string): StoredDecision {
   return { ...block, key: "", project: "", ticket: null, agentId, agentRole: "owner", agentTitle: null, askedAt: "", status: "open", answer: null };
 }
+
+/** One option as the card draws it: a full-width row, the recommended one carrying the reason (TR-030). */
+export type DecisionOptionRow = { label: string; prompt: string; consequence: string; recommended: boolean; reason: string };
+
+/**
+ * The card's option rows in the agent's order. The reason sits on the recommended row; when the
+ * recommendation names no option (an incomplete block), it comes back as `looseReason` so it is
+ * still shown, under the rows.
+ */
+export function decisionOptionRows(decision: Pick<StoredDecision, "options" | "recommended" | "reason">): { rows: DecisionOptionRow[]; looseReason: string } {
+  const recommendedIndex = decision.options.findIndex((option) => option.label === decision.recommended);
+  const rows = decision.options.map((option, index) => ({
+    label: option.label,
+    prompt: option.prompt,
+    consequence: option.consequence,
+    recommended: index === recommendedIndex,
+    reason: index === recommendedIndex ? decision.reason : "",
+  }));
+  return { rows, looseReason: recommendedIndex === -1 ? decision.reason : "" };
+}
+
+/** What Submit sends and whether it can: the picked option (or none) and the typed words. */
+export type DecisionSubmit = { enabled: boolean; label: string | null; text: string; placeholder: string };
+
+/**
+ * The card's Submit (TR-030): a picked option, typed words, or both (the server joins them,
+ * TR-028). An option ending with "…" asks for words, so it waits for them.
+ */
+export function decisionSubmit(rows: DecisionOptionRow[], picked: number | null, typed: string): DecisionSubmit {
+  const row = picked === null ? null : rows[picked] ?? null;
+  const words = typed.trim();
+  const asksForWords = row !== null && (row.label.trim().endsWith("…") || row.prompt.trim().endsWith("…"));
+  return {
+    enabled: asksForWords ? words !== "" : row !== null || words !== "",
+    label: row?.label ?? null,
+    text: words,
+    placeholder: asksForWords ? `Say how for “${row.label.trim().replace(/…$/, "")}”…` : row === null ? "Or answer in your own words…" : "Add a note (optional)…",
+  };
+}

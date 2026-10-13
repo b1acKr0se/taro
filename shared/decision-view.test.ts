@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { READ_ONLY_NOTES, decisionBlockView, decisionTimelineItems, untrackedDecision, type DecisionLookup } from "./decision-view";
+import { READ_ONLY_NOTES, decisionBlockView, decisionOptionRows, decisionSubmit, decisionTimelineItems, untrackedDecision, type DecisionLookup } from "./decision-view";
 import { decisionMessageSegments, parseDecisionBody, type ParsedDecision } from "./reports";
 import type { StoredDecision } from "./state";
 
@@ -95,5 +95,69 @@ describe("decisionBlockView", () => {
     const withdrawal = parseDecisionBody("id: a\nstatus: withdrawn");
     expect(decisionBlockView(withdrawal, done(stored(asked)))).toEqual({ kind: "withdrawal" });
     expect(decisionBlockView(withdrawal, { state: "loading" })).toEqual({ kind: "withdrawal" });
+  });
+});
+
+describe("decisionOptionRows", () => {
+  const option = (label: string, consequence = "") => ({ label, prompt: `${label} please`, consequence });
+
+  it("keeps the agent's order and puts the reason on the recommended row only", () => {
+    const { rows, looseReason } = decisionOptionRows({ options: [option("A", "first"), option("B", "second"), option("C")], recommended: "B", reason: "fits best" });
+    expect(rows.map((row) => [row.label, row.recommended, row.reason])).toEqual([["A", false, ""], ["B", true, "fits best"], ["C", false, ""]]);
+    expect(rows[0]).toMatchObject({ prompt: "A please", consequence: "first" });
+    expect(looseReason).toBe("");
+  });
+
+  it("returns the reason loose when the recommendation names no option", () => {
+    const { rows, looseReason } = decisionOptionRows({ options: [option("A"), option("B")], recommended: "Z", reason: "because" });
+    expect(rows.every((row) => !row.recommended && row.reason === "")).toBe(true);
+    expect(looseReason).toBe("because");
+  });
+
+  it("marks only the first of two options with the recommended label", () => {
+    const { rows } = decisionOptionRows({ options: [option("Same"), option("Same")], recommended: "Same", reason: "r" });
+    expect(rows.map((row) => row.recommended)).toEqual([true, false]);
+  });
+
+  it("handles no options and an empty reason", () => {
+    expect(decisionOptionRows({ options: [], recommended: "", reason: "" })).toEqual({ rows: [], looseReason: "" });
+    const { rows } = decisionOptionRows({ options: [option("A")], recommended: "A", reason: "" });
+    expect(rows[0]).toMatchObject({ recommended: true, reason: "" });
+  });
+});
+
+describe("decisionSubmit", () => {
+  const { rows } = decisionOptionRows({
+    options: [
+      { label: "Keep", prompt: "Keep it", consequence: "" },
+      { label: "Change…", prompt: "Change it like this…", consequence: "" },
+      { label: "Other", prompt: "Something else…", consequence: "" },
+    ],
+    recommended: "Keep",
+    reason: "",
+  });
+
+  it("is disabled with nothing picked or typed (blank text counts as nothing)", () => {
+    expect(decisionSubmit(rows, null, "")).toMatchObject({ enabled: false, label: null, placeholder: "Or answer in your own words…" });
+    expect(decisionSubmit(rows, null, "   \n").enabled).toBe(false);
+  });
+
+  it("sends typed words alone, trimmed", () => {
+    expect(decisionSubmit(rows, null, "  my own way \n")).toEqual({ enabled: true, label: null, text: "my own way", placeholder: "Or answer in your own words…" });
+  });
+
+  it("sends a picked option alone or with a note", () => {
+    expect(decisionSubmit(rows, 0, "")).toMatchObject({ enabled: true, label: "Keep", text: "", placeholder: "Add a note (optional)…" });
+    expect(decisionSubmit(rows, 0, " and log it ")).toMatchObject({ enabled: true, label: "Keep", text: "and log it" });
+  });
+
+  it("waits for words on an option whose label or prompt ends with …", () => {
+    expect(decisionSubmit(rows, 1, "")).toMatchObject({ enabled: false, label: "Change…", placeholder: "Say how for “Change”…" });
+    expect(decisionSubmit(rows, 1, "rename it")).toMatchObject({ enabled: true, label: "Change…", text: "rename it" });
+    expect(decisionSubmit(rows, 2, " ").enabled).toBe(false);
+  });
+
+  it("treats a pick past the end as no pick", () => {
+    expect(decisionSubmit(rows, 7, "")).toMatchObject({ enabled: false, label: null });
   });
 });
