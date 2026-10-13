@@ -50,7 +50,11 @@ describe("paneAgents", () => {
 
   it("picks the newest past owner when none is live", () => {
     const list = paneAgents(card({ pastAgents: [past("helper-1", "helper"), past("owner-new", "owner"), past("owner-old", "owner")] }));
-    expect(list.map((agent) => agent.id)).toEqual(["helper-1", "owner-new", "owner-old"]);
+    expect(list.map((agent) => [agent.id, agent.label])).toEqual([
+      ["helper-1", "Helper · helper-1"],
+      ["owner-new", "Owner"],
+      ["owner-old", "Owner (earlier)"],
+    ]);
     expect(defaultPaneAgent(list)?.id).toBe("owner-new");
   });
 

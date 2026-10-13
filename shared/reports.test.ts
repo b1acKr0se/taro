@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseDecisionBlocks, parseStatusLine, withoutDecisionBlocks } from "./reports";
+import { decisionBlocksAsText, parseDecisionBlocks, parseStatusLine, withoutDecisionBlocks } from "./reports";
 
 describe("parseStatusLine", () => {
   it("reads the last line", () => {
@@ -82,6 +82,17 @@ describe("parseDecisionBlocks", () => {
 
   it("strips blocks from the text the chat shows", () => {
     expect(withoutDecisionBlocks(BLOCK)).toBe("Here is my question.\n\nwaiting: your choice on fee storage");
+  });
+
+  it("turns blocks into a quote of the question and options for a finished agent's chat", () => {
+    const text = "Before I start:\n```decision\nid: a\nquestion: |\n  Store fees\n  per trade?\noptions:\n  - label: Per trade\n  - label: Hourly\nrecommended: Per trade\nreason: r\n```\nwaiting: your answer";
+    expect(decisionBlocksAsText(text)).toBe("Before I start:\n> **Asked:** Store fees per trade?\n>\n> **Per trade** (recommended) · Hourly\n\nwaiting: your answer");
+  });
+
+  it("drops withdrawn blocks and quotes a block without options as its question alone", () => {
+    expect(decisionBlocksAsText("```decision\nid: b\nstatus: withdrawn\n```\nok")).toBe("ok");
+    expect(decisionBlocksAsText("```decision\nid: c\nquestion: Which?\n```")).toBe("> **Asked:** Which?");
+    expect(decisionBlocksAsText("no blocks here")).toBe("no blocks here");
   });
 
   it("flags a recommendation that names no option", () => {

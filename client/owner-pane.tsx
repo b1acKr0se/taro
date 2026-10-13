@@ -9,7 +9,7 @@ import { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 
 import { tellAgent, type Card } from "../shared/contracts";
-import { parseDecisionBlocks, withoutDecisionBlocks } from "../shared/reports";
+import { decisionBlocksAsText, parseDecisionBlocks, withoutDecisionBlocks } from "../shared/reports";
 import { AgentChat } from "./agent-chat";
 import { ContextMeter } from "./context-meter";
 import { DecisionCard } from "./decision-card";
@@ -121,7 +121,8 @@ export function OwnerPane({
             agent={{ id: shown.id, updatedAt: shown.brief.updatedAt, pendingPermissions: 0, status: shown.brief.status }}
             theme={theme}
             compact={compact}
-            // No cards for a finished agent's questions, so its decision blocks stay in the text to read.
+            // No cards for a finished agent's questions: each block reads as a quote of what it asked.
+            transformText={decisionBlocksAsText}
             readOnly={{ note: ARCHIVED_NOTE }}
           />
         )}
