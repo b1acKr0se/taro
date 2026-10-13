@@ -237,14 +237,16 @@ export function ProjectSetup({
           options={thinkingOptions(modelOptions, draft.ownerModel, draft.ownerThinking)}
           onValueChange={(value) => update("ownerThinking", value)}
         />
-        <SettingsRow label="Models owners may give helpers" hint="owners pick per task by difficulty; none selected means the owner's own model">
+        <SettingsRow label="Models owners may give helpers" hint="owners pick per task by difficulty; none selected means the owner's own model" />
+        {/* Below the row, not inside it: a row's trailing slot squeezes its label to one letter wide. */}
+        <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
           <ToggleChips
             theme={theme}
             selected={draft.helperModels}
             options={modelPickerOptions(modelOptions, draft.helperModels)}
             onToggle={(value) => setDraft((current) => ({ ...current, helperModels: toggleHelper(current.helperModels, value) }))}
           />
-        </SettingsRow>
+        </View>
         <SettingsInput label="Owners running at once" hint="the manager queues the rest; each agent costs host resources" initialValue={draft.maxParallelOwners} onChangeText={(text) => update("maxParallelOwners", text)} />
         <SettingsInput label="Compact owners above (tokens)" initialValue={draft.compactThresholdTokens} onChangeText={(text) => update("compactThresholdTokens", text)} />
         <SettingsRow label="Permissions" hint="task owners and helpers run in bypass mode" />
