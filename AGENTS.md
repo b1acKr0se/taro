@@ -45,8 +45,9 @@ daemon with its own home and port, unique to your ticket:
 - Look at the UI: Paseo's web app is served at `http://127.0.0.1:$PORT/`. Screenshots:
   `node tools/shot.cjs <playwright module> http://127.0.0.1:$PORT/ out.png "Taro" [click text…]`
   (prefix a click text with `=` for an exact match), phone size: `TARO_WEB_URL=… node tools/phone.cjs
-  <playwright module> out.png [click text…]`. A Playwright module is at
-  `/home/you/code/shop/node_modules/.pnpm/playwright@1.62.1/node_modules/playwright`.
+  <playwright module> out.png [click text…]`. Any installed Playwright module works;
+  find one with `find / -path '*/node_modules/playwright/package.json' 2>/dev/null` and pass its
+  directory.
 - Onboard a scratch git repository (not this one) with cheap models (Sonnet/Haiku) for end-to-end
   runs; agents on a throwaway daemon cost real money, so keep runs short.
 - Installing writes `plugins` into that home's `config.json`; keep that key if you rewrite it.

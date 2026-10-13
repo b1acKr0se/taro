@@ -6,16 +6,23 @@ and a **task owner** agent owns each ticket from brainstorming to an accepted re
 Tickets live in a per-project Backlog.md tracker; the plugin gives Paseo a board,
 an inbox of everything waiting on you, and the conversations with every agent.
 
-This repository replaces the original instruction-only Taro
-(`github.com/b1acKr0se/taro`, kept for reference in `reference/taro-original/`).
-Nothing from it needs to be preserved or migrated.
+Home: https://github.com/b1acKr0se/taro. This plugin replaces the original instruction-only
+Taro; nothing from it needs to be preserved or migrated.
 
 **Status: working plugin, in progress.** Phases 1–2 of `docs/spec.md` are built and checked
 end to end on a throwaway Paseo daemon (see `docs/build-log.md`); later phases continue there.
 
-Install on a Paseo daemon (0.11.2+) with plugins enabled: `npm install`, then
-`paseo plugin install "$PWD"`. Develop with `npm run typecheck`, `npm test`, and
-`paseo plugin reload taro`.
+## Install
+
+Needs a Paseo daemon (0.11.2+) with plugins enabled (`"pluginsEnabled": true` in its
+`config.json`), the [Backlog.md](https://github.com/MrLesk/Backlog.md) CLI and `git` on the
+daemon's machine; the GitHub CLI `gh` is optional (pull-request delivery uses it).
+
+    paseo plugin install github:b1acKr0se/taro
+    paseo plugin update taro          # later, to update
+
+No `npm install` or build step: Paseo compiles the plugin. To develop it, clone this repository,
+run `npm install`, `npm run typecheck` and `npm test`, and follow `AGENTS.md`.
 
 ## Read first
 
@@ -38,9 +45,9 @@ Install on a Paseo daemon (0.11.2+) with plugins enabled: `npm install`, then
     templates/   files and messages the plugin writes or sends
     docs/        design documents
     mockup/      clickable HTML mockup (index.html = chosen v1, phone.html = phone frame)
-    images/      screenshots of the mockup, plus FirstMate's phone UI for reference
+    images/      screenshots of the mockup and of the built plugin
     examples/    code sketches for the plugin (not wired up, not tested)
-    reference/   original Taro instructions, FirstMate's charter/README, Paseo plugin types
+    reference/   FirstMate's charter/README, Paseo plugin types
 
 ## Run the mockup
 
