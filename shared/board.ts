@@ -19,6 +19,21 @@ export const COLUMN_TITLES: Readonly<Record<ColumnId, string>> = {
   done: "Done",
 };
 
+/** How a column's head is drawn: a Lucide icon, the tone it is coloured in, and a short hint of what its cards wait on. */
+export interface ColumnMeta {
+  icon: string;
+  tone: "accent" | "success" | "warning" | "danger" | "muted";
+  hint: string;
+}
+
+export const COLUMN_META: Readonly<Record<ColumnId, ColumnMeta>> = {
+  "needs-you": { icon: "Hand", tone: "warning", hint: "your move" },
+  working: { icon: "Activity", tone: "success", hint: "agent running" },
+  stalled: { icon: "CircleAlert", tone: "danger", hint: "idle, no reason" },
+  queued: { icon: "Clock", tone: "muted", hint: "not started" },
+  done: { icon: "CircleCheck", tone: "success", hint: "accepted" },
+};
+
 export interface CardInputs {
   status: string;
   /** The owner runs on another machine (its EXECUTION record names another host). */

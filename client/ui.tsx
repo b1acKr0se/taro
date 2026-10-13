@@ -300,7 +300,7 @@ export function Banner({
 }
 
 /** A small rounded label, coloured by what it describes. */
-export function Chip({ theme, text, color }: { theme: PluginTheme; text: string; color: string }) {
+export function Chip({ theme, text, color, icon }: { theme: PluginTheme; text: string; color: string; /** A Lucide name drawn in `color` instead of the dot. */ icon?: string }) {
   const styles = useMemo(
     () => ({
       chip: {
@@ -321,7 +321,7 @@ export function Chip({ theme, text, color }: { theme: PluginTheme; text: string;
   );
   return (
     <View style={styles.chip}>
-      <View style={styles.dot} />
+      {icon === undefined ? <View style={styles.dot} /> : <Icon name={icon} size={12} color={color} />}
       <Text style={styles.text} numberOfLines={1}>
         {text}
       </Text>

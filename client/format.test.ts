@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatCost, formatDuration, pullRequestLabel } from "./format";
+import { formatCost, formatDuration, formatMilestoneTime, pullRequestLabel } from "./format";
 
 describe("formatDuration", () => {
   it("writes nothing as a dash", () => {
@@ -39,5 +39,30 @@ describe("pullRequestLabel", () => {
 
   it("keeps anything else as it is", () => {
     expect(pullRequestLabel("https://example.com/merge-requests/3")).toBe("https://example.com/merge-requests/3");
+  });
+});
+
+describe("formatMilestoneTime", () => {
+  // Built from local dates so the test holds in any time zone.
+  const now = new Date(2026, 9, 13, 18, 0).getTime();
+
+  it("writes a time today as HH:MM", () => {
+    expect(formatMilestoneTime(new Date(2026, 9, 13, 14, 3).toISOString(), now)).toBe("14:03");
+    expect(formatMilestoneTime(new Date(2026, 9, 13, 0, 5).toISOString(), now)).toBe("00:05");
+  });
+
+  it("adds the date on another day, and the year in another year", () => {
+    expect(formatMilestoneTime(new Date(2026, 9, 12, 14, 3).toISOString(), now)).toBe("Oct 12 14:03");
+    expect(formatMilestoneTime(new Date(2025, 0, 2, 9, 30).toISOString(), now)).toBe("Jan 2 2025 09:30");
+  });
+
+  it("reads a record time written without seconds or zone", () => {
+    expect(formatMilestoneTime("2026-10-13T14:10", now)).toBe("14:10");
+  });
+
+  it("gives null for no time or a malformed one", () => {
+    expect(formatMilestoneTime(null, now)).toBeNull();
+    expect(formatMilestoneTime("yesterday", now)).toBeNull();
+    expect(formatMilestoneTime("2026-13-45T99:99Z", now)).toBeNull();
   });
 });

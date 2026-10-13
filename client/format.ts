@@ -86,3 +86,21 @@ export function pullRequestLabel(url: string): string {
   const match = /\/([^/]+\/[^/]+)\/pull\/(\d+)$/.exec(url);
   return match === null ? url : `PR #${match[2]} · ${match[1]}`;
 }
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * A record's time on the milestone timeline, in local time: "14:03" today, "Oct 12 14:03" on
+ * another day, "Oct 12 2025 14:03" in another year; null when the record has none or it is unreadable.
+ */
+export function formatMilestoneTime(iso: string | null, now: number = Date.now()): string | null {
+  if (iso === null) return null;
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return null;
+  const today = new Date(now);
+  const clock = `${String(then.getHours()).padStart(2, "0")}:${String(then.getMinutes()).padStart(2, "0")}`;
+  const sameYear = then.getFullYear() === today.getFullYear();
+  if (sameYear && then.getMonth() === today.getMonth() && then.getDate() === today.getDate()) return clock;
+  const day = `${MONTHS[then.getMonth()]} ${then.getDate()}`;
+  return sameYear ? `${day} ${clock}` : `${day} ${then.getFullYear()} ${clock}`;
+}
