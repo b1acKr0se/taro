@@ -62,7 +62,8 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
 
   if (stats.error !== null && stats.data === undefined) return <Text style={styles.error}>{errorText(stats.error)}</Text>;
   if (stats.data === undefined) return <Text style={styles.note}>Loading…</Text>;
-  if (tickets.length === 0) return <Text style={styles.note}>No ticket has been recorded yet. Stats start when a ticket first moves.</Text>;
+  // The manager's idle compactions count before any ticket moves, and show in the totals row.
+  if (tickets.length === 0 && totals.idleCompactions === 0) return <Text style={styles.note}>No ticket has been recorded yet. Stats start when a ticket first moves.</Text>;
 
   function numbers(counted: Counted, style: typeof styles.cell) {
     return NUMBER_COLUMNS.map((column) => (
@@ -126,7 +127,7 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
               </View>
             );
           })}
-          <Text style={styles.note}>A child ticket's agents, turns, cost and time also count on its parent, so the totals add those up once.</Text>
+          <Text style={styles.note}>A child ticket's agents, turns, cost and time also count on its parent, so the totals add those up once. Idle compactions in the total include the manager's.</Text>
         </View>
       </ScrollView>
     </ScrollView>
