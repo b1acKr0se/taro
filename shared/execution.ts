@@ -30,5 +30,6 @@ export function executionWorkspace(notes: string | null): string | null {
 
 /** The machine the ticket's owner ran on (`machine` or `host`), from the newest EXECUTION record that names one. */
 export function executionMachine(notes: string | null): string | null {
-  return newestExecutionMatch(notes, /\b(?:machine|host(?:name)?)\b[\s:=`*"']*([A-Za-z0-9][A-Za-z0-9._-]*)/i);
+  // A sentence's full stop is not part of the name; a wrong name would hide the card's Relaunch.
+  return newestExecutionMatch(notes, /\b(?:machine|host(?:name)?)\b[\s:=`*"']*([A-Za-z0-9][A-Za-z0-9._-]*)/i)?.replace(/\.+$/, "") ?? null;
 }

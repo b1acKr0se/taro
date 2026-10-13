@@ -36,6 +36,8 @@ describe("executionMachine", () => {
     expect(executionMachine(ownerRecord)).toBe("devbox");
     expect(executionMachine("EXECUTION x — host: laptop.local")).toBe("laptop.local");
     expect(executionMachine("EXECUTION x — hostname=build-1")).toBe("build-1");
+    expect(executionMachine("EXECUTION x — worktree /w, machine devbox.")).toBe("devbox");
+    expect(executionMachine("EXECUTION x — machine `laptop.local`.")).toBe("laptop.local");
   });
 
   it("takes the newest record that names one, and nothing otherwise", () => {
