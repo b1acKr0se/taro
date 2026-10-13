@@ -392,7 +392,14 @@ export function AgentChat({
             {images === undefined ? null : (
               <View style={styles.userImages}>
                 {images.map((image, index) => (
-                  <ImageThumbnail key={index} source={image.path} alt="Sent image" theme={theme} />
+                  <ImageThumbnail
+                    key={index}
+                    source={image.path}
+                    alt="Sent image"
+                    theme={theme}
+                    set={images.map((each) => ({ source: each.path, alt: "Sent image" }))}
+                    index={index}
+                  />
                 ))}
               </View>
             )}

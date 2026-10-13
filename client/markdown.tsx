@@ -21,7 +21,7 @@ import { Text, View } from "react-native";
 
 import { ImageThumbnail } from "./image-view";
 import { inlineTokens, type FileLookup } from "./file-links";
-import { parseMarkdown, type Block } from "./markdown-parse";
+import { blockImages, parseMarkdown, type Block, type ImageReference } from "./markdown-parse";
 import { MONOSPACE } from "./ui";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
@@ -93,6 +93,8 @@ interface InlineContext {
   lookup: FileLookup;
   onOpenLink: (url: string) => void;
   onOpenFile: ((path: string) => void) | null;
+  /** Every image of the message, the set its enlarged view moves through. */
+  images: ImageReference[];
 }
 
 function renderInline(text: string, styles: MarkdownStyles, context: InlineContext): ReactNode[] {
@@ -179,7 +181,14 @@ function renderBlocks(blocks: Block[], styles: MarkdownStyles, context: InlineCo
         return (
           <View key={index} style={styles.images}>
             {block.images.map((image, imageIndex) => (
-              <ImageThumbnail key={imageIndex} source={image.src} alt={image.alt} theme={context.theme} />
+              <ImageThumbnail
+                key={imageIndex}
+                source={image.src}
+                alt={image.alt}
+                theme={context.theme}
+                set={context.images.map((each) => ({ source: each.src, alt: each.alt }))}
+                index={context.images.indexOf(image)}
+              />
             ))}
           </View>
         );
@@ -227,6 +236,7 @@ export function Markdown({
 }) {
   const styles = useMarkdownStyles(theme, fontSize);
   const blocks = useMemo(() => parseMarkdown(source), [source]);
+  const images = useMemo(() => blockImages(blocks), [blocks]);
   // Blocks a little further apart than lines, so paragraphs and lists read as separate thoughts.
-  return <View style={{ gap: SPACE.sm + 2 }}>{renderBlocks(blocks, styles, { theme, lookup: files, onOpenLink, onOpenFile })}</View>;
+  return <View style={{ gap: SPACE.sm + 2 }}>{renderBlocks(blocks, styles, { theme, lookup: files, onOpenLink, onOpenFile, images })}</View>;
 }

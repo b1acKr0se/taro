@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { inlineTexts, parseMarkdown } from "./markdown-parse";
+import { blockImages, inlineTexts, parseMarkdown } from "./markdown-parse";
 
 const SCREENSHOT = "file:///tmp/paseo-attachments-x1/9f%20a.png";
 
@@ -50,5 +50,17 @@ describe("parseMarkdown images", () => {
 
   it("gives an image block no inline text", () => {
     expect(inlineTexts(parseMarkdown("![Image](/tmp/a.png)"))).toEqual([]);
+  });
+});
+
+describe("blockImages", () => {
+  it("lists every image of a message in reading order, quotes included", () => {
+    const blocks = parseMarkdown("![a](/tmp/a.png)\n\ntext ![inline](/tmp/x.png)\n\n> ![b](/tmp/b.png) ![c](/tmp/c.png)\n\n```\n![code](/tmp/code.png)\n```");
+    expect(blockImages(blocks).map((image) => image.src)).toEqual(["/tmp/a.png", "/tmp/b.png", "/tmp/c.png"]);
+  });
+
+  it("is empty for a message without images", () => {
+    expect(blockImages(parseMarkdown("just words"))).toEqual([]);
+    expect(blockImages([])).toEqual([]);
   });
 });

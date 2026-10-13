@@ -41,6 +41,8 @@ export function EvidenceBlock({
   const { colors } = theme;
   const text = { color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) };
   const muted = { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption) };
+  // The screenshots that exist, the set each one's enlarged view moves through.
+  const gallery = evidence.screenshots.filter((shot) => shot.present).map((shot) => ({ source: shot.path, alt: shot.caption === "" ? shot.file : shot.caption }));
   const inline = [...evidence.checks.map((check) => `✓ ${check.command} — ${check.result}`), ...(evidence.review === null ? [] : [`review: ${evidence.review}`])];
   return (
     <View style={{ gap: layout === "lines" ? SPACE.sm : SPACE.xs }}>
@@ -74,7 +76,14 @@ export function EvidenceBlock({
           {evidence.screenshots.map((shot) => (
             <View key={shot.file} style={{ gap: SPACE.xxs, maxWidth: thumbnailHeight * 2 }}>
               {shot.present ? (
-                <ImageThumbnail source={shot.path} alt={shot.caption === "" ? shot.file : shot.caption} theme={theme} height={thumbnailHeight} />
+                <ImageThumbnail
+                  source={shot.path}
+                  alt={shot.caption === "" ? shot.file : shot.caption}
+                  theme={theme}
+                  height={thumbnailHeight}
+                  set={gallery}
+                  index={gallery.findIndex((each) => each.source === shot.path)}
+                />
               ) : (
                 <Text style={{ color: colors.statusDanger, fontSize: FONT_SIZE.caption }}>{shot.file} (missing)</Text>
               )}

@@ -183,3 +183,12 @@ export function inlineTexts(blocks: readonly Block[]): string[] {
     }
   });
 }
+
+/** Every image the renderer draws, in reading order: the set the enlarged view moves through (TR-033). */
+export function blockImages(blocks: readonly Block[]): ImageReference[] {
+  return blocks.flatMap((block): ImageReference[] => {
+    if (block.kind === "image") return block.images;
+    if (block.kind === "quote") return blockImages(block.blocks);
+    return [];
+  });
+}
