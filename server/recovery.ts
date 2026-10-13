@@ -11,7 +11,7 @@
  * free") while threads are short, and sends them once they are not.
  */
 import { hasHeadroom, isCrash, mayRecover, recentRecoveries, MAX_RECOVERIES_PER_WINDOW, RECOVERY_WINDOW_MS } from "../shared/recovery";
-import { fetchLiveAgent, isMidTurn } from "./agents";
+import { fetchLiveAgent } from "./agents";
 import { runPaseoJson } from "./cli";
 import { readHeadroom } from "./headroom";
 import type { PaseoAgent, PaseoApi } from "./host-types";
@@ -44,6 +44,8 @@ export class Recovery {
   private paseo: PaseoApi | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private busy = false;
+  /** Set when the plugin unloads: a tick still running must not arm a timer for a dead instance. */
+  private disposed = false;
   private relaunchOwner: RelaunchOwner | null = null;
 
   constructor(
@@ -58,6 +60,7 @@ export class Recovery {
 
   /** A Taro agent's turn failed with a crash: queue it, or stall it when it has crashed too often. */
   async onCrash(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, error: string): Promise<void> {
+    if (this.disposed) return;
     this.paseo = paseo;
     if (this.queue.some((queued) => queued.agentId === agent.id)) return;
     const now = Date.now();
@@ -96,6 +99,7 @@ export class Recovery {
 
   /** Sends to the manager now, or once threads allow when they are short. */
   async tellManagerWhenHeadroom(paseo: PaseoApi, project: string, managerId: string, text: string): Promise<void> {
+    if (this.disposed) return;
     this.paseo = paseo;
     const headroom = await readHeadroom();
     if (hasHeadroom(headroom) && !this.heldForManager.has(project)) {
@@ -107,13 +111,17 @@ export class Recovery {
     this.schedule(TICK_MS);
   }
 
+  /** The next instance's start-up pass finds agents still in error, so nothing queued here is lost. */
   dispose(): void {
+    this.disposed = true;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
+    this.queue.length = 0;
+    this.heldForManager.clear();
   }
 
   private schedule(delayMs: number): void {
-    if (this.timer !== null || this.busy) return;
+    if (this.timer !== null || this.busy || this.disposed) return;
     this.timer = setTimeout(() => {
       this.timer = null;
       void this.tick();
@@ -122,7 +130,7 @@ export class Recovery {
 
   private async tick(): Promise<void> {
     const paseo = this.paseo;
-    if (paseo === null || this.busy) return;
+    if (paseo === null || this.busy || this.disposed) return;
     this.busy = true;
     try {
       const headroom = await readHeadroom();
@@ -140,13 +148,15 @@ export class Recovery {
 
   private async recover(paseo: PaseoApi, crash: QueuedCrash): Promise<void> {
     const agent = await fetchLiveAgent(paseo, crash.agentId);
-    // Archived, or already back at work (the user restarted it): nothing to do.
-    if (agent === null || isMidTurn(agent)) return;
+    // Archived, or no longer in error (the user, or a previous plugin instance, restarted it): nothing to do.
+    if (agent === null || agent.status !== "error") return;
     const identity = identityFromLabels(agent.labels, agent.title ?? null);
     if (identity === null) return;
     const at = new Date().toISOString();
     const attempt = await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
       record.recoveries = [...recentRecoveries(record.recoveries, Date.parse(at)), at];
+      // A handoff or /compact the crash cut short: its next turn answers the recovery, not the pipeline.
+      record.compaction = "none";
       return record.recoveries.length;
     });
     if (identity.ticket !== null) await this.stats.count(identity.project, identity.ticket, "recoveries").catch(() => undefined);
@@ -222,7 +232,13 @@ export class Recovery {
       const manager = config === null ? null : await fetchLiveAgent(paseo, config.managerAgentId);
       if (manager === null) continue;
       const opening = await message(TEMPLATES.headroomRecovered, { current, max });
-      await sendFromPlugin(paseo, manager.id, [opening, ...texts].join("\n\n---\n\n"));
+      try {
+        await sendFromPlugin(paseo, manager.id, [opening, ...texts].join("\n\n---\n\n"));
+      } catch (error: unknown) {
+        // Kept for the next tick (ahead of anything held since), not dropped.
+        this.heldForManager.set(project, [...texts, ...(this.heldForManager.get(project) ?? [])]);
+        throw error;
+      }
     }
   }
 }

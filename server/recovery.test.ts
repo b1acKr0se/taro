@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Headroom } from "../shared/recovery";
-import type { AgentState } from "../shared/state";
+import { AgentStateSchema, type AgentState } from "../shared/state";
 import { fetchLiveAgent } from "./agents";
 import { runPaseoJson } from "./cli";
 import { readHeadroom } from "./headroom";
@@ -128,13 +128,52 @@ describe("Recovery", () => {
     expect(reloads()).toEqual(["owner-1"]);
   });
 
-  it("skips an agent that is archived or already running again", async () => {
-    const owner = agent("owner-1", "owner", "TR-5");
-    vi.mocked(fetchLiveAgent).mockResolvedValue({ ...owner, status: "running" } as PaseoAgent);
-    const { recovery } = setUp();
-    await crashed(recovery, owner);
+  it("skips an agent that is archived or no longer in error (restarted by the user or an earlier plugin instance)", async () => {
+    const { recovery, agents } = setUp();
+    for (const status of ["running", "idle"]) {
+      const owner = agent(`owner-${status}`, "owner", "TR-5");
+      vi.mocked(fetchLiveAgent).mockResolvedValue({ ...owner, status } as PaseoAgent);
+      await crashed(recovery, owner);
+      await vi.advanceTimersByTimeAsync(20_000);
+    }
+    vi.mocked(fetchLiveAgent).mockResolvedValue(null);
+    await crashed(recovery, agent("owner-archived", "owner", "TR-5"));
     await vi.advanceTimersByTimeAsync(20_000);
     expect(reloads()).toEqual([]);
+    // Nothing counted against the limit either.
+    expect(Object.values(agents).flatMap((record) => record.recoveries)).toEqual([]);
+  });
+
+  it("stops for good once disposed, even with a reload still in flight", async () => {
+    const targets = [agent("owner-1", "owner", "TR-5"), agent("owner-2", "owner", "TR-6")];
+    vi.mocked(fetchLiveAgent).mockImplementation(async (_paseo, id) => targets.find((target) => target.id === id) ?? null);
+    let finishReload: () => void = () => undefined;
+    vi.mocked(runPaseoJson).mockImplementationOnce(() => new Promise((resolve) => (finishReload = () => resolve(null))));
+    const { recovery } = setUp();
+    for (const target of targets) await crashed(recovery, target);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(reloads()).toEqual(["owner-1"]);
+
+    recovery.dispose();
+    finishReload();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(reloads()).toEqual(["owner-1"]);
+    await crashed(recovery, targets[0]!);
+    await recovery.tellManagerWhenHeadroom(paseo, "taro", "manager-1", "TR-5 is Done");
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(reloads()).toEqual(["owner-1"]);
+    expect(sentTo("TR-5 is Done")).toEqual([]);
+  });
+
+  it("abandons a compaction the crash interrupted, so the recovery turn does not run /compact", async () => {
+    const owner = agent("owner-1", "owner", "TR-5");
+    vi.mocked(fetchLiveAgent).mockResolvedValue(owner);
+    const { recovery, agents } = setUp();
+    agents["owner-1"] = AgentStateSchema.parse({ project: "taro", role: "owner", ticket: "TR-5", compaction: "handoff" });
+    await crashed(recovery, owner);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(reloads()).toEqual(["owner-1"]);
+    expect(agents["owner-1"]?.compaction).toBe("none");
   });
 
   it("allows two recoveries an hour, then leaves the agent stalled with the reason", async () => {
@@ -211,6 +250,19 @@ describe("Recovery", () => {
     vi.mocked(readHeadroom).mockResolvedValue({ current: 900, max: 2048, high: false, highSince: null });
     await vi.advanceTimersByTimeAsync(15_000);
     expect(vi.mocked(sendFromPlugin).mock.calls.map(([, id, text]) => [id, text.startsWith("recovered:") && text.includes("TR-5 is Done")])).toEqual([["manager-1", true]]);
+  });
+
+  it("keeps held wake-ups when sending them fails, and sends them on a later tick", async () => {
+    vi.mocked(fetchLiveAgent).mockResolvedValue(agent("manager-1", "manager", null, "idle"));
+    vi.mocked(readHeadroom).mockResolvedValue(high);
+    const { recovery } = setUp();
+    await recovery.tellManagerWhenHeadroom(paseo, "taro", "manager-1", "TR-5 is Done");
+    vi.mocked(readHeadroom).mockResolvedValue(null);
+    vi.mocked(sendFromPlugin).mockRejectedValueOnce(new Error("daemon busy"));
+    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.advanceTimersByTimeAsync(15_000);
+    const calls = vi.mocked(sendFromPlugin).mock.calls.filter(([, , text]) => text.includes("TR-5 is Done"));
+    expect(calls).toHaveLength(2);
   });
 
   it("sends the wake-up at once when there is headroom", async () => {
