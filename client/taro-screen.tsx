@@ -3,7 +3,8 @@
  * A project shows a conversation on the left — its manager, or the owner of the
  * card you opened — beside its board. On a phone (decision 12): Manager · Inbox
  * · Board tabs, and a card opens its owner full screen. The board's pane
- * switches to the project's Stats (a fourth tab on a phone).
+ * switches to the project's Stats (a fourth tab on a phone). On a wide screen the board can be
+ * hidden; an open ticket then sits in a right-hand panel beside its chat.
  * Params: `project`, `view` ("setup" | "settings" | "inbox").
  */
 import type { PluginTheme } from "@getpaseo/plugin";
@@ -22,10 +23,12 @@ import { errorText } from "./format";
 import { Inbox } from "./inbox";
 import { OwnerPane } from "./owner-pane";
 import { PaneHeader } from "./pane-header";
+import { projectLayout } from "./pane-layout";
 import { ProjectSetup } from "./project-setup";
 import { useProjects, useRefreshProjects } from "./queries";
 import { SPACE } from "./spacing";
 import { StatsView } from "./stats-view";
+import { TicketView } from "./ticket-view";
 import { FONT_SIZE } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
 
@@ -34,12 +37,13 @@ type PhoneTab = "manager" | "inbox" | "board" | "stats";
 type RightPane = "board" | "stats";
 
 /** What the screen shows, kept across remounts (the host unmounts a screen whenever the user navigates away). */
-const remembered: { project: string | null; view: View_; phoneTab: PhoneTab; rightPane: RightPane; ticket: string | null } = {
+const remembered: { project: string | null; view: View_; phoneTab: PhoneTab; rightPane: RightPane; ticket: string | null; boardHidden: boolean } = {
   project: null,
   view: "project",
   phoneTab: "manager",
   rightPane: "board",
   ticket: null,
+  boardHidden: false,
 };
 
 export function TaroScreen({ theme, layout, params, navigation }: PluginScreenProps) {
@@ -68,19 +72,22 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   const styles = useMemo(
     () => ({
       root: { flex: 1, backgroundColor: colors.surface0 },
-      tabs: { flexDirection: "row" as const, gap: SPACE.xs, paddingHorizontal: SPACE.md, paddingTop: SPACE.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
+      tabsFrame: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: colors.border },
+      tabs: { flexDirection: "row" as const, gap: SPACE.lg, paddingHorizontal: SPACE.lg },
+      // Flat tabs: the chosen one is marked by its text and a line under it, not by a box.
       tab: {
         flexDirection: "row" as const,
         alignItems: "center" as const,
         gap: SPACE.sm,
-        paddingHorizontal: SPACE.lg,
-        paddingVertical: SPACE.md,
-        borderTopLeftRadius: 8,
-        borderTopRightRadius: 8,
+        paddingHorizontal: SPACE.xs,
+        paddingTop: SPACE.md,
+        paddingBottom: SPACE.md - 2,
+        borderBottomWidth: 2,
+        borderBottomColor: "transparent",
       },
-      tabActive: { backgroundColor: colors.surface2 },
+      tabActive: { borderBottomColor: colors.accent },
       tabText: { color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" as const },
-      tabMuted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.body },
+      tabMuted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.body, fontWeight: "500" as const },
       badge: { minWidth: 18, alignItems: "center" as const, paddingHorizontal: SPACE.xs + 1, borderRadius: 9, backgroundColor: colors.statusWarning },
       badgeText: { color: colors.surface0, fontSize: FONT_SIZE.micro, fontWeight: "700" as const },
       body: { flex: 1, minHeight: 0 },
@@ -91,7 +98,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
 
   function tab(key: string, label: string, icon: string, active: boolean, onPress: () => void, count = 0) {
     return (
-      <Pressable key={key} accessibilityRole="tab" accessibilityLabel={label === "" ? "Add a project" : label} style={[styles.tab, active ? styles.tabActive : null]} onPress={onPress}>
+      <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: active }} accessibilityLabel={label === "" ? "Add a project" : label} style={[styles.tab, active ? styles.tabActive : null]} onPress={onPress}>
         <Icon name={icon} size={15} color={active ? colors.foreground : colors.foregroundMuted} />
         {label === "" ? null : <Text style={active ? styles.tabText : styles.tabMuted}>{label}</Text>}
         {count > 0 ? (
@@ -105,14 +112,14 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
 
   const tabs = layout.compact ? (
     // A phone: the project pill row only; Manager · Inbox · Board live inside the project view.
-    <ScrollView horizontal style={{ flexGrow: 0 }} contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
+    <ScrollView horizontal style={styles.tabsFrame} contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
       {list.map((summary) =>
         tab(summary.config.project, summary.config.project, "FolderKanban", showing !== "setup" && current?.config.project === summary.config.project, () => choose(summary.config.project, "project")),
       )}
       {tab("+", "", "Plus", showing === "setup", () => choose(selected, "setup"))}
     </ScrollView>
   ) : (
-    <ScrollView horizontal style={{ flexGrow: 0 }} contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
+    <ScrollView horizontal style={styles.tabsFrame} contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
       {list.length === 0 ? null : tab("inbox", "Inbox", "Inbox", showing === "inbox", () => choose(selected, "inbox"))}
       {list.map((summary) =>
         tab(
@@ -209,13 +216,30 @@ function ProjectView({
   const refreshBoard = useRefreshBoard(project);
   const [phoneTab, setPhoneTab] = useState<PhoneTab>(remembered.phoneTab);
   const [rightPane, setRightPane] = useState<RightPane>(remembered.rightPane);
+  const [boardHidden, setBoardHiddenState] = useState(remembered.boardHidden);
   const openCard = ticket === null ? null : (board.data?.cards ?? []).find((card) => card.id === ticket) ?? null;
+  const layout = projectLayout({ compact, boardHidden, ticketOpen: openCard !== null });
+  const setBoardHidden = (hidden: boolean) => {
+    remembered.boardHidden = hidden;
+    setBoardHiddenState(hidden);
+  };
+  const onShowBoard = compact || layout.board ? null : () => setBoardHidden(false);
 
   const left =
     openCard === null ? (
-      <ManagerPane summary={summary} theme={theme} compact={compact} onSettings={onSettings} onOpenAgent={onOpenAgent} />
+      <ManagerPane summary={summary} theme={theme} compact={compact} onSettings={onSettings} onOpenAgent={onOpenAgent} onShowBoard={onShowBoard} />
     ) : (
-      <OwnerPane card={openCard} project={project} theme={theme} compact={compact} onBack={() => onTicket(null)} onOpenAgent={onOpenAgent} onChanged={refreshBoard} />
+      <OwnerPane
+        card={openCard}
+        project={project}
+        theme={theme}
+        compact={compact}
+        ticketBeside={layout.ticketBeside}
+        onBack={() => onTicket(null)}
+        onOpenAgent={onOpenAgent}
+        onChanged={refreshBoard}
+        onShowBoard={onShowBoard}
+      />
     );
   const boardView = <ProjectBoard summary={summary} theme={theme} compact={compact} selectedTicket={ticket} onOpenTicket={(card) => onTicket(card.id)} />;
 
@@ -255,11 +279,24 @@ function ProjectView({
       </View>
     );
   }
+  if (!layout.board) {
+    return (
+      <View style={{ flex: 1, flexDirection: "row" }}>
+        <View style={{ flex: 1, backgroundColor: theme.colors.surface0 }}>{left}</View>
+        {layout.ticketBeside && openCard !== null ? (
+          <View style={{ width: "42%", minWidth: 360, borderLeftWidth: 1, borderLeftColor: theme.colors.border, backgroundColor: theme.colors.surface0 }}>
+            <PaneHeader theme={theme} title={`${openCard.id} · ticket`} icon="ClipboardList" />
+            <TicketView project={project} ticket={openCard.id} theme={theme} />
+          </View>
+        ) : null}
+      </View>
+    );
+  }
   return (
     <View style={{ flex: 1, flexDirection: "row" }}>
       <View style={{ width: "40%", minWidth: 340, borderRightWidth: 1, borderRightColor: theme.colors.border, backgroundColor: theme.colors.surface0 }}>{left}</View>
       <View style={{ flex: 1, backgroundColor: theme.colors.surface0 }}>
-        <View style={{ paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md, flexDirection: "row", borderBottomWidth: 1, borderBottomColor: theme.colors.border }}>
+        <View style={{ paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: theme.colors.border }}>
           <Segmented
             theme={theme}
             value={rightPane}
@@ -272,6 +309,7 @@ function ProjectView({
               setRightPane(value);
             }}
           />
+          <IconButton icon="PanelRightClose" label="Hide the board" showLabel theme={theme} onPress={() => setBoardHidden(true)} />
         </View>
         <View style={{ flex: 1, minHeight: 0 }}>{rightPane === "stats" ? <StatsView project={project} theme={theme} compact={false} /> : boardView}</View>
       </View>
@@ -285,12 +323,15 @@ function ManagerPane({
   compact,
   onSettings,
   onOpenAgent,
+  onShowBoard,
 }: {
   summary: ProjectSummary;
   theme: PluginTheme;
   compact: boolean;
   onSettings: () => void;
   onOpenAgent: ((agentId: string) => void) | null;
+  /** Brings the hidden board back; null while it shows. */
+  onShowBoard: (() => void) | null;
 }) {
   const toast = useToast();
   const tell = useRpc(tellManager);
@@ -302,6 +343,7 @@ function ManagerPane({
     <PaneHeader theme={theme} title={`${project} · manager`}>
       {manager !== null && onOpenAgent !== null ? <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(manager.id)} /> : null}
       <IconButton icon="Settings" label="Project settings" theme={theme} onPress={onSettings} />
+      {onShowBoard === null ? null : <IconButton icon="PanelRightOpen" label="Show the board" showLabel theme={theme} onPress={onShowBoard} />}
     </PaneHeader>
   );
   if (manager === null) {

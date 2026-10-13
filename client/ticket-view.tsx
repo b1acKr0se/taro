@@ -12,16 +12,20 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { loadTicket } from "../shared/contracts";
 import { ticketMilestones, type Milestone } from "../shared/milestones";
 import { PhaseBadge, SectionHeading } from "./badges";
-import { errorText, formatMilestoneTime } from "./format";
+import { errorText } from "./format";
 import { Markdown } from "./markdown";
+import { milestoneRows } from "./milestone-rows";
 import { SPACE } from "./spacing";
-import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { Chip, MONOSPACE } from "./ui";
 import { recordKindLook, toneColor } from "./visual-meta";
 
-/** The timeline's dots, and the width of the rail they sit on. */
-const DOT = 22;
+/** The timeline's dot, the rail column it sits in, and the clock column before it. */
+const DOT = 8;
+const RAIL = 16;
+const CLOCK = 40;
+/** A long record shows this many lines until tapped. */
+const CLIPPED_LINES = 3;
 
 export function TicketView({ project, ticket, theme }: { project: string; ticket: string; theme: PluginTheme }) {
   const load = useRpc(loadTicket);
@@ -142,48 +146,75 @@ export function TicketView({ project, ticket, theme }: { project: string; ticket
   );
 }
 
-/** The ticket's records, oldest first, on a rail: a dot per record coloured by its kind. */
+/**
+ * The ticket's records, oldest first, on a rail: the time in its own column, a day heading where
+ * the date changes, a small dot per record, coloured only for the records a reader looks for.
+ */
 function Timeline({ milestones, theme }: { milestones: readonly Milestone[]; theme: PluginTheme }) {
   const { colors } = theme;
+  const rows = useMemo(() => milestoneRows(milestones), [milestones]);
+  const [open, setOpen] = useState<ReadonlySet<number>>(new Set());
+  const caption = { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption) };
+
+  function rail(first: boolean, last: boolean, dot: ReactNode) {
+    return (
+      <View style={{ width: RAIL, alignItems: "center" }}>
+        {/* The rail joins the dots: it starts at the first and stops at the last. */}
+        <View style={{ position: "absolute", top: first ? 7 : 0, bottom: last ? undefined : 0, height: last ? 7 : undefined, width: 1, backgroundColor: colors.border }} />
+        {dot}
+      </View>
+    );
+  }
+
   return (
     <View>
-      {milestones.map((milestone, index) => {
-        const look = recordKindLook(milestone.kind);
-        const color = toneColor(theme, look.tone);
-        const time = formatMilestoneTime(milestone.time);
-        const last = index === milestones.length - 1;
+      {rows.map((row, index) => {
+        const color = row.key ? toneColor(theme, recordKindLook(row.kind).tone) : colors.foregroundMuted;
+        const first = index === 0;
+        const last = index === rows.length - 1;
+        const expanded = open.has(index);
+        const toggle = () =>
+          setOpen((current) => {
+            const next = new Set(current);
+            if (expanded) next.delete(index);
+            else next.add(index);
+            return next;
+          });
         return (
-          <View key={`${index}:${milestone.kind}`} style={{ flexDirection: "row", gap: SPACE.md }}>
-            <View style={{ width: DOT, alignItems: "center" }}>
-              {/* The rail joins the dots: it starts at the first and stops at the last. */}
-              {milestones.length === 1 ? null : (
-                <View style={{ position: "absolute", left: Math.floor(DOT / 2), top: index === 0 ? DOT / 2 : 0, bottom: last ? undefined : 0, height: last ? DOT / 2 : undefined, width: 1, backgroundColor: colors.border }} />
-              )}
-              <View style={{ width: DOT, height: DOT, borderRadius: DOT / 2, backgroundColor: colors.surface0 }}>
+          <View key={`${index}:${row.kind}`}>
+            {row.day === null ? null : (
+              <View style={{ flexDirection: "row", gap: SPACE.sm }}>
+                <View style={{ width: CLOCK }} />
+                {rail(first, false, null)}
+                <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.caption, fontWeight: "700", paddingTop: first ? 0 : SPACE.sm, paddingBottom: SPACE.sm }}>{row.day}</Text>
+              </View>
+            )}
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={toggle} style={{ flexDirection: "row", gap: SPACE.sm }}>
+              <Text style={[caption, { width: CLOCK, textAlign: "right", fontVariant: ["tabular-nums"] }]}>{row.clock ?? ""}</Text>
+              {rail(
+                first && row.day === null,
+                last,
                 <View
                   style={{
-                    flex: 1,
+                    marginTop: 4,
+                    width: DOT,
+                    height: DOT,
                     borderRadius: DOT / 2,
                     borderWidth: 1,
-                    borderColor: withAlpha(color, 0.5),
-                    backgroundColor: withAlpha(color, 0.14),
-                    alignItems: "center",
-                    justifyContent: "center",
+                    borderColor: row.key ? color : colors.border,
+                    backgroundColor: row.key ? color : colors.surface0,
                   }}
-                >
-                  <Icon name={look.icon} size={12} color={color} />
-                </View>
-              </View>
-            </View>
-            <View style={{ flex: 1, gap: SPACE.xxs, paddingBottom: last ? 0 : SPACE.md, paddingTop: 3 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm }}>
-                <Text style={{ color, fontSize: FONT_SIZE.micro, fontWeight: "700", letterSpacing: 0.6 }}>{milestone.kind}</Text>
-                {time === null ? null : <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption }}>{time}</Text>}
-              </View>
-              {milestone.text === "" ? null : (
-                <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) }}>{milestone.text}</Text>
+                />,
               )}
-            </View>
+              <View style={{ flex: 1, gap: SPACE.xxs, paddingBottom: last ? 0 : SPACE.md }}>
+                <Text style={{ color: row.key ? color : colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>{row.label}</Text>
+                {row.text === "" ? null : (
+                  <Text numberOfLines={expanded ? undefined : CLIPPED_LINES} style={{ color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) }}>
+                    {row.text}
+                  </Text>
+                )}
+              </View>
+            </Pressable>
           </View>
         );
       })}

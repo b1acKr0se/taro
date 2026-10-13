@@ -1,7 +1,8 @@
 /**
  * The project's board (decision 9): Needs you · Working · Stalled · Queued ·
  * Done, always all five, side by side as equal panels on a wide screen; on a
- * phone one column at a time behind chips. The manager's own open decisions and suggestions sit above it. Done
+ * phone one column at a time behind chips. The manager's own open decisions sit above it, and its
+ * suggestions in a card of their own that sends one to the manager when tapped. Done
  * cards carry their ticket's key stats.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
@@ -80,18 +81,27 @@ export function ProjectBoard({
       chipText: { color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "500" as const },
       pill: { minWidth: 20, alignItems: "center" as const, paddingHorizontal: SPACE.xs + 2, paddingVertical: 1, borderRadius: 999, backgroundColor: colors.surface2 },
       pillText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.micro, fontWeight: "700" as const },
+      // Its own tinted card, so it reads as messages to send rather than more of the board.
+      suggestionsCard: {
+        gap: SPACE.sm,
+        padding: SPACE.md,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: withAlpha(colors.accent, 0.35),
+        backgroundColor: withAlpha(colors.accent, 0.06),
+      },
+      suggestionsHint: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
       suggestions: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm },
       suggestion: {
         flexDirection: "row" as const,
         alignItems: "center" as const,
-        gap: SPACE.xs,
         borderWidth: 1,
         borderColor: colors.border,
         borderRadius: 8,
-        paddingLeft: SPACE.md,
         backgroundColor: colors.surface1,
       },
-      suggestionText: { color: colors.foreground, fontSize: FONT_SIZE.small, paddingVertical: SPACE.sm },
+      suggestionSend: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm, paddingLeft: SPACE.md, paddingRight: SPACE.sm, paddingVertical: SPACE.sm },
+      suggestionText: { color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "500" as const },
       error: { color: colors.statusDanger, padding: SPACE.md },
     }),
     [colors, compact],
@@ -168,13 +178,21 @@ export function ProjectBoard({
           </View>
         )}
         {suggestions.length === 0 ? null : (
-          <View style={styles.section}>
-            <SectionHeading theme={theme} icon="Sparkles" text="Suggested next" color={colors.accent} />
+          <View style={styles.suggestionsCard}>
+            <SectionHeading theme={theme} icon="Lightbulb" text="Suggested next" color={colors.accent}>
+              <Text style={styles.suggestionsHint}>tap one to send it to the manager</Text>
+            </SectionHeading>
             <View style={styles.suggestions}>
               {suggestions.map((suggestion) => (
                 <View key={`${suggestion.label}:${suggestion.prompt}`} style={styles.suggestion}>
-                  <Pressable onPress={() => void tell({ project, text: suggestion.prompt }).then(refresh).catch((caught: unknown) => toast.error(errorText(caught)))}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Send to the manager: ${suggestion.label}`}
+                    style={styles.suggestionSend}
+                    onPress={() => void tell({ project, text: suggestion.prompt }).then(refresh).catch((caught: unknown) => toast.error(errorText(caught)))}
+                  >
                     <Text style={styles.suggestionText}>{suggestion.label}</Text>
+                    <Icon name="Send" size={13} color={colors.accent} />
                   </Pressable>
                   <IconButton icon="X" label={`Dismiss ${suggestion.label}`} theme={theme} onPress={() => void dismiss({ project, label: suggestion.label, prompt: suggestion.prompt }).then(refresh)} />
                 </View>

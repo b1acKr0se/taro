@@ -2,6 +2,7 @@
  * A ticket beside the board (decision 6): the conversation of one of its
  * agents — the live owner with decision cards drawn inline, a subagent, or an
  * archived agent read-only — or its ticket, and a way back to the manager.
+ * With the board hidden the ticket sits in its own panel beside, so the pane is the chat alone.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -29,20 +30,27 @@ export function OwnerPane({
   project,
   theme,
   compact,
+  ticketBeside,
   onBack,
   onOpenAgent,
   onChanged,
+  onShowBoard,
 }: {
   card: Card;
   project: string;
   theme: PluginTheme;
   compact: boolean;
+  /** The ticket is drawn in a panel beside this pane: no Chat · Ticket switch. */
+  ticketBeside: boolean;
   onBack: () => void;
   onOpenAgent: ((agentId: string) => void) | null;
   onChanged: () => void;
+  /** Brings the hidden board back; null while it shows. */
+  onShowBoard: (() => void) | null;
 }) {
   const tell = useRpc(tellAgent);
-  const [tab, setTab] = useState<"chat" | "ticket">("chat");
+  const [chosenTab, setTab] = useState<"chat" | "ticket">("chat");
+  const tab = ticketBeside ? "chat" : chosenTab;
   // Remembered with the card it was made on, so opening another ticket starts from its default agent.
   const [chosen, setChosen] = useState<{ card: string; agent: string } | null>(null);
   const agents = useMemo(() => paneAgents(card), [card.owner, card.subagents, card.pastAgents]);
@@ -61,17 +69,20 @@ export function OwnerPane({
       >
         {shown !== null && onOpenAgent !== null ? <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(shown.id)} /> : null}
         <IconButton icon="ArrowLeft" label="Back to the manager" showLabel={!compact} theme={theme} onPress={onBack} />
+        {onShowBoard === null ? null : <IconButton icon="PanelRightOpen" label="Show the board" theme={theme} onPress={onShowBoard} />}
       </PaneHeader>
       <View style={{ paddingHorizontal: inset, paddingVertical: SPACE.sm, gap: SPACE.sm }}>
-        <Segmented
-          theme={theme}
-          value={tab}
-          options={[
-            { value: "chat", label: "Chat", icon: "MessageSquare" },
-            { value: "ticket", label: "Ticket", icon: "ClipboardList" },
-          ]}
-          onChange={(value: "chat" | "ticket") => setTab(value)}
-        />
+        {ticketBeside ? null : (
+          <Segmented
+            theme={theme}
+            value={tab}
+            options={[
+              { value: "chat", label: "Chat", icon: "MessageSquare" },
+              { value: "ticket", label: "Ticket", icon: "ClipboardList" },
+            ]}
+            onChange={(value: "chat" | "ticket") => setTab(value)}
+          />
+        )}
         {/* Archived agents here do not mean the work stopped: the current owner may run elsewhere. */}
         {tab === "chat" && shown !== null && card.owner === null && card.ownerElsewhere !== null ? (
           <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small }}>Its current owner runs on {card.ownerElsewhere}.</Text>

@@ -89,18 +89,31 @@ export function pullRequestLabel(url: string): string {
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+/** A record's clock time on the milestone timeline, in local time ("14:03"); null when it has none or it is unreadable. */
+export function formatClock(iso: string | null): string | null {
+  const then = readTime(iso);
+  if (then === null) return null;
+  return `${String(then.getHours()).padStart(2, "0")}:${String(then.getMinutes()).padStart(2, "0")}`;
+}
+
 /**
- * A record's time on the milestone timeline, in local time: "14:03" today, "Oct 12 14:03" on
- * another day, "Oct 12 2025 14:03" in another year; null when the record has none or it is unreadable.
+ * The day a record falls on, in local time, for the timeline's day headings: "Today", "Yesterday",
+ * "Oct 12", or "Oct 12 2025" in another year; null when it has no readable time.
  */
-export function formatMilestoneTime(iso: string | null, now: number = Date.now()): string | null {
+export function formatDay(iso: string | null, now: number = Date.now()): string | null {
+  const then = readTime(iso);
+  if (then === null) return null;
+  const today = new Date(now);
+  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  const same = (left: Date, right: Date) => left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate();
+  if (same(then, today)) return "Today";
+  if (same(then, yesterday)) return "Yesterday";
+  const day = `${MONTHS[then.getMonth()]} ${then.getDate()}`;
+  return then.getFullYear() === today.getFullYear() ? day : `${day} ${then.getFullYear()}`;
+}
+
+function readTime(iso: string | null): Date | null {
   if (iso === null) return null;
   const then = new Date(iso);
-  if (Number.isNaN(then.getTime())) return null;
-  const today = new Date(now);
-  const clock = `${String(then.getHours()).padStart(2, "0")}:${String(then.getMinutes()).padStart(2, "0")}`;
-  const sameYear = then.getFullYear() === today.getFullYear();
-  if (sameYear && then.getMonth() === today.getMonth() && then.getDate() === today.getDate()) return clock;
-  const day = `${MONTHS[then.getMonth()]} ${then.getDate()}`;
-  return sameYear ? `${day} ${clock}` : `${day} ${then.getFullYear()} ${clock}`;
+  return Number.isNaN(then.getTime()) ? null : then;
 }
