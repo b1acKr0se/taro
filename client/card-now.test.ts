@@ -84,6 +84,10 @@ describe("cardNowLine", () => {
     expect(cardNowLine(card({ column: "queued", owner: null }), NOW)).toBeNull();
   });
 
+  it("says nothing for a queued child, whose status line is its parent owner's", () => {
+    expect(cardNowLine(card({ column: "queued", parent: "NA-027", lastStatus: status }), NOW)).toBeNull();
+  });
+
   it("shows the owner's last status line when nothing else is going on", () => {
     expect(cardNowLine(card({ lastStatus: status }), NOW)).toEqual({ kind: "status", ...status });
   });
@@ -146,6 +150,10 @@ describe("cardFooterParts", () => {
     expect(parts).toEqual(["high", "investigation", "on laptop", "context 153k", "2 subagents"]);
     expect(cardFooterParts(card({ subagents: [implementer({})] }))).toEqual(["1 subagent"]);
   });
+
+  it("leaves a child's context to its parent's card", () => {
+    expect(cardFooterParts(card({ parent: "NA-027", owner: { ...owner, contextUsedTokens: 153_400 }, subagents: [implementer({})] }))).toEqual(["1 subagent"]);
+  });
 });
 
 describe("offersCompact", () => {
@@ -155,5 +163,6 @@ describe("offersCompact", () => {
     expect(offersCompact(card({ owner: { ...owner, status: "running", contextUsedTokens: 200_000 } }))).toBe(false);
     expect(offersCompact(card({ owner: { ...owner, contextUsedTokens: null } }))).toBe(false);
     expect(offersCompact(card({ owner: null }))).toBe(false);
+    expect(offersCompact(card({ parent: "NA-027", owner: { ...owner, contextUsedTokens: 200_000 } }))).toBe(false);
   });
 });

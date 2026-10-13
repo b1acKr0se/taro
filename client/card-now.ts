@@ -24,6 +24,8 @@ export function cardNowLine(card: Card, now: number): NowLine | null {
     const more = calls.length - 1 + calls.reduce((sum, call) => sum + (call.kind === "decision" ? call.more : 0), 0);
     return { kind: "call", call: first, more };
   }
+  // Not started: a child's status line is its parent owner's, about other work.
+  if (card.column === "queued") return null;
   const waitingOn = waitingOnText(card, now);
   if (waitingOn !== null) return { kind: "subagent", text: waitingOn };
   if (card.lastStatus !== null) return { kind: "status", ...card.lastStatus };
@@ -44,13 +46,16 @@ function stalledText(card: Card): string {
 /** Over this much context an idle owner offers Compact on its card. */
 export const COMPACT_OFFER_TOKENS = 150_000;
 
-/** The card's muted footer, in order: complexity, investigation, where the owner runs, context, subagents. */
+/**
+ * The card's muted footer, in order: complexity, investigation, where the owner runs, context, subagents.
+ * A child's owner is its parent's, so its context (and Compact) stay on the parent's card.
+ */
 export function cardFooterParts(card: Card): string[] {
   const parts: string[] = [];
   if (card.complexity !== null) parts.push(card.complexity);
   if (card.investigation) parts.push("investigation");
   if (card.ownerElsewhere !== null) parts.push(`on ${card.ownerElsewhere}`);
-  const used = card.owner?.contextUsedTokens ?? null;
+  const used = card.parent === null ? (card.owner?.contextUsedTokens ?? null) : null;
   if (used !== null) parts.push(`context ${formatTokenCount(used)}`);
   if (card.subagents.length > 0) parts.push(`${card.subagents.length} subagent${card.subagents.length === 1 ? "" : "s"}`);
   return parts;
@@ -58,5 +63,5 @@ export function cardFooterParts(card: Card): string[] {
 
 export function offersCompact(card: Card): boolean {
   const owner = card.owner;
-  return owner !== null && owner.status === "idle" && (owner.contextUsedTokens ?? 0) > COMPACT_OFFER_TOKENS;
+  return card.parent === null && owner !== null && owner.status === "idle" && (owner.contextUsedTokens ?? 0) > COMPACT_OFFER_TOKENS;
 }
