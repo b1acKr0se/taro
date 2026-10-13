@@ -100,6 +100,17 @@ describe("cardCalls", () => {
     expect(cardCalls(card({ status: "Awaiting acceptance", owner: null }))).toEqual([]);
   });
 
+  it("carries the evidence in one line, and is not ready while it is incomplete", () => {
+    const complete = { checks: [{ command: "npm test", result: "ok" }], review: "clean", screenshots: [], screenshotsNone: "no visible change", missing: [], complete: true };
+    expect(cardCalls(card({ status: "Awaiting acceptance", evidence: complete }))).toEqual([
+      { kind: "acceptance", text: "Ready to accept", evidence: "1 check · review · no screenshots: no visible change" },
+    ]);
+    const incomplete = { ...complete, review: null, missing: ["the review outcome"], complete: false };
+    expect(cardCalls(card({ status: "Awaiting acceptance", evidence: incomplete }))).toEqual([
+      { kind: "acceptance", text: "Not ready to accept", evidence: "Evidence missing: the review outcome" },
+    ]);
+  });
+
   it("counts pending permissions", () => {
     expect(cardCalls(card({ owner: { ...owner, pendingPermissions: 1 } }))).toEqual([{ kind: "permission", text: "Waiting on a permission" }]);
     expect(cardCalls(card({ owner: { ...owner, pendingPermissions: 3 } }))).toEqual([{ kind: "permission", text: "Waiting on 3 permissions" }]);

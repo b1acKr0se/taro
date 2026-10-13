@@ -1,32 +1,68 @@
 /**
  * The judged evidence of a ticket (TR-021): its checks, the review outcome, small screenshots and,
- * when incomplete, what is missing. No border, padding or heading of its own: the caller places it.
+ * when incomplete, what is missing. No border, padding or heading of its own: the caller places it
+ * (the Ticket tab's Evidence section, the Delivery view at the owner's composer).
  */
 import type { PluginTheme } from "@getpaseo/plugin";
+import { useRpc } from "@getpaseo/plugin/client";
+import { useQuery } from "@tanstack/react-query";
 import { Text, View } from "react-native";
 
-import type { EvidenceView } from "../shared/contracts";
+import { loadTicket, type EvidenceView } from "../shared/contracts";
 import { ImageThumbnail } from "./image-view";
 import { SPACE } from "./spacing";
 import { FONT_SIZE } from "./type-scale";
 
 const SCREENSHOT_HEIGHT = 72;
 
-export function EvidenceBlock({ evidence, theme, thumbnailHeight = SCREENSHOT_HEIGHT }: { evidence: EvidenceView; theme: PluginTheme; thumbnailHeight?: number }) {
+/**
+ * A ticket's evidence, read with the same query as the Ticket tab (so the two share one fetch); nothing
+ * while it loads or when the ticket has none. `inline` puts the checks and the review on one line.
+ */
+export function Evidence({ project, ticket, theme, layout = "inline" }: { project: string; ticket: string; theme: PluginTheme; layout?: "inline" | "lines" }) {
+  const load = useRpc(loadTicket);
+  const detail = useQuery({ queryKey: ["taro", "ticket", project, ticket], queryFn: () => load({ project, ticket }), refetchInterval: 6_000 });
+  const evidence = detail.data?.evidence ?? null;
+  return evidence === null ? null : <EvidenceBlock evidence={evidence} theme={theme} layout={layout} />;
+}
+
+export function EvidenceBlock({
+  evidence,
+  theme,
+  layout = "lines",
+  thumbnailHeight = SCREENSHOT_HEIGHT,
+}: {
+  evidence: EvidenceView;
+  theme: PluginTheme;
+  /** `lines`: a line per check (the Ticket tab); `inline`: checks and review on one line (the Delivery view). */
+  layout?: "inline" | "lines";
+  thumbnailHeight?: number;
+}) {
   const { colors } = theme;
   const text = { color: colors.foreground, fontSize: FONT_SIZE.small };
   const muted = { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption };
+  const inline = [...evidence.checks.map((check) => `✓ ${check.command} — ${check.result}`), ...(evidence.review === null ? [] : [`review: ${evidence.review}`])];
   return (
     <View style={{ gap: SPACE.xs }}>
-      {evidence.checks.map((check, index) => (
-        <Text key={index} numberOfLines={1} style={text}>
-          {check.command} — {check.result}
-        </Text>
-      ))}
-      {evidence.review === null ? null : (
-        <Text numberOfLines={1} style={text}>
-          Review: {evidence.review}
-        </Text>
+      {layout === "inline" ? (
+        inline.length === 0 ? null : (
+          <Text numberOfLines={2} style={text}>
+            {inline.join(" · ")}
+          </Text>
+        )
+      ) : (
+        <>
+          {evidence.checks.map((check, index) => (
+            <Text key={index} numberOfLines={1} style={text}>
+              {check.command} — {check.result}
+            </Text>
+          ))}
+          {evidence.review === null ? null : (
+            <Text numberOfLines={1} style={text}>
+              Review: {evidence.review}
+            </Text>
+          )}
+        </>
       )}
       {evidence.screenshots.length === 0 && evidence.screenshotsNone !== null ? (
         <Text numberOfLines={1} style={muted}>
