@@ -51,8 +51,9 @@ export function OwnerPane({
   onShowBoard: (() => void) | null;
 }) {
   const tell = useRpc(tellAgent);
-  const [chosenTab, setTab] = useState<"chat" | "ticket">("chat");
-  const tab = ticketBeside ? "chat" : chosenTab;
+  // Kept with the card it was chosen on: opening another ticket (its Answer → or Review →) starts on Chat, where its asks are pinned.
+  const [chosenTab, setTab] = useState<{ card: string; tab: "chat" | "ticket" } | null>(null);
+  const tab = ticketBeside || chosenTab?.card !== card.id ? "chat" : chosenTab.tab;
   // Remembered with the card it was made on, so opening another ticket starts from its default agent.
   const [chosen, setChosen] = useState<{ card: string; agent: string } | null>(null);
   const agents = useMemo(() => paneAgents(card), [card.owner, card.subagents, card.pastAgents]);
@@ -82,7 +83,7 @@ export function OwnerPane({
               { value: "chat", label: "Chat", icon: "MessageSquare" },
               { value: "ticket", label: "Ticket", icon: "ClipboardList" },
             ]}
-            onChange={(value: "chat" | "ticket") => setTab(value)}
+            onChange={(value: "chat" | "ticket") => setTab({ card: card.id, tab: value })}
           />
         )}
         {/* Archived agents here do not mean the work stopped: the current owner may run elsewhere. */}

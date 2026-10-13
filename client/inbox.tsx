@@ -1,20 +1,22 @@
 /**
  * The Inbox (decision 8): everything waiting on you across projects — open
- * decisions, acceptances, stalled tickets — and Walk me through, which steps
- * through the open decisions one at a time, blocking first (decision 28).
+ * decisions one line each, acceptances, stalled tickets — and Walk me through,
+ * which steps through the open decisions one at a time, blocking first
+ * (decision 28), from the start or from the line tapped (decision 47).
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
+import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { listOpenDecisions, type Card, type ProjectSummary } from "../shared/contracts";
 import { AlertCard } from "./alert-card";
 import { SectionHeading } from "./badges";
 import { useBoard, useRefreshBoard } from "./board-data";
 import { walkOrder } from "./walk-order";
-import { DecisionCard } from "./decision-card";
+import { DecisionCard, askedBy } from "./decision-card";
 import { SPACE } from "./spacing";
 import { SyncProblemCard } from "./sync-problem-card";
 import { TicketCard } from "./ticket-card";
@@ -79,8 +81,39 @@ export function Inbox({
         />
       </SectionHeading>
       {ordered.length === 0 ? <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small }}>No open decisions.</Text> : null}
-      {ordered.map((decision) => (
-        <DecisionCard key={decision.key} decision={decision} theme={theme} compact={compact} showAgent onAnswered={refetch} />
+      {/* One line each (decision 47): answering happens one at a time in Walk me through, opened at the line tapped. */}
+      {ordered.map((decision, index) => (
+        <Pressable
+          key={decision.key}
+          accessibilityRole="button"
+          accessibilityLabel={`Answer: ${decision.question}`}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: SPACE.sm,
+            paddingHorizontal: SPACE.md,
+            paddingVertical: SPACE.sm,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: decision.blocking ? colors.statusWarning : colors.border,
+            backgroundColor: colors.surface1,
+          }}
+          onPress={() => {
+            setStep(index);
+            setWalking(true);
+          }}
+        >
+          <Icon name="Hand" size={13} color={decision.blocking ? colors.statusWarning : colors.foregroundMuted} />
+          <View style={{ flex: 1, gap: SPACE.xxs }}>
+            <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption }} numberOfLines={1}>
+              {askedBy(decision)}
+            </Text>
+            <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.small }} numberOfLines={2}>
+              {decision.question}
+            </Text>
+          </View>
+          <Text style={{ color: colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Answer →</Text>
+        </Pressable>
       ))}
       {projects.map((summary) => (
         <InboxProject key={summary.config.project} summary={summary} theme={theme} compact={compact} onOpenTicket={onOpenTicket} />

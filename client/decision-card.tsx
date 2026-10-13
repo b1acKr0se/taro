@@ -16,7 +16,7 @@ import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { IconButton } from "./ui";
 
 /** "SC-003 · Add validation" — the agent's title already starts with its ticket when it has one. */
-function askedBy(decision: StoredDecision): string {
+export function askedBy(decision: StoredDecision): string {
   const title = decision.agentTitle ?? decision.agentRole;
   if (decision.ticket === null || title.startsWith(decision.ticket)) return `${decision.project} · ${title}`;
   return `${decision.project} · ${decision.ticket} · ${title}`;
