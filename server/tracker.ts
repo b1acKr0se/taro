@@ -195,16 +195,23 @@ const STRATEGY_OPTIONS: Readonly<Record<SyncStrategy, readonly string[]>> = {
 };
 
 /**
- * Pulls (rebase) and pushes `taro/backlog`; returns null when in sync, or the
- * problem instead of throwing. A conflicting rebase is aborted, so the tracker
- * stays on its branch with nothing lost.
+ * Commits pending ticket writes, pulls (rebase) and pushes `taro/backlog`;
+ * returns null when in sync, or the problem instead of throwing. Never
+ * autostashes: popping a stash over a conflicting remote edit leaves conflict
+ * markers in the tree, which the next commit would publish. A write landing
+ * between the commit and the pull makes git refuse, so commit and try again.
+ * A conflicting rebase is aborted, so the tracker stays on its branch with
+ * nothing lost.
  */
 export async function syncTracker(trackerPath: string, strategy: SyncStrategy = "rebase"): Promise<TrackerSyncProblem | null> {
-  const pull = await runCommand(
-    "git",
-    ["-C", trackerPath, "pull", "--rebase", "--autostash", ...STRATEGY_OPTIONS[strategy], "origin", TRACKER_BRANCH],
-    { timeoutMs: 120_000 },
-  );
+  let pull: CommandResult | null = null;
+  for (let attempt = 0; attempt < 3 && (pull === null || refusedForLocalChanges(pull)); attempt += 1) {
+    await commitTracker(trackerPath);
+    pull = await runCommand("git", ["-C", trackerPath, "pull", "--rebase", ...STRATEGY_OPTIONS[strategy], "origin", TRACKER_BRANCH], { timeoutMs: 120_000 });
+  }
+  if (pull === null || refusedForLocalChanges(pull)) {
+    return { kind: "failed", message: "Tickets kept changing while syncing; it runs again after the next change.", tickets: [] };
+  }
   if (pull.code !== 0 && !/couldn't find remote ref/i.test(pull.stderr)) {
     const unmerged = await runCommand("git", ["-C", trackerPath, "diff", "--name-only", "--diff-filter=U"], { timeoutMs: 30_000 });
     const files = unmerged.stdout.split("\n").map((line) => line.trim()).filter((line) => line !== "");
@@ -215,6 +222,11 @@ export async function syncTracker(trackerPath: string, strategy: SyncStrategy = 
   const push = await runCommand("git", ["-C", trackerPath, "push", "-u", "origin", TRACKER_BRANCH], { timeoutMs: 120_000 });
   if (push.code !== 0) return { kind: "failed", message: `Pushing to origin failed: ${gitComplaint(push)}`, tickets: [] };
   return null;
+}
+
+/** `git pull --rebase` refusing to start because the tree has uncommitted changes. */
+function refusedForLocalChanges(result: CommandResult): boolean {
+  return result.code !== 0 && /cannot pull with rebase|uncommitted changes|unstaged changes/i.test(result.stderr);
 }
 
 export function conflictProblem(files: readonly string[]): TrackerSyncProblem {

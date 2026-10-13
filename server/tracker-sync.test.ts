@@ -94,6 +94,21 @@ describe("syncTracker", () => {
     expect(remoteFile(TICKET)).toContain("status: Done");
   });
 
+  it("treats a ticket written after the last commit like a committed one, never leaving conflict markers", async () => {
+    commit(there, TICKET, `${withLine(1, "status: Done").join("\n")}\n`);
+    git(there, "push", "-q", "origin", TRACKER_BRANCH);
+    writeFileSync(join(here, TICKET), `${withLine(1, "status: Blocked").join("\n")}\n`);
+
+    expect(await syncTracker(here)).toEqual({ kind: "conflict", message: "X-001 changed both here and on the remote.", tickets: ["X-001"] });
+    expect(readFileSync(join(here, TICKET), "utf8")).toContain("status: Blocked");
+    expect(readFileSync(join(here, TICKET), "utf8")).not.toContain("<<<<<<<");
+    expect(git(here, "status", "--porcelain")).toBe("");
+    expect(git(here, "stash", "list")).toBe("");
+
+    expect(await syncTracker(here, "keep-local")).toBeNull();
+    expect(remoteFile(TICKET)).toContain("status: Blocked");
+  });
+
   it.each<[SyncStrategy, string]>([
     ["keep-local", "status: In Progress"],
     ["keep-remote", "status: Done"],
@@ -224,6 +239,15 @@ describe("TrackerWatch sync triggers", () => {
     await watch.commit("demo");
     expect(await watch.resolve("demo", "retry")).toEqual(conflict);
     expect(watch.syncProblem("demo")).toEqual(conflict);
+  });
+
+  it("resolving a project switched to local only drops the problem without syncing", async () => {
+    writeFileSync(join(here, OTHER_TICKET), "edited once\n");
+    await watch.commit("demo");
+    writeConfig("local");
+    expect(await watch.resolve("demo", "keep-local")).toBeNull();
+    expect(watch.syncProblem("demo")).toBeNull();
+    expect(calls).toEqual(["rebase"]);
   });
 
   it("drops a stale problem once the project syncs locally only", async () => {

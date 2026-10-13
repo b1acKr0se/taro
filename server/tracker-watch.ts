@@ -90,11 +90,15 @@ export class TrackerWatch {
     });
   }
 
-  /** The user's answer to a paused sync: commit anything pending, then pull with their choice and push. */
+  /** The user's answer to a paused sync: pull with their choice and push; a project switched to local only just drops the problem. */
   resolve(project: string, resolution: SyncResolution): Promise<TrackerSyncProblem | null> {
     return serialized(`tracker:${project}`, async () => {
+      const config = (await listProjectConfigs()).find((candidate) => candidate.project === project);
+      if (config?.trackerSync !== "remote") {
+        this.syncProblems.delete(project);
+        return null;
+      }
       const paths = await projectPaths(project);
-      await commitTracker(paths.tracker);
       const problem = await this.syncAndRecord(project, paths.tracker, RESOLUTION_STRATEGIES[resolution]);
       for (const listener of this.listeners) listener(project);
       return problem;

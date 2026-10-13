@@ -86,7 +86,7 @@ export default function contribute(server: PluginServerContext) {
       configs.map(async (config) => {
         const manager = await fetchLiveAgent(paseo, config.managerAgentId);
         const board = await loadBoard(paseo, state, config.project).catch(() => null);
-        const trackerSyncProblem = trackers.syncProblem(config.project);
+        const trackerSyncProblem = config.trackerSync === "remote" ? trackers.syncProblem(config.project) : null;
         const needsYou =
           (board === null ? 0 : board.cards.filter((card) => card.column === "needs-you" || card.column === "stalled").length + board.managerDecisions.length) +
           (trackerSyncProblem === null ? 0 : 1);
