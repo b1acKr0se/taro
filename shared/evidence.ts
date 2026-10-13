@@ -53,7 +53,8 @@ export function parseEvidence(notes: string | null): ParsedEvidence | null {
       if (value !== "") parsed.review = value;
     } else {
       const [first, rest] = splitAtSeparator(value);
-      if (label === "screenshots" && first.toLowerCase() === "none") parsed.screenshotsNone = rest;
+      // `screenshot: none` is the same as `screenshots: none`; a file is never called that.
+      if (first.toLowerCase() === "none") parsed.screenshotsNone = rest;
       else if (first !== "") parsed.screenshots.push({ file: first.replace(/^`+|`+$/g, ""), caption: rest });
     }
   }

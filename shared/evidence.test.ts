@@ -84,6 +84,13 @@ describe("parseEvidence and judgeEvidence", () => {
     expect(judge(notes, change(["a.png"])).complete).toBe(true);
   });
 
+  it("reads `screenshot: none` like `screenshots: none`", () => {
+    const judged = judge(record("check: npm test — ok", "review: self-review — clean", "screenshot: none — no visible change"));
+    expect(judged.screenshots).toEqual([]);
+    expect(judged.screenshotsNone).toBe("no visible change");
+    expect(judged.complete).toBe(true);
+  });
+
   it("does not count a check without a result", () => {
     for (const line of ["check: npm test", "check: npm test — ", "check: npm test -"]) {
       const judged = judge(record(line, "review: self", "screenshots: none — x"));
