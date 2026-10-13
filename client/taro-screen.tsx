@@ -325,6 +325,9 @@ function ProjectView({
               onChange={choosePhoneTab}
             />
           </View>
+          {phoneTab === "manager" && summary.manager !== null && onOpenAgent !== null ? (
+            <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(summary.manager?.id ?? "")} />
+          ) : null}
           <IconButton icon="Settings" label="Project settings" theme={theme} onPress={onSettings} />
         </View>
         <View style={{ flex: 1 }}>

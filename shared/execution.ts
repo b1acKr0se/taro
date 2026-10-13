@@ -52,8 +52,11 @@ function newestRecordMatch(notes: string | null, pattern: RegExp): string | null
  * abbreviated in later notes ("review-head 1960d60… recorded"), which must not replace it.
  */
 export function reviewHead(notes: string | null): string | null {
-  return newestRecordMatch(notes, /\breview[ _-]?head\b[\s:=`*"']*([0-9a-f]{40})(?![0-9a-z])/gi)?.toLowerCase() ?? null;
+  return newestRecordMatch(notes, new RegExp(REVIEW_HEAD.source, "gi"))?.toLowerCase() ?? null;
 }
+
+/** `review-head: <full sha>` as owners write it; one pattern, so presenting again and merging agree. */
+const REVIEW_HEAD = /\breview[ _-]?head\b[\s:=`*"']*([0-9a-f]{40})(?![0-9a-z])/i;
 
 const PULL_REQUEST_URL = /https?:\/\/[^\s)<>`"'\]]+\/pull\/\d+/g;
 
@@ -109,7 +112,7 @@ export function acceptedRecord(notes: string | null): AcceptedRecord | null {
   for (let index = records.length - 1; index >= 0; index--) {
     const record = records[index] ?? "";
     if (/^(?:EVIDENCE|CHANGES-REQUESTED)\b/.test(record)) return null;
-    if (/^EXECUTION\b/.test(record) && /\breview[ _-]?head\b[\s:=`*"']*[0-9a-f]{40}(?![0-9a-z])/i.test(record)) return null;
+    if (/^EXECUTION\b/.test(record) && REVIEW_HEAD.test(record)) return null;
     const match = /^ACCEPTED\s+(\S+)[^\n]*?merging:\s*([^\n]+)/.exec(record);
     if (match !== null) {
       const merging = (match[2] ?? "").trim();

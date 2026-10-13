@@ -165,7 +165,7 @@ export function AgentChat({
   const [draft, setDraftState] = useState(() => drafts.get(agent.id));
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
-  /** What a phone's field last measured its text at, for `composerFieldHeight`. */
+  /** The height a phone's draft lays out at, padding included, for `composerFieldHeight`. */
   const [contentHeight, setContentHeight] = useState<number | null>(null);
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set());
   const pane = useRef<View>(null);
@@ -279,7 +279,7 @@ export function AgentChat({
         color: colors.foreground,
         fontSize: FONT_SIZE.content,
         lineHeight: lineHeightFor(FONT_SIZE.content),
-        ...(compact ? { flex: 1, minWidth: 0 } : { height: INPUT_HEIGHT }),
+        ...(compact ? null : { height: INPUT_HEIGHT }),
         paddingHorizontal: SPACE.md,
         paddingTop: compact ? COMPOSER_FIELD_PADDING : SPACE.sm + 2,
         paddingBottom: compact ? COMPOSER_FIELD_PADDING : 0,
@@ -287,6 +287,8 @@ export function AgentChat({
         // The box shows focus (below), not the field inside it: a browser's outline would cut the box in two.
         outlineWidth: 0,
       },
+      fieldFrame: { flex: 1, minWidth: 0 },
+      measure: { position: "absolute" as const, left: 0, right: 0, top: 0, opacity: 0 },
       inputTools: {
         flexDirection: "row" as const,
         justifyContent: "flex-end" as const,
@@ -491,6 +493,21 @@ export function AgentChat({
             )}
             {actions === undefined ? null : <View style={styles.quick}>{actions}</View>}
             <View style={[styles.inputBox, typing ? { borderColor: theme.colors.accent } : null]}>
+              <View style={compact ? styles.fieldFrame : null}>
+              {compact ? (
+                // The draft laid out at the field's width, unseen: its height sizes the field. A web
+                // field reports at least its current height, so it could grow but never shrink back.
+                <Text
+                  style={[styles.input, styles.measure]}
+                  pointerEvents="none"
+                  accessible={false}
+                  importantForAccessibility="no-hide-descendants"
+                  onLayout={(event) => setContentHeight(event.nativeEvent.layout.height)}
+                >
+                  {/* A trailing new line still takes a line in the field. */}
+                  {draft.endsWith("\n") ? `${draft} ` : draft}
+                </Text>
+              ) : null}
               <TextInput
                 value={draft}
                 onChangeText={setDraft}
@@ -499,7 +516,6 @@ export function AgentChat({
                 placeholder={submitOnEnter ? `${placeholder} (Enter sends, Shift+Enter for a new line)` : placeholder}
                 placeholderTextColor={theme.colors.foregroundMuted}
                 multiline
-                onContentSizeChange={compact ? (event) => setContentHeight(event.nativeEvent.contentSize.height) : undefined}
                 onKeyPress={
                   submitOnEnter
                     ? (event: WebKeyPressEvent) => {
@@ -511,6 +527,7 @@ export function AgentChat({
                 }
                 style={compact ? [styles.input, { height: composerFieldHeight(draft, contentHeight) }] : styles.input}
               />
+              </View>
               <View style={styles.inputTools}>
                 {context === undefined ? null : <ContextMeter theme={theme} used={context.used} max={context.max} />}
                 <Pressable
