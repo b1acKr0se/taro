@@ -104,7 +104,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
       const needsHost = owner === null && UNDER_WAY.has(ticket.status);
       // Reading a ticket spawns the Backlog CLI, so only for cards that show what it holds.
       // The latest milestone widens this to every under-way ticket, still bounded by that set.
-      const facts = needsHost || UNDER_WAY.has(ticket.status) ? await recordedFacts(paths.tracker, ticket.id) : null;
+      const facts = UNDER_WAY.has(ticket.status) ? await recordedFacts(paths.tracker, ticket.id) : null;
       const elsewhere = needsHost ? facts?.hostElsewhere ?? null : null;
       const archivedAgents = archivedByTicket.get(ticket.id) ?? [];
       const pastById = new Map(archivedAgents.map((agent) => [agent.id, agent]));
