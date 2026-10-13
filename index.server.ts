@@ -30,7 +30,7 @@ import {
 import { ProjectSettingsSchema } from "./shared/project";
 import { Actions } from "./server/actions";
 import { fetchLiveAgent } from "./server/agents";
-import { dismissSuggestion, loadBoard, loadTicketDetail } from "./server/board";
+import { dismissSuggestion, invalidateBoards, loadBoard, loadTicketDetail } from "./server/board";
 import type { PaseoApi } from "./server/host-types";
 import { PluginState } from "./server/state";
 import { Supervisor, identityFromLabels } from "./server/supervision";
@@ -80,7 +80,10 @@ export default function contribute(server: PluginServerContext) {
     const projects = await Promise.all(
       configs.map(async (config) => {
         const manager = await fetchLiveAgent(paseo, config.managerAgentId);
-        return { config, manager: manager === null ? null : agentBrief(manager), trackerSyncProblem: trackers.syncProblem(config.project) };
+        const board = await loadBoard(paseo, state, config.project).catch(() => null);
+        const needsYou =
+          board === null ? 0 : board.cards.filter((card) => card.column === "needs-you" || card.column === "stalled").length + board.managerDecisions.length;
+        return { config, manager: manager === null ? null : agentBrief(manager), trackerSyncProblem: trackers.syncProblem(config.project), needsYou };
       }),
     );
     return { taroHome: await taroHome(), projects };
@@ -129,6 +132,7 @@ export default function contribute(server: PluginServerContext) {
   });
   server.handle(answerDecision, async ({ key, label, text }, { paseo }) => {
     await actions.answerDecision(keep(paseo), key, label, text);
+    invalidateBoards();
     return {};
   });
   server.handle(listOpenDecisions, async ({ project }) => ({
@@ -157,6 +161,7 @@ export default function contribute(server: PluginServerContext) {
   });
   server.handle(dismissSuggestionRpc, async ({ project, label, prompt }) => {
     await dismissSuggestion(project, label, prompt);
+    invalidateBoards();
     return {};
   });
 
@@ -166,6 +171,7 @@ export default function contribute(server: PluginServerContext) {
     await supervisor.onTurnEnded(paseo, agent, outcome, timeline, turnId).catch((error: unknown) => {
       console.error(`[taro] supervising ${agent.id}:`, error);
     });
+    invalidateBoards();
   });
 
   // Every Taro agent knows where its tracker and skill are, on create and on resume (decision 38).

@@ -36,7 +36,25 @@ function newest(agents: readonly PaseoAgent[]): PaseoAgent | null {
   return [...agents].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
 }
 
-export async function loadBoard(paseo: PaseoApi, state: PluginState, project: string): Promise<Board> {
+/** One read serves every caller for a moment: the screen, the Inbox and the sidebar all poll. */
+const BOARD_CACHE_MS = 2_000;
+const boardCache = new Map<string, { at: number; board: Promise<Board> }>();
+
+export function loadBoard(paseo: PaseoApi, state: PluginState, project: string): Promise<Board> {
+  const cached = boardCache.get(project);
+  if (cached !== undefined && Date.now() - cached.at < BOARD_CACHE_MS) return cached.board;
+  const board = readBoard(paseo, state, project);
+  boardCache.set(project, { at: Date.now(), board });
+  board.catch(() => boardCache.delete(project));
+  return board;
+}
+
+/** Forgets cached boards after an action, so the next read shows its effect. */
+export function invalidateBoards(): void {
+  boardCache.clear();
+}
+
+async function readBoard(paseo: PaseoApi, state: PluginState, project: string): Promise<Board> {
   const paths = await projectPaths(project);
   const [tickets, agents, decisions, agentStates] = await Promise.all([
     listTickets(paths.tracker),

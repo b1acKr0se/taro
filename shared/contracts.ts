@@ -30,6 +30,8 @@ export const ProjectSummarySchema = z.object({
   config: ProjectConfigSchema,
   manager: AgentBriefSchema.nullable(),
   trackerSyncProblem: z.string().nullable(),
+  /** Cards in Needs you or Stalled, for the sidebar badge and tabs. */
+  needsYou: z.number().int(),
 });
 export type ProjectSummary = z.infer<typeof ProjectSummarySchema>;
 

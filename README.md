@@ -10,9 +10,12 @@ This repository replaces the original instruction-only Taro
 (`github.com/b1acKr0se/taro`, kept for reference in `reference/taro-original/`).
 Nothing from it needs to be preserved or migrated.
 
-**Status: ready to implement.** UI (mockup v1) and workflow are settled (decisions 1–41),
-the Paseo hooks the design relies on are verified, and `docs/spec.md` turns it into
-components, formats and build phases. No plugin code yet.
+**Status: working plugin, in progress.** Phases 1–2 of `docs/spec.md` are built and checked
+end to end on a throwaway Paseo daemon (see `docs/build-log.md`); later phases continue there.
+
+Install on a Paseo daemon (0.11.2+) with plugins enabled: `npm install`, then
+`paseo plugin install "$PWD"`. Develop with `npm run typecheck`, `npm test`, and
+`paseo plugin reload taro`.
 
 ## Read first
 
@@ -27,6 +30,12 @@ components, formats and build phases. No plugin code yet.
 
 ## Layout
 
+    index.server.ts, index.client.tsx   plugin entries
+    server/      daemon side: onboarding, tracker, manager, supervision, board, actions
+    client/      the Taro screen (React Native)
+    shared/      RPC contracts and pure logic shared by both halves
+    skill/       what agents read: roles, formats, ticket and paseo commands, templates
+    templates/   files and messages the plugin writes or sends
     docs/        design documents
     mockup/      clickable HTML mockup (index.html = chosen v1, phone.html = phone frame)
     images/      screenshots of the mockup, plus FirstMate's phone UI for reference

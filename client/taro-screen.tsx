@@ -96,7 +96,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
       {list.map((summary) =>
         tab(
           summary.config.project,
-          summary.config.project,
+          summary.needsYou > 0 ? `${summary.config.project} · ${summary.needsYou}` : summary.config.project,
           (showing === "project" || showing === "settings") && current?.config.project === summary.config.project,
           () => choose(summary.config.project, "project"),
         ),
