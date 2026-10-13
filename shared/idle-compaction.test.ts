@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { ProjectSettingsSchema } from "./project";
 import { IDLE_COMPACT_AFTER_MS, idleCompactAfterMs, idleCompactionAfterTurn, idleCompactionDue, type IdleCandidate } from "./idle-compaction";
 
 const endedAt = Date.parse("2026-10-13T12:00:00Z");
@@ -98,5 +99,19 @@ describe("idleCompactAfterMs", () => {
     expect(idleCompactAfterMs("-5")).toBe(IDLE_COMPACT_AFTER_MS);
     expect(idleCompactAfterMs("soon")).toBe(IDLE_COMPACT_AFTER_MS);
     expect(idleCompactAfterMs("90")).toBe(90_000);
+  });
+});
+
+describe("idleCompactThresholdTokens", () => {
+  it("defaults to 200k, for a project configured before the setting existed too", () => {
+    const settings = ProjectSettingsSchema.parse({
+      repoPath: "/repo",
+      baseBranch: "main",
+      ticketPrefix: "AP",
+      manager: { model: "claude/claude-haiku-5-5" },
+      owner: { model: "claude/claude-haiku-5-5" },
+    });
+    expect(settings.idleCompactThresholdTokens).toBe(200_000);
+    expect(settings.compactThresholdTokens).toBe(250_000);
   });
 });

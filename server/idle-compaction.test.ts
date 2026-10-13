@@ -24,7 +24,7 @@ vi.mock("./package-files", () => ({
   message: async (path: string, values: Record<string, string> = {}) => `${path}:${values.ticket ?? values.handoff ?? ""}:${values.usedTokens ?? ""}`,
 }));
 vi.mock("./projects", () => ({
-  readProjectConfig: async () => ({ project: "taro", compactThresholdTokens: 250_000, idleCompactThresholdTokens: 100_000 }),
+  readProjectConfig: async () => ({ project: "taro", compactThresholdTokens: 250_000, idleCompactThresholdTokens: 200_000 }),
   projectPaths: async () => ({ home: "/taro/projects/taro" }),
 }));
 
@@ -84,13 +84,13 @@ beforeEach(() => {
 describe("Supervisor.compactIdleAgents", () => {
   it("asks an idle owner and the manager for a handoff and counts each, never a helper or reviewer", async () => {
     const { taro, agents, stats } = setup();
-    const all = [agent("owner-1", "owner", "TR-5", 150_000), agent("manager-1", "manager", null, 150_000), agent("helper-1", "helper", "TR-5", 150_000), agent("reviewer-1", "reviewer", "TR-5", 150_000)];
+    const all = [agent("owner-1", "owner", "TR-5", 250_000), agent("manager-1", "manager", null, 250_000), agent("helper-1", "helper", "TR-5", 250_000), agent("reviewer-1", "reviewer", "TR-5", 250_000)];
     for (const live of all) await seenIdle(taro, live);
     vi.mocked(sendFromPlugin).mockClear();
     vi.mocked(listTaroAgents).mockResolvedValue(all);
 
     expect(await taro.compactIdleAgents({} as PaseoApi, ["taro"], at(56), 55 * 60_000)).toBe(2);
-    expect(sent()).toEqual(["owner-1 handoff:TR-5:150k", "manager-1 manager-handoff:/taro/projects/taro/manager-handoff.md:150k"]);
+    expect(sent()).toEqual(["owner-1 handoff:TR-5:250k", "manager-1 manager-handoff:/taro/projects/taro/manager-handoff.md:250k"]);
     expect([agents["owner-1"]?.compaction, agents["owner-1"]?.idleCompaction]).toEqual(["handoff", "running"]);
     expect([agents["manager-1"]?.compaction, agents["manager-1"]?.idleCompaction]).toEqual(["handoff", "running"]);
     expect(agents["helper-1"]?.compaction).toBe("none");
@@ -101,8 +101,8 @@ describe("Supervisor.compactIdleAgents", () => {
 
   it("leaves agents under the idle threshold, too early or too late", async () => {
     const { taro } = setup();
-    const small = agent("owner-1", "owner", "TR-5", 100_000);
-    const large = agent("owner-2", "owner", "TR-6", 150_000);
+    const small = agent("owner-1", "owner", "TR-5", 200_000);
+    const large = agent("owner-2", "owner", "TR-6", 250_000);
     await seenIdle(taro, small);
     await seenIdle(taro, large);
     vi.mocked(sendFromPlugin).mockClear();
@@ -110,12 +110,12 @@ describe("Supervisor.compactIdleAgents", () => {
     expect(await taro.compactIdleAgents({} as PaseoApi, ["taro"], at(54), 55 * 60_000)).toBe(0);
     expect(await taro.compactIdleAgents({} as PaseoApi, ["taro"], at(61), 55 * 60_000)).toBe(0);
     expect(await taro.compactIdleAgents({} as PaseoApi, ["taro"], at(57), 55 * 60_000)).toBe(1);
-    expect(sent()).toEqual(["owner-2 handoff:TR-6:150k"]);
+    expect(sent()).toEqual(["owner-2 handoff:TR-6:250k"]);
   });
 
   it("runs the manager through handoff → /compact → reload, then not again until a turn of its own", async () => {
     const { taro, agents } = setup();
-    const manager = agent("manager-1", "manager", null, 150_000);
+    const manager = agent("manager-1", "manager", null, 250_000);
     await seenIdle(taro, manager);
     vi.mocked(listTaroAgents).mockResolvedValue([manager]);
     await taro.compactIdleAgents({} as PaseoApi, ["taro"], at(56), 55 * 60_000);
@@ -144,7 +144,7 @@ describe("Supervisor.compactIdleAgents", () => {
 
   it("reloads an owner with its ticket after an idle compaction, as after the Compact button", async () => {
     const { taro, agents } = setup();
-    const owner = agent("owner-1", "owner", "TR-5", 150_000);
+    const owner = agent("owner-1", "owner", "TR-5", 250_000);
     await seenIdle(taro, owner);
     vi.mocked(listTaroAgents).mockResolvedValue([owner]);
     await taro.compactIdleAgents({} as PaseoApi, ["taro"], at(56), 55 * 60_000);

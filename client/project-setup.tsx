@@ -60,7 +60,7 @@ function draftFrom(config: ProjectConfig | null): Draft {
     acceptAlsoMerges: config?.acceptAlsoMerges ?? true,
     trackerSync: config?.trackerSync ?? "local",
     compactThresholdTokens: String(config?.compactThresholdTokens ?? 250_000),
-    idleCompactThresholdTokens: String(config?.idleCompactThresholdTokens ?? 100_000),
+    idleCompactThresholdTokens: String(config?.idleCompactThresholdTokens ?? 200_000),
     maxParallelOwners: String(config?.maxParallelOwners ?? 3),
   };
 }
@@ -77,7 +77,7 @@ function settingsFrom(draft: Draft, defaultModel: string): ProjectSettings {
     acceptAlsoMerges: draft.acceptAlsoMerges,
     trackerSync: draft.trackerSync,
     compactThresholdTokens: Number.parseInt(draft.compactThresholdTokens, 10) || 250_000,
-    idleCompactThresholdTokens: Number.parseInt(draft.idleCompactThresholdTokens, 10) || 100_000,
+    idleCompactThresholdTokens: Number.parseInt(draft.idleCompactThresholdTokens, 10) || 200_000,
     maxParallelOwners: Math.max(1, Number.parseInt(draft.maxParallelOwners, 10) || 3),
   };
 }

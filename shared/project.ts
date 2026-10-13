@@ -62,7 +62,7 @@ export const ProjectSettingsSchema = z.object({
   trackerSync: TrackerSyncSchema.default("local"),
   compactThresholdTokens: z.number().int().positive().default(250_000),
   /** An owner or manager idle for about an hour above this is compacted before its prompt cache expires (TR-015). */
-  idleCompactThresholdTokens: z.number().int().positive().default(100_000),
+  idleCompactThresholdTokens: z.number().int().positive().default(200_000),
   /** Task owners running at once; the manager queues the rest (every agent costs host threads and money). */
   maxParallelOwners: z.number().int().min(1).max(20).default(3),
 });
