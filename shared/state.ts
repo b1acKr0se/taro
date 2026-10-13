@@ -48,8 +48,12 @@ export const AgentStateSchema = z.object({
   lastStatus: LastStatusSchema.nullable().default(null),
   /** A turn ended with a status line saying the work stopped without a reason; reset by any other ending. */
   stallCount: z.number().int().default(0),
-  /** Set when two consecutive stalls (after the nudge) leave the card in Stalled. */
+  /** Set when two consecutive stalls (after the nudge) leave the card in Stalled, or crashes exhaust recovery. */
   stalled: z.boolean().default(false),
+  /** Why the plugin gave up on it, when it says more than the status line does (a crash past the recovery limit). */
+  stalledReason: z.string().nullable().default(null),
+  /** When the plugin automatically recovered it from a crash, for the per-hour limit (TR-012). */
+  recoveries: z.array(z.string()).default([]),
   deliveredTurns: z.array(z.string()).default([]),
   /** Reports from this owner's helpers, waiting until it is idle. */
   heldReports: z.array(HeldReportSchema).default([]),

@@ -147,7 +147,7 @@ export class Stats {
     });
   }
 
-  count(project: string, ticket: string, field: "nudges" | "decisions"): Promise<void> {
+  count(project: string, ticket: string, field: "nudges" | "decisions" | "recoveries"): Promise<void> {
     return this.update(project, ticket, (stats) => {
       stats[field] += 1;
     });

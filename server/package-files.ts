@@ -30,6 +30,9 @@ export const TEMPLATES = {
   requestChanges: "messages/request-changes.md",
   dependencyCleared: "messages/dependency-cleared.md",
   answer: "messages/answer.md",
+  crashRecovery: "messages/crash-recovery.md",
+  helperCrashed: "messages/helper-crashed.md",
+  headroomRecovered: "messages/headroom-recovered.md",
 } as const;
 
 export type TemplatePath = (typeof TEMPLATES)[keyof typeof TEMPLATES];

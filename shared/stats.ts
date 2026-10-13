@@ -27,6 +27,8 @@ export const TicketStatsSchema = z.object({
   agents: z.record(z.string(), AgentStatsSchema).default({}),
   nudges: z.number().int().default(0),
   decisions: z.number().int().default(0),
+  /** Automatic recoveries of this ticket's agents from a crash (TR-012). */
+  recoveries: z.number().int().default(0),
 });
 export type TicketStats = z.infer<typeof TicketStatsSchema>;
 
@@ -48,6 +50,7 @@ export interface TicketSummary {
   costUsd: number | null;
   nudges: number;
   decisions: number;
+  recoveries: number;
 }
 
 export function summarize(stats: TicketStats, now: number = Date.now()): TicketSummary {
@@ -80,6 +83,7 @@ export function summarize(stats: TicketStats, now: number = Date.now()): TicketS
     costUsd: costs.length === 0 ? null : costs.reduce((total, cost) => total + cost, 0),
     nudges: stats.nudges,
     decisions: stats.decisions,
+    recoveries: stats.recoveries,
   };
 }
 
@@ -93,6 +97,7 @@ export interface ProjectTotals {
   costUsd: number | null;
   nudges: number;
   decisions: number;
+  recoveries: number;
 }
 
 /** A child ticket (`TR-3.1`) whose parent is `TR-3`, or null. */
@@ -103,7 +108,7 @@ export function parentOf(ticket: string): string | null {
 /**
  * A project's totals. A child's agents, turns and cost are recorded on its
  * parent too (see `server/stats.ts`), and its time falls inside the parent's,
- * so those add up top-level tickets only; nudges and decisions are recorded on
+ * so those add up top-level tickets only; nudges, decisions and recoveries are recorded on
  * one ticket each, so they add up every ticket.
  */
 export function projectTotals(summaries: readonly TicketSummary[]): ProjectTotals {
@@ -120,6 +125,7 @@ export function projectTotals(summaries: readonly TicketSummary[]): ProjectTotal
     costUsd: costs.length === 0 ? null : costs.reduce((total, cost) => total + cost, 0),
     nudges: sum(summaries, (summary) => summary.nudges),
     decisions: sum(summaries, (summary) => summary.decisions),
+    recoveries: sum(summaries, (summary) => summary.recoveries),
   };
 }
 

@@ -1,0 +1,2 @@
+<!-- Sent to an owner when its helper or reviewer crashed and the plugin could not bring it back (TR-012). Placeholders: role, title, agentId, ticket, reason. -->
+Your {{role}} "{{title}}" ({{agentId}}) on {{ticket}} crashed and the plugin could not recover it: {{reason}}. Its commits stay on your branch; its transcript is readable with `paseo logs {{agentId}}`. Decide whether to start a replacement (check thread headroom first: `cat /sys/fs/cgroup/pids.current /sys/fs/cgroup/pids.max`, wait while above 85%) or finish the task yourself.

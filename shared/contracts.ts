@@ -232,6 +232,7 @@ export const StatsSummarySchema = z.object({
   costUsd: z.number().nullable(),
   nudges: z.number(),
   decisions: z.number(),
+  recoveries: z.number(),
 });
 export type StatsSummary = z.infer<typeof StatsSummarySchema>;
 

@@ -5,6 +5,7 @@
  * owner, nudges a stalled owner once, and runs the compaction pipeline.
  */
 import { RoleSchema, TARO_LABELS, type Role } from "../shared/project";
+import { isCrash } from "../shared/recovery";
 import { hashText, parseDecisionBlocks, parseStatusLine, type ParsedDecision } from "../shared/reports";
 import { withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDecision } from "../shared/state";
 import { fetchLiveAgent, isMidTurn, listTaroAgents } from "./agents";
@@ -12,6 +13,7 @@ import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from 
 import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { readProjectConfig } from "./projects";
 import { isPluginMessageId, sendCommand, sendFromPlugin } from "./send";
+import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
 
@@ -77,7 +79,7 @@ export function sameQuestion(left: Pick<ParsedDecision, "question" | "options" |
   );
 }
 
-function freshState(identity: TaroIdentity): AgentState {
+export function freshState(identity: TaroIdentity): AgentState {
   return {
     project: identity.project,
     role: identity.role,
@@ -86,6 +88,8 @@ function freshState(identity: TaroIdentity): AgentState {
     lastStatus: null,
     stallCount: 0,
     stalled: false,
+    stalledReason: null,
+    recoveries: [],
     deliveredTurns: [],
     heldReports: [],
     compaction: "none",
@@ -115,6 +119,7 @@ export class Supervisor {
   constructor(
     private readonly state: PluginState,
     private readonly stats: Stats,
+    private readonly recovery: Recovery,
   ) {}
 
   async onTurnEnded(paseo: PaseoApi, hookAgent: HookAgent, outcome: TurnOutcome, timeline: readonly TimelineItem[], turnId: string | null, activeMs: number | undefined): Promise<void> {
@@ -152,6 +157,12 @@ export class Supervisor {
     });
 
     if (outcome.kind === "canceled") return;
+    // Any role, the manager included (TR-012): a dead process gets no further turns on its own.
+    const failure = outcome.kind === "failed" ? (outcome.error?.message ?? "") : "";
+    if (isCrash(failure)) {
+      await this.recovery.onCrash(paseo, live, identity, failure);
+      return;
+    }
 
     if (identity.role === "helper" || identity.role === "reviewer") {
       if (outcome.kind === "completed") await this.deliverReport(paseo, live, identity, closing, turnKey, hookAgent.parentAgentId);
@@ -181,6 +192,7 @@ export class Supervisor {
         if (!stalled) {
           record.stallCount = 0;
           record.stalled = false;
+          record.stalledReason = null;
           return false;
         }
         record.stallCount += 1;
@@ -210,6 +222,7 @@ export class Supervisor {
       // Agents archived (or removed) while the plugin was down: their questions can no longer be answered.
       const live = new Set(agents.map((agent) => agent.id));
       await this.state.updateDecisions((stored) => withdrawOpenDecisions(stored, (decision) => decision.project === project && !live.has(decision.agentId)));
+      repaired += await this.recovery.recoverLeftovers(paseo, agents);
       for (const agent of agents) {
         if (isMidTurn(agent) || agent.status === "closed") continue;
         const identity = identityFromLabels(agent.labels, agent.title ?? null);

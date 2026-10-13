@@ -21,6 +21,7 @@ describe("summarize", () => {
       },
       nudges: 1,
       decisions: 2,
+      recoveries: 1,
     });
     expect(summary.wallMs).toBe(45 * 60_000);
     expect(summary.byStatus).toEqual({ Backlog: 60_000, Planning: 240_000, "In Progress": 600_000, "Awaiting acceptance": 1_800_000, Done: 0 });
@@ -29,6 +30,7 @@ describe("summarize", () => {
     expect(summary.turns).toBe(4);
     expect(summary.costUsd).toBe(1.75);
     expect(summary.status).toBe("Done");
+    expect(summary.recoveries).toBe(1);
   });
 });
 
@@ -47,30 +49,31 @@ function row(ticket: string, values: Partial<TicketSummary> = {}): TicketSummary
     costUsd: null,
     nudges: 0,
     decisions: 0,
+    recoveries: 0,
     ...values,
   };
 }
 
 describe("projectTotals", () => {
   it("is all zeros and no cost for no tickets", () => {
-    expect(projectTotals([])).toEqual({ tickets: 0, wallMs: 0, waitingOnUserMs: 0, agentActiveMs: 0, turns: 0, agents: 0, costUsd: null, nudges: 0, decisions: 0 });
+    expect(projectTotals([])).toEqual({ tickets: 0, wallMs: 0, waitingOnUserMs: 0, agentActiveMs: 0, turns: 0, agents: 0, costUsd: null, nudges: 0, decisions: 0, recoveries: 0 });
   });
 
   it("adds top-level tickets and skips a cost nobody reported", () => {
     const totals = projectTotals([
-      row("AP-1", { wallMs: 1_000, waitingOnUserMs: 100, agentActiveMs: 500, turns: 3, agents: 1, costUsd: 1.25, nudges: 1, decisions: 2 }),
+      row("AP-1", { wallMs: 1_000, waitingOnUserMs: 100, agentActiveMs: 500, turns: 3, agents: 1, costUsd: 1.25, nudges: 1, decisions: 2, recoveries: 1 }),
       row("AP-2", { wallMs: 2_000, waitingOnUserMs: 0, agentActiveMs: 700, turns: 4, agents: 2, costUsd: null }),
       row("AP-3", { costUsd: 0 }),
     ]);
-    expect(totals).toEqual({ tickets: 3, wallMs: 3_000, waitingOnUserMs: 100, agentActiveMs: 1_200, turns: 7, agents: 3, costUsd: 1.25, nudges: 1, decisions: 2 });
+    expect(totals).toEqual({ tickets: 3, wallMs: 3_000, waitingOnUserMs: 100, agentActiveMs: 1_200, turns: 7, agents: 3, costUsd: 1.25, nudges: 1, decisions: 2, recoveries: 1 });
   });
 
-  it("does not count a child's agents, turns, cost or time twice, but adds its nudges and decisions", () => {
+  it("does not count a child's agents, turns, cost or time twice, but adds its nudges, decisions and recoveries", () => {
     const totals = projectTotals([
-      row("AP-9", { wallMs: 10_000, agentActiveMs: 900, turns: 9, agents: 3, costUsd: 3, nudges: 1 }),
-      row("AP-9.1", { wallMs: 4_000, agentActiveMs: 400, turns: 4, agents: 1, costUsd: 1, nudges: 2, decisions: 1 }),
+      row("AP-9", { wallMs: 10_000, agentActiveMs: 900, turns: 9, agents: 3, costUsd: 3, nudges: 1, recoveries: 1 }),
+      row("AP-9.1", { wallMs: 4_000, agentActiveMs: 400, turns: 4, agents: 1, costUsd: 1, nudges: 2, decisions: 1, recoveries: 2 }),
     ]);
-    expect(totals).toMatchObject({ tickets: 2, wallMs: 10_000, agentActiveMs: 900, turns: 9, agents: 3, costUsd: 3, nudges: 3, decisions: 1 });
+    expect(totals).toMatchObject({ tickets: 2, wallMs: 10_000, agentActiveMs: 900, turns: 9, agents: 3, costUsd: 3, nudges: 3, decisions: 1, recoveries: 3 });
   });
 });
 

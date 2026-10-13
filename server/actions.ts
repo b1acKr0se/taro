@@ -15,6 +15,7 @@ import { bypassModeId } from "./models";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { listProjectConfigs, projectPaths, requireProjectConfig } from "./projects";
 import { sendFromPlugin, sendWithoutInterrupting } from "./send";
+import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import { identityFromLabels, type Supervisor } from "./supervision";
 import { appendTicketNote, listTickets, viewTicket } from "./tickets";
@@ -30,6 +31,7 @@ export class Actions {
     private readonly supervisor: Supervisor,
     private readonly trackers: TrackerWatch,
     private readonly stats: Stats,
+    private readonly recovery: Recovery,
   ) {}
 
   async answerDecision(paseo: PaseoApi, key: string, label: string | null, text: string): Promise<void> {
@@ -247,7 +249,8 @@ export class Actions {
     const config = await requireProjectConfig(project);
     const manager = await fetchLiveAgent(paseo, config.managerAgentId);
     if (manager === null) return;
-    await sendFromPlugin(paseo, manager.id, await message(TEMPLATES.dependencyCleared, { ticket, dependents: dependents.length === 0 ? "none" : dependents.join(", "), queued: queued.length === 0 ? "none" : queued.join(", ") }));
+    // Held while threads are short (TR-012): a free owner slot is no reason to start one then.
+    await this.recovery.tellManagerWhenHeadroom(paseo, project, manager.id, await message(TEMPLATES.dependencyCleared, { ticket, dependents: dependents.length === 0 ? "none" : dependents.join(", "), queued: queued.length === 0 ? "none" : queued.join(", ") }));
   }
 
   /** Statuses this plugin knows; used to sanity-check a ticket a user moved by hand. */

@@ -7,6 +7,7 @@ import { listTaroAgents, projectAgents } from "./agents";
 import { invalidateBoards, liveOpenDecisions, loadBoard } from "./board";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import { sendFromPlugin } from "./send";
+import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
 import { Supervisor } from "./supervision";
@@ -82,7 +83,7 @@ describe("liveOpenDecisions", () => {
 describe("Actions.answerDecision", () => {
   function actionsOver(decisions: StoredDecision[]): Actions {
     const state = stateOver(decisions);
-    return new Actions(state, new Supervisor(state, {} as Stats), {} as TrackerWatch, {} as Stats);
+    return new Actions(state, new Supervisor(state, {} as Stats, {} as Recovery), {} as TrackerWatch, {} as Stats, {} as Recovery);
   }
 
   const paseoWhere = (refresh: () => Promise<unknown>) => ({ agents: { ref: () => ({ refresh }) } }) as unknown as PaseoApi;
@@ -140,7 +141,7 @@ describe("Actions.relaunchOwner", () => {
     const archive = vi.fn(async () => undefined);
     const create = vi.fn(async () => undefined);
     const paseo = { agents: { ref: () => ({ archive }) }, workspaces: { ref: () => ({ agents: { create } }) } } as unknown as PaseoApi;
-    await new Actions(state, new Supervisor(state, {} as Stats), {} as TrackerWatch, {} as Stats).relaunchOwner(paseo, "taro", "TR-5");
+    await new Actions(state, new Supervisor(state, {} as Stats, {} as Recovery), {} as TrackerWatch, {} as Stats, {} as Recovery).relaunchOwner(paseo, "taro", "TR-5");
     expect(archive).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledTimes(1);
     expect(decisions.map((decision) => decision.status)).toEqual(["withdrawn", "open"]);

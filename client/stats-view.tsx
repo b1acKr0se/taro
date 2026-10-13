@@ -1,7 +1,7 @@
 /**
  * A project's Stats tab: a totals row, then a row per ticket with its wall
- * time, agent time, time waiting on the user, turns, agents, cost, nudges and
- * decisions. Tapping a ticket shows its time per status. The table scrolls
+ * time, agent time, time waiting on the user, turns, agents, cost, nudges,
+ * decisions and crash recoveries. Tapping a ticket shows its time per status. The table scrolls
  * sideways when the screen is narrower than it; on a phone the status sits
  * under the title so the first numbers fit.
  */
@@ -28,6 +28,7 @@ const NUMBER_COLUMNS: ReadonlyArray<{ key: string; label: string; width: number;
   { key: "cost", label: "Cost", width: 68, value: (counted) => formatCost(counted.costUsd) },
   { key: "nudges", label: "Nudges", width: 60, value: (counted) => String(counted.nudges) },
   { key: "decisions", label: "Decisions", width: 72, value: (counted) => String(counted.decisions) },
+  { key: "recoveries", label: "Recoveries", width: 80, value: (counted) => String(counted.recoveries) },
 ];
 
 const NUMBERS_WIDTH = NUMBER_COLUMNS.reduce((total, column) => total + column.width, 0);

@@ -34,6 +34,7 @@ import { Actions } from "./server/actions";
 import { fetchLiveAgent } from "./server/agents";
 import { dismissSuggestion, invalidateBoards, liveOpenDecisions, loadBoard, loadTicketDetail } from "./server/board";
 import type { PaseoApi } from "./server/host-types";
+import { Recovery } from "./server/recovery";
 import { PluginState } from "./server/state";
 import { Stats, turnMayStillEnd } from "./server/stats";
 import { summarize } from "./shared/stats";
@@ -52,8 +53,10 @@ export default function contribute(server: PluginServerContext) {
   const trackers = new TrackerWatch();
   const state = new PluginState();
   const stats = new Stats();
-  const supervisor = new Supervisor(state, stats);
-  const actions = new Actions(state, supervisor, trackers, stats);
+  const recovery = new Recovery(state, stats);
+  const supervisor = new Supervisor(state, stats, recovery);
+  const actions = new Actions(state, supervisor, trackers, stats, recovery);
+  recovery.setRelaunchOwner((paseo, project, ticket) => actions.relaunchOwner(paseo, project, ticket));
   // The server half is given Paseo only inside handlers and hooks; keep the first one for timers.
   let kept: PaseoApi | null = null;
   const keep = (paseo: PaseoApi): PaseoApi => {
@@ -229,6 +232,7 @@ export default function contribute(server: PluginServerContext) {
     removeTurnStartHook();
     removeArchiveHook();
     removeSessionHook();
+    recovery.dispose();
     trackers.stop();
   };
 }

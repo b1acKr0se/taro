@@ -4,6 +4,7 @@ import type { AgentState, StoredDecision } from "../shared/state";
 import { fetchLiveAgent, listTaroAgents } from "./agents";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
 import { sendFromPlugin } from "./send";
+import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
 import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, humanMessages, identityFromLabels, Supervisor } from "./supervision";
@@ -16,6 +17,8 @@ vi.mock("./package-files", () => ({
   message: async (path: string, values: Record<string, string> = {}) => `${path}:${values.ticket ?? ""}`,
 }));
 vi.mock("./projects", () => ({ readProjectConfig: async () => null }));
+
+const recovery = { onCrash: vi.fn(async () => undefined), recoverLeftovers: async () => 0 } as unknown as Recovery;
 
 const turn = [
   { type: "user_message", text: "Approve the scope", clientMessageId: "taro-1" },
@@ -128,7 +131,7 @@ describe("Supervisor.onTurnEnded after an automatic compaction", () => {
       },
     } as unknown as PluginState;
     const stats = { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats;
-    return new Supervisor(state, stats);
+    return new Supervisor(state, stats, recovery);
   }
 
   const hookAgent = { id: owner.id, parentAgentId: null } as unknown as HookAgent;
@@ -219,7 +222,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
 
   it("does not reopen an answered decision from an earlier turn's block", async () => {
     const { state, decisions } = fakeState();
-    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats);
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
     const first = [human("start"), ask("scope", "Approve v1?")];
     const second = [plugin("revise"), ask("scope", "Approve v2?")];
     await run(taro, ...first);
@@ -234,7 +237,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
 
   it("does not let an earlier turn's user words close a decision asked later", async () => {
     const { state, decisions } = fakeState();
-    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats);
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
     const first = [human("hi"), reply];
     const second = [plugin("nudge"), ask("merge", "Merge now?")];
     await run(taro, ...first, ...second);
@@ -249,7 +252,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
 
   it("does not let an earlier turn's user words close a stored decision whose block is not in the timeline", async () => {
     const { state, decisions } = fakeState();
-    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats);
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
     // Stored from an earlier read (for instance reconcile's tail page); its block is not in this timeline.
     await run(taro, plugin("start"), ask("merge", "Merge now?"));
     await run(taro, human("hi"), reply, plugin("helper report"), reply);
@@ -258,7 +261,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
 
   it("closes an earlier turn's decision when the user answers in the tab, though the block is in the timeline", async () => {
     const { state, decisions } = fakeState();
-    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats);
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
     const first = [plugin("start"), ask("merge", "Merge now?")];
     await run(taro, ...first);
     await run(taro, ...first, human("merge it"), reply);
@@ -267,7 +270,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
 
   it("takes the status line from this turn only, not an earlier turn's closing message", async () => {
     const { state, agents } = fakeState();
-    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats);
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
     const failed = { kind: "failed" } as unknown as TurnOutcome;
     await taro.onTurnEnded({} as PaseoApi, hookAgent, failed, items(human("go"), reply, human("again"), { type: "tool_call", callId: "c2", name: "shell", status: "failed" }), null, undefined);
     expect(agents[owner.id]?.lastStatus).toBeNull();
@@ -287,7 +290,7 @@ describe("Supervisor withdraws decisions of agents that are no longer live", () 
       agent: async () => null,
       updateAgent: async () => undefined,
     } as unknown as PluginState;
-    return new Supervisor(state, {} as Stats);
+    return new Supervisor(state, {} as Stats, recovery);
   }
 
   it("withdraws every open decision of an archived agent and no one else's", async () => {
@@ -302,5 +305,54 @@ describe("Supervisor withdraws decisions of agents that are no longer live", () 
     const decisions = [stored("archived-owner"), stored("closed-owner"), stored("archived-elsewhere", "other")];
     await supervisorOver(decisions).reconcile({} as PaseoApi, ["taro"]);
     expect(decisions.map((decision) => decision.status)).toEqual(["withdrawn", "open", "open"]);
+  });
+});
+
+describe("Supervisor.onTurnEnded after a crash (TR-012)", () => {
+  const manager = {
+    id: "manager-1",
+    provider: "claude",
+    model: "opus",
+    title: "Taro manager",
+    status: "error",
+    labels: { "taro.project": "taro", "taro.role": "manager" },
+  };
+  const hookAgent = { id: manager.id, parentAgentId: null } as unknown as HookAgent;
+
+  function fakeState(): PluginState {
+    const agents: Record<string, AgentState> = {};
+    return {
+      allDecisions: async () => [],
+      updateDecisions: async <T>(change: (stored: never[]) => T) => change([]),
+      agent: async (agentId: string) => agents[agentId] ?? null,
+      updateAgent: async <T>(agentId: string, initial: () => AgentState, change: (record: AgentState) => T) => {
+        const record = agents[agentId] ?? initial();
+        agents[agentId] = record;
+        return change(record);
+      },
+    } as unknown as PluginState;
+  }
+  const stats = { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats;
+  const failed = (message: string) => ({ kind: "failed", error: { message } }) as unknown as TurnOutcome;
+
+  beforeEach(() => {
+    vi.mocked(fetchLiveAgent).mockResolvedValue(manager as unknown as PaseoAgent);
+    vi.mocked(recovery.onCrash).mockClear();
+    vi.mocked(sendFromPlugin).mockClear();
+  });
+
+  it("hands any role's crash, the manager's included, to recovery and sends nothing else", async () => {
+    const taro = new Supervisor(fakeState(), stats, recovery);
+    const crash = "Claude stopped unexpectedly (signal SIGABRT). Any background shells, monitors or other work it had running were terminated with it.";
+    await taro.onTurnEnded({} as PaseoApi, hookAgent, failed(crash), items(userTurn, reply), null, undefined);
+    expect(vi.mocked(recovery.onCrash).mock.calls.map(([, agent, identity, error]) => [agent.id, identity.role, error])).toEqual([[manager.id, "manager", crash]]);
+    expect(sendFromPlugin).not.toHaveBeenCalled();
+  });
+
+  it("leaves other failures to the existing handling", async () => {
+    const taro = new Supervisor(fakeState(), stats, recovery);
+    await taro.onTurnEnded({} as PaseoApi, hookAgent, failed("API Error: 529 overloaded"), items(userTurn, reply), null, undefined);
+    await taro.onTurnEnded({} as PaseoApi, hookAgent, { kind: "completed" } as unknown as TurnOutcome, items(userTurn, reply), null, undefined);
+    expect(recovery.onCrash).not.toHaveBeenCalled();
   });
 });
