@@ -16,6 +16,7 @@ import { useBoard, useRefreshBoard } from "./board-data";
 import { DecisionCard } from "./decision-card";
 import { errorText } from "./format";
 import { useStats } from "./queries";
+import { SyncProblemCard } from "./sync-problem-card";
 import { TicketCard } from "./ticket-card";
 import { FONT_SIZE } from "./type-scale";
 import { IconButton } from "./ui";
@@ -97,8 +98,21 @@ export function ProjectBoard({
     );
   }
 
+  const syncProblem = summary.trackerSyncProblem;
   const top = (
     <View style={styles.top}>
+      {syncProblem === null ? null : (
+        <SyncProblemCard
+          project={project}
+          problem={syncProblem}
+          theme={theme}
+          compact={compact}
+          onOpenTicket={(ticket) => {
+            const card = cards.find((candidate) => candidate.id === ticket);
+            if (card !== undefined) onOpenTicket(card);
+          }}
+        />
+      )}
       {(board.data?.managerDecisions ?? []).map((decision) => (
         <DecisionCard key={decision.key} decision={decision} theme={theme} compact={compact} onAnswered={refresh} showAgent />
       ))}

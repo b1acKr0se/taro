@@ -206,7 +206,7 @@ function ProjectView({
       remembered.phoneTab = value;
       setPhoneTab(value);
     };
-    const needsYou = (board.data?.cards ?? []).filter((card) => card.column === "needs-you").length;
+    const needsYou = (board.data?.cards ?? []).filter((card) => card.column === "needs-you").length + (summary.trackerSyncProblem === null ? 0 : 1);
     return (
       <View style={{ flex: 1 }}>
         <View style={{ padding: 8 }}>
@@ -298,7 +298,7 @@ function ManagerPane({
     <View style={{ flex: 1 }}>
       {header}
       {summary.trackerSyncProblem === null ? null : (
-        <Text style={{ color: theme.colors.statusWarning, paddingHorizontal: 12, paddingVertical: 6 }}>Ticket sync paused: {summary.trackerSyncProblem}</Text>
+        <Text style={{ color: theme.colors.statusWarning, paddingHorizontal: 12, paddingVertical: 6 }}>Ticket sync paused; see Needs you on the board.</Text>
       )}
       <AgentChat
         agent={{ id: manager.id, updatedAt: manager.updatedAt, pendingPermissions: manager.pendingPermissions, status: manager.status }}

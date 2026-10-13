@@ -13,6 +13,7 @@ import { listOpenDecisions, type Card, type ProjectSummary } from "../shared/con
 import { useBoard, useRefreshBoard } from "./board-data";
 import { walkOrder } from "./walk-order";
 import { DecisionCard } from "./decision-card";
+import { SyncProblemCard } from "./sync-problem-card";
 import { TicketCard } from "./ticket-card";
 import { FONT_SIZE } from "./type-scale";
 import { IconButton } from "./ui";
@@ -79,31 +80,46 @@ export function Inbox({
         <DecisionCard key={decision.key} decision={decision} theme={theme} compact={compact} showAgent onAnswered={refetch} />
       ))}
       {projects.map((summary) => (
-        <InboxProject key={summary.config.project} project={summary.config.project} theme={theme} compact={compact} onOpenTicket={onOpenTicket} />
+        <InboxProject key={summary.config.project} summary={summary} theme={theme} compact={compact} onOpenTicket={onOpenTicket} />
       ))}
     </ScrollView>
   );
 }
 
-/** One project's tickets that need you (acceptance, blockers) or are stalled; decisions are listed above. */
+/** One project's paused ticket sync and tickets that need you (acceptance, blockers) or are stalled; decisions are listed above. */
 function InboxProject({
-  project,
+  summary,
   theme,
   compact,
   onOpenTicket,
 }: {
-  project: string;
+  summary: ProjectSummary;
   theme: PluginTheme;
   compact: boolean;
   onOpenTicket: (project: string, card: Card) => void;
 }) {
+  const project = summary.config.project;
   const board = useBoard(project);
   const refresh = useRefreshBoard(project);
-  const waiting = (board.data?.cards ?? []).filter((card) => (card.column === "needs-you" && card.decisions.length === 0) || card.column === "stalled");
-  if (waiting.length === 0) return null;
+  const cards = board.data?.cards ?? [];
+  const waiting = cards.filter((card) => (card.column === "needs-you" && card.decisions.length === 0) || card.column === "stalled");
+  const syncProblem = summary.trackerSyncProblem;
+  if (waiting.length === 0 && syncProblem === null) return null;
   return (
     <View style={{ gap: 8 }}>
       <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "700" }}>{project.toUpperCase()}</Text>
+      {syncProblem === null ? null : (
+        <SyncProblemCard
+          project={project}
+          problem={syncProblem}
+          theme={theme}
+          compact={compact}
+          onOpenTicket={(ticket) => {
+            const card = cards.find((candidate) => candidate.id === ticket);
+            if (card !== undefined) onOpenTicket(project, card);
+          }}
+        />
+      )}
       {waiting.map((card) => (
         <TicketCard
           key={card.id}
