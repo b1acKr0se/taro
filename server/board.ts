@@ -2,13 +2,14 @@
  * The board, assembled on the daemon (spec §5): the tracker's tickets, the
  * project's live agents by label, and the plugin's own state, joined into cards.
  */
+import { stat } from "node:fs/promises";
 import { hostname } from "node:os";
 
 import { boardColumn, complexityOf } from "../shared/board";
 import { executionMachine } from "../shared/execution";
 import type { Board, Card, TicketDetailView } from "../shared/contracts";
 import { TARO_LABELS } from "../shared/project";
-import { parseSuggestions, suggestionKey } from "../shared/suggestions";
+import { currentSuggestions, parseSuggestions, suggestionKey } from "../shared/suggestions";
 import { projectAgents } from "./agents";
 import { statePath } from "./data-dir";
 import { readJsonIfPresent, readTextIfPresent, writeJsonAtomically } from "./files";
@@ -117,7 +118,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
     project,
     cards,
     managerDecisions: openDecisions.filter((decision) => decision.ticket === null),
-    suggestions: await readSuggestions(project),
+    suggestions: await readSuggestions(project, tickets),
     loadedAt: new Date().toISOString(),
   };
 }
@@ -148,10 +149,16 @@ async function readDismissed(): Promise<Record<string, string[]>> {
   return typeof raw === "object" && raw !== null ? (raw as Record<string, string[]>) : {};
 }
 
-export async function readSuggestions(project: string): Promise<{ label: string; prompt: string }[]> {
-  const text = (await readTextIfPresent((await projectPaths(project)).suggestions)) ?? "";
+/** The manager's suggestions the user has not dismissed and the tickets they name have not outdated. */
+export async function readSuggestions(project: string, tickets: readonly { id: string; updatedAt: string | null }[]): Promise<{ label: string; prompt: string }[]> {
+  const path = (await projectPaths(project)).suggestions;
+  const text = (await readTextIfPresent(path)) ?? "";
+  if (text === "") return [];
+  const written = await stat(path).catch(() => null);
+  if (written === null) return [];
   const dismissed = new Set((await readDismissed())[project] ?? []);
-  return parseSuggestions(text).filter((suggestion) => !dismissed.has(suggestionKey(suggestion)));
+  const kept = parseSuggestions(text).filter((suggestion) => !dismissed.has(suggestionKey(suggestion)));
+  return currentSuggestions(kept, written.mtimeMs, tickets);
 }
 
 export function dismissSuggestion(project: string, label: string, prompt: string): Promise<void> {
