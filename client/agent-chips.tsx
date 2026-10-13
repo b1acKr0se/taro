@@ -1,6 +1,7 @@
 /**
  * The agents of one ticket as chips above its chat (TR-016): each names its job and task, and under
  * that whether it runs, its model and how long it has run — from Paseo's status, never its words.
+ * On a phone (`slim`) each is one short line — its state dot and job — so the strip stays one row (TR-031).
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
@@ -23,8 +24,10 @@ export function AgentChips({
   selectedId,
   now,
   onSelect,
+  slim = false,
 }: {
   theme: PluginTheme;
+  slim?: boolean;
   agents: readonly PaneAgent[];
   selectedId: string | null;
   now: number;
@@ -37,6 +40,40 @@ export function AgentChips({
         const selected = agent.id === selectedId;
         const { state } = paneAgentState(agent, now);
         const color = stateColor(theme, state);
+        // A filled dot while it runs, a hollow one while it is idle or stopped.
+        const mark =
+          state === "done" ? (
+            <Icon name="CircleCheck" size={11} color={color} />
+          ) : (
+            <View style={{ width: 7, height: 7, borderRadius: 4, borderWidth: 1.5, borderColor: color, backgroundColor: state === "running" ? color : "transparent" }} />
+          );
+        if (slim) {
+          return (
+            <Pressable
+              key={agent.id}
+              accessibilityRole="button"
+              accessibilityLabel={`${agent.label}, ${paneAgentDetail(agent, now)}`}
+              accessibilityState={{ selected }}
+              onPress={() => onSelect(agent.id)}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: SPACE.xs + SPACE.xxs,
+                paddingHorizontal: SPACE.sm,
+                paddingVertical: SPACE.xxs + 1,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: selected ? colors.accent : colors.border,
+                backgroundColor: selected ? withAlpha(colors.accent, 0.12) : colors.surface1,
+              }}
+            >
+              {mark}
+              <Text style={{ color: selected ? colors.foreground : colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "600", maxWidth: 180 }} numberOfLines={1}>
+                {agent.label}
+              </Text>
+            </Pressable>
+          );
+        }
         return (
           <Pressable
             key={agent.id}
@@ -61,12 +98,7 @@ export function AgentChips({
                 {agent.label}
               </Text>
               <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs }}>
-                {state === "done" ? (
-                  <Icon name="CircleCheck" size={11} color={color} />
-                ) : (
-                  // A filled dot while it runs, a hollow one while it is idle or stopped.
-                  <View style={{ width: 7, height: 7, borderRadius: 4, borderWidth: 1.5, borderColor: color, backgroundColor: state === "running" ? color : "transparent" }} />
-                )}
+                {mark}
                 <Text style={{ color: state === "running" ? color : colors.foregroundMuted, fontSize: FONT_SIZE.caption }} numberOfLines={1}>
                   {paneAgentDetail(agent, now)}
                 </Text>

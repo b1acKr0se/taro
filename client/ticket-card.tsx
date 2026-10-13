@@ -190,15 +190,16 @@ export function TicketCard({
 
   function nowRow(line: NowLine) {
     const look = lineLook(line);
-    const ownerAlive = owner !== null && owner.status !== "error";
+    // Past the crash limit (a recorded reason) a nudge cannot help; only a fresh owner can.
+    const nudgeable = owner !== null && owner.status !== "error" && card.stalledReason === null;
     return (
       <View style={styles.line}>
         <View style={styles.lineIcon}>
           <Icon name={look.icon} size={13} color={look.color} />
         </View>
         <View style={styles.lineText}>
-          {/* Read whole: a long question wraps; four lines keep one card from filling the column. */}
-          <Text style={[styles.headline, look.headline]} numberOfLines={4}>
+          {/* Read whole: a long question wraps; six lines keep one card from filling the column. */}
+          <Text style={[styles.headline, look.headline]} numberOfLines={6}>
             {line.headline}
           </Text>
           {line.detail === null ? null : (
@@ -216,7 +217,7 @@ export function TicketCard({
           ) : null}
           {line.kind === "stalled" ? (
             <View style={styles.actions}>
-              {ownerAlive ? (
+              {nudgeable ? (
                 <IconButton icon="Zap" label="Nudge" showLabel theme={theme} disabled={busy} onPress={() => void run(() => nudge({ agentId: owner.id }), "Nudged.")} />
               ) : null}
               <IconButton icon="RotateCcw" label="Relaunch" showLabel theme={theme} disabled={busy} onPress={() => void run(() => relaunch({ project, ticket: card.id }), "A fresh owner is starting.")} />

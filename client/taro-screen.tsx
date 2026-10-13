@@ -219,7 +219,8 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
 
   return (
     <View style={styles.root}>
-      {tabs}
+      {/* Inside a ticket on a phone the conversation gets the height; Back returns to the tabs (TR-031). */}
+      {layout.compact && showing === "project" && ticket !== null ? null : tabs}
       <View style={styles.body}>
         {projects.error !== null && projects.data === undefined ? <Text style={styles.error}>{errorText(projects.error)}</Text> : null}
         {body}
@@ -309,18 +310,22 @@ function ProjectView({
     const needsYou = (board.data?.cards ?? []).filter((card) => card.column === "needs-you").length + (board.data?.alerts.length ?? 0) + (summary.trackerSyncProblem === null ? 0 : 1);
     return (
       <View style={{ flex: 1 }}>
-        <View style={{ paddingHorizontal: SPACE.md, paddingTop: SPACE.md, paddingBottom: SPACE.xs }}>
-          <Segmented
-            theme={theme}
-            value={phoneTab}
-            options={[
-              { value: "manager", label: "Manager", icon: "Bot" },
-              { value: "inbox", label: needsYou > 0 ? `Inbox ${needsYou}` : "Inbox", icon: "Inbox" },
-              { value: "board", label: "Board", icon: "LayoutDashboard" },
-              { value: "stats", label: "Stats", icon: "ChartColumn" },
-            ]}
-            onChange={choosePhoneTab}
-          />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm, paddingHorizontal: paneGutter(true), paddingVertical: SPACE.sm }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Segmented
+              theme={theme}
+              value={phoneTab}
+              // Words without icons: all four and the settings button fit one row of a phone.
+              options={[
+                { value: "manager", label: "Manager" },
+                { value: "inbox", label: needsYou > 0 ? `Inbox ${needsYou}` : "Inbox" },
+                { value: "board", label: "Board" },
+                { value: "stats", label: "Stats" },
+              ]}
+              onChange={choosePhoneTab}
+            />
+          </View>
+          <IconButton icon="Settings" label="Project settings" theme={theme} onPress={onSettings} />
         </View>
         <View style={{ flex: 1 }}>
           {phoneTab === "manager" ? (
@@ -401,7 +406,8 @@ function ManagerPane({
   const compactRpc = useRpc(compactManager);
   const project = summary.config.project;
   const manager = summary.manager;
-  const header = (
+  // On a phone the switch row above already says Manager and holds the settings button (TR-031).
+  const header = compact ? null : (
     <PaneHeader theme={theme} title={`${project} · Manager`}>
       {manager !== null && onOpenAgent !== null ? <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(manager.id)} /> : null}
       <IconButton icon="Settings" label="Project settings" theme={theme} onPress={onSettings} />

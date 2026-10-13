@@ -27,12 +27,12 @@ import { groupRows, toolRunSummary, type Group } from "./tool-runs";
 import { transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
+import { COMPOSER_FIELD_PADDING, COMPOSER_ONE_LINE, composerFieldHeight } from "./composer-height";
 import { CHAT_MAX_WIDTH, COMPOSER_CONTROL_SIZE, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
 
-/** The text area inside the composer box, above its row of the context ring and the send button. */
+/** The text area inside the composer box, above its row of the context ring and the send button. A phone's grows from one line (`composer-height.ts`). */
 const INPUT_HEIGHT = 72;
-const INPUT_HEIGHT_COMPACT = 44;
 
 export interface ChatAgent {
   id: string;
@@ -165,6 +165,8 @@ export function AgentChat({
   const [draft, setDraftState] = useState(() => drafts.get(agent.id));
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
+  /** What a phone's field last measured its text at, for `composerFieldHeight`. */
+  const [contentHeight, setContentHeight] = useState<number | null>(null);
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set());
   const pane = useRef<View>(null);
   const keyboard = useKeyboardOverlap(pane);
@@ -265,15 +267,22 @@ export function AgentChat({
       },
       quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
       // One box, as in Paseo's composer: the text, then the context ring and the send button inside it.
-      inputBox: { borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.surface1 },
+      // On a phone they share one row, so an empty composer is one line tall (TR-031).
+      inputBox: {
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderRadius: 14,
+        backgroundColor: colors.surface1,
+        ...(compact ? { flexDirection: "row" as const, alignItems: "flex-end" as const } : null),
+      },
       input: {
         color: colors.foreground,
         fontSize: FONT_SIZE.content,
         lineHeight: lineHeightFor(FONT_SIZE.content),
-        height: compact ? INPUT_HEIGHT_COMPACT : INPUT_HEIGHT,
+        ...(compact ? { flex: 1, minWidth: 0 } : { height: INPUT_HEIGHT }),
         paddingHorizontal: SPACE.md,
-        paddingTop: SPACE.sm + 2,
-        paddingBottom: 0,
+        paddingTop: compact ? COMPOSER_FIELD_PADDING : SPACE.sm + 2,
+        paddingBottom: compact ? COMPOSER_FIELD_PADDING : 0,
         textAlignVertical: "top" as const,
         // The box shows focus (below), not the field inside it: a browser's outline would cut the box in two.
         outlineWidth: 0,
@@ -284,7 +293,8 @@ export function AgentChat({
         alignItems: "center" as const,
         gap: SPACE.sm,
         paddingHorizontal: SPACE.sm,
-        paddingBottom: SPACE.sm,
+        // Centred on the field's last line: one line of text is as tall as the button plus this.
+        paddingBottom: compact ? (COMPOSER_ONE_LINE - COMPOSER_CONTROL_SIZE) / 2 : SPACE.sm,
       },
       // Round, as in Paseo's composer, and the size of the ring's box beside it.
       send: {
@@ -489,6 +499,7 @@ export function AgentChat({
                 placeholder={submitOnEnter ? `${placeholder} (Enter sends, Shift+Enter for a new line)` : placeholder}
                 placeholderTextColor={theme.colors.foregroundMuted}
                 multiline
+                onContentSizeChange={compact ? (event) => setContentHeight(event.nativeEvent.contentSize.height) : undefined}
                 onKeyPress={
                   submitOnEnter
                     ? (event: WebKeyPressEvent) => {
@@ -498,7 +509,7 @@ export function AgentChat({
                       }
                     : undefined
                 }
-                style={styles.input}
+                style={compact ? [styles.input, { height: composerFieldHeight(draft, contentHeight) }] : styles.input}
               />
               <View style={styles.inputTools}>
                 {context === undefined ? null : <ContextMeter theme={theme} used={context.used} max={context.max} />}

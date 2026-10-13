@@ -12,12 +12,18 @@ export function PaneHeader({
   title,
   subtitle,
   icon = "Bot",
+  compact = false,
+  leading,
   children,
 }: {
   theme: PluginTheme;
   title: string;
   /** A muted line under the title: whose conversation it is and whether it still runs. */
   subtitle?: string | undefined;
+  /** A phone: one slim row, so the conversation keeps the screen (TR-031). */
+  compact?: boolean;
+  /** Drawn in the icon's place: a phone's Back button, where a thumb looks for it. */
+  leading?: ReactNode;
   /** A Lucide name drawn before the title. */
   icon?: string;
   children?: ReactNode;
@@ -28,15 +34,15 @@ export function PaneHeader({
         flexDirection: "row",
         alignItems: "center",
         gap: SPACE.sm,
-        paddingHorizontal: paneGutter(false),
-        paddingVertical: SPACE.md,
+        paddingHorizontal: paneGutter(compact),
+        paddingVertical: compact ? SPACE.xs + SPACE.xxs : SPACE.md,
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.border,
       }}
     >
-      <Icon name={icon} size={16} color={theme.colors.foregroundMuted} />
-      <View style={{ flex: 1, gap: SPACE.xxs }}>
-        <Text style={{ color: theme.colors.foreground, fontSize: FONT_SIZE.subtitle, fontWeight: "600" }} numberOfLines={1}>
+      {leading ?? (compact ? null : <Icon name={icon} size={16} color={theme.colors.foregroundMuted} />)}
+      <View style={{ flex: 1, minWidth: 0, gap: compact ? 0 : SPACE.xxs }}>
+        <Text style={{ color: theme.colors.foreground, fontSize: compact ? FONT_SIZE.body : FONT_SIZE.subtitle, fontWeight: "600" }} numberOfLines={1}>
           {title}
         </Text>
         {subtitle === undefined ? null : (

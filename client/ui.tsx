@@ -80,12 +80,15 @@ export function Segmented<Value extends string>({
   value,
   options,
   onChange,
+  iconsOnly = false,
 }: {
   theme: PluginTheme;
   value: Value;
   /** `icon` is a Lucide name drawn before the label. */
   options: ReadonlyArray<{ value: Value; label: string; icon?: string }>;
   onChange: (value: Value) => void;
+  /** Icons only, the labels kept for screen readers: a phone's header has no room for words (TR-031). */
+  iconsOnly?: boolean;
 }) {
   const colors = theme.colors;
   const styles = useMemo(
@@ -115,12 +118,13 @@ export function Segmented<Value extends string>({
           <Pressable
             key={option.value}
             accessibilityRole="tab"
+            accessibilityLabel={option.label}
             accessibilityState={{ selected }}
-            style={[styles.segment, selected ? styles.selected : null]}
+            style={[styles.segment, selected ? styles.selected : null, iconsOnly ? { paddingHorizontal: 8 } : null]}
             onPress={() => onChange(option.value)}
           >
             {option.icon === undefined ? null : <Icon name={option.icon} size={14} color={selected ? colors.foreground : colors.foregroundMuted} />}
-            <Text style={[styles.label, selected ? styles.labelSelected : null]}>{option.label}</Text>
+            {iconsOnly && option.icon !== undefined ? null : <Text style={[styles.label, selected ? styles.labelSelected : null]}>{option.label}</Text>}
           </Pressable>
         );
       })}

@@ -68,38 +68,47 @@ export function OwnerPane({
   // A question another of the ticket's agents asked is answered in that agent's chat.
   const askedElsewhere = card.decisions.find((decision) => decision.agentId !== shown?.id && agents.some((agent) => agent.id === decision.agentId));
   const askedElsewhereBy = askedElsewhere === undefined ? undefined : agents.find((agent) => agent.id === askedElsewhere.agentId);
+  const tabSwitch = (iconsOnly: boolean) => (
+    <Segmented
+      theme={theme}
+      value={tab}
+      iconsOnly={iconsOnly}
+      options={[
+        { value: "chat", label: "Chat", icon: "MessageSquare" },
+        { value: "ticket", label: "Ticket", icon: "ClipboardList" },
+      ]}
+      onChange={(value: "chat" | "ticket") => setTab({ card: card.id, tab: value })}
+    />
+  );
   return (
     <View style={{ flex: 1 }}>
+      {/* On a phone one row holds Back, who it is, Chat / Ticket and Open: the chat keeps the screen (TR-031). */}
       <PaneHeader
         theme={theme}
         title={`${card.id} · ${card.title}`}
         subtitle={shown === null ? undefined : `${shown.label} · ${shown.live ? shown.brief.status : "archived"}`}
         icon={shown === null ? "Bot" : roleIcon(shown)}
+        compact={compact}
+        leading={compact ? <IconButton icon="ArrowLeft" label="Back to Manager" theme={theme} onPress={onBack} /> : undefined}
       >
+        {compact && !ticketBeside ? tabSwitch(true) : null}
         {shown !== null && onOpenAgent !== null ? <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(shown.id)} /> : null}
-        <IconButton icon="ArrowLeft" label="Back to Manager" showLabel={!compact} theme={theme} onPress={onBack} />
+        {compact ? null : <IconButton icon="ArrowLeft" label="Back to Manager" showLabel theme={theme} onPress={onBack} />}
         {onShowBoard === null ? null : <IconButton icon="PanelRightOpen" label="Show the board" theme={theme} onPress={onShowBoard} />}
       </PaneHeader>
-      <View style={{ paddingHorizontal: inset, paddingVertical: SPACE.sm, gap: SPACE.sm }}>
-        {ticketBeside ? null : (
-          <Segmented
-            theme={theme}
-            value={tab}
-            options={[
-              { value: "chat", label: "Chat", icon: "MessageSquare" },
-              { value: "ticket", label: "Ticket", icon: "ClipboardList" },
-            ]}
-            onChange={(value: "chat" | "ticket") => setTab({ card: card.id, tab: value })}
-          />
-        )}
+      {/* Nothing to show here (a phone, one agent) takes no height at all. */}
+      {!(ticketBeside || compact) || (tab === "chat" && (agents.length > 1 || (shown !== null && card.owner === null && card.ownerElsewhere !== null))) ? (
+      <View style={{ paddingHorizontal: inset, paddingVertical: compact ? SPACE.xs : SPACE.sm, gap: SPACE.sm }}>
+        {ticketBeside || compact ? null : tabSwitch(false)}
         {/* Archived agents here do not mean the work stopped: the current owner may run elsewhere. */}
         {tab === "chat" && shown !== null && card.owner === null && card.ownerElsewhere !== null ? (
           <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small }}>Its current owner runs on {card.ownerElsewhere}.</Text>
         ) : null}
         {tab === "chat" && agents.length > 1 ? (
-          <AgentChips theme={theme} agents={agents} selectedId={shown?.id ?? null} now={now} onSelect={(agentId) => setChosen({ card: card.id, agent: agentId })} />
+          <AgentChips theme={theme} slim={compact} agents={agents} selectedId={shown?.id ?? null} now={now} onSelect={(agentId) => setChosen({ card: card.id, agent: agentId })} />
         ) : null}
       </View>
+      ) : null}
       <View style={{ flex: 1 }}>
         {tab === "ticket" ? (
           <TicketView key={card.id} project={project} ticket={card.id} theme={theme} />
