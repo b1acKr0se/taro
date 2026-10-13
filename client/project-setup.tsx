@@ -24,10 +24,10 @@ import { modelOptions as modelPickerOptions, thinkingAfterModelChange, thinkingO
 import type { ProjectConfig } from "../shared/project";
 import { draftFrom, settingsFrom, setupProblems, ticketExample, type SetupDraft } from "../shared/setup-form";
 import { errorText } from "./format";
-import { CheckLine, ChoiceCards, Dropdown, Field, FixedValue, FormSection, TextField, TWO_COLUMN_MIN_WIDTH } from "./settings-form";
+import { CheckLine, ChoiceCards, Dropdown, Field, FixedValue, FormSection, ModelChooser, TextField, TWO_COLUMN_MIN_WIDTH } from "./settings-form";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
-import { IconButton, ToggleChips } from "./ui";
+import { IconButton } from "./ui";
 
 const PAGE_MAX_WIDTH = 760;
 
@@ -134,12 +134,15 @@ export function ProjectSetup({
   }
 
   const colors = theme.colors;
+  // Until the list arrives every saved model is missing from it; name them plainly instead of "not listed".
+  const pickerOptions = (saved: readonly string[]) =>
+    models.isLoading ? saved.filter((id) => id !== "").map((id) => ({ label: id, value: id })) : modelPickerOptions(modelOptions, saved);
   const modelHint = models.isLoading ? "Loading the model list…" : modelOptions.length === 0 ? "No provider listed models; saved values are kept." : null;
   const checks = prerequisites.data?.checks ?? [];
   // An existing project passed its checks when it was added; its page shows them again only when one fails.
   const showChecks = existing === null || checks.some((check) => !check.ok);
   const example = ticketExample(existing?.ticketPrefix ?? draft.ticketPrefix);
-  const branch = draft.baseBranch.trim() === "" ? "the base branch" : draft.baseBranch.trim();
+  const branch = draft.baseBranch.trim() === "" ? "this branch" : draft.baseBranch.trim();
   const muted = { color: colors.foregroundMuted, fontSize: FONT_SIZE.small };
 
   const modelRow = (role: "manager" | "owner", label: string) => {
@@ -148,7 +151,7 @@ export function ProjectSetup({
     return (
       <View style={{ flexDirection: wide ? "row" : "column", gap: SPACE.sm }}>
         <View style={{ flex: wide ? 3 : undefined }}>
-          <Dropdown theme={theme} title={`${label} model`} value={model} options={modelPickerOptions(modelOptions, [model])} onChange={(value) => chooseModel(role, value)} />
+          <Dropdown theme={theme} title={`${label} model`} value={model} options={pickerOptions([model])} onChange={(value) => chooseModel(role, value)} />
         </View>
         <View style={{ flex: wide ? 2 : undefined }}>
           <Dropdown
@@ -219,32 +222,28 @@ export function ProjectSetup({
             <FixedValue theme={theme} text={existing.repoPath} monospace />
           )}
         </Field>
+        <Field theme={theme} wide={wide} label="Base branch" hint={`Task owners branch off ${branch} and deliver back to it.`} error={problem("baseBranch")}>
+          <TextField theme={theme} accessibilityLabel="Base branch" value={draft.baseBranch} onChangeText={(text) => update("baseBranch", text)} invalid={problem("baseBranch") !== null} />
+        </Field>
         <Field
           theme={theme}
           wide={wide}
-          label="Base branch · ticket prefix"
-          hint={`Work branches off ${branch}.${example === null ? "" : ` Tickets look like ${example}.`}`}
-          error={problem("baseBranch") ?? problem("ticketPrefix")}
+          label="Ticket prefix"
+          hint={existing === null ? `One to eight capital letters.${example === null ? "" : ` Tickets look like ${example}.`}` : example === null ? null : `Tickets look like ${example}.`}
+          error={problem("ticketPrefix")}
         >
-          <View style={{ flexDirection: "row", gap: SPACE.sm, alignItems: "flex-start" }}>
-            <View style={{ flex: 1 }}>
-              <TextField theme={theme} accessibilityLabel="Base branch" value={draft.baseBranch} onChangeText={(text) => update("baseBranch", text)} invalid={problem("baseBranch") !== null} />
-            </View>
-            <View style={{ width: 110 }}>
-              {existing === null ? (
-                <TextField
-                  theme={theme}
-                  accessibilityLabel="Ticket prefix"
-                  value={draft.ticketPrefix}
-                  onChangeText={(text) => update("ticketPrefix", text.toUpperCase())}
-                  placeholder="SH"
-                  invalid={problem("ticketPrefix") !== null}
-                />
-              ) : (
-                <FixedValue theme={theme} text={existing.ticketPrefix} />
-              )}
-            </View>
-          </View>
+          {existing === null ? (
+            <TextField
+              theme={theme}
+              accessibilityLabel="Ticket prefix"
+              value={draft.ticketPrefix}
+              onChangeText={(text) => update("ticketPrefix", text.toUpperCase())}
+              placeholder="SH"
+              invalid={problem("ticketPrefix") !== null}
+            />
+          ) : (
+            <FixedValue theme={theme} text={existing.ticketPrefix} />
+          )}
         </Field>
         <Field theme={theme} wide={wide} label="Tickets">
           <ChoiceCards
@@ -270,13 +269,15 @@ export function ProjectSetup({
           theme={theme}
           wide={wide}
           label="Subagent models"
-          hint="Owners pick from these per task by difficulty: the cheapest for mechanical work, the strongest for hard problems. None selected means the owner's own model."
+          hint="Owners pick from these per task by difficulty: the cheapest for mechanical work, the strongest for hard problems."
         >
-          <ToggleChips
+          <ModelChooser
             theme={theme}
+            options={pickerOptions(draft.subagentModels)}
             selected={draft.subagentModels}
-            options={modelPickerOptions(modelOptions, draft.subagentModels)}
-            onToggle={(value) => setDraft((current) => ({ ...current, subagentModels: toggleSubagentModel(current.subagentModels, value) }))}
+            emptyText="None chosen: subagents get their owner's model."
+            onAdd={(value) => setDraft((current) => ({ ...current, subagentModels: toggleSubagentModel(current.subagentModels, value) }))}
+            onRemove={(value) => setDraft((current) => ({ ...current, subagentModels: toggleSubagentModel(current.subagentModels, value) }))}
           />
         </Field>
       </FormSection>

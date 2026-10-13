@@ -9,9 +9,10 @@ import { Icon, Modal, TextInput } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
+import { addableModelGroups, type PickerOption } from "../shared/model-picker";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
-import { MONOSPACE } from "./ui";
+import { IconButton, MONOSPACE } from "./ui";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 
 /** Below this page width a field's label goes above its control instead of beside it. */
@@ -341,6 +342,99 @@ export function CheckLine({ theme, ok, name, detail }: { theme: PluginTheme; ok:
         {name}
         {detail === "" ? null : <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small }}>{`  ${detail}`}</Text>}
       </Text>
+    </View>
+  );
+}
+
+/**
+ * The models owners may give subagents: the chosen ones as removable chips and an "Add model"
+ * button opening a searchable list grouped by provider. A host can list dozens of models; showing
+ * each as a chip made a wall of them (TR-019).
+ */
+export function ModelChooser({
+  theme,
+  options,
+  selected,
+  onAdd,
+  onRemove,
+  emptyText,
+}: {
+  theme: PluginTheme;
+  /** Every model, the chosen ones included (unlisted saved ones too, so they can be removed). */
+  options: readonly PickerOption[];
+  selected: readonly string[];
+  onAdd: (value: string) => void;
+  onRemove: (value: string) => void;
+  /** What an empty choice means. */
+  emptyText: string;
+}) {
+  const colors = theme.colors;
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const groups = addableModelGroups(options, selected, query);
+  const labelOf = (value: string) => options.find((option) => option.value === value)?.label ?? value;
+  return (
+    <View style={{ gap: SPACE.sm }}>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: SPACE.sm }}>
+        {selected.length === 0 ? <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small }}>{emptyText}</Text> : null}
+        {selected.map((value) => (
+          <View
+            key={value}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: SPACE.xs,
+              height: 28,
+              paddingLeft: SPACE.md,
+              paddingRight: SPACE.xs,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: colors.accent,
+              backgroundColor: withAlpha(colors.accent, 0.1),
+            }}
+          >
+            <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "500" }}>{labelOf(value)}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${labelOf(value)}`} hitSlop={6} onPress={() => onRemove(value)} style={{ padding: SPACE.xxs }}>
+              <Icon name="X" size={14} color={colors.foregroundMuted} />
+            </Pressable>
+          </View>
+        ))}
+        <IconButton theme={theme} icon="Plus" label="Add model" showLabel disabled={options.length === selected.length} onPress={() => setOpen(true)} />
+      </View>
+      <Modal
+        title="Add a subagent model"
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) setQuery("");
+        }}
+      >
+        <Modal.Content contentContainerStyle={{ padding: SPACE.md, gap: SPACE.md }}>
+          <TextField theme={theme} accessibilityLabel="Search models" value={query} onChangeText={setQuery} placeholder="Search models" />
+          {groups.length === 0 ? (
+            <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small }}>{query.trim() === "" ? "Every model is chosen." : "No model matches."}</Text>
+          ) : null}
+          {groups.map((group) => (
+            <View key={group.provider} style={{ gap: SPACE.xxs }}>
+              <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.micro, fontWeight: "700", letterSpacing: 0.8, paddingHorizontal: SPACE.md, paddingBottom: SPACE.xs }}>
+                {group.provider.toUpperCase()}
+              </Text>
+              {group.options.map((option) => (
+                <Pressable
+                  key={option.value}
+                  accessibilityRole="menuitem"
+                  accessibilityLabel={`Add ${group.provider} ${option.label}`}
+                  onPress={() => onAdd(option.value)}
+                  style={{ flexDirection: "row", alignItems: "center", gap: SPACE.md, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm + 2, borderRadius: 8 }}
+                >
+                  <Text style={{ flex: 1, color: colors.foreground, fontSize: FONT_SIZE.body }}>{option.label}</Text>
+                  <Icon name="Plus" size={14} color={colors.foregroundMuted} />
+                </Pressable>
+              ))}
+            </View>
+          ))}
+        </Modal.Content>
+      </Modal>
     </View>
   );
 }

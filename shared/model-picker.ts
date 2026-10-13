@@ -23,11 +23,11 @@ export function modelOptions(models: readonly PickerModel[], saved: readonly str
   return [...listed, ...missing];
 }
 
-/** "Provider default" (empty value) plus the model's thinking options; a saved value it does not offer stays, marked. */
+/** "Default" (empty value; the provider's own, named when known) plus the model's thinking options; a saved value it does not offer stays, marked. */
 export function thinkingOptions(models: readonly PickerModel[], modelId: string, saved: string): PickerOption[] {
   const model = models.find((candidate) => candidate.id === modelId);
   const offered = model?.thinkingOptions ?? [];
-  const defaultLabel = model !== undefined && model.defaultThinking !== "" ? `Provider default (${model.defaultThinking})` : "Provider default";
+  const defaultLabel = model !== undefined && model.defaultThinking !== "" ? `Default (${model.defaultThinking})` : "Default";
   const options = [{ label: defaultLabel, value: "" }, ...offered.map((option) => ({ label: option, value: option }))];
   if (saved !== "" && !offered.includes(saved)) options.push({ label: `${saved} (${NOT_LISTED})`, value: saved });
   return options;
@@ -43,4 +43,35 @@ export function thinkingAfterModelChange(models: readonly PickerModel[], modelId
 /** Adds or removes one subagent model, keeping the list's order. */
 export function toggleSubagentModel(selected: readonly string[], id: string): string[] {
   return selected.includes(id) ? selected.filter((candidate) => candidate !== id) : [...selected, id];
+}
+
+export interface ModelGroup {
+  /** The provider's name as the labels give it ("Claude"), or the id's provider for an unlisted model. */
+  provider: string;
+  /** Each option labelled without the provider prefix the group heading already shows. */
+  options: PickerOption[];
+}
+
+const PROVIDER_SEPARATOR = " · ";
+
+/**
+ * The models the subagent picker can still add, grouped by provider in list order: the chosen ones
+ * are left out, and a query keeps the models whose label or id contains every word of it.
+ */
+export function addableModelGroups(options: readonly PickerOption[], selected: readonly string[], query: string): ModelGroup[] {
+  const words = query.toLowerCase().split(/\s+/).filter((word) => word !== "");
+  const groups: ModelGroup[] = [];
+  // `forEach`, not `for…of`: the `find` closure would capture a loop variable, which Hermes mishandles.
+  options.forEach((option) => {
+    if (selected.includes(option.value)) return;
+    const haystack = `${option.label} ${option.value}`.toLowerCase();
+    if (!words.every((word) => haystack.includes(word))) return;
+    const separator = option.label.indexOf(PROVIDER_SEPARATOR);
+    const provider = separator > 0 ? option.label.slice(0, separator) : (option.value.split("/")[0] ?? option.value);
+    const label = separator > 0 ? option.label.slice(separator + PROVIDER_SEPARATOR.length) : option.label;
+    const group = groups.find((candidate) => candidate.provider === provider);
+    if (group === undefined) groups.push({ provider, options: [{ label, value: option.value }] });
+    else group.options.push({ label, value: option.value });
+  });
+  return groups;
 }
