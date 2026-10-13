@@ -298,7 +298,10 @@ export const SentImagesMessageSchema = z.object({
 });
 export type SentImagesMessage = z.infer<typeof SentImagesMessageSchema>;
 
-/** The user's messages to an agent that carried images, in order (Claude agents only). */
+/**
+ * The user's messages to an agent that carried images, in order (Claude agents only), with every other
+ * message of the same words (`images: []`), so the chat can count repeats.
+ */
 export const listSentImages = defineRpc({
   name: "taro.agent.sent-images",
   input: z.object({ agentId: z.string() }),

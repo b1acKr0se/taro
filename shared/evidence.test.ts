@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { judgeEvidence, parseEvidence } from "./evidence";
+import { evidenceSummary, judgeEvidence, parseEvidence } from "./evidence";
 
 const record = (...lines: string[]) => ["EXECUTION 2026-10-13T10:00Z — owner o", "", "EVIDENCE 2026-10-13T11:00Z — before FINAL", ...lines].join("\n");
 const change = (files: string[] = []) => ({ investigation: false, existingFiles: new Set(files) });
@@ -42,6 +42,16 @@ describe("parseEvidence and judgeEvidence", () => {
       expect(judged.screenshotsNone).toBe("no visible change");
       expect(judged.complete).toBe(true);
     }
+  });
+
+  it("keeps capitalised labels without a bullet inside the record", () => {
+    const judged = judge(record("CHECK: npm test — 5 passed", "REVIEW: clean", "SCREENSHOTS: none — no visible change"));
+    expect(judged.checks).toEqual([{ command: "npm test", result: "5 passed" }]);
+    expect(judged.review).toBe("clean");
+    expect(judged.complete).toBe(true);
+    // A real REVIEW record after the evidence is not taken into it.
+    const later = judge(`${record("check: npm test — 5 passed", "review: clean", "screenshots: none — no ui")}\n\nREVIEW 2026-10-13T12:00Z — reviewer r, blockers 0`);
+    expect(later.review).toBe("clean");
   });
 
   it("prefers the em dash, so a command may hold dashes", () => {
@@ -101,5 +111,24 @@ describe("parseEvidence and judgeEvidence", () => {
 
   it("ignores other lines", () => {
     expect(judge(record("some prose", "note: x", "check: a — b")).checks).toHaveLength(1);
+  });
+});
+
+describe("evidenceSummary", () => {
+  it("counts checks and screenshots, singular and plural", () => {
+    const one = judge(record("check: npm test — ok", "review: clean", "screenshot: a.png — wide"), change(["a.png"]));
+    expect(evidenceSummary(one)).toBe("1 check · review · 1 screenshot");
+    const two = judge(record("check: npm test — ok", "check: npm run typecheck — clean", "review: clean", "screenshot: a.png — wide", "screenshot: b.png — phone"), change(["a.png", "b.png"]));
+    expect(evidenceSummary(two)).toBe("2 checks · review · 2 screenshots");
+  });
+
+  it("gives the reason when there are no screenshots, and only a check for an investigation", () => {
+    expect(evidenceSummary(judge(record("check: npm test — ok", "review: clean", "screenshots: none — no visible change")))).toBe("1 check · review · no screenshots: no visible change");
+    expect(evidenceSummary(judge(record("check: grep -rn retry src — 3 call sites"), { investigation: true, existingFiles: new Set() }))).toBe("1 check");
+  });
+
+  it("names what is missing when incomplete", () => {
+    expect(evidenceSummary(judge(null))).toBe("Evidence missing: an EVIDENCE record");
+    expect(evidenceSummary(judge(record("check: npm test — ok")))).toBe("Evidence missing: the review outcome, screenshots (or screenshots: none with a reason)");
   });
 });

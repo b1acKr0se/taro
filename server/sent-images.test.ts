@@ -67,6 +67,34 @@ describe("readSentImages", () => {
     expect((await readdir(images)).sort()).toHaveLength(2);
   });
 
+  it("keeps a message without images whose words match one with images, so repeats count right", async () => {
+    const path = await session([user([{ type: "text", text: "look" }, image(RED)]), user("look"), user("other words")]);
+    const images = join(base, "images");
+    const redPath = join(images, `${createHash("sha256").update(Buffer.from(RED, "base64")).digest("hex")}.png`);
+    expect(await readSentImages(path, images)).toEqual([
+      { text: "look", images: [{ path: redPath, mimeType: "image/png" }] },
+      { text: "look", images: [] },
+    ]);
+  });
+
+  it("reads a line the agent was still writing once its newline arrives", async () => {
+    const path = join(base, "session.jsonl");
+    const line = user([{ type: "text", text: "half" }, image(RED)]);
+    await writeFile(path, line.slice(0, 20));
+    const directory = join(base, "images");
+    expect(await readSentImages(path, directory)).toEqual([]);
+    await appendFile(path, `${line.slice(20)}\n`);
+    expect((await readSentImages(path, directory)).map((message) => message.text)).toEqual(["half"]);
+  });
+
+  it("reads a file that shrank again from the start", async () => {
+    const path = await session([user([{ type: "text", text: "one" }, image(RED)]), user([{ type: "text", text: "two" }, image(BLUE)])]);
+    const directory = join(base, "images");
+    expect(await readSentImages(path, directory)).toHaveLength(2);
+    await writeFile(path, `${user([{ type: "text", text: "three" }, image(RED)])}\n`);
+    expect((await readSentImages(path, directory)).map((message) => message.text)).toEqual(["three"]);
+  });
+
   it("does not rewrite an image already stored", async () => {
     const path = await session([user([image(RED)])]);
     const images = join(base, "images");

@@ -38,6 +38,14 @@ describe("matchSentImages", () => {
     expect(Object.fromEntries(matched)).toEqual({ "1": [C] });
   });
 
+  it("gives a repeated text its images only on the message that carried them", () => {
+    const matched = matchSentImages([captain("1", "look"), captain("2", "look")], [
+      { text: "look", images: [A] },
+      { text: "look", images: [] },
+    ]);
+    expect(Object.fromEntries(matched)).toEqual({ "1": [A] });
+  });
+
   it("matches nothing without sent messages", () => {
     expect(matchSentImages([captain("1", "look")], []).size).toBe(0);
   });

@@ -34,8 +34,28 @@ function splitAtSeparator(text: string): [string, string] {
   return trailing === null ? [text.trim(), ""] : [(trailing[1] ?? "").trim(), ""];
 }
 
+/** A line that belongs to an EVIDENCE record even in capitals (`CHECK: …`), which `noteRecords` takes for a record of its own. */
+const EVIDENCE_LINE = /^(checks?|review|screenshots?)\s*:/i;
+
+/** The notes' EVIDENCE records, each with the capitalised evidence lines `noteRecords` split off it. */
+function evidenceRecords(notes: string | null): string[] {
+  const records: string[] = [];
+  let open = false;
+  for (const record of noteRecords(notes)) {
+    if (/^EVIDENCE\b/.test(record)) {
+      records.push(record);
+      open = true;
+    } else if (open && EVIDENCE_LINE.test(record)) {
+      records[records.length - 1] += `\n${record}`;
+    } else {
+      open = false;
+    }
+  }
+  return records;
+}
+
 export function parseEvidence(notes: string | null): ParsedEvidence | null {
-  const records = noteRecords(notes).filter((record) => /^EVIDENCE\b/.test(record));
+  const records = evidenceRecords(notes);
   const record = records[records.length - 1];
   if (record === undefined) return null;
   const parsed: ParsedEvidence = { checks: [], review: null, screenshots: [], screenshotsNone: null };
@@ -99,4 +119,19 @@ export function judgeEvidence(
     missing,
     complete: missing.length === 0,
   };
+}
+
+/**
+ * The evidence in one line, for a board card: "2 checks · review · 3 screenshots", or what is missing.
+ * The card's place for it is TR-026's to settle; this is only the words.
+ */
+export function evidenceSummary(evidence: Pick<JudgedEvidence, "checks" | "review" | "screenshots" | "screenshotsNone" | "missing" | "complete">): string {
+  if (!evidence.complete) return `Evidence missing: ${evidence.missing.join(", ")}`;
+  const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+  const parts: string[] = [];
+  if (evidence.checks.length > 0) parts.push(plural(evidence.checks.length, "check"));
+  if (evidence.review !== null) parts.push("review");
+  if (evidence.screenshots.length > 0) parts.push(plural(evidence.screenshots.length, "screenshot"));
+  else if (evidence.screenshotsNone !== null) parts.push(`no screenshots: ${evidence.screenshotsNone}`);
+  return parts.join(" · ");
 }
