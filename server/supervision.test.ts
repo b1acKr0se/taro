@@ -210,7 +210,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
   const plugin = (text: string) => ({ type: "user_message", text, messageId: "taro-x" });
 
   async function run(taro: Supervisor, ...timeline: readonly object[]): Promise<void> {
-    await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, items(...timeline), null);
+    await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, items(...timeline), null, undefined);
   }
 
   beforeEach(() => {
@@ -269,7 +269,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     const { state, agents } = fakeState();
     const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats);
     const failed = { kind: "failed" } as unknown as TurnOutcome;
-    await taro.onTurnEnded({} as PaseoApi, hookAgent, failed, items(human("go"), reply, human("again"), { type: "tool_call", callId: "c2", name: "shell", status: "failed" }), null);
+    await taro.onTurnEnded({} as PaseoApi, hookAgent, failed, items(human("go"), reply, human("again"), { type: "tool_call", callId: "c2", name: "shell", status: "failed" }), null, undefined);
     expect(agents[owner.id]?.lastStatus).toBeNull();
   });
 });
