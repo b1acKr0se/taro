@@ -48,7 +48,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
   const [agent, setAgent] = useState<TimelinePage["agent"]>(initial?.agent ?? null);
   const [hasOlder, setHasOlder] = useState(initial?.hasOlder ?? false);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(agentId !== null);
 
   useEffect(() => {
     if (agentId === null) {
