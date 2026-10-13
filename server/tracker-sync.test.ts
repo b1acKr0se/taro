@@ -250,6 +250,102 @@ describe("TrackerWatch sync triggers", () => {
     expect(calls).toEqual(["rebase"]);
   });
 
+  describe("board-read pulls", () => {
+    let clock = 0;
+    const failed: TrackerSyncProblem = { kind: "failed", message: "Pulling from origin failed: fatal: unreachable", tickets: [] };
+
+    beforeEach(() => {
+      clock = 1_000_000;
+      watch = new TrackerWatch(
+        async (_trackerPath, strategy) => {
+          calls.push(strategy);
+          return answer;
+        },
+        () => clock,
+      );
+      answer = null;
+    });
+
+    it("pulls on the first read, then at most once a minute", async () => {
+      await watch.pullIfDue("demo");
+      expect(calls).toEqual(["rebase"]);
+      clock += 59_999;
+      await watch.pullIfDue("demo");
+      expect(calls).toEqual(["rebase"]);
+      clock += 1;
+      await watch.pullIfDue("demo");
+      expect(calls).toEqual(["rebase", "rebase"]);
+    });
+
+    it("queues one pull for reads landing together", async () => {
+      await Promise.all([watch.pullIfDue("demo"), watch.pullIfDue("demo"), watch.pullIfDue("demo")]);
+      expect(calls).toEqual(["rebase"]);
+    });
+
+    it("counts a commit's sync and a Retry as the last sync", async () => {
+      writeFileSync(join(here, OTHER_TICKET), "edited once\n");
+      await watch.commit("demo");
+      clock += 30_000;
+      await watch.pullIfDue("demo");
+      expect(calls).toEqual(["rebase"]);
+
+      clock += 40_000;
+      await watch.resolve("demo", "retry");
+      clock += 30_000;
+      await watch.pullIfDue("demo");
+      expect(calls).toEqual(["rebase", "rebase"]);
+    });
+
+    it("does not pull while a conflict is open, at any age", async () => {
+      answer = conflict;
+      await watch.pullIfDue("demo");
+      expect(watch.syncProblem("demo")).toEqual(conflict);
+      clock += 10 * 60_000;
+      await watch.pullIfDue("demo");
+      expect(calls).toEqual(["rebase"]);
+    });
+
+    it("retries a failed sync on the next due read and clears it once it works", async () => {
+      answer = failed;
+      await watch.pullIfDue("demo");
+      expect(watch.syncProblem("demo")).toEqual(failed);
+      answer = null;
+      clock += 30_000;
+      await watch.pullIfDue("demo");
+      expect(watch.syncProblem("demo")).toEqual(failed);
+      clock += 30_000;
+      await watch.pullIfDue("demo");
+      expect(calls).toEqual(["rebase", "rebase"]);
+      expect(watch.syncProblem("demo")).toBeNull();
+    });
+
+    it("never pulls a local-only project", async () => {
+      writeConfig("local");
+      await watch.pullIfDue("demo");
+      clock += 2 * 60_000;
+      await watch.pullIfDue("demo");
+      expect(calls).toEqual([]);
+    });
+
+    it("brings in a ticket edited in another clone and tells the listeners", async () => {
+      const real = new TrackerWatch(syncTracker, () => clock);
+      const changed: string[] = [];
+      real.onChange((project) => changed.push(project));
+      commit(there, TICKET, `${withLine(1, "status: Done").join("\n")}\n`);
+      git(there, "push", "-q", "origin", TRACKER_BRANCH);
+
+      await real.pullIfDue("demo");
+      expect(readFileSync(join(here, TICKET), "utf8")).toContain("status: Done");
+      expect(changed).toEqual(["demo"]);
+
+      // Nothing new on the remote: a due pull changes nothing and wakes no listener.
+      clock += 60_000;
+      await real.pullIfDue("demo");
+      expect(changed).toEqual(["demo"]);
+      expect(real.syncProblem("demo")).toBeNull();
+    });
+  });
+
   it("drops a stale problem once the project syncs locally only", async () => {
     writeFileSync(join(here, OTHER_TICKET), "edited once\n");
     await watch.commit("demo");

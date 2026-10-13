@@ -70,6 +70,8 @@ export default function contribute(server: PluginServerContext) {
   };
   void actions.primeStatuses().catch((error: unknown) => console.error("[taro] could not read ticket statuses:", error));
   trackers.onChange((project) => {
+    // A pull may have brought tickets edited elsewhere; the next read must not serve the cached board.
+    invalidateBoards();
     if (kept === null) return;
     void actions.onTrackerChanged(kept, project).catch((error: unknown) => {
       console.error(`[taro] after ${project}'s tracker changed:`, error);
@@ -85,6 +87,7 @@ export default function contribute(server: PluginServerContext) {
     const projects = await Promise.all(
       configs.map(async (config) => {
         const manager = await fetchLiveAgent(paseo, config.managerAgentId);
+        void trackers.pullIfDue(config.project);
         const board = await loadBoard(paseo, state, config.project).catch(() => null);
         const trackerSyncProblem = config.trackerSync === "remote" ? trackers.syncProblem(config.project) : null;
         const needsYou =
@@ -130,8 +133,14 @@ export default function contribute(server: PluginServerContext) {
   server.handle(tellManagerRpc, async ({ project, text }, { paseo }) => ({ agentId: await tellManager(paseo, project, text) }));
   server.handle(catchUp, async ({ project }, { paseo }) => ({ agentId: await tellManager(paseo, project, await catchUpText(project)) }));
 
-  server.handle(loadBoardRpc, async ({ project }, { paseo }) => loadBoard(keep(paseo), state, project));
-  server.handle(loadTicket, async ({ project, ticket }) => loadTicketDetail(project, ticket));
+  server.handle(loadBoardRpc, async ({ project }, { paseo }) => {
+    void trackers.pullIfDue(project);
+    return loadBoard(keep(paseo), state, project);
+  });
+  server.handle(loadTicket, async ({ project, ticket }) => {
+    void trackers.pullIfDue(project);
+    return loadTicketDetail(project, ticket);
+  });
   server.handle(findAgentTicket, async ({ agentId }, { paseo }) => {
     const agent = await fetchLiveAgent(paseo, agentId);
     const identity = agent === null ? null : identityFromLabels(agent.labels, agent.title ?? null);
