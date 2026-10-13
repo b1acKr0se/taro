@@ -53,8 +53,19 @@ export function allAssistantText(timeline: readonly TimelineItem[]): string {
   return timeline.flatMap((item) => (item.type === "assistant_message" ? [item.text] : [])).join("");
 }
 
-function hasAutoCompaction(timeline: readonly TimelineItem[]): boolean {
-  return timeline.some((item) => item.type === "compaction" && item.status === "completed" && item.trigger === "auto");
+/** The turn that just ended: from the last user message on (the whole timeline when there is none). */
+export function currentTurn(timeline: readonly TimelineItem[]): readonly TimelineItem[] {
+  const lastUser = timeline.map((item) => item.type).lastIndexOf("user_message");
+  return timeline.slice(lastUser === -1 ? 0 : lastUser);
+}
+
+/**
+ * Whether the provider compacted this turn on its own. The hook passes the whole stored timeline,
+ * so only the current turn counts, or every later turn (the reload included) would reload again.
+ * Claude marks it `trigger: "auto"`; Codex sets only "manual", so its automatic ones carry none.
+ */
+export function autoCompactedThisTurn(timeline: readonly TimelineItem[]): boolean {
+  return currentTurn(timeline).some((item) => item.type === "compaction" && item.status === "completed" && item.trigger !== "manual");
 }
 
 /** Whether a block asks exactly what a stored decision asked. */
@@ -156,7 +167,7 @@ export class Supervisor {
       await sendFromPlugin(paseo, live.id, await this.reloadText(identity));
       return;
     }
-    if (hasAutoCompaction(timeline)) {
+    if (autoCompactedThisTurn(timeline)) {
       await sendFromPlugin(paseo, live.id, await this.reloadText(identity));
       return;
     }
@@ -204,8 +215,7 @@ export class Supervisor {
         const page = await paseo.agents.ref(agent.id).timeline.refetch({ direction: "tail", limit: 40, projection: "projected" }).catch(() => null);
         if (page === null) continue;
         const items = page.entries.map((entry) => entry.item);
-        const lastUser = items.map((item) => item.type).lastIndexOf("user_message");
-        const turn = items.slice(lastUser === -1 ? 0 : lastUser);
+        const turn = currentTurn(items);
         const closing = closingText(turn);
         const status = parseStatusLine(closing);
         await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
