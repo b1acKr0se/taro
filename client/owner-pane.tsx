@@ -13,7 +13,7 @@ import { decisionBlocksAsText, parseDecisionBlocks, withoutDecisionBlocks } from
 import { AgentChat } from "./agent-chat";
 import { ContextMeter } from "./context-meter";
 import { DecisionCard } from "./decision-card";
-import { defaultPaneAgent, paneAgents, type PaneAgent } from "./pane-agents";
+import { defaultPaneAgent, paneAgents, type PaneAgent, paneAgentJob } from "./pane-agents";
 import { PaneHeader } from "./pane-header";
 import { SPACE } from "./spacing";
 import { TicketView } from "./ticket-view";
@@ -95,7 +95,7 @@ export function OwnerPane({
             agent={{ id: shown.id, updatedAt: shown.brief.updatedAt, pendingPermissions: shown.brief.pendingPermissions, status: shown.brief.status }}
             theme={theme}
             compact={compact}
-            placeholder={`Talk to ${card.id}'s ${shown.role}…`}
+            placeholder={`Talk to ${card.id}'s ${paneAgentJob(shown.role)}…`}
             onSend={async (text) => {
               await tell({ agentId: shown.id, text });
             }}

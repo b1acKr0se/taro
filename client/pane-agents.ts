@@ -1,5 +1,5 @@
 /**
- * Which agents a ticket's pane can show: the live owner, its live helpers, then
+ * Which agents a ticket's pane can show: the live owner, its live subagents, then
  * the ticket's archived agents, so a finished ticket still shows the work its
  * agents did rather than "no owner".
  */
@@ -17,11 +17,26 @@ export interface PaneAgent {
 
 const SHORT_ID_LENGTH = 8;
 
+/** What an agent is called on screen: by its job, never "helper" (the user's wording). */
+export function paneAgentJob(role: PaneAgentRole): string {
+  return role === "owner" ? "owner" : role === "helper" ? "implementer" : "reviewer";
+}
+
+/** The task part of a title like `TR-016 · helper: board panels`, without the ticket and the role. */
+export function taskOfTitle(title: string | null): string {
+  return (title ?? "")
+    .trim()
+    .replace(/^[A-Z][A-Z0-9]*-\d+(?:\.\d+)*\s*·\s*/, "")
+    .replace(/^(?:helper|reviewer|implementer|subagent)\s*:\s*/i, "")
+    .trim();
+}
+
 /** The first owner listed (live, else the newest archived) is the owner; any other was replaced by it. */
 function labelFor(role: PaneAgentRole, firstOwner: boolean, brief: AgentBrief): string {
   if (role === "owner") return firstOwner ? "Owner" : "Owner (earlier)";
-  const title = brief.title?.trim() ?? "";
-  return `${role === "helper" ? "Helper" : "Reviewer"} · ${title === "" ? brief.id.slice(0, SHORT_ID_LENGTH) : title}`;
+  const job = paneAgentJob(role);
+  const task = taskOfTitle(brief.title);
+  return `${job.charAt(0).toUpperCase()}${job.slice(1)} · ${task === "" ? brief.id.slice(0, SHORT_ID_LENGTH) : task}`;
 }
 
 export function paneAgents(card: Pick<Card, "owner" | "helpers" | "pastAgents">): PaneAgent[] {

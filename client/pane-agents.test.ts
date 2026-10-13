@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AgentBrief, Card } from "../shared/contracts";
-import { defaultPaneAgent, paneAgents } from "./pane-agents";
+import { defaultPaneAgent, paneAgents, taskOfTitle } from "./pane-agents";
 
 function brief(id: string, title: string | null = null): AgentBrief {
   return {
@@ -51,7 +51,7 @@ describe("paneAgents", () => {
   it("picks the newest past owner when none is live", () => {
     const list = paneAgents(card({ pastAgents: [past("helper-1", "helper"), past("owner-new", "owner"), past("owner-old", "owner")] }));
     expect(list.map((agent) => [agent.id, agent.label])).toEqual([
-      ["helper-1", "Helper · helper-1"],
+      ["helper-1", "Implementer · helper-1"],
       ["owner-new", "Owner"],
       ["owner-old", "Owner (earlier)"],
     ]);
@@ -62,20 +62,29 @@ describe("paneAgents", () => {
     expect(defaultPaneAgent(paneAgents(card({ helpers: [brief("helper-1")] })))).toBeNull();
   });
 
-  it("labels helpers and reviewers by title, or by a short id without one", () => {
+  it("labels subagents by their job and task, never as helpers, or by a short id without a task", () => {
     const list = paneAgents(
       card({
-        helpers: [brief("0123456789abcdef", "Chat spacing"), brief("fedcba9876543210")],
+        helpers: [brief("0123456789abcdef", "TR-016 · helper: Chat spacing"), brief("fedcba9876543210")],
         pastAgents: [past("aaaaaaaa-bbbb", "reviewer", "Review TR-016"), past("cccccccc-dddd", "reviewer", "  "), past("eeeeeeee-ffff", "helper")],
       }),
     );
     expect(list.map((agent) => [agent.label, agent.role, agent.live])).toEqual([
-      ["Helper · Chat spacing", "helper", true],
-      ["Helper · fedcba98", "helper", true],
+      ["Implementer · Chat spacing", "helper", true],
+      ["Implementer · fedcba98", "helper", true],
       ["Reviewer · Review TR-016", "reviewer", false],
       ["Reviewer · cccccccc", "reviewer", false],
-      ["Helper · eeeeeeee", "helper", false],
+      ["Implementer · eeeeeeee", "helper", false],
     ]);
+    expect(list.some((agent) => /helper/i.test(agent.label))).toBe(false);
+  });
+
+  it("takes the task out of a title, without the ticket id or the role", () => {
+    expect(taskOfTitle("TR-016 · helper: board panels")).toBe("board panels");
+    expect(taskOfTitle("TR-016.2 · Reviewer: TR-016 diff")).toBe("TR-016 diff");
+    expect(taskOfTitle("Chat spacing")).toBe("Chat spacing");
+    expect(taskOfTitle("  ")).toBe("");
+    expect(taskOfTitle(null)).toBe("");
   });
 
   it("lists an agent both live and archived once, as live", () => {
