@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decisionBlockView, decisionTimelineItems, untrackedDecision } from "./decision-view";
+import { READ_ONLY_NOTES, decisionBlockView, decisionTimelineItems, untrackedDecision, type DecisionLookup } from "./decision-view";
 import { decisionMessageSegments, parseDecisionBody, type ParsedDecision } from "./reports";
 import type { StoredDecision } from "./state";
 
@@ -58,35 +58,42 @@ describe("decisionTimelineItems", () => {
 });
 
 describe("decisionBlockView", () => {
-  const asked = parseDecisionBody("id: a\nquestion: Approve?\noptions:\n  - label: Yes\n    prompt: Yes please");
+  const asked = parseDecisionBody("id: a\nquestion: Approve?\nblocking: true\noptions:\n  - label: Yes\n    prompt: Yes please");
+  const done = (decision: StoredDecision | null, agentLive = true): DecisionLookup => ({ state: "done", decision, agentLive });
 
-  it("is untracked when Taro holds nothing", () => {
-    expect(decisionBlockView(asked, null, true)).toEqual({ kind: "untracked" });
+  it("is read-only while loading, after a failed lookup, and when Taro holds no record", () => {
+    expect(decisionBlockView(asked, { state: "loading" })).toEqual({ kind: "read-only", note: READ_ONLY_NOTES.loading });
+    expect(decisionBlockView(asked, { state: "error" })).toEqual({ kind: "read-only", note: READ_ONLY_NOTES.error });
+    // Also a decision Taro dropped 14 days after it closed: never an invitation to answer.
+    expect(decisionBlockView(asked, done(null))).toEqual({ kind: "read-only", note: READ_ONLY_NOTES.untracked });
+    expect(new Set(Object.values(READ_ONLY_NOTES)).size).toBe(3);
   });
 
   it("is the open card while open and the agent is live", () => {
     const decision = stored(asked);
-    expect(decisionBlockView(asked, decision, true)).toEqual({ kind: "open", decision });
+    expect(decisionBlockView(asked, done(decision))).toEqual({ kind: "open", decision });
   });
 
   it("is withdrawn when the agent is gone or the decision withdrawn", () => {
-    expect(decisionBlockView(asked, stored(asked), false)).toEqual({ kind: "withdrawn" });
-    expect(decisionBlockView(asked, stored(asked, { status: "withdrawn" }), true)).toEqual({ kind: "withdrawn" });
+    expect(decisionBlockView(asked, done(stored(asked), false))).toEqual({ kind: "withdrawn" });
+    expect(decisionBlockView(asked, done(stored(asked, { status: "withdrawn" })))).toEqual({ kind: "withdrawn" });
   });
 
   it("shows the answer once answered, whether the agent lives or not", () => {
     const answered = stored(asked, { status: "answered", answer: { text: "Yes please", label: "Yes", at: "t" } });
-    expect(decisionBlockView(asked, answered, false)).toEqual({ kind: "answered", answer: "Yes please", label: "Yes" });
+    expect(decisionBlockView(asked, done(answered, false))).toEqual({ kind: "answered", answer: "Yes please", label: "Yes" });
+    const typed = stored(asked, { status: "answered", answer: { text: "Only the README", label: null, at: "t" } });
+    expect(decisionBlockView(asked, done(typed))).toEqual({ kind: "answered", answer: "Only the README", label: null });
   });
 
   it("is replaced when a later block with the same id asks something else", () => {
-    const later = parseDecisionBody("id: a\nquestion: Approve the new scope?\noptions:\n  - label: Yes\n    prompt: Yes please");
-    expect(decisionBlockView(asked, stored(later), true)).toEqual({ kind: "replaced" });
+    const later = parseDecisionBody("id: a\nquestion: Approve the new scope?\nblocking: true\noptions:\n  - label: Yes\n    prompt: Yes please");
+    expect(decisionBlockView(asked, done(stored(later)))).toEqual({ kind: "replaced" });
   });
 
-  it("marks a withdrawing block as such, whatever is stored", () => {
+  it("marks a withdrawing block as such, whatever the lookup says", () => {
     const withdrawal = parseDecisionBody("id: a\nstatus: withdrawn");
-    expect(decisionBlockView(withdrawal, stored(asked), true)).toEqual({ kind: "withdrawal" });
-    expect(decisionBlockView(withdrawal, null, true)).toEqual({ kind: "withdrawal" });
+    expect(decisionBlockView(withdrawal, done(stored(asked)))).toEqual({ kind: "withdrawal" });
+    expect(decisionBlockView(withdrawal, { state: "loading" })).toEqual({ kind: "withdrawal" });
   });
 });

@@ -51,11 +51,13 @@ export function DecisionCard({
   const [whyOpen, setWhyOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const { colors } = theme;
+  // A card that cannot be answered does not ask for the user.
+  const waiting = decision.blocking && readOnlyNote === null;
   const styles = useMemo(
     () => ({
       card: {
         borderWidth: 1,
-        borderColor: decision.blocking ? colors.statusWarning : colors.border,
+        borderColor: waiting ? colors.statusWarning : colors.border,
         borderRadius: 10,
         padding: compact ? 10 : 12,
         gap: 8,
@@ -89,7 +91,7 @@ export function DecisionCard({
         backgroundColor: colors.surface0,
       },
     }),
-    [colors, compact, decision.blocking],
+    [colors, compact, waiting],
   );
 
   async function send(label: string | null, text: string): Promise<void> {
@@ -117,7 +119,7 @@ export function DecisionCard({
   return (
     <View style={styles.card}>
       {showAgent ? <Text style={styles.who}>{askedBy(decision)}</Text> : null}
-      {decision.blocking ? <Text style={styles.blocking}>WAITING FOR YOU</Text> : null}
+      {waiting ? <Text style={styles.blocking}>WAITING FOR YOU</Text> : null}
       <Text style={styles.question}>{decision.question}</Text>
       {decision.why === "" ? null : (
         <Pressable onPress={() => setWhyOpen((open) => !open)} disabled={decision.why.length < WHY_FOLD_CHARACTERS}>
@@ -146,7 +148,7 @@ export function DecisionCard({
         })}
       </View>
       {decision.reason === "" ? null : <Text style={styles.reason}>Why recommended: {decision.reason}</Text>}
-      {!decision.blocking && decision.default !== "" ? <Text style={styles.defaultNote}>Going with “{decision.default}” unless you say otherwise.</Text> : null}
+      {!decision.blocking && readOnlyNote === null && decision.default !== "" ? <Text style={styles.defaultNote}>Going with “{decision.default}” unless you say otherwise.</Text> : null}
       {decision.problems.length > 0 ? <Text style={styles.problems}>Incomplete block: {decision.problems.join("; ")}</Text> : null}
       {readOnlyNote !== null ? (
         <Text style={styles.defaultNote}>{readOnlyNote}</Text>

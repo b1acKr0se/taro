@@ -12,7 +12,7 @@ import { Text, View } from "react-native";
 import { z } from "zod";
 
 import { getDecision } from "../shared/contracts";
-import { decisionBlockView, untrackedDecision, type DecisionBlockView } from "../shared/decision-view";
+import { decisionBlockView, untrackedDecision } from "../shared/decision-view";
 import { ParsedDecisionSchema, type ParsedDecision } from "../shared/reports";
 import { DecisionCard } from "./decision-card";
 import { errorText } from "./format";
@@ -34,24 +34,19 @@ export function DecisionBlockItem({ agentId, item, theme, layout }: PluginTimeli
     queryKey: ["taro", "decision", agentId, block.id],
     queryFn: () => get({ agentId, id: block.id }),
     enabled: !block.withdrawn,
-    refetchInterval: 4_000,
+    // A settled decision does not change again; an open or not yet recorded one may.
+    refetchInterval: (query) => (query.state.data?.decision?.status === "answered" || query.state.data?.decision?.status === "withdrawn" ? false : 4_000),
   });
-  const view: DecisionBlockView =
-    lookup.data === undefined && !block.withdrawn ? { kind: "untracked" } : decisionBlockView(block, lookup.data?.decision ?? null, lookup.data?.agentLive ?? true);
+  const view = decisionBlockView(
+    block,
+    lookup.data !== undefined ? { state: "done", decision: lookup.data.decision, agentLive: lookup.data.agentLive } : lookup.isError ? { state: "error" } : { state: "loading" },
+  );
 
   switch (view.kind) {
     case "open":
       return <DecisionCard decision={view.decision} theme={theme} compact={layout.compact} answeredFrom="tab" onAnswered={() => void lookup.refetch()} />;
-    case "untracked":
-      return (
-        <DecisionCard
-          decision={untrackedDecision(block, agentId)}
-          theme={theme}
-          compact={layout.compact}
-          onAnswered={() => undefined}
-          readOnlyNote={lookup.isLoading ? "Looking this decision up…" : "Taro does not hold this decision; reply in the message box."}
-        />
-      );
+    case "read-only":
+      return <DecisionCard decision={untrackedDecision(block, agentId)} theme={theme} compact={layout.compact} onAnswered={() => undefined} readOnlyNote={view.note} />;
     case "answered":
       return <Settled block={block} theme={theme} note={`Answered: ${view.label === null ? `“${view.answer}”` : view.label}`} />;
     case "withdrawn":

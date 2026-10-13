@@ -16,15 +16,30 @@ export type DecisionBlockView =
   | { kind: "withdrawal" }
   /** A later block with the same id asks something else; that one is the live card. */
   | { kind: "replaced" }
-  /** Taro does not hold it: not a Taro agent, or the turn is not ingested yet. */
-  | { kind: "untracked" };
+  /** Shown but not answerable, with why: still loading, the lookup failed, or Taro holds no record. */
+  | { kind: "read-only"; note: string };
 
-export function decisionBlockView(block: ParsedDecision, stored: StoredDecision | null, agentLive: boolean): DecisionBlockView {
+/** Where the renderer's lookup of the stored decision stands. */
+export type DecisionLookup =
+  | { state: "loading" }
+  | { state: "error" }
+  | { state: "done"; decision: StoredDecision | null; agentLive: boolean };
+
+export const READ_ONLY_NOTES = {
+  loading: "Looking this decision up…",
+  error: "Could not look this decision up; answer it from the Taro screen or reply in the message box.",
+  // Not a Taro agent, or the decision closed long enough ago for Taro to have dropped it.
+  untracked: "Taro has no record of this decision (not a Taro agent, or settled over 14 days ago). Reply in the message box if it still needs an answer.",
+} as const;
+
+export function decisionBlockView(block: ParsedDecision, lookup: DecisionLookup): DecisionBlockView {
   if (block.withdrawn) return { kind: "withdrawal" };
-  if (stored === null) return { kind: "untracked" };
+  if (lookup.state !== "done") return { kind: "read-only", note: READ_ONLY_NOTES[lookup.state] };
+  const stored = lookup.decision;
+  if (stored === null) return { kind: "read-only", note: READ_ONLY_NOTES.untracked };
   if (!sameQuestion(block, stored)) return { kind: "replaced" };
   if (stored.status === "answered") return { kind: "answered", answer: stored.answer?.text ?? "", label: stored.answer?.label ?? null };
-  if (stored.status === "withdrawn" || !agentLive) return { kind: "withdrawn" };
+  if (stored.status === "withdrawn" || !lookup.agentLive) return { kind: "withdrawn" };
   return { kind: "open", decision: stored };
 }
 
