@@ -20,7 +20,6 @@ import type { StoredDecision } from "../shared/state";
 import { AgentChat } from "./agent-chat";
 import { useBoard, useRefreshBoard } from "./board-data";
 import { ProjectBoard } from "./board";
-import { ContextMeter } from "./context-meter";
 import { errorText } from "./format";
 import { Inbox } from "./inbox";
 import { OwnerPane } from "./owner-pane";
@@ -412,9 +411,9 @@ function ManagerPane({
               disabled={running}
               onPress={() => void compactRpc({ project }).catch((caught: unknown) => toast.error(errorText(caught)))}
             />
-            <ContextMeter theme={theme} used={manager.contextUsedTokens} max={manager.contextMaxTokens} />
           </>
         }
+        context={{ used: manager.contextUsedTokens, max: manager.contextMaxTokens }}
       />
     </View>
   );

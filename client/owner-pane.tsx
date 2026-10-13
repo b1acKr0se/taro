@@ -17,7 +17,6 @@ import { decisionBlocksAsText, withoutDecisionBlocks } from "../shared/reports";
 import { AgentChat } from "./agent-chat";
 import { AcceptanceCard } from "./acceptance-card";
 import { acceptanceReady } from "./card-calls";
-import { ContextMeter } from "./context-meter";
 import { defaultPaneAgent, paneAgents, paneAgentJob, roleIcon } from "./pane-agents";
 import { PaneHeader } from "./pane-header";
 import { SPACE } from "./spacing";
@@ -128,23 +127,21 @@ export function OwnerPane({
                   }
                 : undefined
             }
+            context={{ used: shown.brief.contextUsedTokens, max: shown.brief.contextMaxTokens }}
             actions={
-              <>
-                {askedElsewhere === undefined || askedElsewhereBy === undefined ? null : (
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => setChosen({ card: card.id, agent: askedElsewhereBy.id })}
-                    style={{ width: "100%", flexDirection: "row", alignItems: "center", gap: SPACE.sm }}
-                  >
-                    <Icon name="Hand" size={13} color={askedElsewhere.blocking ? theme.colors.statusWarning : theme.colors.foregroundMuted} />
-                    <Text style={{ flex: 1, color: theme.colors.foreground, fontSize: FONT_SIZE.caption }} numberOfLines={1}>
-                      {askedElsewhere.question}
-                    </Text>
-                    <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Open {askedElsewhereBy.label}</Text>
-                  </Pressable>
-                )}
-                <ContextMeter theme={theme} used={shown.brief.contextUsedTokens} max={shown.brief.contextMaxTokens} />
-              </>
+              askedElsewhere === undefined || askedElsewhereBy === undefined ? undefined : (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setChosen({ card: card.id, agent: askedElsewhereBy.id })}
+                  style={{ width: "100%", flexDirection: "row", alignItems: "center", gap: SPACE.sm }}
+                >
+                  <Icon name="Hand" size={13} color={askedElsewhere.blocking ? theme.colors.statusWarning : theme.colors.foregroundMuted} />
+                  <Text style={{ flex: 1, color: theme.colors.foreground, fontSize: FONT_SIZE.caption }} numberOfLines={1}>
+                    {askedElsewhere.question}
+                  </Text>
+                  <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Open {askedElsewhereBy.label}</Text>
+                </Pressable>
+              )
             }
           />
         ) : (

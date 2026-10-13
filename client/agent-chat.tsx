@@ -12,6 +12,7 @@ import { Platform, Pressable, SafeAreaView, ScrollView, Text, View, type LayoutR
 
 import { listSentImages, type SentImagesMessage } from "../shared/contracts";
 import type { StoredDecision } from "../shared/state";
+import { ContextMeter } from "./context-meter";
 import { DecisionCard } from "./decision-card";
 import { drafts } from "./draft";
 import { useFollowEnd } from "./follow-end";
@@ -25,12 +26,15 @@ import { cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from 
 import { groupRows, toolRunSummary, type Group } from "./tool-runs";
 import { transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
-import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
-import { SPACE } from "./spacing";
+import { JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
+import { CHAT_MAX_WIDTH, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
 
-const INPUT_HEIGHT = 110;
-const INPUT_HEIGHT_COMPACT = 76;
+/** The text area inside the composer box, above its row of the context ring and the send button. */
+const INPUT_HEIGHT = 72;
+const INPUT_HEIGHT_COMPACT = 44;
+/** The round send button, as in Paseo's composer. */
+const SEND_SIZE = 30;
 
 export interface ChatAgent {
   id: string;
@@ -47,6 +51,8 @@ type ChatComposer =
       onSend: (text: string) => Promise<void>;
       /** Buttons above the composer (Catch up, Compact, …). */
       actions?: ReactNode;
+      /** The agent's context window, drawn as a ring inside the composer beside the send button. */
+      context?: { used: number | null | undefined; max: number | null | undefined };
       readOnly?: undefined;
     }
   | {
@@ -55,6 +61,7 @@ type ChatComposer =
       placeholder?: undefined;
       onSend?: undefined;
       actions?: undefined;
+      context?: undefined;
     };
 
 export function AgentChat({
@@ -64,6 +71,7 @@ export function AgentChat({
   placeholder,
   onSend,
   actions,
+  context,
   readOnly,
   decorateRow,
   transformText,
@@ -173,6 +181,7 @@ export function AgentChat({
   }, [keyboard]);
 
   const submitOnEnter = Platform.OS === "web" && !compact;
+  const nothingToSend = sending || draft.trim() === "";
 
   function setDraft(text: string): void {
     drafts.set(agent.id, text);
@@ -203,7 +212,14 @@ export function AgentChat({
       pane: { flex: 1, minHeight: 0, backgroundColor: colors.surface0 },
       transcript: { flex: 1 },
       // Room between turns, so a reply, a tool run and the next message read as separate things.
-      transcriptBody: { padding: compact ? SPACE.md : SPACE.lg, gap: compact ? SPACE.md : SPACE.lg },
+      // Centred at a reading width in a wide pane (TR-027); the scroll bar stays at the pane's edge.
+      transcriptBody: {
+        width: "100%" as const,
+        maxWidth: CHAT_MAX_WIDTH,
+        alignSelf: "center" as const,
+        padding: compact ? SPACE.md : SPACE.lg,
+        gap: compact ? SPACE.md : SPACE.lg,
+      },
       user: {
         alignSelf: "flex-end" as const,
         maxWidth: "88%" as const,
@@ -238,24 +254,40 @@ export function AgentChat({
       error: { color: colors.statusDanger, fontSize: FONT_SIZE.small },
       hint: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center" as const, padding: SPACE.lg },
       composerFrame: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface0 },
-      composer: { padding: SPACE.md, gap: SPACE.sm },
+      composer: { width: "100%" as const, maxWidth: CHAT_MAX_WIDTH, alignSelf: "center" as const, padding: SPACE.md, gap: SPACE.sm },
       quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
-      inputRow: { flexDirection: "row" as const, alignItems: "flex-end" as const, gap: SPACE.sm },
+      // One box, as in Paseo's composer: the text, then the context ring and the send button inside it.
+      inputBox: { borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.surface1 },
       input: {
-        flex: 1,
         color: colors.foreground,
         fontSize: FONT_SIZE.content,
         lineHeight: lineHeightFor(FONT_SIZE.content),
-        borderWidth: 1,
-        borderColor: colors.border,
-        borderRadius: 10,
         height: compact ? INPUT_HEIGHT_COMPACT : INPUT_HEIGHT,
         paddingHorizontal: SPACE.md,
-        paddingVertical: SPACE.sm + 2,
-        backgroundColor: colors.surface1,
+        paddingTop: SPACE.sm + 2,
+        paddingBottom: 0,
         textAlignVertical: "top" as const,
       },
+      inputTools: {
+        flexDirection: "row" as const,
+        justifyContent: "flex-end" as const,
+        alignItems: "center" as const,
+        gap: SPACE.sm,
+        paddingHorizontal: SPACE.sm,
+        paddingBottom: SPACE.sm,
+      },
+      send: {
+        width: SEND_SIZE,
+        height: SEND_SIZE,
+        borderRadius: SEND_SIZE / 2,
+        alignItems: "center" as const,
+        justifyContent: "center" as const,
+        backgroundColor: colors.accent,
+      },
       readOnly: {
+        width: "100%" as const,
+        maxWidth: CHAT_MAX_WIDTH,
+        alignSelf: "center" as const,
         flexDirection: "row" as const,
         alignItems: "center" as const,
         gap: SPACE.sm,
@@ -434,7 +466,7 @@ export function AgentChat({
               </Pressable>
             )}
             {actions === undefined ? null : <View style={styles.quick}>{actions}</View>}
-            <View style={styles.inputRow}>
+            <View style={styles.inputBox}>
               <TextInput
                 value={draft}
                 onChangeText={setDraft}
@@ -444,7 +476,7 @@ export function AgentChat({
                 onKeyPress={
                   submitOnEnter
                     ? (event: WebKeyPressEvent) => {
-                        if (!isSendKey(event.nativeEvent) || sending || draft.trim() === "") return;
+                        if (!isSendKey(event.nativeEvent) || nothingToSend) return;
                         event.preventDefault();
                         sendDraft();
                       }
@@ -452,7 +484,19 @@ export function AgentChat({
                 }
                 style={styles.input}
               />
-              <IconButton icon="Send" label="Send" tone="accent" theme={theme} disabled={sending || draft.trim() === ""} onPress={sendDraft} />
+              <View style={styles.inputTools}>
+                {context === undefined ? null : <ContextMeter theme={theme} used={context.used} max={context.max} />}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Send"
+                  accessibilityState={{ disabled: nothingToSend }}
+                  disabled={nothingToSend}
+                  style={[styles.send, { opacity: nothingToSend ? 0.5 : 1 }]}
+                  onPress={sendDraft}
+                >
+                  <Icon name="ArrowUp" size={16} color={theme.colors.accentForeground} />
+                </Pressable>
+              </View>
             </View>
           </View>
         )}
