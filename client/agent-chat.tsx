@@ -18,6 +18,7 @@ import { PermissionCard, usePendingRequests } from "./permission-card";
 import { transcriptRows, type TranscriptRow } from "./transcript-rows";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { IconButton, JumpToEnd, MONOSPACE, Spinner, errorText } from "./ui";
+import { SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
 
 const TOOL_RUN_VISIBLE = 2;
@@ -44,6 +45,24 @@ export interface ChatAgent {
   status: string;
 }
 
+/** A conversation the user can write to, or one only to read (an archived agent's). */
+type ChatComposer =
+  | {
+      placeholder: string;
+      /** Sends the user's words; rejects with a sentence on failure. */
+      onSend: (text: string) => Promise<void>;
+      /** Buttons above the composer (Catch up, Compact, …). */
+      actions?: ReactNode;
+      readOnly?: undefined;
+    }
+  | {
+      /** No composer and no buttons; a footer says why. */
+      readOnly: { note: string };
+      placeholder?: undefined;
+      onSend?: undefined;
+      actions?: undefined;
+    };
+
 export function AgentChat({
   agent,
   theme,
@@ -51,22 +70,18 @@ export function AgentChat({
   placeholder,
   onSend,
   actions,
+  readOnly,
   decorateRow,
   transformText,
 }: {
   agent: ChatAgent;
   theme: PluginTheme;
   compact: boolean;
-  placeholder: string;
-  /** Sends the user's words; rejects with a sentence on failure. */
-  onSend: (text: string) => Promise<void>;
-  /** Buttons above the composer (Catch up, Compact, …). */
-  actions?: ReactNode;
   /** Draws extra content under an agent message (decision cards). */
   decorateRow?: (text: string, key: string) => ReactNode;
   /** Rewrites an agent message before it is drawn (drops decision blocks drawn as cards). */
   transformText?: (text: string) => string;
-}) {
+} & ChatComposer) {
   const toast = useToast();
   const timeline = useAgentTimeline(agent.id, `${agent.updatedAt}:${agent.pendingPermissions}`);
   const rows = useMemo(() => transcriptRows(timeline.entries), [timeline.entries]);
@@ -98,7 +113,7 @@ export function AgentChat({
 
   function sendDraft(): void {
     const text = draft.trim();
-    if (text === "" || sending) return;
+    if (onSend === undefined || text === "" || sending) return;
     setSending(true);
     follow.pin();
     setDraft("");
@@ -119,27 +134,39 @@ export function AgentChat({
     return {
       pane: { flex: 1, minHeight: 0, backgroundColor: colors.surface0 },
       transcript: { flex: 1 },
-      transcriptBody: { padding: compact ? 10 : 14, gap: 10 },
+      // Room between turns, so a reply, a tool run and the next message read as separate things.
+      transcriptBody: { padding: compact ? SPACE.md : SPACE.lg, gap: compact ? SPACE.md : SPACE.lg },
       user: {
         alignSelf: "flex-end" as const,
         maxWidth: "88%" as const,
         backgroundColor: colors.surface2,
-        borderRadius: 10,
-        paddingHorizontal: 10,
-        paddingVertical: 7,
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderRadius: 12,
+        paddingHorizontal: SPACE.md,
+        paddingVertical: SPACE.sm + 2,
       },
       userText: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) },
-      agentRow: { alignSelf: "stretch" as const, gap: 6 },
-      line: { flexDirection: "row" as const, alignItems: "center" as const, gap: 6 },
+      agentRow: { alignSelf: "stretch" as const, gap: SPACE.sm },
+      line: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm - 2 },
+      // A run of tool calls is the agent working, not talking: a quiet block with a rule, apart from its prose.
+      toolRun: {
+        gap: SPACE.xs,
+        padding: SPACE.sm,
+        borderRadius: 8,
+        borderLeftWidth: 2,
+        borderLeftColor: colors.border,
+        backgroundColor: colors.surface1,
+      },
       lineText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
       toolText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontFamily: MONOSPACE },
       more: { color: colors.accent, fontSize: FONT_SIZE.caption },
       error: { color: colors.statusDanger, fontSize: FONT_SIZE.small },
-      hint: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center" as const, padding: 16 },
+      hint: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center" as const, padding: SPACE.lg },
       composerFrame: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface0 },
-      composer: { padding: compact ? 8 : 10, gap: 8 },
-      quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 6, alignItems: "center" as const },
-      inputRow: { flexDirection: "row" as const, alignItems: "flex-end" as const, gap: 8 },
+      composer: { padding: SPACE.md, gap: SPACE.sm },
+      quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
+      inputRow: { flexDirection: "row" as const, alignItems: "flex-end" as const, gap: SPACE.sm },
       input: {
         flex: 1,
         color: colors.foreground,
@@ -147,13 +174,22 @@ export function AgentChat({
         lineHeight: lineHeightFor(FONT_SIZE.content),
         borderWidth: 1,
         borderColor: colors.border,
-        borderRadius: 8,
+        borderRadius: 10,
         height: compact ? INPUT_HEIGHT_COMPACT : INPUT_HEIGHT,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
+        paddingHorizontal: SPACE.md,
+        paddingVertical: SPACE.sm + 2,
         backgroundColor: colors.surface1,
         textAlignVertical: "top" as const,
       },
+      readOnly: {
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: SPACE.sm,
+        paddingHorizontal: compact ? SPACE.md : SPACE.lg,
+        paddingVertical: SPACE.md,
+        backgroundColor: colors.surface1,
+      },
+      readOnlyText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
     };
   }, [theme, compact]);
 
@@ -163,7 +199,7 @@ export function AgentChat({
       const shown = open ? group.tools : group.tools.slice(-TOOL_RUN_VISIBLE);
       const hidden = group.tools.length - shown.length;
       return (
-        <View key={group.key} style={{ gap: 3 }}>
+        <View key={group.key} style={styles.toolRun}>
           {hidden > 0 ? (
             <Pressable accessibilityRole="button" onPress={() => setOpenGroups((current) => new Set([...current, group.key]))}>
               <Text style={styles.more}>+ {hidden} more tool calls</Text>
@@ -236,29 +272,36 @@ export function AgentChat({
         {follow.away ? <JumpToEnd theme={theme} onPress={follow.jumpToEnd} /> : null}
       </View>
       <SafeAreaView style={styles.composerFrame}>
-        <View style={styles.composer}>
-          {actions === undefined ? null : <View style={styles.quick}>{actions}</View>}
-          <View style={styles.inputRow}>
-            <TextInput
-              value={draft}
-              onChangeText={setDraft}
-              placeholder={submitOnEnter ? `${placeholder} (Enter sends, Shift+Enter for a new line)` : placeholder}
-              placeholderTextColor={theme.colors.foregroundMuted}
-              multiline
-              onKeyPress={
-                submitOnEnter
-                  ? (event: WebKeyPressEvent) => {
-                      if (!isSendKey(event.nativeEvent) || sending || draft.trim() === "") return;
-                      event.preventDefault();
-                      sendDraft();
-                    }
-                  : undefined
-              }
-              style={styles.input}
-            />
-            <IconButton icon="Send" label="Send" tone="accent" theme={theme} disabled={sending || draft.trim() === ""} onPress={sendDraft} />
+        {readOnly !== undefined ? (
+          <View style={styles.readOnly}>
+            <Icon name="Archive" size={14} color={theme.colors.foregroundMuted} />
+            <Text style={styles.readOnlyText}>{readOnly.note}</Text>
           </View>
-        </View>
+        ) : (
+          <View style={styles.composer}>
+            {actions === undefined ? null : <View style={styles.quick}>{actions}</View>}
+            <View style={styles.inputRow}>
+              <TextInput
+                value={draft}
+                onChangeText={setDraft}
+                placeholder={submitOnEnter ? `${placeholder} (Enter sends, Shift+Enter for a new line)` : placeholder}
+                placeholderTextColor={theme.colors.foregroundMuted}
+                multiline
+                onKeyPress={
+                  submitOnEnter
+                    ? (event: WebKeyPressEvent) => {
+                        if (!isSendKey(event.nativeEvent) || sending || draft.trim() === "") return;
+                        event.preventDefault();
+                        sendDraft();
+                      }
+                    : undefined
+                }
+                style={styles.input}
+              />
+              <IconButton icon="Send" label="Send" tone="accent" theme={theme} disabled={sending || draft.trim() === ""} onPress={sendDraft} />
+            </View>
+          </View>
+        )}
       </SafeAreaView>
     </View>
   );

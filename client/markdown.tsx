@@ -21,12 +21,14 @@ import { Text, View } from "react-native";
 import { inlineTokens, type FileLookup } from "./file-links";
 import { parseMarkdown, type Block } from "./markdown-parse";
 import { MONOSPACE } from "./ui";
+import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 
 interface MarkdownStyles {
   paragraph: object;
   heading: object;
   headingLarge: object;
+  list: object;
   listRow: object;
   listMarker: object;
   listText: object;
@@ -47,20 +49,21 @@ function useMarkdownStyles(theme: PluginTheme, fontSize: number): MarkdownStyles
   return useMemo(
     () => ({
       paragraph: { color: theme.colors.foreground, fontSize, lineHeight: lineHeightFor(fontSize) },
-      heading: { color: theme.colors.foreground, fontSize: fontSize + 1, fontWeight: "600" as const, marginTop: 4 },
-      headingLarge: { color: theme.colors.foreground, fontSize: fontSize + 3, fontWeight: "700" as const, marginTop: 6 },
-      listRow: { flexDirection: "row" as const, gap: 6 },
+      heading: { color: theme.colors.foreground, fontSize: fontSize + 1, fontWeight: "600" as const, marginTop: SPACE.sm },
+      headingLarge: { color: theme.colors.foreground, fontSize: fontSize + 3, fontWeight: "700" as const, marginTop: SPACE.sm },
+      list: { gap: SPACE.xs },
+      listRow: { flexDirection: "row" as const, gap: SPACE.sm },
       listMarker: { color: theme.colors.foregroundMuted, fontSize, lineHeight: lineHeightFor(fontSize) },
       listText: { flex: 1 },
       codeBlock: {
         backgroundColor: theme.colors.surface2,
         borderRadius: 6,
-        paddingHorizontal: 10,
-        paddingVertical: 8,
+        paddingHorizontal: SPACE.sm + 2,
+        paddingVertical: SPACE.sm,
       },
       codeText: { color: theme.colors.foreground, fontFamily: MONOSPACE, fontSize: fontSize - 1 },
-      quote: { borderLeftWidth: 3, borderLeftColor: theme.colors.border, paddingLeft: 10, gap: 6 },
-      rule: { height: 1, backgroundColor: theme.colors.border, marginVertical: 4 },
+      quote: { borderLeftWidth: 3, borderLeftColor: theme.colors.border, paddingLeft: SPACE.sm + 2, gap: SPACE.sm + 2 },
+      rule: { height: 1, backgroundColor: theme.colors.border, marginVertical: SPACE.xs },
       bold: { fontWeight: "700" as const },
       inlineCode: {
         fontFamily: MONOSPACE,
@@ -71,7 +74,7 @@ function useMarkdownStyles(theme: PluginTheme, fontSize: number): MarkdownStyles
       link: { color: theme.colors.accent, textDecorationLine: "underline" as const },
       table: { borderWidth: 1, borderColor: theme.colors.border, borderRadius: 6 },
       tableRow: { flexDirection: "row" as const, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
-      tableCell: { flex: 1, paddingHorizontal: 8, paddingVertical: 4 },
+      tableCell: { flex: 1, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.xs },
       tableHeader: { fontWeight: "600" as const },
     }),
     [theme, fontSize],
@@ -142,7 +145,7 @@ function renderBlocks(blocks: Block[], styles: MarkdownStyles, context: InlineCo
         );
       case "list":
         return (
-          <View key={index}>
+          <View key={index} style={styles.list}>
             {block.items.map((item, itemIndex) => (
               <View key={itemIndex} style={[styles.listRow, { paddingLeft: item.depth * 14 }]}>
                 <Text style={styles.listMarker}>{item.marker}</Text>
@@ -211,5 +214,6 @@ export function Markdown({
 }) {
   const styles = useMarkdownStyles(theme, fontSize);
   const blocks = useMemo(() => parseMarkdown(source), [source]);
-  return <View style={{ gap: 6 }}>{renderBlocks(blocks, styles, { lookup: files, onOpenLink, onOpenFile })}</View>;
+  // Blocks a little further apart than lines, so paragraphs and lists read as separate thoughts.
+  return <View style={{ gap: SPACE.sm + 2 }}>{renderBlocks(blocks, styles, { lookup: files, onOpenLink, onOpenFile })}</View>;
 }

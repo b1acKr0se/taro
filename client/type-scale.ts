@@ -25,7 +25,7 @@ export const FONT_SIZE = {
   code: 13,
 } as const;
 
-/** A line height that keeps wrapped text at `size` readable. */
+/** A line height that keeps wrapped text at `size` readable: 1.5× gives a reply room between its lines (TR-016). */
 export function lineHeightFor(size: number): number {
-  return Math.round(size * 1.42);
+  return Math.round(size * 1.5);
 }

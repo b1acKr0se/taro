@@ -83,7 +83,8 @@ export function Segmented<Value extends string>({
 }: {
   theme: PluginTheme;
   value: Value;
-  options: ReadonlyArray<{ value: Value; label: string }>;
+  /** `icon` is a Lucide name drawn before the label. */
+  options: ReadonlyArray<{ value: Value; label: string; icon?: string }>;
   onChange: (value: Value) => void;
 }) {
   const colors = theme.colors;
@@ -98,7 +99,7 @@ export function Segmented<Value extends string>({
         backgroundColor: colors.surface1,
         overflow: "hidden" as const,
       },
-      segment: { justifyContent: "center" as const, paddingHorizontal: 12 },
+      segment: { flexDirection: "row" as const, alignItems: "center" as const, gap: 6, paddingHorizontal: 12 },
       selected: { backgroundColor: colors.accent },
       label: { color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "500" as const },
       labelSelected: { color: colors.accentForeground, fontWeight: "600" as const },
@@ -117,6 +118,7 @@ export function Segmented<Value extends string>({
             style={[styles.segment, selected ? styles.selected : null]}
             onPress={() => onChange(option.value)}
           >
+            {option.icon === undefined ? null : <Icon name={option.icon} size={14} color={selected ? colors.accentForeground : colors.foregroundMuted} />}
             <Text style={[styles.label, selected ? styles.labelSelected : null]}>{option.label}</Text>
           </Pressable>
         );
@@ -137,7 +139,8 @@ export function ToggleChips({
 }: {
   theme: PluginTheme;
   selected: readonly string[];
-  options: ReadonlyArray<{ value: string; label: string }>;
+  /** `icon` is a Lucide name drawn before the label. */
+  options: ReadonlyArray<{ value: string; label: string; icon?: string }>;
   onToggle: (value: string) => void;
 }) {
   const colors = theme.colors;
@@ -145,7 +148,9 @@ export function ToggleChips({
     () => ({
       frame: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 6 },
       chip: {
-        justifyContent: "center" as const,
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: 6,
         height: 28,
         paddingHorizontal: 10,
         borderRadius: 8,
@@ -171,6 +176,7 @@ export function ToggleChips({
             style={[styles.chip, isSelected ? styles.chipSelected : null]}
             onPress={() => onToggle(option.value)}
           >
+            {option.icon === undefined ? null : <Icon name={option.icon} size={14} color={isSelected ? colors.accentForeground : colors.foregroundMuted} />}
             <Text style={[styles.label, isSelected ? styles.labelSelected : null]}>{option.label}</Text>
           </Pressable>
         );
