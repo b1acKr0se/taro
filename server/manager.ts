@@ -38,7 +38,7 @@ export async function projectValues(config: ProjectConfig): Promise<Record<strin
     ownerModel: config.owner.model,
     ownerThinking: config.owner.thinking === "" ? "(provider default)" : config.owner.thinking,
     ownerMode: knownBypassMode(config.owner.model) || "(provider default)",
-    helperModels: config.helperModels.length === 0 ? config.owner.model : config.helperModels.join(", "),
+    subagentModels: config.subagentModels.length === 0 ? config.owner.model : config.subagentModels.join(", "),
     delivery: config.delivery,
     acceptAlsoMerges: config.acceptAlsoMerges ? "yes" : "no",
     maxParallelOwners: String(config.maxParallelOwners),

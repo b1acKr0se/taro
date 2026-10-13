@@ -5,7 +5,7 @@ import { decisionBlocksAsText, parseDecisionBlocks, parseStatusLine, withoutDeci
 describe("parseStatusLine", () => {
   it("reads the last line", () => {
     expect(parseStatusLine("Did it.\n\ndone: PR https://x/1 ready")).toEqual({ state: "done", text: "PR https://x/1 ready" });
-    expect(parseStatusLine("waiting: helper SC-1.2 on the API")).toEqual({ state: "waiting", text: "helper SC-1.2 on the API" });
+    expect(parseStatusLine("waiting: implementer SC-1.2 on the API")).toEqual({ state: "waiting", text: "implementer SC-1.2 on the API" });
   });
 
   it("tolerates markdown emphasis and case", () => {

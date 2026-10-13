@@ -1,6 +1,6 @@
 /**
  * The host's thread headroom (TR-012), from the cgroup's pids files. Every agent,
- * helper, reviewer and test daemon costs threads, so the owner cap alone does not
+ * subagent and test daemon costs threads, so the owner cap alone does not
  * keep the host under its limit.
  */
 import { join } from "node:path";

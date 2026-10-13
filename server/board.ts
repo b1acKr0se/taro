@@ -10,7 +10,7 @@ import { executionMachine, pullRequestUrl } from "../shared/execution";
 import type { Board, Card, TicketDetailView } from "../shared/contracts";
 import { latestMilestone, type Milestone } from "../shared/milestones";
 import { pastTicketAgents } from "../shared/past-agents";
-import { TARO_LABELS } from "../shared/project";
+import { isSubagentRole, roleFromLabel, TARO_LABELS } from "../shared/project";
 import { boardAlerts } from "../shared/recovery";
 import { decisionsOfLiveAgents, type StoredDecision } from "../shared/state";
 import { currentSuggestions, parseSuggestions, suggestionKey } from "../shared/suggestions";
@@ -132,7 +132,10 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
     tickets.map(async (ticket) => {
       const ticketAgents = byTicket.get(ticket.id) ?? [];
       const owner = newest(ticketAgents.filter((agent) => agent.labels[TARO_LABELS.role] === "owner" && agent.status !== "closed"));
-      const helpers = ticketAgents.filter((agent) => agent.labels[TARO_LABELS.role] === "helper" || agent.labels[TARO_LABELS.role] === "reviewer");
+      const subagents = ticketAgents.flatMap((agent) => {
+        const role = roleFromLabel(agent.labels[TARO_LABELS.role]);
+        return role !== null && isSubagentRole(role) ? [{ ...agentBrief(agent), role }] : [];
+      });
       const ownerState = owner === null ? null : agentStates[owner.id] ?? null;
       const finished = ticket.status === "Done" || ticket.status === "Cancelled";
       const ticketDecisions = finished ? [] : openDecisions.filter((decision) => decision.ticket === ticket.id);
@@ -179,7 +182,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
         stalled: ownerState?.stalled ?? false,
         stalledReason: ownerState?.stalled === true ? ownerState.stalledReason : null,
         decisions: ticketDecisions,
-        helpers: helpers.map((agent) => ({ ...agentBrief(agent), role: agent.labels[TARO_LABELS.role] === "reviewer" ? ("reviewer" as const) : ("helper" as const) })),
+        subagents,
         pastAgents: past,
         latestMilestone: UNDER_WAY.has(ticket.status) ? facts?.latestMilestone ?? null : null,
       };

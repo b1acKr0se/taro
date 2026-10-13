@@ -82,9 +82,9 @@ beforeEach(() => {
 });
 
 describe("Supervisor.compactIdleAgents", () => {
-  it("asks an idle owner and the manager for a handoff and counts each, never a helper or reviewer", async () => {
+  it("asks an idle owner and the manager for a handoff and counts each, never a subagent", async () => {
     const { taro, agents, stats } = setup();
-    const all = [agent("owner-1", "owner", "TR-5", 250_000), agent("manager-1", "manager", null, 250_000), agent("helper-1", "helper", "TR-5", 250_000), agent("reviewer-1", "reviewer", "TR-5", 250_000)];
+    const all = [agent("owner-1", "owner", "TR-5", 250_000), agent("manager-1", "manager", null, 250_000), agent("implementer-1", "implementer", "TR-5", 250_000), agent("reviewer-1", "reviewer", "TR-5", 250_000)];
     for (const live of all) await seenIdle(taro, live);
     vi.mocked(sendFromPlugin).mockClear();
     vi.mocked(listTaroAgents).mockResolvedValue(all);
@@ -93,7 +93,7 @@ describe("Supervisor.compactIdleAgents", () => {
     expect(sent()).toEqual(["owner-1 handoff:TR-5:250k", "manager-1 manager-handoff:/taro/projects/taro/manager-handoff.md:250k"]);
     expect([agents["owner-1"]?.compaction, agents["owner-1"]?.idleCompaction]).toEqual(["handoff", "running"]);
     expect([agents["manager-1"]?.compaction, agents["manager-1"]?.idleCompaction]).toEqual(["handoff", "running"]);
-    expect(agents["helper-1"]?.compaction).toBe("none");
+    expect(agents["implementer-1"]?.compaction).toBe("none");
     expect(stats.count).toHaveBeenCalledWith("taro", "TR-5", "idleCompactions");
     expect(stats.countProject).toHaveBeenCalledWith("taro", "idleCompactions");
     expect(stats.countProject).toHaveBeenCalledTimes(1);

@@ -13,7 +13,8 @@ import { FONT_SIZE } from "./type-scale";
 
 export function roleIcon(agent: PaneAgent): string {
   if (agent.role === "owner") return agent.live ? "Crown" : "UserRound";
-  return agent.role === "helper" ? "Wrench" : "ShieldCheck";
+  if (agent.role === "implementer") return "Wrench";
+  return agent.role === "researcher" ? "Search" : "ShieldCheck";
 }
 
 function stateColor(theme: PluginTheme, state: PaneAgentState): string {

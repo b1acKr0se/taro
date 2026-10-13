@@ -45,7 +45,7 @@ export function OwnerPane({
   const [tab, setTab] = useState<"chat" | "ticket">("chat");
   // Remembered with the card it was made on, so opening another ticket starts from its default agent.
   const [chosen, setChosen] = useState<{ card: string; agent: string } | null>(null);
-  const agents = useMemo(() => paneAgents(card), [card.owner, card.helpers, card.pastAgents]);
+  const agents = useMemo(() => paneAgents(card), [card.owner, card.subagents, card.pastAgents]);
   const now = useNow();
   const chosenId = chosen?.card === card.id ? chosen.agent : null;
   const shown = agents.find((agent) => agent.id === chosenId) ?? defaultPaneAgent(agents) ?? agents[0] ?? null;

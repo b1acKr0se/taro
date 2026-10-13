@@ -12,9 +12,9 @@ import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, huma
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { reload: "reload", nudge: "nudge" },
+  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report" },
   skillDirectory: async () => "/skill",
-  message: async (path: string, values: Record<string, string> = {}) => `${path}:${values.ticket ?? ""}`,
+  message: async (path: string, values: Record<string, string> = {}) => (path === "report" ? `report:${values.role}:${values.report}` : `${path}:${values.ticket ?? ""}`),
 }));
 vi.mock("./projects", () => ({ readProjectConfig: async () => null }));
 
@@ -52,6 +52,11 @@ describe("identityFromLabels", () => {
       ticket: "AP-1",
       title: "AP-1 · x",
     });
+  });
+
+  it("reads a subagent's job, and the label `helper` from before TR-017 as an implementer", () => {
+    expect(identityFromLabels({ "taro.project": "app", "taro.role": "researcher", "taro.ticket": "AP-1" }, null)?.role).toBe("researcher");
+    expect(identityFromLabels({ "taro.project": "app", "taro.role": "helper", "taro.ticket": "AP-1" }, null)?.role).toBe("implementer");
   });
 
   it("ignores agents that are not Taro's", () => {
@@ -243,10 +248,10 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     await run(taro, ...first, ...second);
     expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
 
-    await run(taro, ...first, ...second, plugin("helper report"), reply);
+    await run(taro, ...first, ...second, plugin("implementer report"), reply);
     expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
 
-    await run(taro, ...first, ...second, plugin("helper report"), reply, human("yes, merge"), reply);
+    await run(taro, ...first, ...second, plugin("implementer report"), reply, human("yes, merge"), reply);
     expect(decisions.map((decision) => [decision.status, decision.answer?.text])).toEqual([["answered", "yes, merge"]]);
   });
 
@@ -255,7 +260,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
     // Stored from an earlier read (for instance reconcile's tail page); its block is not in this timeline.
     await run(taro, plugin("start"), ask("merge", "Merge now?"));
-    await run(taro, human("hi"), reply, plugin("helper report"), reply);
+    await run(taro, human("hi"), reply, plugin("implementer report"), reply);
     expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
   });
 
@@ -354,5 +359,41 @@ describe("Supervisor.onTurnEnded after a crash (TR-012)", () => {
     await taro.onTurnEnded({} as PaseoApi, hookAgent, failed("API Error: 529 overloaded"), items(userTurn, reply), null, undefined);
     await taro.onTurnEnded({} as PaseoApi, hookAgent, { kind: "completed" } as unknown as TurnOutcome, items(userTurn, reply), null, undefined);
     expect(recovery.onCrash).not.toHaveBeenCalled();
+  });
+});
+
+describe("Supervisor.onTurnEnded delivers a subagent's report", () => {
+  const owner = { id: "owner-3", title: "TR-3 · x", status: "idle", updatedAt: "2026-10-13T15:00:00Z", labels: { "taro.project": "taro", "taro.role": "owner", "taro.ticket": "TR-3" } };
+
+  function subagent(label: string) {
+    return { id: `${label}-1`, title: `TR-3 · ${label}: building the parser`, status: "idle", labels: { "taro.project": "taro", "taro.role": label, "taro.ticket": "TR-3" } };
+  }
+
+  function supervisor(): Supervisor {
+    const agents: Record<string, AgentState> = {};
+    const state = {
+      allDecisions: async () => [],
+      updateDecisions: async <T>(change: (decisions: never[]) => T) => change([]),
+      agent: async (agentId: string) => agents[agentId] ?? null,
+      updateAgent: async <T>(agentId: string, initial: () => AgentState, change: (record: AgentState) => T) => {
+        const record = agents[agentId] ?? initial();
+        agents[agentId] = record;
+        return change(record);
+      },
+    } as unknown as PluginState;
+    return new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+  }
+
+  // `helper` is the label of subagents started before TR-017.
+  it.each([
+    ["implementer", "implementer"],
+    ["researcher", "researcher"],
+    ["helper", "implementer"],
+  ])("sends the final message of an agent labelled %s to the ticket's owner as its %s's report", async (label, job) => {
+    const agent = subagent(label);
+    vi.mocked(fetchLiveAgent).mockImplementation(async (_paseo, id) => (id === agent.id ? agent : id === owner.id ? owner : null) as unknown as PaseoAgent);
+    vi.mocked(sendFromPlugin).mockClear();
+    await supervisor().onTurnEnded({} as PaseoApi, { id: agent.id, parentAgentId: owner.id } as unknown as HookAgent, { kind: "completed" } as unknown as TurnOutcome, items(userTurn, reply), null, undefined);
+    expect(vi.mocked(sendFromPlugin).mock.calls.map(([, id, text]) => [id, text])).toEqual([[owner.id, `report:${job}:done: tests pass`]]);
   });
 });

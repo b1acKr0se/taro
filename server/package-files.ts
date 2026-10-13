@@ -21,7 +21,7 @@ export const TEMPLATES = {
   catchUp: "messages/catch-up.md",
   nudge: "messages/nudge.md",
   decisionCorrection: "messages/decision-correction.md",
-  helperReport: "messages/helper-report.md",
+  subagentReport: "messages/subagent-report.md",
   handoffRequest: "messages/handoff-request.md",
   compactInstructions: "messages/compact-instructions.md",
   reload: "messages/reload.md",
@@ -33,7 +33,7 @@ export const TEMPLATES = {
   dependencyCleared: "messages/dependency-cleared.md",
   answer: "messages/answer.md",
   crashRecovery: "messages/crash-recovery.md",
-  helperCrashed: "messages/helper-crashed.md",
+  subagentCrashed: "messages/subagent-crashed.md",
   headroomRecovered: "messages/headroom-recovered.md",
 } as const;
 

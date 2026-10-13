@@ -21,7 +21,7 @@ Read now, in order:
 | Tracker (Backlog.md, `BACKLOG_CWD`) | `{{tracker}}` |
 | Paseo project id of the repository | `{{paseoProjectId}}` |
 | Task owner model | `{{ownerModel}}` (thinking: {{ownerThinking}}, mode: `{{ownerMode}}`) |
-| Models owners may give helpers | {{helperModels}} |
+| Models owners may give subagents | {{subagentModels}} |
 | Owners running at once (at most) | {{maxParallelOwners}} |
 | Delivery | {{delivery}} |
 | Accept also merges | {{acceptAlsoMerges}} |

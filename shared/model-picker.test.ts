@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { modelOptions, thinkingAfterModelChange, thinkingOptions, toggleHelper, type PickerModel } from "./model-picker";
+import { modelOptions, thinkingAfterModelChange, thinkingOptions, toggleSubagentModel, type PickerModel } from "./model-picker";
 
 const models: PickerModel[] = [
   { id: "claude/opus", label: "Claude · Opus", thinkingOptions: ["low", "high"], defaultThinking: "high" },
@@ -59,10 +59,10 @@ describe("thinkingAfterModelChange", () => {
   });
 });
 
-describe("toggleHelper", () => {
+describe("toggleSubagentModel", () => {
   it("adds at the end and removes in place", () => {
-    expect(toggleHelper([], "a")).toEqual(["a"]);
-    expect(toggleHelper(["a", "b"], "c")).toEqual(["a", "b", "c"]);
-    expect(toggleHelper(["a", "b", "c"], "b")).toEqual(["a", "c"]);
+    expect(toggleSubagentModel([], "a")).toEqual(["a"]);
+    expect(toggleSubagentModel(["a", "b"], "c")).toEqual(["a", "b", "c"]);
+    expect(toggleSubagentModel(["a", "b", "c"], "b")).toEqual(["a", "c"]);
   });
 });

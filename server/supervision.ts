@@ -1,13 +1,13 @@
 /**
  * The plugin's share of supervision (decisions 28, 30, 35, 36, 37), driven by
  * `agent.turn_ended`. No model turns: it reads what agents wrote, stores
- * decisions and status lines, delivers helpers' reports to the ticket's current
+ * decisions and status lines, delivers subagents' reports to the ticket's current
  * owner, nudges a stalled owner once, and runs the compaction pipeline.
  */
 import { join } from "node:path";
 
 import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compaction";
-import { RoleSchema, TARO_LABELS, type Role } from "../shared/project";
+import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { isCrash } from "../shared/recovery";
 import { hashText, parseDecisionBlocks, parseStatusLine, sameQuestion, type ParsedDecision } from "../shared/reports";
 import { withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDecision } from "../shared/state";
@@ -29,10 +29,10 @@ export interface TaroIdentity {
 
 export function identityFromLabels(labels: Readonly<Record<string, string>>, title: string | null): TaroIdentity | null {
   const project = labels[TARO_LABELS.project];
-  const role = RoleSchema.safeParse(labels[TARO_LABELS.role]);
-  if (project === undefined || project === "" || !role.success) return null;
+  const role = roleFromLabel(labels[TARO_LABELS.role]);
+  if (project === undefined || project === "" || role === null) return null;
   const ticket = labels[TARO_LABELS.ticket];
-  return { project, role: role.data, ticket: ticket === undefined || ticket === "" ? null : ticket, title };
+  return { project, role, ticket: ticket === undefined || ticket === "" ? null : ticket, title };
 }
 
 /** The assistant messages at the very end of the turn, joined: a streamed reply arrives in pieces. */
@@ -170,7 +170,7 @@ export class Supervisor {
       return;
     }
 
-    if (identity.role === "helper" || identity.role === "reviewer") {
+    if (isSubagentRole(identity.role)) {
       if (outcome.kind === "completed") await this.deliverReport(paseo, live, identity, closing, turnKey, hookAgent.parentAgentId);
       return;
     }
@@ -220,7 +220,7 @@ export class Supervisor {
   /**
    * After a reload or restart (decision 37): re-read each idle Taro agent's
    * latest turn the plugin did not see end, rebuild its status line, and deliver
-   * helper reports that finished while the plugin was down. No nudges here.
+   * subagent reports that finished while the plugin was down. No nudges here.
    */
   async reconcile(paseo: PaseoApi, projects: readonly string[]): Promise<number> {
     let repaired = 0;
@@ -250,7 +250,7 @@ export class Supervisor {
         });
         const decisions = parseDecisionBlocks(allAssistantText(turn));
         if (decisions.length > 0) await this.storeDecisions(paseo, agent, identity, decisions, agent.updatedAt);
-        if (identity.role === "helper" || identity.role === "reviewer") {
+        if (isSubagentRole(identity.role)) {
           await this.deliverReport(paseo, agent, identity, closing, hashText(closing), agent.labels["paseo.parent-agent-id"] ?? null);
         }
         repaired += 1;
@@ -333,9 +333,9 @@ export class Supervisor {
     }
   }
 
-  private async deliverReport(paseo: PaseoApi, helper: PaseoAgent, identity: TaroIdentity, closing: string, turnKey: string, parentAgentId: string | null): Promise<void> {
+  private async deliverReport(paseo: PaseoApi, subagent: PaseoAgent, identity: TaroIdentity, closing: string, turnKey: string, parentAgentId: string | null): Promise<void> {
     if (closing.trim() === "") return;
-    const delivered = await this.state.updateAgent(helper.id, () => freshState(identity), (record) => {
+    const delivered = await this.state.updateAgent(subagent.id, () => freshState(identity), (record) => {
       if (record.deliveredTurns.includes(turnKey)) return true;
       record.deliveredTurns = [...record.deliveredTurns, turnKey].slice(-20);
       return false;
@@ -343,13 +343,13 @@ export class Supervisor {
     if (delivered) return;
     const owner = await currentOwner(paseo, identity.project, identity.ticket, parentAgentId);
     if (owner === null) {
-      console.warn(`[taro] no live owner for ${identity.ticket ?? "?"}; report from ${helper.id} kept on the helper only`);
+      console.warn(`[taro] no live owner for ${identity.ticket ?? "?"}; report from ${subagent.id} kept on the subagent only`);
       return;
     }
     const report: HeldReport = {
-      fromAgentId: helper.id,
+      fromAgentId: subagent.id,
       role: identity.role,
-      title: identity.title ?? helper.id,
+      title: identity.title ?? subagent.id,
       ticket: identity.ticket,
       text: closing.trim(),
       turnId: turnKey,
@@ -367,8 +367,9 @@ export class Supervisor {
   }
 
   private async reportText(report: HeldReport): Promise<string> {
-    return message(TEMPLATES.helperReport, {
-      role: report.role,
+    return message(TEMPLATES.subagentReport, {
+      // A report held before TR-017 may still say `helper`.
+      role: roleFromLabel(report.role) ?? report.role,
       title: report.title,
       agentId: report.fromAgentId,
       ticket: report.ticket ?? "your ticket",

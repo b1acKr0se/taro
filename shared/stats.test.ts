@@ -17,7 +17,7 @@ describe("summarize", () => {
       ],
       agents: {
         owner: { agentId: "owner", role: "owner", model: "m", title: null, turns: 3, activeMs: 600_000, costUsd: 1.5, contextTokens: 90_000 },
-        helper: { agentId: "helper", role: "helper", model: "h", title: null, turns: 1, activeMs: 120_000, costUsd: 0.25, contextTokens: null },
+        implementer: { agentId: "implementer", role: "implementer", model: "h", title: null, turns: 1, activeMs: 120_000, costUsd: 0.25, contextTokens: null },
       },
       nudges: 1,
       decisions: 2,

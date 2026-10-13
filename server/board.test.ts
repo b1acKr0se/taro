@@ -51,13 +51,14 @@ beforeEach(() => {
   vi.spyOn(Date, "now").mockImplementation(() => now);
   vi.mocked(viewTicket).mockReset().mockResolvedValue({ implementationNotes: notes, finalSummary: "" } as unknown as Awaited<ReturnType<typeof viewTicket>>);
   vi.mocked(listTickets).mockReset().mockResolvedValue([ticket("TR-1", "In Progress"), ticket("TR-2", "Done")] as unknown as Awaited<ReturnType<typeof listTickets>>);
-  vi.mocked(projectAgents).mockReset().mockResolvedValue([agent("owner-live", "owner", "TR-1", "2026-10-13T14:50:00Z"), agent("reviewer-live", "reviewer", "TR-1", "2026-10-13T14:55:00Z")]);
+  vi.mocked(projectAgents).mockReset().mockResolvedValue([agent("owner-live", "owner", "TR-1", "2026-10-13T14:50:00Z"), agent("reviewer-live", "reviewer", "TR-1", "2026-10-13T14:55:00Z"), agent("legacy-live", "helper", "TR-1", "2026-10-13T14:56:00Z"), agent("researcher-live", "researcher", "TR-1", "2026-10-13T14:57:00Z")]);
   vi.mocked(projectArchivedAgents)
     .mockReset()
     .mockResolvedValue([
       agent("owner-old", "owner", "TR-1", "2026-10-13T13:00:00Z", "2026-10-13T13:05:00Z"),
       agent("owner-done", "owner", "TR-2", "2026-10-13T12:00:00Z", "2026-10-13T12:10:00Z"),
       agent("reviewer-done", "reviewer", "TR-2", "2026-10-13T12:30:00Z", "2026-10-13T12:40:00Z"),
+      agent("legacy-done", "helper", "TR-2", "2026-10-13T12:20:00Z", "2026-10-13T12:25:00Z"),
       agent("manager-old", "manager", "TR-2", "2026-10-13T12:50:00Z", "2026-10-13T12:55:00Z"),
     ]);
 });
@@ -67,16 +68,21 @@ afterEach(() => {
 });
 
 describe("loadBoard", () => {
-  it("takes the owner, subagents and decisions from live agents and lists archived ones apart", async () => {
+  it("takes the owner, subagents (by job, the legacy helper label as implementer) and decisions from live agents and lists archived ones apart", async () => {
     const board = await loadBoard({} as PaseoApi, state([stored("owner-old", "TR-1"), stored("owner-live", "TR-1")]), "taro");
     const [working, done] = board.cards;
     expect(working?.owner?.id).toBe("owner-live");
     expect(working?.decisions.map((decision) => decision.agentId)).toEqual(["owner-live"]);
-    expect(working?.helpers.map((helper) => [helper.id, helper.role])).toEqual([["reviewer-live", "reviewer"]]);
+    expect(working?.subagents.map((subagent) => [subagent.id, subagent.role])).toEqual([
+      ["reviewer-live", "reviewer"],
+      ["legacy-live", "implementer"],
+      ["researcher-live", "researcher"],
+    ]);
     expect(working?.pastAgents.map((past) => [past.id, past.role, past.archivedAt])).toEqual([["owner-old", "owner", "2026-10-13T13:05:00Z"]]);
     expect(done?.owner).toBeNull();
     expect(done?.pastAgents.map((past) => [past.id, past.role])).toEqual([
       ["reviewer-done", "reviewer"],
+      ["legacy-done", "implementer"],
       ["owner-done", "owner"],
     ]);
   });

@@ -1,4 +1,4 @@
-/** Options for the setup page's model, thinking and helper pickers, built from `taro.models.list`. */
+/** Options for the setup page's model, thinking and subagent-model pickers, built from `taro.models.list`. */
 
 export interface PickerModel {
   id: string;
@@ -40,7 +40,7 @@ export function thinkingAfterModelChange(models: readonly PickerModel[], modelId
   return model.thinkingOptions.includes(thinking) ? thinking : "";
 }
 
-/** Adds or removes one helper model, keeping the list's order. */
-export function toggleHelper(selected: readonly string[], id: string): string[] {
+/** Adds or removes one subagent model, keeping the list's order. */
+export function toggleSubagentModel(selected: readonly string[], id: string): string[] {
   return selected.includes(id) ? selected.filter((candidate) => candidate !== id) : [...selected, id];
 }

@@ -4,9 +4,10 @@
  * agents did rather than "no owner".
  */
 import type { AgentBrief, Card } from "../shared/contracts";
+import type { SubagentRole } from "../shared/project";
 import { formatDuration } from "./format";
 
-export type PaneAgentRole = "owner" | "helper" | "reviewer";
+export type PaneAgentRole = "owner" | SubagentRole;
 
 export interface PaneAgent {
   id: string;
@@ -20,9 +21,9 @@ export interface PaneAgent {
 
 const SHORT_ID_LENGTH = 8;
 
-/** What an agent is called on screen: by its job, never "helper" (the user's wording). */
+/** What an agent is called on screen: by its job (TR-017). */
 export function paneAgentJob(role: PaneAgentRole): string {
-  return role === "owner" ? "owner" : role === "helper" ? "implementer" : "reviewer";
+  return role;
 }
 
 function capitalised(text: string): string {
@@ -34,12 +35,12 @@ function doingText(role: PaneAgentRole, task: string): string {
   return `${capitalised(paneAgentJob(role))} ${task.charAt(0).toLowerCase()}${task.slice(1)}`;
 }
 
-/** The task part of a title like `TR-016 · helper: board panels`, without the ticket and the role. */
+/** The task part of a title like `TR-016 · implementer: board panels`, without the ticket and the role (titles from before TR-017 say `helper`). */
 export function taskOfTitle(title: string | null): string {
   return (title ?? "")
     .trim()
     .replace(/^[A-Z][A-Z0-9]*-\d+(?:\.\d+)*\s*·\s*/, "")
-    .replace(/^(?:helper|reviewer|implementer|subagent)\s*:\s*/i, "")
+    .replace(/^(?:implementer|reviewer|researcher|subagent|helper)\s*:\s*/i, "")
     .trim();
 }
 
@@ -50,10 +51,10 @@ function labelFor(role: PaneAgentRole, firstOwner: boolean, brief: AgentBrief): 
   return task === "" ? `${capitalised(paneAgentJob(role))} · ${brief.id.slice(0, SHORT_ID_LENGTH)}` : doingText(role, task);
 }
 
-export function paneAgents(card: Pick<Card, "owner" | "helpers" | "pastAgents">): PaneAgent[] {
+export function paneAgents(card: Pick<Card, "owner" | "subagents" | "pastAgents">): PaneAgent[] {
   const candidates: { role: PaneAgentRole; live: boolean; brief: AgentBrief; archivedAt?: string }[] = [
     ...(card.owner === null ? [] : [{ role: "owner" as const, live: true, brief: card.owner }]),
-    ...card.helpers.map(({ role, ...brief }) => ({ role, live: true, brief })),
+    ...card.subagents.map(({ role, ...brief }) => ({ role, live: true, brief })),
     ...card.pastAgents.map(({ role, archivedAt, ...brief }) => ({ role, live: false, brief, archivedAt })),
   ];
   // The board can list a just-archived agent both live and archived; the first (live) entry wins.
@@ -110,9 +111,9 @@ export function paneAgentDetail(agent: PaneAgent, now: number): string {
  * the owner waits on, in the words of the subagent's title: the one started last, and how many more
  * run beside it.
  */
-export function waitingOnText(card: Pick<Card, "helpers">, now: number): string | null {
-  const running = card.helpers
-    .filter((helper) => helper.status === "running" || helper.status === "initializing")
+export function waitingOnText(card: Pick<Card, "subagents">, now: number): string | null {
+  const running = card.subagents
+    .filter((subagent) => subagent.status === "running" || subagent.status === "initializing")
     .sort((left, right) => (right.createdAt ?? "").localeCompare(left.createdAt ?? ""));
   const newest = running[0];
   if (newest === undefined) return null;

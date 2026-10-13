@@ -4,8 +4,8 @@
  * headroom, because the crash that queued them was most likely the thread limit
  * and every restart spends threads again. Recovery is `paseo agent reload` (the
  * same agent and conversation in a new process) plus one message; when the
- * reload fails, owners are relaunched, the manager restarted, and a helper's or
- * reviewer's owner told. Past the hourly limit the agent is left stalled.
+ * reload fails, owners are relaunched, the manager restarted, and a subagent's
+ * owner told. Past the hourly limit the agent is left stalled.
  *
  * The same timer holds the plugin's own wake-ups to the manager ("a slot is
  * free") while threads are short, and sends them once they are not.
@@ -21,6 +21,7 @@ import { projectPaths, requireProjectConfig } from "./projects";
 import { sendFromPlugin } from "./send";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
+import { isSubagentRole } from "../shared/project";
 import { currentOwner, freshState, identityFromLabels, type TaroIdentity } from "./supervision";
 import { appendTicketNote } from "./tickets";
 
@@ -198,20 +199,20 @@ export class Recovery {
     return "left it stalled";
   }
 
-  /** Leaves the agent stalled with the reason; a helper's or reviewer's owner is told. */
+  /** Leaves the agent stalled with the reason; a subagent's owner is told. */
   private async giveUp(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, reason: string): Promise<void> {
     console.warn(`[taro] not recovering ${identity.role} ${agent.id}: ${reason}`);
     await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
       record.stalled = true;
       record.stalledReason = `Crashed: ${reason}.`;
     });
-    if (identity.role === "helper" || identity.role === "reviewer") {
+    if (isSubagentRole(identity.role)) {
       const owner = await currentOwner(paseo, identity.project, identity.ticket, agent.labels["paseo.parent-agent-id"] ?? null).catch(() => null);
       if (owner !== null) {
         await sendFromPlugin(
           paseo,
           owner.id,
-          await message(TEMPLATES.helperCrashed, { role: identity.role, title: identity.title ?? agent.id, agentId: agent.id, ticket: identity.ticket ?? "your ticket", reason }),
+          await message(TEMPLATES.subagentCrashed, { role: identity.role, title: identity.title ?? agent.id, agentId: agent.id, ticket: identity.ticket ?? "your ticket", reason }),
         ).catch(() => undefined);
       }
     }

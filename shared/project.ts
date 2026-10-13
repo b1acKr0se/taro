@@ -11,9 +11,24 @@ export const TARO_LABELS = {
   ticket: "taro.ticket",
 } as const;
 
-export const ROLES = ["manager", "owner", "helper", "reviewer"] as const;
-export const RoleSchema = z.enum(ROLES);
-export type Role = z.infer<typeof RoleSchema>;
+export const ROLES = ["manager", "owner", "implementer", "reviewer", "researcher"] as const;
+/** The agents an owner launches, each named by its job. */
+export const SUBAGENT_ROLES = ["implementer", "reviewer", "researcher"] as const;
+export type Role = (typeof ROLES)[number];
+export type SubagentRole = (typeof SUBAGENT_ROLES)[number];
+
+/** The role a `taro.role` label value names; agents started before TR-017 say `helper`, which was an implementer. */
+export function roleFromLabel(value: string | undefined): Role | null {
+  if (value === "helper") return "implementer";
+  return (ROLES as readonly string[]).includes(value ?? "") ? (value as Role) : null;
+}
+
+export function isSubagentRole(role: string): role is SubagentRole {
+  return (SUBAGENT_ROLES as readonly string[]).includes(role);
+}
+
+/** Reads a stored or labelled role, the legacy `helper` included. */
+export const RoleSchema = z.preprocess((value) => (value === "helper" ? "implementer" : value), z.enum(ROLES));
 
 /** Taro's Backlog.md statuses, Done last (Backlog treats the last as terminal). */
 export const TICKET_STATUSES = [
@@ -56,7 +71,8 @@ export const ProjectSettingsSchema = z.object({
   ticketPrefix: TicketPrefixSchema,
   manager: ModelChoiceSchema,
   owner: ModelChoiceSchema,
-  helperModels: z.array(z.string().min(1)).default([]),
+  /** Models an owner may give its subagents; empty means the owner's own model. */
+  subagentModels: z.array(z.string().min(1)).default([]),
   delivery: DeliverySchema.default("pull-request"),
   acceptAlsoMerges: z.boolean().default(true),
   trackerSync: TrackerSyncSchema.default("local"),
@@ -78,3 +94,10 @@ export const ProjectConfigSchema = ProjectSettingsSchema.extend({
   managerWorkspaceId: z.string().default(""),
 });
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
+
+/** A stored `taro.json` from before TR-017 names the subagent models `helperModels`; read it under the new key. */
+export function migrateStoredConfig(raw: unknown): unknown {
+  if (typeof raw !== "object" || raw === null || !("helperModels" in raw)) return raw;
+  const { helperModels, ...rest } = raw as Record<string, unknown>;
+  return "subagentModels" in rest ? rest : { ...rest, subagentModels: helperModels };
+}

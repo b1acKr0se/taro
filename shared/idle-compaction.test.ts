@@ -35,8 +35,8 @@ describe("idleCompactionDue", () => {
     expect(idleCompactionDue(candidate(), 100_000, minutes(-5))).toBe(false);
   });
 
-  it("is never due for helpers or reviewers", () => {
-    expect(idleCompactionDue(candidate({ role: "helper" }), 100_000, minutes(56))).toBe(false);
+  it("is never due for subagents", () => {
+    expect(idleCompactionDue(candidate({ role: "implementer" }), 100_000, minutes(56))).toBe(false);
     expect(idleCompactionDue(candidate({ role: "reviewer" }), 100_000, minutes(56))).toBe(false);
   });
 

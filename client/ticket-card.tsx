@@ -297,7 +297,7 @@ export function TicketCard({
         <View style={styles.row}>
           <Icon name="Brain" size={12} color={colors.foregroundMuted} />
           <Text style={styles.muted}>context {formatTokenCount(owner.contextUsedTokens)}</Text>
-          {card.helpers.length === 0 ? null : <Text style={styles.muted}>· {card.helpers.length} subagent{card.helpers.length === 1 ? "" : "s"}</Text>}
+          {card.subagents.length === 0 ? null : <Text style={styles.muted}>· {card.subagents.length} subagent{card.subagents.length === 1 ? "" : "s"}</Text>}
           {owner.status === "idle" && owner.contextUsedTokens > 150_000 ? (
             <IconButton icon="Minimize2" label="Compact" showLabel theme={theme} disabled={busy} onPress={() => void run(() => compactRpc({ agentId: owner.id }), "Compacting after a handoff.")} />
           ) : null}

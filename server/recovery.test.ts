@@ -26,7 +26,7 @@ vi.mock("./projects", () => ({
   readProjectConfig: async () => null,
 }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { crashRecovery: "crash", helperCrashed: "helper-crashed", headroomRecovered: "recovered" },
+  TEMPLATES: { crashRecovery: "crash", subagentCrashed: "subagent-crashed", headroomRecovered: "recovered" },
   skillDirectory: async () => "/skill",
   message: async (path: string, values: Record<string, string> = {}) => `${path}:${JSON.stringify(values)}`,
 }));
@@ -96,7 +96,7 @@ describe("Recovery", () => {
   });
 
   it("waits while threads are short, then recovers several agents one tick apart", async () => {
-    const targets = [agent("manager-1", "manager", null), agent("owner-1", "owner", "TR-5"), agent("helper-1", "helper", "TR-5")];
+    const targets = [agent("manager-1", "manager", null), agent("owner-1", "owner", "TR-5"), agent("implementer-1", "implementer", "TR-5")];
     vi.mocked(fetchLiveAgent).mockImplementation(async (_paseo, id) => targets.find((target) => target.id === id) ?? null);
     vi.mocked(readHeadroom).mockResolvedValue(high);
     const { recovery } = setUp();
@@ -115,7 +115,7 @@ describe("Recovery", () => {
     expect(reloads()).toEqual(["manager-1", "owner-1"]);
     vi.mocked(readHeadroom).mockResolvedValue(null);
     await vi.advanceTimersByTimeAsync(15_000);
-    expect(reloads()).toEqual(["manager-1", "owner-1", "helper-1"]);
+    expect(reloads()).toEqual(["manager-1", "owner-1", "implementer-1"]);
   });
 
   it("queues an agent once however often its crash is reported", async () => {
@@ -226,18 +226,23 @@ describe("Recovery", () => {
     expect(appendTicketNote).not.toHaveBeenCalled();
   });
 
-  it("tells a helper's owner when the helper cannot be reloaded", async () => {
-    const helper = agent("helper-1", "helper", "TR-5");
+  // `helper` is the label of subagents started before TR-017: still an implementer.
+  it.each([
+    ["researcher", "researcher"],
+    ["helper", "implementer"],
+  ])("tells a subagent's owner when the subagent (labelled %s) cannot be reloaded", async (label, job) => {
+    const subagent = agent("subagent-1", label, "TR-5");
     const owner = agent("owner-1", "owner", "TR-5", "idle");
-    vi.mocked(fetchLiveAgent).mockImplementation(async (_paseo, id) => (id === "helper-1" ? helper : null));
+    vi.mocked(fetchLiveAgent).mockImplementation(async (_paseo, id) => (id === "subagent-1" ? subagent : null));
     const { listTaroAgents } = await import("./agents");
     vi.mocked(listTaroAgents).mockResolvedValue([owner]);
     vi.mocked(runPaseoJson).mockRejectedValue(new Error("boom"));
     const { recovery, agents } = setUp();
-    await crashed(recovery, helper);
+    await crashed(recovery, subagent);
     await vi.advanceTimersByTimeAsync(5_000);
-    expect(sentTo("helper-crashed:")).toEqual(["owner-1"]);
-    expect(agents["helper-1"]?.stalled).toBe(true);
+    expect(sentTo("subagent-crashed:")).toEqual(["owner-1"]);
+    expect(sentTo(`subagent-crashed:{"role":"${job}"`)).toEqual(["owner-1"]);
+    expect(agents["subagent-1"]?.stalled).toBe(true);
   });
 
   it("holds the manager's slot-free wake-up while threads are short and sends it after", async () => {

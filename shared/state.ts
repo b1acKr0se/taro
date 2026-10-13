@@ -56,7 +56,7 @@ export const AgentStateSchema = z.object({
   /** When the plugin automatically recovered it from a crash, for the per-hour limit (TR-012). */
   recoveries: z.array(z.string()).default([]),
   deliveredTurns: z.array(z.string()).default([]),
-  /** Reports from this owner's helpers, waiting until it is idle. */
+  /** Reports from this owner's subagents, waiting until it is idle. */
   heldReports: z.array(HeldReportSchema).default([]),
   compaction: CompactionStageSchema.default("none"),
   idleCompaction: IdleCompactionSchema.default("none"),

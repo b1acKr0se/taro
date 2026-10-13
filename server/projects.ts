@@ -6,7 +6,7 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import { ProjectConfigSchema, type ProjectConfig } from "../shared/project";
+import { migrateStoredConfig, ProjectConfigSchema, type ProjectConfig } from "../shared/project";
 import { readGlobalConfig, resolveTaroHome } from "./config";
 import { readJsonIfPresent, writeJsonAtomically } from "./files";
 import { serialized } from "./serialize";
@@ -46,7 +46,7 @@ export async function projectPaths(project: string): Promise<ProjectPaths> {
 
 export async function readProjectConfig(project: string): Promise<ProjectConfig | null> {
   const raw = await readJsonIfPresent((await projectPaths(project)).config);
-  return raw === null ? null : ProjectConfigSchema.parse(raw);
+  return raw === null ? null : ProjectConfigSchema.parse(migrateStoredConfig(raw));
 }
 
 export async function requireProjectConfig(project: string): Promise<ProjectConfig> {
@@ -83,7 +83,7 @@ export async function listProjectConfigs(): Promise<ProjectConfig[]> {
     names.map(async (name) => {
       try {
         const raw = await readJsonIfPresent(pathsFor(root, name).config);
-        return raw === null ? null : ProjectConfigSchema.parse(raw);
+        return raw === null ? null : ProjectConfigSchema.parse(migrateStoredConfig(raw));
       } catch (error) {
         console.error(`[taro] skipping project ${name}: ${error instanceof Error ? error.message : String(error)}`);
         return null;

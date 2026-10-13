@@ -1,4 +1,4 @@
-/** Small file helpers: atomic JSON/text writes and tolerant reads. */
+/** Small file utilities: atomic JSON/text writes and tolerant reads. */
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";

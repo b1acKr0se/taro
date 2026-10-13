@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { ColumnIdSchema } from "./board";
 import { MilestoneSchema } from "./milestones";
-import { ProjectConfigSchema, ProjectNameSchema, ProjectSettingsSchema } from "./project";
+import { ProjectConfigSchema, ProjectNameSchema, ProjectSettingsSchema, SUBAGENT_ROLES } from "./project";
 import { BoardAlertSchema, HeadroomSchema } from "./recovery";
 import { LastStatusSchema, StoredDecisionSchema } from "./state";
 
@@ -143,9 +143,10 @@ export const CardSchema = z.object({
   stalledReason: z.string().nullable(),
   decisions: z.array(StoredDecisionSchema),
   /** The ticket's live subagents, with the job their `taro.role` label names. */
-  helpers: z.array(AgentBriefSchema.extend({ role: z.enum(["helper", "reviewer"]).default("helper") })),
-  /** The ticket's archived owner, helpers and reviewers, newest first (a finished ticket keeps its history). */
-  pastAgents: z.array(AgentBriefSchema.extend({ role: z.enum(["owner", "helper", "reviewer"]), archivedAt: z.string() })).default([]),
+  /** The ticket's live subagents, each with its job. */
+  subagents: z.array(AgentBriefSchema.extend({ role: z.enum(SUBAGENT_ROLES) })),
+  /** The ticket's archived owner and subagents, newest first (a finished ticket keeps its history). */
+  pastAgents: z.array(AgentBriefSchema.extend({ role: z.enum(["owner", ...SUBAGENT_ROLES]), archivedAt: z.string() })).default([]),
   /** The newest MILESTONE record, read for tickets that are under way. */
   latestMilestone: MilestoneSchema.nullable().default(null),
 });

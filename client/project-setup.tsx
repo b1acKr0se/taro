@@ -20,7 +20,7 @@ import {
   writeProjectSettings,
   writeStandingOrders,
 } from "../shared/contracts";
-import { modelOptions as modelPickerOptions, thinkingAfterModelChange, thinkingOptions, toggleHelper } from "../shared/model-picker";
+import { modelOptions as modelPickerOptions, thinkingAfterModelChange, thinkingOptions, toggleSubagentModel } from "../shared/model-picker";
 import type { ProjectConfig, ProjectSettings } from "../shared/project";
 import { ToggleChips } from "./ui";
 import { FONT_SIZE } from "./type-scale";
@@ -35,7 +35,7 @@ interface Draft {
   managerThinking: string;
   ownerModel: string;
   ownerThinking: string;
-  helperModels: string[];
+  subagentModels: string[];
   delivery: "pull-request" | "local-only";
   acceptAlsoMerges: boolean;
   trackerSync: "local" | "remote";
@@ -55,7 +55,7 @@ function draftFrom(config: ProjectConfig | null): Draft {
     managerThinking: config?.manager.thinking ?? "",
     ownerModel: config?.owner.model ?? "",
     ownerThinking: config?.owner.thinking ?? "",
-    helperModels: config?.helperModels ?? [],
+    subagentModels: config?.subagentModels ?? [],
     delivery: config?.delivery ?? "pull-request",
     acceptAlsoMerges: config?.acceptAlsoMerges ?? true,
     trackerSync: config?.trackerSync ?? "local",
@@ -72,7 +72,7 @@ function settingsFrom(draft: Draft, defaultModel: string): ProjectSettings {
     ticketPrefix: draft.ticketPrefix.trim().toUpperCase(),
     manager: { model: draft.managerModel || defaultModel, thinking: draft.managerThinking },
     owner: { model: draft.ownerModel || defaultModel, thinking: draft.ownerThinking },
-    helperModels: draft.helperModels,
+    subagentModels: draft.subagentModels,
     delivery: draft.delivery,
     acceptAlsoMerges: draft.acceptAlsoMerges,
     trackerSync: draft.trackerSync,
@@ -240,14 +240,14 @@ export function ProjectSetup({
           options={thinkingOptions(modelOptions, draft.ownerModel, draft.ownerThinking)}
           onValueChange={(value) => update("ownerThinking", value)}
         />
-        <SettingsRow label="Models owners may give helpers" hint="owners pick per task by difficulty; none selected means the owner's own model" />
+        <SettingsRow label="Models owners may give subagents" hint="owners pick per task by difficulty; none selected means the owner's own model" />
         {/* Below the row, not inside it: a row's trailing slot squeezes its label to one letter wide. */}
         <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
           <ToggleChips
             theme={theme}
-            selected={draft.helperModels}
-            options={modelPickerOptions(modelOptions, draft.helperModels)}
-            onToggle={(value) => setDraft((current) => ({ ...current, helperModels: toggleHelper(current.helperModels, value) }))}
+            selected={draft.subagentModels}
+            options={modelPickerOptions(modelOptions, draft.subagentModels)}
+            onToggle={(value) => setDraft((current) => ({ ...current, subagentModels: toggleSubagentModel(current.subagentModels, value) }))}
           />
         </View>
         <SettingsInput label="Owners running at once" hint="the manager queues the rest; each agent costs host resources" initialValue={draft.maxParallelOwners} onChangeText={(text) => update("maxParallelOwners", text)} />
@@ -258,7 +258,7 @@ export function ProjectSetup({
           initialValue={draft.idleCompactThresholdTokens}
           onChangeText={(text) => update("idleCompactThresholdTokens", text)}
         />
-        <SettingsRow label="Permissions" hint="task owners and helpers run in bypass mode" />
+        <SettingsRow label="Permissions" hint="task owners and their subagents run in bypass mode" />
       </SettingsSection>
 
       <SettingsSection title="Delivery">

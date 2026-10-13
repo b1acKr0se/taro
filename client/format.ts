@@ -1,5 +1,5 @@
 /**
- * Formatting helpers shared by the Taro screen. `formatTokenCount`,
+ * Formatting functions shared by the Taro screen. `formatTokenCount`,
  * `contextPercent`, `contextTone`, `relativeTime`, `shortPath` and `errorText`
  * come from FirstMate's `client/format.ts` (MIT).
  */
