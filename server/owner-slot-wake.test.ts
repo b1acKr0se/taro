@@ -63,7 +63,7 @@ beforeEach(() => {
   live = [];
   told = [];
   dependencies = {};
-  vi.mocked(projectAgents).mockImplementation(async () => [...live]);
+  vi.mocked(projectAgents).mockClear().mockImplementation(async () => [...live]);
   vi.mocked(projectArchivedAgents).mockImplementation(async () => []);
   vi.mocked(listTaroAgents).mockImplementation(async () => [...live]);
   vi.mocked(fetchLiveAgent).mockImplementation(async (_paseo, id) => (id === "manager" ? manager : live.find((candidate) => candidate.id === id) ?? null));
@@ -86,10 +86,11 @@ describe("a freed owner slot wakes the manager", () => {
     ]);
   });
 
-  it("stays quiet when no ticket is queued", async () => {
+  it("stays quiet when no ticket is queued, without listing the owners", async () => {
     live = [agent("one", "DM-1", "owner", "idle")];
     await move([ticket("DM-1", "Reviewing")], [ticket("DM-1", "Awaiting acceptance")]);
     expect(told).toEqual([]);
+    expect(projectAgents).not.toHaveBeenCalled();
   });
 
   it("stays quiet when the owners still counting fill the cap", async () => {

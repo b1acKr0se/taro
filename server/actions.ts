@@ -334,6 +334,8 @@ export class Actions {
       }
     }
     const queued = tickets.filter((candidate) => candidate.status === "Backlog" && candidate.parentTaskId === null).map((candidate) => candidate.id);
+    // Only the cap comparison needs the owners, and listing them is a round trip to the daemon.
+    if (dependents.length === 0 && (!change.freesSlot || queued.length === 0)) return;
     const config = await requireProjectConfig(project);
     const owners = (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner");
     const counting = ticketsCountingTowardsCap(owners, tickets);
