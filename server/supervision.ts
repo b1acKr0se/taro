@@ -5,7 +5,7 @@
  * owner, nudges a stalled owner once, and runs the compaction pipeline.
  */
 import { RoleSchema, TARO_LABELS, type Role } from "../shared/project";
-import { parseDecisionBlocks, parseStatusLine, type ParsedDecision } from "../shared/reports";
+import { hashText, parseDecisionBlocks, parseStatusLine, type ParsedDecision } from "../shared/reports";
 import type { AgentState, HeldReport, StoredDecision } from "../shared/state";
 import { fetchLiveAgent, isMidTurn, listTaroAgents } from "./agents";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
@@ -108,9 +108,12 @@ export class Supervisor {
     const identity = identityFromLabels(live.labels, live.title ?? null);
     if (identity === null) return;
     const now = new Date().toISOString();
-    const turnKey = turnId ?? `${hookAgent.id}:${now}`;
-
     const closing = closingText(timeline);
+    // Reports are deduplicated by their text: turn ids ("foreground-turn-1") may repeat, and the
+    // reconcile after a restart must recognise a report the hook already delivered.
+    void turnId;
+    const turnKey = hashText(closing);
+
     const status = parseStatusLine(closing);
     const decisions = parseDecisionBlocks(allAssistantText(timeline));
     const userWords = humanMessages(timeline);
@@ -205,7 +208,7 @@ export class Supervisor {
         const decisions = parseDecisionBlocks(allAssistantText(turn));
         if (decisions.length > 0) await this.storeDecisions(paseo, agent, identity, decisions, agent.updatedAt);
         if (identity.role === "helper" || identity.role === "reviewer") {
-          await this.deliverReport(paseo, agent, identity, closing, `${agent.id}:${agent.updatedAt}`, agent.labels["paseo.parent-agent-id"] ?? null);
+          await this.deliverReport(paseo, agent, identity, closing, hashText(closing), agent.labels["paseo.parent-agent-id"] ?? null);
         }
         repaired += 1;
       }
