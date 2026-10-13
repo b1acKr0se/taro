@@ -48,7 +48,12 @@ export class Actions {
       throw new Error("The agent that asked this is archived or gone, so nothing was sent; its open questions are withdrawn.");
     }
     const option = label === null ? null : decision.options.find((candidate) => candidate.label === label) ?? null;
-    const words = (option?.prompt ?? text).trim();
+    const typed = text.trim();
+    const prompt = option?.prompt.trim() ?? "";
+    const lead = prompt.replace(/\u2026$/, "").trim();
+    // Typed text goes with a chosen option (a "Change…" option asks for it): the prompt, then the text.
+    // Text that already starts with the prompt (the card prefills it; older cards send the prompt alone) is not repeated.
+    const words = option === null ? typed : typed === "" ? prompt : typed.startsWith(lead) ? typed : `${lead}: ${typed}`;
     if (words === "") throw new Error("Type an answer or press an option.");
     // Tagged as the plugin's, so this answer closes only its own decision, not the agent's others.
     await sendFromPlugin(paseo, decision.agentId, await message(TEMPLATES.answer, { text: words }));

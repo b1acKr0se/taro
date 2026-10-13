@@ -121,6 +121,60 @@ describe("Actions.answerDecision", () => {
     }
   });
 
+  // TR-028: an option that asks for text ("Change…") plus the user's text sent only the option's prompt.
+  describe("with an option and typed text", () => {
+    const live = paseoWhere(async () => ({ agent: { id: "owner", status: "idle", archivedAt: null } }));
+    const withChange = (): StoredDecision => {
+      const decision = stored("owner");
+      decision.options.push({ label: "Change…", prompt: "Change the proposal…", consequence: "" });
+      return decision;
+    };
+
+    beforeEach(() => vi.mocked(appendTicketNote).mockClear());
+
+    it("sends the option's prompt followed by the text, and records the same words", async () => {
+      const decisions = [withChange()];
+      await actionsOver(decisions).answerDecision(live, key, "Change…", "  use cards B\n");
+      expect(sendFromPlugin).toHaveBeenCalledTimes(1);
+      expect(decisions[0]?.answer).toMatchObject({ text: "Change the proposal: use cards B", label: "Change…" });
+      expect(vi.mocked(appendTicketNote).mock.calls[0]?.[2]).toContain(`→ Change… ("Change the proposal: use cards B")`);
+    });
+
+    it("joins text to an option whose prompt does not ask for it", async () => {
+      const decisions = [withChange()];
+      await actionsOver(decisions).answerDecision(live, key, "Approve", "and ship today");
+      expect(decisions[0]?.answer?.text).toBe("Approve: and ship today");
+    });
+
+    it("sends only the prompt when the text is empty or blank", async () => {
+      for (const text of ["", "   "]) {
+        vi.mocked(sendFromPlugin).mockClear();
+        const decisions = [withChange()];
+        await actionsOver(decisions).answerDecision(live, key, "Change…", text);
+        expect(decisions[0]?.answer?.text).toBe("Change the proposal…");
+        expect(sendFromPlugin).toHaveBeenCalledTimes(1);
+      }
+    });
+
+    it("does not repeat the prompt when the text already starts with it", async () => {
+      for (const [label, text, words] of [
+        ["Approve", "Approve", "Approve"],
+        ["Change…", "Change the proposal…", "Change the proposal…"],
+        ["Change…", "Change the proposal use cards B", "Change the proposal use cards B"],
+      ] as const) {
+        const decisions = [withChange()];
+        await actionsOver(decisions).answerDecision(live, key, label, text);
+        expect(decisions[0]?.answer?.text).toBe(words);
+      }
+    });
+
+    it("sends the text alone when no option is chosen", async () => {
+      const decisions = [withChange()];
+      await actionsOver(decisions).answerDecision(live, key, null, " my own words ");
+      expect(decisions[0]?.answer).toMatchObject({ text: "my own words", label: null });
+    });
+  });
+
   it("records where the user answered in the ANSWER note", async () => {
     const live = paseoWhere(async () => ({ agent: { id: "owner", status: "idle", archivedAt: null } }));
     for (const [from, words] of [

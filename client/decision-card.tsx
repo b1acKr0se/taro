@@ -108,12 +108,12 @@ export function DecisionCard({
   }
 
   function press(label: string, prompt: string): void {
-    // An option ending with "…" asks for the user's own words.
-    if (prompt.trim().endsWith("…") || label.trim().endsWith("…")) {
-      setTyped(prompt.replace(/…\s*$/, "").trim() + " ");
+    // An option ending with "…" asks for the user's own words; once typed, they go with the option.
+    if (typed.trim() === "" && (prompt.trim().endsWith("\u2026") || label.trim().endsWith("\u2026"))) {
+      setTyped(prompt.replace(/\u2026\s*$/, "").trim() + " ");
       return;
     }
-    void send(label, prompt);
+    void send(label, typed);
   }
 
   return (
