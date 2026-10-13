@@ -5,6 +5,7 @@
 import { hostname } from "node:os";
 
 import { boardColumn, complexityOf } from "../shared/board";
+import { executionMachine } from "../shared/execution";
 import type { Board, Card, TicketDetailView } from "../shared/contracts";
 import { TARO_LABELS } from "../shared/project";
 import { parseSuggestions, suggestionKey } from "../shared/suggestions";
@@ -16,7 +17,7 @@ import { projectPaths } from "./projects";
 import { serialized } from "./serialize";
 import type { PluginState } from "./state";
 import { agentBrief } from "./summaries";
-import { latestRecord, listTickets, viewTicket } from "./tickets";
+import { listTickets, viewTicket } from "./tickets";
 
 const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing", "Awaiting acceptance", "Blocked"]);
 
@@ -24,8 +25,7 @@ const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing", "Awaiting acc
 async function ownerHostElsewhere(trackerPath: string, ticketId: string): Promise<string | null> {
   try {
     const detail = await viewTicket(trackerPath, ticketId);
-    const record = latestRecord(detail.implementationNotes, ["EXECUTION"]);
-    const host = record === null ? null : /\bhost(?:name)?\s*[:=]?\s*([A-Za-z0-9._-]+)/i.exec(record)?.[1] ?? null;
+    const host = executionMachine(detail.implementationNotes);
     return host !== null && host !== hostname() ? host : null;
   } catch {
     return null;

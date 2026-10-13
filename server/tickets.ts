@@ -4,6 +4,7 @@
  */
 import { z } from "zod";
 
+import { noteRecords } from "../shared/execution";
 import { runBacklog } from "./tracker";
 
 const TicketSummarySchema = z
@@ -54,12 +55,11 @@ export async function appendTicketNote(trackerPath: string, ticketId: string, re
 
 /** The latest `<KIND> …` record in the notes (records start a line with an upper-case name). */
 export function latestRecord(notes: string | null, kinds: readonly string[]): string | null {
-  if (notes === null) return null;
   const pattern = new RegExp(`^(?:${kinds.join("|")})\\b`);
-  const blocks = notes.split(/\n(?=[A-Z][A-Z-]{2,}\b)/);
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    const block = blocks[i]?.trim() ?? "";
-    if (pattern.test(block)) return block;
+  const records = noteRecords(notes);
+  for (let index = records.length - 1; index >= 0; index--) {
+    const record = records[index] ?? "";
+    if (pattern.test(record)) return record;
   }
   return null;
 }

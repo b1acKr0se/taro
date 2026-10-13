@@ -6,6 +6,7 @@
  */
 import { randomUUID } from "node:crypto";
 
+import { executionWorkspace } from "../shared/execution";
 import { TARO_LABELS, TICKET_STATUSES } from "../shared/project";
 import { fetchLiveAgent, isMidTurn, listTaroAgents, projectAgents } from "./agents";
 import { taroEnvironment } from "./environment";
@@ -16,7 +17,7 @@ import { listProjectConfigs, projectPaths, requireProjectConfig } from "./projec
 import { sendFromPlugin, sendWithoutInterrupting } from "./send";
 import type { PluginState } from "./state";
 import { identityFromLabels, type Supervisor } from "./supervision";
-import { appendTicketNote, latestRecord, listTickets, viewTicket } from "./tickets";
+import { appendTicketNote, listTickets, viewTicket } from "./tickets";
 import type { Stats } from "./stats";
 import type { TrackerWatch } from "./tracker-watch";
 
@@ -123,7 +124,7 @@ export class Actions {
     let workspaceId = previous?.workspaceId ?? null;
     if (workspaceId === null) {
       const detail = await viewTicket(paths.tracker, ticket);
-      workspaceId = /\bworkspace\s+(wks_[A-Za-z0-9]+)/.exec(latestRecord(detail.implementationNotes, ["EXECUTION"]) ?? "")?.[1] ?? null;
+      workspaceId = executionWorkspace(detail.implementationNotes);
     }
     if (workspaceId === null) throw new Error(`Cannot tell which workspace ${ticket} used; its EXECUTION record names none.`);
     if (previous !== null && isMidTurn(previous)) throw new Error("Its owner is running; nudge or interrupt it instead.");
@@ -148,6 +149,7 @@ export class Actions {
         skill: await skillDirectory(),
         tracker: paths.tracker,
         agentId,
+        workspaceId,
         previousAgentId: previous?.id ?? "(none)",
       }),
     });
