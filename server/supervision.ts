@@ -125,15 +125,18 @@ export class Supervisor {
     const model = live.model === null || live.model === undefined ? live.provider : `${live.provider}/${live.model}`;
     await this.stats.turnEnded(identity.project, identity.ticket, { id: live.id, role: identity.role, model, title: identity.title }).catch(() => undefined);
     const now = new Date().toISOString();
-    const closing = closingText(timeline);
+    // The hook passes the agent's whole stored timeline: earlier turns' blocks would reopen answered
+    // decisions, their user words would close new ones, and a turn without text would reuse their reply.
+    const turn = currentTurn(timeline);
+    const closing = closingText(turn);
     // Reports are deduplicated by their text: turn ids ("foreground-turn-1") may repeat, and the
     // reconcile after a restart must recognise a report the hook already delivered.
     void turnId;
     const turnKey = hashText(closing);
 
     const status = parseStatusLine(closing);
-    const decisions = parseDecisionBlocks(allAssistantText(timeline));
-    const userWords = humanMessages(timeline);
+    const decisions = parseDecisionBlocks(allAssistantText(turn));
+    const userWords = humanMessages(turn);
     if (userWords.length > 0) await this.closeAnsweredInTab(live.id, userWords, decisions, now);
     if (decisions.length > 0) await this.storeDecisions(paseo, live, identity, decisions, now);
 
