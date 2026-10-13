@@ -1,11 +1,12 @@
 // node shot.cjs <playwright module> <url> <out.png> [click text...] — opens Paseo's web app and screenshots.
+// WIDTH/HEIGHT set the viewport; COLOR_SCHEME=dark draws Paseo's dark theme.
 const [, , playwrightPath, url, out, ...clicks] = process.argv;
 const { chromium } = require(playwrightPath);
 (async () => {
   const browser = await chromium.launch();
   const width = Number(process.env.WIDTH || 1440);
   const height = Number(process.env.HEIGHT || 900);
-  const page = await browser.newPage({ viewport: { width, height } });
+  const page = await browser.newPage({ viewport: { width, height }, colorScheme: process.env.COLOR_SCHEME === "dark" ? "dark" : "light" });
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });

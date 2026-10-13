@@ -25,11 +25,9 @@ import { withAlpha } from "./tint";
 import { FONT_SIZE } from "./type-scale";
 import { IconButton } from "./ui";
 import { toneColor } from "./visual-meta";
+import { MIN_COLUMN_WIDTH, columnWidths } from "./column-widths";
 
 const phoneColumn: { current: ColumnId } = { current: "needs-you" };
-
-/** Below this a column's cards get too narrow to read, so the row scrolls sideways instead. */
-const MIN_COLUMN_WIDTH = 240;
 
 export function ProjectBoard({
   summary,
@@ -225,15 +223,18 @@ export function ProjectBoard({
     );
   }
 
-  // Five equal columns fill the pane; once that would make them narrower than MIN_COLUMN_WIDTH, the row scrolls.
-  const columnWidth = Math.max(MIN_COLUMN_WIDTH, (paneWidth - 2 * SPACE.lg - (COLUMN_IDS.length - 1) * SPACE.md) / COLUMN_IDS.length);
+  const widths = columnWidths(
+    paneWidth - 2 * SPACE.lg - (COLUMN_IDS.length - 1) * SPACE.md,
+    COLUMN_IDS.map((id) => byColumn.get(id)?.length ?? 0),
+  );
 
   return (
     <ScrollView style={styles.root} onLayout={(event) => setPaneWidth(event.nativeEvent.layout.width)}>
       {top}
       <ScrollView horizontal contentContainerStyle={styles.columns}>
-        {COLUMN_IDS.map((id) => {
+        {COLUMN_IDS.map((id, index) => {
           const group = byColumn.get(id) ?? [];
+          const columnWidth = widths[index] ?? MIN_COLUMN_WIDTH;
           const meta = COLUMN_META[id];
           const color = toneColor(theme, meta.tone);
           // A column asking for something wears its colour on its frame; quiet ones stay neutral.
@@ -244,9 +245,12 @@ export function ProjectBoard({
                 <Icon name={meta.icon} size={16} color={color} />
                 <Text style={[styles.columnTitle, { color: meta.tone === "muted" ? colors.foreground : color }]}>{COLUMN_TITLES[id]}</Text>
                 <Text style={styles.count}>{group.length}</Text>
-                <Text style={styles.hint} numberOfLines={1}>
-                  {meta.hint}
-                </Text>
+                {/* A narrow empty column has room for its title and count only. */}
+                {columnWidth < MIN_COLUMN_WIDTH ? null : (
+                  <Text style={styles.hint} numberOfLines={1}>
+                    {meta.hint}
+                  </Text>
+                )}
               </View>
               {group.length === 0 ? empty(id) : group.map(renderCard)}
             </View>

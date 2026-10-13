@@ -202,7 +202,7 @@ export function AgentChat({
         <View key={group.key} style={styles.toolRun}>
           {hidden > 0 ? (
             <Pressable accessibilityRole="button" onPress={() => setOpenGroups((current) => new Set([...current, group.key]))}>
-              <Text style={styles.more}>+ {hidden} more tool calls</Text>
+              <Text style={styles.more}>+ {hidden} more tool call{hidden === 1 ? "" : "s"}</Text>
             </Pressable>
           ) : null}
           {shown.map((tool) => (

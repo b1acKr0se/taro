@@ -59,7 +59,8 @@ export function TicketCard({
         gap: SPACE.sm,
         backgroundColor: colors.surface0,
       },
-      head: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm },
+      // Wraps so a long phase ("Awaiting acceptance") moves under the id in a narrow column instead of truncating.
+      head: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "center" as const, gap: SPACE.sm },
       id: { flexGrow: 1, flexShrink: 0, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
       title: { color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" as const, lineHeight: lineHeightFor(FONT_SIZE.body) },
       line: { flexDirection: "row" as const, alignItems: "flex-start" as const, gap: SPACE.sm },
@@ -132,8 +133,13 @@ export function TicketCard({
         <Text style={styles.muted} numberOfLines={1}>
           {formatDuration(stats.wallMs)} wall · {formatDuration(stats.agentActiveMs)} active · {stats.turns} turn{stats.turns === 1 ? "" : "s"}
         </Text>
-        <Icon name="Coins" size={12} color={colors.foregroundMuted} />
-        <Text style={styles.muted}>{formatCost(stats.costUsd)}</Text>
+        {/* No recorded cost says nothing worth a line of its own. */}
+        {stats.costUsd === null ? null : (
+          <>
+            <Icon name="Coins" size={12} color={colors.foregroundMuted} />
+            <Text style={styles.muted}>{formatCost(stats.costUsd)}</Text>
+          </>
+        )}
       </View>
     );
 
