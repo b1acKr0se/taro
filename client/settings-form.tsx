@@ -49,7 +49,7 @@ export function FormSection({
         borderRadius: 8,
         alignItems: "center" as const,
         justifyContent: "center" as const,
-        backgroundColor: withAlpha(colors.accent, 0.14),
+        backgroundColor: colors.surface2,
       },
       titles: { flex: 1, gap: SPACE.xxs },
       titleRow: { flexDirection: "row" as const, alignItems: "baseline" as const, gap: SPACE.sm, minHeight: 28 },
@@ -63,7 +63,7 @@ export function FormSection({
     <View style={styles.card}>
       <View style={styles.header}>
         <View style={styles.tile}>
-          <Icon name={icon} size={16} color={colors.accent} />
+          <Icon name={icon} size={16} color={colors.foreground} />
         </View>
         <View style={styles.titles}>
           <View style={styles.titleRow}>

@@ -147,10 +147,10 @@ export function ProjectSetup({
     const thinking = role === "manager" ? draft.managerThinking : draft.ownerThinking;
     return (
       <View style={{ flexDirection: wide ? "row" : "column", gap: SPACE.sm }}>
-        <View style={{ flex: wide ? 2 : undefined }}>
+        <View style={{ flex: wide ? 3 : undefined }}>
           <Dropdown theme={theme} title={`${label} model`} value={model} options={modelPickerOptions(modelOptions, [model])} onChange={(value) => chooseModel(role, value)} />
         </View>
-        <View style={{ flex: wide ? 1 : undefined }}>
+        <View style={{ flex: wide ? 2 : undefined }}>
           <Dropdown
             theme={theme}
             title={`${label} thinking`}
