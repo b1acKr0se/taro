@@ -25,13 +25,17 @@ export function placeDecisions(rows: readonly { key: string; text: string }[], o
   for (let index = rows.length - 1; index >= 0; index -= 1) {
     const row = rows[index];
     if (row === undefined) continue;
-    const here = parseDecisionBlocks(row.text)
+    const here: StoredDecision[] = [];
+    // Marked placed as found, so a block repeated within one message is drawn once.
+    parseDecisionBlocks(row.text)
       .filter((block) => !block.withdrawn)
-      .map((block) => open.find((decision) => decision.id === block.id && !placed.has(decision.key)))
-      .filter((decision): decision is StoredDecision => decision !== undefined);
-    if (here.length === 0) continue;
-    here.forEach((decision) => placed.add(decision.key));
-    byRow.set(row.key, here);
+      .forEach((block) => {
+        const decision = open.find((candidate) => candidate.id === block.id && !placed.has(candidate.key));
+        if (decision === undefined) return;
+        placed.add(decision.key);
+        here.push(decision);
+      });
+    if (here.length > 0) byRow.set(row.key, here);
   }
   const unplaced = open.filter((decision) => !placed.has(decision.key));
   return { byRow, unplaced, first: walkOrder(open)[0] ?? null };

@@ -64,6 +64,12 @@ describe("placeDecisions", () => {
     expect([...places.byRow.keys()]).toEqual(["r2"]);
   });
 
+  it("draws a decision repeated within one message once", () => {
+    const naming = decision("naming");
+    const places = placeDecisions([{ key: "r1", text: `${block("naming")}\n\n${block("naming")}` }], [naming]);
+    expect(places.byRow.get("r1")).toEqual([naming]);
+  });
+
   it("does not count a withdrawal as an asking", () => {
     const naming = decision("naming");
     const places = placeDecisions(

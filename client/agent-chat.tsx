@@ -98,16 +98,22 @@ export function AgentChat({
   /** Where each open decision's message (or the cards at the end) lies in the transcript, by decision key. */
   const decisionLayouts = useRef(new Map<string, LayoutRectangle>());
   const [firstOnScreen, setFirstOnScreen] = useState(true);
+  /**
+   * The decision brought into view when this agent's pane opened. Only it is scrolled to: a question
+   * asked later, or the next after an answer, gets the jump link and leaves the reader where they are.
+   */
+  const openingDecision = useRef<{ agentId: string; key: string } | null>(null);
   const follow = useFollowEnd((offset, viewportHeight) => {
     const layout = firstKey === null ? undefined : decisionLayouts.current.get(firstKey);
     setFirstOnScreen(layout === undefined || rowEndOnScreen(layout.y, layout.height, offset, viewportHeight));
   });
 
-  /** Brings the first open decision into view once, and says whether the jump link is needed. */
+  /** Brings the first open decision into view on opening, and says whether the jump link is needed. */
   function placeFirst(): void {
     const layout = firstKey === null ? undefined : decisionLayouts.current.get(firstKey);
     if (firstKey === null || layout === undefined) return;
-    follow.revealRow(firstKey, layout, offsetShowingRowEnd);
+    if (openingDecision.current?.agentId !== agent.id) openingDecision.current = { agentId: agent.id, key: firstKey };
+    if (openingDecision.current.key === firstKey) follow.revealRow(firstKey, layout, offsetShowingRowEnd);
     setFirstOnScreen(rowEndOnScreen(layout.y, layout.height, follow.offset.current, follow.viewport.current));
   }
 
@@ -116,7 +122,7 @@ export function AgentChat({
     placeFirst();
   }
 
-  // Answering the first makes another first, whose row may not lay out again.
+  // Answering the first makes another first, whose row may not lay out again: the jump link needs to know.
   useEffect(placeFirst, [firstKey]);
 
   function jumpToFirst(): void {

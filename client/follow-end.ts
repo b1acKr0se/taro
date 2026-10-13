@@ -32,6 +32,17 @@ export function isAtEnd(offsetY: number, viewportHeight: number, liveHeight: num
 }
 
 /**
+ * Whether a row revealed at `firstAt` is scrolled to again on a new layout at `now`: only while the
+ * transcript settles, and never once the reader has scrolled themselves.
+ */
+export function revealsAgain(firstAt: number, now: number, readerScrolled: boolean): boolean {
+  return !readerScrolled && now - firstAt <= SETTLE_MS;
+}
+
+/** How far a scroll may land from the offset asked for and still be the one asked for, in points. */
+const OFFSET_SLACK = 2;
+
+/**
  * `onScrolled` hears every scroll and viewport change (the offset and the visible height), for
  * anything that depends on what is on screen.
  */
@@ -42,6 +53,13 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
   const viewport = useRef(0);
   /** When each row revealed by `revealRow` was first brought into view. */
   const revealedAt = useRef(new Map<string, number>());
+  /**
+   * The offsets `revealRow` scrolled to, to tell its scrolls from the reader's: a scroll event can
+   * report an earlier reveal's offset after a later one was asked for.
+   */
+  const revealOffsets = useRef<number[]>([]);
+  /** Whether the reader has scrolled since a row was revealed: the transcript is theirs again. */
+  const readerScrolled = useRef(false);
   /** Cards already brought into view, so one is scrolled to once, not on every re-layout. */
   const revealed = useRef(new Set<string>());
   /** The content height last reported by `onContentSizeChange` — what the end was last followed to. */
@@ -103,9 +121,11 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
     const first = revealedAt.current.get(id);
     const now = Date.now();
     if (first === undefined) revealedAt.current.set(id, now);
-    else if (now - first > SETTLE_MS) return;
+    else if (!revealsAgain(first, now, readerScrolled.current)) return;
     pinnedToEnd.current = false;
-    setTimeout(() => scroller.current?.scrollTo({ y: showingEnd(layout.y, layout.height, viewport.current), animated: false }), 0);
+    const y = showingEnd(layout.y, layout.height, viewport.current);
+    revealOffsets.current.push(y);
+    setTimeout(() => scroller.current?.scrollTo({ y, animated: false }), 0);
   }
 
   /** Scrolls to an offset the reader asked for (a jump link), leaving the end unfollowed. */
@@ -120,6 +140,12 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
     scrollEventThrottle: 100,
     onScroll(event: NativeSyntheticEvent<NativeScrollEvent>): void {
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      if (revealOffsets.current.length > 0) {
+        // A reveal past the end lands clamped to it.
+        const furthest = Math.max(0, contentSize.height - layoutMeasurement.height);
+        const asked = revealOffsets.current.some((y) => Math.abs(contentOffset.y - Math.min(y, furthest)) <= OFFSET_SLACK);
+        if (!asked) readerScrolled.current = true;
+      }
       pinnedToEnd.current = isAtEnd(contentOffset.y, layoutMeasurement.height, contentSize.height, knownHeight.current);
       setAway(!pinnedToEnd.current);
       offset.current = contentOffset.y;
