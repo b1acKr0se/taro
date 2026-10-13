@@ -171,7 +171,7 @@ export function ProjectSetup({
     >
       <View style={{ gap: SPACE.sm }}>
         {onCancel === null ? null : (
-          <Pressable accessibilityRole="link" onPress={onCancel} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs, alignSelf: "flex-start" }}>
+          <Pressable accessibilityRole="link" disabled={busy} onPress={onCancel} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs, alignSelf: "flex-start", opacity: busy ? 0.5 : 1 }}>
             <Icon name="ChevronLeft" size={14} color={colors.accent} />
             <Text style={{ color: colors.accent, fontSize: FONT_SIZE.small }}>{existing === null ? "Back" : `Back to ${existing.project}`}</Text>
           </Pressable>
