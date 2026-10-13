@@ -31,11 +31,11 @@ import {
 } from "./shared/contracts";
 import { ProjectSettingsSchema } from "./shared/project";
 import { Actions } from "./server/actions";
-import { fetchLiveAgent, isMidTurn } from "./server/agents";
+import { fetchLiveAgent } from "./server/agents";
 import { dismissSuggestion, invalidateBoards, loadBoard, loadTicketDetail } from "./server/board";
 import type { PaseoApi } from "./server/host-types";
 import { PluginState } from "./server/state";
-import { Stats } from "./server/stats";
+import { Stats, turnMayStillEnd } from "./server/stats";
 import { summarize } from "./shared/stats";
 import { Supervisor, identityFromLabels } from "./server/supervision";
 import { sessionEnvironment } from "./server/environment";
@@ -48,6 +48,7 @@ import { agentBrief, listModelOptions } from "./server/summaries";
 import { TrackerWatch } from "./server/tracker-watch";
 
 export default function contribute(server: PluginServerContext) {
+  const startedAt = Date.now();
   const trackers = new TrackerWatch();
   const state = new PluginState();
   const stats = new Stats();
@@ -66,10 +67,7 @@ export default function contribute(server: PluginServerContext) {
         })
         .catch((error: unknown) => console.error("[taro] reconcile after start failed:", error));
       void stats
-        .dropFinishedTurns(async (agentId) => {
-          const agent = await fetchLiveAgent(paseo, agentId);
-          return agent !== null && isMidTurn(agent);
-        })
+        .dropFinishedTurns(async (agentId) => turnMayStillEnd(await fetchLiveAgent(paseo, agentId), startedAt))
         .catch((error: unknown) => console.error("[taro] dropping finished turn starts failed:", error));
     }
     return kept;

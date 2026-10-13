@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Stats } from "./stats";
+import { Stats, turnMayStillEnd } from "./stats";
 
 const agent = { id: "agent-1", role: "owner", model: "claude/claude-sonnet-5-5", title: "TR-1 owner" };
 const start = Date.parse("2026-10-13T10:00:00Z");
@@ -119,5 +119,28 @@ describe("dropFinishedTurns", () => {
 
   it("does nothing without stored starts", async () => {
     expect(await new Stats().dropFinishedTurns(async () => false)).toBe(0);
+  });
+});
+
+describe("turnMayStillEnd", () => {
+  const pluginStartedAt = Date.parse("2026-10-13T12:00:00Z");
+
+  it("keeps a mid-turn agent's start", () => {
+    expect(turnMayStillEnd({ status: "running", updatedAt: "2026-10-13T09:00:00Z" }, pluginStartedAt)).toBe(true);
+    expect(turnMayStillEnd({ status: "initializing", updatedAt: "2026-10-13T09:00:00Z" }, pluginStartedAt)).toBe(true);
+  });
+
+  it("drops the start of an agent that went idle before the plugin started", () => {
+    expect(turnMayStillEnd({ status: "idle", updatedAt: "2026-10-13T11:59:59.999Z" }, pluginStartedAt)).toBe(false);
+  });
+
+  it("keeps the start of an agent that went idle since the plugin started: its turn-end hook is on the way", () => {
+    expect(turnMayStillEnd({ status: "idle", updatedAt: "2026-10-13T12:00:00Z" }, pluginStartedAt)).toBe(true);
+    expect(turnMayStillEnd({ status: "error", updatedAt: "2026-10-13T12:00:05Z" }, pluginStartedAt)).toBe(true);
+  });
+
+  it("drops the start of a missing agent, or one with an unreadable time", () => {
+    expect(turnMayStillEnd(null, pluginStartedAt)).toBe(false);
+    expect(turnMayStillEnd({ status: "idle", updatedAt: "" }, pluginStartedAt)).toBe(false);
   });
 });

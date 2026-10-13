@@ -2,6 +2,7 @@
 import { z } from "zod";
 
 import { parentOf, TicketStatsSchema, type TicketStats } from "../shared/stats";
+import { isMidTurn } from "./agents";
 import { statePath } from "./data-dir";
 import { readJsonIfPresent, writeJsonAtomically } from "./files";
 import { serialized } from "./serialize";
@@ -15,6 +16,18 @@ type StatsFile = z.infer<typeof StatsFileSchema>;
 
 function keyFor(project: string, ticket: string): string {
   return `${project}:${ticket}`;
+}
+
+/**
+ * Whether a stored turn start may still be paired with an end. A missing (or archived) agent's
+ * cannot; a mid-turn agent's can; an idle agent's can only when it went idle after the plugin
+ * started, since then its turn-end hook is under way or about to arrive.
+ */
+export function turnMayStillEnd(agent: { status: string; updatedAt: string } | null, pluginStartedAt: number): boolean {
+  if (agent === null) return false;
+  if (isMidTurn(agent)) return true;
+  const updatedAt = Date.parse(agent.updatedAt);
+  return !Number.isNaN(updatedAt) && updatedAt >= pluginStartedAt;
 }
 
 export class Stats {
@@ -84,15 +97,15 @@ export class Stats {
   }
 
   /**
-   * After a reload or restart: drops stored starts of agents no longer mid-turn. Their turn ended
-   * while the plugin was down, and pairing the start with a later end would count the idle gap.
-   * A start replaced while the check ran (a new turn) is kept.
+   * After a reload or restart: drops stored starts whose turn ended while the plugin was down, since
+   * pairing one with a later end would count the idle gap. A start the check cannot confirm, or one
+   * replaced while it ran (a new turn), is kept.
    */
-  async dropFinishedTurns(isMidTurn: (agentId: string) => Promise<boolean>): Promise<number> {
+  async dropFinishedTurns(mayStillEnd: (agentId: string) => Promise<boolean>): Promise<number> {
     const stored = { ...(await serialized("state:stats", async () => (await this.load()).turnStarts)) };
     const finished: [string, string][] = [];
     for (const [agentId, at] of Object.entries(stored)) {
-      if (!(await isMidTurn(agentId).catch(() => true))) finished.push([agentId, at]);
+      if (!(await mayStillEnd(agentId).catch(() => true))) finished.push([agentId, at]);
     }
     let dropped = 0;
     await this.modify((file) => {
