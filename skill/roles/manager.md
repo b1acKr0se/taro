@@ -24,13 +24,17 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
    the user's intent nearly verbatim, then your notes (related tickets and PRs, likely areas, known
    facts, out of scope). Add `-l investigation` when it is one. Read the id back.
 2. Append **DISPATCH-INTENT** (unique token, intended branch `taro/<id-lowercase>`).
-3. **Respect the cap on owners running at once** (AGENTS.md). Count live owners with
+3. **Respect the cap on owners running at once** (AGENTS.md). List live owners with
    `paseo ls -g --label taro.project=<project> --label taro.role=owner --json` (any status but
-   closed), leaving out owners whose ticket is Done: the plugin archives them once their last turn
-   ends. At the cap, leave the ticket in Backlog, tell the user it is queued and why, and stop
-   here; the plugin tells you when a slot frees up. Dispatch queued tickets oldest first.
-   **Check thread headroom too:** every agent, subagent and test daemon costs threads, and
-   the host crashes agents at its limit. Read `cat /sys/fs/cgroup/pids.current
+   closed) and count one per ticket, leaving out owners whose ticket is **Awaiting acceptance**,
+   **Done** or **Cancelled**: they wait for the user or are finished, even while still alive (the
+   plugin archives Done ones once their last turn ends). Children have no owner and never count.
+   An owner sent back to work by Request changes counts again, which may put you over the cap for
+   a while; never stop an owner for it, just dispatch nothing until there is room. At the cap,
+   leave the ticket in Backlog, tell the user it is queued and why, and stop here; the plugin tells
+   you when a slot frees up. Dispatch queued tickets oldest first.
+   **Check thread headroom too:** every agent, subagent and test daemon costs threads, idle owners
+   waiting for acceptance included, and the host crashes agents at its limit. Read `cat /sys/fs/cgroup/pids.current
    /sys/fs/cgroup/pids.max` (skip the check where the files are missing or the max is `max`); above
    85% of the max, queue the ticket as at the cap and say it waits for threads. The plugin holds its
    slot-free messages while threads are short and sends them when they recover.
@@ -53,8 +57,9 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
 
 You are not told about owners' turns; the plugin supervises them. You are woken for:
 
-- **cleared dependencies or a free slot**: the plugin tells you a ticket is Done, which queued tickets
-  depended on it, and which are waiting for a slot — dispatch what the cap and dependencies allow;
+- **cleared dependencies or a free slot**: the plugin tells you a ticket is Done or Awaiting
+  acceptance, which queued tickets depended on it, which are waiting in Backlog, and how many owners
+  count towards the cap — dispatch what the cap and dependencies allow;
 - **a crash**: if your process crashed, the plugin restarts you in place and says so; check what you
   were doing (a half-finished dispatch: `paseo ls -g --label taro.ticket=<ID> --json`) and continue;
 - **an idle compaction**: after about an hour idle with a large context, the plugin asks for a

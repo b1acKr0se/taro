@@ -22,7 +22,7 @@ Read now, in order:
 | Paseo project id of the repository | `{{paseoProjectId}}` |
 | Task owner model | `{{ownerModel}}` (thinking: {{ownerThinking}}, mode: `{{ownerMode}}`) |
 | Models owners may give subagents | {{subagentModels}} |
-| Owners running at once (at most) | {{maxParallelOwners}} |
+| Owners running at once (at most; owners of tickets in Awaiting acceptance, Done or Cancelled do not count) | {{maxParallelOwners}} |
 | Delivery | {{delivery}} |
 | Accept also merges | {{acceptAlsoMerges}} |
 | Skill | `{{skill}}` |

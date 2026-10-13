@@ -128,3 +128,13 @@ describe("a freed owner slot wakes the manager", () => {
     expect(told.map((entry) => [entry.ticket, entry.dependents, entry.countingTickets])).toEqual([["DM-1.1", "DM-2", "DM-1"]]);
   });
 });
+
+describe("the dependency-cleared message", () => {
+  it("fills every placeholder the wake-up passes", async () => {
+    const { message: realMessage, TEMPLATES } = await vi.importActual<typeof import("./package-files")>("./package-files");
+    const text = await realMessage(TEMPLATES.dependencyCleared, { ticket: "DM-1", status: "Awaiting acceptance", dependents: "none", queued: "DM-3", counting: "1", cap: "2", countingTickets: "DM-2" });
+    expect(text).not.toContain("{{");
+    expect(text).toContain("DM-1 is now Awaiting acceptance");
+    expect(text).toContain("1 of 2 (DM-2)");
+  });
+});
