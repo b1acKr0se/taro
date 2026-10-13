@@ -52,11 +52,11 @@ export interface CardInputs {
 
 const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing"]);
 
-export function boardColumn(input: CardInputs): ColumnId {
-  if (input.status === "Done" || input.status === "Cancelled") return "done";
-  // Accepted, the delivery is the owner's to finish: placed like work under way.
-  const card = input.accepted === true && input.status === "Awaiting acceptance" ? { ...input, status: "In Progress" } : input;
-  if (card.ownerElsewhere) return recordedColumn(card.status);
+export function boardColumn(card: CardInputs): ColumnId {
+  if (card.status === "Done" || card.status === "Cancelled") return "done";
+  // Accepted, the delivery is the owner's to finish (TR-031): it no longer waits on the user, and is placed like work under way.
+  const accepted = card.accepted === true && card.status === "Awaiting acceptance";
+  if (card.ownerElsewhere) return recordedColumn(card.status, accepted);
 
   const agent = card.agent;
   if (agent !== null && agent.pendingPermissions > 0) return "needs-you";
@@ -64,10 +64,10 @@ export function boardColumn(input: CardInputs): ColumnId {
   if (card.crashedOut === true) return "stalled";
 
   if (card.openBlockingDecisions > 0) return "needs-you";
-  if (card.status === "Awaiting acceptance" || card.status === "Blocked") return "needs-you";
+  if (waitsOnUser(card.status, accepted)) return "needs-you";
   if (card.lastStatus === "blocked") return "needs-you";
 
-  if (UNDER_WAY.has(card.status)) {
+  if (UNDER_WAY.has(card.status) || accepted) {
     if (agent === null || agent.status === "error" || agent.status === "closed") return "stalled";
     if (card.lastStatus === "failed" || card.stalledAfterNudge) return "stalled";
     return "working";
@@ -75,10 +75,14 @@ export function boardColumn(input: CardInputs): ColumnId {
   return "queued";
 }
 
+function waitsOnUser(status: string, accepted: boolean): boolean {
+  return (status === "Awaiting acceptance" && !accepted) || status === "Blocked";
+}
+
 /** A teammate's owner is invisible to this daemon: never call it stalled. */
-function recordedColumn(status: string): ColumnId {
-  if (status === "Awaiting acceptance" || status === "Blocked") return "needs-you";
-  if (UNDER_WAY.has(status)) return "working";
+function recordedColumn(status: string, accepted: boolean): ColumnId {
+  if (waitsOnUser(status, accepted)) return "needs-you";
+  if (UNDER_WAY.has(status) || accepted) return "working";
   return "queued";
 }
 

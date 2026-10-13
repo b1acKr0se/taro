@@ -168,4 +168,13 @@ describe("acceptedRecord", () => {
     expect(acceptedRecord(`${accepted}\nCHANGES-REQUESTED 2026-01-05T11:10Z — the user: "no"`)).toBeNull();
     expect(acceptedRecord(`${accepted}\n${evidence}`)).toBeNull();
   });
+
+  it("is void once the owner records a new review head to present again (the head moved)", () => {
+    const accepted = acceptedRecordText("2026-01-05T11:00Z", "the pull request");
+    const head = "a".repeat(40);
+    expect(acceptedRecord(`${accepted}\nEXECUTION 2026-01-05T11:20Z — pr: https://example.test/o/r/pull/4, review-head: ${head}`)).toBeNull();
+    // An abbreviated head in a milestone while merging is not a new presentation.
+    expect(acceptedRecord(`${accepted}\nMILESTONE 2026-01-05T11:05Z — merging review-head aaaaaaa`)).not.toBeNull();
+    expect(acceptedRecord(`${accepted}\nEXECUTION 2026-01-05T11:05Z — subagent reviewer started`)).not.toBeNull();
+  });
 });

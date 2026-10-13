@@ -122,19 +122,21 @@ export class Actions {
     await requireCompleteEvidence(project, ticket, detail.implementationNotes, detail.labels);
     const investigation = detail.labels.includes("investigation");
     let mergeInstruction: string;
-    // What the card says while the owner finishes (TR-031); null when nothing is merged.
-    let merging: string | null = null;
+    // What the card says while the owner finishes (TR-031): what it merges, null for nothing, undefined
+    // when the owner is told to present again instead, so the card keeps offering Accept.
+    let merging: string | null | undefined = null;
     if (investigation) mergeInstruction = "Record ACCEPTANCE with my words and set the ticket Done.";
     else if (!config.acceptAlsoMerges) mergeInstruction = "Do not merge; record ACCEPTANCE with my words and set the ticket Done.";
     else if (config.delivery === "pull-request") {
       mergeInstruction = pullRequestMergeInstruction(detail.implementationNotes, detail.finalSummary);
-      if (reviewHead(detail.implementationNotes) !== null && pullRequestUrl(detail.implementationNotes, detail.finalSummary) !== null) merging = "the pull request";
+      const mergeable = reviewHead(detail.implementationNotes) !== null && pullRequestUrl(detail.implementationNotes, detail.finalSummary) !== null;
+      merging = mergeable ? "the pull request" : undefined;
     } else {
       mergeInstruction = `Fast-forward ${config.baseBranch} to your branch in the main checkout (${config.repoPath}), only if it fast-forwards cleanly; then record ACCEPTANCE and set the ticket Done.`;
       merging = `into ${config.baseBranch}`;
     }
     await sendWithoutInterrupting(paseo, owner.id, await message(TEMPLATES.accept, { ticket, mergeInstruction }));
-    await appendTicketNote(paths.tracker, ticket, acceptedRecordText(new Date().toISOString(), merging)).catch(() => undefined);
+    if (merging !== undefined) await appendTicketNote(paths.tracker, ticket, acceptedRecordText(new Date().toISOString(), merging)).catch(() => undefined);
   }
 
   async requestChanges(paseo: PaseoApi, project: string, ticket: string, text: string): Promise<void> {

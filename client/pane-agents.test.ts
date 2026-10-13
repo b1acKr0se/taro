@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { AgentBrief, Card } from "../shared/contracts";
 import type { SubagentRole } from "../shared/project";
-import { defaultPaneAgent, paneAgentDetail, paneAgentState, paneAgents, roleIcon, taskOfTitle, waitingOnText } from "./pane-agents";
+import { defaultPaneAgent, paneAgentDetail, paneAgentState, paneAgents, roleIcon, taskOfTitle, waitingOn } from "./pane-agents";
 
 function brief(id: string, title: string | null = null): AgentBrief {
   return {
@@ -142,10 +142,10 @@ describe("subagent state", () => {
   });
 });
 
-describe("waitingOnText", () => {
+describe("waitingOn", () => {
   it("is null when no subagent runs", () => {
-    expect(waitingOnText({ subagents: [] }, NOW)).toBeNull();
-    expect(waitingOnText({ subagents: [{ ...sub("i"), status: "idle" }] }, NOW)).toBeNull();
+    expect(waitingOn({ subagents: [] }, NOW)).toBeNull();
+    expect(waitingOn({ subagents: [{ ...sub("i"), status: "idle" }] }, NOW)).toBeNull();
   });
 
   it("says what the newest running subagent is doing, in its title's words, and counts the others", () => {
@@ -154,13 +154,15 @@ describe("waitingOnText", () => {
       { ...sub("new", "TR-1 · implementer: building the board columns, cards and Ticket tab"), status: "running", createdAt: "2026-10-13T15:04:00Z" },
       { ...sub("idle", "TR-1 · implementer: reading the spec"), status: "idle", createdAt: "2026-10-13T15:20:00Z" },
     ];
-    expect(waitingOnText({ subagents }, NOW)).toBe("Implementer building the board columns, cards and Ticket tab · 26m (+1 more)");
+    expect(waitingOn({ subagents }, NOW)).toEqual({ text: "Implementer building the board columns, cards and Ticket tab", running: "26m", more: 1 });
   });
 
   it("names a reviewer as a reviewer, and drops a missing task or time", () => {
-    expect(waitingOnText({ subagents: [{ ...sub("r", "TR-1 · reviewer: Checking the whole branch", "reviewer"), status: "running", createdAt: "2026-10-13T15:26:00Z" }] }, NOW)).toBe(
-      "Reviewer checking the whole branch · 4m",
-    );
-    expect(waitingOnText({ subagents: [{ ...sub("x"), status: "running" }] }, NOW)).toBe("Implementer");
+    expect(waitingOn({ subagents: [{ ...sub("r", "TR-1 · reviewer: Checking the whole branch", "reviewer"), status: "running", createdAt: "2026-10-13T15:26:00Z" }] }, NOW)).toEqual({
+      text: "Reviewer checking the whole branch",
+      running: "4m",
+      more: 0,
+    });
+    expect(waitingOn({ subagents: [{ ...sub("x"), status: "running" }] }, NOW)).toEqual({ text: "Implementer", running: null, more: 0 });
   });
 });

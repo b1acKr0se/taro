@@ -100,14 +100,16 @@ export function acceptedRecordText(at: string, merging: string | null): string {
 }
 
 /**
- * The newest ACCEPTED record, unless the owner delivered again or the user asked for changes since
- * (a later EVIDENCE or CHANGES-REQUESTED record): until the owner sets Done, the card says it merges.
+ * The newest ACCEPTED record, unless since then the owner presented again (a later EVIDENCE record,
+ * or an EXECUTION record with a new review head: the head moved, so nothing merged) or the user
+ * asked for changes (CHANGES-REQUESTED). Until the owner sets Done, the card says it merges.
  */
 export function acceptedRecord(notes: string | null): AcceptedRecord | null {
   const records = noteRecords(notes);
   for (let index = records.length - 1; index >= 0; index--) {
     const record = records[index] ?? "";
     if (/^(?:EVIDENCE|CHANGES-REQUESTED)\b/.test(record)) return null;
+    if (/^EXECUTION\b/.test(record) && /\breview[ _-]?head\b[\s:=`*"']*[0-9a-f]{40}(?![0-9a-z])/i.test(record)) return null;
     const match = /^ACCEPTED\s+(\S+)[^\n]*?merging:\s*([^\n]+)/.exec(record);
     if (match !== null) {
       const merging = (match[2] ?? "").trim();

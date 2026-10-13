@@ -114,11 +114,10 @@ export function paneAgentDetail(agent: PaneAgent, now: number): string {
 }
 
 /**
- * "Implementer building the board columns · 26m" for a ticket whose live subagents are running — what
- * the owner waits on, in the words of the subagent's title: the one started last, and how many more
- * run beside it.
+ * What the owner waits on while its subagents run, in the words of the subagent's title: the one
+ * started last ("Implementer building the board columns"), how long it has run, and how many more run
+ * beside it.
  */
-/** The newest running subagent: what it does, how long it has run, and how many others run beside it. */
 export function waitingOn(card: Pick<Card, "subagents">, now: number): { text: string; running: string | null; more: number } | null {
   const running = card.subagents
     .filter((subagent) => subagent.status === "running" || subagent.status === "initializing")
@@ -132,10 +131,4 @@ export function waitingOn(card: Pick<Card, "subagents">, now: number): { text: s
     running: Number.isFinite(started) ? formatDuration(Math.max(0, now - started)) : null,
     more: running.length - 1,
   };
-}
-
-export function waitingOnText(card: Pick<Card, "subagents">, now: number): string | null {
-  const waiting = waitingOn(card, now);
-  if (waiting === null) return null;
-  return `${[waiting.text, waiting.running].filter((part) => part !== null).join(" · ")}${waiting.more > 0 ? ` (+${waiting.more} more)` : ""}`;
 }
