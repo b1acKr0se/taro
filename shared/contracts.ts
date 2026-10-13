@@ -216,6 +216,7 @@ export const StatsSummarySchema = z.object({
   nudges: z.number(),
   decisions: z.number(),
 });
+export type StatsSummary = z.infer<typeof StatsSummarySchema>;
 
 export const loadStats = defineRpc({
   name: "taro.stats.load",

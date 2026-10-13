@@ -61,3 +61,22 @@ export function errorText(caught: unknown): string {
     .trim();
   return clean === "" ? raw : clean;
 }
+
+/** A span of time at a glance: "40s", "12m", "2h 05m", "3d 4h"; "—" for nothing. */
+export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "—";
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${String(minutes % 60).padStart(2, "0")}m`;
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
+/** Dollars to the cent, below a cent as "<$0.01"; "—" when no agent reported a cost. */
+export function formatCost(usd: number | null): string {
+  if (usd === null) return "—";
+  if (usd > 0 && usd < 0.005) return "<$0.01";
+  return `$${usd.toFixed(2)}`;
+}

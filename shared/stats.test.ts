@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { summarize } from "./stats";
+import { compareTickets, projectTotals, summarize, type TicketSummary } from "./stats";
 
 describe("summarize", () => {
   it("adds time per status, wall time to Done, agent time and cost", () => {
@@ -29,5 +29,53 @@ describe("summarize", () => {
     expect(summary.turns).toBe(4);
     expect(summary.costUsd).toBe(1.75);
     expect(summary.status).toBe("Done");
+  });
+});
+
+function row(ticket: string, values: Partial<TicketSummary> = {}): TicketSummary {
+  return {
+    project: "app",
+    ticket,
+    title: ticket,
+    status: "Done",
+    wallMs: 0,
+    byStatus: {},
+    waitingOnUserMs: 0,
+    agentActiveMs: 0,
+    turns: 0,
+    agents: 0,
+    costUsd: null,
+    nudges: 0,
+    decisions: 0,
+    ...values,
+  };
+}
+
+describe("projectTotals", () => {
+  it("is all zeros and no cost for no tickets", () => {
+    expect(projectTotals([])).toEqual({ tickets: 0, wallMs: 0, waitingOnUserMs: 0, agentActiveMs: 0, turns: 0, agents: 0, costUsd: null, nudges: 0, decisions: 0 });
+  });
+
+  it("adds top-level tickets and skips a cost nobody reported", () => {
+    const totals = projectTotals([
+      row("AP-1", { wallMs: 1_000, waitingOnUserMs: 100, agentActiveMs: 500, turns: 3, agents: 1, costUsd: 1.25, nudges: 1, decisions: 2 }),
+      row("AP-2", { wallMs: 2_000, waitingOnUserMs: 0, agentActiveMs: 700, turns: 4, agents: 2, costUsd: null }),
+      row("AP-3", { costUsd: 0 }),
+    ]);
+    expect(totals).toEqual({ tickets: 3, wallMs: 3_000, waitingOnUserMs: 100, agentActiveMs: 1_200, turns: 7, agents: 3, costUsd: 1.25, nudges: 1, decisions: 2 });
+  });
+
+  it("does not count a child's agents, turns, cost or time twice, but adds its nudges and decisions", () => {
+    const totals = projectTotals([
+      row("AP-9", { wallMs: 10_000, agentActiveMs: 900, turns: 9, agents: 3, costUsd: 3, nudges: 1 }),
+      row("AP-9.1", { wallMs: 4_000, agentActiveMs: 400, turns: 4, agents: 1, costUsd: 1, nudges: 2, decisions: 1 }),
+    ]);
+    expect(totals).toMatchObject({ tickets: 2, wallMs: 10_000, agentActiveMs: 900, turns: 9, agents: 3, costUsd: 3, nudges: 3, decisions: 1 });
+  });
+});
+
+describe("compareTickets", () => {
+  it("puts the newest first and children in order after their parent", () => {
+    expect(["AP-9.2", "AP-2", "AP-10", "AP-9", "AP-9.10", "AP-9.1"].sort(compareTickets)).toEqual(["AP-10", "AP-9", "AP-9.1", "AP-9.2", "AP-9.10", "AP-2"]);
   });
 });

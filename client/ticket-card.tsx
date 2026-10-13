@@ -1,7 +1,8 @@
 /**
  * One ticket on the board (decision 10): id, title, phase and complexity
  * badges, the owner's live state and last status line, its open decisions as
- * buttons, children progress, and the actions its column calls for.
+ * buttons, children progress, the actions its column calls for, and once
+ * finished its key stats.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -9,9 +10,9 @@ import { TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import { acceptTicket, compactAgent, nudgeAgent, relaunchOwner, requestChanges, type Card } from "../shared/contracts";
+import { acceptTicket, compactAgent, nudgeAgent, relaunchOwner, requestChanges, type Card, type StatsSummary } from "../shared/contracts";
 import { DecisionCard } from "./decision-card";
-import { errorText, formatTokenCount, relativeTime } from "./format";
+import { errorText, formatCost, formatDuration, formatTokenCount, relativeTime } from "./format";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { Chip, IconButton } from "./ui";
 
@@ -21,6 +22,7 @@ export function TicketCard({
   theme,
   compact,
   selected,
+  stats = null,
   onOpen,
   onChanged,
 }: {
@@ -29,6 +31,8 @@ export function TicketCard({
   theme: PluginTheme;
   compact: boolean;
   selected: boolean;
+  /** The board passes it for finished tickets only; null hides the line. */
+  stats?: StatsSummary | null;
   onOpen: () => void;
   onChanged: () => void;
 }) {
@@ -117,6 +121,11 @@ export function TicketCard({
       {card.lastStatus === null ? null : (
         <Text style={styles.status} numberOfLines={3}>
           {card.lastStatus.state}: {card.lastStatus.text} · {relativeTime(card.lastStatus.at)}
+        </Text>
+      )}
+      {stats === null ? null : (
+        <Text style={styles.muted} numberOfLines={1}>
+          {formatDuration(stats.wallMs)} wall · {formatDuration(stats.agentActiveMs)} active · {stats.turns} turn{stats.turns === 1 ? "" : "s"} · {formatCost(stats.costUsd)}
         </Text>
       )}
       {card.children.length === 0 ? null : (

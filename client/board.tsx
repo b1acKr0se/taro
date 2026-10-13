@@ -1,7 +1,8 @@
 /**
  * The project's board (decision 9): Needs you · Working · Stalled · Queued ·
  * Done, side by side on a wide screen; on a phone one column at a time behind
- * chips. The manager's own open decisions and suggestions sit above it.
+ * chips. The manager's own open decisions and suggestions sit above it. Done
+ * cards carry their ticket's key stats.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -14,6 +15,7 @@ import { dismissSuggestion, tellManager, type Card, type ProjectSummary } from "
 import { useBoard, useRefreshBoard } from "./board-data";
 import { DecisionCard } from "./decision-card";
 import { errorText } from "./format";
+import { useStats } from "./queries";
 import { TicketCard } from "./ticket-card";
 import { FONT_SIZE } from "./type-scale";
 import { IconButton } from "./ui";
@@ -38,6 +40,7 @@ export function ProjectBoard({
 }) {
   const project = summary.config.project;
   const board = useBoard(project);
+  const stats = useStats(project);
   const refresh = useRefreshBoard(project);
   const toast = useToast();
   const tell = useRpc(tellManager);
@@ -76,6 +79,8 @@ export function ProjectBoard({
     return groups;
   }, [cards]);
 
+  const statsByTicket = useMemo(() => new Map((stats.data?.tickets ?? []).map((summary) => [summary.ticket, summary])), [stats.data]);
+
   function renderCard(card: Card) {
     return (
       <TicketCard
@@ -85,6 +90,7 @@ export function ProjectBoard({
         theme={theme}
         compact={compact}
         selected={card.id === selectedTicket}
+        stats={card.column === "done" ? (statsByTicket.get(card.id) ?? null) : null}
         onOpen={() => onOpenTicket(card)}
         onChanged={refresh}
       />

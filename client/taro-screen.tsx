@@ -2,7 +2,8 @@
  * The Taro screen (decision 8): Inbox, a tab per project, and "＋ project".
  * A project shows a conversation on the left — its manager, or the owner of the
  * card you opened — beside its board. On a phone (decision 12): Manager · Inbox
- * · Board tabs, and a card opens its owner full screen.
+ * · Board tabs, and a card opens its owner full screen. The board's pane
+ * switches to the project's Stats (a fourth tab on a phone).
  * Params: `project`, `view` ("setup" | "settings" | "inbox").
  */
 import type { PluginTheme } from "@getpaseo/plugin";
@@ -23,17 +24,20 @@ import { OwnerPane } from "./owner-pane";
 import { PaneHeader } from "./pane-header";
 import { ProjectSetup } from "./project-setup";
 import { useProjects, useRefreshProjects } from "./queries";
+import { StatsView } from "./stats-view";
 import { FONT_SIZE } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
 
 type View_ = "inbox" | "project" | "setup" | "settings";
-type PhoneTab = "manager" | "inbox" | "board";
+type PhoneTab = "manager" | "inbox" | "board" | "stats";
+type RightPane = "board" | "stats";
 
 /** What the screen shows, kept across remounts (the host unmounts a screen whenever the user navigates away). */
-const remembered: { project: string | null; view: View_; phoneTab: PhoneTab; ticket: string | null } = {
+const remembered: { project: string | null; view: View_; phoneTab: PhoneTab; rightPane: RightPane; ticket: string | null } = {
   project: null,
   view: "project",
   phoneTab: "manager",
+  rightPane: "board",
   ticket: null,
 };
 
@@ -185,6 +189,7 @@ function ProjectView({
   const board = useBoard(project);
   const refreshBoard = useRefreshBoard(project);
   const [phoneTab, setPhoneTab] = useState<PhoneTab>(remembered.phoneTab);
+  const [rightPane, setRightPane] = useState<RightPane>(remembered.rightPane);
   const openCard = ticket === null ? null : (board.data?.cards ?? []).find((card) => card.id === ticket) ?? null;
 
   const left =
@@ -212,12 +217,21 @@ function ProjectView({
               { value: "manager", label: "Manager" },
               { value: "inbox", label: needsYou > 0 ? `Inbox ${needsYou}` : "Inbox" },
               { value: "board", label: "Board" },
+              { value: "stats", label: "Stats" },
             ]}
             onChange={choosePhoneTab}
           />
         </View>
         <View style={{ flex: 1 }}>
-          {phoneTab === "manager" ? left : phoneTab === "inbox" ? <Inbox projects={all} theme={theme} compact onOpenTicket={onOpenElsewhere} /> : boardView}
+          {phoneTab === "manager" ? (
+            left
+          ) : phoneTab === "inbox" ? (
+            <Inbox projects={all} theme={theme} compact onOpenTicket={onOpenElsewhere} />
+          ) : phoneTab === "stats" ? (
+            <StatsView project={project} theme={theme} />
+          ) : (
+            boardView
+          )}
         </View>
       </View>
     );
@@ -225,7 +239,23 @@ function ProjectView({
   return (
     <View style={{ flex: 1, flexDirection: "row" }}>
       <View style={{ width: "40%", minWidth: 340, borderRightWidth: 1, borderRightColor: theme.colors.border }}>{left}</View>
-      <View style={{ flex: 1 }}>{boardView}</View>
+      <View style={{ flex: 1 }}>
+        <View style={{ paddingHorizontal: 10, paddingTop: 10, flexDirection: "row" }}>
+          <Segmented
+            theme={theme}
+            value={rightPane}
+            options={[
+              { value: "board", label: "Board" },
+              { value: "stats", label: "Stats" },
+            ]}
+            onChange={(value) => {
+              remembered.rightPane = value;
+              setRightPane(value);
+            }}
+          />
+        </View>
+        <View style={{ flex: 1, minHeight: 0 }}>{rightPane === "stats" ? <StatsView project={project} theme={theme} /> : boardView}</View>
+      </View>
     </View>
   );
 }

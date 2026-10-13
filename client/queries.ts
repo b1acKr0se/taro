@@ -1,8 +1,8 @@
-/** The screen's shared data: the project list, polled, one cache for screen, sidebar and panels. */
+/** The screen's shared data: the project list and per-project stats, polled, one cache for screen, sidebar and panels. */
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { listProjects } from "../shared/contracts";
+import { listProjects, loadStats } from "../shared/contracts";
 
 export const PROJECTS_KEY = ["taro", "projects"] as const;
 
@@ -16,4 +16,10 @@ export function useRefreshProjects(): () => void {
   return () => {
     void client.invalidateQueries({ queryKey: PROJECTS_KEY });
   };
+}
+
+/** A project's per-ticket stats, shared by the board's Done cards and the Stats tab. */
+export function useStats(project: string) {
+  const load = useRpc(loadStats);
+  return useQuery({ queryKey: ["taro", "stats", project] as const, queryFn: () => load({ project }), refetchInterval: 15_000 });
 }

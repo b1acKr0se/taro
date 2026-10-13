@@ -82,3 +82,57 @@ export function summarize(stats: TicketStats, now: number = Date.now()): TicketS
     decisions: stats.decisions,
   };
 }
+
+export interface ProjectTotals {
+  tickets: number;
+  wallMs: number;
+  waitingOnUserMs: number;
+  agentActiveMs: number;
+  turns: number;
+  agents: number;
+  costUsd: number | null;
+  nudges: number;
+  decisions: number;
+}
+
+/** A child ticket (`TR-3.1`) whose parent is `TR-3`, or null. */
+export function parentOf(ticket: string): string | null {
+  return /^(.*)\.\d+$/.exec(ticket)?.[1] ?? null;
+}
+
+/**
+ * A project's totals. A child's agents, turns and cost are recorded on its
+ * parent too (see `server/stats.ts`), and its time falls inside the parent's,
+ * so those add up top-level tickets only; nudges and decisions are recorded on
+ * one ticket each, so they add up every ticket.
+ */
+export function projectTotals(summaries: readonly TicketSummary[]): ProjectTotals {
+  const topLevel = summaries.filter((summary) => parentOf(summary.ticket) === null);
+  const costs = topLevel.map((summary) => summary.costUsd).filter((cost): cost is number => cost !== null);
+  const sum = (list: readonly TicketSummary[], pick: (summary: TicketSummary) => number) => list.reduce((total, summary) => total + pick(summary), 0);
+  return {
+    tickets: summaries.length,
+    wallMs: sum(topLevel, (summary) => summary.wallMs),
+    waitingOnUserMs: sum(topLevel, (summary) => summary.waitingOnUserMs),
+    agentActiveMs: sum(topLevel, (summary) => summary.agentActiveMs),
+    turns: sum(topLevel, (summary) => summary.turns),
+    agents: sum(topLevel, (summary) => summary.agents),
+    costUsd: costs.length === 0 ? null : costs.reduce((total, cost) => total + cost, 0),
+    nudges: sum(summaries, (summary) => summary.nudges),
+    decisions: sum(summaries, (summary) => summary.decisions),
+  };
+}
+
+/** Tickets by id, newest first, children after their parent: `TR-10`, `TR-9`, `TR-9.1`, `TR-9.2`. */
+export function compareTickets(left: string, right: string): number {
+  const parts = (id: string) => (id.match(/\d+/g) ?? []).map(Number);
+  const leftParts = parts(left);
+  const rightParts = parts(right);
+  const top = (rightParts[0] ?? 0) - (leftParts[0] ?? 0);
+  if (top !== 0) return top;
+  for (let i = 1; i < Math.max(leftParts.length, rightParts.length); i++) {
+    const difference = (leftParts[i] ?? -1) - (rightParts[i] ?? -1);
+    if (difference !== 0) return difference;
+  }
+  return left.localeCompare(right);
+}
