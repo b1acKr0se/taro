@@ -216,10 +216,21 @@ export const BoardSchema = z.object({
   headroom: HeadroomSchema.nullable(),
   alerts: z.array(BoardAlertSchema),
   loadedAt: z.string(),
+  /** Each column's true ticket count: Queued and Done carry only their newest page of cards (TR-082). */
+  totals: z.record(ColumnIdSchema, z.number()),
+  /** Cards sent only because they were asked for by id (an open ticket past its column's page): not drawn in a column. */
+  offPage: z.array(z.string()).default([]),
 });
 export type Board = z.infer<typeof BoardSchema>;
 
-export const loadBoard = defineRpc({ name: "taro.board.load", input: ProjectInput, output: BoardSchema });
+/** How many cards each paged column sends (the first page when left out), and tickets wanted whatever their page (TR-082). */
+export const BoardPagingSchema = z.object({
+  limits: z.object({ queued: z.number().int().min(0).max(10_000).optional(), done: z.number().int().min(0).max(10_000).optional() }).optional(),
+  include: z.array(z.string()).max(20).optional(),
+});
+export type BoardPaging = z.infer<typeof BoardPagingSchema>;
+
+export const loadBoard = defineRpc({ name: "taro.board.load", input: ProjectInput.extend(BoardPagingSchema.shape), output: BoardSchema });
 
 export const TicketDetailSchema = z.object({
   id: z.string(),

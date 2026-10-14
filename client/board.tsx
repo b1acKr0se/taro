@@ -1,7 +1,8 @@
 /**
  * The project's board (decision 9): Needs you · Working · Stalled · Queued ·
  * Done, always all five, side by side as equal panels on a wide screen; on a
- * phone one column at a time behind chips. The Manager's open questions are cards in Needs you,
+ * phone one column at a time behind chips. Queued and Done show their newest cards and load more on
+ * request (TR-082). The Manager's open questions are cards in Needs you,
  * blocking first, ahead of the tickets, and count there (TR-045); its suggestions sit above its
  * composer, not here. Done cards carry their ticket's key stats.
  */
@@ -10,11 +11,12 @@ import { Icon } from "@getpaseo/plugin/client/react-native";
 import { memo, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 
-import { COLUMN_IDS, COLUMN_META, COLUMN_TITLES, columnCounts, needsYouExtras, type ColumnId } from "../shared/board";
+import { boardCounts, COLUMN_IDS, COLUMN_META, COLUMN_TITLES, isPagedColumn, needsYouExtras, type ColumnId, type PagedColumn } from "../shared/board";
 import type { Card, ProjectSummary } from "../shared/contracts";
 import { AlertCard } from "./alert-card";
 import { SectionHeading } from "./badges";
-import { useBoard, useRefreshBoard } from "./board-data";
+import { useBoard, useLoadMore, useRefreshBoard } from "./board-data";
+import { columnPage, type ColumnPage } from "./board-paging";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { keptObject } from "./kept";
@@ -24,6 +26,7 @@ import { QuestionCard } from "./question-card";
 import { useStats } from "./queries";
 import { paneGutter, SPACE } from "./spacing";
 import { SyncProblemCard } from "./sync-problem-card";
+import { IconButton } from "./ui";
 import { TicketCard } from "./ticket-card";
 import { withAlpha } from "./tint";
 import { FONT_SIZE } from "./type-scale";
@@ -54,6 +57,7 @@ export function ProjectBoard({
   const board = useBoard(project);
   const stats = useStats(project);
   const refresh = useRefreshBoard(project);
+  const loadMore = useLoadMore(project);
   // Stable, so a card whose ticket did not change is not drawn again on each refresh (TR-069).
   const changed = useLatestCallback(refresh);
   const openCard = useLatestCallback(onOpenTicket);
@@ -96,18 +100,17 @@ export function ProjectBoard({
 
   const cards = board.data?.cards ?? [];
   const byColumn = useMemo(() => {
-    const groups = new Map<ColumnId, Card[]>(COLUMN_IDS.map((id) => [id, []]));
-    for (const card of cards) groups.get(card.column)?.push(card);
-    for (const group of groups.values()) group.sort((left, right) => (right.updatedAt ?? "").localeCompare(left.updatedAt ?? ""));
-    return groups;
-  }, [cards]);
+    const content = board.data ?? { cards: [], totals: { "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 }, offPage: [] };
+    return new Map<ColumnId, ColumnPage>(COLUMN_IDS.map((id) => [id, columnPage(content, id)]));
+  }, [board.data?.cards, board.data?.totals, board.data?.offPage]);
 
   // The Manager's questions lead Needs you, blocking first (TR-045).
   const managerQuestions = useMemo(() => walkOrder(board.data?.managerDecisions ?? []), [board.data]);
   const syncProblem = summary.trackerSyncProblem;
   const alerts = board.data?.alerts ?? [];
   // Alerts and a paused sync wait on the user too, above the columns (TR-064).
-  const counts = columnCounts(cards, needsYouExtras({ managerDecisions: managerQuestions, alerts }, syncProblem !== null));
+  // True totals: a paged column carries only its loaded cards (TR-082).
+  const counts = boardCounts(board.data?.totals ?? { "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 }, needsYouExtras({ managerDecisions: managerQuestions, alerts }, syncProblem !== null));
   const waitingAbove = alerts.length > 0 || syncProblem !== null;
 
   const statsByTicket = useMemo(() => new Map((stats.data?.tickets ?? []).map((summary) => [summary.ticket, summary])), [stats.data]);
@@ -128,8 +131,9 @@ export function ProjectBoard({
     );
   }
 
-  /** A column's cards: in Needs you, the Manager's questions first. */
-  function columnCards(id: ColumnId, group: readonly Card[]) {
+  /** A column's cards: in Needs you, the Manager's questions first; a paged column ends with Load more while cards are left. */
+  function columnCards(id: ColumnId, page: ColumnPage | undefined) {
+    const group = page?.cards ?? [];
     const questions =
       id === "needs-you"
         ? managerQuestions.map((decision) => (
@@ -137,7 +141,11 @@ export function ProjectBoard({
           ))
         : [];
     if (questions.length === 0 && group.length === 0) return empty(id, id === "needs-you" && waitingAbove ? "See above" : "Nothing here");
-    return [...questions, ...group.map(renderCard)];
+    const more =
+      page !== undefined && page.remaining > 0 && isPagedColumn(id) ? (
+        <LoadMore key="load-more" column={id} shown={group.length} total={page.total} theme={theme} onLoadMore={loadMore} />
+      ) : null;
+    return [...questions, ...group.map(renderCard), more];
   }
 
   function empty(id: ColumnId, text: string) {
@@ -179,7 +187,7 @@ export function ProjectBoard({
   if (board.error !== null && board.data === undefined) return <Text style={styles.error}>{errorText(board.error)}</Text>;
 
   if (compact) {
-    const shown = byColumn.get(column) ?? [];
+    const shown = byColumn.get(column);
     return (
       <View style={styles.root}>
         <ScrollView horizontal style={{ flexGrow: 0 }} contentContainerStyle={styles.chips} showsHorizontalScrollIndicator={false}>
@@ -224,7 +232,7 @@ export function ProjectBoard({
       {top}
       <ScrollView horizontal contentContainerStyle={styles.columns}>
         {COLUMN_IDS.map((id, index) => {
-          const group = byColumn.get(id) ?? [];
+          const group = byColumn.get(id);
           const columnWidth = widths[index] ?? MIN_COLUMN_WIDTH;
           const meta = COLUMN_META[id];
           const color = toneColor(theme, meta.tone);
@@ -256,3 +264,41 @@ export function ProjectBoard({
 const BoardCard = memo(function BoardCard({ card, onOpenCard, ...rest }: Omit<Parameters<typeof TicketCard>[0], "onOpen"> & { onOpenCard: (card: Card) => void }) {
   return <TicketCard card={card} onOpen={() => onOpenCard(card)} {...rest} />;
 });
+
+/** The end of a paged column while cards are left (TR-082): how many are shown of how many, and the button for the next page. */
+function LoadMore({
+  column,
+  shown,
+  total,
+  theme,
+  onLoadMore,
+}: {
+  column: PagedColumn;
+  shown: number;
+  total: number;
+  theme: PluginTheme;
+  onLoadMore: (column: PagedColumn) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.md }}>
+      <View style={{ flexGrow: 1, flexDirection: "row" }}>
+        <IconButton
+          icon="ChevronsDown"
+          label="Load more"
+          showLabel
+          grow
+          theme={theme}
+          state={busy ? "busy" : undefined}
+          onPress={() => {
+            setBusy(true);
+            void onLoadMore(column).finally(() => setBusy(false));
+          }}
+        />
+      </View>
+      <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small }}>
+        {shown} of {total}
+      </Text>
+    </View>
+  );
+}

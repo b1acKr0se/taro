@@ -174,3 +174,62 @@ export function inboxCount(
   const counts = columnCounts(board?.cards ?? [], needsYouExtras(board, syncPaused));
   return counts["needs-you"] + counts.stalled;
 }
+
+/**
+ * The columns that grow without end and are paged (TR-082): finished and not-started tickets.
+ * Needs you, Working and Stalled are small by design and never hide a card.
+ */
+export const PAGED_COLUMNS = ["queued", "done"] as const satisfies readonly ColumnId[];
+export type PagedColumn = (typeof PAGED_COLUMNS)[number];
+/** Cards a paged column shows at first, and how many more each Load more adds (the user's sizes, TR-082). */
+export const FIRST_PAGE = 5;
+export const PAGE_STEP = 20;
+
+export type ColumnLimits = Partial<Record<PagedColumn, number | undefined>>;
+
+export function isPagedColumn(column: ColumnId): column is PagedColumn {
+  return (PAGED_COLUMNS as readonly ColumnId[]).includes(column);
+}
+
+/** Newest first, the board's order: by last update, then by id so a page boundary is the same on every read. */
+export function newestFirst(left: { id: string; updatedAt: string | null }, right: { id: string; updatedAt: string | null }): number {
+  return (right.updatedAt ?? "").localeCompare(left.updatedAt ?? "") || right.id.localeCompare(left.id, undefined, { numeric: true });
+}
+
+export interface ColumnPage<Placed> {
+  /** What to build cards for: every ticket of an unpaged column, each paged column's newest up to its limit, and the included tickets. */
+  kept: Placed[];
+  /** Each column's true ticket count, paged or not. */
+  totals: Record<ColumnId, number>;
+  /** Tickets kept only because they were asked for by id: the board leaves them out of their column. */
+  offPage: string[];
+}
+
+/** Pages the placed tickets (TR-082): the server builds cards only for what this keeps. */
+export function pageColumns<Placed extends { id: string; column: ColumnId; updatedAt: string | null }>(
+  placed: readonly Placed[],
+  limits: ColumnLimits = {},
+  include: readonly string[] = [],
+): ColumnPage<Placed> {
+  const totals: Record<ColumnId, number> = { "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 };
+  for (const ticket of placed) totals[ticket.column] += 1;
+  const onPage = new Set<string>();
+  for (const column of PAGED_COLUMNS) {
+    const limit = Math.max(0, limits[column] ?? FIRST_PAGE);
+    for (const ticket of placed.filter((candidate) => candidate.column === column).sort(newestFirst).slice(0, limit)) onPage.add(ticket.id);
+  }
+  const wanted = new Set(include);
+  const offPage: string[] = [];
+  const kept = placed.filter((ticket) => {
+    if (!isPagedColumn(ticket.column) || onPage.has(ticket.id)) return true;
+    if (!wanted.has(ticket.id)) return false;
+    offPage.push(ticket.id);
+    return true;
+  });
+  return { kept, totals, offPage };
+}
+
+/** The board's head counts: each column's true total, and in Needs you what else waits on the user (TR-045, TR-064). */
+export function boardCounts(totals: Readonly<Record<ColumnId, number>>, needsYouExtra: number): Record<ColumnId, number> {
+  return { ...totals, "needs-you": totals["needs-you"] + needsYouExtra };
+}

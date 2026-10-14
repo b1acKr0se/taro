@@ -7,10 +7,10 @@ import { hostname } from "node:os";
 
 import { latestActivity, type Activity } from "../shared/activity";
 import { backlogFormatAlert, ticketFileAlerts } from "../shared/alerts";
-import { boardColumn, complexityOf, hasStarted, ticketAgents } from "../shared/board";
+import { boardColumn, complexityOf, FIRST_PAGE, hasStarted, PAGED_COLUMNS, pageColumns, ticketAgents } from "../shared/board";
 import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
 import { acceptedRecord, executionMachine, pullRequestUrl, type AcceptedRecord } from "../shared/execution";
-import type { Board, Card, TicketDetailView } from "../shared/contracts";
+import type { Board, BoardPaging, Card, TicketDetailView } from "../shared/contracts";
 import { latestMilestone, type Milestone } from "../shared/milestones";
 import { deliveredLine, permissionAsk, type PermissionAsk } from "../shared/needs-you";
 import { pastTicketAgents } from "../shared/past-agents";
@@ -115,14 +115,23 @@ function cachedActivity(paseo: PaseoApi, agent: PaseoAgent | null): Promise<Acti
 const BOARD_CACHE_MS = 2_000;
 const boardCache = new Map<string, { at: number; board: Promise<Board> }>();
 
-export function loadBoard(paseo: PaseoApi, state: PluginState, project: string, queueAlerts: readonly BoardAlert[] = []): Promise<Board> {
-  const cached = boardCache.get(project);
+/** Readers asking for the same pages share one read: the limits as the first page fills them in, and the included ids in order. */
+function boardCacheKey(project: string, paging: BoardPaging): string {
+  const limits = PAGED_COLUMNS.map((column) => paging.limits?.[column] ?? FIRST_PAGE);
+  return JSON.stringify([project, limits, [...new Set(paging.include ?? [])].sort()]);
+}
+
+/** The board with each paged column's newest page (TR-082); callers that leave `paging` out get the first page. */
+export function loadBoard(paseo: PaseoApi, state: PluginState, project: string, queueAlerts: readonly BoardAlert[] = [], paging: BoardPaging = {}): Promise<Board> {
+  const key = boardCacheKey(project, paging);
+  const cached = boardCache.get(key);
   // The queue check's alerts (TR-062) live in memory and are added fresh on every read.
   const withQueue = (board: Board): Board => (queueAlerts.length === 0 ? board : { ...board, alerts: [...board.alerts, ...queueAlerts] });
   if (cached !== undefined && Date.now() - cached.at < BOARD_CACHE_MS) return cached.board.then(withQueue);
-  const board = readBoard(paseo, state, project);
-  boardCache.set(project, { at: Date.now(), board });
-  board.catch(() => boardCache.delete(project));
+  const board = readBoard(paseo, state, project, paging);
+  for (const [other, entry] of boardCache) if (Date.now() - entry.at >= BOARD_CACHE_MS) boardCache.delete(other);
+  boardCache.set(key, { at: Date.now(), board });
+  board.catch(() => boardCache.delete(key));
   return board.then(withQueue);
 }
 
@@ -150,7 +159,7 @@ function groupByTicket(agents: readonly PaseoAgent[]): Map<string, PaseoAgent[]>
   return byTicket;
 }
 
-async function readBoard(paseo: PaseoApi, state: PluginState, project: string): Promise<Board> {
+async function readBoard(paseo: PaseoApi, state: PluginState, project: string, paging: BoardPaging): Promise<Board> {
   const paths = await projectPaths(project);
   // Live agents come from their own list, so a long archive can never push a live owner past its page limit.
   const [tickets, problems, unconverted, agents, archived, decisions, agentStates, headroom] = await Promise.all([
@@ -172,26 +181,49 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
     new Set(agents.map((agent) => agent.id)),
   );
 
-  const cards: Card[] = await Promise.all(
+  // Placing a ticket needs only the list, live agents and under-way records; a full card is built only for the page (TR-082).
+  const placed = await Promise.all(
     tickets.map(async (ticket) => {
       const { owner, subagents: liveSubagents, columnAgent } = ticketAgents(ticket.id, ticket.parentTaskId, byTicket, ticket.status);
       // A child not started has no status of its own: its parent owner's line is about other work (TR-080).
       const ownLine = ticket.parentTaskId === null || hasStarted(ticket.status);
-      const subagents = liveSubagents.flatMap((agent) => {
-        const role = roleFromLabel(agent.labels[TARO_LABELS.role]);
-        return role !== null && isSubagentRole(role) ? [{ ...agentBrief(agent), role }] : [];
-      });
       const ownerState = owner === null ? null : agentStates[owner.id] ?? null;
       const finished = ticket.status === "Done" || ticket.status === "Cancelled";
       const ticketDecisions = finished ? [] : openDecisions.filter((decision) => decision.ticket === ticket.id);
       const needsHost = owner === null && UNDER_WAY.has(ticket.status);
       // Reading a ticket reads its whole file: only under-way cards show what it holds, and only once per change.
       const facts = UNDER_WAY.has(ticket.status) ? await cachedRecordedFacts(paths.tracker, ticket.id, ticket.updatedAt) : null;
-      const investigation = ticket.labels.includes("investigation");
       // The record is cached with the other facts; whether its screenshot files exist is read each time.
       const accepted = ticket.status === "Awaiting acceptance" ? facts?.accepted ?? null : null;
-      const evidence = ticket.status === "Awaiting acceptance" && facts !== null ? await judgeTicketEvidence(project, ticket.id, facts.evidenceRecord, investigation) : null;
       const elsewhere = needsHost ? facts?.hostElsewhere ?? null : null;
+      const column = boardColumn({
+        status: ticket.status,
+        ownerElsewhere: elsewhere !== null,
+        agent: columnAgent === null ? null : { status: columnAgent.status, pendingPermissions: columnAgent.pendingPermissions.length },
+        lastStatus: ownLine ? ownerState?.lastStatus?.state ?? null : null,
+        openBlockingDecisions: ticketDecisions.filter((decision) => decision.blocking).length,
+        stalledAfterNudge: ownerState?.stalled ?? false,
+        crashedOut: ownLine && ownerState?.stalled === true && ownerState.stalledReason !== null,
+        accepted: accepted !== null,
+      });
+      return { id: ticket.id, updatedAt: ticket.updatedAt, column, ticket, owner, liveSubagents, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere };
+    }),
+  );
+  const page = pageColumns(placed, paging.limits, paging.include);
+
+  const childrenOf = new Map<string, { id: string; title: string; status: string }[]>();
+  for (const ticket of tickets) {
+    if (ticket.parentTaskId !== null) childrenOf.set(ticket.parentTaskId, [...(childrenOf.get(ticket.parentTaskId) ?? []), { id: ticket.id, title: ticket.title, status: ticket.status }]);
+  }
+
+  const cards: Card[] = await Promise.all(
+    page.kept.map(async ({ ticket, column, owner, liveSubagents, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere }) => {
+      const subagents = liveSubagents.flatMap((agent) => {
+        const role = roleFromLabel(agent.labels[TARO_LABELS.role]);
+        return role !== null && isSubagentRole(role) ? [{ ...agentBrief(agent), role }] : [];
+      });
+      const investigation = ticket.labels.includes("investigation");
+      const evidence = ticket.status === "Awaiting acceptance" && facts !== null ? await judgeTicketEvidence(project, ticket.id, facts.evidenceRecord, investigation) : null;
       const archivedAgents = archivedByTicket.get(ticket.id) ?? [];
       const pastById = new Map(archivedAgents.map((agent) => [agent.id, agent]));
       const past = pastTicketAgents(
@@ -200,28 +232,16 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
         const agent = pastById.get(entry.id);
         return agent === undefined ? [] : [{ ...agentBrief(agent), role: entry.role, archivedAt: entry.archivedAt }];
       });
-      const children = tickets
-        .filter((candidate) => candidate.parentTaskId === ticket.id)
-        .map((child) => ({ id: child.id, title: child.title, status: child.status }));
       return {
         id: ticket.id,
         title: ticket.title,
         status: ticket.status,
-        column: boardColumn({
-          status: ticket.status,
-          ownerElsewhere: elsewhere !== null,
-          agent: columnAgent === null ? null : { status: columnAgent.status, pendingPermissions: columnAgent.pendingPermissions.length },
-          lastStatus: ownLine ? ownerState?.lastStatus?.state ?? null : null,
-          openBlockingDecisions: ticketDecisions.filter((decision) => decision.blocking).length,
-          stalledAfterNudge: ownerState?.stalled ?? false,
-          crashedOut: ownLine && ownerState?.stalled === true && ownerState.stalledReason !== null,
-          accepted: accepted !== null,
-        }),
+        column,
         labels: ticket.labels,
         complexity: complexityOf(ticket.labels),
         investigation,
         parent: ticket.parentTaskId,
-        children,
+        children: childrenOf.get(ticket.id) ?? [],
         acceptanceDone: ticket.acceptanceCriteriaCompleted,
         acceptanceTotal: ticket.acceptanceCriteriaCount,
         updatedAt: ticket.updatedAt,
@@ -255,6 +275,8 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
     headroom,
     alerts: [...boardAlerts(headroom, managerState?.stalledReason ?? null, now), ...ticketFileAlerts(problems), ...(unconverted ? [backlogFormatAlert(paths.tracker)] : [])],
     loadedAt: new Date().toISOString(),
+    totals: page.totals,
+    offPage: page.offPage,
   };
 }
 

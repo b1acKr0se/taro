@@ -23,6 +23,7 @@ vi.mock("./board", () => ({
       headroom: null,
       alerts: [...boardAlerts, ...queueAlerts],
       loadedAt: "2026-01-01T00:00:00Z",
+      totals: { "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 }, offPage: [],
     }),
   ),
 }));

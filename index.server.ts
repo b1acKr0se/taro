@@ -248,9 +248,9 @@ export default function contribute(server: PluginServerContext) {
     return { agentId };
   });
 
-  server.handle(loadBoardRpc, async ({ project }, { paseo }) => {
+  server.handle(loadBoardRpc, async ({ project, limits, include }, { paseo }) => {
     void trackers.pullIfDue(project);
-    return loadBoard(keep(paseo), state, project, actions.queueAlerts(project));
+    return loadBoard(keep(paseo), state, project, actions.queueAlerts(project), { limits, include });
   });
   server.handle(loadTicket, async ({ project, ticket }) => {
     void trackers.pullIfDue(project);

@@ -239,3 +239,49 @@ describe("loadBoard", () => {
     expect(alert?.text).toMatch(/still in Backlog\.md format.*taro convert --dry-run, then taro convert/);
   });
 });
+
+describe("loadBoard pages Queued and Done (TR-082)", () => {
+  const many = (status: string, count: number, prefix: string) =>
+    Array.from({ length: count }, (_, index) => ticket(`${prefix}-${index + 1}`, status, `2026-10-${String(1 + (index % 28)).padStart(2, "0")} ${String(10 + Math.floor(index / 28)).padStart(2, "0")}:00`));
+  const board = (paging = {}) => loadBoard({} as PaseoApi, state([]), "taro", [], paging);
+
+  beforeEach(() => {
+    vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "In Progress"), ...many("Done", 40, "DO"), ...many("Backlog", 12, "QU")] as unknown as Awaited<ReturnType<typeof listTickets>>);
+  });
+
+  it("sends only the newest 5 cards of each, with every column's true total", async () => {
+    const answer = await board();
+    expect(answer.cards.filter((card) => card.column === "done")).toHaveLength(5);
+    expect(answer.cards.filter((card) => card.column === "queued")).toHaveLength(5);
+    expect(answer.cards.filter((card) => card.column === "working" || card.column === "stalled")).toHaveLength(1);
+    expect(answer.totals).toMatchObject({ done: 40, queued: 12 });
+    expect(answer.offPage).toEqual([]);
+  });
+
+  it("sends 20 more for each Load more, and the rest once fewer are left", async () => {
+    expect((await board({ limits: { done: 25 } })).cards.filter((card) => card.column === "done")).toHaveLength(25);
+    expect((await board({ limits: { done: 45, queued: 25 } })).cards.filter((card) => card.column !== "working" && card.column !== "stalled")).toHaveLength(52);
+  });
+
+  it("puts a ticket that just became Done at the top of the first page on the next read", async () => {
+    const first = await board();
+    expect(first.cards.find((card) => card.id === "TR-1")?.column).not.toBe("done");
+    invalidateBoards();
+    vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "Done", "2026-11-01 09:00"), ...many("Done", 40, "DO")] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    const next = await board();
+    expect(next.cards.filter((card) => card.column === "done").map((card) => card.id)[0]).toBe("TR-1");
+    expect(next.totals.done).toBe(41);
+  });
+
+  it("sends a ticket asked for by id past its page, marked off the page", async () => {
+    const answer = await board({ include: ["DO-1"] });
+    expect(answer.cards.map((card) => card.id)).toContain("DO-1");
+    expect(answer.offPage).toEqual(["DO-1"]);
+  });
+
+  it("does not answer one page's read from another page's cache", async () => {
+    await board();
+    expect((await board({ limits: { done: 25 } })).cards.filter((card) => card.column === "done")).toHaveLength(25);
+    expect((await board({ limits: { done: 5 } })).cards.filter((card) => card.column === "done")).toHaveLength(5);
+  });
+});

@@ -21,7 +21,8 @@ import { withoutDecisionBlocks } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import type { Suggestion } from "../shared/suggestions";
 import { AgentChat } from "./agent-chat";
-import { useBoard, useRefreshBoard } from "./board-data";
+import { useBoard, useOpenTicketCard, useRefreshBoard } from "./board-data";
+import { isOpenTicketAsked } from "./board-paging";
 import { ProjectBoard } from "./board";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
@@ -448,7 +449,21 @@ function ProjectView({
     setBoardHiddenState(hidden);
   };
   const onShowBoard = compact || layout.board ? null : () => setBoardHidden(false);
-  const shownState = ticketShown({ ticket, boardLoaded: board.data !== undefined, cardFound: openCard !== null });
+  // A ticket opened by link may be past its column's page (TR-082): the board is asked for its card before it counts as missing.
+  const askForOpenCard = useOpenTicketCard(project);
+  const [askingForCard, setAskingForCard] = useState(false);
+  const cardNotLoaded = ticket !== null && board.data !== undefined && openCard === null;
+  useEffect(() => {
+    if (ticket === null) {
+      void askForOpenCard(null);
+      return;
+    }
+    if (!cardNotLoaded) return;
+    setAskingForCard(true);
+    void askForOpenCard(ticket).finally(() => setAskingForCard(false));
+  }, [project, ticket, cardNotLoaded]);
+  const boardAnswered = board.data !== undefined && !askingForCard && isOpenTicketAsked(project, ticket);
+  const shownState = ticketShown({ ticket, boardLoaded: boardAnswered, cardFound: openCard !== null });
   // Only the project showing says whether its ticket is missing; a hidden one has none open.
   useEffect(() => {
     if (active) onTicketMissing(shownState === "missing");
