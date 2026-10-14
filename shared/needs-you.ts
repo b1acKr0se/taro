@@ -3,6 +3,7 @@
  * as what it asks to do, a delivery as its summary's first sentence. Pure.
  */
 import { finalSummaryBody } from "./execution";
+import { finalSections } from "./final-summary";
 
 /** A Paseo permission request, only the parts read here (Paseo's `AgentPermissionRequest`). */
 export interface PermissionRequestParts {
@@ -50,12 +51,14 @@ function firstLine(value: unknown): string | null {
 }
 
 /**
- * The delivery in a line: the FINAL summary's first sentence as plain text (TR-048), without its
- * record header, HTML, Markdown or code markup. Null when the owner wrote no summary.
+ * The delivery in a line: the first What changed bullet of a FINAL in the template's format
+ * (TR-061), else the summary's first sentence, as plain text (TR-048), without its record header,
+ * HTML, Markdown or code markup. Null when the owner wrote no summary.
  */
 export function deliveredLine(finalSummary: string | null): string | null {
   if (finalSummary === null) return null;
-  const line = finalSummaryBody(finalSummary)
+  const changed = finalSections(finalSummary)?.changed[0];
+  const line = (changed ?? finalSummaryBody(finalSummary))
     // A fenced block's fences go; a line made only of markup (an HTML block, a rule) reads empty and is skipped.
     .split("\n")
     .filter((part) => !/^\s*(?:```|~~~)/.test(part) && !/^\s*(?:[-*_=]\s*){3,}$/.test(part))

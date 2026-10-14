@@ -2,14 +2,18 @@
  * The judged evidence of a ticket (TR-021): its checks, the review outcome, a row per screenshot (a
  * small thumbnail beside its whole caption and file name, TR-055) and, when incomplete, what is
  * missing. No border, padding or heading of its own: the caller places it
- * (the Ticket tab's Evidence section, the acceptance card in the owner's chat).
+ * (the Ticket tab's Evidence section, the acceptance card in the owner's chat). The Ticket tab shows
+ * the first few screenshots and folds the rest behind "+N more" (TR-061).
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
+import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
-import { Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, Text, View } from "react-native";
 
 import { loadTicket, type EvidenceView } from "../shared/contracts";
+import { foldList } from "../shared/ticket-summary";
 import { ImageThumbnail } from "./image-view";
 import { MONOSPACE } from "./ui";
 import { SPACE } from "./spacing";
@@ -34,12 +38,17 @@ export function EvidenceBlock({
   evidence,
   theme,
   layout = "lines",
+  screenshotLimit = null,
 }: {
   evidence: EvidenceView;
   theme: PluginTheme;
+  /** Show this many screenshots, the rest behind "+N more"; all of them when null. */
+  screenshotLimit?: number | null;
   /** `lines`: a line per check, wrapped whole (the Ticket tab, the acceptance card); `inline`: checks and review on two lines at most. */
   layout?: "inline" | "lines";
 }) {
+  const [allShots, setAllShots] = useState(false);
+  const shots = foldList(evidence.screenshots, screenshotLimit ?? evidence.screenshots.length, allShots);
   const { colors } = theme;
   const text = { color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) };
   const muted = { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption) };
@@ -80,7 +89,7 @@ export function EvidenceBlock({
       ) : null}
       {evidence.screenshots.length === 0 ? null : (
         <View style={{ gap: SPACE.sm }}>
-          {evidence.screenshots.map((shot) => (
+          {shots.shown.map((shot) => (
             <View key={shot.file} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.md }}>
               <View style={{ width: SCREENSHOT_COLUMN, alignItems: "center" }}>
                 {shot.present ? (
@@ -102,6 +111,14 @@ export function EvidenceBlock({
               </View>
             </View>
           ))}
+          {shots.hidden === 0 ? null : (
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded: false }} onPress={() => setAllShots(true)} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs }}>
+              <Icon name="Plus" size={13} color={colors.accent} />
+              <Text style={{ color: colors.accent, fontSize: FONT_SIZE.small, fontWeight: "600" }}>
+                {shots.hidden} more {shots.hidden === 1 ? "screenshot" : "screenshots"}
+              </Text>
+            </Pressable>
+          )}
         </View>
       )}
       {evidence.complete ? null : (

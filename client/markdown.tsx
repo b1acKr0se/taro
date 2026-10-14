@@ -14,9 +14,12 @@
  *
  * Single newlines break lines, so a list the agent wrapped by hand keeps its
  * shape instead of reflowing.
+ *
+ * `foldParagraphs` (the Ticket tab, TR-061) shows a paragraph or list item past
+ * about three lines as three, with "more" to unfold it; chat leaves it off.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 
 import { ImageThumbnail } from "./image-view";
@@ -46,7 +49,12 @@ interface MarkdownStyles {
   tableCell: object;
   tableHeader: object;
   images: object;
+  more: object;
 }
+
+/** A folded paragraph shows this many lines; text shorter than the minimum never needs folding, so it is not measured. */
+const FOLD_LINES = 3;
+const FOLD_MIN_CHARACTERS = 120;
 
 function useMarkdownStyles(theme: PluginTheme, fontSize: number): MarkdownStyles {
   return useMemo(
@@ -80,6 +88,7 @@ function useMarkdownStyles(theme: PluginTheme, fontSize: number): MarkdownStyles
       tableCell: { flex: 1, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.xs },
       tableHeader: { fontWeight: "600" as const },
       images: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "flex-start" as const, gap: SPACE.sm },
+      more: { color: theme.colors.accent, fontSize: fontSize - 1, fontWeight: "600" as const, paddingTop: SPACE.xxs, alignSelf: "flex-start" as const },
     }),
     [theme, fontSize],
   );
@@ -95,6 +104,54 @@ interface InlineContext {
   onOpenFile: ((path: string) => void) | null;
   /** Every image of the message, the set its enlarged view moves through. */
   images: ImageReference[];
+  /** Long paragraphs and list items fold after `FOLD_LINES`. */
+  fold: boolean;
+  /** The text's line height, to tell how many lines a paragraph takes. */
+  lineHeight: number;
+}
+
+/**
+ * A paragraph that shows `FOLD_LINES` lines with "more" when it takes more. An unseen copy of the
+ * whole text, laid out at the same width, tells its height; the frame clips it, so it neither shows
+ * nor lengthens the scroll.
+ */
+function FoldingText({ style, lineHeight, moreStyle, children }: { style: object | object[]; lineHeight: number; moreStyle: object; children: ReactNode }) {
+  const [height, setHeight] = useState(0);
+  const [open, setOpen] = useState(false);
+  const long = height > lineHeight * (FOLD_LINES + 0.5);
+  return (
+    <View style={{ overflow: "hidden" }}>
+      <Text selectable style={style} numberOfLines={long && !open ? FOLD_LINES : undefined}>
+        {children}
+      </Text>
+      <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ position: "absolute", top: 0, left: 0, right: 0, opacity: 0 }}>
+        <Text style={style} onLayout={(event) => setHeight(event.nativeEvent.layout.height)}>
+          {children}
+        </Text>
+      </View>
+      {long ? (
+        <Text accessibilityRole="button" accessibilityState={{ expanded: open }} style={moreStyle} onPress={() => setOpen((current) => !current)}>
+          {open ? "less" : "more"}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+/** A paragraph's text, folded when the context folds and it is long enough to need it. */
+function paragraphText(text: string, style: object | object[], styles: MarkdownStyles, context: InlineContext, key?: number): ReactNode {
+  if (context.fold && text.length >= FOLD_MIN_CHARACTERS) {
+    return (
+      <FoldingText key={key} style={style} lineHeight={context.lineHeight} moreStyle={styles.more}>
+        {renderInline(text, styles, context)}
+      </FoldingText>
+    );
+  }
+  return (
+    <Text key={key} selectable style={style}>
+      {renderInline(text, styles, context)}
+    </Text>
+  );
 }
 
 function renderInline(text: string, styles: MarkdownStyles, context: InlineContext): ReactNode[] {
@@ -156,7 +213,11 @@ function renderBlocks(blocks: Block[], styles: MarkdownStyles, context: InlineCo
             {block.items.map((item, itemIndex) => (
               <View key={itemIndex} style={[styles.listRow, { paddingLeft: item.depth * 14 }]}>
                 <Text style={styles.listMarker}>{item.marker}</Text>
-                <Text style={[styles.paragraph, styles.listText]}>{renderInline(item.text, styles, context)}</Text>
+                {context.fold ? (
+                  <View style={styles.listText}>{paragraphText(item.text, styles.paragraph, styles, context)}</View>
+                ) : (
+                  <Text style={[styles.paragraph, styles.listText]}>{renderInline(item.text, styles, context)}</Text>
+                )}
               </View>
             ))}
           </View>
@@ -210,11 +271,7 @@ function renderBlocks(blocks: Block[], styles: MarkdownStyles, context: InlineCo
           </View>
         );
       default:
-        return (
-          <Text key={index} selectable style={styles.paragraph}>
-            {renderInline(block.text, styles, context)}
-          </Text>
-        );
+        return paragraphText(block.text, styles.paragraph, styles, context, index);
     }
   });
 }
@@ -226,6 +283,7 @@ export function Markdown({
   onOpenLink,
   files = noFiles,
   onOpenFile = null,
+  foldParagraphs = false,
 }: {
   source: string;
   theme: PluginTheme;
@@ -234,12 +292,14 @@ export function Markdown({
   /** Which paths the text names are files in the home — see `./file-links`; none without `onOpenFile`. */
   files?: FileLookup;
   onOpenFile?: ((path: string) => void) | null;
+  /** Fold paragraphs and list items past about three lines behind "more" (the Ticket tab). */
+  foldParagraphs?: boolean;
 }) {
   const styles = useMarkdownStyles(theme, fontSize);
   const blocks = useMemo(() => parseMarkdown(source), [source]);
   const images = useMemo(() => blockImages(blocks), [blocks]);
   // Blocks a little further apart than lines, so paragraphs and lists read as separate thoughts.
-  return <View style={{ gap: SPACE.sm + 2 }}>{renderBlocks(blocks, styles, { theme, lookup: files, onOpenLink, onOpenFile, images })}</View>;
+  return <View style={{ gap: SPACE.sm + 2 }}>{renderBlocks(blocks, styles, { theme, lookup: files, onOpenLink, onOpenFile, images, fold: foldParagraphs, lineHeight: lineHeightFor(fontSize) })}</View>;
 }
 
 /**
@@ -248,5 +308,5 @@ export function Markdown({
  */
 export function MarkdownInline({ text, theme, fontSize = FONT_SIZE.body, onOpenLink }: { text: string; theme: PluginTheme; fontSize?: number; onOpenLink: (url: string) => void }) {
   const styles = useMarkdownStyles(theme, fontSize);
-  return <>{renderInline(text, styles, { theme, lookup: noFiles, onOpenLink, onOpenFile: null, images: [] })}</>;
+  return <>{renderInline(text, styles, { theme, lookup: noFiles, onOpenLink, onOpenFile: null, images: [], fold: false, lineHeight: lineHeightFor(fontSize) })}</>;
 }

@@ -33,12 +33,8 @@ describe("ticketMilestones", () => {
     expect(ticketMilestones(notes)[0]?.text).toBe("first line second line third");
   });
 
-  it("cuts at 200 characters with an ellipsis", () => {
-    const exact = ticketMilestones(`MILESTONE — ${"a".repeat(200)}`)[0]?.text;
-    const over = ticketMilestones(`MILESTONE — ${"a".repeat(201)}`)[0]?.text;
-    expect(exact).toBe("a".repeat(200));
-    expect(over).toBe(`${"a".repeat(199)}…`);
-    expect(over).toHaveLength(200);
+  it("keeps a long record whole", () => {
+    expect(ticketMilestones(`MILESTONE — ${"a".repeat(500)}`)[0]?.text).toBe("a".repeat(500));
   });
 
   it("keeps unknown kinds and note order", () => {
@@ -68,6 +64,14 @@ describe("latestMilestone", () => {
   it("picks the last MILESTONE", () => {
     const notes = "MILESTONE 2026-10-13T10:00Z — one\nREVIEW 2026-10-13T11:00Z — r\nMILESTONE 2026-10-13T12:00Z — two\nEXECUTION — e";
     expect(latestMilestone(notes)).toEqual({ kind: "MILESTONE", time: "2026-10-13T12:00Z", text: "two" });
+  });
+
+  it("cuts the latest at 200 characters with an ellipsis", () => {
+    const exact = latestMilestone(`MILESTONE — ${"a".repeat(200)}`)?.text;
+    const over = latestMilestone(`MILESTONE — ${"a".repeat(201)}`)?.text;
+    expect(exact).toBe("a".repeat(200));
+    expect(over).toBe(`${"a".repeat(199)}…`);
+    expect(over).toHaveLength(200);
   });
 
   it("keeps a continuation line that opens with capitals", () => {

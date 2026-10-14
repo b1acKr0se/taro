@@ -1,9 +1,11 @@
 /**
  * The ticket's milestone timeline as rows (TR-018): a day heading where the date changes, a clock
  * time in a fixed column, the kind in plain words, and colour kept for the records that mark a step
- * forward or trouble, so the eye can follow the ticket down the rail.
+ * forward or trouble, so the eye can follow the ticket down the rail. Newest first, the newest few
+ * shown and the rest folded (TR-061).
  */
 import type { Milestone } from "../shared/milestones";
+import { foldList } from "../shared/ticket-summary";
 import { formatClock, formatDay } from "./format";
 
 /** Records the reader looks for; the rest (dispatch, execution, answers, routine milestones) stay grey. */
@@ -19,6 +21,9 @@ export interface MilestoneRow {
   text: string;
   key: boolean;
 }
+
+/** How many of the newest records show before "Show N older". */
+export const RECENT_MILESTONES = 3;
 
 export function kindLabel(kind: string): string {
   const words = kind.toLowerCase().replace(/[-_]+/g, " ").trim();
@@ -40,4 +45,10 @@ export function milestoneRows(milestones: readonly Milestone[], now: number = Da
       key: KEY_KINDS.has(milestone.kind),
     };
   });
+}
+
+/** The records newest first: the newest `RECENT_MILESTONES` unless `showAll`, and how many older ones are folded. */
+export function recentMilestoneRows(milestones: readonly Milestone[], showAll: boolean, now: number = Date.now()): { rows: MilestoneRow[]; older: number } {
+  const { shown, hidden } = foldList([...milestones].reverse(), RECENT_MILESTONES, showAll);
+  return { rows: milestoneRows(shown, now), older: hidden };
 }

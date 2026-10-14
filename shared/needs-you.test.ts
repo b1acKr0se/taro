@@ -60,6 +60,12 @@ describe("deliveredLine", () => {
     expect(deliveredLine("- First bullet\n- Second")).toBe("First bullet");
   });
 
+  it("reads the first What changed bullet of a FINAL in the template's format", () => {
+    const final = "FINAL 2026-10-14T08:41Z\n\n## What changed\n- The list shows `recent` projects first. Then more.\n- Second\n\nRevision: abc1234 · PR: none";
+    expect(deliveredLine(final)).toBe("The list shows recent projects first.");
+    expect(deliveredLine("FINAL 2026-10-14T08:41Z\nRevision: abc1234 · PR: none\n\n**What changed**\n- First change")).toBe("First change");
+  });
+
   it("keeps a sentence whole when no capital follows the full stop", () => {
     expect(deliveredLine("Bumped to v1.2 and e.g. kept the API")).toBe("Bumped to v1.2 and e.g. kept the API");
   });
