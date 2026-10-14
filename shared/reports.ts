@@ -210,25 +210,42 @@ function readValue(lines: string[], start: number, keyColumn: number, rest: stri
 
 /**
  * An option's `images:` value, one image per line: `file — caption`, as a block scalar, a YAML list
- * (`- file — caption`) under the key, or a single image on the key's own line.
+ * (`- file — caption`, under the key or at its own indent, as YAML allows), or a single image on the
+ * key's own line. `itemColumn` is the option's own `-`: a list item at or before it is the next option.
  */
-function readImages(lines: string[], start: number, keyColumn: number, rest: string): { images: OptionImage[]; next: number } {
+function readImages(lines: string[], start: number, keyColumn: number, itemColumn: number, rest: string): { images: OptionImage[]; next: number } {
   let next = start;
   for (let index = start; index < lines.length; index++) {
     const line = lines[index] ?? "";
     if (line.trim() === "") continue;
-    if (indentOf(line) <= keyColumn) break;
+    const indent = indentOf(line);
+    const sameIndentItem = indent === keyColumn && indent > itemColumn && line.trim().startsWith("-");
+    if (indent <= keyColumn && !sameIndentItem) break;
     next = index + 1;
   }
   const first = BLOCK_HEADER.test(rest.trim()) ? [] : [rest];
   const images = [...first, ...lines.slice(start, next)]
-    .map((line) => unquote(line.trim().replace(/^-\s*/, "")))
-    .filter((line) => line !== "" && !line.startsWith("#"))
+    .map((line) => imageLine(line.trim().replace(/^-\s*/, "")))
+    .filter((line) => line !== "")
     .map((line) => {
       const [file, caption] = splitAtSeparator(line);
-      return { file: file.replace(/^`+|`+$/g, ""), caption, path: null };
+      // Comments are gone already (imageLine): only quotes around the file or the caption are left.
+      const bare = (text: string) => (/^(["']).*\1$/.test(text) ? unquote(text) : text);
+      return { file: bare(file).replace(/^`+|`+$/g, ""), caption: bare(caption), path: null };
     });
   return { images, next };
+}
+
+/** One image line without its YAML dressing: a line quoted whole loses its quotes, a ` #` comment outside quotes goes. */
+function imageLine(line: string): string {
+  const quote = line[0];
+  if (quote === '"' || quote === "'") {
+    const close = line.indexOf(quote, 1);
+    // `"file" — caption` quotes only the file: that is split later, not here.
+    if (close > 0 && /^\s*(?:#.*)?$/.test(line.slice(close + 1))) return line.slice(1, close);
+  }
+  if (line.startsWith("#")) return "";
+  return line.replace(/\s+#.*$/, "").trim();
 }
 
 /**
@@ -242,6 +259,7 @@ export function parseDecisionBody(body: string): ParsedDecision {
   const options: Record<string, string>[] = [];
   const images = new Map<Record<string, string>, OptionImage[]>();
   let inOptions = false;
+  let itemColumn = 0;
   let current: Record<string, string> | null = null;
   const lines = body.split("\n");
   let index = 0;
@@ -269,12 +287,13 @@ export function parseDecisionBody(body: string): ParsedDecision {
     if (!inOptions) continue;
     const item = /^-\s*(.*)$/.exec(line);
     if (item !== null) {
+      itemColumn = indent;
       current = {};
       options.push(current);
       const content = item[1] ?? "";
       const inline = KEY_VALUE.exec(content);
       if (inline?.[1] !== undefined && inline[1].toLowerCase() === "images") {
-        const read = readImages(lines, index, indent + line.length - content.length, inline[2] ?? "");
+        const read = readImages(lines, index, indent + line.length - content.length, indent, inline[2] ?? "");
         images.set(current, read.images);
         index = read.next;
       } else if (inline?.[1] !== undefined) {
@@ -290,7 +309,7 @@ export function parseDecisionBody(body: string): ParsedDecision {
     }
     const pair = KEY_VALUE.exec(line);
     if (pair?.[1] !== undefined && current !== null && pair[1].toLowerCase() === "images") {
-      const read = readImages(lines, index, indent, pair[2] ?? "");
+      const read = readImages(lines, index, indent, itemColumn, pair[2] ?? "");
       images.set(current, read.images);
       index = read.next;
     } else if (pair?.[1] !== undefined && current !== null) {
@@ -340,7 +359,6 @@ export function parseDecisionBody(body: string): ParsedDecision {
   };
 }
 
-/** Whether a block asks exactly what a stored decision asked. */
 /** The options with each image's path in the ticket's evidence folder; a name with a folder in it, or no folder at all, keeps none. */
 export function withImagePaths(options: readonly DecisionOption[], folder: string | null): DecisionOption[] {
   return options.map((option) => ({
@@ -349,6 +367,7 @@ export function withImagePaths(options: readonly DecisionOption[], folder: strin
   }));
 }
 
+/** Whether a block asks exactly what a stored decision asked. */
 export function sameQuestion(left: Pick<ParsedDecision, "question" | "options" | "blocking">, right: Pick<ParsedDecision, "question" | "options" | "blocking">): boolean {
   return (
     left.question === right.question &&

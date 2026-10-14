@@ -277,6 +277,26 @@ describe("parseDecisionBlocks option images (TR-055)", () => {
     expect(decision.options[1]).toMatchObject({ label: "Tabs", images: [image("option-b.png", "tabs")] });
   });
 
+  it("reads a list at the key's own indent as images, ending at the next key or option (review finding)", () => {
+    const decision = block("  - label: Pills", "    images:", "    - a.png — x", "    - b.png — y", "    prompt: Use pills", "  - label: Tabs", "  - images:", "    - c.png — z", "    label: Rail");
+    expect(decision.options.map((option) => [option.label, option.prompt, option.images.map((each) => each.file)])).toEqual([
+      ["Pills", "Use pills", ["a.png", "b.png"]],
+      ["Tabs", "Tabs", []],
+      ["Rail", "Rail", ["c.png"]],
+    ]);
+    expect(decision.problems).toEqual([]);
+  });
+
+  it("drops quotes and comments the YAML way", () => {
+    const decision = block("  - label: Pills", "    images:", '      - "b.png" — on a phone', "      - 'a.png — on a desktop # not a comment'  # a comment", "      - c.png — wide  # a comment", "      # a commented-out image", "      - d.png — 'quoted caption'");
+    expect(decision.options[0]?.images).toEqual([image("b.png", "on a phone"), image("a.png", "on a desktop # not a comment"), image("c.png", "wide"), image("d.png", "quoted caption")]);
+  });
+
+  it("keeps one image per line in a > block too", () => {
+    const decision = block("  - label: Pills", "    images: >", "      a.png — on a phone", "      b.png — on a desktop");
+    expect(decision.options[0]?.images).toEqual([image("a.png", "on a phone"), image("b.png", "on a desktop")]);
+  });
+
   it("asks for a caption and a plain file name", () => {
     const decision = block("  - label: Pills", "    images: |", "      option-a.png", "      ../elsewhere/b.png — escapes");
     expect(decision.problems).toEqual(["image option-a.png of option Pills has no caption", "image ../elsewhere/b.png of option Pills is not a plain file name (no folders)"]);

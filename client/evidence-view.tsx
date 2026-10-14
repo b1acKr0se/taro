@@ -1,6 +1,7 @@
 /**
- * The judged evidence of a ticket (TR-021): its checks, the review outcome, a row per screenshot
- * (a small thumbnail beside its whole caption and file name, TR-055) and, when incomplete, what is missing. No border, padding or heading of its own: the caller places it
+ * The judged evidence of a ticket (TR-021): its checks, the review outcome, a row per screenshot (a
+ * small thumbnail beside its whole caption and file name, TR-055) and, when incomplete, what is
+ * missing. No border, padding or heading of its own: the caller places it
  * (the Ticket tab's Evidence section, the acceptance card in the owner's chat).
  */
 import type { PluginTheme } from "@getpaseo/plugin";
