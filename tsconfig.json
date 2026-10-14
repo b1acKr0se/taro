@@ -10,6 +10,7 @@
     "exactOptionalPropertyTypes": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["node"]
   },
   "include": ["index.server.ts", "index.client.tsx", "client/**/*", "server/**/*", "shared/**/*"]
