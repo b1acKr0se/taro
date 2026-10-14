@@ -18,6 +18,7 @@ const owner = {
   contextUsedTokens: null,
   contextMaxTokens: null,
   createdAt: null,
+  turnStartedAt: null,
 };
 
 const status = { state: "waiting" as const, text: "implementer building NA-027.01", at: "2026-01-01T11:55:00Z" };
@@ -75,6 +76,7 @@ function card(parts: Partial<Card>): Card {
     subagents: [],
     pastAgents: [],
     latestMilestone: null,
+    activity: null,
     evidence: null,
     accepted: null,
     permission: null,
@@ -107,6 +109,81 @@ describe("cardNowLine", () => {
 
   it("ignores an idle subagent", () => {
     expect(cardNowLine(card({ lastStatus: status, subagents: [implementer({ status: "idle" })] }), NOW)?.kind).toBe("status");
+  });
+
+  // TR-080: mid-turn the end-of-turn status is the previous turn's ("waiting: scope approval" 9 minutes after the approval).
+  describe("while the owner works", () => {
+    const running = { ...owner, status: "running", turnStartedAt: "2026-01-01T11:51:00Z" };
+    const approval = { state: "waiting" as const, text: "scope approval for NA-027", at: "2026-01-01T11:50:00Z" };
+
+    it("never shows the previous turn's waiting status, only that it works and since when", () => {
+      expect(cardNowLine(card({ owner: running, lastStatus: approval }), NOW)).toEqual({ kind: "working", headline: "Working", detail: "started 9m ago" });
+    });
+
+    it("says what it is doing now, from its latest tool call", () => {
+      const activity = { text: "running tests", at: "2026-01-01T11:59:30Z" };
+      expect(cardNowLine(card({ owner: running, lastStatus: approval, activity }), NOW)).toEqual({ kind: "working", headline: "Running tests", detail: "Working · just now" });
+    });
+
+    it("leads with this turn's milestone, the current tool beside it", () => {
+      const latestMilestone = { kind: "MILESTONE", time: "2026-01-01T11:54Z", text: "fix built, tests green; next: screenshots" };
+      const activity = { text: "taking screenshots", at: "2026-01-01T11:59:30Z" };
+      expect(cardNowLine(card({ owner: running, lastStatus: approval, latestMilestone, activity }), NOW)).toEqual({
+        kind: "working",
+        headline: "Fix built, tests green; next: screenshots",
+        detail: "Working · 6m ago · now taking screenshots",
+      });
+    });
+
+    it("counts a milestone stamped in the minute the turn started as this turn's", () => {
+      const latestMilestone = { kind: "MILESTONE", time: "2026-01-01T11:51Z", text: "approved; building" };
+      expect(cardNowLine(card({ owner: { ...running, turnStartedAt: "2026-01-01T11:51:40Z" }, latestMilestone }), NOW)?.headline).toBe("Approved; building");
+    });
+
+    it("ignores a milestone and a tool call from before the turn", () => {
+      const latestMilestone = { kind: "MILESTONE", time: "2026-01-01T11:40Z", text: "plan written" };
+      const activity = { text: "updating the ticket", at: "2026-01-01T11:49:00Z" };
+      expect(cardNowLine(card({ owner: running, lastStatus: approval, latestMilestone, activity }), NOW)).toEqual({ kind: "working", headline: "Working", detail: "started 9m ago" });
+    });
+
+    it("without the turn's start, takes what is newer than the last status line", () => {
+      const unknownStart = { ...running, turnStartedAt: null };
+      const latestMilestone = { kind: "MILESTONE", time: "2026-01-01T11:40Z", text: "plan written" };
+      expect(cardNowLine(card({ owner: unknownStart, lastStatus: approval, latestMilestone }), NOW)).toEqual({ kind: "working", headline: "Working", detail: null });
+      const activity = { text: "editing card-now.ts", at: "2026-01-01T11:58:00Z" };
+      expect(cardNowLine(card({ owner: unknownStart, lastStatus: approval, activity }), NOW)).toMatchObject({ headline: "Editing card-now.ts", detail: "Working · 2m ago" });
+    });
+
+    it("still says what it waits for when a permission is pending", () => {
+      const permission = { title: "Allow Bash?", detail: "npm install", id: "p1" };
+      const asking = { ...running, pendingPermissions: 1 };
+      expect(cardNowLine(card({ owner: asking, lastStatus: approval, permission, activity: { text: "running tests", at: "2026-01-01T11:59:00Z" } }), NOW)).toMatchObject({
+        kind: "call",
+        headline: "Allow Bash?",
+        action: "Review",
+      });
+    });
+
+    it("still asks an open question first, with when it was asked", () => {
+      expect(cardNowLine(card({ owner: running, decisions: [decision({ askedAt: "2026-01-01T11:57:00Z" })] }), NOW)).toMatchObject({ kind: "call", detail: "asked 3m ago" });
+    });
+  });
+
+  describe("while the owner is idle", () => {
+    it("shows a status line given after its milestone", () => {
+      const latestMilestone = { kind: "MILESTONE", time: "2026-01-01T11:55Z", text: "tests green" };
+      expect(cardNowLine(card({ lastStatus: status, latestMilestone }), NOW)).toMatchObject({ kind: "status", headline: "Implementer building NA-027.01", detail: "Waiting · 5m ago" });
+    });
+
+    it("shows a milestone newer than the status line instead, marked idle", () => {
+      const latestMilestone = { kind: "MILESTONE", time: "2026-01-01T11:57Z", text: "review fixes pushed" };
+      expect(cardNowLine(card({ lastStatus: status, latestMilestone }), NOW)).toEqual({ kind: "milestone", headline: "Review fixes pushed", detail: "Idle · 3m ago" });
+      expect(cardNowLine(card({ latestMilestone }), NOW)?.kind).toBe("milestone");
+    });
+
+    it("ignores a milestone without a time", () => {
+      expect(cardNowLine(card({ lastStatus: status, latestMilestone: { kind: "MILESTONE", time: null, text: "x" } }), NOW)?.kind).toBe("status");
+    });
   });
 
   it("prefers what the card asks of you over a running subagent, naming every other ask in the detail", () => {

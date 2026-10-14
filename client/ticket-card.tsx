@@ -105,8 +105,9 @@ export function TicketCard({
   );
 
   const owner = card.owner;
+  // A queued child's owner is its parent's, busy with other work (TR-080).
   const liveColor =
-    owner === null
+    owner === null || card.column === "queued"
       ? colors.foregroundMuted
       : owner.status === "running" || owner.status === "initializing"
         ? colors.statusSuccess
@@ -174,6 +175,10 @@ export function TicketCard({
         return { icon: "GitMerge", color: colors.statusSuccess, headline: styles.strong };
       case "subagent":
         return { icon: "Hourglass", color: colors.statusSuccess, headline: { color: colors.foreground } };
+      case "working":
+        return { icon: "Activity", color: colors.statusSuccess, headline: { color: colors.foreground } };
+      case "milestone":
+        return { icon: "Flag", color: colors.foregroundMuted, headline: null };
       case "elsewhere":
         return { icon: "Monitor", color: colors.foregroundMuted, headline: null };
       case "status": {

@@ -1,7 +1,8 @@
 /**
  * What a board card says is happening now (TR-026, TR-031): the first of why it stalled, what it asks
  * of you, that it was accepted and is merging, where a teammate's owner runs, the subagent the owner
- * waits on, or the owner's last status line. Each is a headline read whole (it wraps, never cut
+ * waits on, what the running owner is doing (TR-080), or the idle owner's last status line or newer
+ * milestone. Each is a headline read whole (it wraps, never cut
  * mid-fact), a muted detail under it, and for an ask the action that opens it. Pure.
  */
 import type { Card } from "../shared/contracts";
@@ -23,6 +24,8 @@ export type NowLine =
   | ({ kind: "accepted" } & Lines)
   | ({ kind: "elsewhere" } & Lines)
   | ({ kind: "subagent" } & Lines)
+  | ({ kind: "working" } & Lines)
+  | ({ kind: "milestone" } & Lines)
   | ({ kind: "status"; state: StatusState } & Lines);
 
 export function cardNowLine(card: Card, now: number): NowLine | null {
@@ -45,9 +48,51 @@ export function cardNowLine(card: Card, now: number): NowLine | null {
     const parts = [waiting.running === null ? null : `running ${waiting.running}`, waiting.more > 0 ? `${waiting.more} more running` : null];
     return { kind: "subagent", headline: waiting.text, detail: joined(parts) };
   }
+  const owner = card.owner;
+  if (owner !== null && (owner.status === "running" || owner.status === "initializing")) return { kind: "working", ...workingLines(card, owner.turnStartedAt, now) };
+  return restingLine(card, now);
+}
+
+/**
+ * Mid-turn (TR-080): the end-of-turn status is the previous turn's, so the line is this turn's newest
+ * milestone, else the latest tool call, else plain "Working", with its age.
+ */
+function workingLines(card: Card, turnStartedAt: string | null, now: number): Lines {
+  // Without the turn's start, the previous turn ended no earlier than its status line.
+  const since = turnStartedAt ?? card.lastStatus?.at ?? null;
+  const milestone = card.latestMilestone;
+  const milestoneNow = milestone !== null && milestone.time !== null && notBefore(milestone.time, since) ? { text: milestone.text, at: milestone.time } : null;
+  const activity = card.activity !== null && notBefore(card.activity.at, since) ? card.activity : null;
+  if (milestoneNow !== null) return { headline: capitalised(milestoneNow.text), detail: joined(["Working", ago(milestoneNow.at, now), activity === null ? null : `now ${activity.text}`]) };
+  if (activity !== null) return { headline: capitalised(activity.text), detail: joined(["Working", ago(activity.at, now)]) };
+  const started = turnStartedAt === null ? null : ago(turnStartedAt, now);
+  return { headline: "Working", detail: started === null ? null : `started ${started}` };
+}
+
+/** Idle: the last status line, unless a milestone written after it says something newer. */
+function restingLine(card: Card, now: number): NowLine | null {
   const last = card.lastStatus;
+  const milestone = card.latestMilestone;
+  const newer = milestone !== null && milestone.time !== null && (last === null || after(milestone.time, last.at)) ? milestone : null;
+  if (newer !== null && newer.time !== null) return { kind: "milestone", headline: capitalised(newer.text), detail: joined(["Idle", ago(newer.time, now)]) };
   if (last !== null) return { kind: "status", state: last.state, headline: capitalised(last.text), detail: joined([capitalised(last.state), ago(last.at, now)]) };
   return null;
+}
+
+// Milestones are stamped in whole minutes, so times compare by the minute: a milestone stamped in the
+// minute a turn started belongs to that turn, one stamped in the minute a status was given does not
+// replace it.
+function minuteOf(iso: string): number {
+  const at = Date.parse(iso);
+  return Number.isNaN(at) ? Number.NaN : Math.floor(at / 60_000);
+}
+
+function notBefore(at: string, since: string | null): boolean {
+  return since === null || minuteOf(at) >= minuteOf(since);
+}
+
+function after(at: string, than: string): boolean {
+  return minuteOf(at) > minuteOf(than);
 }
 
 function callLines(call: CardCall, others: readonly CardCall[], now: number): Lines {

@@ -106,12 +106,15 @@ export interface TicketAgents<Agent> {
  * The live agents on a ticket, from agents grouped by their ticket label. A child has no owner of
  * its own (decision 32): its parent's owner works it through subagents labelled with the child, or
  * labelled with the parent and titled with the child's id ("TR-1.01 · implementer: …"), and a busy
- * one of those places the card, so the child is Stalled only when none of them is alive.
+ * one of those places the card, so the child is Stalled only when none of them is alive. A child
+ * not started yet (`status` Backlog or Ready) is placed only by its own subagents, never by the
+ * parent's owner busy with other work.
  */
 export function ticketAgents<Agent extends JoinedAgent>(
   ticketId: string,
   parentId: string | null,
   byTicket: ReadonlyMap<string, readonly Agent[]>,
+  status?: string,
 ): TicketAgents<Agent> {
   const own = byTicket.get(ticketId) ?? [];
   const parents = parentId === null ? [] : byTicket.get(parentId) ?? [];
@@ -124,7 +127,14 @@ export function ticketAgents<Agent extends JoinedAgent>(
   if (parentId === null) return { owner, subagents, columnAgent: owner };
   const asking = newest(subagents.filter((agent) => agent.pendingPermissions.length > 0));
   const running = newest(subagents.filter((agent) => agent.status === "running" || agent.status === "initializing"));
-  return { owner, subagents, columnAgent: asking ?? running ?? owner };
+  // A child not started yet is not what the parent's owner works on (TR-080): only its own subagents place it.
+  const placing = status === undefined || hasStarted(status) ? owner : null;
+  return { owner, subagents, columnAgent: asking ?? running ?? placing };
+}
+
+/** A ticket some agent has taken up: under way, delivered, blocked or finished; Backlog and Ready are not. */
+export function hasStarted(status: string): boolean {
+  return UNDER_WAY.has(status) || status === "Awaiting acceptance" || status === "Blocked" || status === "Done" || status === "Cancelled";
 }
 
 function newestOwner<Agent extends JoinedAgent>(agents: readonly Agent[]): Agent | null {

@@ -16,6 +16,7 @@ const owner = {
   contextUsedTokens: null,
   contextMaxTokens: null,
   createdAt: null,
+  turnStartedAt: null,
 };
 
 function decision(parts: Partial<StoredDecision>): StoredDecision {
@@ -67,6 +68,7 @@ function card(parts: Partial<Card>): Card {
     subagents: [],
     pastAgents: [],
     latestMilestone: null,
+    activity: null,
     evidence: null,
     accepted: null,
     permission: null,

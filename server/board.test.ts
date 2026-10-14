@@ -103,6 +103,45 @@ describe("loadBoard", () => {
     expect((await loadBoard({} as PaseoApi, state([]), "taro")).cards.find((card) => card.id === "TR-1.01")?.column).toBe("stalled");
   });
 
+  // TR-080: children not started stayed in Working with the parent's status line while the parent's owner ran.
+  it("keeps a child not started in Queued with no status line, whatever the parent's owner is doing", async () => {
+    const child = (id: string, status: string) => ({ ...ticket(id, status), parentTaskId: "TR-1" });
+    vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "In Progress"), child("TR-1.01", "In Progress"), child("TR-1.02", "Backlog"), child("TR-1.03", "Ready")] as unknown as Awaited<
+      ReturnType<typeof listTickets>
+    >);
+    const lastStatus = { state: "blocked", text: "reviewer on TR-1.01 and implementer building TR-1.02", at: "2026-10-13T14:40:00Z" };
+    const states = { allDecisions: async () => [], trackerProtection: async () => null, allAgents: async () => ({ "owner-live": { lastStatus, stalled: true, stalledReason: "crashed" } }) } as unknown as PluginState;
+    const columns = async (owner: Partial<PaseoAgent>) => {
+      vi.mocked(projectAgents).mockResolvedValue([{ ...agent("owner-live", "owner", "TR-1", "2026-10-13T14:50:00Z"), ...owner } as PaseoAgent]);
+      invalidateBoards();
+      const board = await loadBoard({ agents: { ref: () => ({ timeline: { refetch: async () => ({ entries: [] }) } }) } } as unknown as PaseoApi, states, "taro");
+      return Object.fromEntries(board.cards.map((card) => [card.id, [card.column, card.lastStatus?.text ?? null]]));
+    };
+    for (const owner of [{ status: "running" }, { status: "idle" }, { status: "running", pendingPermissions: [{ id: "p1", name: "Bash", kind: "tool", input: null }] }]) {
+      const placed = await columns(owner as Partial<PaseoAgent>);
+      expect(placed["TR-1.02"]).toEqual(["queued", null]);
+      expect(placed["TR-1.03"]).toEqual(["queued", null]);
+      expect(placed["TR-1.01"]?.[1]).toBe(lastStatus.text);
+    }
+    expect((await columns({ status: "running" }))["TR-1.01"]?.[0]).toBe("working");
+  });
+
+  it("reads a running owner's latest tool call as its activity, and none for an idle one", async () => {
+    const refetch = vi.fn(async () => ({
+      entries: [
+        { item: { type: "tool_call", name: "Bash", detail: { type: "shell", command: "npm test" } }, timestamp: "2026-10-13T14:59:00Z" },
+        { item: { type: "assistant_message", text: "Tests are running." }, timestamp: "2026-10-13T14:59:30Z" },
+      ],
+    }));
+    const paseo = { agents: { ref: () => ({ timeline: { refetch } }) } } as unknown as PaseoApi;
+    vi.mocked(projectAgents).mockResolvedValue([{ ...agent("owner-live", "owner", "TR-1", "2026-10-13T14:50:00Z"), status: "running" } as PaseoAgent]);
+    expect((await loadBoard(paseo, state([]), "taro")).cards[0]?.activity).toEqual({ text: "running tests", at: "2026-10-13T14:59:00Z" });
+    vi.mocked(projectAgents).mockResolvedValue([agent("owner-live", "owner", "TR-1", "2026-10-13T14:50:00Z")]);
+    invalidateBoards();
+    expect((await loadBoard(paseo, state([]), "taro")).cards[0]?.activity).toBeNull();
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
   it("judges evidence for Awaiting acceptance cards only", async () => {
     vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "Awaiting acceptance"), ticket("TR-3", "In Progress")] as unknown as Awaited<ReturnType<typeof listTickets>>);
     vi.mocked(viewTicket).mockResolvedValue({

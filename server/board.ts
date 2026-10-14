@@ -5,7 +5,8 @@
 import { stat } from "node:fs/promises";
 import { hostname } from "node:os";
 
-import { boardColumn, complexityOf, ticketAgents } from "../shared/board";
+import { latestActivity, type Activity } from "../shared/activity";
+import { boardColumn, complexityOf, hasStarted, ticketAgents } from "../shared/board";
 import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
 import { acceptedRecord, executionMachine, pullRequestUrl, type AcceptedRecord } from "../shared/execution";
 import type { Board, Card, TicketDetailView } from "../shared/contracts";
@@ -89,6 +90,27 @@ function cachedArchivedAgents(paseo: PaseoApi, project: string): Promise<PaseoAg
   return agents;
 }
 
+/**
+ * A running owner's latest tool call (TR-080), from a short tail of its timeline: one read per running
+ * owner, reused for a few seconds, so the board's polling stays cheap (TR-069).
+ */
+const ACTIVITY_CACHE_MS = 10_000;
+const activityCache = new Map<string, { at: number; activity: Promise<Activity | null> }>();
+
+function cachedActivity(paseo: PaseoApi, agent: PaseoAgent | null): Promise<Activity | null> {
+  if (agent === null || (agent.status !== "running" && agent.status !== "initializing")) return Promise.resolve(null);
+  const cached = activityCache.get(agent.id);
+  if (cached !== undefined && Date.now() - cached.at < ACTIVITY_CACHE_MS) return cached.activity;
+  const activity = paseo.agents
+    .ref(agent.id)
+    .timeline.refetch({ direction: "tail", limit: 12, projection: "projected" })
+    .then((page) => latestActivity(page.entries))
+    .catch(() => null);
+  activityCache.set(agent.id, { at: Date.now(), activity });
+  for (const [id, entry] of activityCache) if (Date.now() - entry.at > ACTIVITY_CACHE_MS) activityCache.delete(id);
+  return activity;
+}
+
 /** One read serves every caller for a moment: the screen, the Inbox and the sidebar all poll. */
 const BOARD_CACHE_MS = 2_000;
 const boardCache = new Map<string, { at: number; board: Promise<Board> }>();
@@ -109,6 +131,7 @@ export function invalidateBoards(): void {
   boardCache.clear();
   factsCache.clear();
   archivedCache.clear();
+  activityCache.clear();
 }
 
 /** What the owner's first pending permission asks, for its card. */
@@ -149,7 +172,9 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
 
   const cards: Card[] = await Promise.all(
     tickets.map(async (ticket) => {
-      const { owner, subagents: liveSubagents, columnAgent } = ticketAgents(ticket.id, ticket.parentTaskId, byTicket);
+      const { owner, subagents: liveSubagents, columnAgent } = ticketAgents(ticket.id, ticket.parentTaskId, byTicket, ticket.status);
+      // A child not started has no status of its own: its parent owner's line is about other work (TR-080).
+      const ownLine = ticket.parentTaskId === null || hasStarted(ticket.status);
       const subagents = liveSubagents.flatMap((agent) => {
         const role = roleFromLabel(agent.labels[TARO_LABELS.role]);
         return role !== null && isSubagentRole(role) ? [{ ...agentBrief(agent), role }] : [];
@@ -184,10 +209,10 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
           status: ticket.status,
           ownerElsewhere: elsewhere !== null,
           agent: columnAgent === null ? null : { status: columnAgent.status, pendingPermissions: columnAgent.pendingPermissions.length },
-          lastStatus: ownerState?.lastStatus?.state ?? null,
+          lastStatus: ownLine ? ownerState?.lastStatus?.state ?? null : null,
           openBlockingDecisions: ticketDecisions.filter((decision) => decision.blocking).length,
           stalledAfterNudge: ownerState?.stalled ?? false,
-          crashedOut: ownerState?.stalled === true && ownerState.stalledReason !== null,
+          crashedOut: ownLine && ownerState?.stalled === true && ownerState.stalledReason !== null,
           accepted: accepted !== null,
         }),
         labels: ticket.labels,
@@ -201,13 +226,14 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
         owner: owner === null ? null : agentBrief(owner),
         ownerElsewhere: elsewhere,
         pullRequest: facts?.pullRequest ?? null,
-        lastStatus: ownerState?.lastStatus ?? null,
+        lastStatus: ownLine ? ownerState?.lastStatus ?? null : null,
         stalled: ownerState?.stalled ?? false,
         stalledReason: ownerState?.stalled === true ? ownerState.stalledReason : null,
         decisions: ticketDecisions,
         subagents,
         pastAgents: past,
         latestMilestone: UNDER_WAY.has(ticket.status) ? facts?.latestMilestone ?? null : null,
+        activity: UNDER_WAY.has(ticket.status) ? await cachedActivity(paseo, owner) : null,
         evidence,
         accepted,
         permission: firstPermission(owner),

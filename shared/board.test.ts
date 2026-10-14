@@ -114,6 +114,26 @@ describe("ticketAgents", () => {
     expect(childColumn([agent("owner", "owner", "DEMO-1", "running", "DEMO-1 · Parent work")]).column).toBe("working");
   });
 
+  // TR-080: children not started flipped between Queued and Working with the parent owner's turns.
+  it("never places a child not started by the parent's owner, only by its own subagents", () => {
+    const placed = (status: string, agents: (JoinedAgent & { id: string })[]) => {
+      const joined = ticketAgents("DEMO-1.01", "DEMO-1", grouped(agents), status);
+      const placing = joined.columnAgent;
+      return boardColumn({ ...base, status, lastStatus: null, agent: placing === null ? null : { status: placing.status, pendingPermissions: placing.pendingPermissions.length } });
+    };
+    const running = agent("owner", "owner", "DEMO-1", "running", "DEMO-1 · Parent work");
+    const asking = agent("owner", "owner", "DEMO-1", "running", "DEMO-1 · Parent work", undefined, [{}]);
+    for (const status of ["Backlog", "Ready"]) {
+      expect(placed(status, [running])).toBe("queued");
+      expect(placed(status, [asking])).toBe("queued");
+      expect(placed(status, [parentOwner])).toBe("queued");
+      expect(placed(status, [running, agent("builder", "implementer", "DEMO-1", "running", "DEMO-1.01 · implementer: building the list")])).toBe("working");
+    }
+    expect(placed("In Progress", [running])).toBe("working");
+    expect(placed("In Progress", [asking])).toBe("needs-you");
+    expect(ticketAgents("DEMO-1", null, grouped([running]), "Backlog").columnAgent?.id).toBe("owner");
+  });
+
   it("calls a child Stalled only when neither the parent's owner nor a subagent for it is alive", () => {
     expect(childColumn([]).column).toBe("stalled");
     expect(childColumn([agent("owner", "owner", "DEMO-1", "closed", "DEMO-1 · Parent work")]).column).toBe("stalled");

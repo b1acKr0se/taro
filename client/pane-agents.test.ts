@@ -17,6 +17,7 @@ function brief(id: string, title: string | null = null): AgentBrief {
     contextUsedTokens: null,
     contextMaxTokens: null,
     createdAt: null,
+    turnStartedAt: null,
   };
 }
 

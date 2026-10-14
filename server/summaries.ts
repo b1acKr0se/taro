@@ -16,6 +16,7 @@ export function agentBrief(agent: PaseoAgent): AgentBrief {
     contextUsedTokens: usage?.contextWindowUsedTokens ?? null,
     contextMaxTokens: usage?.contextWindowMaxTokens ?? null,
     createdAt: agent.createdAt ?? null,
+    turnStartedAt: agent.activeTurn?.startedAt ?? null,
   };
 }
 

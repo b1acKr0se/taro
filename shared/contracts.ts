@@ -5,6 +5,7 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
+import { ActivitySchema } from "./activity";
 import { OutgoingAttachmentsSchema } from "./attachments";
 import { ColumnIdSchema } from "./board";
 import { MilestoneSchema } from "./milestones";
@@ -29,6 +30,8 @@ export const AgentBriefSchema = z.object({
   contextMaxTokens: z.number().nullable(),
   /** When Paseo created it: a subagent's running time on the card and in the owner pane. */
   createdAt: z.string().nullable().default(null),
+  /** When its current turn started, while one runs (TR-080): what it said before is the previous turn's. */
+  turnStartedAt: z.string().nullable().default(null),
 });
 export type AgentBrief = z.infer<typeof AgentBriefSchema>;
 
@@ -214,6 +217,8 @@ export const CardSchema = z.object({
   pastAgents: z.array(AgentBriefSchema.extend({ role: z.enum(["owner", ...SUBAGENT_ROLES]), archivedAt: z.string() })).default([]),
   /** The newest MILESTONE record, read for tickets that are under way. */
   latestMilestone: MilestoneSchema.nullable().default(null),
+  /** The running owner's latest tool call in a few words (TR-080); null while it is idle. */
+  activity: ActivitySchema.nullable().default(null),
   /** The judged evidence, set only while the ticket is Awaiting acceptance. */
   evidence: EvidenceViewSchema.nullable().default(null),
   /** Set from the ACCEPTED record while the ticket is still Awaiting acceptance: the owner is merging (TR-031). */
