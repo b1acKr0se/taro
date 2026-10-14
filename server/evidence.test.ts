@@ -17,6 +17,7 @@ const complete = [
   "check: npm test — 3 passed",
   "review: self-review — clean",
   "ux: own pass — nothing a user would reject",
+  "coverage: the list — list-phone.png",
   "screenshot: list-phone.png — the list on a phone",
 ].join("\n");
 
@@ -47,6 +48,14 @@ describe("ticketEvidence", () => {
     const evidence = await ticketEvidence("notes", "NA-1", complete, []);
     expect(evidence.complete).toBe(true);
     expect(evidence.screenshots[0]?.path).toBe(join(home, "plugin-data", "taro", "evidence", "notes", "NA-1", "list-phone.png"));
+  });
+
+  it("skips the coverage map only for a ticket already Done (TR-079)", async () => {
+    await addShot("list-phone.png");
+    const unmapped = complete.replace("coverage: the list — list-phone.png\n", "");
+    expect((await ticketEvidence("notes", "NA-1", unmapped, [], "Awaiting acceptance")).missing).toEqual(["the coverage map (coverage: <section or state> — <screenshot>)"]);
+    expect((await ticketEvidence("notes", "NA-1", unmapped, [], "Done")).complete).toBe(true);
+    await expect(requireCompleteEvidence("notes", "NA-1", unmapped, [])).rejects.toThrow(/coverage map/);
   });
 
   it("names the screenshot file that is not there", async () => {

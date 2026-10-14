@@ -16,7 +16,7 @@ describe("parseEvidence and judgeEvidence", () => {
 
   it("completes a change with a check, a review and an existing screenshot", () => {
     const judged = judge(
-      record("check: npm test — 37 files, 360 passed", "review: one independent round (Sonnet) — 1 blocker, fixed", "ux: own pass fixed 2; reviewer — nothing open", "screenshot: board-phone.png — the board on a phone"),
+      record("check: npm test — 37 files, 360 passed", "review: one independent round (Sonnet) — 1 blocker, fixed", "ux: own pass fixed 2; reviewer — nothing open", "coverage: the board — board-phone.png", "screenshot: board-phone.png — the board on a phone"),
       change(["board-phone.png"]),
     );
     expect(judged).toEqual({
@@ -25,6 +25,7 @@ describe("parseEvidence and judgeEvidence", () => {
       screenshots: [{ file: "board-phone.png", caption: "the board on a phone", present: true }],
       screenshotsNone: null,
       ux: "own pass fixed 2; reviewer — nothing open",
+      coverage: [{ section: "the board", files: ["board-phone.png"] }],
       missing: [],
       complete: true,
     });
@@ -66,7 +67,7 @@ describe("parseEvidence and judgeEvidence", () => {
   });
 
   it("asks for the visual check whenever screenshots are listed (TR-060)", () => {
-    const shot = "screenshot: a.png — the list on a phone";
+    const shot = "coverage: the list — a.png\nscreenshot: a.png — the list on a phone";
     expect(judge(record("check: npm test — ok", "review: self", shot), change(["a.png"])).missing).toEqual(["the visual check (ux:)"]);
     expect(judge(record("check: npm test — ok", "review: self", "ux:", shot), change(["a.png"])).missing).toEqual(["the visual check (ux:)"]);
     // In capitals and bulleted, it still belongs to the record.
@@ -83,22 +84,22 @@ describe("parseEvidence and judgeEvidence", () => {
 
   it("asks for a caption on every screenshot, with or without a separator (TR-055)", () => {
     for (const line of ["screenshot: a.png", "screenshot: a.png — ", "screenshot: a.png -"]) {
-      const judged = judge(record("check: npm test — ok", "review: self", "ux: nothing open", line), change(["a.png"]));
+      const judged = judge(record("check: npm test — ok", "review: self", "ux: nothing open", "coverage: the list — a.png", line), change(["a.png"]));
       expect(judged.complete).toBe(false);
       expect(judged.missing).toEqual(["a caption for screenshot a.png"]);
     }
-    expect(judge(record("check: npm test — ok", "review: self", "ux: own pass fixed 2; reviewer — nothing open", "screenshot: b.png"), change([])).missing).toEqual(["a caption for screenshot b.png", "screenshot file b.png"]);
+    expect(judge(record("check: npm test — ok", "review: self", "ux: own pass fixed 2; reviewer — nothing open", "coverage: the list — b.png", "screenshot: b.png"), change([])).missing).toEqual(["a caption for screenshot b.png", "screenshot file b.png"]);
   });
 
   it("names a missing screenshot file, and requires every listed one", () => {
-    const notes = record("check: npm test — ok", "review: self", "ux: own pass fixed 2; reviewer — nothing open", "screenshot: a.png — one", "screenshot: b.png — two");
+    const notes = record("check: npm test — ok", "review: self", "ux: own pass fixed 2; reviewer — nothing open", "coverage: the list — a.png, b.png", "screenshot: a.png — one", "screenshot: b.png — two");
     expect(judge(notes, change(["a.png"])).missing).toEqual(["screenshot file b.png"]);
     expect(judge(notes, change(["a.png", "b.png"])).complete).toBe(true);
   });
 
   it("rejects a file name with a folder or `..`", () => {
     for (const file of ["sub/a.png", "..\\a.png", "../a.png", "a..png"]) {
-      const judged = judge(record("check: x — ok", "review: self", "ux: own pass fixed 2; reviewer — nothing open", `screenshot: ${file} — c`), change([file, "a.png"]));
+      const judged = judge(record("check: x — ok", "review: self", "ux: own pass fixed 2; reviewer — nothing open", `coverage: the list — ${file}`, `screenshot: ${file} — c`), change([file, "a.png"]));
       expect(judged.complete).toBe(false);
       expect(judged.screenshots[0]?.present).toBe(false);
       expect(judged.missing[0]).toContain("plain file name");
@@ -115,7 +116,7 @@ describe("parseEvidence and judgeEvidence", () => {
   });
 
   it("holds a listed screenshot to its file even beside `none`", () => {
-    const notes = record("check: x — ok", "review: self", "ux: own pass fixed 2; reviewer — nothing open", "screenshots: none — headless", "screenshot: a.png — c");
+    const notes = record("check: x — ok", "review: self", "ux: own pass fixed 2; reviewer — nothing open", "screenshots: none — headless", "coverage: the list — a.png", "screenshot: a.png — c");
     expect(judge(notes).missing).toEqual(["screenshot file a.png"]);
     expect(judge(notes, change(["a.png"])).complete).toBe(true);
   });
@@ -135,6 +136,31 @@ describe("parseEvidence and judgeEvidence", () => {
     }
   });
 
+  it("asks for the coverage map whenever screenshots are listed, and holds it to them (TR-079)", () => {
+    const base = ["check: npm test — ok", "review: self", "ux: values start at one x; placeholders: none", "screenshot: parent-phone.png — a parent with children", "screenshot: parent-desktop.png — the same, wide"];
+    const files = change(["parent-phone.png", "parent-desktop.png"]);
+    expect(judge(record(...base), files).missing).toEqual(["the coverage map (coverage: <section or state> — <screenshot>)"]);
+    // A section with no screenshot is named, as is a file the record never lists.
+    expect(judge(record(...base, "coverage: Children — none", "coverage: Summary"), files).missing).toEqual(["a screenshot for Children (coverage:)", "a screenshot for Summary (coverage:)"]);
+    expect(judge(record(...base, "coverage: Children — parent-tablet.png"), files).missing).toEqual(["a screenshot: line for parent-tablet.png, which the coverage of Children names"]);
+    // Commas, "and", "+", backticks and capitals all read; a dash inside the section stays in it.
+    const judged = judge(record(...base, "- COVERAGE: Ticket tab - Children — `parent-phone.png`, parent-desktop.png", "Coverage: Empty state — parent-phone.png and parent-desktop.png + parent-phone.png"), files);
+    expect(judged.coverage).toEqual([
+      { section: "Ticket tab - Children", files: ["parent-phone.png", "parent-desktop.png"] },
+      { section: "Empty state", files: ["parent-phone.png", "parent-desktop.png", "parent-phone.png"] },
+    ]);
+    expect(judged.complete).toBe(true);
+  });
+
+  it("asks no coverage map without screenshots, of an investigation, or of an accepted ticket", () => {
+    expect(judge(record("check: npm test — ok", "review: self", "screenshots: none — skill text only")).complete).toBe(true);
+    const shots = record("check: npm test — ok", "review: self", "ux: nothing open", "screenshot: a.png — c");
+    expect(judge(shots, { investigation: true, existingFiles: new Set(["a.png"]) }).complete).toBe(true);
+    expect(judge(shots, { ...change(["a.png"]), accepted: true }).complete).toBe(true);
+    // Accepted still reports what it always did.
+    expect(judge(record("check: npm test — ok", "review: self", "screenshot: a.png — c"), { ...change(["a.png"]), accepted: true }).missing).toEqual(["the visual check (ux:)"]);
+  });
+
   it("ignores other lines", () => {
     expect(judge(record("some prose", "note: x", "check: a — b")).checks).toHaveLength(1);
   });
@@ -142,9 +168,9 @@ describe("parseEvidence and judgeEvidence", () => {
 
 describe("evidenceSummary", () => {
   it("counts checks and screenshots, singular and plural", () => {
-    const one = judge(record("check: npm test — ok", "review: clean", "ux: own pass fixed 2; reviewer — nothing open", "screenshot: a.png — wide"), change(["a.png"]));
+    const one = judge(record("check: npm test — ok", "review: clean", "ux: own pass fixed 2; reviewer — nothing open", "coverage: the list — a.png", "screenshot: a.png — wide"), change(["a.png"]));
     expect(evidenceSummary(one)).toBe("1 check · review · 1 screenshot");
-    const two = judge(record("check: npm test — ok", "check: npm run typecheck — clean", "review: clean", "ux: own pass fixed 2; reviewer — nothing open", "screenshot: a.png — wide", "screenshot: b.png — phone"), change(["a.png", "b.png"]));
+    const two = judge(record("check: npm test — ok", "check: npm run typecheck — clean", "review: clean", "ux: own pass fixed 2; reviewer — nothing open", "coverage: the list — a.png, b.png", "screenshot: a.png — wide", "screenshot: b.png — phone"), change(["a.png", "b.png"]));
     expect(evidenceSummary(two)).toBe("2 checks · review · 2 screenshots");
   });
 

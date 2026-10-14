@@ -258,7 +258,7 @@ export async function loadTicketDetail(project: string, ticketId: string): Promi
     finalSummary: detail.finalSummary,
     dependencies: detail.dependencies,
     children: detail.subtasks.map((child) => ({ id: child.id, title: child.title, status: listedStatus.get(child.id) ?? child.status ?? null })),
-    evidence: hasRecord || detail.status === "Awaiting acceptance" ? await ticketEvidence(project, detail.id, detail.implementationNotes, detail.labels) : null,
+    evidence: hasRecord || detail.status === "Awaiting acceptance" ? await ticketEvidence(project, detail.id, detail.implementationNotes, detail.labels, detail.status) : null,
   };
 }
 

@@ -23,14 +23,15 @@ async function filesIn(directory: string): Promise<Set<string>> {
   return new Set(entries.filter((entry) => entry.isFile()).map((entry) => entry.name));
 }
 
-export async function judgeTicketEvidence(project: string, ticket: string, parsed: ParsedEvidence | null, investigation: boolean): Promise<EvidenceView> {
+export async function judgeTicketEvidence(project: string, ticket: string, parsed: ParsedEvidence | null, investigation: boolean, accepted = false): Promise<EvidenceView> {
   const folder = ticketEvidenceDirectory(project, ticket);
-  const judged = judgeEvidence(parsed, { investigation, existingFiles: await filesIn(folder) });
+  const judged = judgeEvidence(parsed, { investigation, existingFiles: await filesIn(folder), accepted });
   return { ...judged, screenshots: judged.screenshots.map((shot) => ({ ...shot, path: join(folder, shot.file) })) };
 }
 
-export function ticketEvidence(project: string, ticket: string, notes: string | null, labels: readonly string[]): Promise<EvidenceView> {
-  return judgeTicketEvidence(project, ticket, parseEvidence(notes), labels.includes("investigation"));
+/** `status` "Done" judges an accepted ticket's record by the rules it was accepted under (no coverage map before TR-079). */
+export function ticketEvidence(project: string, ticket: string, notes: string | null, labels: readonly string[], status: string | null = null): Promise<EvidenceView> {
+  return judgeTicketEvidence(project, ticket, parseEvidence(notes), labels.includes("investigation"), status === "Done");
 }
 
 /** Accept's guard: the error says what the owner still has to record. */

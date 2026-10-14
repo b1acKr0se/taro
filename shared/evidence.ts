@@ -1,6 +1,6 @@
 /**
  * The evidence an owner records before Accept (TR-021): an `EVIDENCE <time> — …` notes record whose
- * lines are `check:`, `review:`, `ux:`, `screenshot:` and `screenshots: none`. Owners write it by hand, so
+ * lines are `check:`, `review:`, `ux:`, `coverage:`, `screenshot:` and `screenshots: none`. Owners write it by hand, so
  * the parsing tolerates the label's case, a bullet in front, and three separators. Only the newest
  * record counts; whether it is enough is judged here, whether a file exists is told by the caller.
  */
@@ -11,6 +11,11 @@ export interface ParsedEvidence {
   review: string | null;
   /** The visual check (TR-060): the owner's user's-eyes pass and the reviewer's final visual verdict. */
   ux: string | null;
+  /**
+   * The coverage map (TR-079): each section or state the change renders, with the screenshots that
+   * show it, so a section nobody captured (a parent's children) is named rather than missed.
+   */
+  coverage: { section: string; files: string[] }[];
   screenshots: { file: string; caption: string }[];
   /** The reason after `screenshots: none`; "" when the line has no reason; null without the line. */
   screenshotsNone: string | null;
@@ -20,6 +25,7 @@ export interface JudgedEvidence {
   checks: { command: string; result: string }[];
   review: string | null;
   ux: string | null;
+  coverage: { section: string; files: string[] }[];
   screenshots: { file: string; caption: string; present: boolean }[];
   screenshotsNone: string | null;
   missing: string[];
@@ -38,7 +44,7 @@ export function splitAtSeparator(text: string): [string, string] {
 }
 
 /** A line that belongs to an EVIDENCE record even in capitals (`CHECK: …`), which `noteRecords` takes for a record of its own. */
-const EVIDENCE_LINE = /^(checks?|review|ux|screenshots?)\s*:/i;
+const EVIDENCE_LINE = /^(checks?|review|ux|coverage|screenshots?)\s*:/i;
 
 /** The notes' EVIDENCE records, each with the capitalised evidence lines `noteRecords` split off it. */
 function evidenceRecords(notes: string | null): string[] {
@@ -61,11 +67,11 @@ export function parseEvidence(notes: string | null): ParsedEvidence | null {
   const records = evidenceRecords(notes);
   const record = records[records.length - 1];
   if (record === undefined) return null;
-  const parsed: ParsedEvidence = { checks: [], review: null, ux: null, screenshots: [], screenshotsNone: null };
+  const parsed: ParsedEvidence = { checks: [], review: null, ux: null, coverage: [], screenshots: [], screenshotsNone: null };
   // The first line is the record's own heading.
   for (const rawLine of record.split("\n").slice(1)) {
     const line = rawLine.replace(/^[\s>*•-]+/, "").replace(/\*\*/g, "").trim();
-    const labelled = /^(checks?|review|ux|screenshots?)\s*:\s*(.*)$/i.exec(line);
+    const labelled = /^(checks?|review|ux|coverage|screenshots?)\s*:\s*(.*)$/i.exec(line);
     if (labelled === null) continue;
     const label = (labelled[1] ?? "").toLowerCase();
     const value = (labelled[2] ?? "").trim();
@@ -76,6 +82,9 @@ export function parseEvidence(notes: string | null): ParsedEvidence | null {
       if (value !== "") parsed.review = value;
     } else if (label === "ux") {
       if (value !== "") parsed.ux = value;
+    } else if (label === "coverage") {
+      const [section, files] = splitAtSeparator(value);
+      if (section !== "") parsed.coverage.push({ section, files: coverageFiles(files) });
     } else {
       const [first, rest] = splitAtSeparator(value);
       // `screenshot: none` is the same as `screenshots: none`; a file is never called that.
@@ -86,6 +95,14 @@ export function parseEvidence(notes: string | null): ParsedEvidence | null {
   return parsed;
 }
 
+/** The screenshot names after a coverage line's separator: `a.png, b.png` (backticks and "and" allowed); "none" names none. */
+function coverageFiles(text: string): string[] {
+  return text
+    .split(/\s*,\s*|\s+and\s+|\s+\+\s+/)
+    .map((file) => file.trim().replace(/^`+|`+$/g, ""))
+    .filter((file) => file !== "" && file.toLowerCase() !== "none");
+}
+
 /** A bare file name inside the ticket's evidence folder: no path, no way out of it. */
 export function isBareFileName(file: string): boolean {
   return file !== "" && !/[\\/]/.test(file) && !file.includes("..");
@@ -93,10 +110,15 @@ export function isBareFileName(file: string): boolean {
 
 export function judgeEvidence(
   parsed: ParsedEvidence | null,
-  options: { investigation: boolean; existingFiles: ReadonlySet<string> },
+  options: {
+    investigation: boolean;
+    existingFiles: ReadonlySet<string>;
+    /** Accepted already (Done): its record predates the coverage map and gates nothing, so a missing map is not reported. */
+    accepted?: boolean;
+  },
 ): JudgedEvidence {
   if (parsed === null) {
-    return { checks: [], review: null, ux: null, screenshots: [], screenshotsNone: null, missing: ["an EVIDENCE record"], complete: false };
+    return { checks: [], review: null, ux: null, coverage: [], screenshots: [], screenshotsNone: null, missing: ["an EVIDENCE record"], complete: false };
   }
   const checks = parsed.checks.filter((check) => check.command !== "" && check.result !== "");
   const screenshots = parsed.screenshots.map((shot) => ({
@@ -110,9 +132,10 @@ export function judgeEvidence(
     if (screenshots.length === 0) {
       if (parsed.screenshotsNone === null) missing.push("screenshots (or screenshots: none with a reason)");
       else if (parsed.screenshotsNone === "") missing.push("a reason after screenshots: none");
-    } else if (parsed.ux === null) {
+    } else {
       // Screenshots are not proof until someone looked at them with the user's eyes (TR-060).
-      missing.push("the visual check (ux:)");
+      if (parsed.ux === null) missing.push("the visual check (ux:)");
+      if (!(options.accepted ?? false)) missing.push(...missingCoverage(parsed));
     }
     for (const shot of screenshots) {
       // The caption is what tells the reader what the image shows (TR-055).
@@ -125,11 +148,25 @@ export function judgeEvidence(
     checks,
     review: parsed.review,
     ux: parsed.ux,
+    coverage: parsed.coverage,
     screenshots,
     screenshotsNone: parsed.screenshotsNone === "" ? null : parsed.screenshotsNone,
     missing,
     complete: missing.length === 0,
   };
+}
+
+/**
+ * What the coverage map lacks (TR-079): the map itself, a screenshot for a section, or a section's
+ * screenshot that is not one of the record's (a typo, or a file never listed).
+ */
+function missingCoverage(parsed: ParsedEvidence): string[] {
+  if (parsed.coverage.length === 0) return ["the coverage map (coverage: <section or state> — <screenshot>)"];
+  const listed = new Set(parsed.screenshots.map((shot) => shot.file));
+  return parsed.coverage.flatMap(({ section, files }) => {
+    if (files.length === 0) return [`a screenshot for ${section} (coverage:)`];
+    return files.filter((file) => !listed.has(file)).map((file) => `a screenshot: line for ${file}, which the coverage of ${section} names`);
+  });
 }
 
 /**
