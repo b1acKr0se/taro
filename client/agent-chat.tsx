@@ -18,6 +18,7 @@ import { availableSources, type AttachmentSource } from "./attachment-sources";
 import { AttachButton, AttachmentPreviews } from "./composer-attachments";
 import type { StoredDecision } from "../shared/state";
 import { ContextMeter } from "./context-meter";
+import { useOnPaneHidden } from "./pane-visibility";
 import { DecisionCard } from "./decision-card";
 import { drafts } from "./draft";
 import { draftAttachments } from "./draft-attachments";
@@ -181,6 +182,8 @@ export function AgentChat({
   const [draft, setDraftState] = useState(() => drafts.get(agent.id));
   const [attachments, setAttachmentsState] = useState(() => draftAttachments.get(agent.id));
   const field = useRef<NativeTextInput>(null);
+  // A hidden pane stays mounted: its field lets go of the keyboard, as it did when the pane unmounted.
+  useOnPaneHidden(() => field.current?.blur());
   const [sending, setSending] = useState(false);
   const guardFor = usePressGuards();
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set());

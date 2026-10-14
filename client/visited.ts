@@ -11,3 +11,13 @@ export function withVisited<Key>(visited: ReadonlySet<Key>, shown: Key | null): 
   next.add(shown);
   return next;
 }
+
+/**
+ * `recent` (oldest first) with `shown` moved to the end, keeping the last `limit`: the same list
+ * when `shown` is already the newest or null, so nothing re-renders for it.
+ */
+export function withRecent<Key>(recent: readonly Key[], shown: Key | null, limit: number): readonly Key[] {
+  if (shown === null || recent[recent.length - 1] === shown) return recent;
+  const next = [...recent.filter((key) => key !== shown), shown];
+  return next.length > limit ? next.slice(next.length - limit) : next;
+}

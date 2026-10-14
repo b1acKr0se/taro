@@ -27,7 +27,7 @@ import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { Inbox } from "./inbox";
 import { keptObject } from "./kept";
-import { KeptPane, useVisited } from "./kept-pane";
+import { KeptPane, useRecent, useVisited } from "./kept-pane";
 import { useLatestCallback } from "./latest-callback";
 import { OwnerPane } from "./owner-pane";
 import { PlanNavigation } from "./plan-navigation";
@@ -320,7 +320,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   const inboxShown = showing === "inbox" && !layout.compact;
   const inboxVisited = useVisited(inboxShown ? "inbox" : null);
   const activeProject = current !== null && body === null && !inboxShown && showing !== "setup" ? current.config.project : null;
-  const projectsVisited = useVisited(activeProject);
+  const projectsVisited = useRecent(activeProject, KEPT_PROJECTS);
   const openFromInbox = useLatestCallback((project: string, card: Card) => choose(project, "project", card.id));
   const kept = (
     <>
@@ -335,7 +335,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
           const project = summary.config.project;
           const active = project === activeProject;
           return (
-            <KeptPane key={project} shown={active}>
+            <KeptPane key={project} shown={active} live>
               <ProjectView
                 summary={summary}
                 all={list}
@@ -379,6 +379,9 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
     </PlanNavigation.Provider>
   );
 }
+
+/** Projects kept mounted, the one showing among them: each holds a long Manager chat. */
+const KEPT_PROJECTS = 3;
 
 /** The phone's tabs in the order they are built ahead of their first use. */
 const PHONE_TABS: readonly PhoneTab[] = ["manager", "board", "inbox", "stats"];

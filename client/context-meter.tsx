@@ -18,6 +18,7 @@ import { Text, View } from "react-native";
 import { Pressable } from "./focus";
 import { contextPercent, contextTone, formatTokenCount } from "./format";
 import { COMPOSER_CONTROL_SIZE } from "./composer-height";
+import { useOnPaneHidden } from "./pane-visibility";
 import { FONT_SIZE } from "./type-scale";
 import { useBackStep } from "./use-back";
 
@@ -125,6 +126,8 @@ export function ContextMeter({
 }) {
   const [open, setOpen] = useState(false);
   useBackStep(open, () => setOpen(false));
+  // Closed when its pane hides, as it was when the pane unmounted, so Back is not spent on it unseen.
+  useOnPaneHidden(() => setOpen(false));
   const hovering = useRef(false);
   const percent = contextPercent(used, max);
   const tone = contextTone(theme, percent ?? 0);

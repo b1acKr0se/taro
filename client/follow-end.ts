@@ -49,6 +49,14 @@ export function viewportChange(wasHidden: boolean, previousHeight: number, heigh
   return wasHidden ? "shown-again" : "resized";
 }
 
+/**
+ * Whether a card's layout is one the reader sees: a pane built hidden ahead of use (TR-069) lays its
+ * rows out at height 0, and bringing those into view would spend their one reveal unseen.
+ */
+export function layoutShown(chatHidden: boolean, layout: { height: number }): boolean {
+  return !chatHidden && layout.height > 0;
+}
+
 /** How far a scroll may land from the offset asked for and still be the one asked for, in points. */
 const OFFSET_SLACK = 2;
 
@@ -111,6 +119,7 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
    * "not at the end", and content arriving mid-animation would not be followed.
    */
   function reveal(id: string, layout: LayoutRectangle): void {
+    if (!layoutShown(hidden.current, layout)) return;
     if (revealed.current.has(id)) return;
     revealed.current.add(id);
     const fits = layout.height + 16 <= viewport.current;
@@ -130,6 +139,7 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
    * new layout of the card scrolls to it again. `layout` is in the transcript's coordinates.
    */
   function revealRow(id: string, layout: LayoutRectangle, showing: (top: number, height: number, viewportHeight: number) => number): void {
+    if (!layoutShown(hidden.current, layout)) return;
     const first = revealedAt.current.get(id);
     const now = Date.now();
     if (first === undefined) revealedAt.current.set(id, now);

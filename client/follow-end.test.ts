@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { revealsAgain, viewportChange } from "./follow-end";
+import { layoutShown, revealsAgain, viewportChange } from "./follow-end";
 
 describe("revealsAgain", () => {
   it("scrolls to a revealed row again while the transcript settles", () => {
@@ -39,5 +39,19 @@ describe("viewportChange", () => {
 
   it("reads a change of size while showing as a resize (the keyboard, a rotation)", () => {
     expect(viewportChange(false, 640, 320)).toBe("resized");
+  });
+});
+
+describe("layoutShown", () => {
+  it("is false for a card laid out at height 0 in a chat built hidden, so its reveal waits until the chat shows", () => {
+    expect(layoutShown(false, { height: 0 })).toBe(false);
+  });
+
+  it("is false while the chat's pane is hidden", () => {
+    expect(layoutShown(true, { height: 240 })).toBe(false);
+  });
+
+  it("is true for a card the reader sees", () => {
+    expect(layoutShown(false, { height: 240 })).toBe(true);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { withVisited } from "./visited";
+import { withRecent, withVisited } from "./visited";
 
 describe("withVisited", () => {
   it("adds a pane the first time it shows", () => {
@@ -23,5 +23,24 @@ describe("withVisited", () => {
       visited = withVisited(visited, tab);
     });
     expect([...visited].sort()).toEqual(["board", "inbox", "manager", "stats"]);
+  });
+});
+
+describe("withRecent", () => {
+  it("keeps the last projects shown, dropping the one shown longest ago", () => {
+    let recent: readonly string[] = [];
+    ["notes-app", "recipes", "budget", "photos"].forEach((project) => (recent = withRecent(recent, project, 3)));
+    expect(recent).toEqual(["recipes", "budget", "photos"]);
+  });
+
+  it("moves a project shown again to the newest end, so it is not the next dropped", () => {
+    const recent = withRecent(["notes-app", "recipes", "budget"], "notes-app", 3);
+    expect(withRecent(recent, "photos", 3)).toEqual(["budget", "notes-app", "photos"]);
+  });
+
+  it("returns the same list when the newest is shown again or nothing is", () => {
+    const recent = ["notes-app", "recipes"];
+    expect(withRecent(recent, "recipes", 3)).toBe(recent);
+    expect(withRecent(recent, null, 3)).toBe(recent);
   });
 });
