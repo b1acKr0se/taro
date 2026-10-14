@@ -18,6 +18,7 @@ export const TEMPLATES = {
   suggestions: "suggestions.md",
   managerOpening: "messages/manager-opening.md",
   managerRestart: "messages/manager-restart.md",
+  managerResumed: "messages/manager-resumed.md",
   catchUp: "messages/catch-up.md",
   nudge: "messages/nudge.md",
   decisionCorrection: "messages/decision-correction.md",

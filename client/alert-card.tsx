@@ -3,7 +3,8 @@
  * for a while, a manager the plugin stopped recovering after repeated crashes,
  * tracker changes the plugin refused to commit and restored (TR-051), or a ticket
  * left queued with a free slot after the Manager was told (TR-062), one card for
- * all such tickets (TR-064); the last two the user can dismiss.
+ * all such tickets (TR-064); the last two the user can dismiss. The crashed
+ * manager's card resumes it, its conversation kept (TR-072).
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -11,19 +12,21 @@ import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { alertHeading, dismissible } from "../shared/alerts";
-import { dismissQueueAlert, dismissTrackerProtection } from "../shared/contracts";
+import { dismissQueueAlert, dismissTrackerProtection, resumeManager } from "../shared/contracts";
+import { MANAGER_ACTION_LABELS, MANAGER_ACTION_SUCCESS } from "../shared/manager-actions";
 import { QUEUED_ALERT_ID } from "../shared/queue-check";
 import type { BoardAlert } from "../shared/recovery";
 import { useRefreshBoard } from "./board-data";
 import { useRefreshProjects } from "./queries";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
-import { Spinner } from "./ui";
+import { IconButton, Spinner } from "./ui";
 import { useActions } from "./use-actions";
 
 export function AlertCard({ project, alert, theme, compact }: { project: string; alert: BoardAlert; theme: PluginTheme; compact: boolean }) {
   const dismissProtection = useRpc(dismissTrackerProtection);
   const dismissQueued = useRpc(dismissQueueAlert);
+  const resume = useRpc(resumeManager);
   const refreshBoard = useRefreshBoard(project);
   // The project list carries the Needs you badge, which counts the alert.
   const refreshProjects = useRefreshProjects();
@@ -51,6 +54,18 @@ export function AlertCard({ project, alert, theme, compact }: { project: string;
     });
   }
 
+  function onResume(): void {
+    // Its failure (a reload Paseo refused) is the error toast, which names Start a fresh Manager.
+    presses.press("resume", () => resume({ project }), {
+      after: "hold",
+      success: MANAGER_ACTION_SUCCESS.resume,
+      onSuccess: () => {
+        refreshBoard();
+        refreshProjects();
+      },
+    });
+  }
+
   return (
     <View style={styles.card}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -70,6 +85,19 @@ export function AlertCard({ project, alert, theme, compact }: { project: string;
         ) : null}
       </View>
       <Text style={styles.message}>{alert.text}</Text>
+      {alert.id === "manager-crashed" ? (
+        <View style={{ flexDirection: "row" }}>
+          <IconButton
+            theme={theme}
+            icon="RotateCcw"
+            label={MANAGER_ACTION_LABELS.resume}
+            showLabel
+            disabled={presses.busy}
+            state={presses.stateOf("resume")}
+            onPress={onResume}
+          />
+        </View>
+      ) : null}
     </View>
   );
 }

@@ -15,6 +15,7 @@ import {
   listModels,
   readStandingOrders,
   restartManager,
+  resumeManager,
   writeProjectSettings,
   writeStandingOrders,
 } from "../shared/contracts";
@@ -32,6 +33,7 @@ import {
   type SetupDraft,
   type SetupProblems,
 } from "../shared/setup-form";
+import { MANAGER_ACTION_LABELS, MANAGER_ACTION_SUCCESS, managerSettingsActions, type ManagerActionKind } from "../shared/manager-actions";
 import { errorText } from "./format";
 import { KeyboardScrollView } from "./keyboard";
 import { PrerequisiteList, usePrerequisites } from "./prerequisite-list";
@@ -39,13 +41,16 @@ import { ChoiceCards, Dropdown, Field, FixedValue, FormSection, ModelChooser, Te
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { IconButton } from "./ui";
+import { useRefreshProjects } from "./queries";
 import { useActions } from "./use-actions";
 
 const PAGE_MAX_WIDTH = 760;
+const MANAGER_ICONS: Readonly<Record<ManagerActionKind, string>> = { launch: "Play", resume: "RotateCcw", fresh: "Plus" };
 
 export function ProjectSetup({
   theme,
   existing,
+  manager = null,
   initial = null,
   error = null,
   onCreate,
@@ -55,6 +60,8 @@ export function ProjectSetup({
   theme: PluginTheme;
   /** The project being edited, or null to add one. */
   existing: ProjectConfig | null;
+  /** The existing project's Manager, or null when it has none: which Manager actions show (TR-072). */
+  manager?: { status: string } | null;
   /** A new project's values filled in from a picked Paseo project (TR-056); null for an empty form. */
   initial?: SetupDraft | null;
   /** Why creating failed after its check passed, shown above the button. */
@@ -73,6 +80,10 @@ export function ProjectSetup({
   const writeOrders = useRpc(writeStandingOrders);
   const launch = useRpc(launchManager);
   const restart = useRpc(restartManager);
+  const resume = useRpc(resumeManager);
+  const refreshProjects = useRefreshProjects();
+  // A failed resume is said beside the buttons, where Start a fresh Manager is (TR-072).
+  const [managerFailure, setManagerFailure] = useState<string | null>(null);
 
   const prerequisites = usePrerequisites();
   const pullRequests = pullRequestsReady(prerequisites.data?.checks);
@@ -162,10 +173,17 @@ export function ProjectSetup({
     );
   }
 
-  function managerAction(kind: "launch" | "restart"): void {
+  function managerAction(kind: ManagerActionKind): void {
     if (existing === null) return;
-    presses.press(kind, () => (kind === "launch" ? launch : restart)({ project: existing.project }), { success: kind === "launch" ? "Manager started." : "Manager restarted." });
+    const call = kind === "launch" ? launch : kind === "resume" ? resume : restart;
+    setManagerFailure(null);
+    presses.press(kind, () => call({ project: existing.project }), {
+      success: MANAGER_ACTION_SUCCESS[kind],
+      onSuccess: refreshProjects,
+      onError: (caught) => setManagerFailure(errorText(caught)),
+    });
   }
+  const managerActions = managerSettingsActions(manager);
 
   const colors = theme.colors;
   // Until the list arrives every saved model is missing from it; name them plainly instead of "not listed".
@@ -410,11 +428,22 @@ export function ProjectSetup({
       )}
 
       {existing === null ? null : (
-        <FormSection theme={theme} icon="UserCog" title="Manager" description="Start a Manager when the project has none, or restart it fresh. Tickets are kept either way.">
+        <FormSection theme={theme} icon="UserCog" title="Manager" description={managerActions.description}>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: SPACE.sm }}>
-            <IconButton theme={theme} icon="Play" label="Start Manager" showLabel disabled={busy} state={presses.stateOf("launch")} onPress={() => managerAction("launch")} />
-            <IconButton theme={theme} icon="RotateCcw" label="Restart Manager" showLabel disabled={busy} state={presses.stateOf("restart")} onPress={() => managerAction("restart")} />
+            {managerActions.kinds.map((kind) => (
+              <IconButton
+                key={kind}
+                theme={theme}
+                icon={MANAGER_ICONS[kind]}
+                label={MANAGER_ACTION_LABELS[kind]}
+                showLabel
+                disabled={busy}
+                state={presses.stateOf(kind)}
+                onPress={() => managerAction(kind)}
+              />
+            ))}
           </View>
+          {managerFailure === null ? null : <Text style={[muted, { color: colors.statusDanger }]}>{managerFailure}</Text>}
         </FormSection>
       )}
 

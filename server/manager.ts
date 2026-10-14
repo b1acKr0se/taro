@@ -7,13 +7,15 @@ import { writeFile } from "node:fs/promises";
 
 import { TARO_LABELS, type ProjectConfig } from "../shared/project";
 import { fetchLiveAgent, isMidTurn } from "./agents";
+import { runPaseoJson } from "./cli";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import { bypassModeId, knownBypassMode } from "./models";
 import { TEMPLATES, fill, message, readTemplate, skillDirectory } from "./package-files";
 import { projectPaths, requireProjectConfig, updateProjectConfig } from "./projects";
-import { sendCommand } from "./send";
+import { sendCommand, sendFromPlugin } from "./send";
 import { hasAttachments, sendWithAttachments, type Attachments } from "./uploads";
 import { serialized } from "./serialize";
+import type { PluginState } from "./state";
 import { ensureTaroProject } from "./taro-project";
 import { taroEnvironment } from "./environment";
 
@@ -126,6 +128,43 @@ export function restartManager(
       await paseo.agents.ref(agent.id).archive();
     }
     return startManager(paseo, config, agent !== null, options.why ?? null);
+  });
+}
+
+/**
+ * Brings the same manager back (TR-072): `paseo agent reload` (a new process, its conversation kept),
+ * as crash recovery does, then one message saying it was restarted and why. A failed reload starts
+ * nothing: the user chooses a fresh Manager themselves.
+ */
+export function resumeManager(paseo: PaseoApi, project: string, state: Pick<PluginState, "agent" | "updateAgent">): Promise<{ agentId: string; workspaceId: string }> {
+  return serialized(`manager:${project}`, async () => {
+    const config = await requireProjectConfig(project);
+    const { agent } = await resolveManager(paseo, config);
+    if (agent === null) throw new Error(`${project} has no Manager to resume. Start a fresh Manager instead.`);
+    if (isMidTurn(agent)) throw new Error(`The ${project} Manager is in the middle of a turn, so it is not stopped; there is nothing to resume.`);
+    const known = await state.agent(agent.id);
+    const stalled = known?.stalledReason ?? null;
+    try {
+      await runPaseoJson(["agent", "reload", agent.id], "the Manager cannot be reloaded");
+    } catch (error: unknown) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`The ${project} Manager could not be resumed: ${reason}. Use Start a fresh Manager instead; the old conversation is archived, not deleted.`);
+    }
+    // The crashed alert comes down now, not after the Manager's next turn.
+    if (known !== null && known.stalledReason !== null) {
+      await state.updateAgent(agent.id, () => known, (record) => {
+        record.stalled = false;
+        record.stalledReason = null;
+      });
+    }
+    const why =
+      stalled !== null
+        ? `after the plugin stopped recovering it (${stalled.replace(/\.$/, "")})`
+        : agent.status === "error"
+          ? `after it stopped with an error (${(agent.lastError ?? "no reason given").replace(/\s+/g, " ").trim()})`
+          : "at their request";
+    await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.managerResumed, { why, skill: await skillDirectory() }));
+    return { agentId: agent.id, workspaceId: config.managerWorkspaceId };
   });
 }
 

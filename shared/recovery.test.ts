@@ -95,7 +95,7 @@ describe("boardAlerts", () => {
 
   it("reports a manager the plugin stopped recovering", () => {
     expect(boardAlerts(null, "Crashed: crashed 3 times within an hour.", now)).toEqual([
-      { id: "manager-crashed", tickets: [], text: "The Manager is stopped. Crashed: crashed 3 times within an hour. Restart it from the project's settings." },
+      { id: "manager-crashed", tickets: [], text: "The Manager is stopped. Crashed: crashed 3 times within an hour. Resume Manager brings it back with its conversation (also in the project's settings)." },
     ]);
   });
 });

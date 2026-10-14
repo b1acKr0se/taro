@@ -15,7 +15,8 @@ import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
-import { catchUp, compactManager, tellManager, type Card, type ProjectSummary } from "../shared/contracts";
+import { catchUp, compactManager, resumeManager, tellManager, type Card, type ProjectSummary } from "../shared/contracts";
+import { MANAGER_ACTION_LABELS, MANAGER_ACTION_SUCCESS, managerPaneNotice } from "../shared/manager-actions";
 import { withoutDecisionBlocks } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import type { Suggestion } from "../shared/suggestions";
@@ -294,6 +295,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
       <ProjectSetup
         theme={theme}
         existing={current.config}
+        manager={current.manager}
         onDone={(project) => {
           refresh();
           choose(project, "project");
@@ -548,6 +550,7 @@ function ManagerPane({
   const tell = useRpc(tellManager);
   const askCatchUp = useRpc(catchUp);
   const compactRpc = useRpc(compactManager);
+  const resume = useRpc(resumeManager);
   const actions = useActions();
   const project = summary.config.project;
   const manager = summary.manager;
@@ -568,9 +571,24 @@ function ManagerPane({
     );
   }
   const running = manager.status === "running" || manager.status === "initializing";
+  const notice = managerPaneNotice(manager);
   return (
     <View style={{ flex: 1 }}>
       {header}
+      {notice === null ? null : (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: SPACE.sm, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm }}>
+          <Text style={{ color: theme.colors.statusWarning, flexGrow: 1, flexBasis: 200 }}>{notice}</Text>
+          <IconButton
+            icon="RotateCcw"
+            label={MANAGER_ACTION_LABELS.resume}
+            showLabel
+            theme={theme}
+            disabled={actions.busy}
+            state={actions.stateOf("resume")}
+            onPress={() => actions.press("resume", () => resume({ project }), { success: MANAGER_ACTION_SUCCESS.resume, onSuccess: onChanged })}
+          />
+        </View>
+      )}
       {summary.trackerSyncProblem === null ? null : (
         <Text style={{ color: theme.colors.statusWarning, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm }}>Ticket sync paused; see Needs you on the board.</Text>
       )}

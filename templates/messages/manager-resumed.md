@@ -1,0 +1,2 @@
+<!-- Sent to the manager after the user resumed it from Taro (TR-072): the same agent and conversation in a new process. Placeholders: why, skill. -->
+The user restarted you {{why}}; your conversation is intact, but anything that was running inside you died with the old process. Re-check the tracker (the ticket list and anything In Progress, Awaiting acceptance or queued) before you answer anything, reread {{skill}}/SKILL.md and {{skill}}/roles/manager.md if you are unsure where you were, and continue. End the turn with a status line.

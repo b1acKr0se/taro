@@ -35,6 +35,7 @@ import {
   readProjectConfig as readProjectConfigRpc,
   readStandingOrders,
   restartManager as restartManagerRpc,
+  resumeManager as resumeManagerRpc,
   tellManager as tellManagerRpc,
   writeProjectSettings,
   writeStandingOrders,
@@ -53,7 +54,7 @@ import { idleCompactAfterMs } from "./shared/idle-compaction";
 import { Supervisor, identityFromLabels } from "./server/supervision";
 import { sessionEnvironment } from "./server/environment";
 import { readTextIfPresent, writeTextAtomically } from "./server/files";
-import { catchUpText, compactManager, launchManager, restartManager, tellManager, writeManagerInstructions } from "./server/manager";
+import { catchUpText, compactManager, launchManager, restartManager, resumeManager, tellManager, writeManagerInstructions } from "./server/manager";
 import { onboardProject, onboardingProblems } from "./server/onboard";
 import { listPaseoProjects, settingsTemplate } from "./server/paseo-projects";
 import { readImage } from "./server/images";
@@ -242,6 +243,7 @@ export default function contribute(server: PluginServerContext) {
 
   server.handle(launchManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await launchManager(paseo, project)).agentId }));
   server.handle(restartManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await restartManager(paseo, project)).agentId }));
+  server.handle(resumeManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await resumeManager(paseo, project, state)).agentId }));
   server.handle(compactManagerRpc, async ({ project }, { paseo }) => ({ agentId: await compactManager(paseo, project) }));
   server.handle(tellManagerRpc, async ({ project, text, images, files }, { paseo }) => {
     const agentId = await tellManager(paseo, project, text, { images, files });

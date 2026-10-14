@@ -149,6 +149,8 @@ const ManagerResult = z.object({ agentId: z.string() });
 
 export const launchManager = defineRpc({ name: "taro.manager.launch", input: ProjectInput, output: ManagerResult });
 export const restartManager = defineRpc({ name: "taro.manager.restart", input: ProjectInput, output: ManagerResult });
+/** The same Manager and conversation in a new process (TR-072); `restartManager` starts a fresh one. */
+export const resumeManager = defineRpc({ name: "taro.manager.resume", input: ProjectInput, output: ManagerResult });
 export const compactManager = defineRpc({ name: "taro.manager.compact", input: ProjectInput, output: ManagerResult });
 export const tellManager = defineRpc({
   name: "taro.manager.tell",

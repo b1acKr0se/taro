@@ -101,7 +101,7 @@ export function boardAlerts(headroom: Headroom | null, managerStalledReason: str
     });
   }
   if (managerStalledReason !== null) {
-    alerts.push({ id: "manager-crashed", tickets: [], text: `The Manager is stopped. ${managerStalledReason} Restart it from the project's settings.` });
+    alerts.push({ id: "manager-crashed", tickets: [], text: `The Manager is stopped. ${managerStalledReason} Resume Manager brings it back with its conversation (also in the project's settings).` });
   }
   return alerts;
 }
