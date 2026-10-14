@@ -55,18 +55,22 @@ never rewrite history.
 - **MILESTONE**: what happened, decisions, commit or uncommitted state, checks run with results,
   next step. Before a long command: its log path and expected duration.
 - **HANDOFF**: before compaction or stopping (template: `templates/handoff.md`).
-- **REVIEW**: reviewer, revision, verdict, findings with your valid/invalid verdict and evidence.
+- **REVIEW**: reviewer, revision, verdict, every finding answered (fixed, or rejected with the
+  reason).
 - **EVIDENCE**: what the user sees before Accept; the newest record counts. One fact per line,
   label in any case, separator ` — ` (` -- ` and ` - ` also work):
   `check: <command> — <result>` (one or more), `review: <outcome>`,
+  `ux: <the user's-eyes result>` (what your pass found and fixed, the reviewer's visual verdict if
+  there was one, anything left open; required whenever there are screenshots),
   `screenshot: <file name> — <caption>` (a bare name; the file is in `$TARO_EVIDENCE/<ID>/`; a name
   that says what it shows and a caption are required: `reference/formats.md`, Images), or
-  `screenshots: none — <reason>`. A change needs a check, a review line and screenshots (or none with
-  a reason); an investigation needs a check. Accept is refused until it is complete.
+  `screenshots: none — <reason>`. A change needs a check, a review line and screenshots with a `ux:`
+  line (or none with a reason); an investigation needs a check. Accept is refused until it is complete.
 
       EVIDENCE 2026-01-05T10:00Z — before FINAL
       check: npm test — 37 files, 360 passed
       review: one independent round (Sonnet) — 1 blocker, fixed
+      ux: own pass fixed a clipped Save button; reviewer: a long title ran under the menu, fixed
       screenshot: notes-list-desktop.png — the list on a wide screen
       screenshot: notes-list-phone.png — the same on a phone
 

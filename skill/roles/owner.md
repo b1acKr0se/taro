@@ -27,6 +27,11 @@ ones) — they outrank defaults here. Then follow the flow.
 
    **Risk floor:** anything touching contracts, money or fee math, auth, or stored data is at least
    medium.
+
+   **Criteria are user outcomes**, starting from the brief's Outcomes: what the user can do or see,
+   and how you will show it. "The user can type an answer and press Submit with the keyboard open
+   (phone screenshot)", not "the field scrolls above the keyboard". A criterion met to the letter
+   while the user would still reject the result is not met. Mechanisms go in the plan.
 4. **Approval** — ask for it (blocking decision `scope-approval`, its question `Approve <the plan in
    one line>?`, with the proposal summarised in `why`) **whenever you made a choice the user did not**: an interpretation, a design, a fix
    approach that could differ from what they meant. Trivial work needs none — your one clarifying
@@ -88,12 +93,15 @@ decisions to the user.
 - **trivial / low:** self-review — reread your whole diff against the criteria, apply the finding
   rule below, run the full checks, fix what you find.
 - **medium:** one independent reviewer (`roles/reviewer.md`), started like an implementer with
-  `taro.role=reviewer` and the strongest model for risky code.
+  `taro.role=reviewer` and the strongest model for risky code. For a visible change, capture the
+  screenshots first and give it their absolute paths, the user's words and the criteria: it looks at
+  them before the code, in the same round.
 - **high:** a reviewer over the combined diff; a second round only if the first found a blocker;
   then escalate with a `review-dispute` decision rather than loop.
 
 You verify every finding against the code yourself (valid / partially valid / invalid, with
-evidence), fix the valid ones yourself, and record a REVIEW note. **Every** review checks test
+evidence), fix the valid blockers and should-fix findings yourself, and record a REVIEW note that
+answers every finding: fixed, or rejected with the reason. **Every** review checks test
 sufficiency: each changed behaviour has a test that would fail if it regressed; a bug fix keeps its
 reproduction; tests cover the input space (empty, zero, maximum, rounding, ordering), not the code's
 own assumption. A missing or empty test for a changed behaviour is a blocker.
@@ -104,8 +112,20 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
   (status Reviewing). Reviewers post findings and you post your fix summary as PR comments. When
   review is done, mark the PR ready. With only a self-review, open it ready. CI is not a gate.
 - **local-only delivery:** leave a clean branch that fast-forwards from the base branch.
+- **Show it as the user will see it** (any visible change, at every level):
+  - Capture with **realistic content**: text of real length and shape, with the markup real text
+    carries (a delivery summary with Markdown and HTML, not "Lorem"), long names, many items, the
+    empty state; plus **at least one stress case per screen touched** (the longest, the most, the
+    emptiest). Names in it stay neutral (SKILL.md rule 8).
+  - **User's-eyes pass:** open every screenshot and read it against the user's words in the ticket
+    as a picky user would. Reject: misalignment; mismatched controls (sibling buttons of different
+    size, style or order); clipped, overlapping or covered UI (a keyboard over a button); see-through
+    layers; raw markup or escaped HTML; wrong case; leftover debug or placeholder text. Fix and
+    re-capture what you find, or name it in FINAL as a limitation.
+  - Record the result as the EVIDENCE `ux:` line (`reference/tickets.md`); a reviewer's visual
+    verdict goes on it too. Accept is refused without it when there are screenshots.
 - Before FINAL, write an EVIDENCE record (`reference/tickets.md`): checks with results, the review
-  outcome, and screenshots in `$TARO_EVIDENCE/<ID>/` (desktop and phone for visible changes), each
+  outcome, the `ux:` line, and screenshots in `$TARO_EVIDENCE/<ID>/` (desktop and phone for visible changes), each
   named for what it shows and captioned (`reference/formats.md`, Images), or `screenshots: none`
   with a reason. The plugin refuses Accept until it is complete.
 - Record `pr: <url>` and `review-head: <sha>` (the full `headRefOid` from `gh pr view <url> --json
@@ -113,7 +133,8 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
   (`--final-summary`) and move to **Awaiting acceptance**. The user accepts or requests changes
   from the card.
 - **Request changes:** the user's words arrive as a message. Back to In Progress; size the fix like
-  a new task; return to Awaiting acceptance with a new review head.
+  a new task; read the new screenshots against those words too; return to Awaiting acceptance with a
+  new review head.
 - **Accept:** if the message says to merge (accept-also-merges), merge only when the PR's
   `headRefOid` still equals the recorded review head: `gh pr merge <url> --match-head-commit <sha>`
   (squash unless the repository says otherwise), then confirm `state` is `MERGED`. A moved head →

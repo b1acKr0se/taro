@@ -45,3 +45,6 @@ Read only your role and the references it names.
 7. **Write shell commands that need no approval**, as nobody may be there to give it: remove only
    literal or guarded absolute paths, make scratch space with `mktemp -d`, and run a throwaway
    Backlog project with `BACKLOG_CWD` and `TARO_TRACKER` unset. Details: `reference/shell.md`.
+8. **Write as if the repository were public**: it may be published. No real names, paths, hosts or
+   emails from this machine in code, tests, fixtures or docs; use neutral examples (`notes-app`,
+   `/home/user/project`, `alex@example.com`).

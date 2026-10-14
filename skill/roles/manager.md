@@ -21,8 +21,9 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
 ## Filing and dispatch
 
 1. Create the ticket with the **two-part brief** (`templates/brief.md`) as its description:
-   the user's intent nearly verbatim, then your notes (related tickets and PRs, likely areas, known
-   facts, out of scope). Add `-l investigation` when it is one. Read the id back.
+   the user's intent nearly verbatim, then your notes (the outcomes the user expects, related
+   tickets and PRs, likely areas, known facts, out of scope). Add `-l investigation` when it is
+   one. Read the id back.
 2. Append **DISPATCH-INTENT** (unique token, intended branch `taro/<id-lowercase>`).
 3. **Respect the cap on owners running at once** (AGENTS.md). List live owners with
    `paseo ls -g --label taro.project=<project> --label taro.role=owner --json` (any status but
@@ -66,7 +67,9 @@ You are not told about owners' turns; the plugin supervises them. You are woken 
 - **an idle compaction**: after about an hour idle with a large context, the plugin asks for a
   handoff file; write it as the message says and end with `waiting: compaction`. After the reload
   message, reread what it names before you answer anything;
-- **the user's requests**: new tasks, status questions, **Catch up** (build the four sections from
+- **the user's requests**: new tasks, status questions, changes to a ticket that has an owner (send
+  the user's exact words to that owner with `paseo send <owner id> "Changes requested on <ID>:
+  <words>"` and append them as a CHANGES-REQUESTED note; the owner does the work), **Catch up** (build the four sections from
   the tracker and `paseo ls -g --label taro.project=<project> --json`, never from memory).
 
 For status, read the ticket's latest records; report timestamps honestly (an old In Progress does

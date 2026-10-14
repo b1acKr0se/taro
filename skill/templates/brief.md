@@ -6,6 +6,8 @@
 
 ## Manager's notes
 
+- Outcomes: <what the user can do or see when this is done, in their words, e.g. "I can type an
+  answer and press Submit without closing the keyboard"; never how it works>
 - Related: <tickets, PRs, docs — or "none found">
 - Likely areas: <files / modules from a quick look>
 - Known: <facts already established>
