@@ -1,6 +1,6 @@
 /**
  * Sketch: the client contributions the UI design needs (Paseo 0.11 plugin API,
- * see reference/paseo-plugin-client-contracts-0.11.2.d.ts). Not wired up or
+ * types from @getpaseo/plugin/client). Not wired up or
  * tested; component bodies are placeholders. Structure follows FirstMate's
  * index.client.tsx (MIT), adapted to one screen with per-project params.
  */

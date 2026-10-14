@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { matchSentImages } from "./sent-images";
 
-const A = { path: "/data/images/a.png", mimeType: "image/png" };
-const B = { path: "/data/images/b.png", mimeType: "image/png" };
-const C = { path: "/data/images/c.jpg", mimeType: "image/jpeg" };
+const A = { path: "/data/uploads/a.png", mimeType: "image/png" };
+const B = { path: "/data/uploads/b.png", mimeType: "image/png" };
+const C = { path: "/data/uploads/c.jpg", mimeType: "image/jpeg" };
 
 function captain(key: string, text: string) {
   return { key, kind: "captain", text };
