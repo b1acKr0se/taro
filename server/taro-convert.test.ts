@@ -196,6 +196,9 @@ describe("taro convert refuses, changing nothing", () => {
 describe("taro convert", () => {
   it("converts every folder, writes tracker.json and .gitignore, removes backlog/ and commits once as Taro", () => {
     write("backlog/config.yml", CONFIG);
+    // Backlog.md leaves empty folders git does not track; they must go with backlog/ too.
+    mkdirSync(join(repository, "backlog", "decisions"), { recursive: true });
+    mkdirSync(join(repository, "backlog", ".locks"), { recursive: true });
     write(
       "backlog/tasks/na-003 - Parent.md",
       task(

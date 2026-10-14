@@ -863,6 +863,8 @@ async function writeConversion(trackerPath: string, plan: ConversionPlan): Promi
   const existing = await readFile(gitignore, "utf8").catch(() => "");
   await replaceFile(join(trackerPath, ".taro"), `gitignore.${tempSuffix()}`, gitignore, withGitignoreEntries(existing));
   await git(trackerPath, ["rm", "-r", "-q", "backlog"]);
+  // git leaves the folders it does not track (Backlog.md's empty docs/, decisions/, .locks/); the tree was clean, so nothing else is in them.
+  await rm(join(trackerPath, "backlog"), { recursive: true, force: true });
   await git(trackerPath, ["add", "tickets", "tracker.json", ".gitignore"]);
   await git(trackerPath, [
     "-c",
