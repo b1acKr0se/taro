@@ -70,6 +70,8 @@ export class Actions {
   /** Queued tickets' dependencies and notes, read again only when the ticket changes. */
   private readonly queuedDetails = new Map<string, { updatedAt: string; ticket: QueuedTicket }>();
   private checkingQueues = false;
+  /** Projects whose stored ladder was merged in since the start. */
+  private readonly ladderLoaded = new Set<string>();
 
   constructor(
     private readonly state: PluginState,
@@ -511,13 +513,17 @@ export class Actions {
     return watch;
   }
 
-  /** The ladder with its restarts and dismissals read back from disk the first time (after a start or reload). */
+  /**
+   * The ladder with its restarts and dismissals merged in from disk the first time (after a start or
+   * reload), whichever path created it first; every save goes through here, so none overwrites them.
+   */
   private async loadQueueWatch(project: string): Promise<QueueWatch> {
-    const fresh = !this.queues.has(project);
     const watch = this.queueWatch(project);
-    if (fresh) {
-      const stored = await this.state.queueLadder(project).catch(() => null);
-      for (const at of stored?.restarts ?? []) watch.restarts.push(Date.parse(at));
+    if (this.ladderLoaded.has(project)) return watch;
+    const stored = await this.state.queueLadder(project).catch(() => null);
+    if (!this.ladderLoaded.has(project)) {
+      this.ladderLoaded.add(project);
+      for (const at of stored?.restarts ?? []) if (!watch.restarts.includes(Date.parse(at))) watch.restarts.push(Date.parse(at));
       for (const id of stored?.dismissed ?? []) watch.dismissed.add(id);
     }
     return watch;

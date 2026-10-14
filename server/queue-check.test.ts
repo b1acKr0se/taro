@@ -352,6 +352,24 @@ describe("the escalation ladder", () => {
     expect(JSON.parse(vi.mocked(restartManager).mock.calls[0]![2]?.why ?? "{}")).toMatchObject({ tickets: "DM-3" });
   });
 
+  it("keeps a dismissal and the hourly limit when another path touches the ladder before the first minute check after a reload", async () => {
+    await minutes(0, 20);
+    expect(restartManager).toHaveBeenCalledTimes(1);
+    tickets = [...tickets, ticket("DM-4", "Backlog")];
+    await minutes(21, 32);
+    await actions.dismissQueueAlert("demo", "DM-4");
+    actions = start();
+    actions.userToldManager("demo");
+    vi.setSystemTime(at(33));
+    await file("DM-5");
+    expect(told_().at(-1)).toBe("messages/ticket-queued.md: DM-5");
+    await minutes(33, 79);
+    expect(actions.queueAlerts("demo", at(79)).map((alert) => alert.id)).not.toContain("queued-free-slot:DM-4");
+    expect(restartManager).toHaveBeenCalledTimes(1);
+    expect(ladders.get("demo")?.dismissed).toEqual(["DM-4"]);
+    expect(ladders.get("demo")?.restarts).toEqual([iso(20)]);
+  });
+
   it("does not restart once the user typed to the Manager in its own tab after the alert, but does for a message before it", async () => {
     timeline = [{ item: { type: "user_message", text: "hold on, I am checking DM-3", messageId: "user-1" }, timestamp: iso(9) }];
     await minutes(0, 20);
