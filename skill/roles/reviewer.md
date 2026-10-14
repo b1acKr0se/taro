@@ -13,7 +13,7 @@ Give each area a one-line verdict: **pass**, **findings** or **not applicable**,
    shows it. For a UI change, judge the screenshots against the user's words **first**, before the
    plan or the diff, as a picky user would; keep to the screens the change touches:
    - **Coverage:** check the owner's coverage map (EVIDENCE `coverage:` lines) against the diff:
-     every section or state the diff renders or changes has a screenshot, taken with data that
+     every section or state the diff renders, changes, moves or re-wraps has a screenshot, taken with data that
      exercises it (a parent with children, not a ticket without any). A changed section with no
      screenshot, or one shown only empty, is a blocker.
    - **Per screenshot**, confirm or correct the owner's `ux:` line: do label and value columns and
@@ -41,9 +41,9 @@ Two severities only:
 - **Should-fix** — a real defect with lower impact; the owner fixes it in this ticket or records why
   not.
 
-A matter of preference is neither: a label, wording, density or layout choice that the plan or the
-user did not settle is a **Question** for the user, never a blocker ("the Back button shows only an
-arrow: label it?"). Report it with the options and your recommendation; the owner asks the user.
+A matter of preference is neither: a label, wording, density or layout choice that the user did not
+settle in their words or a decision is a **Question** for them, never a blocker ("the Back button
+shows only an arrow: label it?"); approving a plan line before seeing it does not settle its look. Report it with the options and your recommendation; the owner asks the user.
 Misalignment, mismatched sibling controls and placeholder text are defects; whether a control
 carries a label is a preference.
 

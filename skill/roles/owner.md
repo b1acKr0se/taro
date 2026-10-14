@@ -119,8 +119,8 @@ decisions to the user.
 
 You verify every finding against the code yourself (valid / partially valid / invalid, with
 evidence), fix the valid blockers and should-fix findings yourself, and record a REVIEW note that
-answers every finding: fixed, or rejected with the reason. A **Question** (a preference the plan or
-the user did not settle: a label, wording, density, a layout choice) is not yours or the
+answers every finding: fixed, or rejected with the reason. A **Question** (a preference the user did
+not settle in their words or a decision: a label, wording, density, a layout choice) is not yours or the
 reviewer's to settle: raise it as a non-blocking decision with your recommendation as the default,
 carry on, and note it in the REVIEW record. A reviewer blocker that is really a preference is a
 Question too. **Every** review checks test
@@ -139,8 +139,8 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
     carries (a delivery summary with Markdown and HTML, not "Lorem"), long names, many items, the
     empty state; plus **at least one stress case per screen touched** (the longest, the most, the
     emptiest). Names in it stay neutral (SKILL.md rule 8).
-  - **Coverage map:** list each screen section or state the diff renders or changes (only those, not
-    the whole app) and the screenshot that shows it, as EVIDENCE `coverage:` lines. Capture each
+  - **Coverage map:** list each screen section or state the diff renders, changes, moves or re-wraps
+    (only those, not the whole app; when unsure, include it) and the screenshot that shows it, as EVIDENCE `coverage:` lines. Capture each
     with data that exercises it: a parent with children for a children section, a long value for a
     value column. A changed section with no screenshot is not delivered; Accept is refused without
     the map when there are screenshots.

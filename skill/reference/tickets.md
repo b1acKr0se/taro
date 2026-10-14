@@ -70,7 +70,7 @@ never rewrite history. Keep each within its limit; cut rather than exceed it.
   row edges line up, any placeholder text found; what your pass fixed, the reviewer's visual
   verdict if there was one, anything left open; required whenever there are screenshots),
   `coverage: <section or state> — <screenshot file>[, <file>…]` (one per section or state the diff
-  renders or changes, each naming screenshots of this record; required whenever there are
+  renders, changes, moves or re-wraps, each naming screenshots of this record; required whenever there are
   screenshots: `roles/owner.md`, Delivery),
   `screenshot: <file name> — <caption>` (a bare name; the file is in `$TARO_EVIDENCE/<ID>/`; a name
   that says what it shows and a caption are required: `reference/formats.md`, Images), or
