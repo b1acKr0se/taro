@@ -277,7 +277,10 @@ async function hostReactSource(): Promise<string> {
   });
   const output = result.outputFiles?.[0]?.text;
   if (!output) throw new Error("the React host build produced no output");
-  return output;
+  // esbuild's namespace copy closes over its loop variable, which this Hermes reads as the last key
+  // (every export became React.version). The app's React comes from Metro, not esbuild; this
+  // stand-in gets the same eager rewrite so plugin code calling React at load (createContext) works.
+  return makeHermesInteropEager(output);
 }
 
 type HermesLoad = { loaded: true; registered: string[] } | { loaded: false; error: string };
