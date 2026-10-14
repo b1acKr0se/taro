@@ -4,8 +4,7 @@ Taro is a [Paseo](https://github.com/getpaseo/paseo) plugin that runs software w
 one project at a time. You tell a **Manager** agent what you want; it files a ticket and starts a
 **task owner** agent, which takes the ticket from proposal to a delivered, reviewed change. You
 answer their questions and accept the result. Tickets live in a [Backlog.md](https://github.com/MrLesk/Backlog.md)
-tracker on the project's `taro/backlog` branch, and Taro shows everything in one screen inside
-Paseo, on desktop and on the phone.
+tracker on the project's `taro/backlog` branch.
 
 ## Requirements
 
@@ -36,10 +35,48 @@ Taro then appears in Paseo's sidebar.
    - **Working**: an agent is on it.
    - **Stalled**, **Queued**, **Done**: stopped without saying why, not started yet, accepted.
 
-   A task owner may ask questions or ask you to approve its plan; the answers are buttons on the
-   card. When the work is done it moves to **Awaiting acceptance**: read the summary and evidence,
-   then press **Accept** (Taro can also merge it, if the project is set to) or **Request
-   changes…** with what to change.
+## How the work flows
+
+- **The Manager triages each request.** It asks you only when it cannot tell what you mean, files
+  a ticket that keeps your words as its intent, and starts a task owner in the ticket's own
+  worktree and branch. Owners run up to the project's cap; the rest wait in the queue, and a
+  ticket that depends on another waits for it.
+- **The task owner scales its work to the ticket** (trivial, low, medium or high complexity). It
+  reads the code, proposes a plan and acceptance criteria, and asks you to approve only when it
+  made a choice you did not. Then it builds, starting subagents when the ticket needs them
+  (implementers, reviewers, researchers, each on a model matched to the task's difficulty from the
+  models allowed in the project's settings), and gets the work reviewed: a self-review for small
+  tickets, an independent reviewer for larger ones.
+- **It records evidence and delivers.** The checks it ran, the review's outcome and screenshots go
+  into the ticket; the change arrives as a pull request or a local branch, as the project is set.
+  The ticket moves to **Awaiting acceptance**.
+- **You accept or request changes.** Read the summary and evidence, then press **Accept** (Taro
+  can also merge it, if the project is set to) or **Request changes…** with what to change, which
+  sends the ticket back to its owner.
+- **Questions arrive as decision cards**, with options and a recommendation; you answer with a
+  button. Inbox gathers them across projects.
+
+## Unattended work and cost
+
+Agents keep working while you are away; Taro watches them so work does not sit still and tokens are
+not wasted.
+
+- **Every turn is read.** When an agent's turn ends, Taro reads its status line and questions and
+  updates its card.
+- **Stalls get a nudge.** A task owner that stops without saying it is done, waiting or blocked
+  gets one nudge; if it stops again, its card turns **Stalled** for you to nudge, compact or
+  relaunch.
+- **Crashes are recovered.** An agent whose process dies is restarted with its conversation intact;
+  when that fails, a task owner or the Manager is started afresh. After two recoveries within an
+  hour Taro stops and leaves the card **Stalled**.
+- **Long conversations are compacted.** A task owner whose conversation passes the compaction
+  threshold is compacted after its turn, and an owner or Manager left idle with a large
+  conversation is compacted just before the provider's one-hour prompt cache expires. Both
+  thresholds are in the project's settings.
+- **Finished agents are archived** when their ticket is Done.
+- **Starting agents is limited.** No more task owners run than the project's cap, and new owners
+  and crash recoveries wait while the host is above 85% of its thread limit. A ticket in **Awaiting
+  acceptance** no longer counts towards the cap, so the next queued ticket can start.
 
 ## Screens
 
@@ -68,5 +105,5 @@ the error shown on Taro's row.
 
 ## License
 
-MIT. Parts are adapted from FirstMate (MIT) and from Paseo (Apache-2.0); see
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [LICENSES/](LICENSES/).
+MIT, see [LICENSE](LICENSE). Parts are adapted from FirstMate (MIT) and from Paseo (Apache-2.0);
+their notices and licence texts are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

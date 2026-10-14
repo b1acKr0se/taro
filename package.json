@@ -15,7 +15,7 @@
     "skill/",
     "templates/",
     "THIRD_PARTY_NOTICES.md",
-    "LICENSES/",
+    "LICENSE",
     "!**/*.test.ts"
   ],
   "scripts": {
