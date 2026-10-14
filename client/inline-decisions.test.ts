@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { StoredDecision } from "../shared/state";
-import { cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
+import { cardOnScreen, offsetShowingCard, placeDecisions } from "./inline-decisions";
 
 function decision(id: string, parts: Partial<StoredDecision> = {}): StoredDecision {
   return {
@@ -127,18 +127,3 @@ describe("offsetShowingCard", () => {
   });
 });
 
-describe("deliveryRowKey", () => {
-  it("is the newest message ending done:", () => {
-    const rows = [
-      { key: "r1", text: "First pass.\n\ndone: SC-002 ready for acceptance" },
-      { key: "r2", text: "Fixed the names.\n\ndone: SC-002 ready again" },
-      { key: "r3", text: "Thanks.\n\nwaiting: acceptance" },
-    ];
-    expect(deliveryRowKey(rows)).toBe("r2");
-  });
-
-  it("is null when nothing loaded presented", () => {
-    expect(deliveryRowKey([])).toBeNull();
-    expect(deliveryRowKey([{ key: "r1", text: "The build is done: all green.\n\nworking: tests" }])).toBeNull();
-  });
-});

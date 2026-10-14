@@ -41,18 +41,6 @@ export function placeDecisions(rows: readonly { key: string; text: string }[], o
   return { byRow, unplaced, first: walkOrder(open)[0] ?? null };
 }
 
-/**
- * The message where an owner presented its delivery, under which the acceptance card is drawn: the
- * newest one ending `done:`. Null when no loaded message does (the card goes at the transcript end).
- */
-export function deliveryRowKey(rows: readonly { key: string; text: string }[]): string | null {
-  for (let index = rows.length - 1; index >= 0; index -= 1) {
-    const row = rows[index];
-    if (row !== undefined && parseStatusLine(row.text)?.state === "done") return row.key;
-  }
-  return null;
-}
-
 /** How much of a card must show for it to count as on screen, in points. */
 const VISIBLE_SLACK = 60;
 

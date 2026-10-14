@@ -31,7 +31,7 @@ import { PermissionCard, usePendingRequests } from "./permission-card";
 import { ReplyBox } from "./reply-box";
 import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
-import { cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
+import { cardOnScreen, offsetShowingCard, placeDecisions } from "./inline-decisions";
 import { groupRows, toolRunSummary, type Group } from "./tool-runs";
 import { ATTACHMENTS_ONLY, transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
@@ -111,9 +111,10 @@ export function AgentChat({
    */
   asks?: { decisions: readonly StoredDecision[]; onAnswered: () => void };
   /**
-   * A delivered ticket's acceptance card (TR-026), drawn under the message where the owner presented
-   * it and handled like a question: brought into view on opening when nothing is asked, and `label`
-   * as a jump link at the composer while it is off screen. `ready`: Accept is offered.
+   * A delivered ticket's acceptance card (TR-026), handled like a question: brought into view on
+   * opening when nothing is asked, and `label` as a jump link at the composer while it is off screen.
+   * Drawn at the transcript's end (TR-091), so what is said after the delivery never buries it.
+   * `ready`: Accept is offered.
    */
   delivery?: { card: ReactNode; label: string; ready: boolean } | undefined;
   /** Things to send (the Manager's suggestions, TR-045), after the buttons in their sideways-scrolling line. */
@@ -149,7 +150,6 @@ export function AgentChat({
   const marksByRow = useMemo(() => new Map(sends.views.flatMap((view) => (view.rowKey === null ? [] : [[view.rowKey, view] as const]))), [sends.views]);
   const echoes = sends.views.filter((view) => view.rowKey === null);
   const places = useMemo(() => (asks === undefined || asks.decisions.length === 0 ? null : placeDecisions(agentRows, asks.decisions)), [agentRows, asks?.decisions]);
-  const deliveryKey = useMemo(() => (delivery === undefined ? null : deliveryRowKey(agentRows)), [agentRows, delivery === undefined]);
   /** The acceptance card's place in the layouts, beside the decisions' keys. */
   const deliveryTarget = `delivery:${agent.id}`;
   /** What is brought into view and jumped to: the first open question, else the acceptance card. */
@@ -371,7 +371,6 @@ export function AgentChat({
             ) : (
               groups.map((group) => {
                 const row = "row" in group ? group.row : null;
-                const presented = delivery !== undefined && row !== null && row.key === deliveryKey;
                 return (
                   <TranscriptGroup
                     key={group.key}
@@ -381,8 +380,6 @@ export function AgentChat({
                     mark={row?.kind === "user" ? marksByRow.get(row.key) : undefined}
                     onMarkAction={markActionLatest}
                     asked={row?.kind === "agent" ? (places?.byRow.get(row.key) ?? NO_DECISIONS) : NO_DECISIONS}
-                    deliveryCard={presented ? delivery.card : null}
-                    deliveryTarget={deliveryTarget}
                     transformText={transformText}
                     decorateRow={decorateRow}
                     theme={theme}
@@ -412,8 +409,8 @@ export function AgentChat({
                 {decisionCards(places.unplaced)}
               </View>
             )}
-            {/* The message that presented the delivery is older than the loaded timeline. */}
-            {delivery === undefined || deliveryKey !== null ? null : (
+            {/* Under everything said since the delivery; a permission request, which holds the agent up, stays last. */}
+            {delivery === undefined ? null : (
               <View style={styles.agentRow} onLayout={(event) => noteLayout([deliveryTarget], event.nativeEvent.layout)}>
                 {delivery.card}
               </View>
@@ -507,9 +504,6 @@ interface TranscriptGroupProps {
   onMarkAction: (id: string, action: MarkAction) => void;
   /** The open decisions this message asked, drawn under it. */
   asked: readonly StoredDecision[];
-  /** The acceptance card, under the message that presented the delivery; null elsewhere. */
-  deliveryCard: ReactNode;
-  deliveryTarget: string;
   transformText: ((text: string) => string) | undefined;
   decorateRow: ((text: string, key: string) => ReactNode) | undefined;
   theme: PluginTheme;
@@ -607,7 +601,7 @@ function SendMarkLine({ view, theme, styles, onAction }: { view: SendView; theme
   );
 }
 
-function TranscriptGroupView({ group, open, images, mark, asked, deliveryCard, deliveryTarget, transformText, decorateRow, theme, styles, onToggle, onRowLayout, onOpenLink, renderCards, onMarkAction }: TranscriptGroupProps) {
+function TranscriptGroupView({ group, open, images, mark, asked, transformText, decorateRow, theme, styles, onToggle, onRowLayout, onOpenLink, renderCards, onMarkAction }: TranscriptGroupProps) {
   if ("tools" in group) {
     const summary = toolRunSummary(group.tools);
     const lone = group.tools.length === 1;
@@ -662,8 +656,7 @@ function TranscriptGroupView({ group, open, images, mark, asked, deliveryCard, d
     case "user":
       return <UserMessage key={row.key} text={row.text} images={images} mark={mark} theme={theme} styles={styles} onMarkAction={onMarkAction} />;
     case "agent": {
-      const presented = deliveryCard !== null;
-      const targets = [...asked.map((decision) => decision.key), ...(presented ? [deliveryTarget] : [])];
+      const targets = asked.map((decision) => decision.key);
       return (
         <View key={row.key} style={styles.agentRow} onLayout={targets.length === 0 ? undefined : (event) => onRowLayout(row.key, targets, "row", event.nativeEvent.layout)}>
           <Markdown source={transformText === undefined ? row.text : transformText(row.text)} theme={theme} onOpenLink={onOpenLink} />
@@ -671,7 +664,6 @@ function TranscriptGroupView({ group, open, images, mark, asked, deliveryCard, d
           {targets.length === 0 ? null : (
             <View style={styles.agentRow} onLayout={(event) => onRowLayout(row.key, targets, "cards", event.nativeEvent.layout)}>
               {renderCards(asked)}
-              {deliveryCard}
             </View>
           )}
         </View>
@@ -703,8 +695,6 @@ const TranscriptGroup = memo(
     previous.onMarkAction === next.onMarkAction &&
     sameItems(previous.asked, next.asked) &&
     previous.open === next.open &&
-    previous.deliveryCard === next.deliveryCard &&
-    previous.deliveryTarget === next.deliveryTarget &&
     previous.transformText === next.transformText &&
     previous.decorateRow === next.decorateRow &&
     previous.theme === next.theme &&
