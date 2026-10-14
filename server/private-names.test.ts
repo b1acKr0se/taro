@@ -103,8 +103,11 @@ describe("nameFinder", () => {
   });
 });
 
+// Hashing every window of every tracked line is CPU-bound: about 3 s on a loaded host, near vitest's 5 s default.
+const TRACKED_FILES_TIMEOUT_MS = 30_000;
+
 describe("tracked files", () => {
-  it("hold none of the private names, in their paths or their text", () => {
+  it("hold none of the private names, in their paths or their text", { timeout: TRACKED_FILES_TIMEOUT_MS }, () => {
     const files = execFileSync("git", ["ls-files", "-z"], { cwd: PLUGIN_ROOT, encoding: "utf8" })
       .split("\0")
       .filter(Boolean);
