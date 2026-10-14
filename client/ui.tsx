@@ -23,6 +23,7 @@ export function IconButton({
   disabled = false,
   showLabel = false,
   grow = false,
+  state,
 }: {
   icon: string;
   label: string;
@@ -30,6 +31,8 @@ export function IconButton({
   onPress: () => void;
   tone?: Tone;
   disabled?: boolean;
+  /** A call it sent (TR-058): "busy" spins in place of the icon and takes no press; "done" shows a check for a moment. */
+  state?: "busy" | "done" | undefined;
   /** Draws the label beside the icon; otherwise it is only the accessibility label. */
   showLabel?: boolean;
   /** Takes a share of its row's spare width, its content centred: one of a pair that wraps to equal full-width rows. */
@@ -38,6 +41,9 @@ export function IconButton({
   const colors = theme.colors;
   const color =
     tone === "accent" ? colors.accentForeground : tone === "danger" ? colors.statusDanger : colors.foreground;
+  const busy = state === "busy";
+  // The pressed button stays at full strength while it spins; only the buttons waiting on it fade.
+  const faded = disabled && !busy;
   const styles = useMemo(
     () => ({
       button: {
@@ -52,24 +58,30 @@ export function IconButton({
         borderWidth: 1,
         borderColor: tone === "accent" ? colors.accent : colors.border,
         backgroundColor: tone === "accent" ? colors.accent : colors.surface1,
-        opacity: disabled ? 0.5 : 1,
+        opacity: faded ? 0.5 : 1,
         // A long label — a card action the first mate named — wraps inside a narrow card instead of overflowing it.
         maxWidth: "100%" as const,
       },
       label: { color, fontSize: FONT_SIZE.small, fontWeight: "500" as const, flexShrink: 1 },
     }),
-    [colors, tone, disabled, showLabel, grow, color],
+    [colors, tone, faded, showLabel, grow, color],
   );
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
+      accessibilityState={{ disabled: disabled || busy, busy }}
+      disabled={disabled || busy}
       onPress={onPress}
       style={styles.button}
     >
-      <Icon name={icon} size={14} color={color} />
+      {busy ? (
+        <Spinner size={14} color={color} />
+      ) : state === "done" ? (
+        <Icon name="Check" size={14} color={tone === "default" ? colors.statusSuccess : color} />
+      ) : (
+        <Icon name={icon} size={14} color={color} />
+      )}
       {showLabel ? <Text style={styles.label}>{label}</Text> : null}
     </Pressable>
   );
@@ -87,12 +99,14 @@ const ACCEPTANCE_PAIR_MAX_WIDTH = 320;
 export function AcceptancePair({
   theme,
   busy,
+  acceptState,
   requestLabel,
   onAccept,
   onRequestChanges,
 }: {
   theme: PluginTheme;
   busy: boolean;
+  acceptState?: "busy" | "done" | undefined;
   /** "Request changes…" where the field opens here; "Request changes" where it opens the ticket. */
   requestLabel: string;
   onAccept: (() => void) | null;
@@ -100,7 +114,7 @@ export function AcceptancePair({
 }) {
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, width: "100%", maxWidth: ACCEPTANCE_PAIR_MAX_WIDTH }}>
-      {onAccept === null ? null : <IconButton icon="Check" label="Accept" showLabel grow tone="accent" theme={theme} disabled={busy} onPress={onAccept} />}
+      {onAccept === null ? null : <IconButton icon="Check" label="Accept" showLabel grow tone="accent" theme={theme} disabled={busy} state={acceptState} onPress={onAccept} />}
       <IconButton icon="MessageSquare" label={requestLabel} showLabel grow theme={theme} disabled={busy} onPress={onRequestChanges} />
     </View>
   );

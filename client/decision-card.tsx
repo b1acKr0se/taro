@@ -10,20 +10,20 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
-import { TextInput, useToast } from "@getpaseo/plugin/client/react-native";
+import { TextInput } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { answerDecision } from "../shared/contracts";
 import { askedBy, decisionOptionRows, decisionSubmit } from "../shared/decision-view";
 import type { StoredDecision } from "../shared/state";
-import { errorText } from "./format";
 import { useRevealFocused } from "./keyboard";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { ImageThumbnail } from "./image-view";
 import { IconButton } from "./ui";
+import { useActions } from "./use-actions";
 
 /** The height of an option's thumbnails; a phone shot is half as wide, a desktop one 1.6 times. */
 const OPTION_IMAGE_HEIGHT = 96;
@@ -52,7 +52,6 @@ export function DecisionCard({
   /** Set when the card cannot be answered: the options are inert and this replaces the answer box. */
   readOnlyNote?: string | null;
 }) {
-  const toast = useToast();
   // Submit is revealed with the field, so it stays above the keyboard while the reader types.
   const actions = useRef<View>(null);
   const reveal = useRevealFocused(actions);
@@ -60,7 +59,8 @@ export function DecisionCard({
   const [typed, setTyped] = useState("");
   const [picked, setPicked] = useState<number | null>(null);
   const [whyOpen, setWhyOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const presses = useActions();
+  const busy = presses.busy;
   const { colors } = theme;
   const optionRows = useMemo(() => decisionOptionRows(decision), [decision]);
   const submit = decisionSubmit(optionRows.rows, picked, typed);
@@ -125,20 +125,6 @@ export function DecisionCard({
     }),
     [colors, compact, waiting],
   );
-
-  async function send(): Promise<void> {
-    setBusy(true);
-    try {
-      await answer({ key: decision.key, label: submit.label, text: submit.text, from: answeredFrom });
-      setTyped("");
-      setPicked(null);
-      onAnswered();
-    } catch (caught) {
-      toast.error(errorText(caught));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <View style={styles.card}>
@@ -222,7 +208,26 @@ export function DecisionCard({
             style={styles.input}
           />
           <View ref={actions} collapsable={false} style={styles.actions}>
-            <IconButton icon="Check" label="Submit" showLabel tone="accent" theme={theme} disabled={busy || !submit.enabled} onPress={() => void send()} />
+            <IconButton
+              icon="Check"
+              label="Submit"
+              showLabel
+              tone="accent"
+              theme={theme}
+              disabled={busy || !submit.enabled}
+              state={presses.stateOf("submit")}
+              // The answered decision leaves, so Submit stays busy until it does.
+              onPress={() =>
+                presses.press("submit", () => answer({ key: decision.key, label: submit.label, text: submit.text, from: answeredFrom }), {
+                  after: "hold",
+                  onSuccess: () => {
+                    setTyped("");
+                    setPicked(null);
+                    onAnswered();
+                  },
+                })
+              }
+            />
             {picked === null && typed === "" ? null : (
               <IconButton icon="X" label="Dismiss" showLabel theme={theme} disabled={busy} onPress={() => { setPicked(null); setTyped(""); }} />
             )}

@@ -85,7 +85,8 @@ export function afterCreation(input: { step: CreationStep; listed: boolean; onSe
 /** Starts the Manager again after it failed to start; the project and its tracker are there already. */
 export async function retryManager(calls: Pick<CreationCalls, "launch">, state: CreationState = creation): Promise<void> {
   const project = state.project;
-  if (project === null) return;
+  // Only from a failed start: a second tap while the first retry runs starts nothing (TR-058).
+  if (project === null || state.step !== "failed") return;
   Object.assign(state, { step: "manager", failedStep: null, error: null });
   try {
     await calls.launch({ project });

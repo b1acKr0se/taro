@@ -10,7 +10,7 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import type { PluginScreenProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
-import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
+import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
@@ -38,6 +38,7 @@ import { SuggestionPills } from "./suggestion-pills";
 import { TicketView } from "./ticket-view";
 import { FONT_SIZE } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
+import { useActions } from "./use-actions";
 
 type View_ = "inbox" | "project" | "setup" | "settings";
 type PhoneTab = "manager" | "inbox" | "board" | "stats";
@@ -468,10 +469,10 @@ function ManagerPane({
   onShowBoard: (() => void) | null;
   onChanged: () => void;
 }) {
-  const toast = useToast();
   const tell = useRpc(tellManager);
   const askCatchUp = useRpc(catchUp);
   const compactRpc = useRpc(compactManager);
+  const actions = useActions();
   const project = summary.config.project;
   const manager = summary.manager;
   // On a phone the switch row above already says Manager and holds the settings button (TR-031).
@@ -512,14 +513,23 @@ function ManagerPane({
         }}
         actions={
           <>
-            <IconButton icon="Newspaper" label="Catch up" showLabel theme={theme} onPress={() => void askCatchUp({ project }).catch((caught: unknown) => toast.error(errorText(caught)))} />
+            <IconButton
+              icon="Newspaper"
+              label="Catch up"
+              showLabel
+              theme={theme}
+              disabled={actions.busy}
+              state={actions.stateOf("catch-up")}
+              onPress={() => actions.press("catch-up", () => askCatchUp({ project }))}
+            />
             <IconButton
               icon="Minimize2"
               label="Compact"
               showLabel={!compact}
               theme={theme}
-              disabled={running}
-              onPress={() => void compactRpc({ project }).catch((caught: unknown) => toast.error(errorText(caught)))}
+              disabled={running || actions.busy}
+              state={actions.stateOf("compact")}
+              onPress={() => actions.press("compact", () => compactRpc({ project }))}
             />
           </>
         }

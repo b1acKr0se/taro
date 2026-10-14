@@ -22,6 +22,7 @@ import { Markdown } from "./markdown";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { AcceptancePair, IconButton } from "./ui";
+import { useActions } from "./use-actions";
 
 export function AcceptanceCard({ card, project, theme, compact, onChanged }: { card: Card; project: string; theme: PluginTheme; compact: boolean; onChanged: () => void }) {
   const toast = useToast();
@@ -35,7 +36,8 @@ export function AcceptanceCard({ card, project, theme, compact, onChanged }: { c
   const detail = useQuery({ queryKey: ["taro", "ticket", project, card.id], queryFn: () => load({ project, ticket: card.id }), refetchInterval: 6_000 });
   const [writing, setWriting] = useState(false);
   const [typed, setTyped] = useState("");
-  const [busy, setBusy] = useState(false);
+  const actions = useActions();
+  const busy = actions.busy;
   const { colors } = theme;
   const summary = detail.data?.finalSummary === null || detail.data?.finalSummary === undefined ? null : finalSummaryBody(detail.data.finalSummary);
   const evidence = detail.data?.evidence ?? null;
@@ -65,19 +67,6 @@ export function AcceptanceCard({ card, project, theme, compact, onChanged }: { c
     }),
     [colors, compact, ready],
   );
-
-  async function run(action: () => Promise<unknown>, done: string): Promise<void> {
-    setBusy(true);
-    try {
-      await action();
-      toast.show(done, { variant: "success" });
-      onChanged();
-    } catch (caught) {
-      toast.error(errorText(caught));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <View style={styles.card}>
@@ -128,12 +117,17 @@ export function AcceptanceCard({ card, project, theme, compact, onChanged }: { c
               tone="accent"
               theme={theme}
               disabled={busy || typed.trim() === ""}
+              state={actions.stateOf("request-changes")}
+              // Success closes the field, and the toast says it went.
               onPress={() =>
-                void run(async () => {
-                  await changes({ project, ticket: card.id, text: typed.trim() });
-                  setTyped("");
-                  setWriting(false);
-                }, "Sent to the owner.")
+                actions.press("request-changes", () => changes({ project, ticket: card.id, text: typed.trim() }), {
+                  success: "Sent to the owner.",
+                  onSuccess: () => {
+                    setTyped("");
+                    setWriting(false);
+                    onChanged();
+                  },
+                })
               }
             />
             <IconButton icon="X" label="Cancel" showLabel theme={theme} disabled={busy} onPress={() => setWriting(false)} />
@@ -142,8 +136,10 @@ export function AcceptanceCard({ card, project, theme, compact, onChanged }: { c
           <AcceptancePair
             theme={theme}
             busy={busy}
+            acceptState={actions.stateOf("accept")}
             requestLabel="Request changes…"
-            onAccept={ready ? () => void run(() => accept({ project, ticket: card.id }), `Accepted ${card.id}.`) : null}
+            // The accepted ticket leaves this card, so Accept stays busy until it does.
+            onAccept={ready ? () => actions.press("accept", () => accept({ project, ticket: card.id }), { after: "hold", success: `Accepted ${card.id}.`, onSuccess: onChanged }) : null}
             onRequestChanges={() => setWriting(true)}
           />
         )}

@@ -12,9 +12,11 @@ import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { resolveTrackerSync, type SyncResolution, type TrackerSyncProblem } from "../shared/contracts";
-import { errorText } from "./format";
 import { useRefreshProjects } from "./queries";
+import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
+import { Spinner } from "./ui";
+import { useActions } from "./use-actions";
 
 interface Choice {
   resolution: SyncResolution;
@@ -49,7 +51,7 @@ export function SyncProblemCard({
   const toast = useToast();
   const resolve = useRpc(resolveTrackerSync);
   const refreshProjects = useRefreshProjects();
-  const [busy, setBusy] = useState(false);
+  const presses = useActions();
   const [folded, setFolded] = useState(startFolded);
   const { colors } = theme;
   const styles = useMemo(
@@ -70,18 +72,23 @@ export function SyncProblemCard({
     [colors, compact],
   );
 
-  async function choose(choice: Choice): Promise<void> {
-    setBusy(true);
-    try {
-      const { problem: left } = await resolve({ project, resolution: choice.resolution });
-      if (left === null) toast.show("Tickets are in sync with the remote again.", { variant: "success" });
-      else toast.error(`Still paused: ${left.message}`);
-    } catch (caught) {
-      toast.error(errorText(caught));
-    } finally {
-      setBusy(false);
-      refreshProjects();
-    }
+  function choose(choice: Choice): void {
+    presses.press(
+      choice.resolution,
+      async () => {
+        try {
+          return await resolve({ project, resolution: choice.resolution });
+        } finally {
+          refreshProjects();
+        }
+      },
+      {
+        onSuccess: ({ problem: left }) => {
+          if (left === null) toast.show("Tickets are in sync with the remote again.", { variant: "success" });
+          else toast.error(`Still paused: ${left.message}`);
+        },
+      },
+    );
   }
 
   const conflict = problem.kind === "conflict";
@@ -115,8 +122,22 @@ export function SyncProblemCard({
           )}
           <View style={styles.options}>
             {(conflict ? CONFLICT_CHOICES : FAILURE_CHOICES).map((choice) => (
-              <Pressable key={choice.resolution} accessibilityRole="button" disabled={busy} style={styles.option} onPress={() => void choose(choice)}>
-                <Text style={styles.optionLabel}>{choice.label}</Text>
+              <Pressable
+                key={choice.resolution}
+                accessibilityRole="button"
+                accessibilityState={{ busy: presses.stateOf(choice.resolution) === "busy", disabled: presses.busy }}
+                disabled={presses.busy}
+                style={[styles.option, presses.busy && presses.stateOf(choice.resolution) !== "busy" ? { opacity: 0.5 } : null]}
+                onPress={() => choose(choice)}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs }}>
+                  {presses.stateOf(choice.resolution) === "busy" ? (
+                    <Spinner size={12} color={colors.foreground} />
+                  ) : presses.stateOf(choice.resolution) === "done" ? (
+                    <Icon name="Check" size={12} color={colors.statusSuccess} />
+                  ) : null}
+                  <Text style={styles.optionLabel}>{choice.label}</Text>
+                </View>
                 <Text style={styles.consequence}>{choice.consequence}</Text>
               </Pressable>
             ))}

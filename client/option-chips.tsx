@@ -17,6 +17,7 @@ import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE } from "./type-scale";
 import { Spinner } from "./ui";
+import { usePressGuards } from "./use-actions";
 
 export function OptionChips({
   decision,
@@ -32,6 +33,7 @@ export function OptionChips({
 }) {
   const toast = useToast();
   const answer = useRpc(answerDecision);
+  const guardFor = usePressGuards();
   const [sending, setSending] = useState<string | null>(null);
   // Stays set: the chips remain off until the board reloads without this question, so a second tap cannot answer it again.
   const [answered, setAnswered] = useState(false);
@@ -65,18 +67,19 @@ export function OptionChips({
       onOpen();
       return;
     }
+    // One guard for every chip: a question takes one answer, so a second tap on any chip is ignored.
+    const running = guardFor("answer").run(chip.label, () => answer({ key: decision.key, label: chip.label, text: "", from: "screen" }), "hold");
+    if (running === null) return;
     setSending(chip.label);
-    answer({ key: decision.key, label: chip.label, text: "", from: "screen" }).then(
-      () => {
+    void running.then((outcome) => {
+      setSending(null);
+      if (outcome.ok) {
         setAnswered(true);
-        setSending(null);
         onAnswered();
-      },
-      (caught: unknown) => {
-        setSending(null);
-        toast.error(errorText(caught));
-      },
-    );
+      } else {
+        toast.error(errorText(outcome.error));
+      }
+    });
   }
 
   return (

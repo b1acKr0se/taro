@@ -21,6 +21,7 @@ import { OptionChips } from "./option-chips";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { AcceptancePair, IconButton } from "./ui";
+import { useActions } from "./use-actions";
 import { useNow } from "./use-now";
 import { statusStateLook, toneColor } from "./visual-meta";
 
@@ -49,7 +50,8 @@ export function TicketCard({
   const relaunch = useRpc(relaunchOwner);
   const compactRpc = useRpc(compactAgent);
   const accept = useRpc(acceptTicket);
-  const [busy, setBusy] = useState(false);
+  const actions = useActions();
+  const busy = actions.busy;
   const [childrenOpen, setChildrenOpen] = useState(false);
   const now = useNow();
   const { colors } = theme;
@@ -97,19 +99,6 @@ export function TicketCard({
     }),
     [colors, compact, selected],
   );
-
-  async function run(action: () => Promise<unknown>, done?: string): Promise<void> {
-    setBusy(true);
-    try {
-      await action();
-      if (done !== undefined) toast.show(done, { variant: "success" });
-      onChanged();
-    } catch (caught) {
-      toast.error(errorText(caught));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   const owner = card.owner;
   const liveColor =
@@ -220,8 +209,10 @@ export function TicketCard({
               <AcceptancePair
                 theme={theme}
                 busy={busy}
+                acceptState={actions.stateOf("accept")}
                 requestLabel="Request changes"
-                onAccept={() => void run(() => accept({ project, ticket: card.id }), `Accepted ${card.id}.`)}
+                // The accepted ticket leaves this call, so Accept stays busy until it does.
+                onAccept={() => actions.press("accept", () => accept({ project, ticket: card.id }), { after: "hold", success: `Accepted ${card.id}.`, onSuccess: onChanged })}
                 onRequestChanges={onOpen}
               />
             </View>
@@ -236,9 +227,25 @@ export function TicketCard({
           {line.kind === "stalled" ? (
             <View style={styles.actions}>
               {nudgeable ? (
-                <IconButton icon="Zap" label="Nudge" showLabel theme={theme} disabled={busy} onPress={() => void run(() => nudge({ agentId: owner.id }), "Nudged.")} />
+                <IconButton
+                  icon="Zap"
+                  label="Nudge"
+                  showLabel
+                  theme={theme}
+                  disabled={busy}
+                  state={actions.stateOf("nudge")}
+                  onPress={() => actions.press("nudge", () => nudge({ agentId: owner.id }), { success: "Nudged.", onSuccess: onChanged })}
+                />
               ) : null}
-              <IconButton icon="RotateCcw" label="Relaunch" showLabel theme={theme} disabled={busy} onPress={() => void run(() => relaunch({ project, ticket: card.id }), "A fresh owner is starting.")} />
+              <IconButton
+                icon="RotateCcw"
+                label="Relaunch"
+                showLabel
+                theme={theme}
+                disabled={busy}
+                state={actions.stateOf("relaunch")}
+                onPress={() => actions.press("relaunch", () => relaunch({ project, ticket: card.id }), { success: "A fresh owner is starting.", onSuccess: onChanged })}
+              />
             </View>
           ) : null}
         </View>
@@ -292,7 +299,15 @@ export function TicketCard({
           )}
           <View style={{ flex: 1 }} />
           {compactOffered && owner !== null ? (
-            <IconButton icon="Minimize2" label="Compact" showLabel theme={theme} disabled={busy} onPress={() => void run(() => compactRpc({ agentId: owner.id }), "Compacting after a handoff.")} />
+            <IconButton
+              icon="Minimize2"
+              label="Compact"
+              showLabel
+              theme={theme}
+              disabled={busy}
+              state={actions.stateOf("compact")}
+              onPress={() => actions.press("compact", () => compactRpc({ agentId: owner.id }), { success: "Compacting after a handoff.", onSuccess: onChanged })}
+            />
           ) : null}
         </View>
       ) : null}

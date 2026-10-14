@@ -92,6 +92,18 @@ describe("retryManager", () => {
     expect(state).toEqual({ project: "shop", step: "done", failedStep: null, error: null });
   });
 
+  it("starts the Manager once when pressed twice before the first start settles", async () => {
+    const finishers: (() => void)[] = [];
+    const launch = vi.fn(() => new Promise<object>((resolve) => finishers.push(() => resolve({}))));
+    const state = { project: "shop", step: "failed" as "failed" | "manager" | "done", failedStep: "manager" as "manager" | null, error: "no threads" as string | null };
+    const first = retryManager({ launch }, state);
+    const second = retryManager({ launch }, state);
+    finishers.forEach((finish) => finish());
+    await Promise.all([first, second]);
+    expect(launch).toHaveBeenCalledTimes(1);
+    expect(state.step).toBe("done");
+  });
+
   it("does nothing without a project", async () => {
     const launch = vi.fn(async () => ({}));
     const state = creationDefaults();

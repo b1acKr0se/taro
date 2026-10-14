@@ -6,17 +6,18 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
-import { useToast } from "@getpaseo/plugin/client/react-native";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { dismissTrackerProtection } from "../shared/contracts";
 import type { BoardAlert } from "../shared/recovery";
 import { PROTECTION_ALERT_ID } from "../shared/tracker-guard";
-import { errorText } from "./format";
 import { useRefreshBoard } from "./board-data";
 import { useRefreshProjects } from "./queries";
+import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
+import { Spinner } from "./ui";
+import { useActions } from "./use-actions";
 
 const HEADINGS: Readonly<Record<string, string>> = {
   headroom: "THREADS RUNNING LOW",
@@ -25,12 +26,11 @@ const HEADINGS: Readonly<Record<string, string>> = {
 };
 
 export function AlertCard({ project, alert, theme, compact }: { project: string; alert: BoardAlert; theme: PluginTheme; compact: boolean }) {
-  const toast = useToast();
   const dismiss = useRpc(dismissTrackerProtection);
   const refreshBoard = useRefreshBoard(project);
   // The project list carries the Needs you badge, which counts the alert.
   const refreshProjects = useRefreshProjects();
-  const [busy, setBusy] = useState(false);
+  const presses = useActions();
   const { colors } = theme;
   const styles = useMemo(
     () => ({
@@ -43,14 +43,14 @@ export function AlertCard({ project, alert, theme, compact }: { project: string;
   );
 
   function onDismiss(): void {
-    setBusy(true);
-    dismiss({ project })
-      .then(() => {
+    // The dismissed alert leaves the board, so it stays busy until it does.
+    presses.press("dismiss", () => dismiss({ project }), {
+      after: "hold",
+      onSuccess: () => {
         refreshBoard();
         refreshProjects();
-      })
-      .catch((caught: unknown) => toast.error(errorText(caught)))
-      .finally(() => setBusy(false));
+      },
+    });
   }
 
   return (
@@ -58,7 +58,15 @@ export function AlertCard({ project, alert, theme, compact }: { project: string;
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
         <Text style={styles.heading}>{HEADINGS[alert.id] ?? "NEEDS YOU"}</Text>
         {alert.id === PROTECTION_ALERT_ID ? (
-          <Pressable accessibilityRole="button" disabled={busy} onPress={onDismiss} hitSlop={8}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ busy: presses.busy, disabled: presses.busy }}
+            disabled={presses.busy}
+            onPress={onDismiss}
+            hitSlop={8}
+            style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs }}
+          >
+            {presses.busy ? <Spinner size={12} color={colors.accent} /> : null}
             <Text style={styles.dismiss}>Dismiss</Text>
           </Pressable>
         ) : null}

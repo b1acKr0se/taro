@@ -17,6 +17,7 @@ import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE } from "./type-scale";
 import { Spinner } from "./ui";
+import { usePressGuards } from "./use-actions";
 
 /** How long a sent suggestion shows "Sent to the Manager" before it leaves the row. */
 const SENT_VISIBLE_MS = 2500;
@@ -36,6 +37,7 @@ export function SuggestionPills({
   const toast = useToast();
   const tell = useRpc(tellManager);
   const dismiss = useRpc(dismissSuggestion);
+  const guardFor = usePressGuards();
   const [sends, setSends] = useState<SuggestionSend[]>([]);
   const { colors } = theme;
   const styles = useMemo(
@@ -67,22 +69,33 @@ export function SuggestionPills({
 
   /** Sends it, shows "Sent" for a moment and hides it for good (the manager may write it again); a failure stays to retry. */
   function sendSuggestion(suggestion: Suggestion, index: number): void {
+    // Held after success: the pill shows Sent, then leaves for good.
+    const running = guardFor(suggestionKey(suggestion)).run("send", () => tell({ project, text: suggestion.prompt }), "hold");
+    if (running === null) return;
     setSend(suggestion, index, "sending");
-    tell({ project, text: suggestion.prompt }).then(
-      () => {
+    void running.then((outcome) => {
+      if (outcome.ok) {
         setSend(suggestion, index, "sent");
         dismiss({ project, label: suggestion.label, prompt: suggestion.prompt }).catch((caught: unknown) => toast.error(errorText(caught)));
         setTimeout(() => {
           setSend(suggestion, index, null);
           onChanged();
         }, SENT_VISIBLE_MS);
-      },
-      (caught: unknown) => {
-        const reason = errorText(caught);
+      } else {
+        const reason = errorText(outcome.error);
         setSend(suggestion, index, "failed", reason);
         toast.error(`Not sent to the Manager: ${reason}`);
-      },
-    );
+      }
+    });
+  }
+
+  function dismissPill(suggestion: Suggestion): void {
+    // The same guard as its send: a pill cannot be dismissed while it is being sent, nor twice.
+    const running = guardFor(suggestionKey(suggestion)).run("dismiss", () => dismiss({ project, label: suggestion.label, prompt: suggestion.prompt }), "hold");
+    void running?.then((outcome) => {
+      if (outcome.ok) onChanged();
+      else toast.error(errorText(outcome.error));
+    });
   }
 
   function suggestionPill(item: SuggestionPill, index: number) {
@@ -132,7 +145,7 @@ export function SuggestionPills({
             accessibilityLabel={`Dismiss ${suggestion.label}`}
             hitSlop={6}
             style={styles.suggestionDismiss}
-            onPress={() => void dismiss({ project, label: suggestion.label, prompt: suggestion.prompt }).then(onChanged).catch((caught: unknown) => toast.error(errorText(caught)))}
+            onPress={() => dismissPill(suggestion)}
           >
             <Icon name="X" size={12} color={colors.foregroundMuted} />
           </Pressable>

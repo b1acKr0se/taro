@@ -32,6 +32,7 @@ import { CheckLine, ChoiceCards, Field, FormSection, TextField, TWO_COLUMN_MIN_W
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { IconButton, MONOSPACE, Spinner } from "./ui";
+import { usePressGuards } from "./use-actions";
 
 const PAGE_MAX_WIDTH = 760;
 const PICKER_REFRESH_MS = 5_000;
@@ -377,6 +378,7 @@ function ProjectReview({
   onBack: () => void;
 }) {
   const models = useModels();
+  const guardFor = usePressGuards();
   const [busy, setBusy] = useState(false);
   const [serverProblems, setServerProblems] = useState<SetupProblems>({});
   const [failure, setFailure] = useState<string | null>(error);
@@ -403,29 +405,33 @@ function ProjectReview({
     if (serverProblems[key] !== undefined) setServerProblems(({ [key]: _gone, ...rest }) => rest);
   }
 
-  async function submit(): Promise<void> {
+  function submit(): void {
+    // The guard, not `busy`, stops a second tap in the same frame; the reason for a failure shows above Create.
+    const running = guardFor("create").run("create", () => onCreate(draft));
+    if (running === null) return;
     setBusy(true);
     setFailure(null);
-    try {
-      const problems = await onCreate(draft);
-      if (problems !== null) {
-        setServerProblems(problems);
-        const elsewhere = Object.keys(problems).filter((key) => !(REVIEW_FIELDS as readonly string[]).includes(key));
-        if (elsewhere.length > 0) setFailure(elsewhere.map((key) => problems[key as keyof SetupDraft]).join(" "));
-      }
-    } catch (caught) {
-      setFailure(errorText(caught));
-    } finally {
+    void running.then((outcome) => {
       setBusy(false);
-    }
+      if (!outcome.ok) {
+        setFailure(errorText(outcome.error));
+        return;
+      }
+      const problems = outcome.value;
+      if (problems === null) return;
+      setServerProblems(problems);
+      const elsewhere = Object.keys(problems).filter((key) => !(REVIEW_FIELDS as readonly string[]).includes(key));
+      if (elsewhere.length > 0) setFailure(elsewhere.map((key) => problems[key as keyof SetupDraft]).join(" "));
+    });
   }
 
   const createButton = (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Create tracker and start Manager"
+      accessibilityState={{ busy, disabled: busy || !valid }}
       disabled={busy || !valid}
-      onPress={() => void submit()}
+      onPress={submit}
       style={({ pressed }) => ({
         minHeight: 44,
         borderRadius: 10,
@@ -434,11 +440,11 @@ function ProjectReview({
         justifyContent: "center",
         gap: SPACE.sm,
         backgroundColor: colors.accent,
-        opacity: busy || !valid ? 0.5 : pressed ? 0.85 : 1,
+        opacity: !valid ? 0.5 : pressed ? 0.85 : 1,
       })}
     >
       {busy ? <Spinner size={16} color={colors.accentForeground} /> : <Icon name="Rocket" size={16} color={colors.accentForeground} />}
-      <Text style={{ color: colors.accentForeground, fontSize: FONT_SIZE.body, fontWeight: "700" }}>{busy ? "Checking…" : "Create tracker and start Manager"}</Text>
+      <Text style={{ color: colors.accentForeground, fontSize: FONT_SIZE.body, fontWeight: "700" }}>Create tracker and start Manager</Text>
     </Pressable>
   );
   const allSettings = (

@@ -12,7 +12,7 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { usePaseo } from "@getpaseo/plugin/client";
-import { Icon, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
+import { Icon, TextInput } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
@@ -31,7 +31,8 @@ import {
   type Question,
   type Selections,
 } from "./questions";
-import { IconButton, MONOSPACE, errorText, type Tone } from "./ui";
+import { IconButton, MONOSPACE, type Tone } from "./ui";
+import { useActions } from "./use-actions";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 
 type AgentHandle = ReturnType<ReturnType<typeof usePaseo>["agents"]["ref"]>;
@@ -41,8 +42,8 @@ export type PermissionResponse = Parameters<AgentHandle["respondToPermission"]>[
 /**
  * An agent's pending requests, and how to answer one as the agent's own tab
  * would. Answered ones are hidden at once rather than when the next timeline
- * read confirms it, so a card cannot be answered twice; a failure is reported
- * and the card comes back.
+ * read confirms it, so a card cannot be answered twice; on a failure the card
+ * comes back, and its button reports the reason.
  */
 export function usePendingRequests(
   agentId: string,
@@ -51,7 +52,6 @@ export function usePendingRequests(
   onAnswering: () => void,
 ) {
   const paseo = usePaseo();
-  const toast = useToast();
   const [answered, setAnswered] = useState<ReadonlySet<string>>(new Set());
   const pending = (requests ?? []).filter((request) => !answered.has(request.id));
 
@@ -60,11 +60,7 @@ export function usePendingRequests(
     return paseo.agents
       .ref(agentId)
       .respondToPermission({ requestId, response })
-      .then(() => setAnswered((current) => new Set([...current, requestId])))
-      .catch((caught: unknown) => {
-        toast.error(errorText(caught));
-        throw caught;
-      });
+      .then(() => setAnswered((current) => new Set([...current, requestId])));
   }
 
   return { pending, respond };
@@ -154,32 +150,31 @@ function QuestionCard({ request, theme, compact, onRespond, questions }: CardPro
   const [selections, setSelections] = useState<Selections>({});
   const [otherTexts, setOtherTexts] = useState<OtherTexts>({});
   const [active, setActive] = useState(0);
-  const [busy, setBusy] = useState(false);
+  const presses = useActions();
+  const busy = presses.busy;
 
   const index = Math.min(active, questions.length - 1);
   const question = questions[index];
   const last = index === questions.length - 1;
   const ready = allAnswered(questions, selections, otherTexts);
 
-  function respond(response: PermissionResponse): void {
-    setBusy(true);
+  function respond(key: string, response: PermissionResponse): void {
     // Stays busy on success: the request leaves the list once the daemon has
     // the answer, and this card goes with it.
-    onRespond(response).catch(() => setBusy(false));
+    presses.press(key, () => onRespond(response), { after: "hold" });
   }
 
   function submit(): void {
-    if (!ready || busy) return;
-    respond({ behavior: "allow", updatedInput: { ...request.input, answers: buildAnswers(questions, selections, otherTexts) } });
+    if (!ready) return;
+    respond("submit", { behavior: "allow", updatedInput: { ...request.input, answers: buildAnswers(questions, selections, otherTexts) } });
   }
 
   function dismiss(): void {
-    if (busy) return;
     if (dismissSubmitsEmpty(questions)) {
-      respond({ behavior: "allow", updatedInput: { ...request.input, answers: buildAnswers(questions, selections, otherTexts) } });
+      respond("dismiss", { behavior: "allow", updatedInput: { ...request.input, answers: buildAnswers(questions, selections, otherTexts) } });
       return;
     }
-    respond({ behavior: "deny", message: "Dismissed by user" });
+    respond("dismiss", { behavior: "deny", message: "Dismissed by user" });
   }
 
   function choose(questionIndex: number, option: number, multiSelect: boolean): void {
@@ -278,15 +273,16 @@ function QuestionCard({ request, theme, compact, onRespond, questions }: CardPro
       ) : null}
 
       <View style={styles.actions}>
-        <IconButton icon="X" label={dismissLabel(questions)} showLabel theme={theme} disabled={busy} onPress={dismiss} />
+        <IconButton icon="X" label={dismissLabel(questions)} showLabel theme={theme} disabled={busy} state={presses.stateOf("dismiss")} onPress={dismiss} />
         {last ? (
           <IconButton
             icon="Check"
-            label={busy ? "Sending…" : "Submit"}
+            label="Submit"
             showLabel
             tone="accent"
             theme={theme}
             disabled={busy || !ready}
+            state={presses.stateOf("submit")}
             onPress={submit}
           />
         ) : (
@@ -326,13 +322,8 @@ function actionTone(variant: string | undefined, behavior: "allow" | "deny"): To
 
 function RequestCard({ request, theme, compact, onRespond, onOpenLink }: CardProps) {
   const styles = useCardStyles(theme, compact);
-  const [busy, setBusy] = useState(false);
+  const presses = useActions();
   const summary = useMemo(() => requestSummary(request), [request]);
-
-  function respond(response: PermissionResponse): void {
-    setBusy(true);
-    onRespond(response).catch(() => setBusy(false));
-  }
 
   const actions =
     request.actions !== undefined && request.actions.length > 0
@@ -379,8 +370,10 @@ function RequestCard({ request, theme, compact, onRespond, onOpenLink }: CardPro
             showLabel
             tone={action.tone}
             theme={theme}
-            disabled={busy}
-            onPress={() => respond(action.response)}
+            disabled={presses.busy}
+            state={presses.stateOf(action.key)}
+            // Stays busy on success: the answered request leaves the list.
+            onPress={() => presses.press(action.key, () => onRespond(action.response), { after: "hold" })}
           />
         ))}
       </View>

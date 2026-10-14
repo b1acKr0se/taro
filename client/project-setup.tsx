@@ -28,6 +28,7 @@ import { CheckLine, ChoiceCards, Dropdown, Field, FixedValue, FormSection, Model
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { IconButton } from "./ui";
+import { useActions } from "./use-actions";
 
 const PAGE_MAX_WIDTH = 760;
 
@@ -74,7 +75,8 @@ export function ProjectSetup({
   const [serverProblems, setServerProblems] = useState<SetupProblems>({});
   const [failure, setFailure] = useState<string | null>(error);
   const [orders, setOrders] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const presses = useActions();
+  const busy = presses.busy;
   // A field shows its problem once typed in, so a fresh form is not a wall of red; the footer says why saving is off.
   const [touched, setTouched] = useState<ReadonlySet<keyof SetupDraft>>(() => new Set());
   const [width, setWidth] = useState(0);
@@ -114,41 +116,37 @@ export function ProjectSetup({
     );
   }
 
-  async function submit(): Promise<void> {
-    setBusy(true);
-    setFailure(null);
-    try {
-      if (existing === null) {
-        const found = (await onCreate?.(draft)) ?? null;
-        if (found !== null) {
+  function submit(): void {
+    if (existing === null) {
+      setFailure(null);
+      // Fields the server refused fail the press (the button comes back) and are said in a toast; anything else shows on the page.
+      const fieldProblems = new Error("Fix the fields marked in red to continue.");
+      // Held after success: the page gives way to the creation's progress.
+      presses.press(
+        "submit",
+        async () => {
+          const found = (await onCreate?.(draft)) ?? null;
+          if (found === null) return;
           setServerProblems(found);
-          toast.error("Fix the fields marked in red to continue.");
-        }
-      } else {
+          throw fieldProblems;
+        },
+        { after: "hold", onError: (caught) => (caught === fieldProblems ? toast.error(fieldProblems.message) : setFailure(errorText(caught))) },
+      );
+      return;
+    }
+    presses.press(
+      "submit",
+      async () => {
         await save({ project: existing.project, settings: settingsFrom(draft, defaultModel) });
         if (orders !== null) await writeOrders({ project: existing.project, text: orders });
-        toast.show("Saved.", { variant: "success" });
-        onDone?.(existing.project);
-      }
-    } catch (caught) {
-      if (existing === null) setFailure(errorText(caught));
-      else toast.error(errorText(caught));
-    } finally {
-      setBusy(false);
-    }
+      },
+      { success: "Saved.", onSuccess: () => onDone?.(existing.project) },
+    );
   }
 
-  async function managerAction(kind: "launch" | "restart"): Promise<void> {
+  function managerAction(kind: "launch" | "restart"): void {
     if (existing === null) return;
-    setBusy(true);
-    try {
-      await (kind === "launch" ? launch : restart)({ project: existing.project });
-      toast.show(kind === "launch" ? "Manager started." : "Manager restarted.", { variant: "success" });
-    } catch (caught) {
-      toast.error(errorText(caught));
-    } finally {
-      setBusy(false);
-    }
+    presses.press(kind, () => (kind === "launch" ? launch : restart)({ project: existing.project }), { success: kind === "launch" ? "Manager started." : "Manager restarted." });
   }
 
   const colors = theme.colors;
@@ -379,8 +377,8 @@ export function ProjectSetup({
       {existing === null ? null : (
         <FormSection theme={theme} icon="UserCog" title="Manager" description="Start a Manager when the project has none, or restart it fresh. Tickets are kept either way.">
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: SPACE.sm }}>
-            <IconButton theme={theme} icon="Play" label="Start Manager" showLabel disabled={busy} onPress={() => void managerAction("launch")} />
-            <IconButton theme={theme} icon="RotateCcw" label="Restart Manager" showLabel disabled={busy} onPress={() => void managerAction("restart")} />
+            <IconButton theme={theme} icon="Play" label="Start Manager" showLabel disabled={busy} state={presses.stateOf("launch")} onPress={() => managerAction("launch")} />
+            <IconButton theme={theme} icon="RotateCcw" label="Restart Manager" showLabel disabled={busy} state={presses.stateOf("restart")} onPress={() => managerAction("restart")} />
           </View>
         </FormSection>
       )}
@@ -397,10 +395,11 @@ export function ProjectSetup({
           theme={theme}
           tone="accent"
           icon={existing === null ? "Rocket" : "Check"}
-          label={busy ? "Working…" : existing === null ? "Create tracker and start Manager" : "Save"}
+          label={existing === null ? "Create tracker and start Manager" : "Save"}
           showLabel
           disabled={busy || !valid}
-          onPress={() => void submit()}
+          state={presses.stateOf("submit")}
+          onPress={submit}
         />
       </View>
       <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption) }}>

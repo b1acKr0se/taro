@@ -33,6 +33,7 @@ import { groupRows, toolRunSummary, type Group } from "./tool-runs";
 import { transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
+import { usePressGuards } from "./use-actions";
 import { COMPOSER_CONTROL_SIZE, COMPOSER_FONT_SIZE, COMPOSER_WEB_LINE_HEIGHT, composerMaxHeight, composerMetrics } from "./composer-height";
 import { useComposerHeight } from "./composer-input-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
@@ -173,6 +174,7 @@ export function AgentChat({
   const [attachments, setAttachmentsState] = useState(() => draftAttachments.get(agent.id));
   const field = useRef<NativeTextInput>(null);
   const [sending, setSending] = useState(false);
+  const guardFor = usePressGuards();
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set());
   const pane = useRef<View>(null);
   const keyboard = useKeyboardOverlap(pane);
@@ -249,19 +251,22 @@ export function AgentChat({
   function sendDraft(): void {
     const text = draft.trim();
     const sent = attachments;
-    if (onSend === undefined || (text === "" && sent.length === 0) || sending) return;
+    if (onSend === undefined || (text === "" && sent.length === 0)) return;
+    // The guard, not `sending`, stops a second Enter or tap in the same frame.
+    const running = guardFor("send").run("send", () => onSend(text, outgoingAttachments(sent)));
+    if (running === null) return;
     setSending(true);
     follow.pin();
     setDraft("");
     setAttachments([]);
-    onSend(text, outgoingAttachments(sent))
-      .catch((caught: unknown) => {
-        toast.error(errorText(caught));
-        // Put back only into an empty composer: whatever was written or attached since stays.
-        if (drafts.get(agent.id).trim() === "") drafts.set(agent.id, text);
-        if (draftAttachments.get(agent.id).length === 0) draftAttachments.set(agent.id, sent);
-      })
-      .finally(() => setSending(false));
+    void running.then((outcome) => {
+      setSending(false);
+      if (outcome.ok) return;
+      toast.error(errorText(outcome.error));
+      // Put back only into an empty composer: whatever was written or attached since stays.
+      if (drafts.get(agent.id).trim() === "") drafts.set(agent.id, text);
+      if (draftAttachments.get(agent.id).length === 0) draftAttachments.set(agent.id, sent);
+    });
   }
 
   const attachButton = (
