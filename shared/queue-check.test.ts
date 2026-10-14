@@ -238,8 +238,8 @@ describe("the escalation ladder", () => {
   it("raises the alert ten minutes after the wake-up, not before", () => {
     const watch = watched();
     markWoken(watch, count(), minutes(2));
-    expect(queuedAlerts(watch, minutes(11))).toEqual([]);
-    expect(queuedAlerts(watch, minutes(12))).toEqual([
+    expect(queuedAlerts(watch, minutes(11), "busy")).toEqual([]);
+    expect(queuedAlerts(watch, minutes(12), "busy")).toEqual([
       {
         id: "queued-free-slot",
         tickets: ["TR-5"],
@@ -250,7 +250,7 @@ describe("the escalation ladder", () => {
 
   it("raises the alert ten minutes after the first look when the Manager could never be woken", () => {
     const watch = watched();
-    expect(queuedAlerts(watch, minutes(10))[0]?.text).toBe(
+    expect(queuedAlerts(watch, minutes(10), "busy")[0]?.text).toBe(
       "TR-5 queued with a free slot: the Manager has been busy for 10 minutes, so the plugin could not tell it yet. It tells the Manager once it is idle, and restarts it only if it hangs. Open the Manager's tab to see what it is doing.",
     );
   });
@@ -267,14 +267,14 @@ describe("the escalation ladder", () => {
   it("takes a dismissed alert down", () => {
     const watch = watched();
     watch.dismissed.add("TR-5");
-    expect(queuedAlerts(watch, minutes(30))).toEqual([]);
+    expect(queuedAlerts(watch, minutes(30), "busy")).toEqual([]);
   });
 
   describe("several tickets (TR-064)", () => {
     it("shows one alert naming them all, in ticket order, counting from the longest wait", () => {
       const watch = watched({ startable: ["TR-10", "TR-9", "TR-11"] });
       markWoken(watch, count({ startable: ["TR-10", "TR-9", "TR-11"] }), minutes(1));
-      expect(queuedAlerts(watch, minutes(15))).toEqual([
+      expect(queuedAlerts(watch, minutes(15), "busy")).toEqual([
         {
           id: "queued-free-slot",
           tickets: ["TR-9", "TR-10", "TR-11"],
@@ -285,7 +285,7 @@ describe("the escalation ladder", () => {
 
     it("names two with 'and' and no comma", () => {
       const watch = watched({ startable: ["TR-5", "TR-6"] });
-      expect(queuedAlerts(watch, minutes(12))[0]?.text).toBe(
+      expect(queuedAlerts(watch, minutes(12), "busy")[0]?.text).toBe(
         "TR-5 and TR-6 queued with a free slot: the Manager has been busy for 12 minutes, so the plugin could not tell it yet. It tells the Manager once it is idle, and restarts it only if it hangs. Open the Manager's tab to see what it is doing.",
       );
     });
@@ -293,7 +293,7 @@ describe("the escalation ladder", () => {
     it("says which tickets the Manager was told about and which not yet", () => {
       const watch = watched({ startable: ["TR-5", "TR-6"] });
       markWoken(watch, count({ startable: ["TR-5"] }), minutes(2));
-      expect(queuedAlerts(watch, minutes(13))[0]?.text).toBe(
+      expect(queuedAlerts(watch, minutes(13), "busy")[0]?.text).toBe(
         "TR-5 and TR-6 queued with a free slot: the plugin told the Manager about TR-5 11 minutes ago, and it has not dispatched it; it was too busy to be told about TR-6 yet. Open the Manager's tab to see why, or ask it to dispatch the ticket. Unless you dismiss this or tell the Manager something, the plugin restarts the Manager 20 minutes after it was told.",
       );
     });
@@ -301,17 +301,64 @@ describe("the escalation ladder", () => {
     it("adds a ticket once its own wait reaches ten minutes", () => {
       const watch = watched({ startable: ["TR-5"] });
       trackQueue(watch, count({ startable: ["TR-5", "TR-6"] }), minutes(5));
-      expect(queuedAlerts(watch, minutes(14))[0]?.tickets).toEqual(["TR-5"]);
-      expect(queuedAlerts(watch, minutes(15))[0]?.tickets).toEqual(["TR-5", "TR-6"]);
+      expect(queuedAlerts(watch, minutes(14), "busy")[0]?.tickets).toEqual(["TR-5"]);
+      expect(queuedAlerts(watch, minutes(15), "busy")[0]?.tickets).toEqual(["TR-5", "TR-6"]);
     });
 
     it("comes down when every ticket it named is dismissed, and back up for a ticket that joins later", () => {
       const watch = watched({ startable: ["TR-5", "TR-6"] });
-      for (const id of queuedAlerts(watch, minutes(10))[0]?.tickets ?? []) watch.dismissed.add(id);
-      expect(queuedAlerts(watch, minutes(11))).toEqual([]);
+      for (const id of queuedAlerts(watch, minutes(10), "busy")[0]?.tickets ?? []) watch.dismissed.add(id);
+      expect(queuedAlerts(watch, minutes(11), "busy")).toEqual([]);
       trackQueue(watch, count({ startable: ["TR-5", "TR-6", "TR-7"] }), minutes(11));
-      expect(queuedAlerts(watch, minutes(20))).toEqual([]);
-      expect(queuedAlerts(watch, minutes(21))[0]?.tickets).toEqual(["TR-7"]);
+      expect(queuedAlerts(watch, minutes(20), "busy")).toEqual([]);
+      expect(queuedAlerts(watch, minutes(21), "busy")[0]?.tickets).toEqual(["TR-7"]);
+    });
+  });
+
+  describe("the Manager's condition (TR-066)", () => {
+    it("says no Manager is running and where to start one, never that it is busy", () => {
+      const watch = watched();
+      expect(queuedAlerts(watch, minutes(10), "missing")).toEqual([
+        {
+          id: "queued-free-slot",
+          tickets: ["TR-5"],
+          text: "TR-5 queued with a free slot, but no Manager is running, so nothing dispatches it. Start one from the project's settings (⚙): a new Manager checks the tracker when it starts.",
+        },
+      ]);
+    });
+
+    it("says the same for tickets a Manager was told about before it stopped, with no restart promised", () => {
+      const watch = watched({ startable: ["TR-5", "TR-6"] });
+      markWoken(watch, count({ startable: ["TR-5", "TR-6"] }), minutes(1));
+      const text = queuedAlerts(watch, minutes(30), "missing")[0]?.text;
+      expect(text).toBe(
+        "TR-5 and TR-6 queued with a free slot, but no Manager is running, so nothing dispatches them. Start one from the project's settings (⚙): a new Manager checks the tracker when it starts.",
+      );
+    });
+
+    it("claims a busy Manager only when it is busy", () => {
+      const watch = watched({ startable: ["TR-5", "TR-6"] });
+      markWoken(watch, count({ startable: ["TR-5"] }), minutes(2));
+      for (const condition of ["idle", "unresponsive", "missing"] as const) {
+        expect(queuedAlerts(watch, minutes(13), condition)[0]?.text).not.toMatch(/busy/);
+        expect(queuedAlerts(watched(), minutes(13), condition)[0]?.text).not.toMatch(/busy/);
+      }
+      expect(queuedAlerts(watch, minutes(13), "idle")[0]?.text).toContain("it has not been told about TR-6 yet");
+    });
+
+    it("asks the user to tell an idle Manager it could not tell", () => {
+      expect(queuedAlerts(watched(), minutes(12), "idle")[0]?.text).toBe(
+        "TR-5 queued with a free slot: the plugin has not been able to tell the Manager for 12 minutes, though it is idle now. Open the Manager's tab and ask it to dispatch the ticket.",
+      );
+    });
+
+    it("says an unresponsive Manager it could not tell will be restarted, unless one was restarted within the hour", () => {
+      const watch = watched();
+      expect(queuedAlerts(watch, minutes(10), "unresponsive")[0]?.text).toBe(
+        "TR-5 queued with a free slot: the Manager has stopped responding, so the plugin could not tell it for 10 minutes. Open the Manager's tab to see what happened. Unless you dismiss this, the plugin restarts the Manager 20 minutes after the ticket was queued.",
+      );
+      watch.restarts = [minutes(5)];
+      expect(queuedAlerts(watch, minutes(10), "unresponsive")[0]?.text).toContain("already restarted the Manager within the hour, so it leaves this to you");
     });
   });
 
@@ -374,7 +421,7 @@ describe("the escalation ladder", () => {
       expect(watch.wokenAt.get("TR-5")).toBe(minutes(20));
       expect(restartDue(watch, count(), "idle", minutes(79))).toEqual([]);
       expect(restartLimited(watch, minutes(79))).toBe(true);
-      expect(queuedAlerts(watch, minutes(79))[0]?.text).toContain("already restarted the Manager within the hour, so it leaves this to you");
+      expect(queuedAlerts(watch, minutes(79), "busy")[0]?.text).toContain("already restarted the Manager within the hour, so it leaves this to you");
       expect(restartDue(watch, count(), "idle", minutes(80))).toEqual(["TR-5"]);
     });
 
@@ -403,7 +450,7 @@ describe("the escalation ladder", () => {
       const watch = woken();
       markRestarted(watch, ["TR-5"], count(), minutes(20), false);
       expect(watch.wokenAt.get("TR-5")).toBe(start);
-      expect(queuedAlerts(watch, minutes(21))).toHaveLength(1);
+      expect(queuedAlerts(watch, minutes(21), "busy")).toHaveLength(1);
       expect(restartDue(watch, count(), "idle", minutes(21))).toEqual([]);
     });
   });

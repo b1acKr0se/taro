@@ -209,37 +209,46 @@ export function newlyAlerted(watch: QueueWatch, now: number): string[] {
 
 /**
  * The project's one board and Inbox alert for the tickets queued with a free slot ten minutes after
- * the Manager was told (TR-064: one card naming them all, not one per ticket), or none.
+ * the Manager was told (TR-064: one card naming them all, not one per ticket), or none. The text
+ * follows the Manager's condition at the last minute check (TR-066): with none running, nothing will
+ * tell or restart it, so the alert says so and where to start one.
  */
-export function queuedAlerts(watch: QueueWatch, now: number): BoardAlert[] {
+export function queuedAlerts(watch: QueueWatch, now: number, condition: ManagerCondition): BoardAlert[] {
   const tickets = alertedTickets(watch, now).sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
   if (tickets.length === 0) return [];
+  const alert = (text: string): BoardAlert[] => [{ id: QUEUED_ALERT_ID, tickets, text }];
+  if (condition === "missing") {
+    return alert(
+      `${listed(tickets)} queued with a free slot, but no Manager is running, so nothing dispatches ${tickets.length > 1 ? "them" : "it"}. Start one from the project's settings (⚙): a new Manager checks the tracker when it starts.`,
+    );
+  }
   const told = tickets.filter((id) => watch.wokenAt.has(id));
   const untold = tickets.filter((id) => !watch.wokenAt.has(id));
   // The longest wait is the one to act on.
   const minutes = (ids: readonly string[]): number => Math.floor((now - Math.min(...ids.map((id) => ladderStart(watch, id) ?? now))) / 60_000);
+  const restartIn = Math.round(QUEUED_RESTART_AFTER_MS / 60_000);
+  const limited = restartLimited(watch, now);
   if (told.length === 0) {
-    return [
-      {
-        id: QUEUED_ALERT_ID,
-        tickets,
-        text: `${listed(tickets)} queued with a free slot: the Manager has been busy for ${minutes(tickets)} minutes, so the plugin could not tell it yet. It tells the Manager once it is idle, and restarts it only if it hangs. Open the Manager's tab to see what it is doing.`,
-      },
-    ];
+    if (condition === "unresponsive") {
+      const next = limited
+        ? "The plugin already restarted the Manager within the hour, so it leaves this to you."
+        : `Unless you dismiss this, the plugin restarts the Manager ${restartIn} minutes after ${tickets.length > 1 ? "the first ticket" : "the ticket"} was queued.`;
+      return alert(`${listed(tickets)} queued with a free slot: the Manager has stopped responding, so the plugin could not tell it for ${minutes(tickets)} minutes. Open the Manager's tab to see what happened. ${next}`);
+    }
+    if (condition === "idle") {
+      return alert(`${listed(tickets)} queued with a free slot: the plugin has not been able to tell the Manager for ${minutes(tickets)} minutes, though it is idle now. Open the Manager's tab and ask it to dispatch ${tickets.length > 1 ? "the tickets" : "the ticket"}.`);
+    }
+    return alert(`${listed(tickets)} queued with a free slot: the Manager has been busy for ${minutes(tickets)} minutes, so the plugin could not tell it yet. It tells the Manager once it is idle, and restarts it only if it hangs. Open the Manager's tab to see what it is doing.`);
   }
   const several = told.length > 1;
   const about = untold.length === 0 ? "" : ` about ${listed(told)}`;
-  const notYet = untold.length === 0 ? "" : `; it was too busy to be told about ${listed(untold)} yet`;
-  const next = restartLimited(watch, now)
+  const notYet = untold.length === 0 ? "" : `; ${condition === "busy" ? "it was too busy to be told" : "it has not been told"} about ${listed(untold)} yet`;
+  const next = limited
     ? "The plugin already restarted the Manager within the hour, so it leaves this to you."
-    : `Unless you dismiss this or tell the Manager something, the plugin restarts the Manager ${Math.round(QUEUED_RESTART_AFTER_MS / 60_000)} minutes after it was told.`;
-  return [
-    {
-      id: QUEUED_ALERT_ID,
-      tickets,
-      text: `${listed(tickets)} queued with a free slot: the plugin told the Manager${about} ${minutes(told)} minutes ago, and it has not dispatched ${several ? "them" : "it"}${notYet}. Open the Manager's tab to see why, or ask it to dispatch ${several ? "the tickets" : "the ticket"}. ${next}`,
-    },
-  ];
+    : `Unless you dismiss this or tell the Manager something, the plugin restarts the Manager ${restartIn} minutes after it was told.`;
+  return alert(
+    `${listed(tickets)} queued with a free slot: the plugin told the Manager${about} ${minutes(told)} minutes ago, and it has not dispatched ${several ? "them" : "it"}${notYet}. Open the Manager's tab to see why, or ask it to dispatch ${several ? "the tickets" : "the ticket"}. ${next}`,
+  );
 }
 
 /** "NA-001", "NA-001 and NA-002", "NA-001, NA-002 and NA-003". */

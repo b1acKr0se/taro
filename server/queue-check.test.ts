@@ -325,6 +325,23 @@ describe("the escalation ladder", () => {
     expect(restartManager).toHaveBeenCalledTimes(1);
   });
 
+  it("says no Manager is running once it stops, refreshing the board, and promises no restart (TR-066)", async () => {
+    await minutes(0, 10);
+    expect(actions.queueAlerts("demo", at(10))[0]?.text).toContain("the plugin told the Manager");
+    // Only the minutes in the text moved: no board refresh for that.
+    vi.setSystemTime(at(11));
+    expect(await actions.checkQueues(paseo, at(11))).toBe(false);
+    manager = null;
+    vi.setSystemTime(at(12));
+    expect(await actions.checkQueues(paseo, at(12))).toBe(true);
+    const text = actions.queueAlerts("demo", at(12))[0]?.text ?? "";
+    expect(text).toContain("no Manager is running");
+    expect(text).toContain("Start one from the project's settings");
+    expect(text).not.toMatch(/busy|restarts/);
+    await minutes(13, 40);
+    expect(restartManager).not.toHaveBeenCalled();
+  });
+
   it("does not restart once the user dismissed the alert, even after a reload", async () => {
     await minutes(0, 12);
     await actions.dismissQueueAlert("demo", ["DM-3"]);

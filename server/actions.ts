@@ -14,6 +14,7 @@ import { dependsOn, shouldWakeManager, statusChanges, type StatusChange } from "
 import {
   emptyQueueWatch,
   managerCondition,
+  type ManagerCondition,
   markRestarted,
   alertRaisedAt,
   markWoken,
@@ -67,6 +68,8 @@ export class Actions {
   private readonly released = new Set<string>();
   /** The escalation ladder per project (TR-062); in memory, so a reload starts it again. */
   private readonly queues = new Map<string, QueueWatch>();
+  /** The Manager's condition per project at the last minute check, which the queued alert's text follows. */
+  private readonly managerConditions = new Map<string, ManagerCondition>();
   /** Queued tickets' dependencies and notes, read again only when the ticket changes. */
   private readonly queuedDetails = new Map<string, { updatedAt: string; ticket: QueuedTicket }>();
   private checkingQueues = false;
@@ -605,11 +608,11 @@ export class Actions {
     const tickets = await listTickets(paths.tracker);
     const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners);
     const watch = await this.loadQueueWatch(project);
-    const alertsBefore = queuedAlerts(watch, now).length;
+    const alertsBefore = this.queueAlertKey(project, watch, now);
     const storedBefore = ladderSnapshot(watch);
     trackQueue(watch, count, now);
     if (ladderSnapshot(watch) !== storedBefore) await this.saveQueueWatch(project, watch);
-    if (watch.queuedAt.size === 0) return alertsBefore > 0;
+    if (watch.queuedAt.size === 0) return alertsBefore !== "";
 
     const manager = await fetchLiveAgent(paseo, config.managerAgentId);
     const managerState = manager === null ? null : await this.state.agent(manager.id);
@@ -635,6 +638,7 @@ export class Actions {
     }
 
     const condition = managerCondition(manager === null ? null : { status: manager.status, updatedAt: manager.updatedAt, stalled: managerState?.stalled ?? false }, now);
+    this.managerConditions.set(project, condition);
     const withheld = newlyWithheld(watch, count, condition, now);
     if (withheld.length > 0) {
       console.warn(`[taro] ${project}: ${withheld.join(", ")} still queued with a free slot; not restarting the Manager, as the ladder already did within the hour`);
@@ -651,7 +655,18 @@ export class Actions {
       }
     }
     if (due.length > 0) await this.restartForQueue(paseo, project, manager, due, count, condition, now);
-    return alerted.length > 0 || queuedAlerts(watch, now).length !== alertsBefore || due.length > 0;
+    return alerted.length > 0 || this.queueAlertKey(project, watch, now) !== alertsBefore || due.length > 0;
+  }
+
+  /**
+   * What the queued alert says, to tell whether this check changed it: its tickets and the Manager's
+   * condition its text follows, not the text itself, whose minutes tick on every check.
+   */
+  private queueAlertKey(project: string, watch: QueueWatch, now: number): string {
+    const condition = this.managerConditions.get(project) ?? "busy";
+    return queuedAlerts(watch, now, condition)
+      .map((alert) => `${condition}:${alert.tickets.join(",")}`)
+      .join("\n");
   }
 
   /** When the user last typed to the Manager themselves; undefined when its timeline cannot be read (no restart on a guess). */
@@ -692,7 +707,8 @@ export class Actions {
   /** The queued-with-a-free-slot alerts for a project's board and Inbox. */
   queueAlerts(project: string, now: number = Date.now()): BoardAlert[] {
     const watch = this.queues.get(project);
-    return watch === undefined ? [] : queuedAlerts(watch, now);
+    // An alert needs ten minutes of minute checks, each recording the condition; "busy" covers only failed ones.
+    return watch === undefined ? [] : queuedAlerts(watch, now, this.managerConditions.get(project) ?? "busy");
   }
 
   /** The user dismissed the alert for these tickets: it comes down and the ladder stops for them until they leave the queue. */
