@@ -14,7 +14,7 @@ const { chromium } = require(playwrightPath);
   await page.waitForTimeout(4000);
   for (const text of clicks) {
     const exact = text.startsWith("=");
-    const target = page.getByText(exact ? text.slice(1) : text, { exact }).first();
+    const target = page.getByText(exact ? text.slice(1) : text, { exact }).filter({ visible: true }).first();
     await target.click({ timeout: 8000 }).catch((error) => errors.push(`click ${text}: ${error.message.split("\n")[0]}`));
     await page.waitForTimeout(2500);
   }

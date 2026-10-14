@@ -10,11 +10,11 @@ const { chromium } = require(playwrightPath);
   await page.waitForTimeout(3000);
   await page.mouse.click(24, 36);
   await page.waitForTimeout(1500);
-  await page.getByText("Taro", { exact: true }).first().click({ timeout: 8000 }).catch((error) => errors.push(`open Taro: ${error.message.split("\n")[0]}`));
+  await page.getByText("Taro", { exact: true }).filter({ visible: true }).first().click({ timeout: 8000 }).catch((error) => errors.push(`open Taro: ${error.message.split("\n")[0]}`));
   await page.waitForTimeout(3000);
   for (const text of clicks) {
     const exact = text.startsWith("=");
-    await page.getByText(exact ? text.slice(1) : text, { exact }).first().click({ timeout: 8000 }).catch((error) => errors.push(`click ${text}: ${error.message.split("\n")[0]}`));
+    await page.getByText(exact ? text.slice(1) : text, { exact }).filter({ visible: true }).first().click({ timeout: 8000 }).catch((error) => errors.push(`click ${text}: ${error.message.split("\n")[0]}`));
     await page.waitForTimeout(2500);
   }
   await page.screenshot({ path: out });

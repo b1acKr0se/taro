@@ -18,15 +18,15 @@ const KEYBOARD = 336;
   await page.waitForTimeout(3000);
   await page.mouse.click(24, 36);
   await page.waitForTimeout(1500);
-  await page.getByText("Taro", { exact: true }).first().click({ timeout: 8000 }).catch((e) => errors.push(`open Taro: ${e.message.split("\n")[0]}`));
+  await page.getByText("Taro", { exact: true }).filter({ visible: true }).first().click({ timeout: 8000 }).catch((e) => errors.push(`open Taro: ${e.message.split("\n")[0]}`));
   await page.waitForTimeout(3000);
   for (const text of clicks) {
     const exact = text.startsWith("=");
     const target = text.startsWith("@") ? page.getByLabel(text.slice(1), { exact: true }) : page.getByText(exact ? text.slice(1) : text, { exact });
-    await target.first().click({ timeout: 8000 }).catch((e) => errors.push(`click ${text}: ${e.message.split("\n")[0]}`));
+    await target.filter({ visible: true }).first().click({ timeout: 8000 }).catch((e) => errors.push(`click ${text}: ${e.message.split("\n")[0]}`));
     await page.waitForTimeout(2500);
   }
-  const field = fieldSpec === "last-textarea" ? page.locator("textarea").last() : fieldSpec === "last-input" ? page.locator("input[type=text], input:not([type]), textarea").last() : fieldSpec.startsWith("@") ? page.getByLabel(fieldSpec.slice(1), { exact: true }).last() : page.getByPlaceholder(fieldSpec).first();
+  const field = fieldSpec === "last-textarea" ? page.locator("textarea").last() : fieldSpec === "last-input" ? page.locator("input[type=text], input:not([type]), textarea").last() : fieldSpec.startsWith("@") ? page.getByLabel(fieldSpec.slice(1), { exact: true }).last() : page.getByPlaceholder(fieldSpec).filter({ visible: true }).first();
   // As a tap on a phone: focus without the browser scrolling the field into view itself.
   // A field the reader scrolled to the bottom edge of the screen, then tapped.
   if (process.env.FIELD_AT_BOTTOM) await field.evaluate((element) => element.scrollIntoView({ block: "end" }));
