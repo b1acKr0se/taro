@@ -1,6 +1,5 @@
 /**
- * Taro keeps its tickets in its own tracker: no file in the repository names another tracker,
- * its branch or a conversion from it. The words are put together here so this file passes too.
+ * No file in the repository uses these words. They are put together here so this file passes too.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -11,7 +10,7 @@ import { describe, expect, it } from "vitest";
 
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** The other tracker's name in any case or form (its tool, its branch, a status), and its conversion command. */
+/** The words, in any case or form. */
 const RETIRED = new RegExp([["back", "log"].join(""), ["taro", "convert"].join(" ")].join("|"), "i");
 
 /** The lines (1-based) of a text holding a retired word. */
@@ -37,7 +36,7 @@ describe("linesWithRetiredWords", () => {
 });
 
 describe("repository files", () => {
-  it("name no retired tracker, in their paths or their text", () => {
+  it("use none of the words, in their paths or their text", () => {
     const files = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { cwd: PLUGIN_ROOT, encoding: "utf8" })
       .split("\0")
       // A file deleted but not yet staged is still listed.
