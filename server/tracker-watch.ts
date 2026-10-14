@@ -28,7 +28,11 @@ export const BACKSTOP_INTERVAL_MS = 5 * 60_000;
 export type TrackerChangeListener = (project: string) => void;
 /** Keeps what the guard restored instead of committing (TR-051), before the change listeners run. */
 export type TrackerRestoredHandler = (project: string, restored: readonly string[]) => Promise<void>;
-export type TrackerSyncer = (trackerPath: string, strategy?: SyncStrategy) => Promise<TrackerSyncProblem | null>;
+export type TrackerSyncer = (
+  trackerPath: string,
+  strategy?: SyncStrategy,
+  onRestored?: (restored: readonly string[]) => void,
+) => Promise<TrackerSyncProblem | null>;
 
 const RESOLUTION_STRATEGIES: Readonly<Record<SyncResolution, SyncStrategy>> = {
   "keep-local": "keep-local",
@@ -206,12 +210,15 @@ export class TrackerWatch {
 
   private async syncAndRecord(project: string, trackerPath: string, strategy: SyncStrategy): Promise<TrackerSyncProblem | null> {
     let problem: TrackerSyncProblem | null;
+    // A pull may commit a stray init that landed since the last commit; it still raises the alert.
+    const restored: string[] = [];
     try {
-      problem = await this.sync(trackerPath, strategy);
+      problem = await this.sync(trackerPath, strategy, (more) => restored.push(...more));
     } finally {
       // Counted from the end, so a slow remote still gets a quiet minute between pulls.
       this.lastSync.set(project, this.now());
     }
+    if (restored.length > 0) await this.restoredHandler?.(project, [...new Set(restored)]);
     if (problem === null) this.syncProblems.delete(project);
     else this.syncProblems.set(project, problem);
     return problem;

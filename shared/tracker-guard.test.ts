@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { gainedGuidelines, identityChanges, mergeProtection, PROTECTION_ALERT_MS, protectionAlert } from "./tracker-guard";
+import { gainedGuidelines, identityChanges, mergeProtection, PROTECTION_ALERT_MS, protectionAlert, withCommittedIdentity } from "./tracker-guard";
 
 const CONFIG = 'project_name: "taro"\ndefault_status: "Backlog"\nzero_padded_ids: 3\ntask_prefix: "TR"\n';
 
@@ -24,8 +24,30 @@ describe("identityChanges", () => {
     expect(identityChanges(CONFIG, "")).toHaveLength(3);
   });
 
+  it("does not flag a key the committed config lacks, as Backlog adds task_prefix itself", () => {
+    const withoutPrefix = CONFIG.replace('task_prefix: "TR"\n', "");
+    expect(identityChanges(withoutPrefix, `${withoutPrefix}task_prefix: "task"\n`)).toEqual([]);
+  });
+
   it("does not take a key that only starts like an identity key", () => {
     expect(identityChanges(CONFIG, `${CONFIG}project_name_old: "x"\n`)).toEqual([]);
+  });
+});
+
+describe("withCommittedIdentity", () => {
+  it("puts back only the changed identity lines and keeps other edits", () => {
+    const working = CONFIG.replace('"taro"', '"scratch"').replace('default_status: "Backlog"', 'default_status: "Planning"');
+    expect(withCommittedIdentity(CONFIG, working)).toBe(CONFIG.replace('default_status: "Backlog"', 'default_status: "Planning"'));
+  });
+
+  it("adds back a removed identity line, after a missing final newline too", () => {
+    const working = 'project_name: "taro"\ndefault_status: "Backlog"\ntask_prefix: "TR"';
+    expect(withCommittedIdentity(CONFIG, working)).toBe(`${working}\nzero_padded_ids: 3\n`);
+  });
+
+  it("returns the working text untouched when nothing changed", () => {
+    const working = `${CONFIG}labels: []\n`;
+    expect(withCommittedIdentity(CONFIG, working)).toBe(working);
   });
 });
 

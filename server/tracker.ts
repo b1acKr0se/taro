@@ -10,7 +10,7 @@ import { delimiter, join } from "node:path";
 
 import type { TrackerSyncProblem } from "../shared/contracts";
 import { TICKET_STATUSES } from "../shared/project";
-import { gainedGuidelines, identityChanges, INSTRUCTION_FILES, TRACKER_CONFIG } from "../shared/tracker-guard";
+import { gainedGuidelines, identityChanges, INSTRUCTION_FILES, TRACKER_CONFIG, withCommittedIdentity } from "../shared/tracker-guard";
 import { commandError, runChecked, runCommand, type CommandResult } from "./process";
 
 export const TRACKER_BRANCH = "taro/backlog";
@@ -203,8 +203,9 @@ async function workingText(trackerPath: string, file: string): Promise<string | 
 
 /**
  * Undoes what `backlog init` does to an existing tracker (TR-051): a changed
- * project name, ticket prefix or id padding in `backlog/config.yml` restores
- * the committed config; Backlog's guidelines written into an instruction file
+ * project name, ticket prefix or id padding in `backlog/config.yml` gets its
+ * committed line back (other config edits stay), a deleted config comes back
+ * whole; Backlog's guidelines written into an instruction file
  * at the tracker's root restore the committed file, or remove it when it was
  * not committed. A tracker without a committed config (onboarding) is left
  * alone. Returns what it restored.
@@ -213,10 +214,16 @@ export async function protectTracker(trackerPath: string): Promise<string[]> {
   const restored: string[] = [];
   const committedConfig = await committedText(trackerPath, TRACKER_CONFIG);
   if (committedConfig === null) return restored;
-  const changes = identityChanges(committedConfig, (await workingText(trackerPath, TRACKER_CONFIG)) ?? "");
-  if (changes.length > 0) {
+  const workingConfig = await workingText(trackerPath, TRACKER_CONFIG);
+  if (workingConfig === null) {
     await git(trackerPath, ["checkout", "HEAD", "--", TRACKER_CONFIG]);
-    restored.push(`${TRACKER_CONFIG} (${changes.join(", ")})`);
+    restored.push(`${TRACKER_CONFIG} (deleted)`);
+  } else {
+    const changes = identityChanges(committedConfig, workingConfig);
+    if (changes.length > 0) {
+      await writeFile(join(trackerPath, TRACKER_CONFIG), withCommittedIdentity(committedConfig, workingConfig), "utf8");
+      restored.push(`${TRACKER_CONFIG} (${changes.join(", ")})`);
+    }
   }
   for (const file of INSTRUCTION_FILES) {
     const working = await workingText(trackerPath, file);
@@ -261,12 +268,17 @@ const STRATEGY_OPTIONS: Readonly<Record<SyncStrategy, readonly string[]>> = {
  * markers in the tree, which the next commit would publish. A write landing
  * between the commit and the pull makes git refuse, so commit and try again.
  * A conflicting rebase is aborted, so the tracker stays on its branch with
- * nothing lost.
+ * nothing lost. What the guard restores on the way is handed to `onRestored`.
  */
-export async function syncTracker(trackerPath: string, strategy: SyncStrategy = "rebase"): Promise<TrackerSyncProblem | null> {
+export async function syncTracker(
+  trackerPath: string,
+  strategy: SyncStrategy = "rebase",
+  onRestored: (restored: readonly string[]) => void = () => undefined,
+): Promise<TrackerSyncProblem | null> {
   let pull: CommandResult | null = null;
   for (let attempt = 0; attempt < 3 && (pull === null || refusedForLocalChanges(pull)); attempt += 1) {
-    await commitTracker(trackerPath);
+    const { restored } = await commitTracker(trackerPath);
+    if (restored.length > 0) onRestored(restored);
     pull = await runCommand("git", ["-C", trackerPath, "pull", "--rebase", ...STRATEGY_OPTIONS[strategy], "origin", TRACKER_BRANCH], { timeoutMs: 120_000 });
   }
   if (pull === null || refusedForLocalChanges(pull)) {

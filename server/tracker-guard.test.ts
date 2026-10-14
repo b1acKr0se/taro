@@ -8,9 +8,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { backlogBinary, commitTracker, TRACKER_BRANCH } from "./tracker";
+import { backlogBinary, commitTracker, syncTracker, TRACKER_BRANCH } from "./tracker";
 import { TrackerWatch } from "./tracker-watch";
 import { PluginState } from "./state";
+import { identityChanges } from "../shared/tracker-guard";
 
 const CONFIG = 'project_name: "demo"\ndefault_status: "Backlog"\nstatuses: ["Backlog","Done"]\nzero_padded_ids: 3\ntask_prefix: "DM"\nauto_commit: false\n';
 const RULES = "# Repository rules\n";
@@ -82,6 +83,31 @@ describe("commitTracker's guard", () => {
     expect(working("AGENTS.md")).toBe(`${RULES}One more rule.\n`);
   });
 
+  it("keeps a legitimate config edit made in the same window as a restored identity line", async () => {
+    const statuses = CONFIG.replace('["Backlog","Done"]', '["Backlog","Planning","Done"]');
+    writeFileSync(join(tracker, "backlog", "config.yml"), statuses.replace('"demo"', '"scratch"'));
+    const result = await commitTracker(tracker);
+    expect(result.restored).toEqual(['backlog/config.yml (project_name "demo" → "scratch")']);
+    expect(committed("backlog/config.yml")).toBe(statuses);
+  });
+
+  it("commits the task_prefix Backlog adds to a config that lacked it", async () => {
+    const withoutPrefix = CONFIG.replace('task_prefix: "DM"\n', "");
+    writeFileSync(join(tracker, "backlog", "config.yml"), withoutPrefix);
+    git(tracker, "commit", "-q", "-am", "older config");
+    writeFileSync(join(tracker, "backlog", "config.yml"), `${withoutPrefix}task_prefix: "task"\n`);
+    const result = await commitTracker(tracker);
+    expect(result).toEqual({ subject: "taro: update tracker", restored: [] });
+    expect(committed("backlog/config.yml")).toContain('task_prefix: "task"');
+  });
+
+  it("brings back a deleted config", async () => {
+    rmSync(join(tracker, "backlog", "config.yml"));
+    const result = await commitTracker(tracker);
+    expect(result.restored).toEqual(["backlog/config.yml (deleted)"]);
+    expect(working("backlog/config.yml")).toBe(CONFIG);
+  });
+
   it("leaves a tracker without a committed config alone, as onboarding writes it", async () => {
     git(tracker, "rm", "-q", "--cached", "backlog/config.yml");
     git(tracker, "commit", "-q", "-m", "no config yet");
@@ -107,18 +133,17 @@ describe("commitTracker's guard", () => {
     const result = await commitTracker(tracker);
 
     expect(result.restored.join("\n")).toContain('project_name "demo" → "scratch"');
-    expect(working("backlog/config.yml")).toBe(CONFIG);
     expect(working("AGENTS.md")).toBe(RULES);
-    expect(committed("backlog/config.yml")).toBe(CONFIG);
-    expect(git(tracker, "log", "--oneline").trim().split("\n")).toHaveLength(1);
+    // Backlog's own reformatting and filled-in defaults may commit; the identity never does.
+    expect(identityChanges(CONFIG, committed("backlog/config.yml"))).toEqual([]);
+    expect(committed("backlog/config.yml")).toContain('project_name: "demo"');
   });
 });
 
 describe("TrackerWatch and the kept refusal", () => {
   const previousHome = process.env.PASEO_HOME;
 
-  beforeEach(() => {
-    process.env.PASEO_HOME = join(root, "paseo");
+  function writeProject(trackerSync: "local" | "remote"): void {
     const home = join(root, "paseo", "plugin-data", "taro", "home", "projects", "demo");
     mkdirSync(home, { recursive: true });
     const config = {
@@ -130,10 +155,15 @@ describe("TrackerWatch and the kept refusal", () => {
       ticketPrefix: "DM",
       manager: { model: "m" },
       owner: { model: "m" },
-      trackerSync: "local",
+      trackerSync,
     };
     writeFileSync(join(home, "taro.json"), JSON.stringify(config));
-    execFileSync("ln", ["-s", tracker, join(home, "tracker")]);
+    if (!existsSync(join(home, "tracker"))) execFileSync("ln", ["-s", tracker, join(home, "tracker")]);
+  }
+
+  beforeEach(() => {
+    process.env.PASEO_HOME = join(root, "paseo");
+    writeProject("local");
   });
 
   afterEach(() => {
@@ -172,5 +202,25 @@ describe("TrackerWatch and the kept refusal", () => {
     await watch.commit("demo");
     expect(calls).toBe(0);
     expect(committed(TICKET)).toBe("status: Planning\n");
+  });
+
+  it("still raises the alert when a board-read pull commits the stray change first", async () => {
+    const remote = join(root, "remote.git");
+    execFileSync("git", ["init", "-q", "--bare", remote]);
+    git(tracker, "remote", "add", "origin", remote);
+    git(tracker, "push", "-q", "-u", "origin", TRACKER_BRANCH);
+    writeProject("remote");
+    const handled: (readonly string[])[] = [];
+    const watch = new TrackerWatch(syncTracker);
+    watch.onRestored(async (_project, restored) => {
+      handled.push(restored);
+    });
+    writeFileSync(join(tracker, "backlog", "config.yml"), CONFIG.replace('"demo"', '"scratch"'));
+
+    await watch.pullIfDue("demo");
+    watch.stop();
+
+    expect(handled).toEqual([['backlog/config.yml (project_name "demo" → "scratch")']]);
+    expect(git(remote, "show", `${TRACKER_BRANCH}:backlog/config.yml`)).toBe(CONFIG);
   });
 });

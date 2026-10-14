@@ -20,22 +20,46 @@ export const PROTECTION_ALERT_MS = 24 * 60 * 60 * 1000;
 
 export const PROTECTION_ALERT_ID = "tracker-protected";
 
+function keyLine(key: string): RegExp {
+  return new RegExp(`^${key}:[ \\t]*(.*?)[ \\t]*$`, "m");
+}
+
 /** A top-level `key: value` from Backlog's flat YAML config, without quotes; null when absent. */
 function configValue(configText: string, key: string): string | null {
-  const match = new RegExp(`^${key}:[ \\t]*(.*?)[ \\t]*$`, "m").exec(configText);
+  const match = keyLine(key).exec(configText);
   if (match === null || match[1] === undefined) return null;
   const value = match[1];
   const quoted = /^(["'])(.*)\1$/.exec(value);
   return quoted?.[2] ?? value;
 }
 
-/** Each identity key whose value differs between the committed and the working config, as `project_name "taro" → "scratch"`. */
-export function identityChanges(committedText: string, workingText: string): string[] {
-  return IDENTITY_KEYS.flatMap((key) => {
+/**
+ * The identity keys set in the committed config whose working value differs.
+ * A key the committed config lacks is not flagged: Backlog adds a missing
+ * `task_prefix` itself on any command, and `backlog init` keeps existing ones.
+ */
+function changedKeys(committedText: string, workingText: string): (typeof IDENTITY_KEYS)[number][] {
+  return IDENTITY_KEYS.filter((key) => {
     const before = configValue(committedText, key);
-    const after = configValue(workingText, key);
-    return before === after ? [] : [`${key} ${shown(before)} → ${shown(after)}`];
+    return before !== null && before !== configValue(workingText, key);
   });
+}
+
+/** Each changed identity key, as `project_name "taro" → "scratch"`. */
+export function identityChanges(committedText: string, workingText: string): string[] {
+  return changedKeys(committedText, workingText).map(
+    (key) => `${key} ${shown(configValue(committedText, key))} → ${shown(configValue(workingText, key))}`,
+  );
+}
+
+/** The working config with each changed identity line put back as committed; other edits in it are kept. */
+export function withCommittedIdentity(committedText: string, workingText: string): string {
+  return changedKeys(committedText, workingText).reduce((text, key) => {
+    const committedLine = keyLine(key).exec(committedText)?.[0] ?? "";
+    const pattern = keyLine(key);
+    if (pattern.test(text)) return text.replace(pattern, () => committedLine);
+    return `${text}${text === "" || text.endsWith("\n") ? "" : "\n"}${committedLine}\n`;
+  }, workingText);
 }
 
 function shown(value: string | null): string {
