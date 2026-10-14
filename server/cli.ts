@@ -8,7 +8,7 @@ import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 
 import { paseoHome } from "./data-dir";
-import { commandError, runCommand } from "./process";
+import { commandError, runCommand, type CommandResult } from "./process";
 
 /** Where an install puts the binary, for a daemon started with a bare PATH. */
 const EXTRA_CLI_DIRECTORIES = ["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin"];
@@ -49,9 +49,24 @@ async function requireCli(purpose: string): Promise<string> {
 export async function runPaseoJson(args: readonly string[], purpose: string): Promise<unknown> {
   const cli = await requireCli(purpose);
   const result = await runCommand(cli, [...args, "--home", paseoHome(), "--json"], { timeoutMs: 30_000 });
-  if (result.code !== 0) throw new Error(`paseo ${args[0] ?? ""} failed: ${commandError(result)}`);
+  if (result.code !== 0) throw new Error(`paseo ${args[0] ?? ""} failed: ${paseoJsonError(result)}`);
   const text = result.stdout.trim();
   return text === "" ? null : (JSON.parse(text) as unknown);
+}
+
+/** Why a `--json` command failed: the `{"error":{"message"}}` it prints on stderr (shown to the user, TR-072), else the first line of output. */
+export function paseoJsonError(result: CommandResult): string {
+  for (const stream of [result.stderr, result.stdout]) {
+    try {
+      const parsed: unknown = JSON.parse(stream);
+      const error: unknown = typeof parsed === "object" && parsed !== null ? Reflect.get(parsed, "error") : null;
+      const message: unknown = typeof error === "object" && error !== null ? Reflect.get(error, "message") : null;
+      if (typeof message === "string" && message.trim() !== "") return message.trim();
+    } catch {
+      // Not JSON: the plain output says it.
+    }
+  }
+  return commandError(result);
 }
 
 export async function createProject(path: string): Promise<{ projectId: string }> {
