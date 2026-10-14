@@ -24,6 +24,11 @@ daemon's machine; the GitHub CLI `gh` is optional (pull-request delivery uses it
 No `npm install` or build step: Paseo compiles the plugin. To develop it, clone this repository,
 run `npm install`, `npm run typecheck` and `npm test`, and follow `AGENTS.md`.
 
+If an app shows Taro as "taro" with "This plugin surface is unavailable.", that app could not load
+Taro's client. Open Settings → Plugins in the same app: Taro's row shows the error in red. Copy it
+into a bug report before you do anything else, because closing the app clears it. Then close the
+app fully and reopen it, so it fetches the plugin list again.
+
 ## Read first
 
 | Document | What it holds |

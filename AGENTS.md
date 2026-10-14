@@ -15,7 +15,9 @@ Taro project, so the plugin you change is the one supervising you: change it car
 - RPC wire names match `/^[a-z][a-z0-9._-]*$/`. Colours only from `theme.colors`.
 - Client code reaches the phone's Hermes from source, without Metro: no classes (use a factory
   function returning an object), and never capture a `for…of` loop variable in a closure (use
-  `.map`). `server/client-bundle.test.ts` compiles the client as Paseo does and fails on either.
+  `.map`). `server/client-bundle.test.ts` compiles the client as Paseo does and fails on either;
+  it also loads the bundle in a Hermes VM (`hermes-engine-cli`) as the phone app does and fails
+  when the load throws or `contribute()` stops registering the Taro screen.
 - Agent-facing text lives in `skill/` (what agents read) and `templates/` (what the plugin writes or
   sends), never in code.
 - Comments explain why, briefly. Full identifiers, no abbreviations.

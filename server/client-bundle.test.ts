@@ -7,9 +7,13 @@
  * This compiles `index.client.tsx` with the options of Paseo's plugin compiler
  * (`@getpaseo/server` `plugins/compiler.js`, `compileTarget` for the client, Paseo 0.11.2) and
  * fails on the constructs the Hermes rules in AGENTS.md forbid. The scan is textual: esbuild
- * exposes no syntax tree, and each pattern is proven against a small bad sample below.
+ * exposes no syntax tree, and each pattern is proven against a small bad sample below. The scan
+ * only knows the failures already seen, so the bundle is also loaded in a real Hermes VM (below).
  */
-import { dirname, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { build, type BuildOptions } from "esbuild";
@@ -62,6 +66,11 @@ async function compileClient(options: BuildOptions): Promise<string> {
 
 function compileSample(source: string): Promise<string> {
   return compileClient({ stdin: { contents: source, loader: "ts", resolveDir: PLUGIN_ROOT } });
+}
+
+/** Paseo's `wrapCommonJsBundle`: the app evaluates this string and calls it with its `require`. */
+function wrapCommonJsBundle(code: string): string {
+  return `(function(require) {\nconst module = { exports: {} };\nconst exports = module.exports;\n${code}\nreturn module.exports;\n})`;
 }
 
 /**
@@ -193,4 +202,139 @@ describe("the Hermes scan", () => {
     `);
     expect(hermesProblems(bundle)).toEqual([]);
   });
+});
+
+/**
+ * The phone's load, run in a real Hermes VM: the app's `runPluginClientBundle` evals the bundle,
+ * calls it with the host modules, then calls the default export with the client context. Paseo
+ * drops a plugin whose load throws, and the phone shows only "This plugin surface is unavailable."
+ * (TR-034), so a load that fails here must fail the tests. React is the real one (it has no
+ * classes); the other host modules are stubs that answer any property, so this proves the bundle's
+ * own code under Hermes, not the host's exports. hermes-engine-cli is Hermes 0.12, older than the
+ * app's: it rejects class syntax just as the phone did in TR-023.
+ */
+const HERMES_BIN = resolve(
+  PLUGIN_ROOT,
+  "node_modules/hermes-engine-cli",
+  process.platform === "darwin" ? "osx-bin/hermes" : process.platform === "win32" ? "win64-bin/hermes.exe" : "linux64-bin/hermes",
+);
+
+const HERMES_LOADER = `
+function stub(name, isModule) {
+  var call = function () { return stub(name + "()", false); };
+  return new Proxy(call, { get: function (target, key) {
+    if (typeof key !== "string" || key === "then" || key === "__esModule") return undefined;
+    if (key === "default" && isModule) return undefined;
+    if (key === "create") return function (value) { return value; };
+    if (key === "OS") return "android";
+    if (key === "select") return function (options) { return "android" in options ? options.android : "native" in options ? options.native : options["default"]; };
+    return stub(name + "." + key, false);
+  } });
+}
+var hostModules = { "react": globalThis.hostReact, "react/jsx-runtime": globalThis.hostJsxRuntime };
+["zod", "@tanstack/react-query", "@getpaseo/plugin", "@getpaseo/plugin/client", "@getpaseo/plugin/client/ui",
+ "@getpaseo/plugin/client/react-native", "react-native"].forEach(function (name) { hostModules[name] = stub(name, true); });
+var registered = [];
+var client = new Proxy({}, { get: function (target, method) {
+  return function (contribution) {
+    registered.push(String(method) + ":" + (contribution.id || contribution.kind || contribution.name));
+    return function () {};
+  };
+} });
+var result;
+try {
+  var bundle = (0, globalThis.eval)(pluginBundle);
+  if (typeof bundle !== "function") throw new Error("the client bundle is not executable");
+  var exported = bundle(function (name) {
+    if (name in hostModules) return hostModules[name];
+    throw new Error("Module " + name + " is not available in plugin client code");
+  });
+  var contribute = exported !== null && typeof exported === "object" ? exported["default"] : undefined;
+  if (typeof contribute !== "function") throw new Error("the plugin must default export a function");
+  if (typeof contribute(client) !== "function") throw new Error("the contribution must return a cleanup function");
+  result = { loaded: true, registered: registered };
+} catch (error) {
+  result = { loaded: false, error: String(error && error.stack || error) };
+}
+print("HERMES_RESULT " + JSON.stringify(result));
+`;
+
+async function hostReactSource(): Promise<string> {
+  const result = await build({
+    stdin: {
+      contents: 'import * as React from "react"; import * as JsxRuntime from "react/jsx-runtime"; globalThis.hostReact = React; globalThis.hostJsxRuntime = JsxRuntime;',
+      loader: "ts",
+      resolveDir: PLUGIN_ROOT,
+    },
+    bundle: true,
+    format: "iife",
+    platform: "neutral",
+    target: "es2020",
+    mainFields: ["module", "main"],
+    define: { "process.env.NODE_ENV": '"production"' },
+    logLevel: "silent",
+    write: false,
+  });
+  const output = result.outputFiles?.[0]?.text;
+  if (!output) throw new Error("the React host build produced no output");
+  return output;
+}
+
+type HermesLoad = { loaded: true; registered: string[] } | { loaded: false; error: string };
+
+/** Loads a compiled (unwrapped) client bundle in Hermes as the phone app does. */
+async function loadInHermes(bundle: string): Promise<HermesLoad> {
+  const directory = mkdtempSync(join(tmpdir(), "taro-hermes-"));
+  try {
+    const script = join(directory, "load.js");
+    const pluginBundle = `var pluginBundle = ${JSON.stringify(wrapCommonJsBundle(bundle))};`;
+    writeFileSync(script, [await hostReactSource(), pluginBundle, HERMES_LOADER].join("\n"));
+    const run = spawnSync(HERMES_BIN, ["-Xes6-proxy", "-w", script], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+    if (run.error) throw run.error;
+    const line = run.stdout.split("\n").find((entry) => entry.startsWith("HERMES_RESULT "));
+    if (line === undefined) return { loaded: false, error: `Hermes exited ${String(run.status)}: ${run.stderr.slice(0, 2000)}` };
+    return JSON.parse(line.slice("HERMES_RESULT ".length)) as HermesLoad;
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+describe("the client bundle loaded by Hermes as the phone does", () => {
+  it("loads and registers the Taro screen and every other contribution", async () => {
+    const load = await loadInHermes(await compileClient({ entryPoints: [resolve(PLUGIN_ROOT, "index.client.tsx")] }));
+    expect(load).toEqual({
+      loaded: true,
+      registered: [
+        "addScreen:taro",
+        "addSidebarHeaderItem:taro",
+        "addWorkspacePanel:taro-ticket",
+        "addCommandCenterItem:open-taro",
+        "addSlashCommand:taro",
+        "addTimelineTransformer:taro-decisions",
+        "addTimelineRenderer:taro-decision-text",
+        "addTimelineRenderer:taro-decision-block",
+      ],
+    });
+  }, 60_000);
+
+  const sampleEntry = 'export default function contribute(client: any) { client.addScreen({ id: "sample" }); return () => {}; }';
+
+  it("passes a plain sample, so a failure below is the sample's own", async () => {
+    expect(await loadInHermes(await compileSample(sampleEntry))).toEqual({ loaded: true, registered: ["addScreen:sample"] });
+  }, 60_000);
+
+  it("fails a bundle that throws while its modules load", async () => {
+    const load = await loadInHermes(await compileSample(`const ready = (globalThis as any).missing.value;\n${sampleEntry}\nexport { ready };`));
+    expect(load.loaded).toBe(false);
+  }, 60_000);
+
+  it("fails a bundle Hermes cannot parse, such as a class (TR-023)", async () => {
+    const load = await loadInHermes(await compileSample(`export class Box {}\n${sampleEntry}`));
+    expect(load.loaded).toBe(false);
+  }, 60_000);
+
+  it("fails a contribution that throws", async () => {
+    const load = await loadInHermes(await compileSample('export default function contribute() { throw new Error("broken"); }'));
+    expect(load).toMatchObject({ loaded: false, error: expect.stringContaining("broken") });
+  }, 60_000);
 });
