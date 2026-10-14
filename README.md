@@ -1,6 +1,6 @@
-<p align="center"><img src="assets/taro-logo.svg" width="120" alt="Taro"></p>
+<p align="center"><img src="assets/taro-logo.svg" width="180" alt="Taro"></p>
 
-# Taro
+<h1 align="center">Taro</h1>
 
 Taro is a [Paseo](https://github.com/getpaseo/paseo) plugin that runs software work through agents,
 one project at a time. You tell a **Manager** agent what you want; it files a ticket and starts a
