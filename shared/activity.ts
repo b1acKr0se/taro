@@ -76,7 +76,7 @@ const SHELL_PURPOSES: readonly [RegExp, string][] = [
   [git("push"), "pushing"],
   [git("(diff|log|show|status)"), "reading the changes"],
   [/\bgh pr\b/, "working on the pull request"],
-  [/\bbacklog\b/, "updating the ticket"],
+  [/\btaro ticket\b/, "updating the ticket"],
   [/\bpaseo daemon\b|\bpaseo plugin\b/, "running a test daemon"],
   [/\bpaseo (run|send|archive|wait)\b/, "managing agents"],
   [/\b(grep|rg|find)\b/, "searching the code"],

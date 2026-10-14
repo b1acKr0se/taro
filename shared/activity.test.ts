@@ -12,7 +12,8 @@ describe("toolActivity", () => {
     expect(shell("node tools/phone.cjs /pw out.png Board")).toBe("taking screenshots");
     expect(shell("git -c user.name=x commit -m 'fix: y'")).toBe("committing");
     expect(shell("git rebase main")).toBe("rebasing");
-    expect(shell("BACKLOG_CWD=/tracker backlog task edit NA-1 --append-notes 'x'")).toBe("updating the ticket");
+    expect(shell("taro ticket edit NA-001 --append-notes 'x'")).toBe("updating the ticket");
+    expect(shell("cd /tracker && TARO_TRACKER=/tracker taro ticket view NA-001")).toBe("updating the ticket");
     expect(shell("paseo run -d --provider claude/x 'brief'")).toBe("managing agents");
     expect(shell("grep -rn lastStatus server")).toBe("searching the code");
     expect(shell("npm install")).toBe("installing dependencies");
