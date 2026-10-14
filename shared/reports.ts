@@ -6,6 +6,8 @@
  */
 import { z } from "zod";
 
+import { isBareFileName, splitAtSeparator } from "./evidence";
+
 export const STATUS_STATES = ["working", "waiting", "blocked", "done", "failed"] as const;
 export const StatusStateSchema = z.enum(STATUS_STATES);
 export type StatusState = z.infer<typeof StatusStateSchema>;
@@ -35,10 +37,23 @@ export function parseStatusLine(message: string): StatusLine | null {
   return null;
 }
 
+/**
+ * An image an option names (TR-055): a bare file name in the ticket's evidence folder and what it
+ * shows. `path` is filled in when the decision is stored, and stays null when the name is not a plain
+ * file name or the agent has no ticket.
+ */
+export const OptionImageSchema = z.object({
+  file: z.string(),
+  caption: z.string(),
+  path: z.string().nullable().default(null),
+});
+export type OptionImage = z.infer<typeof OptionImageSchema>;
+
 export const DecisionOptionSchema = z.object({
   label: z.string().min(1),
   prompt: z.string().min(1),
   consequence: z.string().default(""),
+  images: z.array(OptionImageSchema).default([]),
 });
 export type DecisionOption = z.infer<typeof DecisionOptionSchema>;
 
@@ -194,6 +209,29 @@ function readValue(lines: string[], start: number, keyColumn: number, rest: stri
 }
 
 /**
+ * An option's `images:` value, one image per line: `file — caption`, as a block scalar, a YAML list
+ * (`- file — caption`) under the key, or a single image on the key's own line.
+ */
+function readImages(lines: string[], start: number, keyColumn: number, rest: string): { images: OptionImage[]; next: number } {
+  let next = start;
+  for (let index = start; index < lines.length; index++) {
+    const line = lines[index] ?? "";
+    if (line.trim() === "") continue;
+    if (indentOf(line) <= keyColumn) break;
+    next = index + 1;
+  }
+  const first = BLOCK_HEADER.test(rest.trim()) ? [] : [rest];
+  const images = [...first, ...lines.slice(start, next)]
+    .map((line) => unquote(line.trim().replace(/^-\s*/, "")))
+    .filter((line) => line !== "" && !line.startsWith("#"))
+    .map((line) => {
+      const [file, caption] = splitAtSeparator(line);
+      return { file: file.replace(/^`+|`+$/g, ""), caption, path: null };
+    });
+  return { images, next };
+}
+
+/**
  * A lenient reader for the block's small YAML shape: top-level `key: value`
  * pairs and an `options:` list of `- label: …` maps, where any value may run
  * over several lines. Agents write it, so anything unexpected is skipped
@@ -202,6 +240,7 @@ function readValue(lines: string[], start: number, keyColumn: number, rest: stri
 export function parseDecisionBody(body: string): ParsedDecision {
   const fields: Record<string, string> = {};
   const options: Record<string, string>[] = [];
+  const images = new Map<Record<string, string>, OptionImage[]>();
   let inOptions = false;
   let current: Record<string, string> | null = null;
   const lines = body.split("\n");
@@ -234,7 +273,11 @@ export function parseDecisionBody(body: string): ParsedDecision {
       options.push(current);
       const content = item[1] ?? "";
       const inline = KEY_VALUE.exec(content);
-      if (inline?.[1] !== undefined) {
+      if (inline?.[1] !== undefined && inline[1].toLowerCase() === "images") {
+        const read = readImages(lines, index, indent + line.length - content.length, inline[2] ?? "");
+        images.set(current, read.images);
+        index = read.next;
+      } else if (inline?.[1] !== undefined) {
         const read = readValue(lines, index, indent + line.length - content.length, inline[2] ?? "");
         current[inline[1].toLowerCase()] = read.value;
         index = read.next;
@@ -246,7 +289,11 @@ export function parseDecisionBody(body: string): ParsedDecision {
       continue;
     }
     const pair = KEY_VALUE.exec(line);
-    if (pair?.[1] !== undefined && current !== null) {
+    if (pair?.[1] !== undefined && current !== null && pair[1].toLowerCase() === "images") {
+      const read = readImages(lines, index, indent, pair[2] ?? "");
+      images.set(current, read.images);
+      index = read.next;
+    } else if (pair?.[1] !== undefined && current !== null) {
       const read = readValue(lines, index, indent, pair[2] ?? "");
       current[pair[1].toLowerCase()] = read.value;
       index = read.next;
@@ -263,7 +310,12 @@ export function parseDecisionBody(body: string): ParsedDecision {
       problems.push("an option has no label");
       continue;
     }
-    parsedOptions.push({ label, prompt, consequence: option.consequence ?? "" });
+    const optionImages = images.get(option) ?? [];
+    for (const image of optionImages) {
+      if (!isBareFileName(image.file)) problems.push(`image ${image.file} of option ${label} is not a plain file name (no folders)`);
+      if (image.caption === "") problems.push(`image ${image.file} of option ${label} has no caption`);
+    }
+    parsedOptions.push({ label, prompt, consequence: option.consequence ?? "", images: optionImages });
   }
   const question = fields.question ?? "";
   if (question === "") problems.push("no question");
@@ -289,6 +341,14 @@ export function parseDecisionBody(body: string): ParsedDecision {
 }
 
 /** Whether a block asks exactly what a stored decision asked. */
+/** The options with each image's path in the ticket's evidence folder; a name with a folder in it, or no folder at all, keeps none. */
+export function withImagePaths(options: readonly DecisionOption[], folder: string | null): DecisionOption[] {
+  return options.map((option) => ({
+    ...option,
+    images: option.images.map((image) => ({ ...image, path: folder !== null && isBareFileName(image.file) ? `${folder}/${image.file}` : null })),
+  }));
+}
+
 export function sameQuestion(left: Pick<ParsedDecision, "question" | "options" | "blocking">, right: Pick<ParsedDecision, "question" | "options" | "blocking">): boolean {
   return (
     left.question === right.question &&

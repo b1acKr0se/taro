@@ -64,6 +64,15 @@ describe("parseEvidence and judgeEvidence", () => {
     expect(judge(record("review: self"), investigation).missing).toEqual(["a check with its result"]);
   });
 
+  it("asks for a caption on every screenshot, with or without a separator (TR-055)", () => {
+    for (const line of ["screenshot: a.png", "screenshot: a.png — ", "screenshot: a.png -"]) {
+      const judged = judge(record("check: npm test — ok", "review: self", line), change(["a.png"]));
+      expect(judged.complete).toBe(false);
+      expect(judged.missing).toEqual(["a caption for screenshot a.png"]);
+    }
+    expect(judge(record("check: npm test — ok", "review: self", "screenshot: b.png"), change([])).missing).toEqual(["a caption for screenshot b.png", "screenshot file b.png"]);
+  });
+
   it("names a missing screenshot file, and requires every listed one", () => {
     const notes = record("check: npm test — ok", "review: self", "screenshot: a.png — one", "screenshot: b.png — two");
     expect(judge(notes, change(["a.png"])).missing).toEqual(["screenshot file b.png"]);

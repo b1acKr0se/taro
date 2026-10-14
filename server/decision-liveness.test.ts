@@ -148,7 +148,7 @@ describe("Actions.answerDecision", () => {
     const live = paseoWhere(async () => ({ agent: { id: "owner", status: "idle", archivedAt: null } }));
     const withChange = (): StoredDecision => {
       const decision = stored("owner");
-      decision.options.push({ label: "Change…", prompt: "Change the proposal…", consequence: "" });
+      decision.options.push({ label: "Change…", prompt: "Change the proposal…", consequence: "", images: [] });
       return decision;
     };
 

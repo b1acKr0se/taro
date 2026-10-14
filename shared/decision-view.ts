@@ -3,7 +3,7 @@
  * live card while Taro still holds it open, otherwise a short note of what
  * became of it. Pure, so the in-tab renderer stays a thin view.
  */
-import { decisionMessageSegments, sameQuestion, type ParsedDecision } from "./reports";
+import { decisionMessageSegments, sameQuestion, type OptionImage, type ParsedDecision } from "./reports";
 import type { StoredDecision } from "./state";
 
 export type DecisionBlockView =
@@ -76,7 +76,7 @@ export function untrackedDecision(block: ParsedDecision, agentId: string): Store
 }
 
 /** One option as the card draws it: a full-width row, the recommended one carrying the reason (TR-030). */
-export type DecisionOptionRow = { label: string; prompt: string; consequence: string; recommended: boolean; reason: string };
+export type DecisionOptionRow = { label: string; prompt: string; consequence: string; images: OptionImage[]; recommended: boolean; reason: string };
 
 /**
  * The card's option rows in the agent's order. The reason sits on the recommended row; when the
@@ -89,6 +89,7 @@ export function decisionOptionRows(decision: Pick<StoredDecision, "options" | "r
     label: option.label,
     prompt: option.prompt,
     consequence: option.consequence,
+    images: option.images,
     recommended: index === recommendedIndex,
     reason: index === recommendedIndex ? decision.reason : "",
   }));

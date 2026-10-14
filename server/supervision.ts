@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compaction";
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { isCrash } from "../shared/recovery";
-import { hashText, parseDecisionBlocks, parseStatusLine, sameQuestion, type ParsedDecision } from "../shared/reports";
+import { hashText, parseDecisionBlocks, parseStatusLine, sameQuestion, withImagePaths, type ParsedDecision } from "../shared/reports";
 import { withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDecision } from "../shared/state";
 import { fetchLiveAgent, isMidTurn, listTaroAgents } from "./agents";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
@@ -340,6 +340,7 @@ export class Supervisor {
         }
         const next: StoredDecision = {
           ...decision,
+          options: withImagePaths(decision.options, identity.ticket === null ? null : ticketEvidenceDirectory(identity.project, identity.ticket)),
           key,
           project: identity.project,
           ticket: identity.ticket,

@@ -69,9 +69,9 @@ describe("pluginPathIn", () => {
 import { sameQuestion } from "../shared/reports";
 
 describe("sameQuestion", () => {
-  const asked = { question: "Approve?", blocking: true, options: [{ label: "Approve", prompt: "Approve it", consequence: "" }] };
+  const asked = { question: "Approve?", blocking: true, options: [{ label: "Approve", prompt: "Approve it", consequence: "", images: [] }] };
   it("matches an identical block and not a changed one", () => {
-    expect(sameQuestion(asked, { ...asked, options: [{ label: "Approve", prompt: "Approve it", consequence: "different note" }] })).toBe(true);
+    expect(sameQuestion(asked, { ...asked, options: [{ label: "Approve", prompt: "Approve it", consequence: "different note", images: [] }] })).toBe(true);
     expect(sameQuestion(asked, { ...asked, question: "Approve the new scope?" })).toBe(false);
     expect(sameQuestion(asked, { ...asked, blocking: false })).toBe(false);
   });

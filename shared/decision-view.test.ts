@@ -110,7 +110,7 @@ describe("decisionBlockView", () => {
 });
 
 describe("decisionOptionRows", () => {
-  const option = (label: string, consequence = "") => ({ label, prompt: `${label} please`, consequence });
+  const option = (label: string, consequence = "") => ({ label, prompt: `${label} please`, consequence, images: [] });
 
   it("keeps the agent's order and puts the reason on the recommended row only", () => {
     const { rows, looseReason } = decisionOptionRows({ options: [option("A", "first"), option("B", "second"), option("C")], recommended: "B", reason: "fits best" });
@@ -140,9 +140,9 @@ describe("decisionOptionRows", () => {
 describe("decisionSubmit", () => {
   const { rows } = decisionOptionRows({
     options: [
-      { label: "Keep", prompt: "Keep it", consequence: "" },
-      { label: "Change…", prompt: "Change it like this…", consequence: "" },
-      { label: "Other", prompt: "Something else…", consequence: "" },
+      { label: "Keep", prompt: "Keep it", consequence: "", images: [] },
+      { label: "Change…", prompt: "Change it like this…", consequence: "", images: [] },
+      { label: "Other", prompt: "Something else…", consequence: "", images: [] },
     ],
     recommended: "Keep",
     reason: "",
@@ -174,7 +174,7 @@ describe("decisionSubmit", () => {
 });
 
 describe("optionChips", () => {
-  const option = (label: string, prompt = label) => ({ label, prompt, consequence: "" });
+  const option = (label: string, prompt = label) => ({ label, prompt, consequence: "", images: [] });
 
   it("is empty for a question without options", () => {
     expect(optionChips({ options: [], recommended: "", reason: "" })).toEqual([]);

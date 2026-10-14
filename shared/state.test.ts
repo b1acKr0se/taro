@@ -8,7 +8,7 @@ function decision(agentId: string, id: string, status: StoredDecision["status"] 
     question: `${id}?`,
     why: "",
     blocking: true,
-    options: [{ label: "Yes", prompt: "Yes", consequence: "" }],
+    options: [{ label: "Yes", prompt: "Yes", consequence: "", images: [] }],
     recommended: "Yes",
     reason: "",
     default: "",

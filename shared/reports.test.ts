@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decisionBlocksAsText, parseDecisionBlocks, parseStatusLine, withoutDecisionBlocks } from "./reports";
+import { decisionBlocksAsText, parseDecisionBlocks, parseStatusLine, withImagePaths, withoutDecisionBlocks } from "./reports";
 
 describe("parseStatusLine", () => {
   it("reads the last line", () => {
@@ -59,15 +59,15 @@ describe("parseDecisionBlocks", () => {
       problems: [],
     });
     expect(decision?.options).toEqual([
-      { label: "Per trade", prompt: "Store fees per trade", consequence: "full audit" },
-      { label: "Hourly", prompt: "Aggregate fees hourly", consequence: "" },
+      { label: "Per trade", prompt: "Store fees per trade", consequence: "full audit", images: [] },
+      { label: "Hourly", prompt: "Aggregate fees hourly", consequence: "", images: [] },
     ]);
   });
 
   it("reports what is missing instead of failing", () => {
     const [decision] = parseDecisionBlocks("```decision\nquestion: Which?\noptions:\n  - label: A\n```");
     expect(decision?.problems).toEqual(["no recommended option", "no reason for the recommendation", "no id"]);
-    expect(decision?.options).toEqual([{ label: "A", prompt: "A", consequence: "" }]);
+    expect(decision?.options).toEqual([{ label: "A", prompt: "A", consequence: "", images: [] }]);
     expect(decision?.id).toMatch(/^untitled-/);
   });
 
@@ -146,9 +146,9 @@ describe("parseDecisionBlocks multi-line values", () => {
     );
     expect(decision).toMatchObject({ id: "scope-approval", blocking: true, recommended: "Approve", problems: [] });
     expect(decision?.options).toEqual([
-      { label: "Approve", prompt: "Approve", consequence: "I build it as proposed" },
-      { label: "Change…", prompt: "Change…", consequence: "" },
-      { label: "Split into children", prompt: "Split into children", consequence: "" },
+      { label: "Approve", prompt: "Approve", consequence: "I build it as proposed", images: [] },
+      { label: "Change…", prompt: "Change…", consequence: "", images: [] },
+      { label: "Split into children", prompt: "Split into children", consequence: "", images: [] },
     ]);
   });
 
@@ -209,15 +209,15 @@ describe("parseDecisionBlocks multi-line values", () => {
       "reason: r",
     );
     expect(decision.options).toEqual([
-      { label: "Per trade", prompt: "Store fees per trade.\nKeep the audit.", consequence: "full audit" },
-      { label: "Hourly", prompt: "Hourly", consequence: "small" },
+      { label: "Per trade", prompt: "Store fees per trade.\nKeep the audit.", consequence: "full audit", images: [] },
+      { label: "Hourly", prompt: "Hourly", consequence: "small", images: [] },
     ]);
     expect(decision.problems).toEqual([]);
   });
 
   it("reads a scalar list item written over several lines", () => {
     const decision = decisionOf("id: x", "question: Q", "options:", "  - |", "    A", "    B", "recommended: A", "reason: r");
-    expect(decision.options).toEqual([{ label: "A\nB", prompt: "A\nB", consequence: "" }]);
+    expect(decision.options).toEqual([{ label: "A\nB", prompt: "A\nB", consequence: "", images: [] }]);
   });
 
   it("folds > the YAML way: blank lines and more-indented lines keep their breaks", () => {
@@ -249,6 +249,42 @@ describe("parseDecisionBlocks multi-line values", () => {
     expect(decision.question).toBe("Store fees per trade or aggregate hourly?");
     expect(decision.why).toBe('Hourly loses audit; per-trade is "bigger"');
     expect(decision.reason).toBe("audits need it");
-    expect(decision.options).toEqual([{ label: "Per trade", prompt: "Per trade", consequence: "it's full" }]);
+    expect(decision.options).toEqual([{ label: "Per trade", prompt: "Per trade", consequence: "it's full", images: [] }]);
+  });
+});
+
+describe("parseDecisionBlocks option images (TR-055)", () => {
+  const block = (...optionLines: string[]) =>
+    parseDecisionBlocks(["```decision", "id: nav", "question: Which navigation?", "options:", ...optionLines, "recommended: Pills", "reason: r", "```"].join("\n"))[0]!;
+  const image = (file: string, caption: string) => ({ file, caption, path: null });
+
+  it("reads one image per line of a | block, each with its caption", () => {
+    const decision = block("  - label: Pills", "    images: |", "      option-a-pills-phone.png — the list on a phone", "      option-a-pills-desktop.png — the list on a desktop");
+    expect(decision.options[0]?.images).toEqual([image("option-a-pills-phone.png", "the list on a phone"), image("option-a-pills-desktop.png", "the list on a desktop")]);
+    expect(decision.problems).toEqual([]);
+  });
+
+  it("reads a YAML list under the key without taking its items for options", () => {
+    const decision = block("  - label: Pills", "    images:", "      - option-a-phone.png — on a phone", "      - `option-a-desktop.png` -- on a desktop", "  - label: Tabs");
+    expect(decision.options.map((option) => option.label)).toEqual(["Pills", "Tabs"]);
+    expect(decision.options[0]?.images).toEqual([image("option-a-phone.png", "on a phone"), image("option-a-desktop.png", "on a desktop")]);
+    expect(decision.options[1]?.images).toEqual([]);
+  });
+
+  it("reads a single image on the key's own line, and on the - line", () => {
+    const decision = block("  - label: Pills", "    images: option-a.png — the list", "  - images: option-b.png — tabs", "    label: Tabs");
+    expect(decision.options[0]?.images).toEqual([image("option-a.png", "the list")]);
+    expect(decision.options[1]).toMatchObject({ label: "Tabs", images: [image("option-b.png", "tabs")] });
+  });
+
+  it("asks for a caption and a plain file name", () => {
+    const decision = block("  - label: Pills", "    images: |", "      option-a.png", "      ../elsewhere/b.png — escapes");
+    expect(decision.problems).toEqual(["image option-a.png of option Pills has no caption", "image ../elsewhere/b.png of option Pills is not a plain file name (no folders)"]);
+  });
+
+  it("gives each image its path in the ticket's folder, and none without one or for a name with a folder", () => {
+    const options = [{ label: "Pills", prompt: "Pills", consequence: "", images: [image("a.png", "x"), image("dir/b.png", "y")] }];
+    expect(withImagePaths(options, "/evidence/notes/NA-1")[0]?.images.map((each) => each.path)).toEqual(["/evidence/notes/NA-1/a.png", null]);
+    expect(withImagePaths(options, null)[0]?.images.map((each) => each.path)).toEqual([null, null]);
   });
 });

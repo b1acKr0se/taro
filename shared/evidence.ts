@@ -24,7 +24,7 @@ export interface JudgedEvidence {
 }
 
 /** The text split at its first separator, the em dash before the plain ones (a command may contain ` - `). */
-function splitAtSeparator(text: string): [string, string] {
+export function splitAtSeparator(text: string): [string, string] {
   for (const separator of [" — ", " -- ", " - "]) {
     const index = text.indexOf(separator);
     if (index >= 0) return [text.slice(0, index).trim(), text.slice(index + separator.length).trim()];
@@ -107,6 +107,8 @@ export function judgeEvidence(
       else if (parsed.screenshotsNone === "") missing.push("a reason after screenshots: none");
     }
     for (const shot of screenshots) {
+      // The caption is what tells the reader what the image shows (TR-055).
+      if (shot.caption === "") missing.push(`a caption for screenshot ${shot.file}`);
       if (shot.present) continue;
       missing.push(isBareFileName(shot.file) ? `screenshot file ${shot.file}` : `a plain file name for screenshot ${shot.file} (no folders)`);
     }
