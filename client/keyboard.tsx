@@ -79,8 +79,8 @@ interface BrowserLike {
 const WEB_KEYBOARD_MIN = 80;
 
 function browser(): BrowserLike | null {
-  const candidate = globalThis as unknown as Partial<BrowserLike>;
-  return typeof candidate.innerHeight === "number" ? (candidate as BrowserLike) : null;
+  // Asked by name, not read: reading `innerHeight` makes a browser lay the page out there and then.
+  return "innerHeight" in globalThis ? (globalThis as unknown as BrowserLike) : null;
 }
 
 /** The focused element on the web, when it is a field the reader types in. */
