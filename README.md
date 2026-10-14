@@ -99,12 +99,6 @@ accepted or merge yourself), limits (owners running at once, when long conversat
 compacted), standing orders the Manager passes to every task owner, and starting or restarting
 the Manager.
 
-## Troubleshooting
-
-"This plugin surface is unavailable." for a moment when an app reconnects is Paseo reloading its
-plugins; Taro comes back where you were. If it stays, open Settings → Plugins in that app and copy
-the error shown on Taro's row.
-
 ## License
 
 MIT, see [LICENSE](LICENSE). Parts are adapted from FirstMate (MIT) and from Paseo (Apache-2.0);
