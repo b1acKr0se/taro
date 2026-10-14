@@ -29,7 +29,7 @@ import { SyncProblemCard } from "./sync-problem-card";
 import { IconButton } from "./ui";
 import { TicketCard } from "./ticket-card";
 import { withAlpha } from "./tint";
-import { FONT_SIZE } from "./type-scale";
+import { FONT_SIZE, labelLineHeightFor } from "./type-scale";
 import { toneColor } from "./visual-meta";
 import { walkOrder } from "./walk-order";
 import { MIN_COLUMN_WIDTH, columnWidths } from "./column-widths";
@@ -91,9 +91,9 @@ export function ProjectBoard({
         borderColor: colors.border,
         backgroundColor: colors.surface1,
       },
-      chipText: { color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "500" as const },
+      chipText: { color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: labelLineHeightFor(FONT_SIZE.small), fontWeight: "500" as const },
       pill: { minWidth: 20, alignItems: "center" as const, paddingHorizontal: SPACE.xs + 2, paddingVertical: 1, borderRadius: 999, backgroundColor: colors.surface2 },
-      pillText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.micro, fontWeight: "700" as const },
+      pillText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.micro, lineHeight: labelLineHeightFor(FONT_SIZE.micro), fontWeight: "700" as const },
       error: { color: colors.statusDanger, padding: SPACE.md },
     }),
     [colors, compact],

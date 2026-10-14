@@ -22,7 +22,7 @@ import { SPACE } from "./spacing";
 import { OptionChips } from "./option-chips";
 import { PlanDecision } from "./plan-card";
 import { withAlpha } from "./tint";
-import { FONT_SIZE, lineHeightFor } from "./type-scale";
+import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { AcceptancePair, IconButton } from "./ui";
 import { useActions } from "./use-actions";
 import { useNow } from "./use-now";
@@ -80,7 +80,8 @@ export function TicketCard({
       strong: { color: colors.foreground, fontWeight: "600" as const },
       danger: { color: colors.statusDanger, fontWeight: "600" as const },
       detail: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption) },
-      actions: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, marginTop: SPACE.xs },
+      now: { gap: SPACE.sm },
+      actions: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm },
       action: {
         flexDirection: "row" as const,
         alignItems: "center" as const,
@@ -99,7 +100,7 @@ export function TicketCard({
       childRow: { flexDirection: "row" as const, alignItems: "flex-start" as const, gap: SPACE.sm },
       childIcon: { width: 14, paddingTop: (lineHeightFor(FONT_SIZE.caption) - 13) / 2 },
       footer: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "center" as const, gap: SPACE.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: SPACE.sm },
-      actionText: { color: colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
+      actionText: { color: colors.accent, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
     }),
     [colors, compact, selected],
   );
@@ -193,71 +194,70 @@ export function TicketCard({
     // Past the crash limit (a recorded reason) a nudge cannot help; only a fresh owner can.
     const nudgeable = owner !== null && owner.status !== "error" && card.stalledReason === null;
     return (
-      <View style={styles.line}>
-        <View style={styles.lineIcon}>
-          <Icon name={look.icon} size={13} color={look.color} />
-        </View>
-        <View style={styles.lineText}>
-          {/* Read whole: a long status wraps; six lines keep one card from filling the column. A question gets three, its options follow. */}
-          <Text style={[styles.headline, look.headline]} numberOfLines={line.kind === "call" && line.call.kind === "decision" ? 3 : 6}>
-            {line.headline}
-          </Text>
-          {line.detail === null ? null : (
-            <Text style={styles.detail} numberOfLines={3}>
-              {line.detail}
+      <View style={styles.now}>
+        <View style={styles.line}>
+          <View style={styles.lineIcon}>
+            <Icon name={look.icon} size={13} color={look.color} />
+          </View>
+          <View style={styles.lineText}>
+            {/* Read whole: a long status wraps; six lines keep one card from filling the column. A question gets three, its options follow. */}
+            <Text style={[styles.headline, look.headline]} numberOfLines={line.kind === "call" && line.call.kind === "decision" ? 3 : 6}>
+              {line.headline}
             </Text>
-          )}
-          {line.kind === "call" && line.call.kind === "decision" ? (
-            <View style={{ marginTop: SPACE.xs }}>
-              <OptionChips decision={line.call.decision} theme={theme} onOpen={onOpen} onAnswered={onChanged} />
-            </View>
-          ) : null}
-          {line.kind === "call" && line.call.kind === "acceptance" && line.call.ready ? (
-            // Request changes opens the ticket, where its owner's chat holds the field to write them in.
-            <View style={{ marginTop: SPACE.xs }}>
-              <AcceptancePair
-                theme={theme}
-                busy={busy}
-                acceptState={actions.stateOf("accept")}
-                requestLabel="Request changes"
-                // The accepted ticket leaves this call, so Accept stays busy until it does.
-                onAccept={() => actions.press("accept", () => accept({ project, ticket: card.id }), { after: "hold", success: `Accepted ${card.id}.`, onSuccess: onChanged })}
-                onRequestChanges={onOpen}
-              />
-            </View>
-          ) : line.kind === "call" ? (
-            <View style={styles.actions}>
-              <Pressable accessibilityRole="button" accessibilityLabel={`${line.action}: ${line.headline}`} style={styles.action} onPress={onOpen}>
-                <Text style={styles.actionText}>{line.action}</Text>
-                <Icon name="ArrowRight" size={12} color={colors.accent} />
-              </Pressable>
-            </View>
-          ) : null}
-          {line.kind === "stalled" ? (
-            <View style={styles.actions}>
-              {nudgeable ? (
-                <IconButton
-                  icon="Zap"
-                  label="Nudge"
-                  showLabel
-                  theme={theme}
-                  disabled={busy}
-                  state={actions.stateOf("nudge")}
-                  onPress={() => actions.press("nudge", () => nudge({ agentId: owner.id }), { success: "Nudged.", onSuccess: onChanged })}
-                />
-              ) : null}
+            {line.detail === null ? null : (
+              <Text style={styles.detail} numberOfLines={3}>
+                {line.detail}
+              </Text>
+            )}
+          </View>
+        </View>
+        {/* Buttons start at the card's left edge, under the id and title, not under the status text (TR-089). */}
+        {line.kind === "call" && line.call.kind === "decision" ? (
+          <OptionChips decision={line.call.decision} theme={theme} onOpen={onOpen} onAnswered={onChanged} />
+        ) : null}
+        {line.kind === "call" && line.call.kind === "acceptance" && line.call.ready ? (
+          // Request changes opens the ticket, where its owner's chat holds the field to write them in.
+          <AcceptancePair
+            theme={theme}
+            busy={busy}
+            acceptState={actions.stateOf("accept")}
+            requestLabel="Request changes"
+            // The accepted ticket leaves this call, so Accept stays busy until it does.
+            onAccept={() => actions.press("accept", () => accept({ project, ticket: card.id }), { after: "hold", success: `Accepted ${card.id}.`, onSuccess: onChanged })}
+            onRequestChanges={onOpen}
+          />
+        ) : line.kind === "call" ? (
+          <View style={styles.actions}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`${line.action}: ${line.headline}`} style={styles.action} onPress={onOpen}>
+              <Text style={styles.actionText}>{line.action}</Text>
+              <Icon name="ArrowRight" size={12} color={colors.accent} />
+            </Pressable>
+          </View>
+        ) : null}
+        {line.kind === "stalled" ? (
+          <View style={styles.actions}>
+            {nudgeable ? (
               <IconButton
-                icon="RotateCcw"
-                label="Relaunch"
+                icon="Zap"
+                label="Nudge"
                 showLabel
                 theme={theme}
                 disabled={busy}
-                state={actions.stateOf("relaunch")}
-                onPress={() => actions.press("relaunch", () => relaunch({ project, ticket: card.id }), { success: "A fresh owner is starting.", onSuccess: onChanged })}
+                state={actions.stateOf("nudge")}
+                onPress={() => actions.press("nudge", () => nudge({ agentId: owner.id }), { success: "Nudged.", onSuccess: onChanged })}
               />
-            </View>
-          ) : null}
-        </View>
+            ) : null}
+            <IconButton
+              icon="RotateCcw"
+              label="Relaunch"
+              showLabel
+              theme={theme}
+              disabled={busy}
+              state={actions.stateOf("relaunch")}
+              onPress={() => actions.press("relaunch", () => relaunch({ project, ticket: card.id }), { success: "A fresh owner is starting.", onSuccess: onChanged })}
+            />
+          </View>
+        ) : null}
       </View>
     );
   }

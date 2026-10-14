@@ -42,7 +42,7 @@ import { paneGutter, SPACE } from "./spacing";
 import { StatsView } from "./stats-view";
 import { SuggestionPills } from "./suggestion-pills";
 import { TicketView } from "./ticket-view";
-import { FONT_SIZE, lineHeightFor } from "./type-scale";
+import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
 import { useActions } from "./use-actions";
 import { useBackStep, useScreenBack } from "./use-back";
@@ -197,10 +197,10 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
         borderBottomColor: "transparent",
       },
       tabActive: { borderBottomColor: colors.accent },
-      tabText: { color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" as const },
-      tabMuted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.body, fontWeight: "500" as const },
+      tabText: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body), fontWeight: "600" as const },
+      tabMuted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body), fontWeight: "500" as const },
       badge: { minWidth: 18, alignItems: "center" as const, paddingHorizontal: SPACE.xs + 1, borderRadius: 9, backgroundColor: colors.statusWarning },
-      badgeText: { color: colors.surface0, fontSize: FONT_SIZE.micro, fontWeight: "700" as const },
+      badgeText: { color: colors.surface0, fontSize: FONT_SIZE.micro, lineHeight: labelLineHeightFor(FONT_SIZE.micro), fontWeight: "700" as const },
       body: { flex: 1, minHeight: 0 },
       error: { color: colors.statusDanger, padding: SPACE.lg },
     }),

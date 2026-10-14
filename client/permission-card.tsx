@@ -41,7 +41,7 @@ import {
 } from "./questions";
 import { IconButton, MONOSPACE, type Tone } from "./ui";
 import { useActions } from "./use-actions";
-import { FONT_SIZE, lineHeightFor } from "./type-scale";
+import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 
 type AgentHandle = ReturnType<ReturnType<typeof usePaseo>["agents"]["ref"]>;
 export type PermissionRequest = NonNullable<AgentHandle["pendingPermissions"]>[number];
@@ -111,7 +111,7 @@ function useCardStyles(theme: PluginTheme, compact: boolean) {
         borderColor: colors.border,
       },
       tabActive: { borderColor: colors.foreground, backgroundColor: colors.surface2 },
-      tabText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small },
+      tabText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: labelLineHeightFor(FONT_SIZE.small) },
       tabTextActive: { color: colors.foreground },
       question: { color: colors.foreground, fontSize: FONT_SIZE.content, fontWeight: "600" as const, lineHeight: lineHeightFor(FONT_SIZE.content) },
       option: { flexDirection: "row" as const, alignItems: "flex-start" as const, gap: 10, paddingVertical: 6 },

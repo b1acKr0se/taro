@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { ActivityIndicator, Animated, Easing, Platform, Text, View } from "react-native";
 import { BUTTON, SEGMENTED } from "./control-size";
 import { Pressable } from "./focus";
-import { FONT_SIZE, lineHeightFor } from "./type-scale";
+import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 
 /** A fixed-width font on every platform; iOS has no font named "monospace". */
 export const MONOSPACE = Platform.select({ ios: "Menlo", default: "monospace" });
@@ -156,7 +156,7 @@ export function Segmented<Value extends string>({
       holder: { flexDirection: "row" as const },
       frame: {
         flexDirection: "row" as const,
-        height: BUTTON.height,
+        minHeight: BUTTON.height,
         padding: SEGMENTED.padding,
         gap: SEGMENTED.gap,
         borderRadius: BUTTON.borderRadius,
@@ -358,7 +358,7 @@ export function Chip({ theme, text, color, icon }: { theme: PluginTheme; text: s
         backgroundColor: theme.colors.surface2,
       },
       dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: color },
-      text: { color: theme.colors.foreground, fontSize: FONT_SIZE.caption },
+      text: { color: theme.colors.foreground, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption) },
     }),
     [theme, color],
   );

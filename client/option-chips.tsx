@@ -17,7 +17,7 @@ import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
-import { FONT_SIZE } from "./type-scale";
+import { FONT_SIZE, labelLineHeightFor } from "./type-scale";
 import { Spinner } from "./ui";
 import { usePressGuards } from "./use-actions";
 
@@ -58,7 +58,7 @@ export function OptionChips({
         backgroundColor: colors.surface1,
       },
       recommended: { borderColor: withAlpha(colors.accent, 0.6), backgroundColor: withAlpha(colors.accent, 0.08) },
-      label: { flexShrink: 1, color: colors.foreground, fontSize: FONT_SIZE.caption },
+      label: { flexShrink: 1, color: colors.foreground, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption) },
     }),
     [colors],
   );

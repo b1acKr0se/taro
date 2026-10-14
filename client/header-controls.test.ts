@@ -23,13 +23,14 @@ describe("header controls", () => {
     expect(segment).toBeGreaterThanOrEqual(BUTTON.iconSize);
   });
 
-  it("gives buttons and the switch that height, the label its fixed line, and never pins the switch to a row's top", () => {
+  it("gives buttons and the switch that height at least, the label its fixed line, and never pins the switch to a row's top", () => {
     const ui = source("ui.tsx");
     const iconButton = between(ui, "export function IconButton", "export function AcceptancePair");
     expect(iconButton).toContain("minHeight: BUTTON.height");
     expect(iconButton).toContain("lineHeight: BUTTON.lineHeight");
     const segmented = between(ui, "export function Segmented", "export function JumpToEnd");
-    expect(segmented).toContain("height: BUTTON.height");
+    // At least, so a larger system font grows the switch rather than clipping its labels (TR-089).
+    expect(segmented).toContain("minHeight: BUTTON.height");
     expect(segmented).toContain("lineHeight: BUTTON.lineHeight");
     expect(segmented).not.toContain("alignSelf");
     expect(segmented).not.toMatch(/(height|size|padding|paddingHorizontal|borderRadius): \d/);

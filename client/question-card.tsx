@@ -15,7 +15,7 @@ import { Pressable } from "./focus";
 import { OptionChips } from "./option-chips";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
-import { FONT_SIZE, lineHeightFor } from "./type-scale";
+import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { useNow } from "./use-now";
 
 export function QuestionCard({
@@ -53,14 +53,13 @@ export function QuestionCard({
         alignSelf: "flex-start" as const,
         alignItems: "center" as const,
         gap: SPACE.xs,
-        marginTop: SPACE.xs,
         paddingHorizontal: SPACE.sm,
         paddingVertical: SPACE.xxs,
         borderRadius: 6,
         borderWidth: 1,
         borderColor: withAlpha(colors.accent, 0.45),
       },
-      actionText: { color: colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
+      actionText: { color: colors.accent, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
     }),
     [colors, compact],
   );
@@ -84,13 +83,14 @@ export function QuestionCard({
             {decision.question}
           </Text>
           {context === null ? null : <Text style={styles.detail}>{context}</Text>}
-          <OptionChips decision={decision} theme={theme} onOpen={onOpen} onAnswered={onAnswered} />
-          <Pressable accessibilityRole="button" accessibilityLabel={`Answer: ${decision.question}`} style={styles.action} onPress={onOpen}>
-            <Text style={styles.actionText}>Answer</Text>
-            <Icon name="ArrowRight" size={12} color={colors.accent} />
-          </Pressable>
         </View>
       </View>
+      {/* Buttons start at the card's left edge, under the asker, not under the question (TR-089). */}
+      <OptionChips decision={decision} theme={theme} onOpen={onOpen} onAnswered={onAnswered} />
+      <Pressable accessibilityRole="button" accessibilityLabel={`Answer: ${decision.question}`} style={styles.action} onPress={onOpen}>
+        <Text style={styles.actionText}>Answer</Text>
+        <Icon name="ArrowRight" size={12} color={colors.accent} />
+      </Pressable>
     </Pressable>
   );
 }

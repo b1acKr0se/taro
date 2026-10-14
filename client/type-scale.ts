@@ -29,3 +29,13 @@ export const FONT_SIZE = {
 export function lineHeightFor(size: number): number {
   return Math.round(size * 1.6);
 }
+
+/**
+ * A one-line label's line in a chip, pill, badge or tab (TR-089). Left to the platform, a phone measured
+ * a chip from one font's metrics and drew its label in the system font lower down, cutting off the
+ * descenders; a fixed line sizes the box from the line it draws, with room below the baseline, and
+ * still grows with the system's font size.
+ */
+export function labelLineHeightFor(size: number): number {
+  return Math.ceil(size * 1.35);
+}

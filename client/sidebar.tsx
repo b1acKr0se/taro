@@ -6,7 +6,7 @@ import { Text, View } from "react-native";
 import { useProjects } from "./queries";
 import { TARO_SCREEN_ID } from "./screen";
 import { useNeedsYouNotifications } from "./use-notifications";
-import { FONT_SIZE } from "./type-scale";
+import { FONT_SIZE, labelLineHeightFor } from "./type-scale";
 
 export function TaroSidebarItem({ currentScreen, openScreen, theme }: PluginSidebarItemProps) {
   const projects = useProjects();
@@ -21,7 +21,7 @@ export function TaroSidebarItem({ currentScreen, openScreen, theme }: PluginSide
       trailing={
         waiting === 0 ? undefined : (
           <View style={{ minWidth: 18, paddingHorizontal: 5, borderRadius: 9, backgroundColor: theme.colors.statusWarning, alignItems: "center" }}>
-            <Text style={{ color: theme.colors.surface0, fontSize: FONT_SIZE.micro, fontWeight: "700" }}>{waiting}</Text>
+            <Text style={{ color: theme.colors.surface0, fontSize: FONT_SIZE.micro, lineHeight: labelLineHeightFor(FONT_SIZE.micro), fontWeight: "700" }}>{waiting}</Text>
           </View>
         )
       }

@@ -9,7 +9,7 @@ import { Text, View } from "react-native";
 
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
-import { FONT_SIZE } from "./type-scale";
+import { FONT_SIZE, labelLineHeightFor } from "./type-scale";
 import { phaseLook, toneColor } from "./visual-meta";
 
 export function PhaseBadge({ theme, status }: { theme: PluginTheme; status: string }) {
@@ -33,7 +33,7 @@ export function PhaseBadge({ theme, status }: { theme: PluginTheme; status: stri
       }}
     >
       <Icon name={look.icon} size={12} color={color} />
-      <Text style={{ flexShrink: 1, color, fontSize: FONT_SIZE.caption, fontWeight: "600" }} numberOfLines={1}>
+      <Text style={{ flexShrink: 1, color, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" }} numberOfLines={1}>
         {status}
       </Text>
     </View>

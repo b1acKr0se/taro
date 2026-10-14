@@ -11,7 +11,7 @@ import { Pressable } from "./focus";
 import { paneAgentDetail, paneAgentState, roleIcon, type PaneAgent, type PaneAgentState } from "./pane-agents";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
-import { FONT_SIZE } from "./type-scale";
+import { FONT_SIZE, labelLineHeightFor } from "./type-scale";
 
 function stateColor(theme: PluginTheme, state: PaneAgentState): string {
   if (state === "running") return theme.colors.statusSuccess;
@@ -69,7 +69,7 @@ export function AgentChips({
               }}
             >
               {mark}
-              <Text style={{ color: selected ? colors.foreground : colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "600", maxWidth: 180 }} numberOfLines={1}>
+              <Text style={{ color: selected ? colors.foreground : colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600", maxWidth: 180 }} numberOfLines={1}>
                 {agent.label}
               </Text>
             </Pressable>
@@ -95,7 +95,7 @@ export function AgentChips({
           >
             <Icon name={roleIcon(agent)} size={14} color={selected ? colors.accent : colors.foregroundMuted} />
             <View style={{ gap: SPACE.xxs, maxWidth: 280 }}>
-              <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "600" }} numberOfLines={1}>
+              <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: labelLineHeightFor(FONT_SIZE.small), fontWeight: "600" }} numberOfLines={1}>
                 {agent.label}
               </Text>
               <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs }}>
