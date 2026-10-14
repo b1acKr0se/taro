@@ -47,9 +47,7 @@ const STACK_BELOW_WIDTH = 380;
 const NAME_COLUMN = 104;
 /** The summary block's icon and label columns; "Needs you:" fits the label column. */
 const SUMMARY_ICON = 16;
-const SUMMARY_LABEL = 88;
-/** A child's status badge at the row's end shortens past this, so a phone keeps room for the title. */
-const CHILD_BADGE_MAX = 150;
+const SUMMARY_LABEL = 100;
 
 const SECTION_LOOK: Record<TicketSectionKey, { icon: string; name: string }> = {
   plan: { icon: "Map", name: "Plan" },
@@ -90,7 +88,8 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
       notesFrame: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: SPACE.md, backgroundColor: colors.surface1 },
       subheading: { color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "700" as const },
       planActions: { marginTop: SPACE.sm },
-      childBadge: { flexShrink: 0, maxWidth: CHILD_BADGE_MAX },
+      // Whole: the title beside it wraps instead.
+      childBadge: { flexShrink: 0 },
     }),
     [colors],
   );

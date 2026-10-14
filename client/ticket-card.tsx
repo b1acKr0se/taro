@@ -25,7 +25,7 @@ import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { AcceptancePair, IconButton } from "./ui";
 import { useActions } from "./use-actions";
 import { useNow } from "./use-now";
-import { statusStateLook, toneColor } from "./visual-meta";
+import { phaseLook, statusStateLook, toneColor } from "./visual-meta";
 
 export function TicketCard({
   card,
@@ -95,8 +95,8 @@ export function TicketCard({
       muted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
       link: { color: colors.accent, fontSize: FONT_SIZE.caption },
       track: { width: 44, height: 3, borderRadius: 2, backgroundColor: colors.surface2, overflow: "hidden" as const },
-      // Indented past the chevron, so the children start where the progress line beside it does.
-      childRow: { flexDirection: "row" as const, alignItems: "flex-start" as const, gap: SPACE.sm, paddingLeft: 12 + SPACE.sm },
+      childRow: { flexDirection: "row" as const, alignItems: "flex-start" as const, gap: SPACE.sm },
+      childIcon: { width: 14, paddingTop: (lineHeightFor(FONT_SIZE.caption) - 13) / 2 },
       footer: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "center" as const, gap: SPACE.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: SPACE.sm },
       actionText: { color: colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
     }),
@@ -275,14 +275,15 @@ export function TicketCard({
           </Pressable>
           {childrenOpen
             ? card.children.map((child) => (
-                // The badge ends the row (shortened in a narrow column), so every id and title starts at one edge.
-                <View key={child.id} style={styles.childRow}>
-                  <Text style={[styles.muted, { flex: 1, minWidth: 0 }]} numberOfLines={2}>
+                // A narrow column has no room for a badge beside the title: the status is its icon and colour in a
+                // fixed column, so every id and title starts at one edge.
+                <View key={child.id} style={styles.childRow} accessibilityLabel={`${child.id} ${child.title}, ${child.status}`}>
+                  <View style={styles.childIcon}>
+                    <Icon name={phaseLook(child.status).icon} size={13} color={toneColor(theme, phaseLook(child.status).tone)} />
+                  </View>
+                  <Text style={[styles.muted, { flex: 1, minWidth: 0, lineHeight: lineHeightFor(FONT_SIZE.caption) }]} numberOfLines={2}>
                     {child.id} · {child.title}
                   </Text>
-                  <View style={{ flexShrink: 0, maxWidth: "50%" }}>
-                    <PhaseBadge theme={theme} status={child.status} />
-                  </View>
                 </View>
               ))
             : null}
