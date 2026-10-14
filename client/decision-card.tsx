@@ -10,7 +10,7 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { TextInput, useToast } from "@getpaseo/plugin/client/react-native";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { answerDecision } from "../shared/contracts";
@@ -54,7 +54,9 @@ export function DecisionCard({
   readOnlyNote?: string | null;
 }) {
   const toast = useToast();
-  const reveal = useRevealFocused();
+  // Submit is revealed with the field, so it stays above the keyboard while the reader types.
+  const actions = useRef<View>(null);
+  const reveal = useRevealFocused(actions);
   const answer = useRpc(answerDecision);
   const [typed, setTyped] = useState("");
   const [picked, setPicked] = useState<number | null>(null);
@@ -192,7 +194,7 @@ export function DecisionCard({
             multiline
             style={styles.input}
           />
-          <View style={styles.actions}>
+          <View ref={actions} collapsable={false} style={styles.actions}>
             <IconButton icon="Check" label="Submit" showLabel tone="accent" theme={theme} disabled={busy || !submit.enabled} onPress={() => void send()} />
             {picked === null && typed === "" ? null : (
               <IconButton icon="X" label="Dismiss" showLabel theme={theme} disabled={busy} onPress={() => { setPicked(null); setTyped(""); }} />

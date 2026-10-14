@@ -4,7 +4,8 @@
 // Writes <out-prefix>-focused.png and <out-prefix>-keyboard.png and prints the field's box before and
 // after. <field>: a placeholder, "@<accessibility label>", "last-textarea" or "last-input"; a click text
 // starting with "=" matches exactly, with "@" an accessibility label. FIELD_AT_BOTTOM=1 first scrolls
-// the field to the screen's bottom edge; TYPE_LINES=<n> types n lines after the keyboard opens.
+// the field to the screen's bottom edge; TYPE_LINES=<n> types n lines after the keyboard opens;
+// ACTION=<button text> also reports that button's box (a card's Submit) and whether it clears the keyboard.
 const [, , playwrightPath, url, prefix, fieldSpec, ...clicks] = process.argv;
 const { chromium } = require(playwrightPath);
 const KEYBOARD = 336;
@@ -50,9 +51,10 @@ const KEYBOARD = 336;
     await page.waitForTimeout(1500);
   }
   const after = await field.boundingBox();
+  const action = process.env.ACTION ? await page.getByText(process.env.ACTION, { exact: true }).last().boundingBox() : null;
   await page.screenshot({ path: `${prefix}-keyboard.png` });
   const keyboardTop = 844 - KEYBOARD;
-  console.log(JSON.stringify({ keyboardTop, before, after, fieldBottomAboveKeyboard: after !== null && after.y + after.height <= keyboardTop, fieldTopOnScreen: after !== null && after.y >= 0 }));
+  console.log(JSON.stringify({ keyboardTop, before, after, fieldBottomAboveKeyboard: after !== null && after.y + after.height <= keyboardTop, fieldTopOnScreen: after !== null && after.y >= 0, ...(action === null ? {} : { action, actionAboveKeyboard: action.y + action.height <= keyboardTop }) }));
   console.log(errors.join("\n"));
   await browser.close();
 })();

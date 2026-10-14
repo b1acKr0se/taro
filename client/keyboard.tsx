@@ -18,7 +18,8 @@
  *   the field's focus, and as its content grows while the reader types. Every
  *   field passes `useRevealFocused()` as its `onFocus`: that is how a scroll
  *   area knows the focused field is its own, not one in a modal over it or in
- *   the composer under it.
+ *   the composer under it. A field followed by its own action passes that row
+ *   (`useRevealFocused(actionsRef)`), and the two are revealed together.
  *
  * Where the platform resizes the window for the keyboard itself, the overlap
  * measures as zero and nothing moves. On the web, a phone browser's keyboard
@@ -41,7 +42,7 @@ import {
   type ScrollView as NativeScrollView,
 } from "react-native";
 
-import { createFieldClaims, holds, keyboardRoom, revealOffset, roomNeeded, visibleSpan } from "./keyboard-reveal";
+import { createFieldClaims, holds, keyboardRoom, revealOffset, revealSpan, roomNeeded, visibleSpan, type Span } from "./keyboard-reveal";
 
 /** The keyboard's top edge in window coordinates (null once it hides), and how long its move takes. */
 type KeyboardListener = (top: number | null, duration: number) => void;
@@ -180,15 +181,19 @@ export function useKeyboardOverlap(target: RefObject<View | null>): number {
 /** The scroll area whose field has focus, if any: only that one moves for the keyboard. */
 const claims = createFieldClaims<object>();
 
-const RevealContext = createContext<() => void>(() => releaseFocus());
+/** Claims the area for the focused field, with the view revealed beside it (its action row), if any. */
+type Claim = (companion: Measurable | null) => void;
+
+const RevealContext = createContext<Claim>(() => releaseFocus());
 
 /**
  * A text field's `onFocus`: claims the scroll area around it and brings the
  * field into view, also when the keyboard is already open. Outside a scroll
  * area (the composer, a modal) it tells every area the focus is not theirs.
  */
-export function useRevealFocused(): () => void {
-  return useContext(RevealContext);
+export function useRevealFocused(companion?: RefObject<View | null>): () => void {
+  const claim = useContext(RevealContext);
+  return () => claim((companion?.current ?? null) as Measurable | null);
 }
 
 export const KeyboardRevealProvider = RevealContext.Provider;
@@ -212,6 +217,8 @@ export function useKeyboardScroll(scroller: RefObject<NativeScrollView | null>) 
   const self = useRef({}).current;
   const [room, setRoom] = useState(0);
   const roomNow = useRef(0);
+  /** The view shown together with the focused field: its action row, so Submit stays above the keyboard. */
+  const revealedWith = useRef<Measurable | null>(null);
   /** The area's height when last measured without room, for `roomNeeded`. */
   const bareHeight = useRef<number | null>(null);
   const keyboardTop = useRef<number | null>(null);
@@ -239,10 +246,36 @@ export function useKeyboardScroll(scroller: RefObject<NativeScrollView | null>) 
       }
       measureField(field, (box) => {
         if (!holds(area, box)) return;
-        const y = revealOffset(box, visibleSpan(area, top), offset.current);
-        if (y !== null) view.scrollTo({ y, animated: true });
+        const scrollTo = (span: Span) =>
+          liveOffset(view, native, area, (current) => {
+            const y = revealOffset(span, visibleSpan(area, top), current);
+            if (y !== null) view.scrollTo({ y, animated: true });
+          });
+        const companion = revealedWith.current;
+        if (companion === null) scrollTo(box);
+        else measure(companion, (actions) => scrollTo(revealSpan(box, actions)));
       });
     });
+  }
+
+  /**
+   * The scroll offset as it is now. `onScroll` arrives throttled and after the fact, and misses
+   * scrolls made here (the room going, the transcript kept at its end), which aimed reveals short:
+   * the web reads the scroll node's own offset, native the content's place under the area's top.
+   */
+  function liveOffset(view: NativeScrollView, native: unknown, area: WindowBox, done: (offset: number) => void): void {
+    if (Platform.OS === "web") {
+      const scrollTop = (native as { scrollTop?: unknown } | null)?.scrollTop;
+      done(typeof scrollTop === "number" ? scrollTop : offset.current);
+      return;
+    }
+    const withInner = view as unknown as { getInnerViewRef?: () => unknown };
+    const inner = typeof withInner.getInnerViewRef === "function" ? (withInner.getInnerViewRef() as Measurable | null) : null;
+    if (inner === null) {
+      done(offset.current);
+      return;
+    }
+    measure(inner, (content) => done(Math.max(0, area.top - content.top)));
   }
 
   /** Brings the focused field into view after this layout pass, if the keyboard is open. */
@@ -262,9 +295,10 @@ export function useKeyboardScroll(scroller: RefObject<NativeScrollView | null>) 
   }
 
   /** A field inside took focus. */
-  function claim(): void {
+  function claim(companion: Measurable | null): void {
     // React Native records the focused input before calling `onFocus`, so this is the claiming field.
     claims.claim(self, focusedField());
+    revealedWith.current = companion;
     reveal();
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { REVEAL_MARGIN, createFieldClaims, holds, keyboardRoom, revealOffset, roomNeeded, visibleSpan } from "./keyboard-reveal";
+import { REVEAL_MARGIN, createFieldClaims, holds, keyboardRoom, revealOffset, revealSpan, roomNeeded, visibleSpan } from "./keyboard-reveal";
 
 // A phone-sized scroll area under the tabs, from y 200 to 800; the keyboard's top at 500.
 const area = { top: 200, bottom: 800 };
@@ -173,5 +173,41 @@ describe("createFieldClaims", () => {
     claims.claim(chat, composer);
     expect(claims.owns(inbox, cardField)).toBe(false);
     expect(claims.owns(chat, composer)).toBe(true);
+  });
+});
+
+describe("revealSpan", () => {
+  const field = { top: 627, bottom: 675 };
+
+  it("is the field with its action row under it, as one stretch", () => {
+    expect(revealSpan(field, { top: 687, bottom: 715 })).toEqual({ top: 627, bottom: 715 });
+  });
+
+  it("is the field alone without a row, or with one not laid out", () => {
+    expect(revealSpan(field, null)).toEqual(field);
+    expect(revealSpan(field, { top: 0, bottom: 0 })).toEqual(field);
+  });
+
+  it("keeps the field's top when the row sits above it", () => {
+    expect(revealSpan(field, { top: 590, bottom: 618 })).toEqual({ top: 590, bottom: 675 });
+  });
+
+  it("raises the row above the keyboard with the field still in view", () => {
+    // The Inbox walk-through: keyboard at 508, the card's Submit under the field.
+    const visible = visibleSpan({ top: 150, bottom: 844 }, 508);
+    const offset = revealOffset(revealSpan(field, { top: 687, bottom: 715 }), visible, 0);
+    expect(offset).toBe(715 + REVEAL_MARGIN - 508);
+    // After that scroll the field sits wholly inside the visible part.
+    const shift = offset ?? 0;
+    expect(field.top - shift).toBeGreaterThanOrEqual(visible.top);
+    expect(field.bottom - shift).toBeLessThanOrEqual(visible.bottom);
+  });
+
+  it("shows the row and the field's lower part when both are taller than the visible part", () => {
+    const visible = { top: 200, bottom: 400 };
+    const tall = revealSpan({ top: 300, bottom: 600 }, { top: 610, bottom: 640 });
+    const offset = revealOffset(tall, visible, 0) ?? 0;
+    expect(640 - offset).toBe(400 - REVEAL_MARGIN);
+    expect(600 - offset).toBeGreaterThan(visible.top);
   });
 });

@@ -44,6 +44,15 @@ export function revealOffset(field: Span, visible: Span, offset: number, margin 
 }
 
 /**
+ * What to reveal for a field followed by its own action row (a card's Submit): both, as one
+ * stretch. A row measured as empty (not laid out, or collapsed away) adds nothing.
+ */
+export function revealSpan(field: Span, actions: Span | null): Span {
+  if (actions === null || actions.bottom <= actions.top) return field;
+  return { top: Math.min(field.top, actions.top), bottom: Math.max(field.bottom, actions.bottom) };
+}
+
+/**
  * Whether a field lies in a scroll area: across, it sits within the area's
  * width (a page can hold side-by-side areas); down, anywhere, since focus can
  * land on a field scrolled out of sight. An area with no height (a hidden tab)

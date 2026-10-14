@@ -8,7 +8,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { acceptTicket, loadTicket, requestChanges, type Card } from "../shared/contracts";
@@ -25,7 +25,9 @@ import { IconButton } from "./ui";
 
 export function AcceptanceCard({ card, project, theme, compact, onChanged }: { card: Card; project: string; theme: PluginTheme; compact: boolean; onChanged: () => void }) {
   const toast = useToast();
-  const reveal = useRevealFocused();
+  // Send changes is revealed with the field, so it stays above the keyboard while the reader types.
+  const foot = useRef<View>(null);
+  const reveal = useRevealFocused(foot);
   const load = useRpc(loadTicket);
   const accept = useRpc(acceptTicket);
   const changes = useRpc(requestChanges);
@@ -116,7 +118,7 @@ export function AcceptanceCard({ card, project, theme, compact, onChanged }: { c
           style={styles.input}
         />
       ) : null}
-      <View style={styles.foot}>
+      <View ref={foot} collapsable={false} style={styles.foot}>
         {ready && !writing ? (
           <IconButton icon="Check" label="Accept" showLabel tone="accent" theme={theme} disabled={busy} onPress={() => void run(() => accept({ project, ticket: card.id }), `Accepted ${card.id}.`)} />
         ) : null}
