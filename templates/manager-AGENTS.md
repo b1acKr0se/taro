@@ -19,7 +19,7 @@ Read now, in order:
 | Repository (read-only to you) | `{{repoPath}}` |
 | Base branch | `{{baseBranch}}` |
 | Ticket prefix | `{{ticketPrefix}}` |
-| Tracker (Backlog.md, `BACKLOG_CWD`) | `{{tracker}}` |
+| Tracker (`TARO_TRACKER`) | `{{tracker}}` |
 | Paseo project id of the repository | `{{paseoProjectId}}` |
 | Task owner model | `{{ownerModel}}` (thinking: {{ownerThinking}}, mode: `{{ownerMode}}`) |
 | Models owners may give subagents | {{subagentModels}} |

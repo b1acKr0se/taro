@@ -1,7 +1,9 @@
 /**
  * The plugin is the tracker's only committer (decision 31): each project's
- * `tracker/backlog/` is watched, and changes are committed a few seconds
- * after the last write. With remote sync on, each commit is pushed after a
+ * `tracker/tickets/` and `tracker.json` are watched (never `.taro/` or a temp
+ * file), each event drops that ticket's cached summary, and changes are
+ * committed a few seconds after the last write; a pass that finds a write
+ * holding the tracker lock tries again after another few seconds. With remote sync on, each commit is pushed after a
  * pull; a failure is kept and shown until a later commit syncs or the user
  * resolves it. A failed sync is not retried on file changes alone: the
  * plugin's own rebase and abort rewrite the tracker's files, which would
@@ -13,26 +15,27 @@
  * they have not seen.
  */
 import { watch, type FSWatcher } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { listProjectConfigs, projectPaths } from "./projects";
 import { serialized } from "./serialize";
 import type { SyncResolution, TrackerSyncProblem } from "../shared/contracts";
 import { runChecked, runCommand } from "./process";
-import { commitTracker, syncTracker, type SyncStrategy } from "./tracker";
+import { forgetTicketFile } from "./tickets";
+import { commitTracker, syncTracker, trackerPathspecs, type SyncStrategy } from "./tracker";
 
 const DEBOUNCE_MS = 5_000;
 const PULL_INTERVAL_MS = 60_000;
 export const BACKSTOP_INTERVAL_MS = 5 * 60_000;
 
 export type TrackerChangeListener = (project: string) => void;
-/** Keeps what the guard restored instead of committing (TR-051), before the change listeners run. */
-export type TrackerRestoredHandler = (project: string, restored: readonly string[]) => Promise<void>;
-export type TrackerSyncer = (
-  trackerPath: string,
-  strategy?: SyncStrategy,
-  onRestored?: (restored: readonly string[]) => void,
-) => Promise<TrackerSyncProblem | null>;
+export type TrackerSyncer = (trackerPath: string, strategy?: SyncStrategy) => Promise<TrackerSyncProblem | null>;
+
+/** Whether a file event under `tickets/` is a ticket's: the store's temp files and other dot files are not. */
+export function isTicketFileEvent(name: string): boolean {
+  return name.endsWith(".md") && !name.startsWith(".") && !name.includes("/") && !name.includes("\\");
+}
 
 const RESOLUTION_STRATEGIES: Readonly<Record<SyncResolution, SyncStrategy>> = {
   "keep-local": "keep-local",
@@ -41,7 +44,7 @@ const RESOLUTION_STRATEGIES: Readonly<Record<SyncResolution, SyncStrategy>> = {
 };
 
 interface Watched {
-  watcher: FSWatcher;
+  watchers: FSWatcher[];
   timer: NodeJS.Timeout | null;
 }
 
@@ -54,7 +57,6 @@ export class TrackerWatch {
   private readonly listeners = new Set<TrackerChangeListener>();
   /** When each project's listeners last ran, or the backstop last found nothing new, and the tracker's HEAD then. */
   private readonly lastLook = new Map<string, { at: number; head: string | null }>();
-  private restoredHandler: TrackerRestoredHandler | null = null;
   /** Set by `stop`: a pass already queued or running does nothing more, and no listener runs (TR-067). */
   private stopped = false;
 
@@ -68,10 +70,6 @@ export class TrackerWatch {
     return () => this.listeners.delete(listener);
   }
 
-  onRestored(handler: TrackerRestoredHandler): void {
-    this.restoredHandler = handler;
-  }
-
   syncProblem(project: string): TrackerSyncProblem | null {
     return this.syncProblems.get(project) ?? null;
   }
@@ -81,11 +79,28 @@ export class TrackerWatch {
     for (const config of await listProjectConfigs()) {
       if (this.stopped || this.watched.has(config.project)) continue;
       const paths = await projectPaths(config.project);
+      const watchers: FSWatcher[] = [];
       try {
-        const watcher = watch(join(paths.tracker, "backlog"), { recursive: true }, () => this.schedule(config.project));
-        watcher.on("error", (error) => console.error(`[taro] tracker watch for ${config.project} failed: ${error.message}`));
-        this.watched.set(config.project, { watcher, timer: null });
+        await mkdir(join(paths.tracker, "tickets"), { recursive: true });
+        watchers.push(
+          watch(join(paths.tracker, "tickets"), (_event, name) => {
+            // No name (some platforms): any ticket may have changed.
+            const file = name === null ? undefined : String(name);
+            if (file !== undefined && !isTicketFileEvent(file)) return;
+            forgetTicketFile(paths.tracker, file);
+            this.schedule(config.project);
+          }),
+        );
+        // tracker.json is replaced by rename, so its folder is watched rather than the file itself.
+        watchers.push(
+          watch(paths.tracker, (_event, name) => {
+            if (name !== null && String(name) === "tracker.json") this.schedule(config.project);
+          }),
+        );
+        for (const watcher of watchers) watcher.on("error", (error) => console.error(`[taro] tracker watch for ${config.project} failed: ${error.message}`));
+        this.watched.set(config.project, { watchers, timer: null });
       } catch (error) {
+        for (const watcher of watchers) watcher.close();
         console.error(`[taro] cannot watch ${config.project}'s tracker: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
@@ -111,7 +126,7 @@ export class TrackerWatch {
       const paths = await projectPaths(project);
       try {
         const committed = await commitTracker(paths.tracker);
-        if (committed.restored.length > 0) await this.restoredHandler?.(project, committed.restored);
+        if (committed.locked) this.schedule(project);
         if (config.trackerSync !== "remote") this.syncProblems.delete(project);
         else if (committed.subject !== null) await this.syncAndRecord(project, paths.tracker, "rebase");
       } catch (error) {
@@ -207,7 +222,9 @@ export class TrackerWatch {
   }
 
   private async uncommitted(trackerPath: string): Promise<boolean> {
-    return (await runChecked("git", ["-C", trackerPath, "status", "--porcelain", "--", "backlog"], { timeoutMs: 30_000 })).trim() !== "";
+    const pathspecs = await trackerPathspecs(trackerPath);
+    if (pathspecs.length === 0) return false;
+    return (await runChecked("git", ["-C", trackerPath, "status", "--porcelain", "--", ...pathspecs], { timeoutMs: 30_000 })).trim() !== "";
   }
 
   private async head(trackerPath: string): Promise<string> {
@@ -216,15 +233,12 @@ export class TrackerWatch {
 
   private async syncAndRecord(project: string, trackerPath: string, strategy: SyncStrategy): Promise<TrackerSyncProblem | null> {
     let problem: TrackerSyncProblem | null;
-    // A pull may commit a stray init that landed since the last commit; it still raises the alert.
-    const restored: string[] = [];
     try {
-      problem = await this.sync(trackerPath, strategy, (more) => restored.push(...more));
+      problem = await this.sync(trackerPath, strategy);
     } finally {
       // Counted from the end, so a slow remote still gets a quiet minute between pulls.
       this.lastSync.set(project, this.now());
     }
-    if (restored.length > 0) await this.restoredHandler?.(project, [...new Set(restored)]);
     if (problem === null) this.syncProblems.delete(project);
     else this.syncProblems.set(project, problem);
     return problem;
@@ -234,7 +248,7 @@ export class TrackerWatch {
     this.stopped = true;
     for (const entry of this.watched.values()) {
       if (entry.timer !== null) clearTimeout(entry.timer);
-      entry.watcher.close();
+      for (const watcher of entry.watchers) watcher.close();
     }
     this.watched.clear();
   }

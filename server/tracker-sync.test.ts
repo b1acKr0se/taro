@@ -12,8 +12,8 @@ import type { TrackerSyncProblem } from "../shared/contracts";
 import { conflictProblem, gitComplaint, syncTracker, TRACKER_BRANCH, type SyncStrategy } from "./tracker";
 import { TrackerWatch } from "./tracker-watch";
 
-const TICKET = "backlog/tasks/x-001 - First.md";
-const OTHER_TICKET = "backlog/tasks/x-002 - Second.md";
+const TICKET = "tickets/X-001.md";
+const OTHER_TICKET = "tickets/X-002.md";
 const LINES = ["title", "status: Planning", "a", "b", "c", "d", "notes end"];
 
 function git(directory: string, ...args: string[]): string {
@@ -26,7 +26,7 @@ function git(directory: string, ...args: string[]): string {
 /** Writes a file and commits it the way the plugin would. */
 function commit(clone: string, file: string, text: string): void {
   writeFileSync(join(clone, file), text);
-  git(clone, "add", "-A", "backlog");
+  git(clone, "add", "-A", "tickets");
   git(clone, "commit", "-q", "-m", `edit ${file}`);
 }
 
@@ -46,7 +46,7 @@ beforeEach(() => {
   there = join(root, "there");
   execFileSync("git", ["clone", "-q", remote, there], { stdio: "ignore" });
   git(there, "checkout", "-q", "-b", TRACKER_BRANCH);
-  mkdirSync(join(there, "backlog", "tasks"), { recursive: true });
+  mkdirSync(join(there, "tickets"), { recursive: true });
   writeFileSync(join(there, OTHER_TICKET), "second\n");
   commit(there, TICKET, `${LINES.join("\n")}\n`);
   git(there, "push", "-q", "-u", "origin", TRACKER_BRANCH);
@@ -147,8 +147,8 @@ describe("syncTracker", () => {
 
 describe("conflictProblem", () => {
   it("names tickets by id, other files by path, and shortens a long list", () => {
-    expect(conflictProblem(["backlog/config.yml"])).toEqual({ kind: "conflict", message: "backlog/config.yml changed both here and on the remote.", tickets: [] });
-    const many = conflictProblem(["backlog/tasks/x-004 - D.md", "backlog/tasks/x-001 - A.md", "backlog/tasks/x-003 - C.md", "backlog/tasks/x-002 - B.md"]);
+    expect(conflictProblem(["tracker.json"])).toEqual({ kind: "conflict", message: "tracker.json changed both here and on the remote.", tickets: [] });
+    const many = conflictProblem(["tickets/X-004.md", "tickets/X-001.md", "tickets/X-003.md", "tickets/X-002.md"]);
     expect(many.tickets).toEqual(["X-001", "X-002", "X-003", "X-004"]);
     expect(many.message).toBe("X-001, X-002, X-003 and 1 more changed both here and on the remote.");
   });

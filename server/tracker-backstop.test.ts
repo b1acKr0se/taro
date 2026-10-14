@@ -7,11 +7,14 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BACKSTOP_INTERVAL_MS, TrackerWatch } from "./tracker-watch";
+import { forgetTicketFile } from "./tickets";
+import { BACKSTOP_INTERVAL_MS, isTicketFileEvent, TrackerWatch } from "./tracker-watch";
 
-const TICKET = "backlog/tasks/x-001 - First.md";
+vi.mock("./tickets", () => ({ forgetTicketFile: vi.fn() }));
+
+const TICKET = "tickets/X-001.md";
 
 function git(directory: string, ...args: string[]): string {
   return execFileSync("git", ["-C", directory, "-c", "user.name=Test", "-c", "user.email=test@localhost", ...args], {
@@ -30,7 +33,7 @@ let watch = new TrackerWatch();
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "taro-backstop-"));
   tracker = join(root, "tracker");
-  mkdirSync(join(tracker, "backlog", "tasks"), { recursive: true });
+  mkdirSync(join(tracker, "tickets"), { recursive: true });
   execFileSync("git", ["init", "-q", tracker]);
   writeFileSync(join(tracker, TICKET), "status: In Progress\n");
   git(tracker, "add", "-A");
@@ -119,9 +122,63 @@ describe("the tracker backstop", () => {
     expect(passes).toEqual(["demo"]);
   });
 
+  it("takes neither the store's temp files nor .taro/ for changes, and commits neither", async () => {
+    await watch.commit("demo");
+    passes = [];
+    writeFileSync(join(tracker, "tickets", ".X-001.123.abc.tmp"), "half\n");
+    mkdirSync(join(tracker, ".taro", "lock.broken.1"), { recursive: true });
+    writeFileSync(join(tracker, ".taro", "lock.broken.1", "owner.json"), "{}");
+    clock += BACKSTOP_INTERVAL_MS;
+    expect(await watch.backstop()).toEqual([]);
+    expect(passes).toEqual([]);
+    editUnseen("Done");
+    clock += BACKSTOP_INTERVAL_MS;
+    expect(await watch.backstop()).toEqual(["demo"]);
+    expect(git(tracker, "ls-files").trim().split("\n")).toEqual([TICKET]);
+  });
+
+  it("leaves a change alone while a write holds the tracker lock, and commits it after", async () => {
+    editUnseen("Done");
+    mkdirSync(join(tracker, ".taro", "lock"), { recursive: true });
+    await watch.commit("demo");
+    expect(commits()).toBe(1);
+    rmSync(join(tracker, ".taro", "lock"), { recursive: true });
+    clock += BACKSTOP_INTERVAL_MS;
+    expect(await watch.backstop()).toEqual(["demo"]);
+    expect(commits()).toBe(2);
+  });
+
   it("logs a project whose tracker cannot be read and goes on", async () => {
     rmSync(join(tracker, ".git"), { recursive: true, force: true });
     expect(await watch.backstop()).toEqual([]);
     expect(passes).toEqual([]);
+  });
+});
+
+describe("the tracker watch", () => {
+  it("counts ticket files only, never the store's temp files or other dot files", () => {
+    expect(isTicketFileEvent("X-001.md")).toBe(true);
+    expect(isTicketFileEvent("X-001.02.md")).toBe(true);
+    expect(isTicketFileEvent(".X-001.123.abc.tmp")).toBe(false);
+    expect(isTicketFileEvent(".X-001.md")).toBe(false);
+    expect(isTicketFileEvent("notes.txt")).toBe(false);
+  });
+
+  it("forgets a changed ticket's cached summary and ignores temp files and .taro/", async () => {
+    vi.mocked(forgetTicketFile).mockClear();
+    const live = new TrackerWatch(async () => null, () => clock);
+    await live.refresh();
+    try {
+      writeFileSync(join(tracker, "tickets", ".X-001.123.abc.tmp"), "half\n");
+      mkdirSync(join(tracker, ".taro", "lock"), { recursive: true });
+      writeFileSync(join(tracker, ".taro", "lock", "owner.json"), "{}");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(forgetTicketFile).not.toHaveBeenCalled();
+      writeFileSync(join(tracker, TICKET), "status: Done\n");
+      await vi.waitFor(() => expect(forgetTicketFile).toHaveBeenCalledWith(join(root, "paseo", "plugin-data", "taro", "home", "projects", "demo", "tracker"), "X-001.md"));
+      expect(vi.mocked(forgetTicketFile).mock.calls.every(([, file]) => file === "X-001.md")).toBe(true);
+    } finally {
+      live.stop();
+    }
   });
 });

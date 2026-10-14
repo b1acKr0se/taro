@@ -30,7 +30,7 @@ export function isSubagentRole(role: string): role is SubagentRole {
   return (SUBAGENT_ROLES as readonly string[]).includes(role);
 }
 
-/** Taro's Backlog.md statuses, Done last (Backlog treats the last as terminal). */
+/** Taro's ticket statuses, Done last. */
 export const TICKET_STATUSES = [
   "Backlog",
   "Planning",

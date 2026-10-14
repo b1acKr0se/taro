@@ -457,7 +457,7 @@ export class Actions {
   private async wakeManager(paseo: PaseoApi, project: string, change: StatusChange, tickets: readonly TicketSummary[], whenHeld: () => () => void): Promise<void> {
     const queued = queuedTickets(tickets).map((candidate) => candidate.id);
     const cleared = change.status === "Done";
-    // Reading every open ticket's dependencies is a CLI call each: only when a message may follow.
+    // Reading every open ticket's dependencies is a file read each: only when a message may follow.
     if (!cleared && (!change.freesSlot || queued.length === 0)) return;
     const paths = await projectPaths(project);
     const dependents: string[] = [];

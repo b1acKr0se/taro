@@ -26,7 +26,7 @@ vi.mock("./projects", () => ({
 }));
 vi.mock("./tickets", () => ({ listTickets: vi.fn(), viewTicket: async () => ({ dependencies: [] }), appendTicketNote: vi.fn() }));
 
-const ticket = (id: string, status: string) => ({ id, title: id, status, labels: [], parentTaskId: null, acceptanceCriteriaCompleted: 0, acceptanceCriteriaCount: 0, createdAt: null, updatedAt: null, isReady: true });
+const ticket = (id: string, status: string) => ({ id, title: id, status, labels: [], parentTaskId: null, acceptanceCriteriaCompleted: 0, acceptanceCriteriaCount: 0, createdAt: null, updatedAt: null, priority: null, dependencies: [] });
 const agent = (id: string, ticketId: string, role: string, workspaceId: string, status = "idle") =>
   ({ id, status, workspaceId, labels: { "taro.project": "demo", "taro.role": role, "taro.ticket": ticketId }, lastUsage: null }) as unknown as PaseoAgent;
 

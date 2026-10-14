@@ -21,7 +21,7 @@ import {
   type PaseoProjectCandidate,
   type SettingsTemplate,
 } from "../shared/project-candidates";
-import { createBlocker, deliveryWithoutGh, pullRequestsReady, setupProblems, settingsFrom, ticketExample, type SetupDraft, type SetupProblems } from "../shared/setup-form";
+import { deliveryWithoutGh, pullRequestsReady, setupProblems, settingsFrom, ticketExample, type SetupDraft, type SetupProblems } from "../shared/setup-form";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { KeyboardScrollView } from "./keyboard";
@@ -199,7 +199,7 @@ function ProjectPicker({
   onCancel: (() => void) | null;
 }) {
   const prerequisites = usePrerequisites();
-  // A check that failed stays listed once fixed, so Install visibly turns it green.
+  // A check that failed stays listed once fixed, so it visibly turns green when the checks run again.
   const [flagged, setFlagged] = useState<ReadonlySet<string>>(() => new Set());
   const [width, setWidth] = useState(0);
   const wide = width >= TWO_COLUMN_MIN_WIDTH;
@@ -389,10 +389,6 @@ function ProjectReview({
   const models = useModels();
   const checks = usePrerequisites().data?.checks;
   const pullRequests = pullRequestsReady(checks);
-  const blocker = createBlocker(checks);
-  const backlogCheck = checks?.find((check) => check.id === "backlog") ?? null;
-  // Once missing, the line stays after Install, so it visibly turns green.
-  const [backlogFlagged, setBacklogFlagged] = useState(false);
   const guardFor = usePressGuards();
   const [busy, setBusy] = useState(false);
   const [serverProblems, setServerProblems] = useState<SetupProblems>({});
@@ -401,9 +397,6 @@ function ProjectReview({
   const wide = width >= TWO_COLUMN_MIN_WIDTH;
   const colors = theme.colors;
   useEffect(() => setFailure(error), [error]);
-  useEffect(() => {
-    if (blocker !== null) setBacklogFlagged(true);
-  }, [blocker]);
   // Picked before the checks arrived, or gh went away: pull requests fall back to a local branch.
   useEffect(() => {
     const fitted = deliveryWithoutGh(draft, pullRequests);
@@ -415,7 +408,7 @@ function ProjectReview({
   const problem = (key: keyof SetupDraft): string | null => serverProblems[key] ?? local[key] ?? null;
   const otherProblems = Object.keys(local).filter((key) => !(REVIEW_FIELDS as readonly string[]).includes(key));
   const valid = Object.keys(local).length === 0;
-  const canCreate = valid && blocker === null;
+  const canCreate = valid;
   const remote = candidate === null ? null : remoteLabel(candidate.remoteUrl);
   const canSync = candidate === null || remote !== null;
   const example = ticketExample(draft.ticketPrefix);
@@ -480,7 +473,6 @@ function ProjectReview({
     <View style={{ gap: SPACE.sm }}>
       {failure === null ? null : <Text style={[muted, { color: colors.statusDanger }]}>{failure}</Text>}
       {valid || otherProblems.length === 0 ? null : <Text style={[muted, { color: colors.statusDanger }]}>Some settings need fixing: open All settings.</Text>}
-      {backlogFlagged && backlogCheck !== null ? <PrerequisiteList theme={theme} checks={[backlogCheck]} installNote={blocker} /> : null}
       {createButton}
       {allSettings}
     </View>

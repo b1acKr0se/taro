@@ -1,22 +1,18 @@
 /**
  * The plugin's own state on disk (decision 37): parsed decisions, each
- * agent's supervision record, the ticket statuses last acted on (TR-043) and
- * what the tracker guard restored (TR-051), and the queue ladder's restarts and dismissed alerts
- * (TR-062). Kept in memory, written through on every change,
+ * agent's supervision record, the ticket statuses last acted on (TR-043), and
+ * the queue ladder's restarts and dismissed alerts (TR-062). Kept in memory, written through on every change,
  * read back on start, so a reload or restart loses nothing.
  */
 import { z } from "zod";
 
 import { AgentStateSchema, StoredDecisionSchema, type AgentState, type StoredDecision } from "../shared/state";
-import { mergeProtection, type TrackerProtection } from "../shared/tracker-guard";
 import { statePath } from "./data-dir";
 import { readJsonIfPresent, writeJsonAtomically } from "./files";
 import { serialized } from "./serialize";
 
 const DecisionsFileSchema = z.object({ decisions: z.array(StoredDecisionSchema).default([]) });
 const AgentsFileSchema = z.object({ agents: z.record(z.string(), AgentStateSchema).default({}) });
-const TrackerProtectionSchema = z.object({ at: z.string(), restored: z.array(z.string()) });
-const TrackerProtectionsFileSchema = z.object({ projects: z.record(z.string(), TrackerProtectionSchema).default({}) });
 const TicketStatusesFileSchema = z.object({ projects: z.record(z.string(), z.record(z.string(), z.string())).default({}) });
 const QueueLadderSchema = z.object({ restarts: z.array(z.string()).default([]), dismissed: z.array(z.string()).default([]) });
 export type StoredQueueLadder = z.infer<typeof QueueLadderSchema>;
@@ -29,7 +25,6 @@ export class PluginState {
   private decisions: StoredDecision[] | null = null;
   private agents: Record<string, AgentState> | null = null;
   private ticketStatusesByProject: Record<string, Record<string, string>> | null = null;
-  private trackerProtections: Record<string, TrackerProtection> | null = null;
   private queueLadders: Record<string, StoredQueueLadder> | null = null;
 
   private async loadQueueLadders(): Promise<Record<string, StoredQueueLadder>> {
@@ -151,37 +146,6 @@ export class PluginState {
       const projects = await this.loadTicketStatuses();
       projects[project] = Object.fromEntries(statuses);
       await writeJsonAtomically(statePath("ticket-statuses.json"), { projects });
-    });
-  }
-
-  private async loadTrackerProtections(): Promise<Record<string, TrackerProtection>> {
-    if (this.trackerProtections === null) {
-      const raw = await readJsonIfPresent(statePath("tracker-protections.json")).catch(() => null);
-      const parsed = TrackerProtectionsFileSchema.safeParse(raw ?? {});
-      this.trackerProtections = parsed.success ? parsed.data.projects : {};
-    }
-    return this.trackerProtections;
-  }
-
-  /** What the tracker guard last restored in a project (TR-051); kept on disk so the reload after a merge does not lose the alert. */
-  async trackerProtection(project: string): Promise<TrackerProtection | null> {
-    return (await this.loadTrackerProtections())[project] ?? null;
-  }
-
-  recordTrackerProtection(project: string, restored: readonly string[], at: string): Promise<void> {
-    return serialized("state:tracker-protections", async () => {
-      const projects = await this.loadTrackerProtections();
-      projects[project] = mergeProtection(projects[project] ?? null, restored, at);
-      await writeJsonAtomically(statePath("tracker-protections.json"), { projects });
-    });
-  }
-
-  dismissTrackerProtection(project: string): Promise<void> {
-    return serialized("state:tracker-protections", async () => {
-      const projects = await this.loadTrackerProtections();
-      if (!(project in projects)) return;
-      delete projects[project];
-      await writeJsonAtomically(statePath("tracker-protections.json"), { projects });
     });
   }
 }

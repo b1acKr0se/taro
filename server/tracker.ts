@@ -1,66 +1,23 @@
 /**
  * A project's tracker: a git worktree of the project's repository on the
- * `taro/backlog` branch, holding a Backlog.md project (decision 31). The plugin
- * creates it, reads tickets through the Backlog CLI's JSON output, appends
- * answer records, and is the only committer.
+ * `taro/backlog` branch, holding Taro's ticket files (`tickets/`, `tracker.json`,
+ * TR-081). The plugin creates it, reads and writes tickets in process through
+ * the ticket store, and is the only committer.
  */
-import { access, constants, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { TrackerSyncProblem } from "../shared/contracts";
-import { TICKET_STATUSES } from "../shared/project";
-import { gainedGuidelines, identityChanges, INSTRUCTION_FILES, TRACKER_CONFIG, withCommittedIdentity } from "../shared/tracker-guard";
-import { backlogEnvironment, findExecutable, nativeBacklog, searchDirectories, taroBacklogDirectory } from "./backlog-install";
-import { commandError, concurrencyLimit, runChecked, runCommand, type CommandResult } from "./process";
+import { commandError, runChecked, runCommand, type CommandResult } from "./process";
 
 export const TRACKER_BRANCH = "taro/backlog";
 
-let backlogLookup: Promise<string | null> | null = null;
-/** The native binary behind each wrapper found, looked up once. */
-const nativeLookups = new Map<string, Promise<string | null>>();
+/** What `.gitignore` at the tracker's root must list: the local lock folder and the store's temp files. */
+export const TRACKER_IGNORED = [".taro/", "tickets/.*.tmp"] as const;
 
-/** A `backlog` the user installed comes first; Taro's own copy (TR-063) only when there is none. */
-export async function findBacklog(directories: readonly string[] = searchDirectories()): Promise<string | null> {
-  return (await findExecutable("backlog", directories)) ?? (await findExecutable("backlog", [taroBacklogDirectory()]));
-}
-
-/** Looked up once while found; a miss is looked up again, so an install shows without a reload. */
-export function backlogBinary(find: () => Promise<string | null> = () => findBacklog()): Promise<string | null> {
-  backlogLookup ??= find().then((found) => {
-    if (found === null) backlogLookup = null;
-    return found;
-  });
-  return backlogLookup;
-}
-
-/** After Taro installs its copy: the next lookup searches again. */
-export function forgetBacklogLookup(): void {
-  backlogLookup = null;
-  nativeLookups.clear();
-}
-
-async function requireBacklog(): Promise<string> {
-  const binary = await backlogBinary();
-  if (binary === null) throw new Error("The Backlog.md CLI (`backlog`) is not installed on the daemon host.");
-  return binary;
-}
-
-/** Backlog processes under way at once: each holds several threads, and a host short of threads makes the CLI abort or hang (TR-073). */
-const BACKLOG_AT_ONCE = 4;
-const backlogTurn = concurrencyLimit(BACKLOG_AT_ONCE);
-
-export async function runBacklog(trackerPath: string, args: readonly string[]): Promise<string> {
-  const binary = await requireBacklog();
-  let nativeLookup = nativeLookups.get(binary);
-  if (nativeLookup === undefined) {
-    nativeLookup = nativeBacklog(binary);
-    nativeLookups.set(binary, nativeLookup);
-  }
-  const native = await nativeLookup;
-  const environment = native === null ? backlogEnvironment(binary) : {};
-  // The timeout counts from the process's start, not from the wait for a turn.
-  return backlogTurn(() => runChecked(native ?? binary, args, { cwd: trackerPath, env: { ...environment, BACKLOG_CWD: trackerPath }, timeoutMs: 60_000 }));
-}
+/** What a tracker commit takes: the tickets, tracker.json and .gitignore, never `.taro/` or a temp file, even when .gitignore lacks them. */
+const COMMITTED_PATHS = ["tickets", "tracker.json", ".gitignore"] as const;
+const NEVER_COMMITTED = [":(exclude).taro", ":(exclude)tickets/*.tmp"] as const;
 
 function git(directory: string, args: readonly string[]): Promise<string> {
   return runChecked("git", ["-C", directory, ...args], { timeoutMs: 120_000 });
@@ -97,12 +54,14 @@ export interface TrackerSetup {
 }
 
 /**
- * Creates the tracker worktree (reusing a local or remote `taro/backlog`) and
- * initialises Backlog.md in it when it has no project yet. An existing tracker
- * is adopted as it is, with Taro's statuses ensured.
+ * Creates the tracker worktree (reusing a local or remote `taro/backlog`) and, when it has no
+ * tracker yet, `tickets/`, `tracker.json` and `.gitignore`, committed. A tracker with tracker.json
+ * is adopted as it is; one still in Backlog.md format is refused: `taro convert` converts it.
  */
 export async function ensureTracker(setup: TrackerSetup): Promise<{ adopted: boolean }> {
   const { repoPath, trackerPath } = setup;
+  // A branch made now from the base branch holds the project's files, not a tracker: a `backlog/` there is the project's own.
+  let branchedFromBase = false;
   if (!(await gitSucceeds(repoPath, ["rev-parse", "--is-inside-work-tree"]))) {
     throw new Error(`${repoPath} is not a git repository.`);
   }
@@ -120,7 +79,10 @@ export async function ensureTracker(setup: TrackerSetup): Promise<{ adopted: boo
       await git(repoPath, ["worktree", "add", trackerPath, TRACKER_BRANCH]);
     } else {
       if (references.includes(`refs/remotes/origin/${TRACKER_BRANCH}`)) start = `refs/remotes/origin/${TRACKER_BRANCH}`;
-      else if (!references.includes(start)) start = "HEAD";
+      else {
+        branchedFromBase = true;
+        if (!references.includes(start)) start = "HEAD";
+      }
       await git(repoPath, ["worktree", "add", "-b", TRACKER_BRANCH, trackerPath, start]);
     }
   }
@@ -130,137 +92,74 @@ export async function ensureTracker(setup: TrackerSetup): Promise<{ adopted: boo
     throw new Error(`${trackerPath} belongs to another repository.`);
   }
 
-  const configPath = join(trackerPath, "backlog", "config.yml");
-  const adopted = await exists(configPath);
-  if (!adopted) {
-    await runBacklog(trackerPath, [
-      "init",
-      setup.project,
-      "--defaults",
-      "--integration-mode",
-      "none",
-      "--task-prefix",
-      setup.ticketPrefix,
-      "--zero-padded-ids",
-      "3",
-      "--check-branches",
-      "false",
-      "--include-remote",
-      "false",
-      "--auto-open-browser",
-      "false",
-    ]);
-    await runBacklog(trackerPath, ["config", "set", "defaultStatus", "Backlog"]);
-    await runBacklog(trackerPath, ["config", "set", "autoCommit", "false"]);
+  if (await exists(join(trackerPath, "tracker.json"))) return { adopted: true };
+  if (!branchedFromBase && (await exists(join(trackerPath, "backlog", "config.yml")))) {
+    throw new Error(
+      `The tracker at ${trackerPath} is still in Backlog.md format (backlog/, no tracker.json). Convert it first: run \`taro convert --tracker ${trackerPath}\` (bin/taro in Taro's plugin folder), then add the project again.`,
+    );
   }
-  await ensureStatuses(configPath);
-  return { adopted };
+  await mkdir(join(trackerPath, "tickets"), { recursive: true });
+  const tracker = { schema: 1, prefix: setup.ticketPrefix, padding: 3, lastId: 0, lastChild: {} };
+  await writeFile(join(trackerPath, "tracker.json"), `${JSON.stringify(tracker)}\n`, "utf8");
+  const gitignore = join(trackerPath, ".gitignore");
+  await writeFile(gitignore, withIgnoredEntries(await readFile(gitignore, "utf8").catch(() => "")), "utf8");
+  await commitTracker(trackerPath);
+  return { adopted: false };
 }
 
-/** Rewrites the inline `statuses:` list to Taro's, keeping any extra columns before Done. */
-export async function ensureStatuses(configPath: string): Promise<void> {
-  const text = await readFile(configPath, "utf8");
-  const next = withTaroStatuses(text);
-  if (next !== text) await writeFile(configPath, next, "utf8");
-}
-
-export function withTaroStatuses(configText: string): string {
-  const match = /^statuses:\s*(\[.*\])\s*$/m.exec(configText);
-  if (match === null || match[1] === undefined) throw new Error("The Backlog config has no inline statuses list.");
-  let current: unknown;
-  try {
-    current = JSON.parse(match[1]);
-  } catch {
-    throw new Error("The Backlog config's statuses list is not a JSON-style list.");
-  }
-  const existing = Array.isArray(current) ? current.filter((status): status is string => typeof status === "string") : [];
-  const extras = existing.filter((status) => !(TICKET_STATUSES as readonly string[]).includes(status));
-  const statuses = [...TICKET_STATUSES.slice(0, -1), ...extras, "Done"];
-  if (JSON.stringify(existing) === JSON.stringify(statuses)) return configText;
-  return configText.replace(match[0], `statuses: ${JSON.stringify(statuses)}`);
+/** `.gitignore` text with Taro's entries appended when missing; the repository's own lines are kept. */
+export function withIgnoredEntries(existing: string): string {
+  const present = new Set(existing.split(/\r?\n/).map((line) => line.trim()));
+  const missing = TRACKER_IGNORED.filter((entry) => !present.has(entry));
+  if (missing.length === 0) return existing;
+  const separator = existing === "" || existing.endsWith("\n") ? "" : "\n";
+  return `${existing}${separator}${missing.join("\n")}\n`;
 }
 
 export interface TrackerCommit {
-  /** The commit message, or null when nothing changed. */
+  /** The commit message, or null when nothing was committed. */
   subject: string | null;
-  /** What the guard restored instead of committing (TR-051); empty when nothing. */
-  restored: string[];
+  /** True when a ticket write held the tracker lock, so this pass committed nothing; a later pass does. */
+  locked: boolean;
+}
+
+/** The committed paths that exist or are tracked: `git add` refuses a path that is neither. */
+async function committablePaths(trackerPath: string): Promise<string[]> {
+  const tracked = new Set((await git(trackerPath, ["ls-files", "--", ...COMMITTED_PATHS])).split("\n").map((line) => line.split("/")[0]));
+  const paths: string[] = [];
+  for (const path of COMMITTED_PATHS) {
+    if (tracked.has(path) || (await exists(join(trackerPath, path)))) paths.push(path);
+  }
+  return paths;
+}
+
+/** The pathspecs a tracker commit and the backstop look at. */
+export async function trackerPathspecs(trackerPath: string): Promise<string[]> {
+  const paths = await committablePaths(trackerPath);
+  return paths.length === 0 ? [] : [...paths, ...NEVER_COMMITTED];
 }
 
 /**
- * Commits everything changed under `backlog/`, after restoring what a stray
- * `backlog init` against the tracker changed (see protectTracker).
+ * Commits the tickets, tracker.json and .gitignore. Skipped while a write holds `.taro/lock`, so a
+ * half-made change of several files is never committed; the debounce or the backstop commits later.
  */
 export async function commitTracker(trackerPath: string): Promise<TrackerCommit> {
-  const restored = await protectTracker(trackerPath);
-  await git(trackerPath, ["add", "-A", "backlog"]);
+  if (await exists(join(trackerPath, ".taro", "lock"))) return { subject: null, locked: true };
+  const pathspecs = await trackerPathspecs(trackerPath);
+  if (pathspecs.length === 0) return { subject: null, locked: false };
+  await git(trackerPath, ["add", "-A", "--", ...pathspecs]);
   const staged = (await git(trackerPath, ["diff", "--cached", "--name-only"])).split("\n").filter((line) => line.trim() !== "");
-  if (staged.length === 0) return { subject: null, restored };
+  if (staged.length === 0) return { subject: null, locked: false };
   const ticketIds = [...new Set(staged.map(ticketIdInPath).filter((id): id is string => id !== null))].sort();
   const subject = ticketIds.length === 0 ? "taro: update tracker" : `taro: update ${ticketIds.slice(0, 8).join(", ")}${ticketIds.length > 8 ? ", …" : ""}`;
   await git(trackerPath, ["-c", "user.name=Taro", "-c", "user.email=taro@localhost", "commit", "--no-verify", "-q", "-m", subject]);
-  return { subject, restored };
+  return { subject, locked: false };
 }
 
-/** A file's committed text at HEAD, or null when HEAD lacks it. */
-async function committedText(trackerPath: string, file: string): Promise<string | null> {
-  const result = await runCommand("git", ["-C", trackerPath, "show", `HEAD:${file}`], { timeoutMs: 30_000 });
-  return result.code === 0 ? result.stdout : null;
-}
-
-async function workingText(trackerPath: string, file: string): Promise<string | null> {
-  try {
-    return await readFile(join(trackerPath, file), "utf8");
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Undoes what `backlog init` does to an existing tracker (TR-051): a changed
- * project name, ticket prefix or id padding in `backlog/config.yml` gets its
- * committed line back (other config edits stay), a deleted config comes back
- * whole; Backlog's guidelines written into an instruction file
- * at the tracker's root restore the committed file, or remove it when it was
- * not committed. A tracker without a committed config (onboarding) is left
- * alone. Returns what it restored.
- */
-export async function protectTracker(trackerPath: string): Promise<string[]> {
-  const restored: string[] = [];
-  const committedConfig = await committedText(trackerPath, TRACKER_CONFIG);
-  if (committedConfig === null) return restored;
-  const workingConfig = await workingText(trackerPath, TRACKER_CONFIG);
-  if (workingConfig === null) {
-    await git(trackerPath, ["checkout", "HEAD", "--", TRACKER_CONFIG]);
-    restored.push(`${TRACKER_CONFIG} (deleted)`);
-  } else {
-    const changes = identityChanges(committedConfig, workingConfig);
-    if (changes.length > 0) {
-      await writeFile(join(trackerPath, TRACKER_CONFIG), withCommittedIdentity(committedConfig, workingConfig), "utf8");
-      restored.push(`${TRACKER_CONFIG} (${changes.join(", ")})`);
-    }
-  }
-  for (const file of INSTRUCTION_FILES) {
-    const working = await workingText(trackerPath, file);
-    if (working === null) continue;
-    const committed = await committedText(trackerPath, file);
-    if (!gainedGuidelines(committed, working)) continue;
-    if (committed === null) {
-      await rm(join(trackerPath, file), { force: true });
-      restored.push(`${file} (removed: Backlog wrote it)`);
-    } else {
-      await git(trackerPath, ["checkout", "HEAD", "--", file]);
-      restored.push(`${file} (Backlog's guidelines taken out)`);
-    }
-  }
-  if (restored.length > 0) console.warn(`[taro] refused to commit ${trackerPath}: restored ${restored.join("; ")}`);
-  return restored;
-}
-
-/** `backlog/tasks/sh-012 - Title.md` → `SH-012`. */
+/** `tickets/TR-081.01.md` → `TR-081.01`. */
 export function ticketIdInPath(path: string): string | null {
-  const match = /(?:^|\/)([a-z]+-\d+(?:\.\d+)*) - /i.exec(path);
-  return match?.[1] === undefined ? null : match[1].toUpperCase();
+  const match = /(?:^|\/)tickets\/([A-Za-z][A-Za-z0-9]*-\d+(?:\.\d+)*)\.md$/.exec(path);
+  return match?.[1] ?? null;
 }
 
 /**
@@ -283,17 +182,12 @@ const STRATEGY_OPTIONS: Readonly<Record<SyncStrategy, readonly string[]>> = {
  * markers in the tree, which the next commit would publish. A write landing
  * between the commit and the pull makes git refuse, so commit and try again.
  * A conflicting rebase is aborted, so the tracker stays on its branch with
- * nothing lost. What the guard restores on the way is handed to `onRestored`.
+ * nothing lost.
  */
-export async function syncTracker(
-  trackerPath: string,
-  strategy: SyncStrategy = "rebase",
-  onRestored: (restored: readonly string[]) => void = () => undefined,
-): Promise<TrackerSyncProblem | null> {
+export async function syncTracker(trackerPath: string, strategy: SyncStrategy = "rebase"): Promise<TrackerSyncProblem | null> {
   let pull: CommandResult | null = null;
   for (let attempt = 0; attempt < 3 && (pull === null || refusedForLocalChanges(pull)); attempt += 1) {
-    const { restored } = await commitTracker(trackerPath);
-    if (restored.length > 0) onRestored(restored);
+    await commitTracker(trackerPath);
     pull = await runCommand("git", ["-C", trackerPath, "pull", "--rebase", ...STRATEGY_OPTIONS[strategy], "origin", TRACKER_BRANCH], { timeoutMs: 120_000 });
   }
   if (pull === null || refusedForLocalChanges(pull)) {

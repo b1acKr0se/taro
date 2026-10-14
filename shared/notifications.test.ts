@@ -166,7 +166,7 @@ describe("needsYouEntries", () => {
     const alerts = [
       { id: "headroom", tickets: [], text: "The host is at 1900 of 2048 threads (93%)." },
       { id: "manager-crashed", tickets: [], text: "The Manager is stopped." },
-      { id: "tracker-protected", tickets: [], text: "Taro refused to commit tracker changes." },
+      { id: "ticket-file:tickets/NA-012.md", tickets: [], text: "tickets/NA-012.md line 4: bad JSON value." },
       { id: "queued-free-slot", tickets: ["NA-001", "NA-002"], text: "NA-001 and NA-002 queued with a free slot." },
     ];
     const found = needsYouEntries({ ...board([]), alerts }, "workspace-manager", "agent-manager");
@@ -174,7 +174,7 @@ describe("needsYouEntries", () => {
       // The host's alert is on every board and names no project.
       ["while-waiting:alert:headroom", "Threads running low"],
       ["while-waiting:alert:manager-crashed", "Manager crashed in notes-app"],
-      ["while-waiting:alert:tracker-protected", "Tracker protected in notes-app"],
+      ["while-waiting:alert:ticket-file:tickets/NA-012.md", "Ticket file unreadable in notes-app"],
       ["while-waiting:alert:queued-free-slot", "Queued with a free slot in notes-app"],
     ]);
     expect(found[3]).toMatchObject({ body: "NA-001 and NA-002 queued with a free slot.", agentId: "agent-manager", workspaceId: "workspace-manager" });

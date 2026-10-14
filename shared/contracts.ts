@@ -62,7 +62,7 @@ export const listProjects = defineRpc({
   output: z.object({ taroHome: z.string(), projects: z.array(ProjectSummarySchema) }),
 });
 
-export const PrerequisiteIdSchema = z.enum(["paseo-cli", "backlog", "git", "gh", "providers"]);
+export const PrerequisiteIdSchema = z.enum(["paseo-cli", "git", "gh", "providers"]);
 export type PrerequisiteId = z.infer<typeof PrerequisiteIdSchema>;
 
 export const PrerequisiteSchema = z.object({
@@ -70,8 +70,6 @@ export const PrerequisiteSchema = z.object({
   name: z.string(),
   ok: z.boolean(),
   detail: z.string(),
-  /** A failing check Taro can fix itself: its button (TR-063). */
-  fix: z.enum(["install-backlog"]).nullable(),
 });
 export type Prerequisite = z.infer<typeof PrerequisiteSchema>;
 
@@ -79,27 +77,6 @@ export const checkPrerequisites = defineRpc({
   name: "taro.prerequisites.check",
   input: Empty,
   output: z.object({ checks: z.array(PrerequisiteSchema) }),
-});
-
-/** Taro's own Backlog.md install (TR-063): started in the background, since npm can outlast an RPC's timeout. */
-export const BacklogInstallSchema = z.object({
-  phase: z.enum(["idle", "running", "failed", "done"]),
-  step: z.string().nullable(),
-  error: z.string().nullable(),
-  version: z.string().nullable(),
-});
-export type BacklogInstall = z.infer<typeof BacklogInstallSchema>;
-
-export const installBacklog = defineRpc({
-  name: "taro.tools.backlog.install",
-  input: Empty,
-  output: z.object({ install: BacklogInstallSchema }),
-});
-
-export const backlogInstallStatus = defineRpc({
-  name: "taro.tools.backlog.status",
-  input: Empty,
-  output: z.object({ install: BacklogInstallSchema }),
 });
 
 export const onboardProject = defineRpc({
@@ -310,8 +287,6 @@ export const resolveTrackerSync = defineRpc({
   input: z.object({ project: ProjectNameSchema, resolution: SyncResolutionSchema }),
   output: z.object({ problem: TrackerSyncProblemSchema.nullable() }),
 });
-/** Dismisses the board alert for what the tracker guard restored (TR-051). */
-export const dismissTrackerProtection = defineRpc({ name: "taro.tracker.dismiss-protection", input: ProjectInput, output: Empty });
 /**
  * Dismisses the queued-with-a-free-slot alert for the tickets it showed, which also stops the Manager's
  * restart for them (TR-062); a ticket that joined since keeps it up (TR-064).

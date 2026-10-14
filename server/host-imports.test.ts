@@ -158,10 +158,11 @@ function importedSpecifiers(source: string): string[] {
   return [...found];
 }
 
-/** Relative imports are extensionless here, so only those forms are tried. */
+/** Relative imports are extensionless, or end in `.ts` where plain Node runs them too (the `taro` command). */
 function resolveRelative(fromFile: string, specifier: string): string | null {
   const base = resolve(dirname(fromFile), specifier);
   const candidates = [
+    ...(base.endsWith(".ts") ? [base] : []),
     `${base}.ts`,
     `${base}.tsx`,
     join(base, "index.ts"),

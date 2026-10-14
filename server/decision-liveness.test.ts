@@ -33,6 +33,7 @@ vi.mock("./projects", () => ({
 vi.mock("./tickets", () => ({
   appendTicketNote: vi.fn(async () => undefined),
   viewTicket: async () => ({ title: "x", implementationNotes: "" }),
+  ticketProblems: async () => [],
   listTickets: async () => [{ id: "TR-5", title: "x", status: "Planning", labels: [], parentTaskId: null, acceptanceCriteriaCompleted: 0, acceptanceCriteriaCount: 0, updatedAt: null }],
 }));
 vi.mock("./models", () => ({ bypassModeId: async () => null }));

@@ -1,11 +1,11 @@
 /**
- * Running a command on the daemon host: git, the Backlog CLI, the paseo CLI.
+ * Running a command on the daemon host: git, gh, the paseo CLI.
  * Arguments are passed as argv, never through a shell.
  *
  * Each command starts in its own process group, and a timeout or the plugin's stop kills the whole
- * group (TR-073): `backlog` is a Node wrapper that starts the native binary, and killing only the
- * wrapper left the binary running under init, holding its threads, whenever it hung. SIGTERM goes
- * first, as git removes its lock files on it; SIGKILL follows for what is left.
+ * group (TR-073): killing only a wrapper that started a child once left the child running under
+ * init, holding its threads, whenever it hung. SIGTERM goes first, as git removes its lock files on
+ * it; SIGKILL follows for what is left.
  */
 import { spawn, type ChildProcess } from "node:child_process";
 
@@ -136,24 +136,6 @@ export function runningCommands(): number {
 /** For tests: commands may start again. */
 export function resumeCommands(): void {
   stopped = false;
-}
-
-/** Runs `work` with at most `limit` of them under way at once; the rest wait their turn in order. */
-export function concurrencyLimit(limit: number): <T>(work: () => Promise<T>) => Promise<T> {
-  let active = 0;
-  const waiting: (() => void)[] = [];
-  return async (work) => {
-    if (active >= limit) await new Promise<void>((resolve) => waiting.push(resolve));
-    else active++;
-    try {
-      return await work();
-    } finally {
-      // The slot passes straight to the next in line, so `active` counts it throughout.
-      const next = waiting.shift();
-      if (next === undefined) active--;
-      else next();
-    }
-  };
 }
 
 /** The command's complaint: its first non-empty stderr line, else stdout's, else the exit code. */

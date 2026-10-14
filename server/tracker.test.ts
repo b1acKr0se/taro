@@ -1,39 +1,112 @@
-import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { ticketIdInPath, withTaroStatuses } from "./tracker";
+import { commitTracker, ensureTracker, ticketIdInPath, withIgnoredEntries } from "./tracker";
 import { latestRecord } from "./tickets";
 import { fill, withoutNotes } from "./package-files";
 import { pluginPathIn } from "./cli";
 
-describe("withTaroStatuses", () => {
-  it("replaces Backlog's defaults with Taro's statuses, Done last", () => {
-    const config = 'project_name: "x"\nstatuses: ["To Do", "In Progress", "Done"]\nlabels: []\n';
-    const next = withTaroStatuses(config);
-    expect(next).toContain(
-      'statuses: ["Backlog","Planning","Ready","In Progress","Reviewing","Awaiting acceptance","Blocked","Cancelled","To Do","Done"]',
-    );
-    expect(next).toContain("labels: []");
+function git(directory: string, ...args: string[]): string {
+  return execFileSync("git", ["-C", directory, "-c", "user.name=Test", "-c", "user.email=test@localhost", ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+}
+
+describe("trackers on disk (scratch repositories, never the live tracker)", () => {
+  let root = "";
+  let repo = "";
+  let tracker = "";
+  const setup = () => ({ repoPath: repo, trackerPath: tracker, project: "notes", ticketPrefix: "NA", baseBranch: "main" });
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "taro-tracker-"));
+    repo = join(root, "repo");
+    tracker = join(root, "tracker");
+    mkdirSync(repo);
+    git(repo, "init", "-q", "-b", "main");
+    writeFileSync(join(repo, ".gitignore"), "node_modules/\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "first");
   });
 
-  it("leaves a config that already has Taro's statuses untouched", () => {
-    const config =
-      'statuses: ["Backlog","Planning","Ready","In Progress","Reviewing","Awaiting acceptance","Blocked","Cancelled","Done"]\n';
-    expect(withTaroStatuses(config)).toBe(config);
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
   });
 
-  it("refuses a config without an inline list", () => {
-    expect(() => withTaroStatuses("statuses:\n  - Done\n")).toThrow(/inline statuses/);
+  it("creates tickets/, tracker.json and .gitignore for a new project, committed", async () => {
+    expect(await ensureTracker(setup())).toEqual({ adopted: false });
+    expect(JSON.parse(readFileSync(join(tracker, "tracker.json"), "utf8"))).toEqual({ schema: 1, prefix: "NA", padding: 3, lastId: 0, lastChild: {} });
+    expect(statSync(join(tracker, "tickets")).isDirectory()).toBe(true);
+    expect(readFileSync(join(tracker, ".gitignore"), "utf8")).toBe("node_modules/\n.taro/\ntickets/.*.tmp\n");
+    expect(git(tracker, "status", "--porcelain")).toBe("");
+    expect(git(tracker, "show", "--name-only", "--format=%s", "HEAD").trim().split("\n")).toEqual(["taro: update tracker", "", ".gitignore", "tracker.json"]);
+  });
+
+  it("adopts a tracker that has tracker.json as it is", async () => {
+    await ensureTracker(setup());
+    writeFileSync(join(tracker, "tracker.json"), '{"schema":1,"prefix":"NA","padding":3,"lastId":7,"lastChild":{}}\n');
+    git(tracker, "commit", "-q", "-am", "seven");
+    expect(await ensureTracker(setup())).toEqual({ adopted: true });
+    expect(JSON.parse(readFileSync(join(tracker, "tracker.json"), "utf8")).lastId).toBe(7);
+  });
+
+  it("refuses a tracker still in Backlog.md format and names taro convert", async () => {
+    git(repo, "checkout", "-q", "-b", "taro/backlog");
+    mkdirSync(join(repo, "backlog", "tasks"), { recursive: true });
+    writeFileSync(join(repo, "backlog", "config.yml"), 'project_name: "notes"\n');
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "backlog");
+    git(repo, "checkout", "-q", "main");
+    await expect(ensureTracker(setup())).rejects.toThrow(/Backlog\.md format.*taro convert --tracker/);
+    expect(existsSync(join(tracker, "tracker.json"))).toBe(false);
+  });
+
+  it("starts a new tracker over a project that keeps its own backlog/ on the base branch", async () => {
+    mkdirSync(join(repo, "backlog"));
+    writeFileSync(join(repo, "backlog", "config.yml"), "x: 1\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "own backlog");
+    expect(await ensureTracker(setup())).toEqual({ adopted: false });
+  });
+
+  it("commits tickets, never .taro/ or a temp file, and skips while the lock is held", async () => {
+    await ensureTracker(setup());
+    // Without .gitignore's entries, so the exclusion does not rest on them.
+    writeFileSync(join(tracker, ".gitignore"), "");
+    git(tracker, "commit", "-q", "-am", "plain gitignore");
+    writeFileSync(join(tracker, "tickets", "NA-001.md"), "one\n");
+    writeFileSync(join(tracker, "tickets", ".NA-001.123.abc.tmp"), "half\n");
+    mkdirSync(join(tracker, ".taro", "lock"), { recursive: true });
+    writeFileSync(join(tracker, ".taro", "lock", "owner.json"), "{}");
+    writeFileSync(join(tracker, "stray.txt"), "not the tracker's\n");
+
+    expect(await commitTracker(tracker)).toEqual({ subject: null, locked: true });
+    rmSync(join(tracker, ".taro", "lock"), { recursive: true });
+    expect(await commitTracker(tracker)).toEqual({ subject: "taro: update NA-001", locked: false });
+    expect(git(tracker, "ls-files").trim().split("\n").sort()).toEqual([".gitignore", "tickets/NA-001.md", "tracker.json"]);
+    expect(git(tracker, "status", "--porcelain", "--untracked-files=all").trim().split("\n").sort()).toEqual(["?? stray.txt", "?? tickets/.NA-001.123.abc.tmp"]);
+  });
+});
+
+describe("withIgnoredEntries", () => {
+  it("appends what is missing, once, keeping the repository's lines", () => {
+    expect(withIgnoredEntries("")).toBe(".taro/\ntickets/.*.tmp\n");
+    expect(withIgnoredEntries("dist")).toBe("dist\n.taro/\ntickets/.*.tmp\n");
+    expect(withIgnoredEntries(".taro/\ntickets/.*.tmp\n")).toBe(".taro/\ntickets/.*.tmp\n");
   });
 });
 
 describe("ticketIdInPath", () => {
-  it("reads the id from a task file name", () => {
-    expect(ticketIdInPath("backlog/tasks/sh-012 - Fix-login.md")).toBe("SH-012");
-    expect(ticketIdInPath("backlog/tasks/sh-001.02 - Child.md")).toBe("SH-001.02");
+  it("reads the id from a ticket file name", () => {
+    expect(ticketIdInPath("tickets/TR-081.md")).toBe("TR-081");
+    expect(ticketIdInPath("tickets/TR-081.01.md")).toBe("TR-081.01");
   });
 
   it("returns null for other files", () => {
-    expect(ticketIdInPath("backlog/config.yml")).toBeNull();
+    expect(ticketIdInPath("tracker.json")).toBeNull();
+    expect(ticketIdInPath("tickets/.TR-081.123.abc.tmp")).toBeNull();
+    expect(ticketIdInPath("backlog/tasks/sh-012 - Fix-login.md")).toBeNull();
   });
 });
 

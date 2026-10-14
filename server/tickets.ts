@@ -1,56 +1,106 @@
 /**
- * Tickets, read through the Backlog CLI's versioned JSON (`task list --json`,
- * `task view --json`), so the plugin never parses task files itself.
+ * Tickets, read and written in process through one ticket store per tracker (TR-081): no process
+ * is started for a ticket. The shapes callers see (createdAt, parentTaskId, implementationNotes…)
+ * are the ones the plugin read from Backlog.md's JSON, so callers did not change.
  */
-import { z } from "zod";
-
 import { noteRecords } from "../shared/execution";
-import { runBacklog } from "./tracker";
+import type { TicketPriority, TicketProblem } from "../shared/ticket-format";
+import { createTicketStore, type TicketStore } from "./ticket-store";
 
-const TicketSummarySchema = z
-  .object({
-    id: z.string(),
-    title: z.string(),
-    status: z.string(),
-    labels: z.array(z.string()).default([]),
-    parentTaskId: z.string().nullable().default(null),
-    acceptanceCriteriaCompleted: z.number().default(0),
-    acceptanceCriteriaCount: z.number().default(0),
-    createdAt: z.string().nullable().default(null),
-    updatedAt: z.string().nullable().default(null),
-    isReady: z.boolean().default(false),
-  })
-  .passthrough();
-export type TicketSummary = z.infer<typeof TicketSummarySchema>;
+export interface TicketSummary {
+  id: string;
+  title: string;
+  status: string;
+  priority: TicketPriority | null;
+  labels: string[];
+  parentTaskId: string | null;
+  dependencies: string[];
+  acceptanceCriteriaCompleted: number;
+  acceptanceCriteriaCount: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
 
-const TicketListSchema = z.object({ tasks: z.array(TicketSummarySchema) }).passthrough();
+export interface TicketDetail extends TicketSummary {
+  description: string | null;
+  acceptanceCriteria: { index: number; text: string; checked: boolean }[];
+  implementationPlan: string | null;
+  implementationNotes: string | null;
+  finalSummary: string | null;
+  subtasks: { id: string; title: string; status: string }[];
+}
 
-const TicketDetailSchema = TicketSummarySchema.extend({
-  description: z.string().nullable().default(null),
-  dependencies: z.array(z.string()).default([]),
-  acceptanceCriteria: z.array(z.object({ index: z.number(), text: z.string(), checked: z.boolean().default(false) }).passthrough()).default([]),
-  implementationPlan: z.string().nullable().default(null),
-  implementationNotes: z.string().nullable().default(null),
-  finalSummary: z.string().nullable().default(null),
-  subtasks: z.array(z.object({ id: z.string(), title: z.string(), status: z.string().optional() }).passthrough()).default([]),
-});
-export type TicketDetail = z.infer<typeof TicketDetailSchema>;
+export type { TicketProblem };
+
+const stores = new Map<string, TicketStore>();
+
+function storeFor(trackerPath: string): TicketStore {
+  let store = stores.get(trackerPath);
+  if (store === undefined) {
+    store = createTicketStore(trackerPath);
+    stores.set(trackerPath, store);
+  }
+  return store;
+}
+
+/** An empty section reads as null, as Backlog.md's JSON left it out. */
+function textOrNull(text: string): string | null {
+  return text === "" ? null : text;
+}
 
 export async function listTickets(trackerPath: string): Promise<TicketSummary[]> {
-  const output = await runBacklog(trackerPath, ["task", "list", "--json"]);
-  return TicketListSchema.parse(JSON.parse(output)).tasks;
+  const { tickets } = await storeFor(trackerPath).list();
+  return tickets.map((ticket) => ({
+    id: ticket.id,
+    title: ticket.title,
+    status: ticket.status,
+    priority: ticket.priority,
+    labels: ticket.labels,
+    parentTaskId: ticket.parent,
+    dependencies: ticket.dependsOn,
+    acceptanceCriteriaCompleted: ticket.criteriaChecked,
+    acceptanceCriteriaCount: ticket.criteriaCount,
+    createdAt: ticket.created,
+    updatedAt: ticket.updated,
+  }));
+}
+
+/** The files that could not be read as tickets, each with its line; their cards are left off the board. */
+export async function ticketProblems(trackerPath: string): Promise<TicketProblem[]> {
+  return (await storeFor(trackerPath).list()).problems;
 }
 
 export async function viewTicket(trackerPath: string, ticketId: string): Promise<TicketDetail> {
-  const output = await runBacklog(trackerPath, ["task", "view", ticketId, "--json"]);
-  const parsed: unknown = JSON.parse(output);
-  const task: unknown = typeof parsed === "object" && parsed !== null && "task" in parsed ? Reflect.get(parsed, "task") : parsed;
-  return TicketDetailSchema.parse(task);
+  const { ticket, subtasks } = await storeFor(trackerPath).view(ticketId);
+  return {
+    id: ticket.id,
+    title: ticket.title,
+    status: ticket.status,
+    priority: ticket.priority,
+    labels: ticket.labels,
+    parentTaskId: ticket.parent,
+    dependencies: ticket.dependsOn,
+    acceptanceCriteriaCompleted: ticket.criteria.filter((criterion) => criterion.checked).length,
+    acceptanceCriteriaCount: ticket.criteria.length,
+    createdAt: ticket.created,
+    updatedAt: ticket.updated,
+    description: textOrNull(ticket.description),
+    acceptanceCriteria: ticket.criteria.map((criterion) => ({ index: criterion.index, text: criterion.text, checked: criterion.checked })),
+    implementationPlan: textOrNull(ticket.plan),
+    implementationNotes: textOrNull(ticket.notes),
+    finalSummary: textOrNull(ticket.finalSummary),
+    subtasks: subtasks.map((child) => ({ id: child.id, title: child.title, status: child.status })),
+  };
 }
 
 /** Appends a timestamped record to the ticket's notes. */
 export async function appendTicketNote(trackerPath: string, ticketId: string, record: string): Promise<void> {
-  await runBacklog(trackerPath, ["task", "edit", ticketId, "--append-notes", record, "--plain"]);
+  await storeFor(trackerPath).appendNote(ticketId, record);
+}
+
+/** The watcher saw `file` (a name under `tickets/`; every file when undefined) change: the next list reads it again. */
+export function forgetTicketFile(trackerPath: string, file: string | undefined): void {
+  stores.get(trackerPath)?.forget(file);
 }
 
 /** The latest `<KIND> …` record in the notes (records start a line with an upper-case name). */

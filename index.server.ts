@@ -8,7 +8,6 @@ import {
   catchUp,
   compactAgent,
   dismissSuggestion as dismissSuggestionRpc,
-  dismissTrackerProtection,
   dismissQueueAlert,
   findAgentTicket,
   listOpenDecisions,
@@ -20,9 +19,7 @@ import {
   resolveTrackerSync as resolveTrackerSyncRpc,
   tellAgent,
   checkOnboarding,
-  backlogInstallStatus,
   checkPrerequisites as checkPrerequisitesRpc,
-  installBacklog,
   compactManager as compactManagerRpc,
   launchManager as launchManagerRpc,
   listModels,
@@ -60,13 +57,11 @@ import { listPaseoProjects, settingsTemplate } from "./server/paseo-projects";
 import { readImage } from "./server/images";
 import { Notifier } from "./server/notifications";
 import { checkPrerequisites } from "./server/prerequisites";
-import { createBacklogInstaller, findNpm } from "./server/backlog-install";
 import { listProjectConfigs, projectPaths, readProjectConfig, requireProjectConfig, taroHome, updateProjectConfig } from "./server/projects";
 import { sentImagesOf } from "./server/sent-images";
 import { agentBrief, listModelOptions } from "./server/summaries";
 import { TrackerWatch } from "./server/tracker-watch";
-import { forgetBacklogLookup } from "./server/tracker";
-import { runCommand, stopCommands } from "./server/process";
+import { stopCommands } from "./server/process";
 import { isStopping, markStopping, reportFailure } from "./server/stopping";
 
 export default function contribute(server: PluginServerContext) {
@@ -75,7 +70,6 @@ export default function contribute(server: PluginServerContext) {
   const state = new PluginState();
   const stats = new Stats();
   const recovery = new Recovery(state, stats);
-  const backlogInstaller = createBacklogInstaller({ findNpm, run: runCommand, installed: forgetBacklogLookup });
   const supervisor = new Supervisor(state, stats, recovery);
   const actions = new Actions(state, supervisor, trackers, stats, recovery);
   recovery.setRelaunchOwner((paseo, project, ticket) => actions.relaunchOwner(paseo, project, ticket));
@@ -102,7 +96,6 @@ export default function contribute(server: PluginServerContext) {
     return kept;
   };
   void actions.primeStatuses().catch((error: unknown) => reportFailure("[taro] could not read ticket statuses:", error));
-  trackers.onRestored((project, restored) => state.recordTrackerProtection(project, restored, new Date().toISOString()));
   trackers.onChange((project) => {
     // A pull may have brought tickets edited elsewhere; the next read must not serve the cached board.
     invalidateBoards();
@@ -200,8 +193,6 @@ export default function contribute(server: PluginServerContext) {
   });
 
   server.handle(checkPrerequisitesRpc, async (_input, { paseo }) => ({ checks: await checkPrerequisites(paseo) }));
-  server.handle(installBacklog, async () => ({ install: backlogInstaller.start() }));
-  server.handle(backlogInstallStatus, async () => ({ install: backlogInstaller.state() }));
   server.handle(listModels, async (_input, { paseo }) => ({ models: await listModelOptions(paseo) }));
 
   server.handle(onboardProjectRpc, async (input, { paseo }) => {
@@ -303,11 +294,6 @@ export default function contribute(server: PluginServerContext) {
     invalidateBoards();
     return {};
   });
-  server.handle(dismissTrackerProtection, async ({ project }) => {
-    await state.dismissTrackerProtection(project);
-    invalidateBoards();
-    return {};
-  });
   server.handle(acceptTicket, async ({ project, ticket }, { paseo }) => {
     await actions.accept(keep(paseo), project, ticket);
     return {};
@@ -368,7 +354,7 @@ export default function contribute(server: PluginServerContext) {
     }
   });
 
-  // Every Taro agent knows where its tracker and skill are, on create and on resume (decision 38).
+  // Every Taro agent knows where its tracker and skill are, and has `taro` on PATH, on create and on resume (decision 38).
   const removeSessionHook = server.before("agent.session_open", async ({ request }, { paseo }) => {
     const environment = await sessionEnvironment(paseo, request.agentId, request.cwd, request.env?.PATH).catch(() => null);
     if (environment === null) return;

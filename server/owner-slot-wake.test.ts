@@ -44,7 +44,8 @@ const ticket = (id: string, status: string, parentTaskId: string | null = null) 
   acceptanceCriteriaCount: 0,
   createdAt: null,
   updatedAt: null,
-  isReady: true,
+  priority: null,
+  dependencies: [],
 });
 const agent = (id: string, ticketId: string, role: string, status = "running") =>
   ({ id, status, workspaceId: `ws-${id}`, labels: { "taro.project": "demo", "taro.role": role, "taro.ticket": ticketId }, lastUsage: null }) as unknown as PaseoAgent;

@@ -50,7 +50,8 @@ const ticket = (id: string, status: string, updatedAt = "2026-10-14 10:00") => (
   acceptanceCriteriaCount: 0,
   createdAt: null,
   updatedAt,
-  isReady: true,
+  priority: null,
+  dependencies: [],
 });
 const owner = (ticketId: string) =>
   ({ id: `owner-${ticketId}`, status: "idle", workspaceId: `ws-${ticketId}`, labels: { "taro.project": "demo", "taro.role": "owner", "taro.ticket": ticketId }, lastUsage: null }) as unknown as PaseoAgent;

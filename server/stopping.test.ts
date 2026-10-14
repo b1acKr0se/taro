@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isStopping, markStopping, reportFailure, resetStopping } from "./stopping";
 import { TrackerWatch } from "./tracker-watch";
 
-const TICKET = "backlog/tasks/x-001 - First.md";
+const TICKET = "tickets/X-001.md";
 
 function git(directory: string, ...args: string[]): string {
   return execFileSync("git", ["-C", directory, "-c", "user.name=Test", "-c", "user.email=test@localhost", ...args], {
@@ -36,7 +36,7 @@ beforeEach(() => {
   resetStopping();
   root = mkdtempSync(join(tmpdir(), "taro-stopping-"));
   tracker = join(root, "tracker");
-  mkdirSync(join(tracker, "backlog", "tasks"), { recursive: true });
+  mkdirSync(join(tracker, "tickets"), { recursive: true });
   execFileSync("git", ["init", "-q", tracker]);
   writeFileSync(join(tracker, TICKET), "status: In Progress\n");
   git(tracker, "add", "-A");

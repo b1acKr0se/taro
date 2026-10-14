@@ -6,6 +6,7 @@ import { stat } from "node:fs/promises";
 import { hostname } from "node:os";
 
 import { latestActivity, type Activity } from "../shared/activity";
+import { ticketFileAlerts } from "../shared/alerts";
 import { boardColumn, complexityOf, hasStarted, ticketAgents } from "../shared/board";
 import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
 import { acceptedRecord, executionMachine, pullRequestUrl, type AcceptedRecord } from "../shared/execution";
@@ -16,7 +17,6 @@ import { pastTicketAgents } from "../shared/past-agents";
 import { isSubagentRole, roleFromLabel, TARO_LABELS } from "../shared/project";
 import { boardAlerts, type BoardAlert } from "../shared/recovery";
 import { decisionsOfLiveAgents, type StoredDecision } from "../shared/state";
-import { protectionAlert } from "../shared/tracker-guard";
 import { currentSuggestions, parseSuggestions, suggestionKey, withoutFixedActions } from "../shared/suggestions";
 import { projectAgents, projectArchivedAgents } from "./agents";
 import { statePath } from "./data-dir";
@@ -28,7 +28,7 @@ import { projectPaths } from "./projects";
 import { serialized } from "./serialize";
 import type { PluginState } from "./state";
 import { agentBrief } from "./summaries";
-import { listTickets, viewTicket } from "./tickets";
+import { listTickets, ticketProblems, viewTicket } from "./tickets";
 
 const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing", "Awaiting acceptance", "Blocked"]);
 
@@ -62,7 +62,7 @@ async function recordedFacts(
 
 /**
  * Records change only when the ticket file does, so a read is reused while `updatedAt` holds.
- * The tracker stamps whole minutes, so a short age bound still catches two notes in one minute.
+ * Two writes within one second share a stamp, so a short age bound still catches the second.
  */
 const FACTS_CACHE_MS = 60_000;
 const factsCache = new Map<string, { updatedAt: string; at: number; facts: Promise<Awaited<ReturnType<typeof recordedFacts>>> }>();
@@ -153,8 +153,9 @@ function groupByTicket(agents: readonly PaseoAgent[]): Map<string, PaseoAgent[]>
 async function readBoard(paseo: PaseoApi, state: PluginState, project: string): Promise<Board> {
   const paths = await projectPaths(project);
   // Live agents come from their own list, so a long archive can never push a live owner past its page limit.
-  const [tickets, agents, archived, decisions, agentStates, headroom] = await Promise.all([
+  const [tickets, problems, agents, archived, decisions, agentStates, headroom] = await Promise.all([
     listTickets(paths.tracker),
+    ticketProblems(paths.tracker),
     projectAgents(paseo, project),
     cachedArchivedAgents(paseo, project).catch(() => []),
     state.allDecisions(),
@@ -183,7 +184,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
       const finished = ticket.status === "Done" || ticket.status === "Cancelled";
       const ticketDecisions = finished ? [] : openDecisions.filter((decision) => decision.ticket === ticket.id);
       const needsHost = owner === null && UNDER_WAY.has(ticket.status);
-      // Reading a ticket spawns the Backlog CLI: only under-way cards show what it holds, and only once per change.
+      // Reading a ticket reads its whole file: only under-way cards show what it holds, and only once per change.
       const facts = UNDER_WAY.has(ticket.status) ? await cachedRecordedFacts(paths.tracker, ticket.id, ticket.updatedAt) : null;
       const investigation = ticket.labels.includes("investigation");
       // The record is cached with the other facts; whether its screenshot files exist is read each time.
@@ -244,7 +245,6 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
 
   const manager = agents.find((agent) => agent.labels[TARO_LABELS.role] === "manager" && agentStates[agent.id]?.stalled === true);
   const managerState = manager === undefined ? null : agentStates[manager.id] ?? null;
-  const protection = await state.trackerProtection(project);
   const now = Date.now();
   return {
     project,
@@ -252,7 +252,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
     managerDecisions: openDecisions.filter((decision) => decision.ticket === null),
     suggestions: await readSuggestions(project, tickets),
     headroom,
-    alerts: [...boardAlerts(headroom, managerState?.stalledReason ?? null, now), ...[protectionAlert(protection, now)].filter((alert) => alert !== null)],
+    alerts: [...boardAlerts(headroom, managerState?.stalledReason ?? null, now), ...ticketFileAlerts(problems)],
     loadedAt: new Date().toISOString(),
   };
 }
@@ -269,9 +269,6 @@ export async function loadTicketDetail(project: string, ticketId: string): Promi
   const tracker = (await projectPaths(project)).tracker;
   const detail = await viewTicket(tracker, ticketId);
   const hasRecord = parseEvidence(detail.implementationNotes) !== null;
-  // Backlog's task view lists the children without their status; the ticket list has it, as on the board.
-  const listedStatus =
-    detail.subtasks.length === 0 ? new Map<string, string>() : new Map((await listTickets(tracker)).map((ticket) => [ticket.id, ticket.status]));
   return {
     id: detail.id,
     title: detail.title,
@@ -283,7 +280,7 @@ export async function loadTicketDetail(project: string, ticketId: string): Promi
     notes: detail.implementationNotes,
     finalSummary: detail.finalSummary,
     dependencies: detail.dependencies,
-    children: detail.subtasks.map((child) => ({ id: child.id, title: child.title, status: listedStatus.get(child.id) ?? child.status ?? null })),
+    children: detail.subtasks.map((child) => ({ id: child.id, title: child.title, status: child.status })),
     evidence: hasRecord || detail.status === "Awaiting acceptance" ? await ticketEvidence(project, detail.id, detail.implementationNotes, detail.labels, detail.status) : null,
   };
 }

@@ -1,9 +1,9 @@
 /**
  * A Needs you item that belongs to no ticket (TR-012): the host short of threads
  * for a while, a manager the plugin stopped recovering after repeated crashes,
- * tracker changes the plugin refused to commit and restored (TR-051), or a ticket
- * left queued with a free slot after the Manager was told (TR-062), one card for
- * all such tickets (TR-064); the last two the user can dismiss. The crashed
+ * a ticket file that cannot be read (TR-081), or a ticket left queued with a
+ * free slot after the Manager was told (TR-062), one card for all such tickets
+ * (TR-064); the last the user can dismiss. The crashed
  * manager's card resumes it, its conversation kept (TR-072).
  */
 import type { PluginTheme } from "@getpaseo/plugin";
@@ -12,9 +12,8 @@ import { useMemo } from "react";
 import { Text, View } from "react-native";
 
 import { alertHeading, dismissible } from "../shared/alerts";
-import { dismissQueueAlert, dismissTrackerProtection, resumeManager } from "../shared/contracts";
+import { dismissQueueAlert, resumeManager } from "../shared/contracts";
 import { MANAGER_ACTION_LABELS, MANAGER_ACTION_SUCCESS } from "../shared/manager-actions";
-import { QUEUED_ALERT_ID } from "../shared/queue-check";
 import type { BoardAlert } from "../shared/recovery";
 import { useRefreshBoard } from "./board-data";
 import { Pressable } from "./focus";
@@ -25,7 +24,6 @@ import { IconButton, Spinner } from "./ui";
 import { useActions } from "./use-actions";
 
 export function AlertCard({ project, alert, theme, compact }: { project: string; alert: BoardAlert; theme: PluginTheme; compact: boolean }) {
-  const dismissProtection = useRpc(dismissTrackerProtection);
   const dismissQueued = useRpc(dismissQueueAlert);
   const resume = useRpc(resumeManager);
   const refreshBoard = useRefreshBoard(project);
@@ -46,7 +44,7 @@ export function AlertCard({ project, alert, theme, compact }: { project: string;
   function onDismiss(): void {
     // The dismissed alert leaves the board, so it stays busy until it does.
     // The tickets this card shows are dismissed, not one that joined since the board was read.
-    presses.press("dismiss", () => (alert.id === QUEUED_ALERT_ID ? dismissQueued({ project, tickets: alert.tickets }) : dismissProtection({ project })), {
+    presses.press("dismiss", () => dismissQueued({ project, tickets: alert.tickets }), {
       after: "hold",
       onSuccess: () => {
         refreshBoard();

@@ -127,14 +127,6 @@ export function pullRequestsReady(checks: ReadonlyArray<{ id: string; ok: boolea
   return checks.find((check) => check.id === "gh")?.ok ?? null;
 }
 
-/** Why Create waits while Backlog.md is missing (TR-063): creating would only fail with "backlog not installed". */
-export const CREATE_NEEDS_BACKLOG = "Install Backlog.md first.";
-
-/** What stops a new project from being created by the checks, or null; unknown checks block nothing. */
-export function createBlocker(checks: ReadonlyArray<{ id: string; ok: boolean }> | undefined): string | null {
-  return checks?.find((check) => check.id === "backlog")?.ok === false ? CREATE_NEEDS_BACKLOG : null;
-}
-
 /** A new project's delivery once gh is known not to be ready: pull requests fall back to a local branch. */
 export function deliveryWithoutGh(draft: SetupDraft, ready: boolean | null): SetupDraft {
   return ready === false && draft.delivery === "pull-request" ? { ...draft, delivery: "local-only" } : draft;
