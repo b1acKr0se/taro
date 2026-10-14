@@ -35,7 +35,7 @@ import { cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from 
 import { groupRows, toolRunSummary, type Group } from "./tool-runs";
 import { ATTACHMENTS_ONLY, transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
-import { JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
+import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
 import { usePressGuards } from "./use-actions";
 import { usePendingSends, type ChatSend } from "./use-pending-sends";
 import { handBack, steersMidTurn, type PendingSend, type SendMark, type SendView } from "../shared/pending-sends";
@@ -571,15 +571,15 @@ const MARK_TEXT: Record<SendMark, string> = {
   unread: "Not read: the agent stopped first",
 };
 
-const MARK_ACTIONS: Record<SendMark, readonly { action: MarkAction; label: string }[]> = {
+const MARK_ACTIONS: Record<SendMark, readonly { action: MarkAction; label: string; icon: string }[]> = {
   waiting: [],
   held: [
-    { action: "send-now", label: "Send now and stop it" },
-    { action: "cancel", label: "Cancel" },
+    { action: "send-now", label: "Send now and stop it", icon: "Send" },
+    { action: "cancel", label: "Cancel", icon: "X" },
   ],
   unread: [
-    { action: "resend", label: "Resend" },
-    { action: "dismiss", label: "Dismiss" },
+    { action: "resend", label: "Resend", icon: "RotateCcw" },
+    { action: "dismiss", label: "Dismiss", icon: "X" },
   ],
 };
 
@@ -587,19 +587,19 @@ function SendMarkLine({ view, theme, styles, onAction }: { view: SendView; theme
   const { colors } = theme;
   return (
     <View style={styles.mark}>
-      {view.mark === "waiting" ? (
-        <Spinner size={11} color={colors.foregroundMuted} />
-      ) : (
-        <Icon name={view.mark === "held" ? "Timer" : "AlertTriangle"} size={12} color={view.mark === "held" ? colors.foregroundMuted : colors.statusWarning} />
-      )}
-      <Text style={styles.markText}>{MARK_TEXT[view.mark]}</Text>
-      {/* One row, so a narrow screen wraps the actions together rather than one of them alone. */}
+      <View style={styles.markLine}>
+        {view.mark === "waiting" ? (
+          <Spinner size={11} color={colors.foregroundMuted} />
+        ) : (
+          <Icon name={view.mark === "held" ? "Timer" : "AlertTriangle"} size={12} color={view.mark === "held" ? colors.foregroundMuted : colors.statusWarning} />
+        )}
+        <Text style={styles.markText}>{MARK_TEXT[view.mark]}</Text>
+      </View>
+      {/* The shared button (Catch up's style), in a row of their own under the words, right-aligned with the bubble. */}
       {MARK_ACTIONS[view.mark].length === 0 ? null : (
         <View style={styles.markActions}>
           {MARK_ACTIONS[view.mark].map((each) => (
-            <Pressable key={each.action} accessibilityRole="button" accessibilityLabel={each.label} hitSlop={6} onPress={() => onAction(view.send.id, each.action)}>
-              <Text style={styles.markAction}>{each.label}</Text>
-            </Pressable>
+            <IconButton key={each.action} icon={each.icon} label={each.label} showLabel theme={theme} onPress={() => onAction(view.send.id, each.action)} />
           ))}
         </View>
       )}
@@ -776,10 +776,10 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
       paddingVertical: SPACE.md,
       gap: SPACE.sm,
     },
-    mark: { flexDirection: "row" as const, flexWrap: "wrap" as const, justifyContent: "flex-end" as const, alignItems: "center" as const, columnGap: SPACE.sm, rowGap: 2 },
+    mark: { alignItems: "flex-end" as const, gap: SPACE.xs },
+    markLine: { flexDirection: "row" as const, flexWrap: "wrap" as const, justifyContent: "flex-end" as const, alignItems: "center" as const, columnGap: SPACE.sm, rowGap: 2 },
     markText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
-    markActions: { flexDirection: "row" as const, columnGap: SPACE.sm },
-    markAction: { color: colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
+    markActions: { flexDirection: "row" as const, justifyContent: "flex-end" as const, gap: SPACE.sm },
     quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
     readOnly: {
       width: "100%" as const,
