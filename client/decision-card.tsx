@@ -6,7 +6,9 @@
  * side-by-side option boxes broke on long text and phones; the list follows
  * Claude Code's question prompt, and Submit sends the picked option with any
  * typed words (TR-028). TR-055: an option's images sit under it, captioned, and open in a
- * viewer of that option's images alone, its label in the bar.
+ * viewer of that option's images alone, its label in the bar. TR-061: options that only stand for
+ * typing ("Change…", "Other") are hidden, the field says it takes a change on an approval, and a scope
+ * approval with a template plan is the compact plan card (`./plan-card`).
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -15,13 +17,14 @@ import { useMemo, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { answerDecision } from "../shared/contracts";
-import { askedBy, decisionOptionRows, decisionSubmit } from "../shared/decision-view";
+import { answerPlaceholder, askedBy, decisionOptionRows, decisionSubmit } from "../shared/decision-view";
 import type { StoredDecision } from "../shared/state";
 import { useRevealFocused } from "./keyboard";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { ImageThumbnail } from "./image-view";
+import { PlanDecision } from "./plan-card";
 import { IconButton } from "./ui";
 import { useActions } from "./use-actions";
 
@@ -32,15 +35,7 @@ const RADIO_SIZE = 18;
 /** A "why" longer than this folds to four lines behind "more". */
 const WHY_FOLD_CHARACTERS = 220;
 
-export function DecisionCard({
-  decision,
-  theme,
-  compact,
-  onAnswered,
-  showAgent = false,
-  answeredFrom = "screen",
-  readOnlyNote = null,
-}: {
+interface DecisionCardProps {
   decision: StoredDecision;
   theme: PluginTheme;
   compact: boolean;
@@ -51,7 +46,26 @@ export function DecisionCard({
   answeredFrom?: "screen" | "tab";
   /** Set when the card cannot be answered: the options are inert and this replaces the answer box. */
   readOnlyNote?: string | null;
-}) {
+}
+
+/** A scope approval with a template plan is the compact plan card (TR-061); any other decision, or one that cannot be answered, the options card. */
+export function DecisionCard(props: DecisionCardProps) {
+  if (props.readOnlyNote !== undefined && props.readOnlyNote !== null) return <OptionsCard {...props} />;
+  return (
+    <PlanDecision
+      decision={props.decision}
+      theme={props.theme}
+      compact={props.compact}
+      head={props.showAgent === true ? askedBy(props.decision) : null}
+      answeredFrom={props.answeredFrom ?? "screen"}
+      onAnswered={props.onAnswered}
+    >
+      <OptionsCard {...props} />
+    </PlanDecision>
+  );
+}
+
+function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, answeredFrom = "screen", readOnlyNote = null }: DecisionCardProps) {
   // Submit is revealed with the field, so it stays above the keyboard while the reader types.
   const actions = useRef<View>(null);
   const reveal = useRevealFocused(actions);
@@ -63,7 +77,7 @@ export function DecisionCard({
   const busy = presses.busy;
   const { colors } = theme;
   const optionRows = useMemo(() => decisionOptionRows(decision), [decision]);
-  const submit = decisionSubmit(optionRows.rows, picked, typed);
+  const submit = decisionSubmit(optionRows.rows, picked, typed, answerPlaceholder(decision));
   const answerable = readOnlyNote === null;
   // A card that cannot be answered does not ask for the user.
   const waiting = decision.blocking && answerable;

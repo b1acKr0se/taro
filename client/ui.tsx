@@ -26,7 +26,8 @@ export function IconButton({
   grow = false,
   state,
 }: {
-  icon: string;
+  /** Null draws the label alone (a narrow row of labelled buttons); busy and done still show. */
+  icon: string | null;
   label: string;
   theme: PluginTheme;
   onPress: () => void;
@@ -82,7 +83,7 @@ export function IconButton({
         <Spinner size={14} color={color} />
       ) : state === "done" ? (
         <Icon name="Check" size={14} color={tone === "default" ? colors.statusSuccess : color} />
-      ) : (
+      ) : icon === null ? null : (
         <Icon name={icon} size={14} color={color} />
       )}
       {showLabel ? <Text style={styles.label}>{label}</Text> : null}

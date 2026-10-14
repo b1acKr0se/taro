@@ -79,13 +79,28 @@ export function untrackedDecision(block: ParsedDecision, agentId: string): Store
 export type DecisionOptionRow = { label: string; prompt: string; consequence: string; images: OptionImage[]; recommended: boolean; reason: string };
 
 /**
- * The card's option rows in the agent's order. The reason sits on the recommended row; when the
- * recommendation names no option (an incomplete block), it comes back as `looseReason` so it is
- * still shown, under the rows.
+ * An option that only stands for typing (TR-061): "Change", "Other" or "Something else", with or
+ * without a trailing "…", "..." or ":". The card's field already means that, so it is hidden.
  */
-export function decisionOptionRows(decision: Pick<StoredDecision, "options" | "recommended" | "reason">): { rows: DecisionOptionRow[]; looseReason: string } {
-  const recommendedIndex = decision.options.findIndex((option) => option.label === decision.recommended);
-  const rows = decision.options.map((option, index) => ({
+export function isChangeOption(label: string): boolean {
+  return /^(change|other|something else)\s*(…|\.\.\.|:)?$/i.test(label.trim());
+}
+
+/** The options a card shows: every one but those that only stand for typing. */
+function shownOptions<Option extends { label: string }>(options: readonly Option[]): Option[] {
+  return options.filter((option) => !isChangeOption(option.label));
+}
+
+/**
+ * The card's option rows in the agent's order, without change options. The reason sits on the
+ * recommended row; when the recommendation names no shown option (an incomplete block, or a hidden
+ * one), it comes back as `looseReason` so it is still shown, under the rows. `hidden` counts the
+ * change options left out.
+ */
+export function decisionOptionRows(decision: Pick<StoredDecision, "options" | "recommended" | "reason">): { rows: DecisionOptionRow[]; looseReason: string; hidden: number } {
+  const options = shownOptions(decision.options);
+  const recommendedIndex = options.findIndex((option) => option.label === decision.recommended);
+  const rows = options.map((option, index) => ({
     label: option.label,
     prompt: option.prompt,
     consequence: option.consequence,
@@ -94,7 +109,40 @@ export function decisionOptionRows(decision: Pick<StoredDecision, "options" | "r
     recommended: index === recommendedIndex,
     reason: index === recommendedIndex ? decision.reason : "",
   }));
-  return { rows, looseReason: recommendedIndex === -1 ? decision.reason : "" };
+  return { rows, looseReason: recommendedIndex === -1 ? decision.reason : "", hidden: decision.options.length - options.length };
+}
+
+export const ANSWER_PLACEHOLDER = "Or answer in your own words…";
+export const CHANGE_PLACEHOLDER = "Or describe a change…";
+/** The preset id of an owner's scope approval (`skill/reference/formats.md`). */
+export const SCOPE_APPROVAL = "scope-approval";
+
+function isApproveLabel(label: string): boolean {
+  return /^approve/i.test(label.trim());
+}
+
+/**
+ * What the field says with no option picked: on an approval (a scope approval, an Approve option,
+ * or one whose change option was hidden) typing asks for a change; otherwise it is an answer.
+ */
+export function answerPlaceholder(decision: Pick<StoredDecision, "id" | "options">): string {
+  const approval = decision.id === SCOPE_APPROVAL || decision.options.some((option) => isChangeOption(option.label) || isApproveLabel(option.label));
+  return approval ? CHANGE_PLACEHOLDER : ANSWER_PLACEHOLDER;
+}
+
+/**
+ * The plan card's buttons (TR-061): Approve sends the option starting with "Approve", or else the
+ * recommended one; every other shown option is a button beside it. Null when there is nothing for
+ * Approve to send, and the decision keeps the usual card.
+ */
+export function planCardOptions(decision: Pick<StoredDecision, "options" | "recommended">): { approve: string; others: { label: string; asksForWords: boolean }[] } | null {
+  const options = shownOptions(decision.options);
+  const approve = options.find((option) => isApproveLabel(option.label)) ?? options.find((option) => option.label === decision.recommended);
+  if (approve === undefined) return null;
+  return {
+    approve: approve.label,
+    others: options.filter((option) => option !== approve).map((option) => ({ label: option.label, asksForWords: optionAsksForWords(option) })),
+  };
 }
 
 /** What Submit sends and whether it can: the picked option (or none) and the typed words. */
@@ -104,7 +152,7 @@ export type DecisionSubmit = { enabled: boolean; label: string | null; text: str
  * The card's Submit (TR-030): a picked option, typed words, or both (the server joins them,
  * TR-028). An option ending with "…" asks for words, so it waits for them.
  */
-export function decisionSubmit(rows: DecisionOptionRow[], picked: number | null, typed: string): DecisionSubmit {
+export function decisionSubmit(rows: DecisionOptionRow[], picked: number | null, typed: string, freePlaceholder: string = ANSWER_PLACEHOLDER): DecisionSubmit {
   const row = picked === null ? null : rows[picked] ?? null;
   const words = typed.trim();
   const asksForWords = row !== null && optionAsksForWords(row);
@@ -112,7 +160,7 @@ export function decisionSubmit(rows: DecisionOptionRow[], picked: number | null,
     enabled: asksForWords ? words !== "" : row !== null || words !== "",
     label: row?.label ?? null,
     text: words,
-    placeholder: asksForWords ? `Say how for “${row.label.trim().replace(/…$/, "")}”…` : row === null ? "Or answer in your own words…" : "Add a note (optional)…",
+    placeholder: asksForWords ? `Say how for “${row.label.trim().replace(/…$/, "")}”…` : row === null ? freePlaceholder : "Add a note (optional)…",
   };
 }
 
@@ -124,7 +172,7 @@ export function optionAsksForWords(option: { label: string; prompt: string }): b
 /** One option as a board card's chip (TR-045): pressing it answers at once, unless it asks for words. */
 export type OptionChip = { label: string; recommended: boolean; asksForWords: boolean };
 
-/** The card's chips in the agent's order, the recommended one marked; labels keep the agent's words. */
+/** The card's chips in the agent's order without change options, the recommended one marked; labels keep the agent's words. */
 export function optionChips(decision: Pick<StoredDecision, "options" | "recommended" | "reason">): OptionChip[] {
   return decisionOptionRows(decision).rows.map((row) => ({ label: row.label, recommended: row.recommended, asksForWords: optionAsksForWords(row) }));
 }

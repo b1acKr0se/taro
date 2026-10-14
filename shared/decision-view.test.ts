@@ -1,14 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ANSWER_PLACEHOLDER,
+  CHANGE_PLACEHOLDER,
   READ_ONLY_NOTES,
+  answerPlaceholder,
   askedBy,
   decisionBlockView,
   decisionOptionRows,
   decisionSubmit,
   decisionTimelineItems,
+  isChangeOption,
   optionAsksForWords,
   optionChips,
+  planCardOptions,
   untrackedDecision,
   type DecisionLookup,
 } from "./decision-view";
@@ -138,9 +143,25 @@ describe("decisionOptionRows", () => {
   });
 
   it("handles no options and an empty reason", () => {
-    expect(decisionOptionRows({ options: [], recommended: "", reason: "" })).toEqual({ rows: [], looseReason: "" });
+    expect(decisionOptionRows({ options: [], recommended: "", reason: "" })).toEqual({ rows: [], looseReason: "", hidden: 0 });
     const { rows } = decisionOptionRows({ options: [option("A")], recommended: "A", reason: "" });
     expect(rows[0]).toMatchObject({ recommended: true, reason: "" });
+  });
+});
+
+describe("decisionOptionRows without change options", () => {
+  const option = (label: string) => ({ label, prompt: label, consequence: "", images: [] });
+
+  it("hides change options, counts them and keeps the real ones in order", () => {
+    const { rows, hidden } = decisionOptionRows({ options: [option("Approve"), option("Change…"), option("Split into children"), option("Other")], recommended: "Approve", reason: "r" });
+    expect(rows.map((row) => row.label)).toEqual(["Approve", "Split into children"]);
+    expect(hidden).toBe(2);
+  });
+
+  it("returns the reason loose when the recommended option is a hidden one", () => {
+    const { rows, looseReason } = decisionOptionRows({ options: [option("Keep"), option("Change…")], recommended: "Change…", reason: "needs work" });
+    expect(rows.some((row) => row.recommended)).toBe(false);
+    expect(looseReason).toBe("needs work");
   });
 });
 
@@ -148,8 +169,8 @@ describe("decisionSubmit", () => {
   const { rows } = decisionOptionRows({
     options: [
       { label: "Keep", prompt: "Keep it", consequence: "", images: [] },
-      { label: "Change…", prompt: "Change it like this…", consequence: "", images: [] },
-      { label: "Other", prompt: "Something else…", consequence: "", images: [] },
+      { label: "Rename…", prompt: "Rename it like this…", consequence: "", images: [] },
+      { label: "Pick", prompt: "Pick one…", consequence: "", images: [] },
     ],
     recommended: "Keep",
     reason: "",
@@ -170,13 +191,70 @@ describe("decisionSubmit", () => {
   });
 
   it("waits for words on an option whose label or prompt ends with …", () => {
-    expect(decisionSubmit(rows, 1, "")).toMatchObject({ enabled: false, label: "Change…", placeholder: "Say how for “Change”…" });
-    expect(decisionSubmit(rows, 1, "rename it")).toMatchObject({ enabled: true, label: "Change…", text: "rename it" });
+    expect(decisionSubmit(rows, 1, "")).toMatchObject({ enabled: false, label: "Rename…", placeholder: "Say how for “Rename”…" });
+    expect(decisionSubmit(rows, 1, "call it fees")).toMatchObject({ enabled: true, label: "Rename…", text: "call it fees" });
     expect(decisionSubmit(rows, 2, " ").enabled).toBe(false);
   });
 
   it("treats a pick past the end as no pick", () => {
     expect(decisionSubmit(rows, 7, "")).toMatchObject({ enabled: false, label: null });
+  });
+
+  it("says the field asks for a change when told to, until an option is picked", () => {
+    expect(decisionSubmit(rows, null, "", CHANGE_PLACEHOLDER).placeholder).toBe("Or describe a change…");
+    expect(decisionSubmit(rows, 0, "", CHANGE_PLACEHOLDER).placeholder).toBe("Add a note (optional)…");
+  });
+});
+
+describe("isChangeOption", () => {
+  it("matches change, other and something else, alone or with …, ... or :, in any case", () => {
+    ["Change", "change…", "CHANGE...", "Other...", "other:", "Something else:", "something else …", "  Other  ", "Change …"].forEach((label) => expect(isChangeOption(label), label).toBe(true));
+  });
+
+  it("keeps real options, and an empty or blank label", () => {
+    ["Changes needed", "Other approach", "Split into children", "Changed my mind", "Change the name", "Something else entirely", "Others", "", "   "].forEach((label) => expect(isChangeOption(label), label).toBe(false));
+  });
+});
+
+describe("answerPlaceholder", () => {
+  const options = (...labels: string[]) => labels.map((label) => ({ label, prompt: label, consequence: "", images: [] }));
+
+  it("asks for a change on a scope approval, whatever its options", () => {
+    expect(answerPlaceholder({ id: "scope-approval", options: options("Yes", "No") })).toBe(CHANGE_PLACEHOLDER);
+  });
+
+  it("asks for a change when an option was hidden or one starts with Approve", () => {
+    expect(answerPlaceholder({ id: "fee-storage", options: options("Per trade", "Other") })).toBe(CHANGE_PLACEHOLDER);
+    expect(answerPlaceholder({ id: "child-breakdown", options: options("Approve the split", "Fewer children") })).toBe(CHANGE_PLACEHOLDER);
+  });
+
+  it("asks for an answer otherwise", () => {
+    expect(answerPlaceholder({ id: "fee-storage", options: options("Per trade", "Hourly", "Other approach") })).toBe(ANSWER_PLACEHOLDER);
+    expect(answerPlaceholder({ id: "q", options: [] })).toBe("Or answer in your own words…");
+  });
+});
+
+describe("planCardOptions", () => {
+  const option = (label: string, prompt = label) => ({ label, prompt, consequence: "", images: [] });
+
+  it("sends the option starting with Approve, the others beside it, change options hidden", () => {
+    expect(planCardOptions({ options: [option("Split into children"), option("Approve the plan"), option("Change…")], recommended: "Split into children" })).toEqual({
+      approve: "Approve the plan",
+      others: [{ label: "Split into children", asksForWords: false }],
+    });
+  });
+
+  it("sends the recommended option when none starts with Approve", () => {
+    expect(planCardOptions({ options: [option("Go ahead"), option("Rename", "Rename it…")], recommended: "Go ahead" })).toEqual({
+      approve: "Go ahead",
+      others: [{ label: "Rename", asksForWords: true }],
+    });
+  });
+
+  it("is null when there is neither, or the recommended one is a hidden change option", () => {
+    expect(planCardOptions({ options: [option("Go ahead"), option("Wait")], recommended: "" })).toBeNull();
+    expect(planCardOptions({ options: [option("Keep"), option("Change…")], recommended: "Change…" })).toBeNull();
+    expect(planCardOptions({ options: [], recommended: "" })).toBeNull();
   });
 });
 
@@ -188,12 +266,17 @@ describe("optionChips", () => {
   });
 
   it("keeps the agent's order and labels, marking only the recommended one", () => {
-    const chips = optionChips({ options: [option("Approve"), option("Change…"), option("Split into children")], recommended: "Approve", reason: "clear" });
+    const chips = optionChips({ options: [option("Approve"), option("Rename…"), option("Split into children")], recommended: "Approve", reason: "clear" });
     expect(chips).toEqual([
       { label: "Approve", recommended: true, asksForWords: false },
-      { label: "Change…", recommended: false, asksForWords: true },
+      { label: "Rename…", recommended: false, asksForWords: true },
       { label: "Split into children", recommended: false, asksForWords: false },
     ]);
+  });
+
+  it("leaves out change, other and something else options", () => {
+    const chips = optionChips({ options: [option("Approve"), option("Change…"), option("Other"), option("Something else:"), option("Other approach")], recommended: "Approve", reason: "" });
+    expect(chips.map((chip) => chip.label)).toEqual(["Approve", "Other approach"]);
   });
 
   it("marks none when the recommendation names no option", () => {

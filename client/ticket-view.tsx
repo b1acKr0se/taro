@@ -1,21 +1,27 @@
 /**
- * The ticket beside its owner's chat: status, description, criteria, plan, children, delivery, its
- * records as a milestone timeline, and the raw records folded away.
+ * The ticket beside its owner's chat: status, the plan (TR-061: its template sections, an older
+ * ticket's criteria under How I'll prove it, and Approve with the change field while its scope
+ * approval is open), description, children, delivery, its records as a milestone timeline, and the
+ * raw records folded away.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
-import { loadTicket } from "../shared/contracts";
+import { listOpenDecisions, loadTicket } from "../shared/contracts";
+import { SCOPE_APPROVAL, planCardOptions } from "../shared/decision-view";
 import { finalSummaryBody } from "../shared/execution";
 import { ticketMilestones, type Milestone } from "../shared/milestones";
+import { parsePlan } from "../shared/plan";
 import { PhaseBadge, SectionHeading } from "./badges";
 import { EvidenceBlock } from "./evidence-view";
 import { errorText } from "./format";
+import { KeyboardScrollView } from "./keyboard";
 import { Markdown } from "./markdown";
+import { PlanActions, PlanBody } from "./plan-card";
 import { withAlpha } from "./tint";
 import { milestoneRows } from "./milestone-rows";
 import { paneGutter, SPACE } from "./spacing";
@@ -30,13 +36,20 @@ const CLOCK = 40;
 /** A long record shows this many lines until tapped. */
 const CLIPPED_LINES = 3;
 
-export function TicketView({ project, ticket, theme }: { project: string; ticket: string; theme: PluginTheme }) {
+export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: { project: string; ticket: string; theme: PluginTheme; answeredFrom?: "screen" | "tab" }) {
   const load = useRpc(loadTicket);
+  const listDecisions = useRpc(listOpenDecisions);
   const toast = useToast();
   const detail = useQuery({ queryKey: ["taro", "ticket", project, ticket], queryFn: () => load({ project, ticket }), refetchInterval: 6_000 });
+  const decisions = useQuery({ queryKey: ["taro", "decisions", project], queryFn: () => listDecisions({ project }), refetchInterval: 4_000 });
   const [recordsOpen, setRecordsOpen] = useState(false);
   const notes = detail.data?.notes ?? null;
   const milestones = useMemo(() => ticketMilestones(notes), [notes]);
+  const planSource = detail.data?.plan ?? null;
+  const plan = useMemo(() => parsePlan(planSource), [planSource]);
+  // The open scope approval is answered at the end of the plan too, after reading it.
+  const approval = (decisions.data?.decisions ?? []).find((decision) => decision.ticket === ticket && decision.id === SCOPE_APPROVAL && decision.status === "open") ?? null;
+  const approvalOptions = useMemo(() => (approval === null ? null : planCardOptions(approval)), [approval]);
   const { colors } = theme;
   const styles = useMemo(
     () => ({
@@ -49,6 +62,8 @@ export function TicketView({ project, ticket, theme }: { project: string; ticket
       muted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, padding: SPACE.lg },
       notes: { color: colors.foreground, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption), fontFamily: MONOSPACE },
       notesFrame: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: SPACE.md, backgroundColor: colors.surface1 },
+      subheading: { color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "700" as const },
+      planActions: { marginTop: SPACE.sm },
     }),
     [colors],
   );
@@ -71,9 +86,46 @@ export function TicketView({ project, ticket, theme }: { project: string; ticket
   }
 
   const criteriaDone = data.acceptanceCriteria.filter((criterion) => criterion.checked).length;
+  // An older ticket's criteria: inside the plan, under How I'll prove it.
+  const criteria =
+    data.acceptanceCriteria.length === 0 ? null : (
+      <View style={{ gap: SPACE.sm }}>
+        {data.acceptanceCriteria.map((criterion) => (
+          <View key={criterion.index} style={styles.line}>
+            <View style={styles.lineIcon}>
+              <Icon name={criterion.checked ? "SquareCheck" : "Square"} size={15} color={criterion.checked ? colors.statusSuccess : colors.foregroundMuted} />
+            </View>
+            <Text style={styles.text}>{criterion.text}</Text>
+          </View>
+        ))}
+      </View>
+    );
+  const planContent =
+    plan !== null ? (
+      <PlanBody plan={plan} theme={theme} proof={criteria} />
+    ) : (
+      <View style={{ gap: SPACE.md }}>
+        {/* A plan in no template shape stays Markdown, as written. */}
+        {data.plan === null ? null : <Markdown source={data.plan} theme={theme} onOpenLink={noop} />}
+        {criteria === null ? null : (
+          <View style={{ gap: SPACE.xs }}>
+            <Text accessibilityRole="header" style={styles.subheading}>
+              How I’ll prove it
+            </Text>
+            {criteria}
+          </View>
+        )}
+      </View>
+    );
+  const approvalActions =
+    approval === null || approvalOptions === null ? null : (
+      <View style={styles.planActions}>
+        <PlanActions decision={approval} options={approvalOptions} theme={theme} answeredFrom={answeredFrom} onAnswered={() => void decisions.refetch()} />
+      </View>
+    );
 
   return (
-    <ScrollView contentContainerStyle={styles.body}>
+    <KeyboardScrollView contentContainerStyle={styles.body}>
       {section(
         "Info",
         "Status",
@@ -84,27 +136,22 @@ export function TicketView({ project, ticket, theme }: { project: string; ticket
           ))}
         </View>,
       )}
-      {data.description === null ? null : section("FileText", "Description", <Markdown source={data.description} theme={theme} onOpenLink={noop} />)}
-      {data.acceptanceCriteria.length === 0
+      {data.plan === null && criteria === null && approvalActions === null
         ? null
         : section(
-            "ListChecks",
-            "Acceptance criteria",
+            "Map",
+            "Plan",
             <View style={{ gap: SPACE.sm }}>
-              {data.acceptanceCriteria.map((criterion) => (
-                <View key={criterion.index} style={styles.line}>
-                  <View style={styles.lineIcon}>
-                    <Icon name={criterion.checked ? "SquareCheck" : "Square"} size={15} color={criterion.checked ? colors.statusSuccess : colors.foregroundMuted} />
-                  </View>
-                  <Text style={styles.text}>{criterion.text}</Text>
-                </View>
-              ))}
+              {planContent}
+              {approvalActions}
             </View>,
-            <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption }}>
-              {criteriaDone}/{data.acceptanceCriteria.length}
-            </Text>,
+            criteria === null ? undefined : (
+              <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption }}>
+                {criteriaDone}/{data.acceptanceCriteria.length}
+              </Text>
+            ),
           )}
-      {data.plan === null ? null : section("Map", "Plan", <Markdown source={data.plan} theme={theme} onOpenLink={noop} />)}
+      {data.description === null ? null : section("FileText", "Description", <Markdown source={data.description} theme={theme} onOpenLink={noop} />)}
       {data.children.length === 0
         ? null
         : section(
@@ -146,7 +193,7 @@ export function TicketView({ project, ticket, theme }: { project: string; ticket
               <Icon name={recordsOpen ? "ChevronDown" : "ChevronRight"} size={14} color={colors.foregroundMuted} />
             </Pressable>,
           )}
-    </ScrollView>
+    </KeyboardScrollView>
   );
 }
 

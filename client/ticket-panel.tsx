@@ -43,7 +43,7 @@ export function TicketPanel({ agentId, theme, layout }: PluginAgentPanelProps) {
           {identity.data?.role === "manager" ? `The ${project} Manager. Its tickets are on the Taro board.` : "No ticket is recorded for this agent."}
         </Text>
       ) : (
-        <TicketView project={project} ticket={ticket} theme={theme} />
+        <TicketView project={project} ticket={ticket} theme={theme} answeredFrom="tab" />
       )}
     </View>
   );

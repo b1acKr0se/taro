@@ -4,7 +4,8 @@
  * own line, all in one column beside the icon), children folded to one line, and one muted footer
  * (complexity, context, subagents, PR, and Compact when it applies). An ask is in the asker's words
  * (TR-045): a question with its options as chips that answer at once, what a permission asks to do, a
- * delivery's summary with Accept and Request changes as one pair. Once finished: what it was and what it cost.
+ * delivery's summary with Accept and Request changes as one pair; a scope approval with a template plan
+ * is the compact plan card instead (TR-061). Once finished: what it was and what it cost.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
@@ -18,6 +19,7 @@ import { cardFooterParts, cardNowLine, offersCompact, type NowLine } from "./car
 import { errorText, formatCost, pullRequestLabel, formatDuration } from "./format";
 import { SPACE } from "./spacing";
 import { OptionChips } from "./option-chips";
+import { PlanDecision } from "./plan-card";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { AcceptancePair, IconButton } from "./ui";
@@ -253,7 +255,8 @@ export function TicketCard({
     );
   }
 
-  return (
+  const asked = nowLine !== null && nowLine.kind === "call" && nowLine.call.kind === "decision" ? nowLine.call.decision : null;
+  const whole = (
     <Pressable accessibilityRole="button" onPress={onOpen} style={styles.card}>
       {head}
       <Text style={styles.title}>{card.title}</Text>
@@ -312,5 +315,12 @@ export function TicketCard({
         </View>
       ) : null}
     </Pressable>
+  );
+  if (asked === null) return whole;
+  // A scope approval with a template plan is the compact plan card, its ticket named on top (TR-061).
+  return (
+    <PlanDecision decision={asked} theme={theme} compact={compact} head={`${card.id} · ${card.title}`} onOpenHead={onOpen} onAnswered={onChanged}>
+      {whole}
+    </PlanDecision>
   );
 }

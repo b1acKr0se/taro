@@ -4,7 +4,8 @@
  * card you opened — beside its board. On a phone (decision 12): Manager · Inbox
  * · Board tabs, and a card opens its owner full screen. The board's pane
  * switches to the project's Stats (a fourth tab on a phone). On a wide screen the board can be
- * hidden; an open ticket then sits in a right-hand panel beside its chat.
+ * hidden; an open ticket then sits in a right-hand panel beside its chat. View plan on a scope
+ * approval (TR-061) opens its ticket's Ticket tab, and Back returns to where it was pressed.
  * Params: `project`, `view` ("setup" | "settings" | "inbox").
  */
 import type { PluginTheme } from "@getpaseo/plugin";
@@ -25,6 +26,7 @@ import { errorText } from "./format";
 import { Inbox } from "./inbox";
 import { keptObject } from "./kept";
 import { OwnerPane } from "./owner-pane";
+import { PlanNavigation } from "./plan-navigation";
 import { PaneHeader } from "./pane-header";
 import { projectLayout } from "./pane-layout";
 import { CreationProgress, NewProject, resetNewProject, returnToNewProject, useCreation } from "./new-project";
@@ -61,6 +63,18 @@ const remembered = keptObject(globalThis, "screen-view", {
   ticketFromView: "project" as View_,
 });
 
+/**
+ * View plan (TR-061): the ticket whose plan is open (null when none), and where Back returns to.
+ * Its own slot, so the fields keep their kinds (`kept.ts` keeps no object in a null field).
+ */
+const planReturn = keptObject(globalThis, "plan-return", {
+  ticket: null as string | null,
+  view: "project" as View_,
+  project: null as string | null,
+  openTicket: null as string | null,
+  phoneTab: "manager" as PhoneTab,
+});
+
 export function TaroScreen({ theme, layout, params, navigation }: PluginScreenProps) {
   const projects = useProjects();
   const refresh = useRefreshProjects();
@@ -95,6 +109,8 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
     choose(project, "project");
   }, [next]);
 
+  const [planTicket, setPlanTicket] = useState<string | null>(() => planReturn.ticket);
+
   function choose(project: string | null, nextView: View_, nextTicket: string | null = null): void {
     // Opening another ticket from inside one (its Answer →) keeps where the first was opened from.
     const origin = nextTicket === null ? null : ticketOrigin({ ticketOpen, project: current?.config.project ?? null, view: showing });
@@ -102,6 +118,9 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
       remembered.ticketFromProject = origin.project;
       remembered.ticketFromView = origin.view;
     }
+    // Going anywhere else leaves the plan; Back returns from it alone.
+    planReturn.ticket = null;
+    setPlanTicket(null);
     remembered.project = project;
     remembered.view = nextView;
     remembered.ticket = nextTicket;
@@ -122,6 +141,24 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
     choose(current.config.project, "project");
     return true;
   });
+
+  function viewPlan(project: string, planFor: string): void {
+    // Pressed again from inside the plan, Back still returns to where the user first was.
+    if (planReturn.ticket === null) {
+      planReturn.view = showing;
+      planReturn.project = selected;
+      planReturn.openTicket = ticket;
+      planReturn.phoneTab = remembered.phoneTab;
+    }
+    choose(project, "project", planFor);
+    planReturn.ticket = planFor;
+    setPlanTicket(planFor);
+  }
+
+  function backFromPlan(): void {
+    remembered.phoneTab = planReturn.phoneTab;
+    choose(planReturn.project, planReturn.view, planReturn.openTicket);
+  }
 
   const { colors } = theme;
   const styles = useMemo(
@@ -295,6 +332,12 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
         theme={theme}
         compact={layout.compact}
         ticket={ticket}
+        planOpen={planTicket !== null && planTicket === ticket}
+        onBackFromPlan={backFromPlan}
+        onLeavePlan={() => {
+          planReturn.ticket = null;
+          setPlanTicket(null);
+        }}
         onTicket={(next) => choose(current.config.project, "project", next)}
         onCloseTicket={closeTicket}
         onShowManager={() => choose(current.config.project, "project")}
@@ -308,14 +351,16 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   }
 
   return (
-    <View style={styles.root}>
-      {/* Inside a ticket on a phone the conversation gets the height; Back returns to the tabs (TR-031). */}
-      {layout.compact && showing === "project" && ticketOpen ? null : tabs}
-      <View style={styles.body}>
-        {projects.error !== null && projects.data === undefined ? <Text style={styles.error}>{errorText(projects.error)}</Text> : null}
-        {body}
+    <PlanNavigation.Provider value={viewPlan}>
+      <View style={styles.root}>
+        {/* Inside a ticket on a phone the conversation gets the height; Back returns to the tabs (TR-031). */}
+        {layout.compact && showing === "project" && ticketOpen ? null : tabs}
+        <View style={styles.body}>
+          {projects.error !== null && projects.data === undefined ? <Text style={styles.error}>{errorText(projects.error)}</Text> : null}
+          {body}
+        </View>
       </View>
-    </View>
+    </PlanNavigation.Provider>
   );
 }
 
@@ -325,6 +370,9 @@ function ProjectView({
   theme,
   compact,
   ticket,
+  planOpen,
+  onBackFromPlan,
+  onLeavePlan,
   onTicket,
   onCloseTicket,
   onShowManager,
@@ -348,6 +396,11 @@ function ProjectView({
   onTicketMissing: (missing: boolean) => void;
   /** Where the ticket's Back button returns, for the phone tab it returns to. */
   backTo: (phoneTab: PhoneTab) => string;
+  /** The open ticket was opened by View plan: its Ticket tab shows, and Back returns to where it was pressed. */
+  planOpen: boolean;
+  onBackFromPlan: () => void;
+  /** The user left the plan for the ticket's chat: Back goes to the Manager again. */
+  onLeavePlan: () => void;
   onSettings: () => void;
   onOpenAgent: ((agentId: string) => void) | null;
   onOpenElsewhere: (project: string, card: Card) => void;
@@ -394,7 +447,9 @@ function ProjectView({
         compact={compact}
         ticketBeside={layout.ticketBeside}
         backTo={backTo(phoneTab)}
-        onBack={onCloseTicket}
+        planOpen={planOpen}
+        onBack={planOpen ? onBackFromPlan : onCloseTicket}
+        onLeavePlan={onLeavePlan}
         onOpenAgent={onOpenAgent}
         onChanged={refreshBoard}
         onShowBoard={onShowBoard}

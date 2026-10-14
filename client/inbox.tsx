@@ -18,6 +18,7 @@ import { walkOrder } from "./walk-order";
 import { askedBy } from "../shared/decision-view";
 import { DecisionCard } from "./decision-card";
 import { KeyboardScrollView } from "./keyboard";
+import { PlanDecision } from "./plan-card";
 import { QuestionCard } from "./question-card";
 import { paneGutter, SPACE } from "./spacing";
 import { SyncProblemCard } from "./sync-problem-card";
@@ -84,19 +85,21 @@ export function Inbox({
       </SectionHeading>
       {ordered.length === 0 ? <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small }}>No open decisions.</Text> : null}
       {/* One card each, in the board's card language (TR-045): an option answers at once; Answer opens Walk me through at that question (decision 47). */}
+      {/* A scope approval with a template plan is the compact plan card instead (TR-061). */}
       {ordered.map((decision, index) => (
-        <QuestionCard
-          key={decision.key}
-          decision={decision}
-          asker={askedBy(decision)}
-          theme={theme}
-          compact={compact}
-          onOpen={() => {
-            setStep(index);
-            setWalking(true);
-          }}
-          onAnswered={refetch}
-        />
+        <PlanDecision key={decision.key} decision={decision} theme={theme} compact={compact} head={askedBy(decision)} onAnswered={refetch}>
+          <QuestionCard
+            decision={decision}
+            asker={askedBy(decision)}
+            theme={theme}
+            compact={compact}
+            onOpen={() => {
+              setStep(index);
+              setWalking(true);
+            }}
+            onAnswered={refetch}
+          />
+        </PlanDecision>
       ))}
       {projects.map((summary) => (
         <InboxProject key={summary.config.project} summary={summary} theme={theme} compact={compact} onOpenTicket={onOpenTicket} />

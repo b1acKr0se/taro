@@ -5,6 +5,8 @@
  * each open decision is a card under the message that asked it, and a delivered
  * ticket's Accept / Request changes sit in a row at the composer.
  * With the board hidden the ticket sits in its own panel beside, so the pane is the chat alone.
+ * Opened by View plan (TR-061) it shows the Ticket tab, its Plan on top, and Back returns to where
+ * View plan was pressed.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -35,7 +37,9 @@ export function OwnerPane({
   compact,
   ticketBeside,
   backTo,
+  planOpen = false,
   onBack,
+  onLeavePlan = () => undefined,
   onOpenAgent,
   onChanged,
   onShowBoard,
@@ -48,7 +52,11 @@ export function OwnerPane({
   ticketBeside: boolean;
   /** Where Back returns, as named on its button: "Board" (TR-065). */
   backTo: string;
+  /** Opened by View plan: the Ticket tab shows, and Back returns to where it was pressed. */
+  planOpen?: boolean;
   onBack: () => void;
+  /** The user switched from the plan to the chat. */
+  onLeavePlan?: () => void;
   onOpenAgent: ((agentId: string) => void) | null;
   onChanged: () => void;
   /** Brings the hidden board back; null while it shows. */
@@ -57,7 +65,9 @@ export function OwnerPane({
   const tell = useRpc(tellAgent);
   // Kept with the card it was chosen on: opening another ticket (its Answer → or Review →) starts on Chat, where its asks are answered.
   const [chosenTab, setTab] = useState<{ card: string; tab: "chat" | "ticket" } | null>(null);
-  const tab = ticketBeside || chosenTab?.card !== card.id ? "chat" : chosenTab.tab;
+  const tab = ticketBeside ? "chat" : planOpen ? "ticket" : chosenTab?.card !== card.id ? "chat" : chosenTab.tab;
+  // Back from a plan returns to wherever View plan was pressed, which it does not name.
+  const backLabel = planOpen ? "Back" : `Back to ${backTo}`;
   // Remembered with the card it was made on, so opening another ticket starts from its default agent.
   const [chosen, setChosen] = useState<{ card: string; agent: string } | null>(null);
   const agents = useMemo(() => paneAgents(card), [card.owner, card.subagents, card.pastAgents]);
@@ -80,7 +90,10 @@ export function OwnerPane({
         { value: "chat", label: "Chat", icon: "MessageSquare" },
         { value: "ticket", label: "Ticket", icon: "ClipboardList" },
       ]}
-      onChange={(value: "chat" | "ticket") => setTab({ card: card.id, tab: value })}
+      onChange={(value: "chat" | "ticket") => {
+        if (planOpen && value === "chat") onLeavePlan();
+        setTab({ card: card.id, tab: value });
+      }}
     />
   );
   return (
@@ -92,11 +105,11 @@ export function OwnerPane({
         subtitle={shown === null ? undefined : `${shown.label} · ${shown.live ? shown.brief.status : "archived"}`}
         icon={shown === null ? "Bot" : roleIcon(shown)}
         compact={compact}
-        leading={compact ? <IconButton icon="ArrowLeft" label={backTo} accessibilityLabel={`Back to ${backTo}`} showLabel theme={theme} onPress={onBack} /> : undefined}
+        leading={compact ? <IconButton icon="ArrowLeft" label={planOpen ? "Back" : backTo} accessibilityLabel={backLabel} showLabel theme={theme} onPress={onBack} /> : undefined}
       >
         {compact && !ticketBeside ? tabSwitch(true) : null}
         {shown !== null && onOpenAgent !== null ? <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(shown.id)} /> : null}
-        {compact ? null : <IconButton icon="ArrowLeft" label={`Back to ${backTo}`} showLabel theme={theme} onPress={onBack} />}
+        {compact ? null : <IconButton icon="ArrowLeft" label={backLabel} showLabel theme={theme} onPress={onBack} />}
         {onShowBoard === null ? null : <IconButton icon="PanelRightOpen" label="Show the board" theme={theme} onPress={onShowBoard} />}
       </PaneHeader>
       {/* Nothing to show here (a phone, one agent) takes no height at all. */}

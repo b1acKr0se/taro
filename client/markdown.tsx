@@ -241,3 +241,12 @@ export function Markdown({
   // Blocks a little further apart than lines, so paragraphs and lists read as separate thoughts.
   return <View style={{ gap: SPACE.sm + 2 }}>{renderBlocks(blocks, styles, { theme, lookup: files, onOpenLink, onOpenFile, images })}</View>;
 }
+
+/**
+ * One line of Markdown's inline marks (bold, code, links) as text runs, to sit inside a `Text` that
+ * gives it its style: a plan's bullet (TR-061) is a line, not a block.
+ */
+export function MarkdownInline({ text, theme, fontSize = FONT_SIZE.body, onOpenLink }: { text: string; theme: PluginTheme; fontSize?: number; onOpenLink: (url: string) => void }) {
+  const styles = useMarkdownStyles(theme, fontSize);
+  return <>{renderInline(text, styles, { theme, lookup: noFiles, onOpenLink, onOpenFile: null, images: [] })}</>;
+}

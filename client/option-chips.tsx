@@ -1,7 +1,8 @@
 /**
  * A question's options on a board or Inbox card (TR-045), in the agent's words and order, the
- * recommended one marked. Pressing one answers at once; one that asks for words ("Change…") opens the
- * full card instead, where the reasoning is and the words can be typed.
+ * recommended one marked; options that only stand for typing ("Change…", "Other") are left out
+ * (TR-061). Pressing one answers at once; one that asks for words ("Rename…") opens the full card
+ * instead, where the reasoning is and the words can be typed.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
