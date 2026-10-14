@@ -421,7 +421,7 @@ function ManagerPane({
     return (
       <View style={{ flex: 1 }}>
         {header}
-        <Text style={{ color: theme.colors.foregroundMuted, padding: SPACE.lg }}>This project has no manager running. Start one from the project's settings (⚙).</Text>
+        <Text style={{ color: theme.colors.foregroundMuted, padding: SPACE.lg }}>This project has no Manager running. Start one from the project's settings (⚙).</Text>
       </View>
     );
   }
@@ -438,7 +438,7 @@ function ManagerPane({
         agent={{ id: manager.id, updatedAt: manager.updatedAt, pendingPermissions: manager.pendingPermissions, status: manager.status }}
         theme={theme}
         compact={compact}
-        placeholder="Tell the manager what you need…"
+        placeholder="Tell the Manager what you need…"
         transformText={withoutDecisionBlocks}
         asks={{ decisions, onAnswered: onChanged }}
         onSend={async (text, attachments) => {

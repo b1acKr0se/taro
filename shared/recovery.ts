@@ -95,7 +95,7 @@ export function boardAlerts(headroom: Headroom | null, managerStalledReason: str
     });
   }
   if (managerStalledReason !== null) {
-    alerts.push({ id: "manager-crashed", text: `The manager is stopped. ${managerStalledReason} Restart it from the project's settings.` });
+    alerts.push({ id: "manager-crashed", text: `The Manager is stopped. ${managerStalledReason} Restart it from the project's settings.` });
   }
   return alerts;
 }

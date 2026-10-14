@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENTS,
+  MAX_IMAGE_BASE64_LENGTH,
   attachmentProblem,
+  imageTooLarge,
+  oversizedImageProblem,
+  refuseOversizedImages,
   base64ByteLength,
   formatBytes,
   imageFileName,
@@ -46,6 +50,46 @@ describe("attachmentProblem", () => {
     expect(base64ByteLength(exact)).toBe(MAX_ATTACHMENT_BYTES);
     expect(attachmentProblem([{ data: exact }])).toBeNull();
     expect(attachmentProblem([{ data: exact }, { data: base64("abc") }])).toMatch(/over 30.0 MB/);
+  });
+});
+
+describe("the per-image limit (TR-037)", () => {
+  const atLimit = "A".repeat(MAX_IMAGE_BASE64_LENGTH);
+  const overLimit = "A".repeat(MAX_IMAGE_BASE64_LENGTH + 4);
+
+  it("counts the encoded length, allowing exactly the limit and refusing one block more", () => {
+    expect(imageTooLarge({ data: "" })).toBe(false);
+    expect(imageTooLarge({ data: atLimit })).toBe(false);
+    expect(imageTooLarge({ data: overLimit })).toBe(true);
+    // Line breaks are not sent, so they do not count.
+    expect(imageTooLarge({ data: `${atLimit.slice(0, 10)}\n${atLimit.slice(10)}` })).toBe(false);
+  });
+
+  it("names the image, its size and the limit in decoded megabytes", () => {
+    expect(oversizedImageProblem({ data: overLimit, fileName: "IMG_1.HEIC" })).toBe("“IMG_1.HEIC” is 3.8 MB and could not be made smaller; an agent takes images of at most 3.8 MB.");
+    expect(oversizedImageProblem({ data: "A".repeat(8 * 1024 * 1024) })).toMatch(/^An image is 6.0 MB/);
+  });
+
+  it("refuses an oversized image in a message, but never a file of that size", () => {
+    expect(attachmentProblem([{ kind: "image", data: atLimit }])).toBeNull();
+    expect(attachmentProblem([{ kind: "file", data: overLimit }])).toBeNull();
+    expect(attachmentProblem([{ data: overLimit }])).toBeNull();
+    expect(attachmentProblem([{ kind: "file", data: "" }, { kind: "image", fileName: "b.png", data: overLimit }])).toMatch(/^“b.png” is/);
+  });
+
+  it("keeps what fits, in order, and says why the rest was left out", () => {
+    const list = [
+      { kind: "image" as const, fileName: "big.jpg", data: overLimit },
+      { kind: "image" as const, fileName: "small.jpg", data: "AA==" },
+      { kind: "file" as const, fileName: "large.zip", data: overLimit },
+      { kind: "image" as const, fileName: "big2.jpg", data: overLimit },
+    ];
+    const { fitting, problem } = refuseOversizedImages(list);
+    expect(fitting.map((item) => item.fileName)).toEqual(["small.jpg", "large.zip"]);
+    expect(problem).toMatch(/^“big.jpg” is .* at most 3.8 MB\. 1 more image was left out too\.$/);
+    expect(refuseOversizedImages(["a.jpg", "b.jpg", "c.jpg"].map((fileName) => ({ kind: "image" as const, fileName, data: overLimit }))).problem).toMatch(/ 2 more images were left out too\.$/);
+    expect(refuseOversizedImages([])).toEqual({ fitting: [], problem: null });
+    expect(refuseOversizedImages(list.slice(1, 3))).toEqual({ fitting: list.slice(1, 3), problem: null });
   });
 });
 

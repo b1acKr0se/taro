@@ -31,8 +31,9 @@ app fully and reopen it, so it fetches the plugin list again.
 
 The + in Taro's chats attaches images and files. On the phone app it uses the image picker,
 clipboard and document picker built into Paseo's app, which plugins reach only through an
-undocumented path (`globalThis.expo.modules`). If a Paseo update changes them, the matching item
-disappears from the + menu; see `client/attachment-sources.ts`.
+undocumented path (`globalThis.expo.modules`), and its image manipulator to shrink a photo too
+large for the agent. If a Paseo update changes them, the matching item disappears from the + menu,
+or large photos are refused instead of shrunk; see `client/attachment-sources.ts`.
 
 ## Read first
 

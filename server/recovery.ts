@@ -185,9 +185,9 @@ export class Recovery {
       }
       if (identity.role === "manager") {
         const config = await requireProjectConfig(identity.project);
-        if (config.managerAgentId !== agent.id) return "left it: it is no longer the project's manager";
+        if (config.managerAgentId !== agent.id) return "left it: it is no longer the project's Manager";
         const restarted = await restartManager(paseo, identity.project);
-        return `restarted the manager as ${restarted.agentId}`;
+        return `restarted the Manager as ${restarted.agentId}`;
       }
     } catch (error: unknown) {
       const reason = `the fallback failed too (${oneLine(error instanceof Error ? error.message : String(error))})`;

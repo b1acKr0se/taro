@@ -103,7 +103,7 @@ export function launchManager(paseo: PaseoApi, project: string): Promise<{ agent
   return serialized(`manager:${project}`, async () => {
     const config = await requireProjectConfig(project);
     const current = await resolveManager(paseo, config);
-    if (current.agent !== null) throw new Error(`${project} already has a manager (${current.agent.title ?? current.agent.id}).`);
+    if (current.agent !== null) throw new Error(`${project} already has a Manager (${current.agent.title ?? current.agent.id}).`);
     return startManager(paseo, config, false);
   });
 }
@@ -114,7 +114,7 @@ export function restartManager(paseo: PaseoApi, project: string): Promise<{ agen
     const config = await requireProjectConfig(project);
     const { agent } = await resolveManager(paseo, config);
     if (agent !== null) {
-      if (isMidTurn(agent)) throw new Error(`The ${project} manager is in the middle of a turn. Restart it once it is idle.`);
+      if (isMidTurn(agent)) throw new Error(`The ${project} Manager is in the middle of a turn. Restart it once it is idle.`);
       await paseo.agents.ref(agent.id).archive();
     }
     return startManager(paseo, config, agent !== null);
@@ -123,13 +123,13 @@ export function restartManager(paseo: PaseoApi, project: string): Promise<{ agen
 
 async function requireManager(paseo: PaseoApi, project: string): Promise<PaseoAgent> {
   const { agent } = await resolveManager(paseo, await requireProjectConfig(project));
-  if (agent === null) throw new Error(`${project} has no manager yet. Start it from the project's settings.`);
+  if (agent === null) throw new Error(`${project} has no Manager yet. Start it from the project's settings.`);
   return agent;
 }
 
 export async function tellManager(paseo: PaseoApi, project: string, text: string, attachments: Attachments = {}): Promise<string> {
   const words = text.trim();
-  if (words === "" && !hasAttachments(attachments)) throw new Error("Say something to the manager.");
+  if (words === "" && !hasAttachments(attachments)) throw new Error("Say something to the Manager.");
   const agent = await requireManager(paseo, project);
   await sendWithAttachments(paseo, agent.id, words, attachments);
   return agent.id;
@@ -137,7 +137,7 @@ export async function tellManager(paseo: PaseoApi, project: string, text: string
 
 export async function compactManager(paseo: PaseoApi, project: string): Promise<string> {
   const agent = await requireManager(paseo, project);
-  if (isMidTurn(agent)) throw new Error(`The ${project} manager is in the middle of a turn. Compact it once it is idle.`);
+  if (isMidTurn(agent)) throw new Error(`The ${project} Manager is in the middle of a turn. Compact it once it is idle.`);
   await sendCommand(paseo, agent.id, "/compact");
   return agent.id;
 }

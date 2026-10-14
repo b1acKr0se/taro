@@ -10,7 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Keyboard, Platform, Pressable, SafeAreaView, ScrollView, Text, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
 
-import { attachmentProblem, outgoingAttachments, type DraftAttachment, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
+import { attachmentProblem, outgoingAttachments, refuseOversizedImages, type DraftAttachment, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
 import { listSentImages, type SentImagesMessage } from "../shared/contracts";
 import { imagesFromPaste, pickAttachments } from "./attachment-pickers";
 import { availableSources, type AttachmentSource } from "./attachment-sources";
@@ -227,10 +227,12 @@ export function AgentChat({
     setAttachmentsState(next);
   }
 
-  /** Adds to what is attached, unless together they are too many or too large to send. */
+  /** Adds to what is attached, but no image too large for the agent, and nothing when together they are too many or too large to send. */
   function addAttachments(added: readonly DraftAttachment[]): void {
-    if (added.length === 0) return;
-    const next = [...draftAttachments.get(agent.id), ...added];
+    const { fitting, problem: oversized } = refuseOversizedImages(added);
+    if (oversized !== null) toast.error(oversized);
+    if (fitting.length === 0) return;
+    const next = [...draftAttachments.get(agent.id), ...fitting];
     const problem = attachmentProblem(next);
     if (problem !== null) toast.error(problem);
     else setAttachments(next);

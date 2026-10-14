@@ -20,10 +20,11 @@ Taro project, so the plugin you change is the one supervising you: change it car
   when the load throws or `contribute()` stops registering the Taro screen.
 - Composer attachments on the phone (TR-036, decision 53) use Expo native modules Paseo's app ships
   for its own composer, through the undocumented `globalThis.expo.modules` (`ExponentImagePicker`,
-  `ExpoClipboard`, `ExpoDocumentPicker`, `ExponentFileSystem`): names and functions are in
+  `ExpoClipboard`, `ExpoDocumentPicker`, `ExponentFileSystem`, and `ExpoImageManipulator` to
+  shrink an image over the agent's limit, TR-037): names and functions are in
   `client/attachment-sources.ts`. Look a module up when it is used, never at module scope. If the
-  phone stops offering Add image, Paste image or Upload file after a Paseo update, a module was
-  renamed or reshaped there.
+  phone stops offering Add image, Paste image or Upload file after a Paseo update, or refuses every
+  large photo as one that "could not be made smaller", a module was renamed or reshaped there.
 - Agent-facing text lives in `skill/` (what agents read) and `templates/` (what the plugin writes or
   sends), never in code.
 - Comments explain why, briefly. Full identifiers, no abbreviations.

@@ -2,10 +2,12 @@
  * Getting attachments from the user (TR-036): a browser's file input and clipboard on the web, the
  * app's Expo modules on the phone (`attachment-sources.ts` says which are there). Each resolves to the
  * picked attachments, an empty list when the user cancels, or rejects with a sentence. Called with
- * the global object, never reading it at module scope.
+ * the global object, never reading it at module scope. An image too large for the agent comes back
+ * shrunk where this client can, else as it was for the composer to refuse (`image-shrink.ts`).
  */
 import { imageFileName, parseDataUrl, type DraftAttachment } from "../shared/attachments";
 import { expoModule, type AttachmentSource } from "./attachment-sources";
+import { fitImage } from "./image-shrink";
 
 type Loose = Record<string, unknown>;
 
@@ -65,7 +67,7 @@ async function webFilesAsAttachments(root: Loose, files: unknown[], kind: DraftA
     files.map(async (file, index) => {
       const { mimeType, data } = await readBlob(root, file);
       const type = text((file as Loose).type) ?? mimeType;
-      return { id: attachmentId(), kind, fileName: text((file as Loose).name) ?? imageFileName(type, index), mimeType: type, data };
+      return fitImage(root, "web", { id: attachmentId(), kind, fileName: text((file as Loose).name) ?? imageFileName(type, index), mimeType: type, data });
     }),
   );
 }
@@ -83,7 +85,7 @@ async function pasteWebImage(root: Loose): Promise<DraftAttachment[]> {
   return Promise.all(
     images.map(async ({ item, type }, index) => {
       const { data } = await readBlob(root, await item.getType(type));
-      return { id: attachmentId(), kind: "image" as const, fileName: imageFileName(type, index), mimeType: type, data };
+      return fitImage(root, "web", { id: attachmentId(), kind: "image", fileName: imageFileName(type, index), mimeType: type, data });
     }),
   );
 }
@@ -121,7 +123,7 @@ async function pickPhoneImages(root: Loose): Promise<DraftAttachment[]> {
     asList(result.assets).map(async (asset, index) => {
       const mimeType = text(asset.mimeType) ?? "image/jpeg";
       const data = text(asset.base64) ?? (await readLocalFile(root, String(asset.uri)));
-      return { id: attachmentId(), kind: "image" as const, fileName: text(asset.fileName) ?? imageFileName(mimeType, index), mimeType, data };
+      return fitImage(root, "phone", { id: attachmentId(), kind: "image", fileName: text(asset.fileName) ?? imageFileName(mimeType, index), mimeType, data }, text(asset.uri));
     }),
   );
 }
@@ -132,7 +134,7 @@ async function pastePhoneImage(root: Loose): Promise<DraftAttachment[]> {
   const image = (await clipboard.getImageAsync?.({ format: "png", jpegQuality: 1 })) as Loose | null;
   const parsed = image === null ? null : parseDataUrl(String(image.data));
   if (parsed === null) throw new Error("There is no image on the clipboard.");
-  return [{ id: attachmentId(), kind: "image", fileName: imageFileName(parsed.mimeType, 0), mimeType: parsed.mimeType, data: parsed.data }];
+  return [await fitImage(root, "phone", { id: attachmentId(), kind: "image", fileName: imageFileName(parsed.mimeType, 0), mimeType: parsed.mimeType, data: parsed.data })];
 }
 
 async function pickPhoneFiles(root: Loose): Promise<DraftAttachment[]> {

@@ -30,7 +30,7 @@ export function hasAttachments(attachments: Attachments): boolean {
 export async function sendWithAttachments(paseo: PaseoApi, agentId: string, words: string, attachments: Attachments, home = paseoHome()): Promise<void> {
   const images = attachments.images ?? [];
   const files = attachments.files ?? [];
-  const problem = attachmentProblem([...images, ...files]);
+  const problem = attachmentProblem([...images.map((image) => ({ ...image, kind: "image" as const })), ...files]);
   if (problem !== null) throw new Error(problem);
   const ids = files.map(() => `upload_${randomUUID()}`);
   const directories = ids.map((id) => join(home, "uploads", id));

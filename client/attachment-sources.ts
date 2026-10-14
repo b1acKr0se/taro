@@ -16,12 +16,13 @@ export const ATTACHMENT_SOURCES: readonly { source: AttachmentSource; label: str
   { source: "file", label: "Upload file", icon: "Paperclip" },
 ];
 
-/** The native module names and the functions Taro calls on each (expo-image-picker 17, expo-clipboard 8, expo-document-picker 14, expo-file-system 19). */
+/** The native module names and the functions Taro calls on each (expo-image-picker 17, expo-clipboard 8, expo-document-picker 14, expo-file-system 19, expo-image-manipulator 14 to shrink images, TR-037). */
 export const EXPO_MODULES = {
   imagePicker: { name: "ExponentImagePicker", methods: ["launchImageLibraryAsync"] },
   clipboard: { name: "ExpoClipboard", methods: ["getImageAsync"] },
   documentPicker: { name: "ExpoDocumentPicker", methods: ["getDocumentAsync"] },
   fileSystem: { name: "ExponentFileSystem", methods: ["readAsStringAsync"] },
+  imageManipulator: { name: "ExpoImageManipulator", methods: ["manipulate"] },
 } as const;
 
 export type ExpoModuleKey = keyof typeof EXPO_MODULES;

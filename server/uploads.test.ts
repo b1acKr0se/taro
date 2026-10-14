@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { MAX_ATTACHMENTS } from "../shared/attachments";
+import { MAX_ATTACHMENTS, MAX_IMAGE_BASE64_LENGTH } from "../shared/attachments";
 import type { PaseoApi } from "./host-types";
 import { hasAttachments, sendWithAttachments } from "./uploads";
 
@@ -127,6 +127,16 @@ describe("sendWithAttachments", () => {
     await expect(sendWithAttachments(paseo, "agent-1", "x", { files }, home)).rejects.toThrow(/at most/);
     expect(await uploads()).toEqual([]);
     expect(sent).toEqual([]);
+  });
+
+  it("refuses an image over the provider's limit before writing or sending anything, but not a file that large (TR-037)", async () => {
+    const large = "A".repeat(MAX_IMAGE_BASE64_LENGTH + 4);
+    const file = { fileName: "a.txt", mimeType: "text/plain", data: base64("x") };
+    await expect(sendWithAttachments(paseo, "agent-1", "x", { images: [{ mimeType: "image/jpeg", data: large }], files: [file] }, home)).rejects.toThrow(/could not be made smaller/);
+    expect(await uploads()).toEqual([]);
+    expect(sent).toEqual([]);
+    await sendWithAttachments(paseo, "agent-1", "x", { images: [{ mimeType: "image/jpeg", data: "A".repeat(MAX_IMAGE_BASE64_LENGTH) }], files: [{ ...file, data: large }] }, home);
+    expect(sent).toHaveLength(1);
   });
 
   it("removes the files it wrote when the send fails, so a retry leaves no orphan", async () => {

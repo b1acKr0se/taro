@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { MAX_IMAGE_BASE64_LENGTH } from "../shared/attachments";
 import { imagesFromPaste, pickAttachments } from "./attachment-pickers";
 
 /** A stand-in for the `FileReader` of a browser or React Native: a "blob" here is `{ type, content }`. */
@@ -39,6 +40,36 @@ describe("pickAttachments on the phone app", () => {
     ]);
     expect(new Set(picked.map((item) => item.id)).size).toBe(2);
     expect(asked).toEqual([{ mediaTypes: ["images"], allowsMultipleSelection: true, quality: 0.8, base64: true }]);
+  });
+
+  it("shrinks a picked photo over the agent's limit from its file, leaving smaller ones alone (TR-037)", async () => {
+    const shrunkFrom: string[] = [];
+    const root = phone({
+      ExponentImagePicker: {
+        launchImageLibraryAsync: async () => ({
+          canceled: false,
+          assets: [
+            { uri: "file:///big.heic", base64: "A".repeat(MAX_IMAGE_BASE64_LENGTH + 4), mimeType: "image/heic", fileName: "IMG_2.HEIC" },
+            { uri: "file:///small.jpg", base64: b64("small"), mimeType: "image/jpeg", fileName: "IMG_3.jpg" },
+          ],
+        }),
+      },
+      ExpoImageManipulator: {
+        manipulate: (uri: string) => {
+          shrunkFrom.push(uri);
+          return {
+            resize: () => undefined,
+            renderAsync: async () => ({ width: 4032, height: 3024, saveAsync: async () => ({ base64: b64("shrunk") }) }),
+          };
+        },
+      },
+    });
+    const picked = await pickAttachments(root, "ios", "image");
+    expect(picked.map(({ fileName, mimeType, data }) => ({ fileName, mimeType, data }))).toEqual([
+      { fileName: "IMG_2.jpg", mimeType: "image/jpeg", data: b64("shrunk") },
+      { fileName: "IMG_3.jpg", mimeType: "image/jpeg", data: b64("small") },
+    ]);
+    expect(new Set(shrunkFrom)).toEqual(new Set(["file:///big.heic"]));
   });
 
   it("reads an image from its file when the picker gave no base64", async () => {

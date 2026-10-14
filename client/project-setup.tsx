@@ -106,7 +106,7 @@ export function ProjectSetup({
     try {
       if (existing === null) {
         const result = await onboard({ project: draft.project.trim(), settings: settingsFrom(draft, defaultModel), startManager: true });
-        toast.show(`${result.config.project} added; its manager is starting.`, { variant: "success" });
+        toast.show(`${result.config.project} added; its Manager is starting.`, { variant: "success" });
         onDone(result.config.project);
       } else {
         await save({ project: existing.project, settings: settingsFrom(draft, defaultModel) });
@@ -184,7 +184,7 @@ export function ProjectSetup({
         </Text>
         <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) }}>
           {existing === null
-            ? "Taro gives the project its own ticket tracker and a manager. You talk to the manager; it looks into each request, files a ticket and starts a task owner."
+            ? "Taro gives the project its own ticket tracker and a Manager. You talk to the Manager; it looks into each request, files a ticket and starts a task owner."
             : "Changes apply to agents started from now on. Running agents keep their settings."}
         </Text>
       </View>
@@ -308,7 +308,7 @@ export function ProjectSetup({
       </FormSection>
 
       <FormSection theme={theme} icon="Gauge" title="Limits" description="How much runs at once, and when long conversations are compacted.">
-        <Field theme={theme} wide={wide} label="Owners running at once" hint="The manager queues the rest; every agent costs host resources and money." error={problem("maxParallelOwners")}>
+        <Field theme={theme} wide={wide} label="Owners running at once" hint="The Manager queues the rest; every agent costs host resources and money." error={problem("maxParallelOwners")}>
           <TextField
             theme={theme}
             accessibilityLabel="Owners running at once"
@@ -330,7 +330,7 @@ export function ProjectSetup({
           theme={theme}
           wide={wide}
           label="Compact idle agents above"
-          hint="Tokens of context; an owner or the manager idle for 55 minutes is compacted before its prompt cache expires."
+          hint="Tokens of context; an owner or the Manager idle for 55 minutes is compacted before its prompt cache expires."
           error={problem("idleCompactThresholdTokens")}
         >
           <TextField
@@ -349,7 +349,7 @@ export function ProjectSetup({
           icon="ScrollText"
           title="Standing orders"
           tag="optional"
-          description="Rules for this project on top of the repository's own instructions; the manager copies the ones that apply into every brief."
+          description="Rules for this project on top of the repository's own instructions; the Manager copies the ones that apply into every brief."
         >
           {orders === null ? (
             <Text style={muted}>Loading…</Text>
@@ -360,7 +360,7 @@ export function ProjectSetup({
       )}
 
       {existing === null ? null : (
-        <FormSection theme={theme} icon="UserCog" title="Manager" description="Start a manager when the project has none, or restart it fresh. Tickets are kept either way.">
+        <FormSection theme={theme} icon="UserCog" title="Manager" description="Start a Manager when the project has none, or restart it fresh. Tickets are kept either way.">
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: SPACE.sm }}>
             <IconButton theme={theme} icon="Play" label="Start Manager" showLabel disabled={busy} onPress={() => void managerAction("launch")} />
             <IconButton theme={theme} icon="RotateCcw" label="Restart Manager" showLabel disabled={busy} onPress={() => void managerAction("restart")} />

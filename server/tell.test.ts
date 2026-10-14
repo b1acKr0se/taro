@@ -90,12 +90,12 @@ describe("telling a project's manager", () => {
   });
 
   it("still refuses a message with neither words nor attachments", async () => {
-    await expect(tellManager(paseo, "demo", " ")).rejects.toThrow("Say something to the manager.");
+    await expect(tellManager(paseo, "demo", " ")).rejects.toThrow("Say something to the Manager.");
   });
 
   it("refuses a project without a running manager before writing any file", async () => {
     live = [];
-    await expect(tellManager(paseo, "demo", "", { files: [FILE] })).rejects.toThrow("has no manager");
+    await expect(tellManager(paseo, "demo", "", { files: [FILE] })).rejects.toThrow("has no Manager");
     expect(await uploads()).toEqual([]);
   });
 });

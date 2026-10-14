@@ -132,7 +132,7 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
               </View>
             );
           })}
-          <Text style={styles.note}>A child ticket's agents, turns, cost and time also count on its parent, so the totals add those up once. Idle compactions in the total include the manager's.</Text>
+          <Text style={styles.note}>A child ticket's agents, turns, cost and time also count on its parent, so the totals add those up once. Idle compactions in the total include the Manager's.</Text>
         </View>
       </ScrollView>
     </ScrollView>

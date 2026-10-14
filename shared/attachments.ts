@@ -32,15 +32,48 @@ export const MAX_ATTACHMENT_BYTES = 30 * 1024 * 1024;
 
 /** The decoded size of base64 `data`. */
 export function base64ByteLength(data: string): number {
-  const length = data.replace(/[^A-Za-z0-9+/=]/g, "").length;
+  const length = base64Length(data);
   if (length === 0) return 0;
   const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
   return Math.floor((length * 3) / 4) - padding;
 }
 
+/**
+ * One image's limit, on the base64 the provider receives: Claude refuses an image over 5 MB encoded
+ * and the agent's turn then fails (TR-037). The strictest provider limit Taro knows, for every agent.
+ */
+export const MAX_IMAGE_BASE64_LENGTH = 5 * 1024 * 1024;
+
+/** The base64 length `data` takes without whitespace. */
+function base64Length(data: string): number {
+  return data.replace(/[^A-Za-z0-9+/=]/g, "").length;
+}
+
+export function imageTooLarge(image: { data: string }): boolean {
+  return base64Length(image.data) > MAX_IMAGE_BASE64_LENGTH;
+}
+
+/** Why the composer refuses an image no client could make small enough. */
+export function oversizedImageProblem(image: { data: string; fileName?: string }): string {
+  const name = image.fileName === undefined || image.fileName === "" ? "An image" : `“${image.fileName}”`;
+  return `${name} is ${formatBytes(base64ByteLength(image.data))} and could not be made smaller; an agent takes images of at most ${formatBytes((MAX_IMAGE_BASE64_LENGTH * 3) / 4)}.`;
+}
+
+/** Splits what the composer is adding into what can be attached and why the rest cannot. */
+export function refuseOversizedImages<T extends { kind: "image" | "file"; data: string; fileName?: string }>(added: readonly T[]): { fitting: T[]; problem: string | null } {
+  const oversized = added.filter((attachment) => attachment.kind === "image" && imageTooLarge(attachment));
+  const first = oversized[0];
+  if (first === undefined) return { fitting: [...added], problem: null };
+  const more = oversized.length - 1;
+  const others = more === 0 ? "" : ` ${more} more ${more === 1 ? "image was" : "images were"} left out too.`;
+  return { fitting: added.filter((attachment) => !oversized.includes(attachment)), problem: oversizedImageProblem(first) + others };
+}
+
 /** A sentence saying why these attachments cannot be sent together, or null when they can. */
-export function attachmentProblem(attachments: readonly { data: string }[]): string | null {
+export function attachmentProblem(attachments: readonly { data: string; kind?: "image" | "file"; fileName?: string }[]): string | null {
   if (attachments.length > MAX_ATTACHMENTS) return `Attach at most ${MAX_ATTACHMENTS} files to one message.`;
+  const oversized = attachments.find((attachment) => attachment.kind === "image" && imageTooLarge(attachment));
+  if (oversized !== undefined) return oversizedImageProblem(oversized);
   const bytes = attachments.reduce((total, attachment) => total + base64ByteLength(attachment.data), 0);
   if (bytes > MAX_ATTACHMENT_BYTES) return `Attachments over ${formatBytes(MAX_ATTACHMENT_BYTES)} cannot go in one message (these are ${formatBytes(bytes)}).`;
   return null;

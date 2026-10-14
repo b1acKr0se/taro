@@ -298,12 +298,12 @@ export function ProjectBoard({
         )}
         {managerDecisions.length === 0 ? null : (
           <View style={styles.section}>
-            <SectionHeading theme={theme} icon="MessageCircleQuestion" text="The manager asks" color={colors.statusWarning} />
+            <SectionHeading theme={theme} icon="MessageCircleQuestion" text="The Manager asks" color={colors.statusWarning} />
             {managerDecisions.map((decision) => (
               <Pressable
                 key={decision.key}
                 accessibilityRole="button"
-                accessibilityLabel={`Answer the manager: ${decision.question}`}
+                accessibilityLabel={`Answer the Manager: ${decision.question}`}
                 style={[styles.ask, decision.blocking ? { borderColor: withAlpha(colors.statusWarning, 0.6) } : null]}
                 onPress={onOpenManager}
               >
