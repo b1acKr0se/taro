@@ -44,11 +44,22 @@ export function screenBackStep(state: { view: "inbox" | "project" | "setup" | "s
   return null;
 }
 
-/** The ticket's Back button names where it returns: the phone tab, or the wide Inbox or Manager. */
-export function ticketBackLabel(compact: boolean, phoneTab: "manager" | "inbox" | "board" | "stats", returnView: string): string {
-  if (!compact) return returnView === "inbox" ? "Back to Inbox" : "Back to Manager";
+/** Where the ticket's Back button returns, as it names it: the phone tab, or the wide Inbox or Manager. */
+export function ticketBackTarget(compact: boolean, phoneTab: "manager" | "inbox" | "board" | "stats", returnView: string): string {
+  if (!compact) return returnView === "inbox" ? "Inbox" : "Manager";
   const names = { manager: "Manager", inbox: "Inbox", board: "Board", stats: "Stats" };
-  return `Back to ${names[phoneTab]}`;
+  return names[phoneTab];
+}
+
+/**
+ * Whether the ticket in the screen's state is drawn: "missing" once the board has loaded without
+ * its card (archived while open), where the project's tabs show and back leaves Taro as at the top
+ * level. One answer for the back step, the tab bar and where a newly opened ticket returns.
+ */
+export function ticketShown(state: { ticket: string | null; boardLoaded: boolean; cardFound: boolean }): "open" | "missing" | "none" {
+  if (state.ticket === null) return "none";
+  if (state.cardFound || !state.boardLoaded) return "open";
+  return "missing";
 }
 
 /**

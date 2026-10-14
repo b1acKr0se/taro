@@ -22,6 +22,7 @@ export function IconButton({
   tone = "default",
   disabled = false,
   showLabel = false,
+  accessibilityLabel,
   grow = false,
   state,
 }: {
@@ -35,6 +36,8 @@ export function IconButton({
   state?: "busy" | "done" | undefined;
   /** Draws the label beside the icon; otherwise it is only the accessibility label. */
   showLabel?: boolean;
+  /** Read out in place of a shown label too short to say what the button does ("Board" for Back to Board). */
+  accessibilityLabel?: string;
   /** Takes a share of its row's spare width, its content centred: one of a pair that wraps to equal full-width rows. */
   grow?: boolean;
 }) {
@@ -69,7 +72,7 @@ export function IconButton({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled: disabled || busy, busy }}
       disabled={disabled || busy}
       onPress={onPress}

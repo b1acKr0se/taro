@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createBackStack, pressBack, screenBackStep, ticketBackLabel, ticketOrigin } from "./back-steps";
+import { createBackStack, pressBack, screenBackStep, ticketBackTarget, ticketOrigin, ticketShown } from "./back-steps";
 
 describe("createBackStack", () => {
   it("takes no step when nothing is open, so back leaves Taro", () => {
@@ -81,16 +81,31 @@ describe("ticketOrigin", () => {
   });
 });
 
-describe("ticketBackLabel", () => {
+describe("ticketBackTarget", () => {
   it("names the phone tab the ticket returns to", () => {
-    expect(ticketBackLabel(true, "manager", "project")).toBe("Back to Manager");
-    expect(ticketBackLabel(true, "inbox", "project")).toBe("Back to Inbox");
-    expect(ticketBackLabel(true, "board", "project")).toBe("Back to Board");
-    expect(ticketBackLabel(true, "stats", "project")).toBe("Back to Stats");
+    expect(ticketBackTarget(true, "manager", "project")).toBe("Manager");
+    expect(ticketBackTarget(true, "inbox", "project")).toBe("Inbox");
+    expect(ticketBackTarget(true, "board", "project")).toBe("Board");
+    expect(ticketBackTarget(true, "stats", "project")).toBe("Stats");
   });
 
   it("names the wide Inbox or the Manager on a wide screen", () => {
-    expect(ticketBackLabel(false, "board", "inbox")).toBe("Back to Inbox");
-    expect(ticketBackLabel(false, "board", "project")).toBe("Back to Manager");
+    expect(ticketBackTarget(false, "board", "inbox")).toBe("Inbox");
+    expect(ticketBackTarget(false, "board", "project")).toBe("Manager");
+  });
+});
+
+describe("ticketShown", () => {
+  it("is none without a ticket", () => {
+    expect(ticketShown({ ticket: null, boardLoaded: true, cardFound: false })).toBe("none");
+  });
+
+  it("is open while its card is drawn, or while the board is still loading", () => {
+    expect(ticketShown({ ticket: "NA-002", boardLoaded: true, cardFound: true })).toBe("open");
+    expect(ticketShown({ ticket: "NA-002", boardLoaded: false, cardFound: false })).toBe("open");
+  });
+
+  it("is missing once the board has loaded without its card", () => {
+    expect(ticketShown({ ticket: "NA-002", boardLoaded: true, cardFound: false })).toBe("missing");
   });
 });

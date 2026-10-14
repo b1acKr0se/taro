@@ -34,7 +34,7 @@ export function OwnerPane({
   theme,
   compact,
   ticketBeside,
-  backLabel,
+  backTo,
   onBack,
   onOpenAgent,
   onChanged,
@@ -46,8 +46,8 @@ export function OwnerPane({
   compact: boolean;
   /** The ticket is drawn in a panel beside this pane: no Chat · Ticket switch. */
   ticketBeside: boolean;
-  /** Names where Back returns: "Back to Board" (TR-065). */
-  backLabel: string;
+  /** Where Back returns, as named on its button: "Board" (TR-065). */
+  backTo: string;
   onBack: () => void;
   onOpenAgent: ((agentId: string) => void) | null;
   onChanged: () => void;
@@ -92,11 +92,11 @@ export function OwnerPane({
         subtitle={shown === null ? undefined : `${shown.label} · ${shown.live ? shown.brief.status : "archived"}`}
         icon={shown === null ? "Bot" : roleIcon(shown)}
         compact={compact}
-        leading={compact ? <IconButton icon="ArrowLeft" label={backLabel} theme={theme} onPress={onBack} /> : undefined}
+        leading={compact ? <IconButton icon="ArrowLeft" label={backTo} accessibilityLabel={`Back to ${backTo}`} showLabel theme={theme} onPress={onBack} /> : undefined}
       >
         {compact && !ticketBeside ? tabSwitch(true) : null}
         {shown !== null && onOpenAgent !== null ? <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(shown.id)} /> : null}
-        {compact ? null : <IconButton icon="ArrowLeft" label={backLabel} showLabel theme={theme} onPress={onBack} />}
+        {compact ? null : <IconButton icon="ArrowLeft" label={`Back to ${backTo}`} showLabel theme={theme} onPress={onBack} />}
         {onShowBoard === null ? null : <IconButton icon="PanelRightOpen" label="Show the board" theme={theme} onPress={onShowBoard} />}
       </PaneHeader>
       {/* Nothing to show here (a phone, one agent) takes no height at all. */}
