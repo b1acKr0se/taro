@@ -22,6 +22,7 @@ import { useBoard, useRefreshBoard } from "./board-data";
 import { ProjectBoard } from "./board";
 import { errorText } from "./format";
 import { Inbox } from "./inbox";
+import { keptObject } from "./kept";
 import { OwnerPane } from "./owner-pane";
 import { PaneHeader } from "./pane-header";
 import { projectLayout } from "./pane-layout";
@@ -37,15 +38,18 @@ type View_ = "inbox" | "project" | "setup" | "settings";
 type PhoneTab = "manager" | "inbox" | "board" | "stats";
 type RightPane = "board" | "stats";
 
-/** What the screen shows, kept across remounts (the host unmounts a screen whenever the user navigates away). */
-const remembered: { project: string | null; view: View_; phoneTab: PhoneTab; rightPane: RightPane; ticket: string | null; boardHidden: boolean } = {
-  project: null,
-  view: "project",
-  phoneTab: "manager",
-  rightPane: "board",
-  ticket: null,
+/**
+ * What the screen shows, kept across remounts (the host unmounts a screen whenever the user navigates away)
+ * and across the bundle's re-evaluation when the host's connection comes back (TR-038).
+ */
+const remembered = keptObject(globalThis, "screen-view", {
+  project: null as string | null,
+  view: "project" as View_,
+  phoneTab: "manager" as PhoneTab,
+  rightPane: "board" as RightPane,
+  ticket: null as string | null,
   boardHidden: false,
-};
+});
 
 export function TaroScreen({ theme, layout, params, navigation }: PluginScreenProps) {
   const projects = useProjects();

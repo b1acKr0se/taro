@@ -17,8 +17,11 @@ export interface TimelineCache<Value> {
  * A closure, not a class: the plugin's client bundle bypasses Metro, and Hermes on the phone fails
  * the whole plugin at load on class syntax (TR-023).
  */
-export function createTimelineCache<Value>(capacity: number = CACHED_AGENTS): TimelineCache<Value> {
-  const values = new Map<string, Value>();
+export function createTimelineCache<Value>(
+  capacity: number = CACHED_AGENTS,
+  /** Where the reads live; pass a kept map to outlive the bundle's evaluation (TR-038). */
+  values: Map<string, Value> = new Map<string, Value>(),
+): TimelineCache<Value> {
   return {
     get(agentId) {
       const value = values.get(agentId);

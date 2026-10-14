@@ -24,10 +24,13 @@ daemon's machine; the GitHub CLI `gh` is optional (pull-request delivery uses it
 No `npm install` or build step: Paseo compiles the plugin. To develop it, clone this repository,
 run `npm install`, `npm run typecheck` and `npm test`, and follow `AGENTS.md`.
 
-If an app shows Taro as "taro" with "This plugin surface is unavailable.", that app could not load
-Taro's client. Open Settings → Plugins in the same app: Taro's row shows the error in red. Copy it
-into a bug report before you do anything else, because closing the app clears it. Then close the
-app fully and reopen it, so it fetches the plugin list again.
+An app shows Taro as "taro" with "This plugin surface is unavailable." for a moment whenever it
+reconnects to the daemon, for example when the phone app returns from the background: Paseo
+unloads every plugin while disconnected and loads them again afterwards, and Taro then comes back
+where you were. If the message stays, that app could not load Taro's client. Open Settings →
+Plugins in the same app: Taro's row shows the error in red. Copy it into a bug report before you
+do anything else, because closing the app clears it. Then close the app fully and reopen it, so it
+fetches the plugin list again.
 
 The + in Taro's chats attaches images and files. On the phone app it uses the image picker,
 clipboard and document picker built into Paseo's app, which plugins reach only through an

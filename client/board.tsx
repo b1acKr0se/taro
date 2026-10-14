@@ -19,6 +19,7 @@ import { AlertCard } from "./alert-card";
 import { SectionHeading } from "./badges";
 import { useBoard, useRefreshBoard } from "./board-data";
 import { errorText } from "./format";
+import { keptObject } from "./kept";
 import { KeyboardScrollView } from "./keyboard";
 import { useStats } from "./queries";
 import { paneGutter, SPACE } from "./spacing";
@@ -30,7 +31,8 @@ import { Spinner } from "./ui";
 import { toneColor } from "./visual-meta";
 import { MIN_COLUMN_WIDTH, columnWidths } from "./column-widths";
 
-const phoneColumn: { current: ColumnId } = { current: "needs-you" };
+/** The column the phone shows, kept across remounts and reconnects (TR-038). */
+const phoneColumn = keptObject(globalThis, "board-phone-column", { current: "needs-you" as ColumnId });
 
 /** How long a sent suggestion shows "Sent to the Manager" before it leaves the row. */
 const SENT_VISIBLE_MS = 2500;

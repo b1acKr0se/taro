@@ -47,3 +47,11 @@ describe("cacheable", () => {
     expect(cacheable({ error: "agent not found" })).toBe(false);
   });
 });
+
+describe("createTimelineCache over a kept map", () => {
+  it("gives a cache built on the same map the reads of the one before (TR-038)", () => {
+    const values = new Map<string, string>();
+    createTimelineCache<string>(2, values).set("a", "one");
+    expect(createTimelineCache<string>(2, values).get("a")).toBe("one");
+  });
+});
