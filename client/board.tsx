@@ -9,7 +9,7 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { COLUMN_IDS, COLUMN_META, COLUMN_TITLES, type ColumnId } from "../shared/board";
@@ -61,8 +61,9 @@ export function ProjectBoard({
   const tell = useRpc(tellManager);
   const dismiss = useRpc(dismissSuggestion);
   const [sends, setSends] = useState<SuggestionSend[]>([]);
-  /** The pill row's scroll offset and sizes, for the fade that says more pills lie past its edge. */
-  const [row, setRow] = useState({ offset: 0, viewport: 0, content: 0 });
+  /** The pill row's scroll offset and sizes; only whether more lies past its edge is state, so scrolling re-renders nothing. */
+  const row = useRef({ offset: 0, viewport: 0, content: 0 });
+  const [more, setMore] = useState(false);
   const [column, setColumn] = useState<ColumnId>(phoneColumn.current);
   const [paneWidth, setPaneWidth] = useState(0);
   const { colors } = theme;
@@ -169,6 +170,11 @@ export function ProjectBoard({
     );
   }
 
+  function measureRow(change: Partial<{ offset: number; viewport: number; content: number }>): void {
+    row.current = { ...row.current, ...change };
+    setMore(moreToTheRight(row.current.offset, row.current.viewport, row.current.content));
+  }
+
   /** Records one suggestion's send state; `null` forgets it. */
   function setSend(suggestion: Suggestion, index: number, state: SendState | null): void {
     const key = suggestionKey(suggestion);
@@ -194,7 +200,7 @@ export function ProjectBoard({
     );
   }
 
-  function pill(item: SuggestionPill, index: number) {
+  function suggestionPill(item: SuggestionPill, index: number) {
     const { suggestion, state } = item;
     const busy = state === "sending" || state === "sent";
     const label =
@@ -316,18 +322,18 @@ export function ProjectBoard({
               </SectionHeading>
             </View>
             {/* Measured by plain layouts: the web's ScrollView does not report its sizes. */}
-            <View onLayout={(event) => setRow((current) => ({ ...current, viewport: event.nativeEvent.layout.width }))}>
+            <View onLayout={(event) => measureRow({ viewport: event.nativeEvent.layout.width })}>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={!compact}
                 scrollEventThrottle={32}
-                onScroll={(event) => setRow((current) => ({ ...current, offset: event.nativeEvent.contentOffset.x }))}
+                onScroll={(event) => measureRow({ offset: event.nativeEvent.contentOffset.x })}
               >
-                <View style={styles.suggestions} onLayout={(event) => setRow((current) => ({ ...current, content: event.nativeEvent.layout.width }))}>
-                  {suggestions.map(pill)}
+                <View style={styles.suggestions} onLayout={(event) => measureRow({ content: event.nativeEvent.layout.width })}>
+                  {suggestions.map(suggestionPill)}
                 </View>
               </ScrollView>
-              {moreToTheRight(row.offset, row.viewport, row.content) ? (
+              {more ? (
                 <View pointerEvents="none" style={styles.fade}>
                   {FADE_STRIPS.map((alpha) => (
                     <View key={alpha} style={{ width: FADE_STRIP_WIDTH, backgroundColor: withAlpha(colors.surface0, alpha) }} />
