@@ -43,7 +43,7 @@ export function Inbox({
   projects: readonly ProjectSummary[];
   theme: PluginTheme;
   compact: boolean;
-  onOpenTicket: (project: string, card: Card) => void;
+  onOpenTicket: (project: string, card: Pick<Card, "id">) => void;
 }) {
   const listDecisions = useRpc(listOpenDecisions);
   const decisions = useQuery({ queryKey: ["taro", "decisions", "all"], queryFn: () => listDecisions({ project: null }), ...polled(4_000) });
@@ -134,7 +134,7 @@ function InboxProject({
   summary: ProjectSummary;
   theme: PluginTheme;
   compact: boolean;
-  onOpenTicket: (project: string, card: Card) => void;
+  onOpenTicket: (project: string, card: Pick<Card, "id">) => void;
 }) {
   const project = summary.config.project;
   const board = useBoard(project);
@@ -153,10 +153,7 @@ function InboxProject({
           problem={syncProblem}
           theme={theme}
           compact={compact}
-          onOpenTicket={(ticket) => {
-            const card = cards.find((candidate) => candidate.id === ticket);
-            if (card !== undefined) onOpenTicket(project, card);
-          }}
+          onOpenTicket={(ticket) => onOpenTicket(project, { id: ticket })}
         />
       )}
       {alerts.map((alert) => (

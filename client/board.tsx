@@ -49,7 +49,8 @@ export function ProjectBoard({
   theme: PluginTheme;
   compact: boolean;
   selectedTicket: string | null;
-  onOpenTicket: (card: Card) => void;
+  /** Opens a ticket by id; the screen fetches its card when it is past its column's page (TR-082). */
+  onOpenTicket: (card: Pick<Card, "id">) => void;
   /** Shows the manager's chat, where its decisions are answered. */
   onOpenManager: () => void;
 }) {
@@ -167,10 +168,7 @@ export function ProjectBoard({
             problem={syncProblem}
             theme={theme}
             compact={compact}
-            onOpenTicket={(ticket) => {
-              const card = cards.find((candidate) => candidate.id === ticket);
-              if (card !== undefined) onOpenTicket(card);
-            }}
+            onOpenTicket={(ticket) => onOpenTicket({ id: ticket })}
           />
         )}
         {alerts.length === 0 ? null : (

@@ -322,7 +322,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   const inboxVisited = useVisited(inboxShown ? "inbox" : null);
   const activeProject = current !== null && body === null && !inboxShown && showing !== "setup" ? current.config.project : null;
   const projectsVisited = useRecent(activeProject, KEPT_PROJECTS);
-  const openFromInbox = useLatestCallback((project: string, card: Card) => choose(project, "project", card.id));
+  const openFromInbox = useLatestCallback((project: string, card: Pick<Card, "id">) => choose(project, "project", card.id));
   const kept = (
     <>
       {inboxVisited.has("inbox") ? (
@@ -435,7 +435,7 @@ function ProjectView({
   onLeavePlan: () => void;
   onSettings: () => void;
   onOpenAgent: ((agentId: string) => void) | null;
-  onOpenElsewhere: (project: string, card: Card) => void;
+  onOpenElsewhere: (project: string, card: Pick<Card, "id">) => void;
 }) {
   const project = summary.config.project;
   const board = useBoard(project);
@@ -473,7 +473,7 @@ function ProjectView({
   const tabsVisited = useVisited(active && compact ? phoneTab : null);
   const rightVisited = useVisited(active && !compact && layout.board ? rightPane : null);
   const warmed = useWarmUp(PHONE_TABS.length, active && compact);
-  const openTicket = useLatestCallback((card: Card) => onTicket(card.id));
+  const openTicket = useLatestCallback((card: Pick<Card, "id">) => onTicket(card.id));
   // The manager's questions are answered in its chat: on a phone its tab, on a wide screen the left pane.
   const openManager = useLatestCallback(() => (compact ? onPhoneTab("manager") : onShowManager()));
   const openElsewhere = useLatestCallback(onOpenElsewhere);
