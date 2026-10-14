@@ -39,6 +39,16 @@ export function revealsAgain(firstAt: number, now: number, readerScrolled: boole
   return !readerScrolled && now - firstAt <= SETTLE_MS;
 }
 
+/**
+ * What a new height of the transcript's viewport means (TR-069): a pane kept mounted while hidden
+ * (`display: "none"`) lays out at height 0, and a browser forgets a hidden element's scroll position,
+ * so the transcript is put back where it was when it shows again. Its first layout is not a return.
+ */
+export function viewportChange(wasHidden: boolean, previousHeight: number, height: number): "hidden" | "shown-again" | "resized" {
+  if (height === 0) return previousHeight > 0 || wasHidden ? "hidden" : "resized";
+  return wasHidden ? "shown-again" : "resized";
+}
+
 /** How far a scroll may land from the offset asked for and still be the one asked for, in points. */
 const OFFSET_SLACK = 2;
 
@@ -66,6 +76,8 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
   const knownHeight = useRef(0);
   /** The scroll offset last reported. */
   const offset = useRef(0);
+  /** Laid out at height 0 inside a hidden pane, to be put back where it was when it shows again. */
+  const hidden = useRef(false);
   /** Whether the reader is away from the end, for the button that brings them back. */
   const [away, setAway] = useState(false);
 
@@ -140,6 +152,8 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
     scrollEventThrottle: 100,
     onScroll(event: NativeSyntheticEvent<NativeScrollEvent>): void {
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      // A hidden pane's scroll view reports nothing about where the reader was.
+      if (hidden.current || layoutMeasurement.height === 0) return;
       if (revealOffsets.current.length > 0) {
         // A reveal past the end lands clamped to it.
         const furthest = Math.max(0, contentSize.height - layoutMeasurement.height);
@@ -156,7 +170,22 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
       keepAtEnd();
     },
     onLayout(event: LayoutChangeEvent): void {
-      viewport.current = event.nativeEvent.layout.height;
+      const height = event.nativeEvent.layout.height;
+      const change = viewportChange(hidden.current, viewport.current, height);
+      if (change === "hidden") {
+        hidden.current = true;
+        return;
+      }
+      viewport.current = height;
+      if (change === "shown-again") {
+        hidden.current = false;
+        const y = offset.current;
+        // After the pane is shown, so the scroll view has its size again.
+        setTimeout(() => {
+          if (pinnedToEnd.current) scroller.current?.scrollToEnd({ animated: false });
+          else scroller.current?.scrollTo({ y, animated: false });
+        }, 0);
+      }
       onScrolled?.(offset.current, viewport.current);
     },
   };
