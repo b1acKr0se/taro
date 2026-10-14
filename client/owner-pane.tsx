@@ -135,6 +135,7 @@ export function OwnerPane({
         ) : shown.live ? (
           <AgentChat
             key={shown.id}
+            asker={{ kind: "ticket", ticket: card.id, role: shown.role }}
             agent={{ id: shown.id, updatedAt: shown.brief.updatedAt, pendingPermissions: shown.brief.pendingPermissions, status: shown.brief.status }}
             theme={theme}
             compact={compact}
@@ -173,6 +174,7 @@ export function OwnerPane({
         ) : (
           <AgentChat
             key={shown.id}
+            asker={{ kind: "ticket", ticket: card.id, role: shown.role }}
             agent={{ id: shown.id, updatedAt: shown.brief.updatedAt, pendingPermissions: 0, status: shown.brief.status }}
             theme={theme}
             compact={compact}

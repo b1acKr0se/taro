@@ -1,6 +1,7 @@
 /**
  * What an agent is waiting on — the first mate in the chat, a crewmate in the
- * Watch view — answered in the panel.
+ * Watch view — answered in the panel. The heading names the agent as the user
+ * knows it (`permission-heading.ts`).
  *
  * An agent that asks the captain something — Claude's AskUserQuestion — or
  * wants a permission is stopped on a pending permission request, and until
@@ -18,6 +19,7 @@ import { Pressable, Text, View } from "react-native";
 
 import { useRevealFocused } from "./keyboard";
 import { Markdown } from "./markdown";
+import { permissionHeading, type Asker } from "./permission-heading";
 import {
   allAnswered,
   buildAnswers,
@@ -68,6 +70,8 @@ export function usePendingRequests(
 
 interface CardProps {
   request: PermissionRequest;
+  /** Who asks, named in the heading. */
+  asker: Asker;
   theme: PluginTheme;
   compact: boolean;
   /** Resolves when the daemon has the answer; the card stays busy until then. */
@@ -144,7 +148,7 @@ export function PermissionCard(props: CardProps) {
   return questions === null ? <RequestCard {...props} /> : <QuestionCard {...props} questions={questions} />;
 }
 
-function QuestionCard({ request, theme, compact, onRespond, questions }: CardProps & { questions: Question[] }) {
+function QuestionCard({ request, asker, theme, compact, onRespond, questions }: CardProps & { questions: Question[] }) {
   const styles = useCardStyles(theme, compact);
   const reveal = useRevealFocused();
   const [selections, setSelections] = useState<Selections>({});
@@ -203,7 +207,7 @@ function QuestionCard({ request, theme, compact, onRespond, questions }: CardPro
     <View style={styles.card}>
       <View style={styles.heading}>
         <Icon name="MessageSquare" size={13} color={theme.colors.accent} />
-        <Text style={styles.headingText}>The first mate is asking you</Text>
+        <Text style={styles.headingText}>{permissionHeading(asker, "question")}</Text>
       </View>
 
       {questions.length > 1 ? (
@@ -320,7 +324,7 @@ function actionTone(variant: string | undefined, behavior: "allow" | "deny"): To
   return "default";
 }
 
-function RequestCard({ request, theme, compact, onRespond, onOpenLink }: CardProps) {
+function RequestCard({ request, asker, theme, compact, onRespond, onOpenLink }: CardProps) {
   const styles = useCardStyles(theme, compact);
   const presses = useActions();
   const summary = useMemo(() => requestSummary(request), [request]);
@@ -339,7 +343,7 @@ function RequestCard({ request, theme, compact, onRespond, onOpenLink }: CardPro
             key: "deny",
             label: "Deny",
             tone: "danger" as Tone,
-            response: { behavior: "deny", message: "Denied by the captain from the FirstMate panel." } as PermissionResponse,
+            response: { behavior: "deny", message: "Denied by the user from the Taro panel." } as PermissionResponse,
           },
         ];
 
@@ -348,7 +352,7 @@ function RequestCard({ request, theme, compact, onRespond, onOpenLink }: CardPro
       <View style={styles.heading}>
         <Icon name="AlertTriangle" size={13} color={theme.colors.accent} />
         <Text style={styles.headingText}>
-          {request.kind === "plan" ? "The first mate has a plan for you to approve" : "The first mate is asking permission"}
+          {permissionHeading(asker, request.kind === "plan" ? "plan" : "permission")}
         </Text>
       </View>
       <Text style={styles.question}>{request.title ?? request.name}</Text>

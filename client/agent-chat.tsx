@@ -27,6 +27,7 @@ import { KeyboardRevealProvider, useKeyboardOverlap, useKeyboardScroll, useRevea
 import { isSendKey, type WebKeyPressEvent } from "./keys";
 import { Markdown } from "./markdown";
 import { PermissionCard, usePendingRequests } from "./permission-card";
+import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
 import { cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
 import { groupRows, toolRunSummary, type Group } from "./tool-runs";
@@ -69,6 +70,7 @@ type ChatComposer =
 
 export function AgentChat({
   agent,
+  asker,
   theme,
   compact,
   placeholder,
@@ -83,6 +85,8 @@ export function AgentChat({
   suggestions,
 }: {
   agent: ChatAgent;
+  /** Who this agent is to the user, named on its permission and question cards. */
+  asker: Asker;
   theme: PluginTheme;
   compact: boolean;
   /** Draws extra content under an agent message (decision cards). */
@@ -563,7 +567,7 @@ export function AgentChat({
             )}
             {pending.map((request) => (
               <View key={request.id} onLayout={(event) => follow.reveal(request.id, event.nativeEvent.layout)}>
-                <PermissionCard request={request} theme={theme} compact={compact} onRespond={(response) => respond(request.id, response)} onOpenLink={openLink} />
+                <PermissionCard request={request} asker={asker} theme={theme} compact={compact} onRespond={(response) => respond(request.id, response)} onOpenLink={openLink} />
               </View>
             ))}
           </KeyboardRevealProvider>
