@@ -20,7 +20,7 @@ export function dataPath(entry: string): string {
   return join(pluginDataDirectory(), entry);
 }
 
-/** The plugin's own state files: parsed decisions, per-agent supervision state. */
+/** The plugin's own state files: parsed decisions, per-agent supervision state, ticket statuses acted on. */
 export function statePath(entry: string): string {
   return join(pluginDataDirectory(), "state", entry);
 }

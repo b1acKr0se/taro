@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { holdsSlot, shouldWakeManager, statusChanges, ticketsCountingTowardsCap } from "./owner-cap";
+import { dependsOn, holdsSlot, shouldWakeManager, statusChanges, ticketsCountingTowardsCap } from "./owner-cap";
 
 const owner = (ticket: string | undefined, status = "idle", role = "owner") => ({
   status,
@@ -116,5 +116,19 @@ describe("shouldWakeManager", () => {
   });
   it("always wakes when tickets depended on this one, a child's included", () => {
     expect(shouldWakeManager({ dependents: 1, queued: 0, freesSlot: false, counting: 3, cap: 3 })).toBe(true);
+  });
+});
+
+describe("dependsOn", () => {
+  it("matches the ticket's id in any case and with stray spaces", () => {
+    expect(dependsOn(["TR-040"], "TR-040")).toBe(true);
+    expect(dependsOn(["tr-040", "TR-041"], "TR-040")).toBe(true);
+    expect(dependsOn([" TR-040 "], "tr-040")).toBe(true);
+  });
+
+  it("does not match another ticket, a longer id or an empty list", () => {
+    expect(dependsOn(["TR-041"], "TR-040")).toBe(false);
+    expect(dependsOn(["TR-0400", "TR-40"], "TR-040")).toBe(false);
+    expect(dependsOn([], "TR-040")).toBe(false);
   });
 });

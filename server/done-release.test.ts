@@ -58,7 +58,7 @@ beforeEach(() => {
     },
     workspaces: { archive: async (id: string) => void archivedWorkspaces.push(id) },
   } as unknown as PaseoApi;
-  const state = { forgetAgent: async () => undefined, updateDecisions: async () => undefined } as unknown as PluginState;
+  const state = { forgetAgent: async () => undefined, updateDecisions: async () => undefined, ticketStatuses: async () => null, saveTicketStatuses: async () => undefined } as unknown as PluginState;
   const stats = { transition: async () => undefined, agentFinal: async () => undefined } as unknown as Stats;
   actions = new Actions(state, {} as Supervisor, {} as TrackerWatch, stats, { tellManagerWhenHeadroom: async () => undefined } as unknown as Recovery);
 });
@@ -90,7 +90,7 @@ describe("Done releases the ticket's agents", () => {
   it("releases leftovers once after a start", async () => {
     vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Done")]);
     live = [agent("owner", "DM-1", "owner", "ws-1")];
-    await actions.releaseAfterStart(paseo);
+    await actions.catchUpAfterStart(paseo);
     expect(archivedAgents).toEqual(["owner"]);
   });
 

@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 
 import { doneTicketOf, planRelease } from "../shared/done-release";
 import { acceptedRecordText, executionWorkspace, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
-import { shouldWakeManager, statusChanges, ticketsCountingTowardsCap, type StatusChange } from "../shared/owner-cap";
+import { dependsOn, shouldWakeManager, statusChanges, ticketsCountingTowardsCap, type StatusChange } from "../shared/owner-cap";
 import { TARO_LABELS, TICKET_STATUSES } from "../shared/project";
 import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
 import { taroEnvironment } from "./environment";
@@ -17,6 +17,7 @@ import type { PaseoApi } from "./host-types";
 import { bypassModeId } from "./models";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { listProjectConfigs, projectPaths, requireProjectConfig } from "./projects";
+import { serialized } from "./serialize";
 import { sendFromPlugin, sendWithoutInterrupting } from "./send";
 import { hasAttachments, sendWithAttachments, type Attachments } from "./uploads";
 import type { Recovery } from "./recovery";
@@ -27,7 +28,7 @@ import type { Stats } from "./stats";
 import type { TrackerWatch } from "./tracker-watch";
 
 export class Actions {
-  /** Last seen status per project and ticket, to notice transitions to Done. */
+  /** Last seen status per project and ticket, to notice transitions to Done; on disk once acted on (TR-043). */
   private readonly lastStatuses = new Map<string, Map<string, string>>();
   /** The release running per project, so two never archive the same agents at once. */
   private readonly releasing = new Map<string, Promise<void>>();
@@ -193,13 +194,24 @@ export class Actions {
     return agentId;
   }
 
-  /** Records every project's ticket statuses at start, so the first change after a reload is seen as one. */
+  /**
+   * Reads back every project's ticket statuses at start, as last acted on, so a change made while the
+   * plugin was down or stopping is still seen as one (TR-043: the merge at an accept reloads the
+   * plugin as the ticket goes Done). The tracker primes a project with nothing stored.
+   */
   async primeStatuses(): Promise<void> {
     for (const config of await listProjectConfigs()) {
       if (this.lastStatuses.has(config.project)) continue;
       const tickets = await listTickets((await projectPaths(config.project)).tracker).catch(() => null);
       if (tickets === null) continue;
-      this.lastStatuses.set(config.project, new Map(tickets.map((ticket) => [ticket.id, ticket.status])));
+      const stored = await this.state.ticketStatuses(config.project).catch(() => null);
+      if (this.lastStatuses.has(config.project)) continue;
+      if (stored !== null) this.lastStatuses.set(config.project, new Map(stored));
+      else {
+        const current = new Map(tickets.map((ticket) => [ticket.id, ticket.status]));
+        this.lastStatuses.set(config.project, current);
+        await this.state.saveTicketStatuses(config.project, current).catch(() => undefined);
+      }
       // Questions left open on tickets that finished while the plugin was not watching are moot.
       const finished = new Set(tickets.filter((ticket) => ticket.status === "Done" || ticket.status === "Cancelled").map((ticket) => ticket.id));
       await this.state.updateDecisions((decisions) => {
@@ -210,12 +222,22 @@ export class Actions {
     }
   }
 
-  /** Called after every tracker commit: releases Done tickets' agents and wakes the manager for cleared dependencies and freed owner slots. */
-  async onTrackerChanged(paseo: PaseoApi, project: string): Promise<void> {
+  /**
+   * Called after every tracker commit, and once per project after a start: releases Done tickets'
+   * agents and wakes the manager for cleared dependencies and freed owner slots. One pass at a time
+   * per project; the statuses are stored only once the pass has acted on them, so a pass cut short by
+   * a stop is repeated by the next start (a wake-up may come twice, never not at all).
+   */
+  onTrackerChanged(paseo: PaseoApi, project: string): Promise<void> {
+    return serialized(`tracker-changed:${project}`, () => this.trackerChanged(paseo, project));
+  }
+
+  private async trackerChanged(paseo: PaseoApi, project: string): Promise<void> {
     const paths = await projectPaths(project);
     const tickets = await listTickets(paths.tracker);
     const previous = this.lastStatuses.get(project) ?? new Map<string, string>();
-    this.lastStatuses.set(project, new Map(tickets.map((ticket) => [ticket.id, ticket.status])));
+    const current = new Map(tickets.map((ticket) => [ticket.id, ticket.status]));
+    this.lastStatuses.set(project, current);
     const at = new Date().toISOString();
     for (const ticket of tickets) {
       const before = previous.get(ticket.id) ?? null;
@@ -227,6 +249,7 @@ export class Actions {
     for (const change of statusChanges(previous, tickets)) {
       await this.wakeManager(paseo, project, change, tickets);
     }
+    await this.state.saveTicketStatuses(project, current);
   }
 
   /** An agent's turn ended: if its ticket is Done (it was mid-turn when Done landed), release it now. */
@@ -240,13 +263,16 @@ export class Actions {
     if (doneTicketOf(agent.labels[TARO_LABELS.ticket], done) !== null) await this.releaseDoneTickets(paseo, project, []);
   }
 
-  /** After a start: releases agents left behind by Done tickets while the plugin was not watching. */
-  async releaseAfterStart(paseo: PaseoApi): Promise<void> {
+  /**
+   * After a start: acts on the changes made while the plugin was not watching, so Done tickets'
+   * agents are released and the manager hears of cleared dependencies and freed slots.
+   */
+  async catchUpAfterStart(paseo: PaseoApi): Promise<void> {
     await this.primeStatuses();
     for (const config of await listProjectConfigs()) {
       if (!this.lastStatuses.has(config.project)) continue;
-      await this.releaseDoneTickets(paseo, config.project, []).catch((error: unknown) => {
-        console.error(`[taro] releasing ${config.project}'s Done tickets after start:`, error);
+      await this.onTrackerChanged(paseo, config.project).catch((error: unknown) => {
+        console.error(`[taro] catching up on ${config.project}'s tracker after start:`, error);
       });
     }
   }
@@ -332,25 +358,28 @@ export class Actions {
 
   /**
    * Tells the manager when a ticket is Done (tickets may depend on it) or stops holding an owner slot
-   * (Awaiting acceptance counts as free, TR-029), unless nothing could start: no dependents, and no
-   * queued ticket or no room under the cap.
+   * (Awaiting acceptance counts as free, TR-029), unless nothing could start: no dependents cleared
+   * by a Done, and no queued ticket or no room under the cap. The dependents are listed either way
+   * (TR-043); they wake the manager only once the ticket is Done.
    */
   private async wakeManager(paseo: PaseoApi, project: string, change: StatusChange, tickets: readonly TicketSummary[]): Promise<void> {
+    const queued = tickets.filter((candidate) => candidate.status === "Backlog" && candidate.parentTaskId === null).map((candidate) => candidate.id);
+    const cleared = change.status === "Done";
+    // Reading every open ticket's dependencies is a CLI call each: only when a message may follow.
+    if (!cleared && (!change.freesSlot || queued.length === 0)) return;
     const paths = await projectPaths(project);
     const dependents: string[] = [];
-    if (change.status === "Done") {
-      for (const candidate of tickets.filter((open) => open.status !== "Done" && open.status !== "Cancelled")) {
-        const detail = await viewTicket(paths.tracker, candidate.id).catch(() => null);
-        if (detail !== null && detail.dependencies.includes(change.ticket)) dependents.push(candidate.id);
-      }
+    for (const candidate of tickets.filter((open) => open.status !== "Done" && open.status !== "Cancelled")) {
+      const detail = await viewTicket(paths.tracker, candidate.id).catch(() => null);
+      if (detail !== null && dependsOn(detail.dependencies, change.ticket)) dependents.push(candidate.id);
     }
-    const queued = tickets.filter((candidate) => candidate.status === "Backlog" && candidate.parentTaskId === null).map((candidate) => candidate.id);
+    const dependentsCleared = cleared ? dependents.length : 0;
     // Only the cap comparison needs the owners, and listing them is a round trip to the daemon.
-    if (dependents.length === 0 && (!change.freesSlot || queued.length === 0)) return;
+    if (dependentsCleared === 0 && (!change.freesSlot || queued.length === 0)) return;
     const config = await requireProjectConfig(project);
     const owners = (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner");
     const counting = ticketsCountingTowardsCap(owners, tickets);
-    if (!shouldWakeManager({ dependents: dependents.length, queued: queued.length, freesSlot: change.freesSlot, counting: counting.length, cap: config.maxParallelOwners })) return;
+    if (!shouldWakeManager({ dependents: dependentsCleared, queued: queued.length, freesSlot: change.freesSlot, counting: counting.length, cap: config.maxParallelOwners })) return;
     const manager = await fetchLiveAgent(paseo, config.managerAgentId);
     if (manager === null) return;
     const text = await message(TEMPLATES.dependencyCleared, {

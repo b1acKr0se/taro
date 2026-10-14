@@ -58,8 +58,9 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
 You are not told about owners' turns; the plugin supervises them. You are woken for:
 
 - **cleared dependencies or a free slot**: the plugin tells you a ticket is Done or Awaiting
-  acceptance, which queued tickets depended on it, which are waiting in Backlog, and how many owners
-  count towards the cap — dispatch what the cap and dependencies allow;
+  acceptance, which tickets depend on it (they start only once it is Done), which are waiting in
+  Backlog, and how many owners count towards the cap — dispatch what the cap and dependencies allow;
+  a change made while the plugin was reloading reaches you once it is back, possibly twice;
 - **a crash**: if your process crashed, the plugin restarts you in place and says so; check what you
   were doing (a half-finished dispatch: `paseo ls -g --label taro.ticket=<ID> --json`) and continue;
 - **an idle compaction**: after about an hour idle with a large context, the plugin asks for a

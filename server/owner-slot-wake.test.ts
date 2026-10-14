@@ -1,5 +1,7 @@
 // TR-029: a ticket reaching Awaiting acceptance frees its owner's slot and wakes the manager; a
 // child reaching Done never claims a slot, since children have no owner of their own.
+// TR-043: the statuses acted on survive a restart, so a change made while the plugin was down
+// (the merge at an accept reloads it as the ticket goes Done) still wakes the manager.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Actions } from "./actions";
@@ -50,6 +52,9 @@ let live: PaseoAgent[];
 let told: Record<string, string>[];
 let dependencies: Record<string, string[]>;
 let actions: Actions;
+/** The plugin state's stored statuses, kept across the `Actions` of one test as a disk would be. */
+let stored: Map<string, ReadonlyMap<string, string>>;
+let tell: (text: string) => Promise<void>;
 const paseo = { agents: { ref: () => ({ archive: async () => undefined }) }, workspaces: { archive: async () => undefined } } as unknown as PaseoApi;
 
 async function move(before: ReturnType<typeof ticket>[], after: ReturnType<typeof ticket>[]): Promise<void> {
@@ -63,16 +68,28 @@ beforeEach(() => {
   live = [];
   told = [];
   dependencies = {};
+  stored = new Map();
+  tell = async (text) => void told.push(JSON.parse(text) as Record<string, string>);
   vi.mocked(projectAgents).mockClear().mockImplementation(async () => [...live]);
   vi.mocked(projectArchivedAgents).mockImplementation(async () => []);
   vi.mocked(listTaroAgents).mockImplementation(async () => [...live]);
   vi.mocked(fetchLiveAgent).mockImplementation(async (_paseo, id) => (id === "manager" ? manager : live.find((candidate) => candidate.id === id) ?? null));
   vi.mocked(viewTicket).mockImplementation(async (_tracker, id) => ({ dependencies: dependencies[id] ?? [] }) as unknown as Awaited<ReturnType<typeof viewTicket>>);
-  const state = { forgetAgent: async () => undefined, updateDecisions: async () => undefined } as unknown as PluginState;
-  const stats = { transition: async () => undefined, agentFinal: async () => undefined } as unknown as Stats;
-  const recovery = { tellManagerWhenHeadroom: async (_paseo: PaseoApi, _project: string, _manager: string, text: string) => void told.push(JSON.parse(text) as Record<string, string>) } as unknown as Recovery;
-  actions = new Actions(state, {} as Supervisor, {} as TrackerWatch, stats, recovery);
+  actions = start();
 });
+
+/** A plugin instance, as after a start or reload: a fresh `Actions` over the same stored state. */
+function start(): Actions {
+  const state = {
+    forgetAgent: async () => undefined,
+    updateDecisions: async () => undefined,
+    ticketStatuses: async (project: string) => stored.get(project) ?? null,
+    saveTicketStatuses: async (project: string, statuses: ReadonlyMap<string, string>) => void stored.set(project, new Map(statuses)),
+  } as unknown as PluginState;
+  const stats = { transition: async () => undefined, agentFinal: async () => undefined } as unknown as Stats;
+  const recovery = { tellManagerWhenHeadroom: async (_paseo: PaseoApi, _project: string, _manager: string, text: string) => tell(text) } as unknown as Recovery;
+  return new Actions(state, {} as Supervisor, {} as TrackerWatch, stats, recovery);
+}
 
 describe("a freed owner slot wakes the manager", () => {
   it("wakes it when a ticket reaches Awaiting acceptance, with the count leaving that owner out", async () => {
@@ -84,6 +101,31 @@ describe("a freed owner slot wakes the manager", () => {
     expect(told).toEqual([
       { path: "messages/dependency-cleared.md", ticket: "DM-1", status: "Awaiting acceptance", dependents: "none", queued: "DM-3", counting: "1", cap: "2", countingTickets: "DM-2" },
     ]);
+  });
+
+  it("lists the tickets that depend on one reaching Awaiting acceptance (the TR-040 wake-up said none)", async () => {
+    dependencies = { "DM-2": ["DM-1"], "DM-3": ["DM-1", "DM-2"] };
+    await move(
+      [ticket("DM-1", "Reviewing"), ticket("DM-2", "Backlog"), ticket("DM-3", "Backlog")],
+      [ticket("DM-1", "Awaiting acceptance"), ticket("DM-2", "Backlog"), ticket("DM-3", "Backlog")],
+    );
+    expect(told.map((entry) => [entry.ticket, entry.status, entry.dependents, entry.queued])).toEqual([["DM-1", "Awaiting acceptance", "DM-2, DM-3", "DM-2, DM-3"]]);
+  });
+
+  it("does not wake it for dependents of a ticket in Awaiting acceptance when no slot is free", async () => {
+    live = [agent("two", "DM-2", "owner"), agent("three", "DM-3", "owner")];
+    dependencies = { "DM-4": ["DM-1"] };
+    await move(
+      [ticket("DM-1", "Reviewing"), ticket("DM-2", "In Progress"), ticket("DM-3", "Planning"), ticket("DM-4", "Backlog")],
+      [ticket("DM-1", "Awaiting acceptance"), ticket("DM-2", "In Progress"), ticket("DM-3", "Planning"), ticket("DM-4", "Backlog")],
+    );
+    expect(told).toEqual([]);
+  });
+
+  it("finds a dependent whose dependency is written in another case", async () => {
+    dependencies = { "DM-2": ["dm-1"] };
+    await move([ticket("DM-1", "Awaiting acceptance"), ticket("DM-2", "Backlog")], [ticket("DM-1", "Done"), ticket("DM-2", "Backlog")]);
+    expect(told.map((entry) => [entry.ticket, entry.dependents])).toEqual([["DM-1", "DM-2"]]);
   });
 
   it("stays quiet when no ticket is queued, without listing the owners", async () => {
@@ -133,9 +175,86 @@ describe("a freed owner slot wakes the manager", () => {
 describe("the dependency-cleared message", () => {
   it("fills every placeholder the wake-up passes", async () => {
     const { message: realMessage, TEMPLATES } = await vi.importActual<typeof import("./package-files")>("./package-files");
-    const text = await realMessage(TEMPLATES.dependencyCleared, { ticket: "DM-1", status: "Awaiting acceptance", dependents: "none", queued: "DM-3", counting: "1", cap: "2", countingTickets: "DM-2" });
+    const text = await realMessage(TEMPLATES.dependencyCleared, { ticket: "DM-1", status: "Awaiting acceptance", dependents: "DM-4", queued: "DM-3", counting: "1", cap: "2", countingTickets: "DM-2" });
     expect(text).not.toContain("{{");
     expect(text).toContain("DM-1 is now Awaiting acceptance");
+    expect(text).toContain("Tickets that depend on it: DM-4; they can start only once DM-1 is Done.");
     expect(text).toContain("1 of 2 (DM-2)");
+  });
+});
+
+describe("a change made while the plugin was down or stopping still wakes the manager (TR-043)", () => {
+  const before = [ticket("DM-1", "Awaiting acceptance"), ticket("DM-2", "Backlog")];
+  const after = [ticket("DM-1", "Done"), ticket("DM-2", "Backlog")];
+
+  it("wakes it after a start for a ticket that went Done during the reload", async () => {
+    dependencies = { "DM-2": ["DM-1"] };
+    await move(before, before);
+    expect(told).toEqual([]);
+
+    // The merge reloads the plugin; the tracker shows Done before the new instance first looks.
+    actions = start();
+    vi.mocked(listTickets).mockResolvedValue(after);
+    await actions.catchUpAfterStart(paseo);
+    expect(told.map((entry) => [entry.ticket, entry.status, entry.dependents])).toEqual([["DM-1", "Done", "DM-2"]]);
+
+    // Acted on and stored: a second start says nothing more.
+    told = [];
+    actions = start();
+    await actions.catchUpAfterStart(paseo);
+    expect(told).toEqual([]);
+  });
+
+  it("wakes it after a start for a slot freed during the reload", async () => {
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Reviewing"), ticket("DM-2", "Backlog")]);
+    await actions.primeStatuses();
+    actions = start();
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Awaiting acceptance"), ticket("DM-2", "Backlog")]);
+    await actions.catchUpAfterStart(paseo);
+    expect(told.map((entry) => [entry.ticket, entry.status, entry.queued])).toEqual([["DM-1", "Awaiting acceptance", "DM-2"]]);
+  });
+
+  it("repeats a wake-up the stop cut short (the TR-040 reload)", async () => {
+    dependencies = { "DM-2": ["DM-1"] };
+    vi.mocked(listTickets).mockResolvedValue(before);
+    await actions.primeStatuses();
+    tell = async () => {
+      throw new Error("Transport not connected (status: disposed)");
+    };
+    vi.mocked(listTickets).mockResolvedValue(after);
+    await expect(actions.onTrackerChanged(paseo, "demo")).rejects.toThrow("disposed");
+    expect(stored.get("demo")?.get("DM-1")).toBe("Awaiting acceptance");
+
+    tell = async (text) => void told.push(JSON.parse(text) as Record<string, string>);
+    actions = start();
+    await actions.catchUpAfterStart(paseo);
+    expect(told.map((entry) => [entry.ticket, entry.status, entry.dependents])).toEqual([["DM-1", "Done", "DM-2"]]);
+  });
+
+  it("primes from the tracker when nothing is stored, and stores it", async () => {
+    dependencies = { "DM-2": ["DM-1"] };
+    vi.mocked(listTickets).mockResolvedValue(after);
+    await actions.catchUpAfterStart(paseo);
+    expect(told).toEqual([]);
+    expect(stored.get("demo")).toEqual(new Map([["DM-1", "Done"], ["DM-2", "Backlog"]]));
+  });
+
+  it("runs one pass at a time per project, so a later pass is not undone by an earlier one", async () => {
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "In Progress")]);
+    await actions.primeStatuses();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.mocked(listTickets).mockImplementationOnce(async () => {
+      await gate;
+      return [ticket("DM-1", "Reviewing")];
+    });
+    const first = actions.onTrackerChanged(paseo, "demo");
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Awaiting acceptance")]);
+    const second = actions.onTrackerChanged(paseo, "demo");
+    release();
+    await Promise.all([first, second]);
+    expect(stored.get("demo")?.get("DM-1")).toBe("Awaiting acceptance");
   });
 });

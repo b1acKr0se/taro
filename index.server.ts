@@ -75,8 +75,9 @@ export default function contribute(server: PluginServerContext) {
           if (repaired > 0) console.log(`[taro] reconciled ${repaired} agents after start`);
         })
         .catch((error: unknown) => console.error("[taro] reconcile after start failed:", error));
-      // Done tickets whose agents were left open (a missed transition, or an owner mid-turn at a reload).
-      void actions.releaseAfterStart(paseo).catch((error: unknown) => console.error("[taro] releasing Done tickets after start failed:", error));
+      // Changes made while the plugin was down (TR-043: the merge at an accept reloads it as the ticket
+      // goes Done), and Done tickets whose agents were left open (an owner mid-turn at a reload).
+      void actions.catchUpAfterStart(paseo).catch((error: unknown) => console.error("[taro] catching up after start failed:", error));
       void stats
         .dropFinishedTurns(async (agentId) => turnMayStillEnd(await fetchLiveAgent(paseo, agentId), startedAt))
         .catch((error: unknown) => console.error("[taro] dropping finished turn starts failed:", error));

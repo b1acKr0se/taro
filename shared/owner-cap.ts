@@ -69,3 +69,9 @@ export function shouldWakeManager(input: { dependents: number; queued: number; f
   if (input.dependents > 0) return true;
   return input.freesSlot && input.queued > 0 && input.counting < input.cap;
 }
+
+/** Whether a ticket's dependency list names this ticket; ids compare without case (`tr-040` is `TR-040`). */
+export function dependsOn(dependencies: readonly string[], ticket: string): boolean {
+  const wanted = ticket.trim().toUpperCase();
+  return dependencies.some((dependency) => dependency.trim().toUpperCase() === wanted);
+}
