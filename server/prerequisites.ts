@@ -28,6 +28,20 @@ export function ghCheck(status: { code: number | null } | null): Prerequisite {
   return { id: "gh", name: "GitHub CLI (for pull requests)", ok, detail };
 }
 
+/** The `taro` command runs TypeScript directly, which Node does by default from 22.18. */
+export function nodeCheck(version: string): Prerequisite {
+  const [major = 0, minor = 0] = version.split(".").map(Number);
+  const ok = major > 22 || (major === 22 && minor >= 18);
+  return {
+    id: "node",
+    name: "Node.js 22.18 or later",
+    ok,
+    detail: ok
+      ? `version ${version}`
+      : `version ${version} is too old: the taro command runs TypeScript directly. Install Node.js 22.18 or later and restart the daemon`,
+  };
+}
+
 export async function checkPrerequisites(paseo: PaseoApi): Promise<PrerequisiteCheck[]> {
   const checks: PrerequisiteCheck[] = [];
   const cli = await paseoCli();
@@ -37,6 +51,8 @@ export async function checkPrerequisites(paseo: PaseoApi): Promise<PrerequisiteC
     ok: cli !== null,
     detail: cli ?? "not found on the daemon's PATH. Install Paseo's command-line tool and restart the daemon from a shell where the paseo command runs",
   });
+
+  checks.push(nodeCheck(process.versions.node));
 
   const gitVersion = await versionOf("git", ["--version"]);
   checks.push({ id: "git", name: "git", ok: gitVersion !== null, detail: gitVersion ?? "not found on the daemon's PATH. Install git from https://git-scm.com/ and restart the daemon" });

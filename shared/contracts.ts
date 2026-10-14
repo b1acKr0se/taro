@@ -62,7 +62,7 @@ export const listProjects = defineRpc({
   output: z.object({ taroHome: z.string(), projects: z.array(ProjectSummarySchema) }),
 });
 
-export const PrerequisiteIdSchema = z.enum(["paseo-cli", "git", "gh", "providers"]);
+export const PrerequisiteIdSchema = z.enum(["paseo-cli", "node", "git", "gh", "providers"]);
 export type PrerequisiteId = z.infer<typeof PrerequisiteIdSchema>;
 
 export const PrerequisiteSchema = z.object({
