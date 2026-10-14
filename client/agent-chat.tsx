@@ -38,7 +38,7 @@ import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
 import { usePressGuards } from "./use-actions";
 import { usePendingSends, type ChatSend } from "./use-pending-sends";
-import { steersMidTurn, type SendMark, type SendView } from "../shared/pending-sends";
+import { handBack, steersMidTurn, type PendingSend, type SendMark, type SendView } from "../shared/pending-sends";
 import { composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
@@ -127,6 +127,11 @@ export function AgentChat({
   const agentRows = useMemo(() => rows.filter((row) => row.kind === "agent"), [rows]);
   // The timeline's read of the agent when it is newer than the board's: it follows the stream.
   const live = timeline.agent !== null && timeline.agent.updatedAt >= agent.updatedAt ? timeline.agent : null;
+  function putBack(send: PendingSend): void {
+    const back = handBack({ text: drafts.get(agent.id), attachments: draftAttachments.get(agent.id) }, send);
+    if (back.text !== null) drafts.set(agent.id, back.text);
+    if (back.attachments !== null) draftAttachments.set(agent.id, back.attachments);
+  }
   const sends = usePendingSends({
     agentId: agent.id,
     status: live?.status ?? agent.status,
@@ -136,9 +141,7 @@ export function AgentChat({
     onSend,
     onFailed: (failed, error) => {
       toast.error(errorText(error));
-      // Put back only into an empty composer: whatever was written or attached since stays.
-      if (drafts.get(agent.id).trim() === "") drafts.set(agent.id, failed.text);
-      if (draftAttachments.get(agent.id).length === 0) draftAttachments.set(agent.id, failed.attachments);
+      putBack(failed);
     },
   });
   const marksByRow = useMemo(() => new Map(sends.views.flatMap((view) => (view.rowKey === null ? [] : [[view.rowKey, view] as const]))), [sends.views]);
@@ -327,11 +330,8 @@ export function AgentChat({
     else {
       const held = sends.views.find((view) => view.send.id === id);
       sends.forget(id);
-      // A cancelled message goes back into an empty composer, to change or send later.
-      if (action === "cancel" && held !== undefined && drafts.get(agent.id).trim() === "" && draftAttachments.get(agent.id).length === 0) {
-        drafts.set(agent.id, held.send.text);
-        draftAttachments.set(agent.id, held.send.attachments);
-      }
+      // A cancelled message goes back into the composer, to change or send later.
+      if (action === "cancel" && held !== undefined) putBack(held.send);
     }
   });
 
@@ -591,11 +591,16 @@ function SendMarkLine({ view, theme, styles, onAction }: { view: SendView; theme
         <Icon name={view.mark === "held" ? "Timer" : "AlertTriangle"} size={12} color={view.mark === "held" ? colors.foregroundMuted : colors.statusWarning} />
       )}
       <Text style={styles.markText}>{MARK_TEXT[view.mark]}</Text>
-      {MARK_ACTIONS[view.mark].map((each) => (
-        <Pressable key={each.action} accessibilityRole="button" accessibilityLabel={each.label} hitSlop={6} onPress={() => onAction(view.send.id, each.action)}>
-          <Text style={styles.markAction}>{each.label}</Text>
-        </Pressable>
-      ))}
+      {/* One row, so a narrow screen wraps the actions together rather than one of them alone. */}
+      {MARK_ACTIONS[view.mark].length === 0 ? null : (
+        <View style={styles.markActions}>
+          {MARK_ACTIONS[view.mark].map((each) => (
+            <Pressable key={each.action} accessibilityRole="button" accessibilityLabel={each.label} hitSlop={6} onPress={() => onAction(view.send.id, each.action)}>
+              <Text style={styles.markAction}>{each.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -771,6 +776,7 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
     },
     mark: { flexDirection: "row" as const, flexWrap: "wrap" as const, justifyContent: "flex-end" as const, alignItems: "center" as const, columnGap: SPACE.sm, rowGap: 2 },
     markText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
+    markActions: { flexDirection: "row" as const, columnGap: SPACE.sm },
     markAction: { color: colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
     quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
     readOnly: {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ChatMessageIdSchema,
+  handBack,
   heldToRelease,
   isWorking,
   newChatMessageId,
@@ -133,12 +134,31 @@ describe("heldToRelease", () => {
 });
 
 describe("steersMidTurn", () => {
-  it("takes the providers Paseo steers, and an agent not read yet, as steering", () => {
-    for (const provider of ["claude", "codex", "opencode", "pi", "omp", null, undefined]) expect(steersMidTurn(provider)).toBe(true);
+  it("takes Paseo's steering providers, a plugin's or custom provider, and an agent not read yet, as steering", () => {
+    // `claude-work`: a custom provider extending claude under its own id, which Paseo steers like claude.
+    for (const provider of ["claude", "codex", "opencode", "pi", "omp", "claude-work", "my-plugin-agent", null, undefined]) expect(steersMidTurn(provider)).toBe(true);
   });
 
-  it("takes any other provider as replacing the turn", () => {
-    for (const provider of ["copilot", "acp", "gemini", "cursor", ""]) expect(steersMidTurn(provider)).toBe(false);
+  it("takes Copilot and the ACP agents as replacing the turn", () => {
+    for (const provider of ["copilot", "acp", "cursor", "kimi", "kiro", "traecli"]) expect(steersMidTurn(provider)).toBe(false);
+  });
+});
+
+describe("handBack", () => {
+  const image = { id: "image-1", kind: "image" as const, fileName: "screen.png", mimeType: "image/png", data: "iVBORw0KGgo=" };
+  const failed: PendingSend = { ...sent("chat-a"), text: "Please also check the phone layout", attachments: [image] };
+
+  it("puts the words and attachments back into an empty composer", () => {
+    expect(handBack({ text: "  ", attachments: [] }, failed)).toEqual({ text: failed.text, attachments: [image] });
+  });
+
+  it("keeps what was written or attached since", () => {
+    expect(handBack({ text: "a new thought", attachments: [] }, failed)).toEqual({ text: null, attachments: [image] });
+    expect(handBack({ text: "", attachments: [image] }, failed)).toEqual({ text: failed.text, attachments: null });
+  });
+
+  it("puts nothing back for what the message did not have", () => {
+    expect(handBack({ text: "", attachments: [] }, { ...failed, text: "", attachments: [] })).toEqual({ text: null, attachments: null });
   });
 });
 

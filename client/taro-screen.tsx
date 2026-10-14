@@ -46,6 +46,7 @@ import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
 import { useActions } from "./use-actions";
 import { useBackStep, useScreenBack } from "./use-back";
+import { useReleaseHeld } from "./use-release-held";
 import { chooseMove, planShown, screenBackStep, ticketBackMove, ticketBackTarget, ticketShown, viewPlanMove, type OpenPlan, type PhoneTab, type ScreenMove, type ScreenNow, type ScreenView } from "./back-steps";
 
 type View_ = ScreenView;
@@ -440,6 +441,7 @@ function ProjectView({
   const project = summary.config.project;
   const board = useBoard(project);
   const refreshBoard = useRefreshBoard(project);
+  useReleaseHeld(project, board.data?.cards, summary.manager);
   const [rightPane, setRightPane] = useState<RightPane>(remembered.rightPane);
   const [boardHidden, setBoardHiddenState] = useState(remembered.boardHidden);
   const openCard = ticket === null ? null : (board.data?.cards ?? []).find((card) => card.id === ticket) ?? null;

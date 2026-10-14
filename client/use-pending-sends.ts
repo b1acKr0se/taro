@@ -72,21 +72,22 @@ export function usePendingSends({
 
   function deliver(pending: PendingSend): Promise<void> | null {
     if (onSend === undefined) return null;
-    pendingSends.update(agentId, pending.id, { state: "sent", at: Date.now() });
     return onSend(pending.text, outgoingAttachments(pending.attachments), pending.id).catch((error: unknown) => {
       pendingSends.remove(agentId, [pending.id]);
       onFailed(pending, error);
       throw error;
     });
   }
-  function deliverQuietly(pending: PendingSend): void {
+  function sendHeld(ids: readonly string[]): void {
+    if (onSend === undefined) return;
+    // Claimed first: the screen may release them too (`useReleaseHeld`), and only one of them sends each.
     // A failure is already reported through `onFailed`.
-    void deliver(pending)?.catch(() => {});
+    pendingSends.claim(agentId, ids, Date.now()).forEach((sent) => void deliver(sent)?.catch(() => {}));
   }
 
   const release = heldToRelease(sends, working);
   useEffect(() => {
-    release.forEach(deliverQuietly);
+    if (release.length > 0) sendHeld(release.map((held) => held.id));
   }, [release.map((send) => send.id).join(" ")]);
 
   const holds = working && !steers;
@@ -99,16 +100,11 @@ export function usePendingSends({
       return holds ? null : deliver(pending);
     },
     sendNow(id) {
-      const held = sends.find((send) => send.id === id && send.state === "held");
-      if (held !== undefined) deliverQuietly(held);
+      sendHeld([id]);
     },
     resend(id) {
-      const unread = sends.find((send) => send.id === id);
-      if (unread === undefined) return;
-      pendingSends.remove(agentId, [id]);
-      const again: PendingSend = { ...unread, id: newChatMessageId(), at: Date.now(), state: holds ? "held" : "sent" };
-      pendingSends.add(agentId, again);
-      if (!holds) deliverQuietly(again);
+      const again = pendingSends.resend(agentId, id, { id: newChatMessageId(), at: Date.now(), holds });
+      if (again !== null && !holds) void deliver(again)?.catch(() => {});
     },
     forget(id) {
       pendingSends.remove(agentId, [id]);

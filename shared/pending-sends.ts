@@ -20,15 +20,17 @@ export function newChatMessageId(now: number = Date.now(), random: () => number 
 }
 
 /**
- * Providers whose Paseo session takes a message mid-turn (they implement `steerActiveTurn` in Paseo
- * 0.11.2). Paseo exposes this neither in an agent's capabilities nor in what a send returns, so it
- * is listed here; any other provider (the ACP ones: `copilot`, `acp`, …) has its turn replaced.
+ * Providers whose Paseo session cannot take a message mid-turn, so Paseo replaces the running turn
+ * (Paseo 0.11.2: the ACP ones, which lack `steerActiveTurn`). Paseo exposes this neither in an
+ * agent's capabilities nor in what a send returns, so it is listed here: the built-in `copilot`, and
+ * the ids Paseo itself runs as ACP agents. Any other id steers: the built-in claude, codex, opencode,
+ * pi and omp, a plugin's provider, and a custom one extending one of those under its own id.
  */
-const STEERING_PROVIDERS: ReadonlySet<string> = new Set(["claude", "codex", "opencode", "pi", "omp"]);
+const REPLACING_PROVIDERS: ReadonlySet<string> = new Set(["copilot", "acp", "cursor", "kimi", "kiro", "traecli"]);
 
 /** Whether a message sent now joins the running turn; an unknown provider (none read yet) is taken to. */
 export function steersMidTurn(provider: string | null | undefined): boolean {
-  return provider === null || provider === undefined || STEERING_PROVIDERS.has(provider);
+  return provider === null || provider === undefined || !REPLACING_PROVIDERS.has(provider);
 }
 
 /** Whether an agent in this Paseo status has a turn under way. */
@@ -112,6 +114,21 @@ export function viewSends(
     views.push({ send, mark: stoppedFor >= STOPPED_GRACE_MS ? "unread" : "waiting", rowKey });
   });
   return { views, read };
+}
+
+/**
+ * What goes back into the composer from a message not sent (a failed send, a cancelled hold): the
+ * words only into an empty field and the attachments only when none are attached, so nothing written
+ * or attached since is lost. Null where nothing goes back.
+ */
+export function handBack(
+  composer: { text: string; attachments: readonly DraftAttachment[] },
+  send: PendingSend,
+): { text: string | null; attachments: readonly DraftAttachment[] | null } {
+  return {
+    text: composer.text.trim() === "" && send.text !== "" ? send.text : null,
+    attachments: composer.attachments.length === 0 && send.attachments.length > 0 ? send.attachments : null,
+  };
 }
 
 /** The held messages to send now that the agent stopped, oldest first. */
