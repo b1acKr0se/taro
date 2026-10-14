@@ -734,8 +734,8 @@ function ManagerPane({
         transformText={withoutDecisionBlocks}
         asks={{ decisions, onAnswered: onChanged }}
         suggestions={<SuggestionPills project={project} suggestions={suggestions} theme={theme} onChanged={onChanged} />}
-        onSend={async (text, attachments) => {
-          await tell({ project, text, ...attachments });
+        onSend={async (text, attachments, messageId) => {
+          await tell({ project, text, ...attachments, messageId });
         }}
         actions={
           <>

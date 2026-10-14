@@ -150,8 +150,8 @@ export function OwnerPane({
                 theme={theme}
                 compact={compact}
                 placeholder={`Talk to ${card.id}'s ${paneAgentJob(shown.role)}…`}
-                onSend={async (text, attachments) => {
-                  await tell({ agentId: shown.id, text, ...attachments });
+                onSend={async (text, attachments, messageId) => {
+                  await tell({ agentId: shown.id, text, ...attachments, messageId });
                 }}
                 transformText={withoutDecisionBlocks}
                 asks={{ decisions: shownAsks, onAnswered: onChanged }}

@@ -238,8 +238,8 @@ export default function contribute(server: PluginServerContext) {
   server.handle(restartManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await restartManager(paseo, project)).agentId }));
   server.handle(resumeManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await resumeManager(paseo, project, state)).agentId }));
   server.handle(compactManagerRpc, async ({ project }, { paseo }) => ({ agentId: await compactManager(paseo, project) }));
-  server.handle(tellManagerRpc, async ({ project, text, images, files }, { paseo }) => {
-    const agentId = await tellManager(paseo, project, text, { images, files });
+  server.handle(tellManagerRpc, async ({ project, text, images, files, messageId }, { paseo }) => {
+    const agentId = await tellManager(paseo, project, text, { images, files, messageId });
     actions.userToldManager(project);
     return { agentId };
   });
@@ -274,8 +274,8 @@ export default function contribute(server: PluginServerContext) {
     return { decision, agentLive: decision?.status === "open" ? await isAgentLive(keep(paseo), agentId) : true };
   });
   server.handle(listOpenDecisions, async ({ project }, { paseo }) => ({ decisions: await liveOpenDecisions(keep(paseo), state, project) }));
-  server.handle(tellAgent, async ({ agentId, text, images, files }, { paseo }) => {
-    await actions.tellAgent(keep(paseo), agentId, text, { images, files });
+  server.handle(tellAgent, async ({ agentId, text, images, files, messageId }, { paseo }) => {
+    await actions.tellAgent(keep(paseo), agentId, text, { images, files, messageId });
     return {};
   });
   server.handle(nudgeAgent, async ({ agentId }, { paseo }) => {

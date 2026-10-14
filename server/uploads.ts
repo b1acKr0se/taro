@@ -13,9 +13,12 @@ import { paseoHome } from "./data-dir";
 import type { PaseoApi } from "./host-types";
 import { sendWithoutInterrupting } from "./send";
 
+/** What the composer sends with the words: attachments, and the chat's own id for the message (TR-084). */
 export interface Attachments {
   images?: OutgoingImage[] | undefined;
   files?: OutgoingFile[] | undefined;
+  /** Lets the chat find the message in the timeline and mark it until the agent takes it up. */
+  messageId?: string | undefined;
 }
 
 export function hasAttachments(attachments: Attachments): boolean {
@@ -58,6 +61,7 @@ export async function sendWithAttachments(paseo: PaseoApi, agentId: string, word
     await sendWithoutInterrupting(paseo, agentId, words, {
       ...(images.length > 0 ? { images } : null),
       ...(uploaded.length > 0 ? { attachments: uploaded } : null),
+      ...(attachments.messageId === undefined ? null : { messageId: attachments.messageId }),
     });
   } catch (error) {
     await removeAll();

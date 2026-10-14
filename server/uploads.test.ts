@@ -74,6 +74,11 @@ describe("sendWithAttachments", () => {
     expect(sent[0]).toEqual({ agentId: "agent-1", text: "", options: { images, activeTurnBehavior: "steer" } });
   });
 
+  it("sends with the chat's own message id, so the chat finds the message in the timeline", async () => {
+    await sendWithAttachments(paseo, "agent-1", "hello", { messageId: "chat-abc-1" }, home);
+    expect(sent[0]).toEqual({ agentId: "agent-1", text: "hello", options: { messageId: "chat-abc-1", activeTurnBehavior: "steer" } });
+  });
+
   it("writes each file where Paseo keeps uploads and names it as an uploaded_file", async () => {
     await sendWithAttachments(
       paseo,

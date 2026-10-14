@@ -10,7 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Keyboard, Platform, SafeAreaView, ScrollView, Text, useWindowDimensions, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
 
-import { attachmentProblem, outgoingAttachments, refuseOversizedImages, type DraftAttachment, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
+import { attachmentProblem, refuseOversizedImages, type DraftAttachment } from "../shared/attachments";
 import { listSentImages, type SentImagesMessage } from "../shared/contracts";
 import { ActionRow } from "./action-row";
 import { imagesFromPaste, pickAttachments } from "./attachment-pickers";
@@ -33,10 +33,12 @@ import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
 import { cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
 import { groupRows, toolRunSummary, type Group } from "./tool-runs";
-import { transcriptRows } from "./transcript-rows";
+import { ATTACHMENTS_ONLY, transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
 import { usePressGuards } from "./use-actions";
+import { usePendingSends, type ChatSend } from "./use-pending-sends";
+import { steersMidTurn, type SendMark, type SendView } from "../shared/pending-sends";
 import { composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
@@ -55,8 +57,11 @@ export interface ChatAgent {
 type ChatComposer =
   | {
       placeholder: string;
-      /** Sends the user's words and attachments (the words may be empty when there are some); rejects with a sentence on failure. */
-      onSend: (text: string, attachments: { images: OutgoingImage[]; files: OutgoingFile[] }) => Promise<void>;
+      /**
+       * Sends the user's words and attachments (the words may be empty when there are some) under the chat's
+       * own message id (TR-084); rejects with a sentence on failure.
+       */
+      onSend: ChatSend;
       /** Buttons above the composer (Catch up, Compact, …), first in one sideways-scrolling line with the suggestions. */
       actions?: ReactNode;
       /** The agent's context window, drawn as a ring inside the composer beside the send button. */
@@ -120,6 +125,24 @@ export function AgentChat({
   const sentImages = useSentImages(agent.id, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0);
   const rowImages = useMemo(() => matchSentImages(rows, sentImages), [rows, sentImages]);
   const agentRows = useMemo(() => rows.filter((row) => row.kind === "agent"), [rows]);
+  // The timeline's read of the agent when it is newer than the board's: it follows the stream.
+  const live = timeline.agent !== null && timeline.agent.updatedAt >= agent.updatedAt ? timeline.agent : null;
+  const sends = usePendingSends({
+    agentId: agent.id,
+    status: live?.status ?? agent.status,
+    steers: steersMidTurn(timeline.agent?.provider),
+    entries: timeline.entries,
+    hasOlder: timeline.hasOlder,
+    onSend,
+    onFailed: (failed, error) => {
+      toast.error(errorText(error));
+      // Put back only into an empty composer: whatever was written or attached since stays.
+      if (drafts.get(agent.id).trim() === "") drafts.set(agent.id, failed.text);
+      if (draftAttachments.get(agent.id).length === 0) draftAttachments.set(agent.id, failed.attachments);
+    },
+  });
+  const marksByRow = useMemo(() => new Map(sends.views.flatMap((view) => (view.rowKey === null ? [] : [[view.rowKey, view] as const]))), [sends.views]);
+  const echoes = sends.views.filter((view) => view.rowKey === null);
   const places = useMemo(() => (asks === undefined || asks.decisions.length === 0 ? null : placeDecisions(agentRows, asks.decisions)), [agentRows, asks?.decisions]);
   const deliveryKey = useMemo(() => (delivery === undefined ? null : deliveryRowKey(agentRows)), [agentRows, delivery === undefined]);
   /** The acceptance card's place in the layouts, beside the decisions' keys. */
@@ -260,21 +283,15 @@ export function AgentChat({
     const text = draft.trim();
     const sent = attachments;
     if (onSend === undefined || (text === "" && sent.length === 0)) return;
-    // The guard, not `sending`, stops a second Enter or tap in the same frame.
-    const running = guardFor("send").run("send", () => onSend(text, outgoingAttachments(sent)));
+    // The guard, not `sending`, stops a second Enter or tap in the same frame; a held message sends nothing yet.
+    const running = guardFor("send").run("send", () => sends.send(text, sent) ?? Promise.resolve());
     if (running === null) return;
     setSending(true);
     follow.pin();
     setDraft("");
     setAttachments([]);
-    void running.then((outcome) => {
-      setSending(false);
-      if (outcome.ok) return;
-      toast.error(errorText(outcome.error));
-      // Put back only into an empty composer: whatever was written or attached since stays.
-      if (drafts.get(agent.id).trim() === "") drafts.set(agent.id, text);
-      if (draftAttachments.get(agent.id).length === 0) draftAttachments.set(agent.id, sent);
-    });
+    // A failure was reported, and the words handed back, by `onFailed`.
+    void running.then(() => setSending(false));
   }
 
   const attachButton = (
@@ -304,6 +321,19 @@ export function AgentChat({
   const rowLayoutChanged = useLatestCallback(noteRowLayout);
   const openLinkLatest = useLatestCallback(openLink);
   const decisionCardsLatest = useLatestCallback(decisionCards);
+  const markActionLatest = useLatestCallback((id: string, action: MarkAction) => {
+    if (action === "send-now") sends.sendNow(id);
+    else if (action === "resend") sends.resend(id);
+    else {
+      const held = sends.views.find((view) => view.send.id === id);
+      sends.forget(id);
+      // A cancelled message goes back into an empty composer, to change or send later.
+      if (action === "cancel" && held !== undefined && drafts.get(agent.id).trim() === "" && draftAttachments.get(agent.id).length === 0) {
+        drafts.set(agent.id, held.send.text);
+        draftAttachments.set(agent.id, held.send.attachments);
+      }
+    }
+  });
 
   const styles = useMemo(
     () => chatStyles(theme, compact),
@@ -346,6 +376,8 @@ export function AgentChat({
                     group={group}
                     open={openGroups.has(group.key)}
                     images={row?.kind === "user" ? rowImages.get(row.key) : undefined}
+                    mark={row?.kind === "user" ? marksByRow.get(row.key) : undefined}
+                    onMarkAction={markActionLatest}
                     asked={row?.kind === "agent" ? (places?.byRow.get(row.key) ?? NO_DECISIONS) : NO_DECISIONS}
                     deliveryCard={presented ? delivery.card : null}
                     deliveryTarget={deliveryTarget}
@@ -361,6 +393,18 @@ export function AgentChat({
                 );
               })
             )}
+            {/* Sent but not in the timeline yet, or held: drawn here until the timeline shows them. */}
+            {echoes.map((view) => (
+              <UserMessage
+                key={view.send.id}
+                text={view.send.text === "" ? ATTACHMENTS_ONLY : view.send.text}
+                images={undefined}
+                mark={view}
+                theme={theme}
+                styles={styles}
+                onMarkAction={markActionLatest}
+              />
+            ))}
             {places === null || places.unplaced.length === 0 ? null : (
               <View style={styles.agentRow} onLayout={(event) => noteLayout(places.unplaced.map((decision) => decision.key), event.nativeEvent.layout)}>
                 {decisionCards(places.unplaced)}
@@ -419,6 +463,12 @@ export function AgentChat({
                 {suggestions}
               </ActionRow>
             )}
+            {sends.holds ? (
+              <View style={styles.quick}>
+                <Icon name="AlertTriangle" size={13} color={theme.colors.statusWarning} />
+                <Text style={[styles.lineText, { color: theme.colors.foreground }]}>Sending now would stop its current step, so Send holds your message until the step ends.</Text>
+              </View>
+            ) : null}
             <ReplyBox
               theme={theme}
               compact={compact}
@@ -430,6 +480,8 @@ export function AgentChat({
               enterHint
               onSend={sendDraft}
               canSend={!nothingToSend}
+              sendState={sending ? "busy" : undefined}
+              sendLabel={sends.holds ? "Hold until its step ends" : "Send"}
               above={<AttachmentPreviews theme={theme} attachments={attachments} onRemove={(id) => setAttachments(attachments.filter((attachment) => attachment.id !== id))} />}
               leading={attachButton}
               trailing={context === undefined ? null : <ContextMeter theme={theme} used={context.used} max={context.max} ringSize={metrics.ringSize} />}
@@ -448,6 +500,9 @@ interface TranscriptGroupProps {
   open: boolean;
   /** The images sent with a user's message. */
   images: readonly SentImage[] | undefined;
+  /** A user's message the agent has not taken up yet (TR-084). */
+  mark: SendView | undefined;
+  onMarkAction: (id: string, action: MarkAction) => void;
   /** The open decisions this message asked, drawn under it. */
   asked: readonly StoredDecision[];
   /** The acceptance card, under the message that presented the delivery; null elsewhere. */
@@ -463,7 +518,89 @@ interface TranscriptGroupProps {
   renderCards: (decisions: readonly StoredDecision[]) => ReactNode;
 }
 
-function TranscriptGroupView({ group, open, images, asked, deliveryCard, deliveryTarget, transformText, decorateRow, theme, styles, onToggle, onRowLayout, onOpenLink, renderCards }: TranscriptGroupProps) {
+/** What a pending message's mark offers (TR-084). */
+type MarkAction = "send-now" | "cancel" | "resend" | "dismiss";
+
+/** The user's words, with the mark of a message the agent has not taken up yet under them. */
+function UserMessage({
+  text,
+  images,
+  mark,
+  theme,
+  styles,
+  onMarkAction,
+}: {
+  text: string;
+  images: readonly SentImage[] | undefined;
+  mark: SendView | undefined;
+  theme: PluginTheme;
+  styles: ChatStyles;
+  onMarkAction: (id: string, action: MarkAction) => void;
+}) {
+  return (
+    <View style={styles.userColumn}>
+      <View style={styles.user}>
+        <Text selectable style={styles.userText}>
+          {text}
+        </Text>
+        {images === undefined ? null : (
+          <View style={styles.userImages}>
+            {images.map((image, index) => (
+              <ImageThumbnail
+                key={index}
+                source={image.path}
+                alt="Sent image"
+                theme={theme}
+                set={images.map((each) => ({ source: each.path, alt: "Sent image" }))}
+                index={index}
+              />
+            ))}
+          </View>
+        )}
+      </View>
+      {mark === undefined ? null : <SendMarkLine view={mark} theme={theme} styles={styles} onAction={onMarkAction} />}
+    </View>
+  );
+}
+
+const MARK_TEXT: Record<SendMark, string> = {
+  waiting: "Waiting for the agent's next step",
+  held: "Held until its current step ends",
+  unread: "Not read: the agent stopped first",
+};
+
+const MARK_ACTIONS: Record<SendMark, readonly { action: MarkAction; label: string }[]> = {
+  waiting: [],
+  held: [
+    { action: "send-now", label: "Send now and stop it" },
+    { action: "cancel", label: "Cancel" },
+  ],
+  unread: [
+    { action: "resend", label: "Resend" },
+    { action: "dismiss", label: "Dismiss" },
+  ],
+};
+
+function SendMarkLine({ view, theme, styles, onAction }: { view: SendView; theme: PluginTheme; styles: ChatStyles; onAction: (id: string, action: MarkAction) => void }) {
+  const { colors } = theme;
+  return (
+    <View style={styles.mark}>
+      {view.mark === "waiting" ? (
+        <Spinner size={11} color={colors.foregroundMuted} />
+      ) : (
+        <Icon name={view.mark === "held" ? "Timer" : "AlertTriangle"} size={12} color={view.mark === "held" ? colors.foregroundMuted : colors.statusWarning} />
+      )}
+      <Text style={styles.markText}>{MARK_TEXT[view.mark]}</Text>
+      {MARK_ACTIONS[view.mark].map((each) => (
+        <Pressable key={each.action} accessibilityRole="button" accessibilityLabel={each.label} hitSlop={6} onPress={() => onAction(view.send.id, each.action)}>
+          <Text style={styles.markAction}>{each.label}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+function TranscriptGroupView({ group, open, images, mark, asked, deliveryCard, deliveryTarget, transformText, decorateRow, theme, styles, onToggle, onRowLayout, onOpenLink, renderCards, onMarkAction }: TranscriptGroupProps) {
   if ("tools" in group) {
     const summary = toolRunSummary(group.tools);
     const lone = group.tools.length === 1;
@@ -515,29 +652,8 @@ function TranscriptGroupView({ group, open, images, asked, deliveryCard, deliver
   }
   const row = group.row;
   switch (row.kind) {
-    case "user": {
-      return (
-        <View key={row.key} style={styles.user}>
-          <Text selectable style={styles.userText}>
-            {row.text}
-          </Text>
-          {images === undefined ? null : (
-            <View style={styles.userImages}>
-              {images.map((image, index) => (
-                <ImageThumbnail
-                  key={index}
-                  source={image.path}
-                  alt="Sent image"
-                  theme={theme}
-                  set={images.map((each) => ({ source: each.path, alt: "Sent image" }))}
-                  index={index}
-                />
-              ))}
-            </View>
-          )}
-        </View>
-      );
-    }
+    case "user":
+      return <UserMessage key={row.key} text={row.text} images={images} mark={mark} theme={theme} styles={styles} onMarkAction={onMarkAction} />;
     case "agent": {
       const presented = deliveryCard !== null;
       const targets = [...asked.map((decision) => decision.key), ...(presented ? [deliveryTarget] : [])];
@@ -575,6 +691,9 @@ const TranscriptGroup = memo(
   (previous, next) =>
     sameGroup(previous.group, next.group) &&
     sameItems(previous.images, next.images, (left, right) => left.path === right.path) &&
+    previous.mark?.mark === next.mark?.mark &&
+    previous.mark?.send.id === next.mark?.send.id &&
+    previous.onMarkAction === next.onMarkAction &&
     sameItems(previous.asked, next.asked) &&
     previous.open === next.open &&
     previous.deliveryCard === next.deliveryCard &&
@@ -607,9 +726,9 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
       paddingHorizontal: paneGutter(compact),
       gap: compact ? SPACE.md : SPACE.lg,
     },
+    // The user's bubble at the right, and a pending message's mark under it (TR-084).
+    userColumn: { alignSelf: "flex-end" as const, maxWidth: "88%" as const, alignItems: "flex-end" as const, gap: SPACE.xs },
     user: {
-      alignSelf: "flex-end" as const,
-      maxWidth: "88%" as const,
       backgroundColor: colors.surface2,
       borderWidth: 1,
       borderColor: colors.border,
@@ -650,6 +769,9 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
       paddingVertical: SPACE.md,
       gap: SPACE.sm,
     },
+    mark: { flexDirection: "row" as const, flexWrap: "wrap" as const, justifyContent: "flex-end" as const, alignItems: "center" as const, columnGap: SPACE.sm, rowGap: 2 },
+    markText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
+    markAction: { color: colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
     quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
     readOnly: {
       width: "100%" as const,

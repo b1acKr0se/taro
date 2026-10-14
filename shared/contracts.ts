@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { ActivitySchema } from "./activity";
 import { OutgoingAttachmentsSchema } from "./attachments";
+import { ChatMessageIdSchema } from "./pending-sends";
 import { ColumnIdSchema } from "./board";
 import { MilestoneSchema } from "./milestones";
 import { PauseViewSchema } from "./pause";
@@ -136,7 +137,7 @@ export const compactManager = defineRpc({ name: "taro.manager.compact", input: P
 export const tellManager = defineRpc({
   name: "taro.manager.tell",
   // Images and files from the composer (TR-036); the words may be empty when there are some.
-  input: z.object({ project: ProjectNameSchema, text: z.string(), ...OutgoingAttachmentsSchema }),
+  input: z.object({ project: ProjectNameSchema, text: z.string(), ...OutgoingAttachmentsSchema, messageId: ChatMessageIdSchema.optional() }),
   output: ManagerResult,
 });
 export const catchUp = defineRpc({ name: "taro.manager.catch-up", input: ProjectInput, output: ManagerResult });
@@ -292,7 +293,12 @@ export const listOpenDecisions = defineRpc({
 
 const AgentInput = z.object({ agentId: z.string() });
 
-export const tellAgent = defineRpc({ name: "taro.agent.tell", input: z.object({ agentId: z.string(), text: z.string(), ...OutgoingAttachmentsSchema }), output: Empty });
+export const tellAgent = defineRpc({
+  name: "taro.agent.tell",
+  // `messageId`: the chat's id for the message, to mark it until the agent takes it up (TR-084).
+  input: z.object({ agentId: z.string(), text: z.string(), ...OutgoingAttachmentsSchema, messageId: ChatMessageIdSchema.optional() }),
+  output: Empty,
+});
 export const nudgeAgent = defineRpc({ name: "taro.agent.nudge", input: AgentInput, output: Empty });
 export const compactAgent = defineRpc({ name: "taro.agent.compact", input: AgentInput, output: Empty });
 export const relaunchOwner = defineRpc({
