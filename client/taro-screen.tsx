@@ -14,7 +14,6 @@ import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
-import { columnCounts } from "../shared/board";
 import { catchUp, compactManager, tellManager, type Card, type ProjectSummary } from "../shared/contracts";
 import { withoutDecisionBlocks } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
@@ -368,9 +367,8 @@ function ProjectView({
 
   if (compact) {
     if (openCard !== null) return left;
-    // The Manager's questions are Needs you cards too (TR-045).
-    const needsYou =
-      columnCounts(board.data?.cards ?? [], board.data?.managerDecisions.length ?? 0)["needs-you"] + (board.data?.alerts.length ?? 0) + (summary.trackerSyncProblem === null ? 0 : 1);
+    // The Inbox lists every project, so its tab counts them all, as the sidebar does (TR-064).
+    const needsYou = all.reduce((total, project) => total + project.needsYou, 0);
     return (
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm, paddingHorizontal: paneGutter(true), paddingVertical: SPACE.sm }}>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { boardColumn, columnCounts, complexityOf, ticketAgents, type CardInputs, type JoinedAgent } from "./board";
+import { boardColumn, columnCounts, complexityOf, inboxCount, needsYouExtras, ticketAgents, type CardInputs, type JoinedAgent } from "./board";
 
 const base: CardInputs = { status: "In Progress", ownerElsewhere: false, agent: { status: "idle", pendingPermissions: 0 }, lastStatus: "waiting", openBlockingDecisions: 0, stalledAfterNudge: false };
 
@@ -153,5 +153,32 @@ describe("columnCounts", () => {
     expect(columnCounts([], 3)["needs-you"]).toBe(3);
     const cards = [{ column: "needs-you" as const }, { column: "working" as const }, { column: "working" as const }, { column: "done" as const }];
     expect(columnCounts(cards, 2)).toEqual({ "needs-you": 3, working: 2, stalled: 0, queued: 0, done: 1 });
+  });
+});
+
+describe("needsYouExtras and inboxCount (TR-064)", () => {
+  const alert = { id: "manager-crashed", tickets: [], text: "The Manager is stopped." };
+  const cards = [{ column: "needs-you" as const }, { column: "stalled" as const }, { column: "working" as const }, { column: "queued" as const }];
+
+  it("counts nothing for no board and no paused sync", () => {
+    expect(needsYouExtras(null, false)).toBe(0);
+    expect(inboxCount(null, false)).toBe(0);
+  });
+
+  it("counts the paused sync without a board", () => {
+    expect(inboxCount(null, true)).toBe(1);
+  });
+
+  it("counts every alert and the Manager's questions in Needs you", () => {
+    expect(needsYouExtras({ managerDecisions: [{}], alerts: [alert, alert] }, true)).toBe(4);
+    expect(columnCounts(cards, needsYouExtras({ managerDecisions: [], alerts: [alert] }, false))["needs-you"]).toBe(2);
+  });
+
+  it("counts an alert alone on an otherwise quiet board", () => {
+    expect(inboxCount({ cards: [{ column: "working" }], managerDecisions: [], alerts: [alert] }, false)).toBe(1);
+  });
+
+  it("counts Needs you and stalled tickets in the Inbox, not work under way", () => {
+    expect(inboxCount({ cards, managerDecisions: [{}], alerts: [alert] }, true)).toBe(5);
   });
 });

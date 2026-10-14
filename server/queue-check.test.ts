@@ -252,7 +252,7 @@ describe("the escalation ladder", () => {
     await minutes(0, 9);
     expect(actions.queueAlerts("demo", at(9))).toEqual([]);
     await minutes(10, 10);
-    expect(actions.queueAlerts("demo", at(10)).map((alert) => alert.id)).toEqual(["queued-free-slot:DM-3"]);
+    expect(actions.queueAlerts("demo", at(10)).map((alert) => [alert.id, alert.tickets])).toEqual([["queued-free-slot", ["DM-3"]]]);
     await minutes(11, 19);
     expect(restartManager).not.toHaveBeenCalled();
     await minutes(20, 20);
@@ -327,7 +327,7 @@ describe("the escalation ladder", () => {
 
   it("does not restart once the user dismissed the alert, even after a reload", async () => {
     await minutes(0, 12);
-    await actions.dismissQueueAlert("demo", "DM-3");
+    await actions.dismissQueueAlert("demo", ["DM-3"]);
     actions = start();
     expect(actions.queueAlerts("demo", at(12))).toEqual([]);
     await minutes(13, 40);
@@ -357,14 +357,14 @@ describe("the escalation ladder", () => {
     expect(restartManager).toHaveBeenCalledTimes(1);
     tickets = [...tickets, ticket("DM-4", "Backlog")];
     await minutes(21, 32);
-    await actions.dismissQueueAlert("demo", "DM-4");
+    await actions.dismissQueueAlert("demo", ["DM-4"]);
     actions = start();
     actions.userToldManager("demo");
     vi.setSystemTime(at(33));
     await file("DM-5");
     expect(told_().at(-1)).toBe("messages/ticket-queued.md: DM-5");
     await minutes(33, 79);
-    expect(actions.queueAlerts("demo", at(79)).map((alert) => alert.id)).not.toContain("queued-free-slot:DM-4");
+    expect(actions.queueAlerts("demo", at(79)).flatMap((alert) => alert.tickets)).not.toContain("DM-4");
     expect(restartManager).toHaveBeenCalledTimes(1);
     expect(ladders.get("demo")?.dismissed).toEqual(["DM-4"]);
     expect(ladders.get("demo")?.restarts).toEqual([iso(20)]);

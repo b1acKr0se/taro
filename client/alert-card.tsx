@@ -2,18 +2,18 @@
  * A Needs you item that belongs to no ticket (TR-012): the host short of threads
  * for a while, a manager the plugin stopped recovering after repeated crashes,
  * tracker changes the plugin refused to commit and restored (TR-051), or a ticket
- * left queued with a free slot after the Manager was told (TR-062); the last two
- * the user can dismiss.
+ * left queued with a free slot after the Manager was told (TR-062), one card for
+ * all such tickets (TR-064); the last two the user can dismiss.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
 
+import { alertHeading, dismissible } from "../shared/alerts";
 import { dismissQueueAlert, dismissTrackerProtection } from "../shared/contracts";
-import { queuedAlertTicket } from "../shared/queue-check";
+import { QUEUED_ALERT_ID } from "../shared/queue-check";
 import type { BoardAlert } from "../shared/recovery";
-import { PROTECTION_ALERT_ID } from "../shared/tracker-guard";
 import { useRefreshBoard } from "./board-data";
 import { useRefreshProjects } from "./queries";
 import { SPACE } from "./spacing";
@@ -21,16 +21,9 @@ import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { Spinner } from "./ui";
 import { useActions } from "./use-actions";
 
-const HEADINGS: Readonly<Record<string, string>> = {
-  headroom: "THREADS RUNNING LOW",
-  "manager-crashed": "MANAGER CRASHED",
-  [PROTECTION_ALERT_ID]: "TRACKER PROTECTED",
-};
-
 export function AlertCard({ project, alert, theme, compact }: { project: string; alert: BoardAlert; theme: PluginTheme; compact: boolean }) {
   const dismissProtection = useRpc(dismissTrackerProtection);
   const dismissQueued = useRpc(dismissQueueAlert);
-  const queuedTicket = queuedAlertTicket(alert.id);
   const refreshBoard = useRefreshBoard(project);
   // The project list carries the Needs you badge, which counts the alert.
   const refreshProjects = useRefreshProjects();
@@ -48,7 +41,8 @@ export function AlertCard({ project, alert, theme, compact }: { project: string;
 
   function onDismiss(): void {
     // The dismissed alert leaves the board, so it stays busy until it does.
-    presses.press("dismiss", () => (queuedTicket === null ? dismissProtection({ project }) : dismissQueued({ project, ticket: queuedTicket })), {
+    // The tickets this card shows are dismissed, not one that joined since the board was read.
+    presses.press("dismiss", () => (alert.id === QUEUED_ALERT_ID ? dismissQueued({ project, tickets: alert.tickets }) : dismissProtection({ project })), {
       after: "hold",
       onSuccess: () => {
         refreshBoard();
@@ -60,8 +54,8 @@ export function AlertCard({ project, alert, theme, compact }: { project: string;
   return (
     <View style={styles.card}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-        <Text style={styles.heading}>{queuedTicket === null ? HEADINGS[alert.id] ?? "NEEDS YOU" : "QUEUED WITH A FREE SLOT"}</Text>
-        {alert.id === PROTECTION_ALERT_ID || queuedTicket !== null ? (
+        <Text style={styles.heading}>{alertHeading(alert.id).toUpperCase()}</Text>
+        {dismissible(alert.id) ? (
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ busy: presses.busy, disabled: presses.busy }}

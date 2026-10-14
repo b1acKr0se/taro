@@ -10,7 +10,7 @@ import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
-import { COLUMN_IDS, COLUMN_META, COLUMN_TITLES, columnCounts, type ColumnId } from "../shared/board";
+import { COLUMN_IDS, COLUMN_META, COLUMN_TITLES, columnCounts, needsYouExtras, type ColumnId } from "../shared/board";
 import type { Card, ProjectSummary } from "../shared/contracts";
 import { AlertCard } from "./alert-card";
 import { SectionHeading } from "./badges";
@@ -99,7 +99,11 @@ export function ProjectBoard({
 
   // The Manager's questions lead Needs you, blocking first (TR-045).
   const managerQuestions = useMemo(() => walkOrder(board.data?.managerDecisions ?? []), [board.data]);
-  const counts = columnCounts(cards, managerQuestions.length);
+  const syncProblem = summary.trackerSyncProblem;
+  const alerts = board.data?.alerts ?? [];
+  // Alerts and a paused sync wait on the user too, above the columns (TR-064).
+  const counts = columnCounts(cards, needsYouExtras({ managerDecisions: managerQuestions, alerts }, syncProblem !== null));
+  const waitingAbove = alerts.length > 0 || syncProblem !== null;
 
   const statsByTicket = useMemo(() => new Map((stats.data?.tickets ?? []).map((summary) => [summary.ticket, summary])), [stats.data]);
 
@@ -127,21 +131,19 @@ export function ProjectBoard({
             <QuestionCard key={decision.key} decision={decision} asker="Manager" theme={theme} compact={compact} onOpen={onOpenManager} onAnswered={refresh} />
           ))
         : [];
-    if (questions.length === 0 && group.length === 0) return empty(id);
+    if (questions.length === 0 && group.length === 0) return empty(id, id === "needs-you" && waitingAbove ? "See above" : "Nothing here");
     return [...questions, ...group.map(renderCard)];
   }
 
-  function empty(id: ColumnId) {
+  function empty(id: ColumnId, text: string) {
     return (
       <View style={styles.empty}>
         <Icon name={COLUMN_META[id].icon} size={20} color={colors.foregroundMuted} />
-        <Text style={styles.emptyText}>Nothing here</Text>
+        <Text style={styles.emptyText}>{text}</Text>
       </View>
     );
   }
 
-  const syncProblem = summary.trackerSyncProblem;
-  const alerts = board.data?.alerts ?? [];
   const top =
     syncProblem === null && alerts.length === 0 ? null : (
       <View style={styles.top}>
@@ -162,7 +164,7 @@ export function ProjectBoard({
           <View style={styles.section}>
             <SectionHeading theme={theme} icon="TriangleAlert" text="Alerts" color={colors.statusWarning} />
             {alerts.map((alert) => (
-              <AlertCard key={alert.id} project={project} alert={alert} theme={theme} compact={compact} />
+              <AlertCard key={`${alert.id}:${alert.tickets.join(",")}`} project={project} alert={alert} theme={theme} compact={compact} />
             ))}
           </View>
         )}

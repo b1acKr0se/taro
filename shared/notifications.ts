@@ -5,7 +5,9 @@
  */
 import { z } from "zod";
 
+import { alertHeading } from "./alerts";
 import type { Board, Card } from "./contracts";
+import type { BoardAlert } from "./recovery";
 import type { StoredDecision } from "./state";
 
 export interface NeedsYouEntry {
@@ -80,9 +82,26 @@ function cardEntries(card: Card): NeedsYouEntry[] {
   return card.column === "needs-you" ? [...entries, ...episode()] : entries;
 }
 
+/**
+ * A board alert (TR-064), announced once while it is up: keyed by its kind alone, so its minutes
+ * changing or a ticket joining the queued one does not announce it again, and forgotten when it
+ * clears, so its next episode is announced. A tap opens the Manager, which can act on any of them.
+ */
+function alertEntry(project: string, alert: BoardAlert, managerAgentId: string | null, managerWorkspaceId: string | null): NeedsYouEntry {
+  return {
+    key: `${WHILE_WAITING}alert:${alert.id}`,
+    // The project is named: a host-wide alert (threads) is on every project's board.
+    title: `${alertHeading(alert.id)} in ${project}`,
+    body: clip(alert.text),
+    agentId: managerAgentId,
+    workspaceId: managerWorkspaceId,
+  };
+}
+
 /** Every entry of a project's board that waits on the user. */
-export function needsYouEntries(board: Board, managerWorkspaceId: string | null): NeedsYouEntry[] {
+export function needsYouEntries(board: Board, managerWorkspaceId: string | null, managerAgentId: string | null = null): NeedsYouEntry[] {
   return [
+    ...board.alerts.map((alert) => alertEntry(board.project, alert, managerAgentId, managerWorkspaceId)),
     ...board.cards.filter((card) => card.status !== "Done" && card.status !== "Cancelled").flatMap((card) => cardEntries(card)),
     ...board.managerDecisions.map((decision) => decisionEntry(decision, "Manager asks", managerWorkspaceId)),
   ];

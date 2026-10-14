@@ -160,6 +160,29 @@ describe("needsYouEntries", () => {
     ]);
   });
 
+  it("announces every board alert, named for the project and opening the Manager (TR-064)", () => {
+    const alerts = [
+      { id: "headroom", tickets: [], text: "The host is at 1900 of 2048 threads (93%)." },
+      { id: "manager-crashed", tickets: [], text: "The Manager is stopped." },
+      { id: "tracker-protected", tickets: [], text: "Taro refused to commit tracker changes." },
+      { id: "queued-free-slot", tickets: ["NA-001", "NA-002"], text: "NA-001 and NA-002 queued with a free slot." },
+    ];
+    const found = needsYouEntries({ ...board([]), alerts }, "workspace-manager", "agent-manager");
+    expect(found.map((entry) => [entry.key, entry.title])).toEqual([
+      ["while-waiting:alert:headroom", "Threads running low in notes-app"],
+      ["while-waiting:alert:manager-crashed", "Manager crashed in notes-app"],
+      ["while-waiting:alert:tracker-protected", "Tracker protected in notes-app"],
+      ["while-waiting:alert:queued-free-slot", "Queued with a free slot in notes-app"],
+    ]);
+    expect(found[3]).toMatchObject({ body: "NA-001 and NA-002 queued with a free slot.", agentId: "agent-manager", workspaceId: "workspace-manager" });
+  });
+
+  it("keys the queued alert by its kind, so its tickets and minutes changing keep it", () => {
+    const one = needsYouEntries({ ...board([]), alerts: [{ id: "queued-free-slot", tickets: ["NA-001"], text: "NA-001 queued, 10 minutes." }] }, null);
+    const two = needsYouEntries({ ...board([]), alerts: [{ id: "queued-free-slot", tickets: ["NA-001", "NA-002"], text: "NA-001 and NA-002 queued, 14 minutes." }] }, null);
+    expect(one[0]?.key).toBe(two[0]?.key);
+  });
+
   it("says nothing for routine cards: working, queued, done", () => {
     expect(entries([card({}), card({ id: "NA-028", column: "queued", owner: null }), card({ id: "NA-029", status: "Done", column: "done", decisions: [decision({})] })])).toEqual([]);
   });

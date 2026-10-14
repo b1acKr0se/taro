@@ -207,32 +207,48 @@ export function newlyAlerted(watch: QueueWatch, now: number): string[] {
   return fresh;
 }
 
-/** One board and Inbox alert per ticket queued with a free slot ten minutes after the Manager was told. */
+/**
+ * The project's one board and Inbox alert for the tickets queued with a free slot ten minutes after
+ * the Manager was told (TR-064: one card naming them all, not one per ticket), or none.
+ */
 export function queuedAlerts(watch: QueueWatch, now: number): BoardAlert[] {
-  return alertedTickets(watch, now).map((id) => {
-    const minutes = Math.floor((now - (ladderStart(watch, id) ?? now)) / 60_000);
-    if (!watch.wokenAt.has(id)) {
-      return {
-        id: `${QUEUED_ALERT_PREFIX}${id}`,
-        text: `${id} queued with a free slot: the Manager has been busy for ${minutes} minutes, so the plugin could not tell it yet. It tells the Manager once it is idle, and restarts it only if it hangs. Open the Manager's tab to see what it is doing.`,
-      };
-    }
-    const next = restartLimited(watch, now)
-      ? "The plugin already restarted the Manager within the hour, so it leaves this to you."
-      : `Unless you dismiss this or tell the Manager something, the plugin restarts the Manager ${Math.round(QUEUED_RESTART_AFTER_MS / 60_000)} minutes after it was told.`;
-    return {
-      id: `${QUEUED_ALERT_PREFIX}${id}`,
-      text: `${id} queued with a free slot: the plugin told the Manager ${minutes} minutes ago, and it has not dispatched it. Open the Manager's tab to see why, or ask it to dispatch the ticket. ${next}`,
-    };
-  });
+  const tickets = alertedTickets(watch, now).sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
+  if (tickets.length === 0) return [];
+  const told = tickets.filter((id) => watch.wokenAt.has(id));
+  const untold = tickets.filter((id) => !watch.wokenAt.has(id));
+  // The longest wait is the one to act on.
+  const minutes = (ids: readonly string[]): number => Math.floor((now - Math.min(...ids.map((id) => ladderStart(watch, id) ?? now))) / 60_000);
+  if (told.length === 0) {
+    return [
+      {
+        id: QUEUED_ALERT_ID,
+        tickets,
+        text: `${listed(tickets)} queued with a free slot: the Manager has been busy for ${minutes(tickets)} minutes, so the plugin could not tell it yet. It tells the Manager once it is idle, and restarts it only if it hangs. Open the Manager's tab to see what it is doing.`,
+      },
+    ];
+  }
+  const several = told.length > 1;
+  const about = untold.length === 0 ? "" : ` about ${listed(told)}`;
+  const notYet = untold.length === 0 ? "" : `; it was too busy to be told about ${listed(untold)} yet`;
+  const next = restartLimited(watch, now)
+    ? "The plugin already restarted the Manager within the hour, so it leaves this to you."
+    : `Unless you dismiss this or tell the Manager something, the plugin restarts the Manager ${Math.round(QUEUED_RESTART_AFTER_MS / 60_000)} minutes after it was told.`;
+  return [
+    {
+      id: QUEUED_ALERT_ID,
+      tickets,
+      text: `${listed(tickets)} queued with a free slot: the plugin told the Manager${about} ${minutes(told)} minutes ago, and it has not dispatched ${several ? "them" : "it"}${notYet}. Open the Manager's tab to see why, or ask it to dispatch ${several ? "the tickets" : "the ticket"}. ${next}`,
+    },
+  ];
 }
 
-export const QUEUED_ALERT_PREFIX = "queued-free-slot:";
-
-/** The ticket a queued-with-a-free-slot alert is about, or null for any other alert. */
-export function queuedAlertTicket(alertId: string): string | null {
-  return alertId.startsWith(QUEUED_ALERT_PREFIX) ? alertId.slice(QUEUED_ALERT_PREFIX.length) : null;
+/** "NA-001", "NA-001 and NA-002", "NA-001, NA-002 and NA-003". */
+function listed(ids: readonly string[]): string {
+  return ids.length <= 1 ? (ids[0] ?? "") : `${ids.slice(0, -1).join(", ")} and ${ids[ids.length - 1] ?? ""}`;
 }
+
+/** The id of the queued-with-a-free-slot alert; the tickets it names are in its `tickets`. */
+export const QUEUED_ALERT_ID = "queued-free-slot";
 
 /** How the Manager is, for the ladder: only an idle or unresponsive one may be restarted. */
 export type ManagerCondition = "idle" | "busy" | "unresponsive" | "missing";

@@ -147,3 +147,20 @@ export function columnCounts(cards: readonly { column: ColumnId }[], managerQues
   for (const card of cards) counts[card.column] += 1;
   return counts;
 }
+
+/**
+ * What waits on the user besides the tickets (TR-064): the Manager's open questions, every board
+ * alert and a paused ticket sync. The Needs you column counts them with its tickets.
+ */
+export function needsYouExtras(board: { managerDecisions: readonly unknown[]; alerts: readonly unknown[] } | null, syncPaused: boolean): number {
+  return (board?.managerDecisions.length ?? 0) + (board?.alerts.length ?? 0) + (syncPaused ? 1 : 0);
+}
+
+/** A project's Inbox count, on the sidebar and the phone's Inbox tab: its Needs you, and its stalled tickets, which the Inbox lists too. */
+export function inboxCount(
+  board: { cards: readonly { column: ColumnId }[]; managerDecisions: readonly unknown[]; alerts: readonly unknown[] } | null,
+  syncPaused: boolean,
+): number {
+  const counts = columnCounts(board?.cards ?? [], needsYouExtras(board, syncPaused));
+  return counts["needs-you"] + counts.stalled;
+}

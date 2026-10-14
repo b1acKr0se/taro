@@ -695,12 +695,12 @@ export class Actions {
     return watch === undefined ? [] : queuedAlerts(watch, now);
   }
 
-  /** The user dismissed a ticket's alert: it comes down and the ladder stops for it until the ticket leaves the queue. */
-  async dismissQueueAlert(project: string, ticket: string): Promise<void> {
+  /** The user dismissed the alert for these tickets: it comes down and the ladder stops for them until they leave the queue. */
+  async dismissQueueAlert(project: string, tickets: readonly string[]): Promise<void> {
     const watch = await this.loadQueueWatch(project);
-    watch.dismissed.add(ticket);
+    for (const ticket of tickets) watch.dismissed.add(ticket);
     await this.saveQueueWatch(project, watch);
-    console.log(`[taro] ${project}: the user dismissed the queued alert for ${ticket}`);
+    console.log(`[taro] ${project}: the user dismissed the queued alert for ${tickets.join(", ")}`);
   }
 
   /** The user sent the Manager a message from Taro: acting on an alert that way stops the restart. */

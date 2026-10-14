@@ -19,6 +19,7 @@ import { paseoHome, statePath } from "./data-dir";
 import { readJsonIfPresent, readTextIfPresent, writeJsonAtomically } from "./files";
 import type { PaseoApi } from "./host-types";
 import { readProjectConfig } from "./projects";
+import type { BoardAlert } from "../shared/recovery";
 import { serialized } from "./serialize";
 import type { PluginState } from "./state";
 
@@ -104,13 +105,20 @@ export class Notifier {
     return { seq: this.seq, notifications: after > this.seq ? [...this.feed] : this.feed.filter((notification) => notification.seq > after) };
   }
 
-  /** Looks at a project's board and announces what entered Needs you since the last look. */
-  check(paseo: PaseoApi, state: PluginState, project: string): Promise<number> {
+  /**
+   * Looks at a project's board, with the queue check's alerts (which live in memory, outside the
+   * board), and announces what entered Needs you since the last look.
+   */
+  check(paseo: PaseoApi, state: PluginState, project: string, queueAlerts: readonly BoardAlert[] = []): Promise<number> {
     return serialized(`notify:${project}`, async () => {
       const config = await readProjectConfig(project);
       if (config === null) return 0;
-      const board = await loadBoard(paseo, state, project);
-      const entries = needsYouEntries(board, config.managerWorkspaceId === "" ? null : config.managerWorkspaceId);
+      const board = await loadBoard(paseo, state, project, queueAlerts);
+      const entries = needsYouEntries(
+        board,
+        config.managerWorkspaceId === "" ? null : config.managerWorkspaceId,
+        config.managerAgentId === "" ? null : config.managerAgentId,
+      );
       return this.announce(project, entries, config.notify);
     });
   }

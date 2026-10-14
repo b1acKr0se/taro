@@ -141,7 +141,7 @@ function InboxProject({
         />
       )}
       {alerts.map((alert) => (
-        <AlertCard key={alert.id} project={project} alert={alert} theme={theme} compact={compact} />
+        <AlertCard key={`${alert.id}:${alert.tickets.join(",")}`} project={project} alert={alert} theme={theme} compact={compact} />
       ))}
       {waiting.map((card) => (
         <TicketCard

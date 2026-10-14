@@ -39,6 +39,7 @@ import {
   writeProjectSettings,
   writeStandingOrders,
 } from "./shared/contracts";
+import { inboxCount } from "./shared/board";
 import { ProjectSettingsSchema } from "./shared/project";
 import { Actions } from "./server/actions";
 import { fetchLiveAgent, isAgentLive } from "./server/agents";
@@ -147,7 +148,7 @@ export default function contribute(server: PluginServerContext) {
     const paseo = kept;
     notifying = true;
     void listProjectConfigs()
-      .then((configs) => Promise.all(configs.map((config) => notifier.check(paseo, state, config.project).catch((error: unknown) => console.error(`[taro] notifications for ${config.project}:`, error)))))
+      .then((configs) => Promise.all(configs.map((config) => notifier.check(paseo, state, config.project, actions.queueAlerts(config.project)).catch((error: unknown) => console.error(`[taro] notifications for ${config.project}:`, error)))))
       .catch((error: unknown) => console.error("[taro] notification check failed:", error))
       .finally(() => {
         notifying = false;
@@ -189,9 +190,7 @@ export default function contribute(server: PluginServerContext) {
         void trackers.pullIfDue(config.project);
         const board = await loadBoard(paseo, state, config.project, actions.queueAlerts(config.project)).catch(() => null);
         const trackerSyncProblem = config.trackerSync === "remote" ? trackers.syncProblem(config.project) : null;
-        const needsYou =
-          (board === null ? 0 : board.cards.filter((card) => card.column === "needs-you" || card.column === "stalled").length + board.managerDecisions.length + board.alerts.length) +
-          (trackerSyncProblem === null ? 0 : 1);
+        const needsYou = inboxCount(board, trackerSyncProblem !== null);
         return { config, manager: manager === null ? null : agentBrief(manager), trackerSyncProblem, needsYou };
       }),
     );
@@ -296,8 +295,8 @@ export default function contribute(server: PluginServerContext) {
     await requireProjectConfig(project);
     return { problem: await trackers.resolve(project, resolution) };
   });
-  server.handle(dismissQueueAlert, async ({ project, ticket }) => {
-    await actions.dismissQueueAlert(project, ticket);
+  server.handle(dismissQueueAlert, async ({ project, tickets }) => {
+    await actions.dismissQueueAlert(project, tickets);
     invalidateBoards();
     return {};
   });

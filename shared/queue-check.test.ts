@@ -12,7 +12,6 @@ import {
   newlyAlerted,
   newlyWithheld,
   newlyQueuedStartable,
-  queuedAlertTicket,
   queuedAlerts,
   queuedTickets,
   recount,
@@ -242,12 +241,11 @@ describe("the escalation ladder", () => {
     expect(queuedAlerts(watch, minutes(11))).toEqual([]);
     expect(queuedAlerts(watch, minutes(12))).toEqual([
       {
-        id: "queued-free-slot:TR-5",
+        id: "queued-free-slot",
+        tickets: ["TR-5"],
         text: "TR-5 queued with a free slot: the plugin told the Manager 10 minutes ago, and it has not dispatched it. Open the Manager's tab to see why, or ask it to dispatch the ticket. Unless you dismiss this or tell the Manager something, the plugin restarts the Manager 20 minutes after it was told.",
       },
     ]);
-    expect(queuedAlertTicket("queued-free-slot:TR-5")).toBe("TR-5");
-    expect(queuedAlertTicket("headroom")).toBeNull();
   });
 
   it("raises the alert ten minutes after the first look when the Manager could never be woken", () => {
@@ -270,6 +268,51 @@ describe("the escalation ladder", () => {
     const watch = watched();
     watch.dismissed.add("TR-5");
     expect(queuedAlerts(watch, minutes(30))).toEqual([]);
+  });
+
+  describe("several tickets (TR-064)", () => {
+    it("shows one alert naming them all, in ticket order, counting from the longest wait", () => {
+      const watch = watched({ startable: ["TR-10", "TR-9", "TR-11"] });
+      markWoken(watch, count({ startable: ["TR-10", "TR-9", "TR-11"] }), minutes(1));
+      expect(queuedAlerts(watch, minutes(15))).toEqual([
+        {
+          id: "queued-free-slot",
+          tickets: ["TR-9", "TR-10", "TR-11"],
+          text: "TR-9, TR-10 and TR-11 queued with a free slot: the plugin told the Manager 14 minutes ago, and it has not dispatched them. Open the Manager's tab to see why, or ask it to dispatch the tickets. Unless you dismiss this or tell the Manager something, the plugin restarts the Manager 20 minutes after it was told.",
+        },
+      ]);
+    });
+
+    it("names two with 'and' and no comma", () => {
+      const watch = watched({ startable: ["TR-5", "TR-6"] });
+      expect(queuedAlerts(watch, minutes(12))[0]?.text).toBe(
+        "TR-5 and TR-6 queued with a free slot: the Manager has been busy for 12 minutes, so the plugin could not tell it yet. It tells the Manager once it is idle, and restarts it only if it hangs. Open the Manager's tab to see what it is doing.",
+      );
+    });
+
+    it("says which tickets the Manager was told about and which not yet", () => {
+      const watch = watched({ startable: ["TR-5", "TR-6"] });
+      markWoken(watch, count({ startable: ["TR-5"] }), minutes(2));
+      expect(queuedAlerts(watch, minutes(13))[0]?.text).toBe(
+        "TR-5 and TR-6 queued with a free slot: the plugin told the Manager about TR-5 11 minutes ago, and it has not dispatched it; it was too busy to be told about TR-6 yet. Open the Manager's tab to see why, or ask it to dispatch the ticket. Unless you dismiss this or tell the Manager something, the plugin restarts the Manager 20 minutes after it was told.",
+      );
+    });
+
+    it("adds a ticket once its own wait reaches ten minutes", () => {
+      const watch = watched({ startable: ["TR-5"] });
+      trackQueue(watch, count({ startable: ["TR-5", "TR-6"] }), minutes(5));
+      expect(queuedAlerts(watch, minutes(14))[0]?.tickets).toEqual(["TR-5"]);
+      expect(queuedAlerts(watch, minutes(15))[0]?.tickets).toEqual(["TR-5", "TR-6"]);
+    });
+
+    it("comes down when every ticket it named is dismissed, and back up for a ticket that joins later", () => {
+      const watch = watched({ startable: ["TR-5", "TR-6"] });
+      for (const id of queuedAlerts(watch, minutes(10))[0]?.tickets ?? []) watch.dismissed.add(id);
+      expect(queuedAlerts(watch, minutes(11))).toEqual([]);
+      trackQueue(watch, count({ startable: ["TR-5", "TR-6", "TR-7"] }), minutes(11));
+      expect(queuedAlerts(watch, minutes(20))).toEqual([]);
+      expect(queuedAlerts(watch, minutes(21))[0]?.tickets).toEqual(["TR-7"]);
+    });
   });
 
   describe("the restart", () => {

@@ -104,6 +104,7 @@ export function protectionAlert(protection: TrackerProtection | null, now: numbe
   if (!Number.isFinite(at) || now - at >= PROTECTION_ALERT_MS) return null;
   return {
     id: PROTECTION_ALERT_ID,
+    tickets: [],
     text: `Taro refused to commit tracker changes that look like a stray \`backlog init\` and restored them: ${protection.restored.join("; ")}. Tickets are unaffected. An agent likely ran Backlog with BACKLOG_CWD still pointing at the tracker.`,
   };
 }
