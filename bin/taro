@@ -1,0 +1,15 @@
+#!/bin/sh
+# The `taro` command: runs server/taro-cli.ts under plain Node type stripping (no npm packages).
+# Resolves its own real location through symlinks, so the plugin's bin/ directory can sit on PATH
+# or be linked from anywhere.
+self=$0
+while [ -h "$self" ]; do
+  directory=$(cd "$(dirname "$self")" && pwd -P)
+  target=$(readlink "$self")
+  case $target in
+    /*) self=$target ;;
+    *) self=$directory/$target ;;
+  esac
+done
+directory=$(cd "$(dirname "$self")" && pwd -P)
+exec "${TARO_NODE:-node}" "$directory/../server/taro-cli.ts" "$@"

@@ -10,6 +10,7 @@
     "index.client.tsx",
     "index.server.ts",
     "client/",
+    "bin/",
     "server/",
     "shared/",
     "skill/",
