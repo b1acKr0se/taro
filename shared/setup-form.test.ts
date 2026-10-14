@@ -21,6 +21,7 @@ const config: ProjectConfig = {
   compactThresholdTokens: 300_000,
   idleCompactThresholdTokens: 150_000,
   maxParallelOwners: 5,
+  notify: false,
 };
 
 function validNew(overrides: Partial<SetupDraft> = {}): SetupDraft {

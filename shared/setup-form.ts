@@ -20,6 +20,7 @@ export interface SetupDraft {
   compactThresholdTokens: string;
   idleCompactThresholdTokens: string;
   maxParallelOwners: string;
+  notify: boolean;
 }
 
 export const DEFAULT_COMPACT_TOKENS = 250_000;
@@ -45,6 +46,7 @@ export function draftFrom(config: ProjectConfig | null): SetupDraft {
     compactThresholdTokens: String(config?.compactThresholdTokens ?? DEFAULT_COMPACT_TOKENS),
     idleCompactThresholdTokens: String(config?.idleCompactThresholdTokens ?? DEFAULT_IDLE_COMPACT_TOKENS),
     maxParallelOwners: String(config?.maxParallelOwners ?? DEFAULT_PARALLEL_OWNERS),
+    notify: config?.notify ?? true,
   };
 }
 
@@ -70,6 +72,7 @@ export function settingsFrom(draft: SetupDraft, defaultModel: string): ProjectSe
     compactThresholdTokens: parseCount(draft.compactThresholdTokens) ?? DEFAULT_COMPACT_TOKENS,
     idleCompactThresholdTokens: parseCount(draft.idleCompactThresholdTokens) ?? DEFAULT_IDLE_COMPACT_TOKENS,
     maxParallelOwners: Math.min(MAX_PARALLEL_OWNERS, parseCount(draft.maxParallelOwners) ?? DEFAULT_PARALLEL_OWNERS),
+    notify: draft.notify,
   };
 }
 

@@ -127,7 +127,7 @@ describe("loadBoard", () => {
   });
 
   // TR-045: a card shows what the owner's permission asks and, awaiting acceptance, the delivery in a line.
-  it("carries the owner's first pending permission as what it asks", async () => {
+  it("carries the owner's first pending permission as what it asks, with its request id", async () => {
     const owner = {
       ...agent("owner-live", "owner", "TR-1", "2026-10-13T14:50:00Z"),
       pendingPermissions: [
@@ -139,8 +139,8 @@ describe("loadBoard", () => {
     vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "In Progress"), ticket("TR-2", "Done"), ticket("TR-3", "In Progress")] as unknown as Awaited<ReturnType<typeof listTickets>>);
     vi.mocked(projectAgents).mockResolvedValue([owner, quiet]);
     const board = await loadBoard({} as PaseoApi, state([]), "taro");
-    expect(board.cards.find((card) => card.id === "TR-1")?.permission).toEqual({ title: "Allow Bash?", detail: "npm install" });
-    expect(board.cards.find((card) => card.id === "TR-3")?.permission).toEqual({ title: "Allow Custom?", detail: null });
+    expect(board.cards.find((card) => card.id === "TR-1")?.permission).toEqual({ title: "Allow Bash?", detail: "npm install", id: "p1" });
+    expect(board.cards.find((card) => card.id === "TR-3")?.permission).toEqual({ title: "Allow Custom?", detail: null, id: "p3" });
     expect(board.cards.find((card) => card.id === "TR-2")?.permission).toBeNull();
   });
 

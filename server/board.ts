@@ -110,9 +110,10 @@ export function invalidateBoards(): void {
 }
 
 /** What the owner's first pending permission asks, for its card. */
-function firstPermission(owner: PaseoAgent | null): PermissionAsk | null {
+function firstPermission(owner: PaseoAgent | null): (PermissionAsk & { id: string }) | null {
   const request = owner?.pendingPermissions[0];
-  return request === undefined ? null : permissionAsk({ ...request, input: request.input ?? undefined });
+  // The request's id tells a second ask from the first, for its notification (TR-059).
+  return request === undefined ? null : { ...permissionAsk({ ...request, input: request.input ?? undefined }), id: request.id };
 }
 
 function groupByTicket(agents: readonly PaseoAgent[]): Map<string, PaseoAgent[]> {

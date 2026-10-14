@@ -322,6 +322,20 @@ export function ProjectSetup({
         </Field>
       </FormSection>
 
+      <FormSection theme={theme} icon="Bell" title="Notifications" description="When a ticket enters Needs you: ready to accept, a question, a permission, blocked or stalled.">
+        <Field theme={theme} wide={wide} label="Tell me">
+          <ChoiceCards
+            theme={theme}
+            value={draft.notify ? "on" : "off"}
+            onChange={(value) => update("notify", value === "on")}
+            options={[
+              { value: "on", title: "Notify me", description: "A push to your phone, or a desktop notification while you use a desktop window." },
+              { value: "off", title: "Don't notify", description: "Only the badge and the board show what waits on you." },
+            ]}
+          />
+        </Field>
+      </FormSection>
+
       <FormSection theme={theme} icon="Gauge" title="Limits" description="How much runs at once, and when long conversations are compacted.">
         <Field theme={theme} wide={wide} label="Owners running at once" hint="The Manager queues the rest; every agent costs host resources and money." error={problem("maxParallelOwners")}>
           <TextField

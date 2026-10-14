@@ -185,7 +185,7 @@ export const CardSchema = z.object({
   /** Set from the ACCEPTED record while the ticket is still Awaiting acceptance: the owner is merging (TR-031). */
   accepted: z.object({ at: z.string(), merging: z.string().nullable() }).nullable().default(null),
   /** What the owner's first pending permission asks, in its own words (TR-045). */
-  permission: z.object({ title: z.string(), detail: z.string().nullable() }).nullable().default(null),
+  permission: z.object({ title: z.string(), detail: z.string().nullable(), id: z.string().nullable().default(null) }).nullable().default(null),
   /** The delivery in a line, from the FINAL summary, while the ticket is Awaiting acceptance (TR-045). */
   delivered: z.string().nullable().default(null),
 });
@@ -334,4 +334,24 @@ export const listSentImages = defineRpc({
   name: "taro.agent.sent-images",
   input: z.object({ agentId: z.string() }),
   output: z.object({ messages: z.array(SentImagesMessageSchema) }),
+});
+
+export const FeedNotificationSchema = z.object({
+  seq: z.number().int(),
+  title: z.string(),
+  body: z.string(),
+  /** Paseo's notification routing fields (`serverId`, `agentId`, `workspaceId`): a click opens the agent. */
+  data: z.record(z.string(), z.string()),
+});
+export type FeedNotification = z.infer<typeof FeedNotificationSchema>;
+
+/**
+ * A window collects what entered Needs you since `after` (TR-059); `after` below zero starts from now.
+ * `active`: it can show a desktop notification and was used in the last three minutes, so the phone
+ * is not pushed as well.
+ */
+export const pollNotifications = defineRpc({
+  name: "taro.notifications.poll",
+  input: z.object({ clientId: z.string().min(1), active: z.boolean(), after: z.number().int() }),
+  output: z.object({ seq: z.number().int(), notifications: z.array(FeedNotificationSchema) }),
 });

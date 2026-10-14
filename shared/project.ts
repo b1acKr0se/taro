@@ -81,6 +81,8 @@ export const ProjectSettingsSchema = z.object({
   idleCompactThresholdTokens: z.number().int().positive().default(200_000),
   /** Task owners running at once; the manager queues the rest (every agent costs host threads and money). */
   maxParallelOwners: z.number().int().min(1).max(20).default(3),
+  /** Tell the user, on the phone and the desktop, when something enters Needs you (TR-059). */
+  notify: z.boolean().default(true),
 });
 export type ProjectSettings = z.infer<typeof ProjectSettingsSchema>;
 

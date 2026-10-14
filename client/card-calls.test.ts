@@ -115,7 +115,7 @@ describe("cardCalls", () => {
 
   it("carries what the first permission asks and how many wait", () => {
     expect(cardCalls(card({ owner: { ...owner, pendingPermissions: 1 } }))).toEqual([{ kind: "permission", title: null, detail: null, count: 1 }]);
-    const permission = { title: "Run a command", detail: "npm test" };
+    const permission = { title: "Run a command", detail: "npm test", id: null };
     expect(cardCalls(card({ owner: { ...owner, pendingPermissions: 3 }, permission }))).toEqual([{ kind: "permission", title: "Run a command", detail: "npm test", count: 3 }]);
   });
 

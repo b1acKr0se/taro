@@ -27,6 +27,7 @@ import {
   listProjects,
   listSentImages,
   onboardProject as onboardProjectRpc,
+  pollNotifications,
   readImageRpc,
   readProjectConfig as readProjectConfigRpc,
   readStandingOrders,
@@ -52,6 +53,7 @@ import { catchUpText, compactManager, launchManager, restartManager, tellManager
 import { onboardProject, onboardingProblems } from "./server/onboard";
 import { listPaseoProjects, settingsTemplate } from "./server/paseo-projects";
 import { readImage } from "./server/images";
+import { Notifier } from "./server/notifications";
 import { checkPrerequisites } from "./server/prerequisites";
 import { listProjectConfigs, projectPaths, readProjectConfig, requireProjectConfig, taroHome, updateProjectConfig } from "./server/projects";
 import { sentImagesOf } from "./server/sent-images";
@@ -67,6 +69,7 @@ export default function contribute(server: PluginServerContext) {
   const supervisor = new Supervisor(state, stats, recovery);
   const actions = new Actions(state, supervisor, trackers, stats, recovery);
   recovery.setRelaunchOwner((paseo, project, ticket) => actions.relaunchOwner(paseo, project, ticket));
+  const notifier = new Notifier();
   // The server half is given Paseo only inside handlers and hooks; keep the first one for timers.
   let kept: PaseoApi | null = null;
   const keep = (paseo: PaseoApi): PaseoApi => {
@@ -94,9 +97,12 @@ export default function contribute(server: PluginServerContext) {
     // A pull may have brought tickets edited elsewhere; the next read must not serve the cached board.
     invalidateBoards();
     if (kept === null) return;
-    void actions.onTrackerChanged(kept, project).catch((error: unknown) => {
-      console.error(`[taro] after ${project}'s tracker changed:`, error);
-    });
+    void actions
+      .onTrackerChanged(kept, project)
+      .catch((error: unknown) => {
+        console.error(`[taro] after ${project}'s tracker changed:`, error);
+      })
+      .finally(checkNotifications);
   });
   void trackers.refresh().catch((error: unknown) => {
     console.error("[taro] could not start tracker watches:", error);
@@ -114,6 +120,31 @@ export default function contribute(server: PluginServerContext) {
         backstopping = false;
       });
   }, 60_000);
+
+  // What entered Needs you (TR-059): after each turn end and tracker change, and every 15 seconds for
+  // what neither shows (a permission asked mid-turn). One pass at a time; a call during one runs another after it.
+  let notifying = false;
+  let notifyAgain = false;
+  const checkNotifications = (): void => {
+    if (kept === null) return;
+    if (notifying) {
+      notifyAgain = true;
+      return;
+    }
+    const paseo = kept;
+    notifying = true;
+    void listProjectConfigs()
+      .then((configs) => Promise.all(configs.map((config) => notifier.check(paseo, state, config.project).catch((error: unknown) => console.error(`[taro] notifications for ${config.project}:`, error)))))
+      .catch((error: unknown) => console.error("[taro] notification check failed:", error))
+      .finally(() => {
+        notifying = false;
+        if (notifyAgain) {
+          notifyAgain = false;
+          checkNotifications();
+        }
+      });
+  };
+  const notifyTimer = setInterval(checkNotifications, 15_000);
 
   // Idle compaction (TR-015): once a minute, so an agent is caught inside its 55–60 minute window.
   const idleAfterMs = idleCompactAfterMs(process.env.TARO_IDLE_COMPACT_AFTER_SECONDS);
@@ -260,6 +291,11 @@ export default function contribute(server: PluginServerContext) {
     return {};
   });
 
+  server.handle(pollNotifications, async ({ clientId, active, after }, { paseo }) => {
+    keep(paseo);
+    return notifier.poll(clientId, active, after);
+  });
+
   server.handle(readImageRpc, async ({ path }) => ({ image: await readImage(path) }));
   server.handle(listSentImages, async ({ agentId }, { paseo }) => ({ messages: await sentImagesOf(paseo, agentId) }));
 
@@ -286,6 +322,7 @@ export default function contribute(server: PluginServerContext) {
       console.error(`[taro] releasing ${agent.id} after its turn:`, error);
     });
     invalidateBoards();
+    checkNotifications();
   });
 
   // An archived agent's questions are withdrawn, whoever archived it (decisions of dead agents message no one).
@@ -313,6 +350,7 @@ export default function contribute(server: PluginServerContext) {
     removeArchiveHook();
     removeSessionHook();
     clearInterval(idleTimer);
+    clearInterval(notifyTimer);
     clearInterval(backstopTimer);
     recovery.dispose();
     trackers.stop();

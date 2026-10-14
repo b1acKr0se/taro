@@ -56,6 +56,7 @@ function config(project: string, repoPath: string, overrides: Partial<ProjectCon
     compactThresholdTokens: 250_000,
     idleCompactThresholdTokens: 200_000,
     maxParallelOwners: 3,
+    notify: true,
     ...overrides,
   };
 }

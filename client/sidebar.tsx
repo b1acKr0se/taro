@@ -5,10 +5,13 @@ import { Text, View } from "react-native";
 
 import { useProjects } from "./queries";
 import { TARO_SCREEN_ID } from "./screen";
+import { useNeedsYouNotifications } from "./use-notifications";
 import { FONT_SIZE } from "./type-scale";
 
 export function TaroSidebarItem({ currentScreen, openScreen, theme }: PluginSidebarItemProps) {
   const projects = useProjects();
+  // The sidebar row is drawn on every screen of the desktop app, so it is where a window listens.
+  useNeedsYouNotifications();
   const waiting = (projects.data?.projects ?? []).reduce((total, summary) => total + summary.needsYou, 0);
   return (
     <SidebarRow

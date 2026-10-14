@@ -136,10 +136,10 @@ describe("cardNowLine", () => {
   });
 
   it("says what a permission asks, the rest counted", () => {
-    const permission = { title: "Run a command", detail: "npm install" };
+    const permission = { title: "Run a command", detail: "npm install", id: null };
     expect(cardNowLine(card({ owner: { ...owner, pendingPermissions: 1 }, permission }), NOW)).toMatchObject({ headline: "Run a command", detail: "npm install", action: "Review" });
     expect(cardNowLine(card({ owner: { ...owner, pendingPermissions: 3 }, permission }), NOW)).toMatchObject({ detail: "npm install · 2 more permissions" });
-    expect(cardNowLine(card({ owner: { ...owner, pendingPermissions: 2 }, permission: { title: "Edit", detail: null } }), NOW)).toMatchObject({ detail: "1 more permission" });
+    expect(cardNowLine(card({ owner: { ...owner, pendingPermissions: 2 }, permission: { title: "Edit", detail: null, id: null } }), NOW)).toMatchObject({ detail: "1 more permission" });
   });
 
   it("falls back to a count when the permission's words are unknown", () => {
