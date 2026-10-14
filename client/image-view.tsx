@@ -200,10 +200,10 @@ const SETTLE_MS = 180;
 const NATIVE_DRIVER = Platform.OS !== "web";
 /** The top bar's row, below the status bar: a touch target's height. */
 const BAR_HEIGHT = 52;
-/** How far the bar's fade reaches below the bar, and in how many steps (core React Native draws no gradient). */
+/** How far the bar's fade reaches below the bar, and in how many steps (core React Native draws no gradient); it stays dense behind the controls and drops off below them. */
 const FADE_REACH = 28;
-const FADE_STEPS = 10;
-const FADE_ALPHA = 0.8;
+const FADE_STEPS = 24;
+const FADE_ALPHA = 0.9;
 
 /** An eased move under way: where it started, where it goes, and when. */
 interface Easing {
@@ -438,7 +438,7 @@ function GalleryPage({
       <View pointerEvents="box-none" style={{ position: "absolute", top: 0, left: 0, right: 0 }} onLayout={(event) => setBarHeight(event.nativeEvent.layout.height)}>
         <View pointerEvents="none" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: -FADE_REACH }}>
           {Array.from({ length: FADE_STEPS }, (_, step) => (
-            <View key={step} style={{ flex: 1, backgroundColor: withAlpha(colors.surface0, FADE_ALPHA * (1 - step / FADE_STEPS) ** 1.5) }} />
+            <View key={step} style={{ flex: 1, backgroundColor: withAlpha(colors.surface0, FADE_ALPHA * (1 - (step / FADE_STEPS) ** 2)) }} />
           ))}
         </View>
         <SafeArea pointerEvents="box-none">
