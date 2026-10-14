@@ -3,7 +3,7 @@
  * it names, which the chat links to the Files view. Pure, so what is found
  * and what is drawn are the same walk and can be tested without a renderer.
  *
- * Finding a path is only half of it: whether `data/backlog.md` is a file in
+ * Finding a path is only half of it: whether `data/notes.md` is a file in
  * the home is the daemon's to say, so the chat first
  * collects every candidate a message could link (`fileCandidates`), asks, and
  * then tokenizes again with the answer (`inlineTokens`). Anything the daemon
@@ -40,7 +40,7 @@ export type FileLookup = (candidate: string) => string | null;
  * The path `text` would name, without a trailing line number, or null when it
  * does not look like one: a path has a `/` in it or ends in an extension, so
  * `data/notes/report.md`, `watches/pr-watch` and `AGENTS.md` are, and
- * `backlog` is not. Nor is anything longer than the daemon will look up.
+ * `notes` is not. Nor is anything longer than the daemon will look up.
  */
 export function pathCandidate(text: string): string | null {
   const path = text.replace(LINE_SUFFIX, "");

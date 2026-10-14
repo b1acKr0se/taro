@@ -1,4 +1,4 @@
-// TR-062: a ticket sat in Backlog while only 1 of 3 owners counted, because the Manager counted from
+// TR-062: a ticket sat Queued while only 1 of 3 owners counted, because the Manager counted from
 // memory and nothing woke it. The plugin now owns the count: a ticket filed while a slot is free, or
 // an idle Manager with a startable ticket, wakes it with the plugin's recount; a HOLD record exempts a
 // ticket; and when the Manager still does not dispatch, an alert at ten minutes and a fresh Manager at
@@ -143,10 +143,10 @@ function start(): Actions {
   return new Actions(state, {} as Supervisor, {} as TrackerWatch, stats, recovery);
 }
 
-/** A ticket is filed into Backlog: the tracker pass after its commit. */
+/** A ticket is filed as Queued: the tracker pass after its commit. */
 async function file(id: string): Promise<void> {
   await actions.primeStatuses();
-  tickets = [...tickets, ticket(id, "Backlog")];
+  tickets = [...tickets, ticket(id, "Queued")];
   await actions.onTrackerChanged(paseo, "demo");
 }
 
@@ -167,7 +167,7 @@ describe("a ticket filed while a slot is free", () => {
     expect(told).toEqual([]);
   });
 
-  it("does not wake for a ticket paused back to Backlog with its owner alive, and counts that owner", async () => {
+  it("does not wake for a ticket paused back to Queued with its owner alive, and counts that owner", async () => {
     owners = [owner("DM-1"), owner("DM-3"), owner("DM-4")];
     await file("DM-3");
     expect(told).toEqual([]);
@@ -195,7 +195,7 @@ describe("a ticket filed while a slot is free", () => {
 
 describe("the minute check", () => {
   beforeEach(() => {
-    tickets = [...tickets, ticket("DM-3", "Backlog")];
+    tickets = [...tickets, ticket("DM-3", "Queued")];
   });
 
   it("wakes the Manager once it has been idle for two minutes, and only once for the same situation", async () => {
@@ -211,7 +211,7 @@ describe("the minute check", () => {
 
   it("wakes it again when the situation changes", async () => {
     await actions.checkQueues(paseo, at(0));
-    tickets = [...tickets, ticket("DM-4", "Backlog")];
+    tickets = [...tickets, ticket("DM-4", "Queued")];
     await actions.checkQueues(paseo, at(1));
     expect(told_()).toEqual(["messages/queue-idle.md: DM-3", "messages/queue-idle.md: DM-3, DM-4"]);
   });
@@ -238,7 +238,7 @@ describe("the minute check", () => {
 
 describe("the escalation ladder", () => {
   beforeEach(() => {
-    tickets = [...tickets, ticket("DM-3", "Backlog")];
+    tickets = [...tickets, ticket("DM-3", "Queued")];
   });
 
   /** Minute checks from `from` to `to`, as the timer runs them. */
@@ -361,7 +361,7 @@ describe("the escalation ladder", () => {
 
   it("still restarts a Manager that answered later wake-ups for a changed queue without dispatching", async () => {
     await minutes(0, 12);
-    tickets = [...tickets, ticket("DM-4", "Backlog")];
+    tickets = [...tickets, ticket("DM-4", "Queued")];
     await minutes(13, 14);
     managerState.lastTurnEndedAt = iso(14);
     await minutes(15, 20);
@@ -373,7 +373,7 @@ describe("the escalation ladder", () => {
   it("keeps a dismissal and the hourly limit when another path touches the ladder before the first minute check after a reload", async () => {
     await minutes(0, 20);
     expect(restartManager).toHaveBeenCalledTimes(1);
-    tickets = [...tickets, ticket("DM-4", "Backlog")];
+    tickets = [...tickets, ticket("DM-4", "Queued")];
     await minutes(21, 32);
     await actions.dismissQueueAlert("demo", ["DM-4"]);
     actions = start();

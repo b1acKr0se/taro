@@ -7,7 +7,7 @@
 
 /** Kept equal to shared/project.ts TICKET_STATUSES by a test; that file imports zod, so it cannot be imported here. */
 export const TICKET_STATUSES = [
-  "Backlog",
+  "Queued",
   "Planning",
   "Ready",
   "In Progress",
@@ -358,7 +358,7 @@ export function parseTicket(text: string, fileName: string): ParseResult {
   const ticket: Ticket = {
     id: id ?? "",
     title: title ?? "",
-    status: status ?? "Backlog",
+    status: status ?? "Queued",
     priority: priority ?? null,
     labels: labels ?? [],
     parent: parent ?? null,

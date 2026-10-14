@@ -566,7 +566,7 @@ export class Actions {
     }
   }
 
-  /** New tickets in Backlog that could start now, with the Manager idle: it may have miscounted (TR-062). */
+  /** New Queued tickets that could start now, with the Manager idle: it may have miscounted (TR-062). */
   private async wakeForNewTickets(paseo: PaseoApi, project: string, tickets: readonly TicketSummary[], lastLook: ReadonlyMap<string, string>): Promise<void> {
     const config = await requireProjectConfig(project);
     const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners);

@@ -22,7 +22,7 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     dependsOn: ["TR-074"],
     created: "2026-10-14T15:46:00Z",
     updated: "2026-10-14T16:20:31Z",
-    description: "Replace Backlog.md.",
+    description: "Track tickets in files.",
     plan: "1. Format\n2. Store",
     criteria: [
       { index: 1, text: "First criterion", checked: true },
@@ -71,7 +71,7 @@ updated: "2026-10-14T16:20:31Z"
 ## Description
 
 <!-- taro:description -->
-Replace Backlog.md.
+Track tickets in files.
 <!-- /taro:description -->
 
 ## Plan
@@ -262,7 +262,7 @@ describe("ticket format", () => {
       ]);
     });
     it("unknown marker inside a section", () => {
-      expect(problemsOf(replaceLine("Replace Backlog.md.\n", "Replace Backlog.md.\n<!-- taro:summary -->\n"))).toEqual([
+      expect(problemsOf(replaceLine("Track tickets in files.\n", "Track tickets in files.\n<!-- taro:summary -->\n"))).toEqual([
         { line: 18, message: expect.stringContaining("unknown marker") },
       ]);
     });

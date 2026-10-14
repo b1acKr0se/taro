@@ -1,6 +1,6 @@
 /**
  * Ticket sync against a real remote: a scratch bare repository and two clones
- * of `taro/backlog` standing in for two machines (never the live tracker).
+ * of `taro/tickets` standing in for two machines (never the live tracker).
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -156,7 +156,7 @@ describe("conflictProblem", () => {
 
 describe("gitComplaint", () => {
   it("prefers git's fatal or error line over progress output", () => {
-    expect(gitComplaint({ code: 1, stdout: "", stderr: "From /x/remote\n * branch taro/backlog -> FETCH_HEAD\nerror: could not apply 1a2b3c\n" })).toBe("error: could not apply 1a2b3c");
+    expect(gitComplaint({ code: 1, stdout: "", stderr: "From /x/remote\n * branch taro/tickets -> FETCH_HEAD\nerror: could not apply 1a2b3c\n" })).toBe("error: could not apply 1a2b3c");
     expect(gitComplaint({ code: 128, stdout: "", stderr: "From somewhere\n" })).toBe("From somewhere");
     expect(gitComplaint({ code: 2, stdout: "", stderr: "" })).toBe("exit 2");
   });

@@ -7,7 +7,7 @@ import { foldList, milestoneSummary, planSummary, resultLine, ticketSections, ti
 
 const EMPTY: TicketFacts = {
   title: "Fix login redirect",
-  status: "Backlog",
+  status: "Queued",
   description: null,
   plan: null,
   acceptanceCriteria: [],
@@ -36,7 +36,7 @@ describe("ticketSummary", () => {
   });
 
   it("falls back to the title when there is no plan and no description", () => {
-    expect(ticketSummary(EMPTY, [])).toEqual({ need: "nothing", needText: "nothing, Backlog", goal: "Fix login redirect", result: null });
+    expect(ticketSummary(EMPTY, [])).toEqual({ need: "nothing", needText: "nothing, Queued", goal: "Fix login redirect", result: null });
     expect(ticketSummary({ ...EMPTY, description: "## Manager notes\n- only notes" }, []).goal).toBe("Fix login redirect");
   });
 

@@ -58,7 +58,7 @@ beforeEach(() => {
     }),
   );
   write(ticket({ id: "NA-001.01", title: "CSV", status: "Done", priority: null, labels: [], parent: "NA-001", created: "2026-10-14T15:47:00Z", updated: "2026-10-14T15:48:00Z" }));
-  write(ticket({ id: "NA-002", title: "Empty", status: "Backlog", priority: null, labels: [] }));
+  write(ticket({ id: "NA-002", title: "Empty", status: "Queued", priority: null, labels: [] }));
 });
 
 afterEach(() => {
@@ -94,7 +94,7 @@ describe("listTickets", () => {
         createdAt: "2026-10-14T15:47:00Z",
         updatedAt: "2026-10-14T15:48:00Z",
       },
-      expect.objectContaining({ id: "NA-002", status: "Backlog" }),
+      expect.objectContaining({ id: "NA-002", status: "Queued" }),
     ]);
   });
 });
@@ -125,7 +125,7 @@ describe("viewTicket", () => {
     });
   });
 
-  it("reads empty sections as null, as Backlog.md's JSON left them out", async () => {
+  it("reads empty sections as null", async () => {
     expect(await viewTicket(tracker, "NA-002")).toMatchObject({ description: null, implementationPlan: null, implementationNotes: null, finalSummary: null, acceptanceCriteria: [], subtasks: [] });
   });
 

@@ -39,7 +39,7 @@ const PHASES: Readonly<Record<string, Look>> = {
   Done: { icon: "CircleCheck", tone: "success" },
 };
 
-/** A ticket status's badge; Backlog, Ready, Cancelled and anything unknown are a muted circle. */
+/** A ticket status's badge; Queued, Ready, Cancelled and anything unknown are a muted circle. */
 export function phaseLook(status: string): Look {
   return PHASES[status] ?? { icon: "Circle", tone: "muted" };
 }

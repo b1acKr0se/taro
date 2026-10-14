@@ -43,7 +43,7 @@ EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
   (`client/image-shrink.ts`); Paseo's own cap is 10 attachments and 30 MB a message.
 - Code adapted from FirstMate (MIT) or ported from Paseo (Apache-2.0) keeps its header comment and
   its entry in `THIRD_PARTY_NOTICES.md`. The plugin theme has no `borderAccent` or `surface3`.
-- Tickets are Taro's own files on the `taro/backlog` branch: `tickets/<ID>.md`, one `key: <JSON>`
+- Tickets are Taro's own files on the `taro/tickets` branch: `tickets/<ID>.md`, one `key: <JSON>`
   frontmatter line per field, sections between `<!-- taro:… -->` markers. Every write goes through
   one locked path in `server/ticket-store.ts`. The `taro` command (`bin/taro`) runs `.ts` under
   Node ≥ 22.18 type stripping, so every file reachable from `server/taro-cli.ts` uses erasable

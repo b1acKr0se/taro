@@ -1,6 +1,6 @@
 /**
  * A project's tracker: a git worktree of the project's repository on the
- * `taro/backlog` branch, holding Taro's ticket files (`tickets/`, `tracker.json`,
+ * `taro/tickets` branch, holding Taro's ticket files (`tickets/`, `tracker.json`,
  * TR-081). The plugin creates it, reads and writes tickets in process through
  * the ticket store, and is the only committer.
  */
@@ -11,7 +11,7 @@ import type { TrackerSyncProblem } from "../shared/contracts";
 import { commandError, runChecked, runCommand, type CommandResult } from "./process";
 import { createTicketStore } from "./ticket-store";
 
-export const TRACKER_BRANCH = "taro/backlog";
+export const TRACKER_BRANCH = "taro/tickets";
 
 /** What `.gitignore` at the tracker's root must list: the local lock folder and the store's temp files. */
 export const TRACKER_IGNORED = [".taro/", "tickets/.*.tmp"] as const;
@@ -56,14 +56,12 @@ export interface TrackerSetup {
 }
 
 /**
- * Creates the tracker worktree (reusing a local or remote `taro/backlog`) and, when it has no
+ * Creates the tracker worktree (reusing a local or remote `taro/tickets`) and, when it has no
  * tracker yet, `tickets/`, `tracker.json` and `.gitignore`, committed. A tracker with tracker.json
- * is adopted as it is; one still in Backlog.md format is refused: `taro convert` converts it.
+ * is adopted as it is.
  */
 export async function ensureTracker(setup: TrackerSetup): Promise<{ adopted: boolean }> {
   const { repoPath, trackerPath } = setup;
-  // A branch made now from the base branch holds the project's files, not a tracker: a `backlog/` there is the project's own.
-  let branchedFromBase = false;
   if (!(await gitSucceeds(repoPath, ["rev-parse", "--is-inside-work-tree"]))) {
     throw new Error(`${repoPath} is not a git repository.`);
   }
@@ -81,10 +79,7 @@ export async function ensureTracker(setup: TrackerSetup): Promise<{ adopted: boo
       await git(repoPath, ["worktree", "add", trackerPath, TRACKER_BRANCH]);
     } else {
       if (references.includes(`refs/remotes/origin/${TRACKER_BRANCH}`)) start = `refs/remotes/origin/${TRACKER_BRANCH}`;
-      else {
-        branchedFromBase = true;
-        if (!references.includes(start)) start = "HEAD";
-      }
+      else if (!references.includes(start)) start = "HEAD";
       await git(repoPath, ["worktree", "add", "-b", TRACKER_BRANCH, trackerPath, start]);
     }
   }
@@ -95,11 +90,6 @@ export async function ensureTracker(setup: TrackerSetup): Promise<{ adopted: boo
   }
 
   if (await exists(join(trackerPath, "tracker.json"))) return { adopted: true };
-  if (!branchedFromBase && (await exists(join(trackerPath, "backlog", "config.yml")))) {
-    throw new Error(
-      `The tracker at ${trackerPath} is still in Backlog.md format (backlog/, no tracker.json). Convert it first: run \`taro convert --tracker ${trackerPath}\` (bin/taro in Taro's plugin folder), then add the project again.`,
-    );
-  }
   await mkdir(join(trackerPath, "tickets"), { recursive: true });
   const tracker = { schema: 1, prefix: setup.ticketPrefix, padding: 3, lastId: 0, lastChild: {} };
   await writeFile(join(trackerPath, "tracker.json"), `${JSON.stringify(tracker)}\n`, "utf8");
@@ -191,7 +181,7 @@ const STRATEGY_OPTIONS: Readonly<Record<SyncStrategy, readonly string[]>> = {
 };
 
 /**
- * Commits pending ticket writes, pulls (rebase) and pushes `taro/backlog`;
+ * Commits pending ticket writes, pulls (rebase) and pushes `taro/tickets`;
  * returns null when in sync, or the problem instead of throwing. Never
  * autostashes: popping a stash over a conflicting remote edit leaves conflict
  * markers in the tree, which the next commit would publish. A write landing

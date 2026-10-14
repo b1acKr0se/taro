@@ -29,7 +29,7 @@ describe("phaseLook", () => {
   });
 
   it("draws other statuses as a muted circle", () => {
-    expect(phaseLook("Backlog")).toEqual({ icon: "Circle", tone: "muted" });
+    expect(phaseLook("Queued")).toEqual({ icon: "Circle", tone: "muted" });
     expect(phaseLook("Something new")).toEqual({ icon: "Circle", tone: "muted" });
   });
 });

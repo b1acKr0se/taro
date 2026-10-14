@@ -60,7 +60,7 @@ function readTicket(id: string): Ticket {
 function writeTicket(overrides: Partial<Ticket> & { id: string }): void {
   const ticket: Ticket = {
     title: `Ticket ${overrides.id}`,
-    status: "Backlog",
+    status: "Queued",
     priority: null,
     labels: [],
     parent: null,
@@ -258,7 +258,7 @@ describe("taro ticket create", () => {
     expect(ok(["create", "First"]).stdout).toBe("Created TR-001\n");
     expect(ok(["create", "Second", "-p", "TR-001"]).stdout).toBe("Created TR-001.01\n");
     expect(ok(["create", "Third", "-p", "TR-001"]).stdout).toBe("Created TR-001.02\n");
-    expect(readTicket("TR-001.01")).toMatchObject({ parent: "TR-001", title: "Second", status: "Backlog" });
+    expect(readTicket("TR-001.01")).toMatchObject({ parent: "TR-001", title: "Second", status: "Queued" });
   });
 
   it("takes -l a,b, repeated -l, --dep lists, --priority and -s", () => {

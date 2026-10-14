@@ -31,12 +31,12 @@ prove it. Only an older ticket has a checklist, ticked with `--check-ac <n>`.
 
 ## Statuses
 
-`Backlog → Planning → Ready → In Progress → Reviewing → Awaiting acceptance → Done`, plus `Blocked`
-and `Cancelled`. Trivial tasks go from Backlog straight to In Progress.
+`Queued → Planning → Ready → In Progress → Reviewing → Awaiting acceptance → Done`, plus `Blocked`
+and `Cancelled`. Trivial tasks go from Queued straight to In Progress.
 
 | Status | Who sets it | When |
 | --- | --- | --- |
-| Backlog | manager | filed |
+| Queued | manager | filed |
 | Planning | owner | orienting, asking, proposing |
 | Ready | owner | approved, waiting on dependencies |
 | In Progress | owner | building |
@@ -69,7 +69,7 @@ rather than exceed it.
   command: its log path and expected duration. Detail belongs in commits and the other records.
 - **HANDOFF**: before compaction or stopping (template: `templates/handoff.md`, with its line
   limits).
-- **HOLD** (manager): a ticket in Backlog kept queued on purpose while a slot is free, with the reason
+- **HOLD** (manager): a Queued ticket kept waiting on purpose while a slot is free, with the reason
   (`HOLD 2026-01-05T10:00Z — exclusive rewrite SH-010 first`). The plugin does not wake anyone for it.
 - **RELEASE** (manager): the hold's reason is gone; the ticket is queued like any other again.
 - **QUEUE-WAKE**, **QUEUE-ALERT**, **QUEUE-RESTART**: written by the plugin as it wakes the manager

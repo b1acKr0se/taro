@@ -6,9 +6,8 @@ Taro is a [Paseo](https://github.com/getpaseo/paseo) plugin that runs software w
 Each project gets its own Manager, ticket tracker and board. You tell a **Manager** agent what you want; it files a ticket and starts a
 **task owner** agent, which takes the ticket from proposal to a delivered, reviewed change. You
 answer their questions and accept the result. Tickets are Taro's own
-files, kept in a tracker on the project's `taro/backlog` branch and read and written with the `taro`
-command. A tracker made with an earlier Taro (which used Backlog.md) is converted once with
-`taro convert`; `taro convert --dry-run` shows what it would do first.
+files, kept in a tracker on the project's `taro/tickets` branch and read and written with the `taro`
+command.
 
 ## Requirements
 

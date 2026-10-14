@@ -51,25 +51,6 @@ describe("trackers on disk (scratch repositories, never the live tracker)", () =
     expect(JSON.parse(readFileSync(join(tracker, "tracker.json"), "utf8")).lastId).toBe(7);
   });
 
-  it("refuses a tracker still in Backlog.md format and names taro convert", async () => {
-    git(repo, "checkout", "-q", "-b", "taro/backlog");
-    mkdirSync(join(repo, "backlog", "tasks"), { recursive: true });
-    writeFileSync(join(repo, "backlog", "config.yml"), 'project_name: "notes"\n');
-    git(repo, "add", "-A");
-    git(repo, "commit", "-q", "-m", "backlog");
-    git(repo, "checkout", "-q", "main");
-    await expect(ensureTracker(setup())).rejects.toThrow(/Backlog\.md format.*taro convert --tracker/);
-    expect(existsSync(join(tracker, "tracker.json"))).toBe(false);
-  });
-
-  it("starts a new tracker over a project that keeps its own backlog/ on the base branch", async () => {
-    mkdirSync(join(repo, "backlog"));
-    writeFileSync(join(repo, "backlog", "config.yml"), "x: 1\n");
-    git(repo, "add", "-A");
-    git(repo, "commit", "-q", "-m", "own backlog");
-    expect(await ensureTracker(setup())).toEqual({ adopted: false });
-  });
-
   it("commits with Taro's .gitignore in place and .taro/ and a temp file present", async () => {
     await ensureTracker(setup());
     writeFileSync(join(tracker, "tickets", "NA-001.md"), "one\n");
@@ -132,7 +113,7 @@ describe("ticketIdInPath", () => {
   it("returns null for other files", () => {
     expect(ticketIdInPath("tracker.json")).toBeNull();
     expect(ticketIdInPath("tickets/.TR-081.123.abc.tmp")).toBeNull();
-    expect(ticketIdInPath("backlog/tasks/sh-012 - Fix-login.md")).toBeNull();
+    expect(ticketIdInPath("docs/sh-012 - Fix-login.md")).toBeNull();
   });
 });
 

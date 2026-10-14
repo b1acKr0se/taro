@@ -79,14 +79,14 @@ describe("unmetDependencies", () => {
 });
 
 describe("queuedTickets", () => {
-  it("keeps top-level Backlog tickets in order", () => {
-    const tickets = [ticket("TR-1", "Backlog"), ticket("TR-2", "Backlog", "TR-1"), ticket("TR-3", "Planning"), ticket("TR-4", "Backlog")];
+  it("keeps top-level Queued tickets in order", () => {
+    const tickets = [ticket("TR-1", "Queued"), ticket("TR-2", "Queued", "TR-1"), ticket("TR-3", "Planning"), ticket("TR-4", "Queued")];
     expect(queuedTickets(tickets).map((entry) => entry.id)).toEqual(["TR-1", "TR-4"]);
   });
 });
 
 describe("recount", () => {
-  const tickets = [ticket("TR-1", "In Progress"), ticket("TR-2", "Awaiting acceptance"), ticket("TR-5", "Backlog"), ticket("TR-6", "Backlog"), ticket("TR-7", "Backlog"), ticket("TR-8", "Backlog")];
+  const tickets = [ticket("TR-1", "In Progress"), ticket("TR-2", "Awaiting acceptance"), ticket("TR-5", "Queued"), ticket("TR-6", "Queued"), ticket("TR-7", "Queued"), ticket("TR-8", "Queued")];
 
   it("splits the queue into startable, waiting and held, oldest first", () => {
     const count = recount({
@@ -180,8 +180,8 @@ describe("newlyQueuedStartable", () => {
     expect(newlyQueuedStartable(null, count())).toEqual([]);
   });
 
-  it("names none for a ticket already known in Backlog", () => {
-    expect(newlyQueuedStartable(new Map([["TR-5", "Backlog"]]), count())).toEqual([]);
+  it("names none for a ticket already known as Queued", () => {
+    expect(newlyQueuedStartable(new Map([["TR-5", "Queued"]]), count())).toEqual([]);
   });
 });
 

@@ -6,12 +6,12 @@ import { projectAgents, projectArchivedAgents } from "./agents";
 import { invalidateBoards, loadBoard } from "./board";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import type { PluginState } from "./state";
-import { isBacklogFormat, listTickets, viewTicket } from "./tickets";
+import { listTickets, viewTicket } from "./tickets";
 
 vi.mock("./agents", () => ({ projectAgents: vi.fn(), projectArchivedAgents: vi.fn() }));
 vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: "/tracker", suggestions: "/nonexistent/taro-suggestions.md" }) }));
 vi.mock("./headroom", () => ({ readHeadroom: async () => null }));
-vi.mock("./tickets", () => ({ listTickets: vi.fn(), viewTicket: vi.fn(), ticketProblems: async () => [], isBacklogFormat: vi.fn(async () => false) }));
+vi.mock("./tickets", () => ({ listTickets: vi.fn(), viewTicket: vi.fn(), ticketProblems: async () => [] }));
 
 const ticket = (id: string, status: string, updatedAt: string | null = "2026-10-13 15:00") => ({
   id,
@@ -104,7 +104,7 @@ describe("loadBoard", () => {
   // TR-080: children not started stayed in Working with the parent's status line while the parent's owner ran.
   it("keeps a child not started in Queued with no status line, whatever the parent's owner is doing", async () => {
     const child = (id: string, status: string) => ({ ...ticket(id, status), parentTaskId: "TR-1" });
-    vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "In Progress"), child("TR-1.01", "In Progress"), child("TR-1.02", "Backlog"), child("TR-1.03", "Ready")] as unknown as Awaited<
+    vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "In Progress"), child("TR-1.01", "In Progress"), child("TR-1.02", "Queued"), child("TR-1.03", "Ready")] as unknown as Awaited<
       ReturnType<typeof listTickets>
     >);
     const lastStatus = { state: "blocked", text: "reviewer on TR-1.01 and implementer building TR-1.02", at: "2026-10-13T14:40:00Z" };
@@ -230,14 +230,6 @@ describe("loadBoard", () => {
     expect(board.cards[0]?.owner?.id).toBe("owner-live");
     expect(board.cards[0]?.pastAgents).toEqual([]);
   });
-
-  it("says when the tracker is still in Backlog.md format, and only then (TR-081)", async () => {
-    expect((await loadBoard({} as PaseoApi, state([]), "taro")).alerts.map((alert) => alert.id)).not.toContain("tracker-backlog-format");
-    invalidateBoards();
-    vi.mocked(isBacklogFormat).mockResolvedValueOnce(true);
-    const alert = (await loadBoard({} as PaseoApi, state([]), "taro")).alerts.find((candidate) => candidate.id === "tracker-backlog-format");
-    expect(alert?.text).toMatch(/still in Backlog\.md format.*taro convert --dry-run, then taro convert/);
-  });
 });
 
 describe("loadBoard pages Queued and Done (TR-082)", () => {
@@ -246,7 +238,7 @@ describe("loadBoard pages Queued and Done (TR-082)", () => {
   const board = (paging = {}) => loadBoard({} as PaseoApi, state([]), "taro", [], paging);
 
   beforeEach(() => {
-    vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "In Progress"), ...many("Done", 40, "DO"), ...many("Backlog", 12, "QU")] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "In Progress"), ...many("Done", 40, "DO"), ...many("Queued", 12, "QU")] as unknown as Awaited<ReturnType<typeof listTickets>>);
   });
 
   it("sends only the newest 5 cards of each, with every column's true total", async () => {

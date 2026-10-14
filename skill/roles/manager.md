@@ -33,7 +33,7 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
    plugin archives Done ones once their last turn ends). Children have no owner and never count.
    An owner sent back to work by Request changes counts again, which may put you over the cap for
    a while; never stop an owner for it, just dispatch nothing until there is room. At the cap,
-   leave the ticket in Backlog, tell the user it is queued and why, and stop here; the plugin tells
+   leave the ticket Queued, tell the user it is queued and why, and stop here; the plugin tells
    you when a slot frees up. Dispatch queued tickets oldest first. **Count from the listing every
    time, never from memory**; when a plugin message carries a recount, trust it over your own.
    **To keep a ticket queued on purpose** while a slot is free (an exclusive rewrite must land

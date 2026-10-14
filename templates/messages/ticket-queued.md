@@ -1,5 +1,5 @@
-<!-- Sent to the manager when a new ticket lands in Backlog while a slot is free and the manager is idle (TR-062). Placeholders: tickets, recount (templates/messages/recount.md). -->
-{{tickets}} landed in Backlog while an owner slot is free, and nothing has started it.
+<!-- Sent to the manager when a new ticket lands in Queued while a slot is free and the manager is idle (TR-062). Placeholders: tickets, recount (templates/messages/recount.md). -->
+{{tickets}} landed in Queued while an owner slot is free, and nothing has started it.
 
 {{recount}}
 

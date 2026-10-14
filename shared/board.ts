@@ -107,7 +107,7 @@ export interface TicketAgents<Agent> {
  * its own (decision 32): its parent's owner works it through subagents labelled with the child, or
  * labelled with the parent and titled with the child's id ("TR-1.01 · implementer: …"), and a busy
  * one of those places the card, so the child is Stalled only when none of them is alive. A child
- * not started yet (`status` Backlog or Ready) is placed only by its own subagents, never by the
+ * not started yet (`status` Queued or Ready) is placed only by its own subagents, never by the
  * parent's owner busy with other work.
  */
 export function ticketAgents<Agent extends JoinedAgent>(
@@ -132,7 +132,7 @@ export function ticketAgents<Agent extends JoinedAgent>(
   return { owner, subagents, columnAgent: asking ?? running ?? placing };
 }
 
-/** A ticket some agent has taken up: under way, delivered, blocked or finished; Backlog and Ready are not. */
+/** A ticket some agent has taken up: under way, delivered, blocked or finished; Queued and Ready are not. */
 export function hasStarted(status: string): boolean {
   return UNDER_WAY.has(status) || status === "Awaiting acceptance" || status === "Blocked" || status === "Done" || status === "Cancelled";
 }

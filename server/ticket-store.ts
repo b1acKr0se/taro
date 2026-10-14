@@ -101,7 +101,7 @@ export interface TicketStore {
   edit(id: string, changes: TicketChanges, options?: { revision?: string }): Promise<Ticket>;
   appendNote(id: string, record: string): Promise<Ticket>;
   forget(file?: string): void;
-  /** Runs work under the tracker lock, as every write does (`taro convert` writes the whole tracker this way). */
+  /** Runs work under the tracker lock, as every write does. */
   withLock<T>(work: () => Promise<T>): Promise<T>;
   /** The cached entries by file name, for tests and diagnostics. */
   cacheEntries(): ReadonlyMap<string, CacheEntry>;
@@ -199,12 +199,6 @@ function assertId(id: string): void {
 
 function unique(values: readonly string[]): string[] {
   return [...new Set(values)];
-}
-
-/** A tracker `taro convert` has not converted yet: Backlog.md's config and no tracker.json. */
-export async function isBacklogFormat(trackerPath: string): Promise<boolean> {
-  const present = async (path: string) => stat(path).then(() => true, (error: unknown) => (isMissing(error) ? false : Promise.reject(error)));
-  return (await present(join(trackerPath, "backlog", "config.yml"))) && !(await present(join(trackerPath, "tracker.json")));
 }
 
 export function createTicketStore(trackerPath: string, options: StoreOptions = {}): TicketStore {
@@ -428,13 +422,6 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
     };
   }
 
-  /** A ticket created before `taro convert` would take an id the tracker already used and make the conversion refuse. */
-  async function assertNotBacklogFormat(): Promise<void> {
-    if (await isBacklogFormat(trackerPath)) {
-      throw new Error(`${trackerPath} is still in Backlog.md format (backlog/, no tracker.json): run taro convert first.`);
-    }
-  }
-
   function nextId(tracker: TrackerFile, names: readonly string[], parent: string | null): string {
     if (parent === null) {
       const pattern = new RegExp(`^${tracker.prefix}-(\\d+)\\.md$`);
@@ -582,12 +569,11 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
 
   async function create(input: CreateTicketInput): Promise<Ticket> {
     validateTitle(input.title);
-    validateStatus(input.status ?? "Backlog");
+    validateStatus(input.status ?? "Queued");
     validatePriority(input.priority ?? null);
     const parent = input.parent ?? null;
     if (parent !== null) assertId(parent);
     return locked(async () => {
-      await assertNotBacklogFormat();
       await mkdir(ticketsDirectory, { recursive: true });
       const names = await ticketNames();
       if (parent !== null && !names.includes(`${parent}.md`)) throw new TicketNotFound(parent);
@@ -597,7 +583,7 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
       const ticket: Ticket = {
         id,
         title: input.title,
-        status: input.status ?? "Backlog",
+        status: input.status ?? "Queued",
         priority: input.priority ?? null,
         labels: unique(input.labels ?? []),
         parent,

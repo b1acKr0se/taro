@@ -1,5 +1,5 @@
 /**
- * The plugin's own recount of a project's queue (TR-062): the Manager once left a ticket in Backlog
+ * The plugin's own recount of a project's queue (TR-062): the Manager once left a ticket Queued
  * with a free slot because it counted from memory, and nothing woke it. The plugin owns the count:
  * every wake-up carries this recount, and a new ticket or an idle Manager with startable tickets wakes
  * it. When the Manager still does not dispatch, a ladder escalates: an alert ten minutes after the
@@ -35,13 +35,13 @@ export interface Recount {
   threads: { current: number; max: number } | null;
   /** Under the cap and under the thread limit: a queued ticket could start now. */
   freeSlot: boolean;
-  /** Top-level Backlog tickets with no unmet dependency and no hold, in the order given (oldest first). */
+  /** Top-level Queued tickets with no unmet dependency and no hold, in the order given (oldest first). */
   startable: string[];
   /** Queued tickets with a dependency not yet Done, with those dependencies. */
   waiting: { id: string; on: string[] }[];
   /** Queued tickets the Manager holds, with the reason from the HOLD record. */
   held: { id: string; reason: string }[];
-  /** Queued tickets that already have a live owner (paused back to Backlog, or an owner not yet past it): they count, and are not startable. */
+  /** Queued tickets that already have a live owner (paused back to Queued, or an owner not yet past it): they count, and are not startable. */
   owned: string[];
 }
 
@@ -63,9 +63,9 @@ export function unmetDependencies(dependencies: readonly string[], tickets: read
   return dependencies.filter((dependency) => tickets.some((ticket) => dependsOn([dependency], ticket.id) && ticket.status !== "Done"));
 }
 
-/** The top-level Backlog tickets, oldest first as the tracker lists them. */
+/** The top-level Queued tickets, oldest first as the tracker lists them. */
 export function queuedTickets<T extends CapTicket>(tickets: readonly T[]): T[] {
-  return tickets.filter((ticket) => ticket.status === "Backlog" && ticket.parentTaskId === null);
+  return tickets.filter((ticket) => ticket.status === "Queued" && ticket.parentTaskId === null);
 }
 
 export function recount(input: {

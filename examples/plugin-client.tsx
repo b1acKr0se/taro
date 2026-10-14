@@ -79,7 +79,7 @@ export default function contribute(client: PluginClientContext) {
  *   - props.layout.compact switches to the phone layout (Manager · Inbox · Board tabs).
  *   - props.navigation?.openAgent({ agentId }) backs "Open in Paseo ↗"; hide it when
  *     navigation is undefined (older hosts).
- *   - board data comes from a server RPC that joins readTickets() (examples/backlog-tasks.ts)
+ *   - board data comes from a server RPC that joins the tracker's tickets
  *     with live agents found by label (project, ticket, role) and boardColumn()
  *     (examples/board-columns.ts).
  */

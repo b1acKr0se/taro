@@ -3,8 +3,7 @@
  * ticket store. Run by `bin/taro` under plain Node type stripping: erasable TypeScript only, `.ts`
  * import extensions, Node builtins only, no npm packages.
  *
- * The first word picks the command from `commands`: `ticket`, and `convert` (spec S8), the one-shot
- * conversion of a Backlog.md tracker.
+ * The first word picks the command from `commands`.
  */
 import { readFile, stat } from "node:fs/promises";
 import { realpathSync } from "node:fs";
@@ -20,7 +19,6 @@ import {
   type TicketStatus,
   type TicketSummary,
 } from "../shared/ticket-format.ts";
-import { ConversionRefused, convertTracker, describePlan, planConversion } from "./backlog-convert.ts";
 import {
   createTicketStore,
   RevisionConflict,
@@ -52,10 +50,7 @@ const USAGE = `Usage:
                    [--append-notes <text>]... [--check-ac <n>]... [--uncheck-ac <n>]...
                    [--revision <rev>] [--plain]
   taro ticket check [--json]
-  taro convert [--dry-run] [--tracker <path>]
-Every ticket command takes --tracker <path> (or $TARO_TRACKER). -l and --dep accept comma-separated lists.
-taro convert turns a Backlog.md tracker (--tracker, $TARO_TRACKER or the current directory) into tickets/
-and commits once; --dry-run prints what it would do and writes nothing.`;
+Every ticket command takes --tracker <path> (or $TARO_TRACKER). -l and --dep accept comma-separated lists.`;
 
 class UsageError extends Error {}
 
@@ -447,40 +442,9 @@ async function ticketCommand(args: readonly string[], io: CliIo): Promise<number
   return verb.run({ store: createTicketStore(trackerPath), trackerPath, io, parsed });
 }
 
-const CONVERT_OPTIONS: OptionTable = {
-  "--dry-run": { key: "dryRun", value: false },
-};
-
-async function convertCommand(args: readonly string[], io: CliIo): Promise<number> {
-  const parsed = parseArguments(args, CONVERT_OPTIONS);
-  expectPositionals(parsed, 0, "no arguments besides options");
-  const given = single(parsed, "tracker") ?? io.env.TARO_TRACKER;
-  const trackerPath = given === undefined || given === "" ? process.cwd() : given;
-  const directory = await stat(trackerPath).catch(() => null);
-  if (directory === null || !directory.isDirectory()) {
-    io.stderr(`Tracker ${trackerPath} is not a directory.\n`);
-    return EXIT_FAILURE;
-  }
-  try {
-    if (has(parsed, "dryRun")) {
-      const plan = await planConversion(trackerPath);
-      io.stdout(describePlan(plan));
-      return plan.problems.length === 0 ? EXIT_OK : EXIT_FAILURE;
-    }
-    const { plan, commit } = await convertTracker(trackerPath);
-    io.stdout(`${describePlan(plan)}Converted ${plan.tickets.length} tickets; removed backlog/; committed ${commit.slice(0, 12)}.\n`);
-    return EXIT_OK;
-  } catch (error) {
-    if (!(error instanceof ConversionRefused)) throw error;
-    io.stderr(`Not converted: ${error.message}\n`);
-    return EXIT_FAILURE;
-  }
-}
-
 /** The first word of the command line picks the handler. */
 const commands: Record<string, (args: readonly string[], io: CliIo) => Promise<number>> = {
   ticket: ticketCommand,
-  convert: convertCommand,
 };
 
 function errorMessage(error: unknown): string {

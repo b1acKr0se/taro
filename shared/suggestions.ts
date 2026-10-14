@@ -36,8 +36,8 @@ const MINUTE_MS = 60_000;
 
 /**
  * Drops suggestions about a ticket that changed after the file was written (decision 39): the
- * manager is not woken when tickets move on their own, so it cannot retire them itself. Backlog
- * keeps update times to the minute, so only a change in a later minute than the write counts.
+ * manager is not woken when tickets move on their own, so it cannot retire them itself. Only a
+ * change in a later minute than the write counts, so a move the write already saw is not one.
  */
 export function currentSuggestions(
   suggestions: readonly Suggestion[],

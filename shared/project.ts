@@ -32,7 +32,7 @@ export function isSubagentRole(role: string): role is SubagentRole {
 
 /** Taro's ticket statuses, Done last. */
 export const TICKET_STATUSES = [
-  "Backlog",
+  "Queued",
   "Planning",
   "Ready",
   "In Progress",

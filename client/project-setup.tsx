@@ -298,8 +298,8 @@ export function ProjectSetup({
             value={draft.trackerSync}
             onChange={(value) => update("trackerSync", value)}
             options={[
-              { value: "local", title: "This machine only", description: "The taro/backlog branch stays in this checkout; nothing is pushed." },
-              { value: "remote", title: "Synced with the remote", description: "Ticket changes are pushed to the taro/backlog branch, so other machines see the same board." },
+              { value: "local", title: "This machine only", description: "The taro/tickets branch stays in this checkout; nothing is pushed." },
+              { value: "remote", title: "Synced with the remote", description: "Ticket changes are pushed to the taro/tickets branch, so other machines see the same board." },
             ]}
           />
         </Field>
@@ -467,7 +467,7 @@ export function ProjectSetup({
         />
       </View>
       <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption) }}>
-        Tickets live on the taro/backlog branch of the repository, in a separate checkout Taro manages.
+        Tickets live on the taro/tickets branch of the repository, in a separate checkout Taro manages.
       </Text>
     </KeyboardScrollView>
   );

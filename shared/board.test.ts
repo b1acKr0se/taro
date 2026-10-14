@@ -43,7 +43,7 @@ describe("boardColumn", () => {
     const crashed = { ...base, agent: { status: "error", pendingPermissions: 0 }, crashedOut: true };
     expect(boardColumn({ ...crashed, status: "Awaiting acceptance" })).toBe("stalled");
     expect(boardColumn({ ...crashed, openBlockingDecisions: 1 })).toBe("stalled");
-    expect(boardColumn({ ...crashed, status: "Backlog" })).toBe("stalled");
+    expect(boardColumn({ ...crashed, status: "Queued" })).toBe("stalled");
     expect(boardColumn({ ...crashed, agent: { status: "running", pendingPermissions: 0 } })).toBe("working");
     expect(boardColumn({ ...crashed, status: "Done" })).toBe("done");
   });
@@ -53,7 +53,7 @@ describe("boardColumn", () => {
   });
 
   it("queues tickets that have not started", () => {
-    expect(boardColumn({ ...base, status: "Backlog", agent: null, lastStatus: null })).toBe("queued");
+    expect(boardColumn({ ...base, status: "Queued", agent: null, lastStatus: null })).toBe("queued");
     expect(boardColumn({ ...base, status: "Ready", agent: null, lastStatus: null })).toBe("queued");
   });
 
@@ -123,7 +123,7 @@ describe("ticketAgents", () => {
     };
     const running = agent("owner", "owner", "DEMO-1", "running", "DEMO-1 · Parent work");
     const asking = agent("owner", "owner", "DEMO-1", "running", "DEMO-1 · Parent work", undefined, [{}]);
-    for (const status of ["Backlog", "Ready"]) {
+    for (const status of ["Queued", "Ready"]) {
       expect(placed(status, [running])).toBe("queued");
       expect(placed(status, [asking])).toBe("queued");
       expect(placed(status, [parentOwner])).toBe("queued");
@@ -131,7 +131,7 @@ describe("ticketAgents", () => {
     }
     expect(placed("In Progress", [running])).toBe("working");
     expect(placed("In Progress", [asking])).toBe("needs-you");
-    expect(ticketAgents("DEMO-1", null, grouped([running]), "Backlog").columnAgent?.id).toBe("owner");
+    expect(ticketAgents("DEMO-1", null, grouped([running]), "Queued").columnAgent?.id).toBe("owner");
   });
 
   it("calls a child Stalled only when neither the parent's owner nor a subagent for it is alive", () => {

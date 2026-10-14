@@ -20,9 +20,9 @@ export interface CapOwner {
   labels: Readonly<Record<string, string>>;
 }
 
-/** Whether a ticket in this status, with an owner, holds a slot. Backlog has no owner yet. */
+/** Whether a ticket in this status, with an owner, holds a slot. Queued has no owner yet. */
 export function holdsSlot(status: string): boolean {
-  return status !== "Backlog" && !SLOT_FREE_STATUSES.has(status);
+  return status !== "Queued" && !SLOT_FREE_STATUSES.has(status);
 }
 
 /**

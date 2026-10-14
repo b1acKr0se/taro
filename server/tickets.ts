@@ -1,7 +1,6 @@
 /**
  * Tickets, read and written in process through one ticket store per tracker (TR-081): no process
- * is started for a ticket. The shapes callers see (createdAt, parentTaskId, implementationNotes…)
- * are the ones the plugin read from Backlog.md's JSON, so callers did not change.
+ * is started for a ticket.
  */
 import { noteRecords } from "../shared/execution";
 import type { TicketPriority, TicketProblem } from "../shared/ticket-format";
@@ -43,7 +42,7 @@ function storeFor(trackerPath: string): TicketStore {
   return store;
 }
 
-/** An empty section reads as null, as Backlog.md's JSON left it out. */
+/** An empty section reads as null. */
 function textOrNull(text: string): string | null {
   return text === "" ? null : text;
 }
@@ -64,8 +63,6 @@ export async function listTickets(trackerPath: string): Promise<TicketSummary[]>
     updatedAt: ticket.updated,
   }));
 }
-
-export { isBacklogFormat } from "./ticket-store";
 
 /** The files that could not be read as tickets, each with its line; their cards are left off the board. */
 export async function ticketProblems(trackerPath: string): Promise<TicketProblem[]> {

@@ -9,8 +9,8 @@ describe("summarize", () => {
       ticket: "AP-1",
       title: "x",
       transitions: [
-        { from: null, to: "Backlog", at: "2026-01-01T00:00:00Z" },
-        { from: "Backlog", to: "Planning", at: "2026-01-01T00:01:00Z" },
+        { from: null, to: "Queued", at: "2026-01-01T00:00:00Z" },
+        { from: "Queued", to: "Planning", at: "2026-01-01T00:01:00Z" },
         { from: "Planning", to: "In Progress", at: "2026-01-01T00:05:00Z" },
         { from: "In Progress", to: "Awaiting acceptance", at: "2026-01-01T00:15:00Z" },
         { from: "Awaiting acceptance", to: "Done", at: "2026-01-01T00:45:00Z" },
@@ -25,7 +25,7 @@ describe("summarize", () => {
       idleCompactions: 2,
     });
     expect(summary.wallMs).toBe(45 * 60_000);
-    expect(summary.byStatus).toEqual({ Backlog: 60_000, Planning: 240_000, "In Progress": 600_000, "Awaiting acceptance": 1_800_000, Done: 0 });
+    expect(summary.byStatus).toEqual({ Queued: 60_000, Planning: 240_000, "In Progress": 600_000, "Awaiting acceptance": 1_800_000, Done: 0 });
     expect(summary.waitingOnUserMs).toBe(1_800_000);
     expect(summary.agentActiveMs).toBe(720_000);
     expect(summary.turns).toBe(4);

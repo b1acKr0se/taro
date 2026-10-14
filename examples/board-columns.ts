@@ -2,7 +2,7 @@
  * Sketch: how a card's board column is derived (decisions 9, 28, 30, 40; spec §5).
  * Not wired up or tested.
  *
- * Inputs come from three places: the ticket's Backlog.md status, the live Paseo agent, and
+ * Inputs come from three places: the ticket's status, the live Paseo agent, and
  * the plugin's own state (the owner's last status line and its open decisions). Live state
  * wins for urgent facts; otherwise the recorded status decides. "Stalled" is the case only
  * the join can see: the ticket says work is under way but nobody is on it.
@@ -11,7 +11,7 @@
 export type ColumnId = "needs-you" | "working" | "stalled" | "queued" | "done";
 
 export type TicketStatus =
-  | "Backlog"
+  | "Queued"
   | "Planning"
   | "Ready"
   | "In Progress"
@@ -56,7 +56,7 @@ export function boardColumn(card: CardInputs): ColumnId {
     return "working";
   }
 
-  // Backlog / Ready: not started, or waiting on another ticket.
+  // Queued / Ready: not started, or waiting on another ticket.
   return "queued";
 }
 

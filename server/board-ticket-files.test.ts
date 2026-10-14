@@ -21,7 +21,7 @@ function ticket(id: string): Ticket {
   return {
     id,
     title: `Title of ${id}`,
-    status: "Backlog",
+    status: "Queued",
     priority: null,
     labels: [],
     parent: null,
@@ -60,7 +60,7 @@ describe("a bad ticket file on the board", () => {
   it("leaves its card off, shows the others and one alert naming the file and line, and clears once fixed", async () => {
     const good = serializeTicket(ticket("NA-002"));
     // Line 5 is `status:`; an unknown status is a problem there.
-    write("NA-002", good.replace('status: "Backlog"', 'status: "Someday"'));
+    write("NA-002", good.replace('status: "Queued"', 'status: "Someday"'));
 
     const broken = await board();
     expect(broken.cards.map((card) => card.id)).toEqual(["NA-001", "NA-003"]);

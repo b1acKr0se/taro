@@ -13,7 +13,7 @@ describe("holdsSlot", () => {
     for (const status of ["Planning", "Ready", "In Progress", "Reviewing", "Blocked"]) expect(holdsSlot(status)).toBe(true);
   });
   it("is false before an owner starts and once the ticket waits for the user or is finished", () => {
-    for (const status of ["Backlog", "Awaiting acceptance", "Done", "Cancelled"]) expect(holdsSlot(status)).toBe(false);
+    for (const status of ["Queued", "Awaiting acceptance", "Done", "Cancelled"]) expect(holdsSlot(status)).toBe(false);
   });
 });
 
@@ -62,7 +62,7 @@ describe("statusChanges", () => {
     ["DM-2", "Awaiting acceptance"],
     ["DM-3", "In Progress"],
     ["DM-3.1", "In Progress"],
-    ["DM-4", "Backlog"],
+    ["DM-4", "Queued"],
     ["DM-5", "In Progress"],
     ["DM-6", "Awaiting acceptance"],
     ["DM-7", "Blocked"],
@@ -107,7 +107,7 @@ describe("statusChanges", () => {
   });
 
   it("frees nothing for an unknown ticket that is new, working, or a child", () => {
-    expect(statusChanges(previous, [ticket("DM-11", "Backlog"), ticket("DM-12", "In Progress"), ticket("DM-13.1", "Awaiting acceptance", "DM-13")])).toEqual([]);
+    expect(statusChanges(previous, [ticket("DM-11", "Queued"), ticket("DM-12", "In Progress"), ticket("DM-13.1", "Awaiting acceptance", "DM-13")])).toEqual([]);
     expect(statusChanges(previous, [ticket("DM-13.2", "Done", "DM-13")])).toEqual([{ ticket: "DM-13.2", status: "Done", freesSlot: false }]);
   });
 

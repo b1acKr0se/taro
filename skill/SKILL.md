@@ -31,7 +31,7 @@ every role runs commands with nobody there to approve them, cleanup included.
 
 1. **End every turn with a status line** — the last line of your last message — and ask the user
    things only with a decision block. Both formats: `reference/formats.md`.
-2. **Tickets live in the tracker**, a folder of ticket files on the `taro/backlog` branch. Use the
+2. **Tickets live in the tracker**, a folder of ticket files on the `taro/tickets` branch. Use the
    `taro ticket` command (its tracker path is `$TARO_TRACKER`, also in your brief). Never edit
    ticket files by hand, never commit the tracker (the plugin does), never keep tickets inside a
    code worktree. Commands: `reference/tickets.md`.

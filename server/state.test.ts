@@ -28,15 +28,15 @@ describe("stored ticket statuses", () => {
 
   it("are read back by a new instance, per project", async () => {
     const first = new PluginState();
-    await first.saveTicketStatuses("demo", new Map([["DM-1", "Awaiting acceptance"], ["DM-2", "Backlog"]]));
+    await first.saveTicketStatuses("demo", new Map([["DM-1", "Awaiting acceptance"], ["DM-2", "Queued"]]));
     await first.saveTicketStatuses("other", new Map([["OT-1", "Done"]]));
-    await first.saveTicketStatuses("demo", new Map([["DM-1", "Done"], ["DM-2", "Backlog"]]));
+    await first.saveTicketStatuses("demo", new Map([["DM-1", "Done"], ["DM-2", "Queued"]]));
 
     const second = new PluginState();
-    expect(await second.ticketStatuses("demo")).toEqual(new Map([["DM-1", "Done"], ["DM-2", "Backlog"]]));
+    expect(await second.ticketStatuses("demo")).toEqual(new Map([["DM-1", "Done"], ["DM-2", "Queued"]]));
     expect(await second.ticketStatuses("other")).toEqual(new Map([["OT-1", "Done"]]));
     const file = JSON.parse(await readFile(join(home, "plugin-data", "taro", "state", "ticket-statuses.json"), "utf8")) as unknown;
-    expect(file).toEqual({ projects: { demo: { "DM-1": "Done", "DM-2": "Backlog" }, other: { "OT-1": "Done" } } });
+    expect(file).toEqual({ projects: { demo: { "DM-1": "Done", "DM-2": "Queued" }, other: { "OT-1": "Done" } } });
   });
 
   it("start over when the file is unreadable", async () => {
