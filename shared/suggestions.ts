@@ -55,3 +55,37 @@ export function currentSuggestions(
     return ![...mentioned].some((id) => changed.has(id));
   });
 }
+
+/** Where sending one suggestion to the manager stands, as the board draws it (TR-032). */
+export type SendState = "sending" | "sent" | "failed";
+
+export interface SuggestionSend {
+  suggestion: Suggestion;
+  state: SendState;
+  /** Its place in the row when pressed, so it stays there if the board drops it meanwhile. */
+  index: number;
+}
+
+export interface SuggestionPill {
+  suggestion: Suggestion;
+  state: SendState | "idle";
+}
+
+/**
+ * The row of pills: the board's suggestions with their send state. One being sent or just sent stays
+ * at its place after the board drops it (it is dismissed on success, and the manager may rewrite the
+ * file), so the user sees "Sent" before it goes; a failed one the manager no longer suggests goes.
+ */
+export function suggestionPills(current: readonly Suggestion[], sends: readonly SuggestionSend[]): SuggestionPill[] {
+  const byKey = new Map(sends.map((send) => [suggestionKey(send.suggestion), send]));
+  const present = new Set(current.map(suggestionKey));
+  const pills: SuggestionPill[] = current.map((suggestion) => ({ suggestion, state: byKey.get(suggestionKey(suggestion))?.state ?? "idle" }));
+  const dropped = sends.filter((send) => send.state !== "failed" && !present.has(suggestionKey(send.suggestion))).sort((left, right) => left.index - right.index);
+  for (const send of dropped) pills.splice(Math.min(send.index, pills.length), 0, { suggestion: send.suggestion, state: send.state });
+  return pills;
+}
+
+/** Whether a sideways row has more past its right edge; a pixel of rounding is not more. */
+export function moreToTheRight(offset: number, viewportWidth: number, contentWidth: number): boolean {
+  return contentWidth - offset - viewportWidth > 1;
+}

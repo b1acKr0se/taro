@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { currentSuggestions, mentionedTicketIds, parseSuggestions } from "./suggestions";
+import { currentSuggestions, mentionedTicketIds, moreToTheRight, parseSuggestions, suggestionPills, type SuggestionSend } from "./suggestions";
 
 describe("parseSuggestions", () => {
   it("reads label :: prompt lines and skips notes", () => {
@@ -63,5 +63,67 @@ describe("currentSuggestions", () => {
 
   it("does not let a child's change retire a suggestion about its parent", () => {
     expect(currentSuggestions([relaunch], writtenAt, [ticket("TR-005.1", "2026-10-13T11:50:00Z")])).toEqual([relaunch]);
+  });
+});
+
+describe("suggestionPills", () => {
+  const a = { label: "A", prompt: "Do A" };
+  const b = { label: "B", prompt: "Do B" };
+  const c = { label: "C", prompt: "Do C" };
+
+  it("draws the board's suggestions idle when nothing was sent", () => {
+    expect(suggestionPills([a, b], [])).toEqual([
+      { suggestion: a, state: "idle" },
+      { suggestion: b, state: "idle" },
+    ]);
+    expect(suggestionPills([], [])).toEqual([]);
+  });
+
+  it("gives each suggestion its own send state", () => {
+    const sends: SuggestionSend[] = [
+      { suggestion: a, state: "sending", index: 0 },
+      { suggestion: c, state: "failed", index: 2 },
+    ];
+    expect(suggestionPills([a, b, c], sends).map((pill) => pill.state)).toEqual(["sending", "idle", "failed"]);
+  });
+
+  it("matches by label and prompt together", () => {
+    const sends: SuggestionSend[] = [{ suggestion: { label: "A", prompt: "Something else" }, state: "failed", index: 0 }];
+    expect(suggestionPills([a], sends)).toEqual([{ suggestion: a, state: "idle" }]);
+  });
+
+  it("keeps a pill being sent or just sent where it was after the board drops it", () => {
+    const sends: SuggestionSend[] = [
+      { suggestion: b, state: "sent", index: 1 },
+      { suggestion: a, state: "sending", index: 0 },
+    ];
+    expect(suggestionPills([c], sends)).toEqual([
+      { suggestion: a, state: "sending" },
+      { suggestion: b, state: "sent" },
+      { suggestion: c, state: "idle" },
+    ]);
+  });
+
+  it("puts a dropped pill last when the row has grown shorter than its place", () => {
+    expect(suggestionPills([a], [{ suggestion: c, state: "sent", index: 5 }]).map((pill) => pill.suggestion.label)).toEqual(["A", "C"]);
+    expect(suggestionPills([], [{ suggestion: c, state: "sent", index: 5 }])).toEqual([{ suggestion: c, state: "sent" }]);
+  });
+
+  it("forgets a failed pill the manager no longer suggests", () => {
+    expect(suggestionPills([a], [{ suggestion: b, state: "failed", index: 1 }])).toEqual([{ suggestion: a, state: "idle" }]);
+  });
+});
+
+describe("moreToTheRight", () => {
+  it("is true while the row runs past the right edge", () => {
+    expect(moreToTheRight(0, 300, 500)).toBe(true);
+    expect(moreToTheRight(150, 300, 500)).toBe(true);
+  });
+
+  it("is false at the end, when everything fits, before layout and for a pixel of rounding", () => {
+    expect(moreToTheRight(200, 300, 500)).toBe(false);
+    expect(moreToTheRight(0, 300, 280)).toBe(false);
+    expect(moreToTheRight(0, 0, 0)).toBe(false);
+    expect(moreToTheRight(199.5, 300, 500)).toBe(false);
   });
 });

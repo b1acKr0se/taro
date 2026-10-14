@@ -3,7 +3,8 @@
  * Done, always all five, side by side as equal panels on a wide screen; on a
  * phone one column at a time behind chips. The manager's own open decisions sit above it, one line
  * each that opens the manager's chat where they are answered (TR-022), and its suggestions in a card
- * of their own that sends one to the manager when tapped. Done cards carry their ticket's key stats.
+ * of their own: one sideways-scrolling row of pills, each sending itself to the manager when tapped and
+ * showing sending, sent or not sent inside it (TR-032). Done cards carry their ticket's key stats.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -13,6 +14,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { COLUMN_IDS, COLUMN_META, COLUMN_TITLES, type ColumnId } from "../shared/board";
 import { dismissSuggestion, tellManager, type Card, type ProjectSummary } from "../shared/contracts";
+import { moreToTheRight, suggestionKey, suggestionPills, type SendState, type Suggestion, type SuggestionPill, type SuggestionSend } from "../shared/suggestions";
 import { AlertCard } from "./alert-card";
 import { SectionHeading } from "./badges";
 import { useBoard, useRefreshBoard } from "./board-data";
@@ -23,11 +25,17 @@ import { SyncProblemCard } from "./sync-problem-card";
 import { TicketCard } from "./ticket-card";
 import { withAlpha } from "./tint";
 import { FONT_SIZE } from "./type-scale";
-import { IconButton } from "./ui";
+import { Spinner } from "./ui";
 import { toneColor } from "./visual-meta";
 import { MIN_COLUMN_WIDTH, columnWidths } from "./column-widths";
 
 const phoneColumn: { current: ColumnId } = { current: "needs-you" };
+
+/** How long a sent suggestion shows "Sent to the Manager" before it leaves the row. */
+const SENT_VISIBLE_MS = 2500;
+/** The fade at the row's right edge while more pills lie past it: strips growing opaque towards a chevron. */
+const FADE_STRIPS = [0.15, 0.3, 0.45, 0.6, 0.75, 0.9];
+const FADE_STRIP_WIDTH = 5;
 
 export function ProjectBoard({
   summary,
@@ -52,6 +60,9 @@ export function ProjectBoard({
   const toast = useToast();
   const tell = useRpc(tellManager);
   const dismiss = useRpc(dismissSuggestion);
+  const [sends, setSends] = useState<SuggestionSend[]>([]);
+  /** The pill row's scroll offset and sizes, for the fade that says more pills lie past its edge. */
+  const [row, setRow] = useState({ offset: 0, viewport: 0, content: 0 });
   const [column, setColumn] = useState<ColumnId>(phoneColumn.current);
   const [paneWidth, setPaneWidth] = useState(0);
   const { colors } = theme;
@@ -98,27 +109,35 @@ export function ProjectBoard({
       chipText: { color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "500" as const },
       pill: { minWidth: 20, alignItems: "center" as const, paddingHorizontal: SPACE.xs + 2, paddingVertical: 1, borderRadius: 999, backgroundColor: colors.surface2 },
       pillText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.micro, fontWeight: "700" as const },
-      // Its own tinted card, so it reads as messages to send rather than more of the board.
+      // Its own tinted card, so it reads as messages to send rather than more of the board; kept short.
       suggestionsCard: {
-        gap: SPACE.sm,
-        padding: SPACE.md,
+        gap: SPACE.xs,
+        paddingTop: SPACE.sm,
+        paddingBottom: SPACE.sm,
         borderRadius: 12,
         borderWidth: 1,
         borderColor: withAlpha(colors.accent, 0.35),
         backgroundColor: withAlpha(colors.accent, 0.06),
+        overflow: "hidden" as const,
       },
+      suggestionsHead: { paddingHorizontal: SPACE.md },
+      fade: { position: "absolute" as const, top: 0, bottom: 0, right: 0, flexDirection: "row" as const },
+      fadeEnd: { justifyContent: "center" as const, paddingRight: SPACE.xs, backgroundColor: withAlpha(colors.surface0, 0.95) },
       suggestionsHint: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
-      suggestions: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm },
+      // Padded inside the scroll view, not the card, so the row runs to the card's edge and a pill cut off there shows there is more.
+      suggestions: { flexDirection: "row" as const, gap: SPACE.sm, paddingHorizontal: SPACE.md, paddingVertical: SPACE.xxs },
       suggestion: {
         flexDirection: "row" as const,
         alignItems: "center" as const,
         borderWidth: 1,
         borderColor: colors.border,
-        borderRadius: 8,
+        borderRadius: 999,
         backgroundColor: colors.surface1,
       },
-      suggestionSend: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm, paddingLeft: SPACE.md, paddingRight: SPACE.sm, paddingVertical: SPACE.sm },
+      suggestionSend: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.xs + 2, paddingLeft: SPACE.md, paddingRight: SPACE.xs, paddingVertical: SPACE.xs + 1 },
       suggestionText: { color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "500" as const },
+      suggestionState: { fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
+      suggestionDismiss: { paddingLeft: SPACE.xxs, paddingRight: SPACE.sm, paddingVertical: SPACE.xs + 1 },
       error: { color: colors.statusDanger, padding: SPACE.md },
     }),
     [colors, compact],
@@ -150,6 +169,87 @@ export function ProjectBoard({
     );
   }
 
+  /** Records one suggestion's send state; `null` forgets it. */
+  function setSend(suggestion: Suggestion, index: number, state: SendState | null): void {
+    const key = suggestionKey(suggestion);
+    setSends((current) => [...current.filter((send) => suggestionKey(send.suggestion) !== key), ...(state === null ? [] : [{ suggestion, state, index }])]);
+  }
+
+  /** Sends it, shows "Sent" for a moment and hides it for good (the manager may write it again); a failure stays to retry. */
+  function sendSuggestion(suggestion: Suggestion, index: number): void {
+    setSend(suggestion, index, "sending");
+    tell({ project, text: suggestion.prompt }).then(
+      () => {
+        setSend(suggestion, index, "sent");
+        dismiss({ project, label: suggestion.label, prompt: suggestion.prompt }).catch((caught: unknown) => toast.error(errorText(caught)));
+        setTimeout(() => {
+          setSend(suggestion, index, null);
+          refresh();
+        }, SENT_VISIBLE_MS);
+      },
+      (caught: unknown) => {
+        setSend(suggestion, index, "failed");
+        toast.error(`Not sent to the Manager: ${errorText(caught)}`);
+      },
+    );
+  }
+
+  function pill(item: SuggestionPill, index: number) {
+    const { suggestion, state } = item;
+    const busy = state === "sending" || state === "sent";
+    const label =
+      state === "sending"
+        ? `Sending to the Manager: ${suggestion.label}`
+        : state === "sent"
+          ? `Sent to the Manager: ${suggestion.label}`
+          : state === "failed"
+            ? `Not sent to the Manager, tap to retry: ${suggestion.label}`
+            : `Send to the Manager: ${suggestion.label}`;
+    return (
+      <View
+        key={suggestionKey(suggestion)}
+        style={[styles.suggestion, state === "failed" ? { borderColor: withAlpha(colors.statusDanger, 0.6) } : state === "sent" ? { borderColor: withAlpha(colors.statusSuccess, 0.6) } : null]}
+      >
+        <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ busy, disabled: busy }} disabled={busy} style={styles.suggestionSend} onPress={() => sendSuggestion(suggestion, index)}>
+          <Text style={[styles.suggestionText, busy ? { color: colors.foregroundMuted } : null]} numberOfLines={1}>
+            {suggestion.label}
+          </Text>
+          {state === "sending" ? (
+            <>
+              <Spinner size={13} color={colors.foregroundMuted} />
+              <Text style={[styles.suggestionState, { color: colors.foregroundMuted }]}>Sending…</Text>
+            </>
+          ) : state === "sent" ? (
+            <>
+              <Icon name="Check" size={13} color={colors.statusSuccess} />
+              <Text style={[styles.suggestionState, { color: colors.statusSuccess }]}>Sent to the Manager</Text>
+            </>
+          ) : state === "failed" ? (
+            <>
+              <Icon name="RotateCw" size={13} color={colors.statusDanger} />
+              <Text style={[styles.suggestionState, { color: colors.statusDanger }]}>Not sent · Retry</Text>
+            </>
+          ) : (
+            <Icon name="Send" size={13} color={colors.accent} />
+          )}
+        </Pressable>
+        {busy ? (
+          <View style={{ width: SPACE.sm }} />
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Dismiss ${suggestion.label}`}
+            hitSlop={6}
+            style={styles.suggestionDismiss}
+            onPress={() => void dismiss({ project, label: suggestion.label, prompt: suggestion.prompt }).then(refresh).catch((caught: unknown) => toast.error(errorText(caught)))}
+          >
+            <Icon name="X" size={12} color={colors.foregroundMuted} />
+          </Pressable>
+        )}
+      </View>
+    );
+  }
+
   function empty(id: ColumnId) {
     return (
       <View style={styles.empty}>
@@ -162,7 +262,7 @@ export function ProjectBoard({
   const syncProblem = summary.trackerSyncProblem;
   const alerts = board.data?.alerts ?? [];
   const managerDecisions = board.data?.managerDecisions ?? [];
-  const suggestions = board.data?.suggestions ?? [];
+  const suggestions = suggestionPills(board.data?.suggestions ?? [], sends);
   const top =
     syncProblem === null && alerts.length === 0 && managerDecisions.length === 0 && suggestions.length === 0 ? null : (
       <View style={styles.top}>
@@ -210,25 +310,33 @@ export function ProjectBoard({
         )}
         {suggestions.length === 0 ? null : (
           <View style={styles.suggestionsCard}>
-            <SectionHeading theme={theme} icon="Lightbulb" text="Suggested next" color={colors.accent}>
-              {compact ? null : <Text style={styles.suggestionsHint}>tap one to send it to the manager</Text>}
-            </SectionHeading>
-            {compact ? <Text style={styles.suggestionsHint}>Tap one to send it to the manager.</Text> : null}
-            <View style={styles.suggestions}>
-              {suggestions.map((suggestion) => (
-                <View key={`${suggestion.label}:${suggestion.prompt}`} style={styles.suggestion}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Send to the manager: ${suggestion.label}`}
-                    style={styles.suggestionSend}
-                    onPress={() => void tell({ project, text: suggestion.prompt }).then(refresh).catch((caught: unknown) => toast.error(errorText(caught)))}
-                  >
-                    <Text style={styles.suggestionText}>{suggestion.label}</Text>
-                    <Icon name="Send" size={13} color={colors.accent} />
-                  </Pressable>
-                  <IconButton icon="X" label={`Dismiss ${suggestion.label}`} theme={theme} onPress={() => void dismiss({ project, label: suggestion.label, prompt: suggestion.prompt }).then(refresh)} />
+            <View style={styles.suggestionsHead}>
+              <SectionHeading theme={theme} icon="Lightbulb" text="Suggested next" color={colors.accent}>
+                {compact ? null : <Text style={styles.suggestionsHint}>tap one to send it to the Manager</Text>}
+              </SectionHeading>
+            </View>
+            {/* Measured by plain layouts: the web's ScrollView does not report its sizes. */}
+            <View onLayout={(event) => setRow((current) => ({ ...current, viewport: event.nativeEvent.layout.width }))}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={!compact}
+                scrollEventThrottle={32}
+                onScroll={(event) => setRow((current) => ({ ...current, offset: event.nativeEvent.contentOffset.x }))}
+              >
+                <View style={styles.suggestions} onLayout={(event) => setRow((current) => ({ ...current, content: event.nativeEvent.layout.width }))}>
+                  {suggestions.map(pill)}
                 </View>
-              ))}
+              </ScrollView>
+              {moreToTheRight(row.offset, row.viewport, row.content) ? (
+                <View pointerEvents="none" style={styles.fade}>
+                  {FADE_STRIPS.map((alpha) => (
+                    <View key={alpha} style={{ width: FADE_STRIP_WIDTH, backgroundColor: withAlpha(colors.surface0, alpha) }} />
+                  ))}
+                  <View style={styles.fadeEnd}>
+                    <Icon name="ChevronRight" size={14} color={colors.foregroundMuted} />
+                  </View>
+                </View>
+              ) : null}
             </View>
           </View>
         )}
