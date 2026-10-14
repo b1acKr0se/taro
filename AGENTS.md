@@ -57,7 +57,8 @@ daemon with its own home and port, unique to your ticket:
   (prefix a click text with `=` for an exact match), phone size: `TARO_WEB_URL=… node tools/phone.cjs
   <playwright module> out.png [click text…]`. Any installed Playwright module works;
   find one with `find / -path '*/node_modules/playwright/package.json' 2>/dev/null` and pass its
-  directory.
+  directory. A text field with a phone keyboard open (simulated): `node tools/keyboard.cjs
+  <playwright module> http://127.0.0.1:$PORT/ out "<placeholder>" [click text…]` (usage in its header).
 - Onboard a scratch git repository (not this one) with cheap models (Sonnet/Haiku) for end-to-end
   runs; agents on a throwaway daemon cost real money, so keep runs short.
 - Installing writes `plugins` into that home's `config.json`; keep that key if you rewrite it.
