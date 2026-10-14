@@ -15,6 +15,7 @@ import {
   optionAsksForWords,
   optionChips,
   planCardOptions,
+  planChangeField,
   ticketViewApproval,
   untrackedDecision,
   type DecisionLookup,
@@ -234,6 +235,14 @@ describe("answerPlaceholder", () => {
   it("asks for an answer otherwise", () => {
     expect(answerPlaceholder({ id: "fee-storage", options: options("Per trade", "Hourly", "Other approach") })).toBe(ANSWER_PLACEHOLDER);
     expect(answerPlaceholder({ id: "q", options: [] })).toBe("Or answer in your own words…");
+  });
+});
+
+describe("planChangeField", () => {
+  it("leaves the change field off the compact card and keeps it under the full plan", () => {
+    expect(planChangeField("card")).toBe(false);
+    expect(planChangeField("unfolded card")).toBe(true);
+    expect(planChangeField("ticket plan")).toBe(true);
   });
 });
 

@@ -42,10 +42,11 @@ ones) — they outrank defaults here. Then follow the flow.
    step 3), then ask with a blocking decision `scope-approval` whose question is `Approve the plan
    for <ID>?`, options Approve (and Split into children when you propose children), and `why` one
    line at most: the card shows the plan's Goal, Choices I made and Size from the ticket, and View
-   plan opens the rest. The user asks for a change by typing in the field. Trivial work needs none — your one clarifying
-   question's answer, if any, is the approval. Record **APPROVAL** with the user's exact words. No
-   code before approval except a throwaway check when feasibility is unknown. Changed scope needs a
-   new approval; details inside the scope do not.
+   plan opens the rest. The card has no text field: the user asks for a change in the field under
+   the full plan, after reading it. Trivial work needs none — your one clarifying question's answer,
+   if any, is the approval. Record **APPROVAL** with the user's exact words. No code before approval
+   except a throwaway check when feasibility is unknown. Changed scope needs a new approval; details
+   inside the scope do not.
 5. **Build** (In Progress; save a starting MILESTONE first). Low/medium: you write the code. High:
    implementers (below). Commit as you go, following the repository's conventions.
 6. **Review** (below), then deliver (below).

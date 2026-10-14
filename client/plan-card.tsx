@@ -1,9 +1,10 @@
 /**
  * A scope approval as a compact plan card (TR-061, design B): the question, a tinted box of
  * labelled rows (Goal, the choices the user must check, Size) read from the ticket's plan, Approve
- * and View plan side by side, the other real options beside them, and a field to describe a change.
- * The plan comes from the ticket (`loadTicket`, shared with the Ticket tab); while it loads, or when
- * it does not follow the template, the usual decision card shows. The full plan, with its sections
+ * and View plan side by side, the other real options beside them. No field to describe a change
+ * (TR-075): that is written under the full plan, where View plan leads. The plan comes from the
+ * ticket (`loadTicket`, shared with the Ticket tab); while it loads, or when it does not follow the
+ * template, the usual decision card shows. The full plan, with its sections
  * folded past their limits, is `PlanBody`, shown in the Ticket tab.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
@@ -14,7 +15,7 @@ import { useMemo, useRef, useState, type ReactNode } from "react";
 import { Pressable, Text, View, type TextInput as NativeTextInput } from "react-native";
 
 import { answerDecision, loadTicket } from "../shared/contracts";
-import { CHANGE_PLACEHOLDER, SCOPE_APPROVAL, planCardOptions } from "../shared/decision-view";
+import { CHANGE_PLACEHOLDER, SCOPE_APPROVAL, planCardOptions, planChangeField, type PlanActionsPlace } from "../shared/decision-view";
 import { parsePlan, splitChoice, type ParsedPlan, type PlanSection } from "../shared/plan";
 import type { StoredDecision } from "../shared/state";
 import { errorText } from "./format";
@@ -160,6 +161,7 @@ function PlanCard({
         theme={theme}
         answeredFrom={answeredFrom}
         onAnswered={onAnswered}
+        place={unfolded ? "unfolded card" : "card"}
         viewPlan={viewPlan === null ? { label: unfolded ? "Hide plan" : "View plan", onPress: () => setUnfolded((open) => !open) } : { label: "View plan", onPress: () => viewPlan(decision.project, ticket) }}
       />
     </View>
@@ -256,7 +258,8 @@ function PlanSummary({ plan, theme, compact, brief }: { plan: ParsedPlan; theme:
 
 /**
  * Approve (it sends the approve option, with any typed words), View plan when given, the other real
- * options, then the field: Send appears once there is text and sends the words alone.
+ * options, then, under the full plan only, the field: Send appears once there is text and sends the
+ * words alone.
  */
 export function PlanActions({
   decision,
@@ -265,6 +268,7 @@ export function PlanActions({
   answeredFrom,
   onAnswered,
   viewPlan = null,
+  place = "ticket plan",
   presses: sharedPresses = null,
 }: {
   decision: StoredDecision;
@@ -273,6 +277,8 @@ export function PlanActions({
   answeredFrom: "screen" | "tab";
   onAnswered: () => void;
   viewPlan?: { label: string; onPress: () => void } | null;
+  /** Where the buttons are: the field comes only under the full plan. */
+  place?: PlanActionsPlace;
   /** The presses of another Approve for the same decision on the screen, so only one runs at a time. */
   presses?: Actions | null;
 }) {
@@ -284,7 +290,8 @@ export function PlanActions({
   // The field is the card's last row: revealed with it, Send stays above the keyboard.
   const fieldRow = useRef<View>(null);
   const reveal = useRevealFocused(fieldRow);
-  const words = typed.trim();
+  const withField = planChangeField(place);
+  const words = withField ? typed.trim() : "";
   const busy = presses.busy;
   const [rowWidth, setRowWidth] = useState<number | null>(null);
   const narrow = rowWidth !== null && rowWidth < NARROW_ROW_WIDTH;
@@ -316,7 +323,9 @@ export function PlanActions({
   function send(key: string, label: string | null, asksForWords = false): void {
     // An option that asks for words waits for them.
     if (asksForWords && words === "") {
-      field.current?.focus();
+      // Without a field here, the words are typed under the plan View plan opens.
+      if (withField) field.current?.focus();
+      else viewPlan?.onPress();
       return;
     }
     // The answered decision leaves, so the pressed button stays busy until it does.
@@ -354,20 +363,22 @@ export function PlanActions({
           </View>
         ))}
       </View>
-      <View ref={fieldRow} collapsable={false} style={styles.fieldRow}>
-        <TextInput
-          ref={field}
-          value={typed}
-          onChangeText={setTyped}
-          onFocus={reveal}
-          placeholder={CHANGE_PLACEHOLDER}
-          placeholderTextColor={colors.foregroundMuted}
-          multiline
-          editable={!busy}
-          style={styles.input}
-        />
-        {words === "" ? null : <IconButton icon="Send" label="Send" showLabel theme={theme} disabled={busy} state={presses.stateOf("send")} onPress={() => send("send", null)} />}
-      </View>
+      {withField ? (
+        <View ref={fieldRow} collapsable={false} style={styles.fieldRow}>
+          <TextInput
+            ref={field}
+            value={typed}
+            onChangeText={setTyped}
+            onFocus={reveal}
+            placeholder={CHANGE_PLACEHOLDER}
+            placeholderTextColor={colors.foregroundMuted}
+            multiline
+            editable={!busy}
+            style={styles.input}
+          />
+          {words === "" ? null : <IconButton icon="Send" label="Send" showLabel theme={theme} disabled={busy} state={presses.stateOf("send")} onPress={() => send("send", null)} />}
+        </View>
+      ) : null}
     </View>
   );
 }

@@ -152,6 +152,17 @@ export function planCardOptions(
   };
 }
 
+/** Where a scope approval's buttons are drawn: the compact card, the card with the plan unfolded in place, or the Ticket tab's Plan. */
+export type PlanActionsPlace = "card" | "unfolded card" | "ticket plan";
+
+/**
+ * Whether the plan's buttons come with the field to describe a change (TR-075): only under the full
+ * plan, so a change is written after reading it. The compact card has none; View plan leads to it.
+ */
+export function planChangeField(place: PlanActionsPlace): boolean {
+  return place !== "card";
+}
+
 /** What Submit sends and whether it can: the picked option (or none) and the typed words. */
 export type DecisionSubmit = { enabled: boolean; label: string | null; text: string; placeholder: string };
 
