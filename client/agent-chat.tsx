@@ -51,6 +51,8 @@ export interface ChatAgent {
   updatedAt: string;
   pendingPermissions: number;
   status: string;
+  /** From the server, which reads Paseo's provider config (TR-084); else judged from the provider id. */
+  steers?: boolean | undefined;
 }
 
 /** A conversation the user can write to, or one only to read (an archived agent's). */
@@ -135,7 +137,7 @@ export function AgentChat({
   const sends = usePendingSends({
     agentId: agent.id,
     status: live?.status ?? agent.status,
-    steers: steersMidTurn(timeline.agent?.provider),
+    steers: agent.steers ?? steersMidTurn(timeline.agent?.provider),
     entries: timeline.entries,
     hasOlder: timeline.hasOlder,
     onSend,

@@ -146,7 +146,7 @@ export function OwnerPane({
               <AgentChat
                 key={shown.id}
                 asker={{ kind: "ticket", ticket: card.id, role: shown.role }}
-                agent={{ id: shown.id, updatedAt: shown.brief.updatedAt, pendingPermissions: shown.brief.pendingPermissions, status: shown.brief.status }}
+                agent={{ id: shown.id, updatedAt: shown.brief.updatedAt, pendingPermissions: shown.brief.pendingPermissions, status: shown.brief.status, steers: shown.brief.steers }}
                 theme={theme}
                 compact={compact}
                 placeholder={`Talk to ${card.id}'s ${paneAgentJob(shown.role)}…`}

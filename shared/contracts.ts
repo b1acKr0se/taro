@@ -34,6 +34,8 @@ export const AgentBriefSchema = z.object({
   createdAt: z.string().nullable().default(null),
   /** When its current turn started, while one runs (TR-080): what it said before is the previous turn's. */
   turnStartedAt: z.string().nullable().default(null),
+  /** Whether a message sent mid-turn joins the turn rather than replace it (TR-084, `steersMidTurn`); absent, the chat judges from the provider id. */
+  steers: z.boolean().optional(),
 });
 export type AgentBrief = z.infer<typeof AgentBriefSchema>;
 

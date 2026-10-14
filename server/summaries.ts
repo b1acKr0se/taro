@@ -1,8 +1,10 @@
 /** What the screen needs of an agent, and the model list for settings. */
 import type { AgentBrief } from "../shared/contracts";
+import { steersMidTurn } from "../shared/pending-sends";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 
-export function agentBrief(agent: PaseoAgent): AgentBrief {
+/** `replacing`: the providers that replace a running turn (`readReplacingProviders`). */
+export function agentBrief(agent: PaseoAgent, replacing: ReadonlySet<string>): AgentBrief {
   const usage = agent.lastUsage ?? null;
   return {
     id: agent.id,
@@ -17,6 +19,7 @@ export function agentBrief(agent: PaseoAgent): AgentBrief {
     contextMaxTokens: usage?.contextWindowMaxTokens ?? null,
     createdAt: agent.createdAt ?? null,
     turnStartedAt: agent.activeTurn?.startedAt ?? null,
+    steers: steersMidTurn(agent.provider, replacing),
   };
 }
 

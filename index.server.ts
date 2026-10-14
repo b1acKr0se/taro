@@ -61,6 +61,7 @@ import { Notifier } from "./server/notifications";
 import { checkPrerequisites } from "./server/prerequisites";
 import { listProjectConfigs, projectPaths, readProjectConfig, requireProjectConfig, taroHome, updateProjectConfig } from "./server/projects";
 import { sentImagesOf } from "./server/sent-images";
+import { readReplacingProviders } from "./server/provider-steering";
 import { agentBrief, listModelOptions } from "./server/summaries";
 import { TrackerWatch } from "./server/tracker-watch";
 import { stopCommands } from "./server/process";
@@ -188,7 +189,7 @@ export default function contribute(server: PluginServerContext) {
         const board = await loadBoard(paseo, state, config.project, actions.queueAlerts(config.project)).catch(() => null);
         const trackerSyncProblem = config.trackerSync === "remote" ? trackers.syncProblem(config.project) : null;
         const needsYou = inboxCount(board, trackerSyncProblem !== null);
-        return { config, manager: manager === null ? null : agentBrief(manager), trackerSyncProblem, needsYou };
+        return { config, manager: manager === null ? null : agentBrief(manager, await readReplacingProviders()), trackerSyncProblem, needsYou };
       }),
     );
     return { taroHome: await taroHome(), projects };

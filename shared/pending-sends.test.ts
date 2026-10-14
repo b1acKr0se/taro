@@ -6,6 +6,7 @@ import {
   heldToRelease,
   isWorking,
   newChatMessageId,
+  replacingProviders,
   STOPPED_GRACE_MS,
   steersMidTurn,
   viewSends,
@@ -141,6 +142,26 @@ describe("steersMidTurn", () => {
 
   it("takes Copilot and the ACP agents as replacing the turn", () => {
     for (const provider of ["copilot", "acp", "cursor", "kimi", "kiro", "traecli"]) expect(steersMidTurn(provider)).toBe(false);
+  });
+});
+
+describe("replacingProviders", () => {
+  it("adds a custom provider extending an ACP one, directly or through another custom one", () => {
+    const config = { agents: { providers: { gemini: { extends: "acp", command: ["gemini", "--acp"] }, "gemini-work": { extends: "gemini" }, "pilot": { extends: "copilot" } } } };
+    const replacing = replacingProviders(config);
+    for (const provider of ["gemini", "gemini-work", "pilot", "copilot", "acp"]) expect(steersMidTurn(provider, replacing)).toBe(false);
+  });
+
+  it("keeps a custom provider extending a steering one, an override of a built-in, and a loop steering", () => {
+    const config = { agents: { providers: { "claude-work": { extends: "claude" }, codex: { enabled: false }, loop: { extends: "loop-back" }, "loop-back": { extends: "loop" } } } };
+    const replacing = replacingProviders(config);
+    for (const provider of ["claude-work", "codex", "loop", "loop-back"]) expect(steersMidTurn(provider, replacing)).toBe(true);
+  });
+
+  it("is the built-in list for a config without providers, or one that is not an object", () => {
+    for (const config of [{}, { agents: {} }, { agents: { providers: [] } }, null, "text", { agents: { providers: { odd: { extends: 3 } } } }]) {
+      expect([...replacingProviders(config)].sort()).toEqual(["acp", "copilot", "cursor", "kimi", "kiro", "traecli"]);
+    }
   });
 });
 
