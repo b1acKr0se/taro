@@ -182,18 +182,18 @@ describe("decisionSubmit", () => {
   });
 
   it("is disabled, the box greyed, with nothing picked, whatever was typed", () => {
-    expect(decisionSubmit(rows, null, "")).toEqual({ enabled: false, label: null, text: "", placeholder: "Or answer in your own words…", fieldEnabled: false });
+    expect(decisionSubmit(rows, null, "")).toEqual({ enabled: false, label: null, text: "", placeholder: "Answer in your own words…", fieldEnabled: false });
     expect(decisionSubmit(rows, null, "my own way")).toMatchObject({ enabled: false, text: "", fieldEnabled: false });
   });
 
   it("sends the words typed under Other alone, trimmed, and needs them", () => {
-    expect(decisionSubmit(rows, "other", "  my own way \n")).toEqual({ enabled: true, label: null, text: "my own way", placeholder: "Or answer in your own words…", fieldEnabled: true });
+    expect(decisionSubmit(rows, "other", "  my own way \n")).toEqual({ enabled: true, label: null, text: "my own way", placeholder: "Answer in your own words…", fieldEnabled: true });
     expect(decisionSubmit(rows, "other", "")).toMatchObject({ enabled: false, fieldEnabled: true });
     expect(decisionSubmit(rows, "other", "   \n").enabled).toBe(false);
   });
 
   it("sends a regular option alone, its box greyed and the kept words left out", () => {
-    expect(decisionSubmit(rows, 0, "")).toEqual({ enabled: true, label: "Keep", text: "", placeholder: "Or answer in your own words…", fieldEnabled: false });
+    expect(decisionSubmit(rows, 0, "")).toEqual({ enabled: true, label: "Keep", text: "", placeholder: "Answer in your own words…", fieldEnabled: false });
     expect(decisionSubmit(rows, 0, " typed under Other ")).toMatchObject({ enabled: true, label: "Keep", text: "", fieldEnabled: false });
   });
 
@@ -208,8 +208,8 @@ describe("decisionSubmit", () => {
   });
 
   it("says the box asks for a change when told to, except under an option asking for words", () => {
-    expect(decisionSubmit(rows, null, "", CHANGE_PLACEHOLDER).placeholder).toBe("Or describe a change…");
-    expect(decisionSubmit(rows, "other", "", CHANGE_PLACEHOLDER).placeholder).toBe("Or describe a change…");
+    expect(decisionSubmit(rows, null, "", CHANGE_PLACEHOLDER).placeholder).toBe("Describe a change…");
+    expect(decisionSubmit(rows, "other", "", CHANGE_PLACEHOLDER).placeholder).toBe("Describe a change…");
     expect(decisionSubmit(rows, 1, "", CHANGE_PLACEHOLDER).placeholder).toBe("Say how for “Rename”…");
   });
 });
@@ -238,7 +238,7 @@ describe("answerPlaceholder", () => {
 
   it("asks for an answer otherwise", () => {
     expect(answerPlaceholder({ id: "fee-storage", options: options("Per trade", "Hourly", "Other approach") })).toBe(ANSWER_PLACEHOLDER);
-    expect(answerPlaceholder({ id: "q", options: [] })).toBe("Or answer in your own words…");
+    expect(answerPlaceholder({ id: "q", options: [] })).toBe("Answer in your own words…");
   });
 });
 

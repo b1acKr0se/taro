@@ -196,19 +196,21 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
             </View>
           );
         })}
-        {/* Always last: the agent's own "Other" and "Change…" options are hidden (TR-061); this one opens the box. */}
-        <Pressable
-          accessibilityRole="radio"
-          accessibilityState={{ checked: picked === "other", disabled: busy || !answerable }}
-          disabled={busy || !answerable}
-          style={styles.option}
-          onPress={() => setPicked(picked === "other" ? null : "other")}
-        >
-          <View style={[styles.radio, picked === "other" ? styles.radioPicked : null]}>{picked === "other" ? <View style={styles.radioDot} /> : null}</View>
-          <View style={styles.optionText}>
-            <Text style={[styles.optionLabel, picked === "other" ? styles.optionLabelPicked : null]}>Other</Text>
-          </View>
-        </Pressable>
+        {/* Always last where the card can be answered: the agent's own "Other" and "Change…" options are hidden (TR-061); this one opens the box. */}
+        {!answerable ? null : (
+          <Pressable
+            accessibilityRole="radio"
+            accessibilityState={{ checked: picked === "other", disabled: busy }}
+            disabled={busy}
+            style={styles.option}
+            onPress={() => setPicked(picked === "other" ? null : "other")}
+          >
+            <View style={[styles.radio, picked === "other" ? styles.radioPicked : null]}>{picked === "other" ? <View style={styles.radioDot} /> : null}</View>
+            <View style={styles.optionText}>
+              <Text style={[styles.optionLabel, picked === "other" ? styles.optionLabelPicked : null]}>Other</Text>
+            </View>
+          </Pressable>
+        )}
       </View>
       {optionRows.looseReason === "" ? null : <Text style={styles.reason}>Why recommended: {optionRows.looseReason}</Text>}
       {!decision.blocking && answerable && decision.default !== "" ? <Text style={styles.defaultNote}>Going with “{decision.default}” unless you say otherwise.</Text> : null}

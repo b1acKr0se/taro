@@ -112,8 +112,8 @@ export function decisionOptionRows(decision: Pick<StoredDecision, "options" | "r
   return { rows, looseReason: recommendedIndex === -1 ? decision.reason : "", hidden: decision.options.length - options.length };
 }
 
-export const ANSWER_PLACEHOLDER = "Or answer in your own words…";
-export const CHANGE_PLACEHOLDER = "Or describe a change…";
+export const ANSWER_PLACEHOLDER = "Answer in your own words…";
+export const CHANGE_PLACEHOLDER = "Describe a change…";
 /** The preset id of an owner's scope approval (`skill/reference/formats.md`). */
 export const SCOPE_APPROVAL = "scope-approval";
 
