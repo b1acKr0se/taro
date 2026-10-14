@@ -17,7 +17,8 @@ export const TRACKER_IGNORED = [".taro/", "tickets/.*.tmp"] as const;
 
 /** What a tracker commit takes: the tickets, tracker.json and .gitignore, never `.taro/` or a temp file, even when .gitignore lacks them. */
 const COMMITTED_PATHS = ["tickets", "tracker.json", ".gitignore"] as const;
-const NEVER_COMMITTED = [":(exclude).taro", ":(exclude)tickets/*.tmp"] as const;
+// `.taro/` lies outside these paths; naming it, even to exclude it, makes `git add` refuse once .gitignore lists it.
+const NEVER_COMMITTED = [":(exclude)tickets/*.tmp"] as const;
 
 function git(directory: string, args: readonly string[]): Promise<string> {
   return runChecked("git", ["-C", directory, ...args], { timeoutMs: 120_000 });

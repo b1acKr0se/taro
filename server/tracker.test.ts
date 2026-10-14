@@ -70,6 +70,15 @@ describe("trackers on disk (scratch repositories, never the live tracker)", () =
     expect(await ensureTracker(setup())).toEqual({ adopted: false });
   });
 
+  it("commits with Taro's .gitignore in place and .taro/ and a temp file present", async () => {
+    await ensureTracker(setup());
+    writeFileSync(join(tracker, "tickets", "NA-001.md"), "one\n");
+    writeFileSync(join(tracker, "tickets", ".NA-001.123.abc.tmp"), "half\n");
+    mkdirSync(join(tracker, ".taro", "lock.broken.1"), { recursive: true });
+    expect(await commitTracker(tracker)).toEqual({ subject: "taro: update NA-001", locked: false });
+    expect(git(tracker, "status", "--porcelain")).toBe("");
+  });
+
   it("commits tickets, never .taro/ or a temp file, and skips while the lock is held", async () => {
     await ensureTracker(setup());
     // Without .gitignore's entries, so the exclusion does not rest on them.
