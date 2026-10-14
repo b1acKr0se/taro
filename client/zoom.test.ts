@@ -5,6 +5,7 @@ import {
   clampTransform,
   doubleTapAt,
   frameOf,
+  positionAt,
   settleEasing,
   transformBetween,
   gestureEnd,
@@ -349,5 +350,21 @@ describe("settleEasing and transformBetween", () => {
     expect(transformBetween(FIT, to, 1)).toEqual(to);
     expect(transformBetween(FIT, to, 0.5)).toEqual({ scale: 2.75, x: 87.5, y: -35 });
     expect(transformBetween(FIT, to, 5)).toEqual(to);
+  });
+});
+
+describe("positionAt", () => {
+  const ease = { from: FIT, to: { scale: 3, x: 100, y: -40 }, startedAt: 1000 };
+  it("is the current transform when nothing eases", () => {
+    const current = { scale: 2, x: 5, y: 6 };
+    expect(positionAt(null, current, 5000, 180)).toBe(current);
+  });
+  it("is part way along an ease under way, not at its target", () => {
+    expect(positionAt(ease, ease.to, 1090, 180)).toEqual({ scale: 2.75, x: 87.5, y: -35 });
+    expect(positionAt(ease, ease.to, 1000, 180)).toEqual(FIT);
+  });
+  it("is the target once the ease's time is up, or when it has no duration", () => {
+    expect(positionAt(ease, FIT, 9000, 180)).toEqual(ease.to);
+    expect(positionAt(ease, FIT, 1000, 0)).toEqual(ease.to);
   });
 });

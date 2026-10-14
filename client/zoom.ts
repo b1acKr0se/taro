@@ -283,3 +283,19 @@ export function transformBetween(from: Transform, to: Transform, progress: numbe
   const mix = (start: number, end: number) => start + (end - start) * eased;
   return { scale: mix(from.scale, to.scale), x: mix(from.x, to.x), y: mix(from.y, to.y) };
 }
+
+/** An eased move under way: where it started, where it goes, and when. */
+export interface Ease {
+  from: Transform;
+  to: Transform;
+  startedAt: number;
+}
+
+/**
+ * Where the image is at `time`: part way through `ease` while one runs (and at its end once its time
+ * is up), else at `current`. A new touch or a new ease starts from here, not from the last target.
+ */
+export function positionAt(ease: Ease | null, current: Transform, time: number, durationMs: number): Transform {
+  if (ease === null) return current;
+  return transformBetween(ease.from, ease.to, durationMs > 0 ? (time - ease.startedAt) / durationMs : 1);
+}

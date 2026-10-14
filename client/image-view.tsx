@@ -24,11 +24,12 @@ import {
   gestureStart,
   isAtFit,
   isZoomedIn,
+  positionAt,
   settleEasing,
   tapOutcome,
   toggleRealSize,
-  transformBetween,
   wheelAt,
+  type Ease,
   type Gesture,
   type Point,
   type Size,
@@ -206,13 +207,6 @@ const FADE_REACH = 28;
 const FADE_STEPS = 24;
 const FADE_ALPHA = 0.9;
 
-/** An eased move under way: where it started, where it goes, and when. */
-interface Easing {
-  from: Transform;
-  to: Transform;
-  startedAt: number;
-}
-
 function GalleryPage({
   image,
   index,
@@ -251,7 +245,7 @@ function GalleryPage({
   const live = useRef({ frame, index, count, onIndex, onClose, transform: FIT, origin: { x: 0, y: 0 } });
   live.current = { ...live.current, frame, index, count, onIndex, onClose };
   const gesture = useRef<Gesture | null>(null);
-  const easing = useRef<Easing | null>(null);
+  const easing = useRef<Ease | null>(null);
   const lastTap = useRef<Tap | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -270,13 +264,19 @@ function GalleryPage({
     scale.setValue(next.scale);
   }
 
-  /** Eases the image to a transform (a tap, a button, a snap back); the bar's Fit / 1:1 follows once it is there. */
+  /**
+   * Eases the image to a transform (a tap, a button, a snap back), from where it is, even part way
+   * through another ease; the bar's Fit / 1:1 follows once it is there.
+   */
   function settle(next: Transform): void {
-    easing.current = { from: live.current.transform, to: next, startedAt: Date.now() };
+    const now = Date.now();
+    const ease = { from: positionAt(easing.current, live.current.transform, now, SETTLE_MS), to: next, startedAt: now };
+    easing.current = ease;
     live.current.transform = next;
     const timing = (value: Animated.Value, toValue: number) => Animated.timing(value, { toValue, duration: SETTLE_MS, easing: settleEasing, useNativeDriver: NATIVE_DRIVER });
     Animated.parallel([timing(translateX, next.x), timing(translateY, next.y), timing(scale, next.scale)]).start(({ finished }) => {
-      if (!finished) return;
+      // A native ease reports its end later: a newer ease may have started since.
+      if (!finished || easing.current !== ease) return;
       easing.current = null;
       showFitRef.current(next);
     });
@@ -299,7 +299,7 @@ function GalleryPage({
     translateX.stopAnimation();
     translateY.stopAnimation();
     scale.stopAnimation();
-    placeRef.current(transformBetween(moving.from, moving.to, (Date.now() - moving.startedAt) / SETTLE_MS));
+    placeRef.current(positionAt(moving, live.current.transform, Date.now(), SETTLE_MS));
   }
 
   /** A touch in stage coordinates, measured from the stage's centre. */
