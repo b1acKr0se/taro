@@ -14,7 +14,6 @@ import {
   checkPrerequisites,
   launchManager,
   listModels,
-  onboardProject,
   readStandingOrders,
   restartManager,
   writeProjectSettings,
@@ -50,14 +49,14 @@ export function ProjectSetup({
   error?: string | null;
   /** Creates a new project; resolves with the problems by field when its check finds any. */
   onCreate?: (draft: SetupDraft) => Promise<SetupProblems | null>;
-  onDone: (project: string) => void;
+  /** After saving an existing project's settings. */
+  onDone?: (project: string) => void;
   /** Leaves without saving; null when there is nowhere to go back to (no project yet). */
   onCancel: (() => void) | null;
 }) {
   const toast = useToast();
   const prerequisitesRpc = useRpc(checkPrerequisites);
   const modelsRpc = useRpc(listModels);
-  const onboard = useRpc(onboardProject);
   const save = useRpc(writeProjectSettings);
   const readOrders = useRpc(readStandingOrders);
   const writeOrders = useRpc(writeStandingOrders);
@@ -119,21 +118,17 @@ export function ProjectSetup({
     setBusy(true);
     setFailure(null);
     try {
-      if (existing === null && onCreate !== undefined) {
-        const found = await onCreate(draft);
+      if (existing === null) {
+        const found = (await onCreate?.(draft)) ?? null;
         if (found !== null) {
           setServerProblems(found);
           toast.error("Fix the fields marked in red to continue.");
         }
-      } else if (existing === null) {
-        const result = await onboard({ project: draft.project.trim(), settings: settingsFrom(draft, defaultModel), startManager: true });
-        toast.show(`${result.config.project} added; its Manager is starting.`, { variant: "success" });
-        onDone(result.config.project);
       } else {
         await save({ project: existing.project, settings: settingsFrom(draft, defaultModel) });
         if (orders !== null) await writeOrders({ project: existing.project, text: orders });
         toast.show("Saved.", { variant: "success" });
-        onDone(existing.project);
+        onDone?.(existing.project);
       }
     } catch (caught) {
       if (existing === null) setFailure(errorText(caught));

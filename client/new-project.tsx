@@ -121,7 +121,6 @@ export function NewProject({
         initial={draft}
         error={error}
         onCreate={create}
-        onDone={() => {}}
         onCancel={() => setPage(kept.picked && draft !== null ? "review" : "list")}
       />
     );
@@ -534,20 +533,23 @@ function ProjectReview({
   );
 }
 
-/** A copy of the creation progress, read again a few times a second: the calls write it outside React. */
-export function useCreation(): CreationState {
+/**
+ * A copy of the creation progress, read again a few times a second since the calls write it outside
+ * React; `refresh` reads it at once, after a change made here.
+ */
+export function useCreation(): { state: CreationState; refresh: () => void } {
   const [snapshot, setSnapshot] = useState<CreationState>(() => ({ ...creation }));
+  const refresh = () =>
+    setSnapshot((current) =>
+      current.project === creation.project && current.step === creation.step && current.error === creation.error && current.failedStep === creation.failedStep
+        ? current
+        : { ...creation },
+    );
   useEffect(() => {
-    const timer = setInterval(() => {
-      setSnapshot((current) =>
-        current.project === creation.project && current.step === creation.step && current.error === creation.error && current.failedStep === creation.failedStep
-          ? current
-          : { ...creation },
-      );
-    }, 300);
+    const timer = setInterval(refresh, 300);
     return () => clearInterval(timer);
   }, []);
-  return snapshot;
+  return { state: snapshot, refresh };
 }
 
 /** The new project's page while its tracker and Manager are set up; the screen opens its Manager tab when done. */

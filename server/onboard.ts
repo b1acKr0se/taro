@@ -69,7 +69,8 @@ export async function onboardingProblems(input: { project: string; settings: Pro
   const commonDirectory = await gitCommonDirectory(repoRoot);
   for (const other of await listProjectConfigs()) {
     const otherCommon = await gitCommonDirectory(other.repoPath).catch(() => null);
-    if (other.project === input.project && otherCommon !== commonDirectory) problems.project = `A Taro project is already named ${other.project}; choose another name.`;
+    // A project whose repository is gone may be moved to this one under its name: adding repairs it.
+    if (other.project === input.project && otherCommon !== null && otherCommon !== commonDirectory) problems.project = `A Taro project is already named ${other.project}; choose another name.`;
     if (other.project !== input.project && otherCommon === commonDirectory) problems.repoPath = `This repository is already the Taro project ${other.project}.`;
   }
   const branch = input.settings.baseBranch.trim();

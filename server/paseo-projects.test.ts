@@ -205,4 +205,11 @@ describe("onboardingProblems", () => {
     expect(await onboardingProblems({ project: "shop", settings: settings(shop) })).toEqual({ repoPath: "This repository is already the Taro project store." });
     expect(await onboardingProblems({ project: "store", settings: settings(shop) })).toEqual({});
   });
+
+  it("lets a project whose repository is gone be added again from its new place under its name", async () => {
+    const moved = await repository("shop-moved");
+    await mkdir(join(home, "projects", "store"), { recursive: true });
+    await writeFile(join(home, "projects", "store", "taro.json"), JSON.stringify(config("store", join(root, "gone"))), "utf8");
+    expect(await onboardingProblems({ project: "store", settings: settings(moved) })).toEqual({});
+  });
 });

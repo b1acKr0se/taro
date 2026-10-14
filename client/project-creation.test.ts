@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { draftFrom, settingsFrom } from "../shared/setup-form";
-import { creationDefaults, resetCreation, retryManager, startCreation, type CreationCalls } from "./project-creation";
+import { afterCreation, creationDefaults, resetCreation, retryManager, startCreation, type CreationCalls } from "./project-creation";
 
 const settings = settingsFrom({ ...draftFrom(null), repoPath: "/home/you/code/shop", ticketPrefix: "SH" }, "claude/opus");
 
@@ -60,6 +60,25 @@ describe("startCreation", () => {
     const state = creationDefaults();
     await expect(startCreation(calls({ check: vi.fn(async () => Promise.reject(new Error("offline"))) }), "shop", settings, state)).rejects.toThrow("offline");
     expect(state.step).toBe("idle");
+  });
+});
+
+describe("afterCreation", () => {
+  it("waits while creating, and also after a failure (the progress page shows it)", () => {
+    for (const step of ["idle", "tracker", "manager", "failed"] as const) {
+      expect(afterCreation({ step, listed: true, onSetup: true })).toBe("wait");
+      expect(afterCreation({ step, listed: false, onSetup: false })).toBe("wait");
+    }
+  });
+
+  it("refreshes the list until the new project is in it", () => {
+    expect(afterCreation({ step: "done", listed: false, onSetup: true })).toBe("refresh");
+    expect(afterCreation({ step: "done", listed: false, onSetup: false })).toBe("refresh");
+  });
+
+  it("opens the Manager tab from New project, including the first project's, and only forgets elsewhere", () => {
+    expect(afterCreation({ step: "done", listed: true, onSetup: true })).toBe("open-manager");
+    expect(afterCreation({ step: "done", listed: true, onSetup: false })).toBe("reset");
   });
 });
 

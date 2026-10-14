@@ -29,7 +29,7 @@ import { OwnerPane } from "./owner-pane";
 import { PaneHeader } from "./pane-header";
 import { projectLayout } from "./pane-layout";
 import { CreationProgress, NewProject, resetNewProject, returnToNewProject, useCreation } from "./new-project";
-import { resetCreation } from "./project-creation";
+import { afterCreation, resetCreation } from "./project-creation";
 import { ProjectSetup } from "./project-setup";
 import { useProjects, useRefreshProjects } from "./queries";
 import { paneGutter, SPACE } from "./spacing";
@@ -68,22 +68,24 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   const current = list.find((summary) => summary.config.project === selected) ?? list[0] ?? null;
   const showing: View_ = list.length === 0 && !projects.isLoading ? "setup" : view;
   const onOpenAgent = navigation === undefined ? null : (agentId: string) => navigation.openAgent({ agentId });
-  const creating = useCreation();
-  const createdListed = creating.step === "done" && list.some((summary) => summary.config.project === creating.project);
+  const { state: creating, refresh: refreshCreation } = useCreation();
+  const next = afterCreation({
+    step: creating.step,
+    listed: list.some((summary) => summary.config.project === creating.project),
+    onSetup: showing === "setup",
+  });
 
-  // A new project opens on its Manager tab once it is set up and listed; elsewhere on the screen it just appears.
   useEffect(() => {
-    if (!createdListed || creating.project === null) return;
+    if (next === "refresh") refresh();
+    if (next !== "open-manager" && next !== "reset") return;
     const project = creating.project;
     resetCreation();
     resetNewProject();
-    if (showing !== "setup") return;
+    refreshCreation();
+    if (next === "reset" || project === null) return;
     remembered.phoneTab = "manager";
     choose(project, "project");
-  }, [createdListed]);
-  useEffect(() => {
-    if (creating.step === "done" && !createdListed) refresh();
-  }, [creating.step]);
+  }, [next]);
 
   function choose(project: string | null, nextView: View_, nextTicket: string | null = null): void {
     remembered.project = project;
@@ -205,12 +207,14 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
         onOpenProject={(project) => {
           resetCreation();
           resetNewProject();
+          refreshCreation();
           refresh();
           choose(project, "project");
         }}
         onBackToSetup={(error) => {
           resetCreation();
           returnToNewProject(error);
+          refreshCreation();
         }}
       />
     );
@@ -223,7 +227,12 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
           resetNewProject();
           choose(project, "project");
         }}
-        onCreating={() => refresh()}
+        onCreating={() => {
+          // The first project's setup page shows only while the list is empty; keep it once the project is listed.
+          choose(selected, "setup");
+          refreshCreation();
+          refresh();
+        }}
         onCancel={
           current === null
             ? null

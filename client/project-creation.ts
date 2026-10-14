@@ -71,6 +71,17 @@ export async function startCreation(
   return { problems: null, finished };
 }
 
+/**
+ * What the screen does about a creation: wait while it runs; once done, refresh the project list
+ * until the new project is in it, then open its Manager tab when New project is showing, or only
+ * forget the creation when the user has gone elsewhere (the project just appears in the tabs).
+ */
+export function afterCreation(input: { step: CreationStep; listed: boolean; onSetup: boolean }): "wait" | "refresh" | "open-manager" | "reset" {
+  if (input.step !== "done") return "wait";
+  if (!input.listed) return "refresh";
+  return input.onSetup ? "open-manager" : "reset";
+}
+
 /** Starts the Manager again after it failed to start; the project and its tracker are there already. */
 export async function retryManager(calls: Pick<CreationCalls, "launch">, state: CreationState = creation): Promise<void> {
   const project = state.project;
