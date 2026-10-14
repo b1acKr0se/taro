@@ -750,9 +750,10 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
   return {
     pane: { flex: 1, minHeight: 0, backgroundColor: colors.surface0 },
     transcript: { flex: 1 },
+    // Where the acceptance card is measured from (TR-091): the content's top, out of the flow.
+    contentAnchor: { position: "absolute" as const, top: 0, left: 0, width: 1, height: 1 },
     // Room between turns, so a reply, a tool run and the next message read as separate things.
     // Centred at a reading width in a wide pane (TR-027); the scroll bar stays at the pane's edge.
-    contentAnchor: { position: "absolute" as const, top: 0, left: 0, width: 1, height: 1 },
     transcriptBody: {
       width: "100%" as const,
       maxWidth: CHAT_MAX_WIDTH,

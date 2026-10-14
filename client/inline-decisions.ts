@@ -2,7 +2,7 @@
  * Where an agent's open decisions sit in its conversation (TR-026): no pinned area, each drawn under
  * the message that asked it and answered there. Pure.
  */
-import { parseDecisionBlocks, parseStatusLine } from "../shared/reports";
+import { parseDecisionBlocks } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import { walkOrder } from "./walk-order";
 
