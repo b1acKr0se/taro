@@ -8,6 +8,7 @@ import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useEffect, useMemo, useRef } from "react";
 import { ActivityIndicator, Animated, Easing, Platform, Text, View } from "react-native";
 import { CentredLabel } from "./centred-label";
+import { controlColors } from "./control-colors";
 import { BUTTON, SEGMENTED } from "./control-size";
 import { Pressable } from "./focus";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
@@ -52,6 +53,7 @@ export function IconButton({
   const busy = state === "busy";
   // The pressed button stays at full strength while it spins; only the buttons waiting on it fade.
   const faded = disabled && !busy;
+  const control = useMemo(() => controlColors(colors), [colors]);
   const styles = useMemo(
     () => ({
       button: {
@@ -66,15 +68,15 @@ export function IconButton({
         paddingVertical: BUTTON.paddingVertical,
         borderRadius: BUTTON.borderRadius,
         borderWidth: BUTTON.borderWidth,
-        borderColor: tone === "accent" ? colors.accent : colors.border,
-        backgroundColor: tone === "accent" ? colors.accent : colors.surface1,
+        borderColor: tone === "accent" ? colors.accent : control.border,
+        backgroundColor: tone === "accent" ? colors.accent : control.fill,
         opacity: faded ? 0.5 : 1,
         // A long label — a card action the agent named — wraps inside a narrow card instead of overflowing it.
         maxWidth: "100%" as const,
       },
       label: { color, fontSize: BUTTON.fontSize, lineHeight: BUTTON.lineHeight, fontWeight: "500" as const, flexShrink: 1 },
     }),
-    [colors, tone, faded, showLabel, grow, color],
+    [colors, control, tone, faded, showLabel, grow, color],
   );
   return (
     <Pressable
@@ -150,6 +152,7 @@ export function Segmented<Value extends string>({
   iconsOnly?: boolean;
 }) {
   const colors = theme.colors;
+  const control = useMemo(() => controlColors(colors), [colors]);
   const styles = useMemo(
     () => ({
       // A quiet track with the chosen segment raised on it, rather than a block of accent colour.
@@ -161,7 +164,9 @@ export function Segmented<Value extends string>({
         padding: SEGMENTED.padding,
         gap: SEGMENTED.gap,
         borderRadius: BUTTON.borderRadius,
-        backgroundColor: colors.surface1,
+        borderWidth: BUTTON.borderWidth,
+        borderColor: control.border,
+        backgroundColor: control.fill,
       },
       segment: {
         flexDirection: "row" as const,
@@ -169,15 +174,15 @@ export function Segmented<Value extends string>({
         gap: BUTTON.gap,
         paddingHorizontal: BUTTON.paddingHorizontal,
         borderRadius: SEGMENTED.segmentRadius,
-        // The track's colour until selected, so choosing a segment does not widen it by its border.
+        // Clear until selected, so choosing a segment does not widen it by its border.
         borderWidth: BUTTON.borderWidth,
-        borderColor: colors.surface1,
+        borderColor: "transparent",
       },
-      selected: { backgroundColor: colors.surface2, borderColor: colors.border },
+      selected: { backgroundColor: control.fill, borderColor: control.border },
       label: { color: colors.foregroundMuted, fontSize: BUTTON.fontSize, lineHeight: BUTTON.lineHeight, fontWeight: "500" as const },
       labelSelected: { color: colors.foreground, fontWeight: "600" as const },
     }),
-    [colors],
+    [colors, control],
   );
   return (
     <View style={styles.holder}>
@@ -210,6 +215,7 @@ export function Segmented<Value extends string>({
  */
 export function JumpToEnd({ theme, onPress }: { theme: PluginTheme; onPress: () => void }) {
   const colors = theme.colors;
+  const control = useMemo(() => controlColors(colors), [colors]);
   const styles = useMemo(
     () => ({
       frame: { position: "absolute" as const, left: 0, right: 0, bottom: 12, alignItems: "center" as const },
@@ -218,13 +224,14 @@ export function JumpToEnd({ theme, onPress }: { theme: PluginTheme; onPress: () 
         height: 36,
         borderRadius: 18,
         borderWidth: 1,
-        borderColor: colors.border,
+        borderColor: control.border,
+        // Opaque under the tint: it floats over the transcript's text.
         backgroundColor: colors.surface2,
         alignItems: "center" as const,
         justifyContent: "center" as const,
       },
     }),
-    [colors],
+    [colors, control],
   );
   return (
     <View style={styles.frame} pointerEvents="box-none">

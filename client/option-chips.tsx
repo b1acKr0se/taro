@@ -14,6 +14,7 @@ import { answerDecision } from "../shared/contracts";
 import { optionChips, type OptionChip } from "../shared/decision-view";
 import type { StoredDecision } from "../shared/state";
 import { CentredLabel } from "./centred-label";
+import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { SPACE } from "./spacing";
@@ -42,6 +43,7 @@ export function OptionChips({
   const [answered, setAnswered] = useState(false);
   const chips = useMemo(() => optionChips(decision), [decision]);
   const { colors } = theme;
+  const control = useMemo(() => controlColors(colors), [colors]);
   const styles = useMemo(
     () => ({
       // Wraps rather than scrolls: every answer stays in view, however many there are.
@@ -55,13 +57,13 @@ export function OptionChips({
         paddingVertical: SPACE.xxs + 1,
         borderRadius: 999,
         borderWidth: 1,
-        borderColor: colors.border,
-        backgroundColor: colors.surface1,
+        borderColor: control.border,
+        backgroundColor: control.fill,
       },
-      recommended: { borderColor: withAlpha(colors.accent, 0.6), backgroundColor: withAlpha(colors.accent, 0.08) },
+      recommended: { borderColor: colors.accent, backgroundColor: withAlpha(colors.accent, 0.1) },
       label: { flexShrink: 1, color: colors.foreground, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption) },
     }),
-    [colors],
+    [colors, control],
   );
   if (chips.length === 0) return null;
 

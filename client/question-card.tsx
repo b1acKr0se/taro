@@ -58,7 +58,9 @@ export function QuestionCard({
         paddingVertical: SPACE.xxs,
         borderRadius: 6,
         borderWidth: 1,
-        borderColor: withAlpha(colors.accent, 0.45),
+        // The accent at full strength: at 45% it fell to about 1.5:1 on the card in dark themes (TR-093).
+        borderColor: colors.accent,
+        backgroundColor: withAlpha(colors.accent, 0.1),
       },
       actionText: { color: colors.accent, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
     }),

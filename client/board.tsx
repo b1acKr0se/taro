@@ -18,6 +18,7 @@ import { SectionHeading } from "./badges";
 import { useBoard, useLoadMore, useRefreshBoard } from "./board-data";
 import { columnPage, type ColumnPage } from "./board-paging";
 import { CentredLabel } from "./centred-label";
+import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { keptObject } from "./kept";
@@ -70,6 +71,7 @@ export function ProjectBoard({
   const [column, setColumn] = useState<ColumnId>(phoneColumn.current);
   const [paneWidth, setPaneWidth] = useState(0);
   const { colors } = theme;
+  const control = useMemo(() => controlColors(colors), [colors]);
   const styles = useMemo(
     () => ({
       root: { flex: 1, minHeight: 0, backgroundColor: colors.surface0 },
@@ -96,15 +98,15 @@ export function ProjectBoard({
         paddingVertical: SPACE.sm,
         borderRadius: 999,
         borderWidth: 1,
-        borderColor: colors.border,
-        backgroundColor: colors.surface1,
+        borderColor: control.border,
+        backgroundColor: control.fill,
       },
       chipText: { color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: labelLineHeightFor(FONT_SIZE.small), fontWeight: "500" as const },
       pill: { minWidth: 20, alignItems: "center" as const, paddingHorizontal: SPACE.xs + 2, paddingVertical: 1, borderRadius: 999, backgroundColor: colors.surface2 },
       pillText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.micro, lineHeight: labelLineHeightFor(FONT_SIZE.micro), fontWeight: "700" as const },
       error: { color: colors.statusDanger, padding: SPACE.md },
     }),
-    [colors, compact],
+    [colors, control, compact],
   );
 
   const cards = board.data?.cards ?? [];

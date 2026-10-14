@@ -22,6 +22,7 @@ import { useOnPaneHidden } from "./pane-visibility";
 import { DecisionCard } from "./decision-card";
 import { drafts } from "./draft";
 import { draftAttachments } from "./draft-attachments";
+import { rowButtonStyle } from "./control-colors";
 import { Pressable } from "./focus";
 import { useFollowEnd } from "./follow-end";
 import { ImageThumbnail } from "./image-view";
@@ -478,7 +479,9 @@ export function AgentChat({
                 <Text style={[styles.lineText, { color: theme.colors.foreground }]} numberOfLines={1}>
                   {delivery.label}
                 </Text>
-                <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Show</Text>
+                <View style={styles.show}>
+                  <Text style={styles.showText}>Show</Text>
+                </View>
               </Pressable>
             )}
             {places?.first === null || places === null || firstOnScreen ? null : (
@@ -487,7 +490,9 @@ export function AgentChat({
                 <Text style={[styles.lineText, { color: theme.colors.foreground }]} numberOfLines={1}>
                   {places.first.question}
                 </Text>
-                <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Show</Text>
+                <View style={styles.show}>
+                  <Text style={styles.showText}>Show</Text>
+                </View>
               </Pressable>
             )}
             {suggestions === undefined ? (
@@ -810,6 +815,9 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
     markText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
     markActions: { flexDirection: "row" as const, justifyContent: "flex-end" as const, gap: SPACE.sm },
     quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
+    // The row is the press target; Show is drawn as a button so the row reads as one (TR-093).
+    show: rowButtonStyle(colors),
+    showText: { color: colors.accent, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
     readOnly: {
       width: "100%" as const,
       maxWidth: CHAT_MAX_WIDTH,

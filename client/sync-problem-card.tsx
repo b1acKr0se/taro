@@ -12,6 +12,7 @@ import { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 
 import { resolveTrackerSync, type SyncResolution, type TrackerSyncProblem } from "../shared/contracts";
+import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
 import { useRefreshProjects } from "./queries";
 import { SPACE } from "./spacing";
@@ -54,6 +55,7 @@ export function SyncProblemCard({
   const presses = useActions();
   const [folded, setFolded] = useState(startFolded);
   const { colors } = theme;
+  const control = useMemo(() => controlColors(colors), [colors]);
   const styles = useMemo(
     () => ({
       card: { borderWidth: 1, borderColor: colors.statusWarning, borderRadius: 10, padding: compact ? 10 : 12, gap: 8, backgroundColor: colors.surface1 },
@@ -61,15 +63,15 @@ export function SyncProblemCard({
       message: { color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" as const, lineHeight: lineHeightFor(FONT_SIZE.body) },
       note: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
       tickets: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 6 },
-      ticket: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3 },
+      ticket: { borderWidth: 1, borderColor: control.border, backgroundColor: control.fill, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3 },
       ticketText: { color: colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
       options: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 6 },
-      option: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, maxWidth: "100%" as const, flexShrink: 1 },
+      option: { borderWidth: 1, borderColor: control.border, backgroundColor: control.fill, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, maxWidth: "100%" as const, flexShrink: 1 },
       optionLabel: { color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "600" as const },
       consequence: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
       resolve: { color: colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
     }),
-    [colors, compact],
+    [colors, control, compact],
   );
 
   function choose(choice: Choice): void {

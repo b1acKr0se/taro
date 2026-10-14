@@ -16,6 +16,7 @@ import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
+import { controlColors } from "./control-colors";
 import { BUTTON } from "./control-size";
 import { Spinner } from "./ui";
 import { usePressGuards } from "./use-actions";
@@ -41,6 +42,7 @@ export function SuggestionPills({
   const guardFor = usePressGuards();
   const [sends, setSends] = useState<SuggestionSend[]>([]);
   const { colors } = theme;
+  const control = useMemo(() => controlColors(colors), [colors]);
   const styles = useMemo(
     () => ({
       // Catch up's shape and measurements (`BUTTON`, TR-070): the send part and the × share its padding.
@@ -49,9 +51,9 @@ export function SuggestionPills({
         alignItems: "center" as const,
         minHeight: BUTTON.height,
         borderWidth: BUTTON.borderWidth,
-        borderColor: colors.border,
+        borderColor: control.border,
         borderRadius: BUTTON.borderRadius,
-        backgroundColor: colors.surface1,
+        backgroundColor: control.fill,
       },
       suggestionSend: {
         flexDirection: "row" as const,

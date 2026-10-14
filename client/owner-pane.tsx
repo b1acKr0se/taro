@@ -19,12 +19,13 @@ import { decisionBlocksAsText, withoutDecisionBlocks } from "../shared/reports";
 import { AgentChat } from "./agent-chat";
 import { AcceptanceCard } from "./acceptance-card";
 import { acceptanceReady } from "./card-calls";
+import { rowButtonStyle } from "./control-colors";
 import { Pressable } from "./focus";
 import { askedElsewhere, openingPaneAgent, paneAgents, paneAgentJob, paneOpening, roleIcon, type PaneOpening } from "./pane-agents";
 import { PaneHeader } from "./pane-header";
 import { paneGutter, SPACE } from "./spacing";
 import { TicketView } from "./ticket-view";
-import { FONT_SIZE } from "./type-scale";
+import { FONT_SIZE, labelLineHeightFor } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
 import { AgentChips } from "./agent-chips";
 import { KeptPane, useVisited } from "./kept-pane";
@@ -185,7 +186,9 @@ export function OwnerPane({
                       <Text style={{ flex: 1, color: theme.colors.foreground, fontSize: FONT_SIZE.caption }} numberOfLines={1}>
                         {elsewhere.text}
                       </Text>
-                      <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Open {paneAgentJob(elsewhere.agent.role)}</Text>
+                      <View style={rowButtonStyle(theme.colors)}>
+                        <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" }}>Open {paneAgentJob(elsewhere.agent.role)}</Text>
+                      </View>
                     </Pressable>
                   )
                 }

@@ -8,6 +8,7 @@ import { Icon } from "@getpaseo/plugin/client/react-native";
 import { ScrollView, Text, View } from "react-native";
 
 import { CentredLabel } from "./centred-label";
+import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
 import { paneAgentDetail, paneAgentState, roleIcon, type PaneAgent, type PaneAgentState } from "./pane-agents";
 import { SPACE } from "./spacing";
@@ -36,6 +37,7 @@ export function AgentChips({
   onSelect: (agentId: string) => void;
 }) {
   const { colors } = theme;
+  const control = controlColors(colors);
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACE.sm }}>
       {agents.map((agent) => {
@@ -65,8 +67,8 @@ export function AgentChips({
                 paddingVertical: SPACE.xxs + 1,
                 borderRadius: 999,
                 borderWidth: 1,
-                borderColor: selected ? colors.accent : colors.border,
-                backgroundColor: selected ? withAlpha(colors.accent, 0.12) : colors.surface1,
+                borderColor: selected ? colors.accent : control.border,
+                backgroundColor: selected ? withAlpha(colors.accent, 0.12) : control.fill,
               }}
             >
               {mark}
@@ -90,8 +92,8 @@ export function AgentChips({
               paddingVertical: SPACE.xs + SPACE.xxs,
               borderRadius: 10,
               borderWidth: 1,
-              borderColor: selected ? colors.accent : colors.border,
-              backgroundColor: selected ? withAlpha(colors.accent, 0.12) : colors.surface1,
+              borderColor: selected ? colors.accent : control.border,
+              backgroundColor: selected ? withAlpha(colors.accent, 0.12) : control.fill,
             }}
           >
             <Icon name={roleIcon(agent)} size={14} color={selected ? colors.accent : colors.foregroundMuted} />

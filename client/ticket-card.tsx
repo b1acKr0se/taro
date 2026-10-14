@@ -93,7 +93,9 @@ export function TicketCard({
         paddingVertical: SPACE.xxs,
         borderRadius: 6,
         borderWidth: 1,
-        borderColor: withAlpha(colors.accent, 0.45),
+        // The accent at full strength: at 45% it fell to about 1.5:1 on the card in dark themes (TR-093).
+        borderColor: colors.accent,
+        backgroundColor: withAlpha(colors.accent, 0.1),
       },
       dot: { width: 8, height: 8, borderRadius: 4 },
       row: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },

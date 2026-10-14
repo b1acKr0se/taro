@@ -18,6 +18,7 @@ import { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 
 import { CentredLabel } from "./centred-label";
+import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
 import { useRevealFocused } from "./keyboard";
 import { Markdown } from "./markdown";
@@ -89,6 +90,7 @@ interface CardProps {
 function useCardStyles(theme: PluginTheme, compact: boolean) {
   return useMemo(() => {
     const { colors } = theme;
+    const control = controlColors(colors);
     return {
       card: {
         borderWidth: 1,
@@ -109,9 +111,10 @@ function useCardStyles(theme: PluginTheme, compact: boolean) {
         paddingVertical: 4,
         borderRadius: 6,
         borderWidth: 1,
-        borderColor: colors.border,
+        borderColor: control.border,
+        backgroundColor: control.fill,
       },
-      tabActive: { borderColor: colors.foreground, backgroundColor: colors.surface2 },
+      tabActive: { borderColor: colors.foreground },
       tabText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: labelLineHeightFor(FONT_SIZE.small) },
       tabTextActive: { color: colors.foreground },
       question: { color: colors.foreground, fontSize: FONT_SIZE.content, fontWeight: "600" as const, lineHeight: lineHeightFor(FONT_SIZE.content) },
