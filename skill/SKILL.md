@@ -1,6 +1,6 @@
 ---
 name: taro
-description: Taro's workflow for Paseo agents — a manager per project files Backlog.md tickets, a task owner owns each ticket from proposal to accepted delivery, subagents (implementers, reviewers, researchers) work to an explicit definition of done.
+description: Taro's workflow for Paseo agents — a manager per project files tickets, a task owner owns each ticket from proposal to accepted delivery, subagents (implementers, reviewers, researchers) work to an explicit definition of done.
 ---
 
 # Taro
@@ -31,10 +31,10 @@ every role runs commands with nobody there to approve them, cleanup included.
 
 1. **End every turn with a status line** — the last line of your last message — and ask the user
    things only with a decision block. Both formats: `reference/formats.md`.
-2. **Tickets live in the tracker**, a Backlog.md project on the `taro/backlog` branch. Use the
-   Backlog CLI with `BACKLOG_CWD` set to the tracker path you were given (it is also in your
-   environment). Never edit task files by hand, never commit the tracker (the plugin does), never
-   use a `backlog/` folder inside a code worktree. Commands: `reference/tickets.md`.
+2. **Tickets live in the tracker**, a folder of ticket files on the `taro/backlog` branch. Use the
+   `taro ticket` command (its tracker path is `$TARO_TRACKER`, also in your brief). Never edit
+   ticket files by hand, never commit the tracker (the plugin does), never keep tickets inside a
+   code worktree. Commands: `reference/tickets.md`.
 3. **A conversation is never the only copy.** Scope, approvals (the user's exact words), decisions,
    milestones and handoffs go into the ticket as you make them. Your context may be compacted at any
    time; after that, reread your role and the ticket before continuing.
@@ -44,8 +44,8 @@ every role runs commands with nobody there to approve them, cleanup included.
 6. **Never** push to the base branch, merge without the user's acceptance, deploy, or delete work
    that has not landed.
 7. **Write shell commands that need no approval**, as nobody may be there to give it: remove only
-   literal or guarded absolute paths, make scratch space with `mktemp -d`, and run a throwaway
-   Backlog project with `BACKLOG_CWD` and `TARO_TRACKER` unset. Details: `reference/shell.md`.
+   literal or guarded absolute paths, make scratch space with `mktemp -d`, and try ticket commands
+   only on a scratch tracker (`--tracker <mktemp dir>`). Details: `reference/shell.md`.
 8. **Write as if the repository were public**: it may be published. No real names, paths, hosts or
    emails from this machine in code, tests, fixtures or docs; use neutral examples (`notes-app`,
    `/home/user/project`, `alex@example.com`).

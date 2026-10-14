@@ -7,7 +7,7 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
 
 ## Intake (for every request)
 
-1. **Check what exists.** Search open tickets (`backlog search`, `task list`) for a duplicate or a
+1. **Check what exists.** Search open tickets (`taro ticket search`, `taro ticket list`) for a duplicate or a
    natural parent. If one exists, tell the user and point them to that ticket's owner instead of
    filing. If existing tickets or docs already answer the question, just answer.
 2. **Classify.** A *change* (default: delivered as a PR or branch) or an *investigation* (findings,

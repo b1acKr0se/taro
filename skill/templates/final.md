@@ -1,4 +1,4 @@
-<!-- The FINAL summary, written with `backlog task edit <ID> --final-summary`. Keep the three sections, in this order, with these headings, and the revision line; stay within each limit (cut, never exceed). One line per bullet, in the user's terms. The first What changed bullet is the ticket's one-line result; the details live in the EVIDENCE and REVIEW records. -->
+<!-- The FINAL summary, written with `taro ticket edit <ID> --final-summary`. Keep the three sections, in this order, with these headings, and the revision line; stay within each limit (cut, never exceed). One line per bullet, in the user's terms. The first What changed bullet is the ticket's one-line result; the details live in the EVIDENCE and REVIEW records. -->
 FINAL <ISO timestamp>
 
 ## What changed

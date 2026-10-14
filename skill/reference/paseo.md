@@ -17,7 +17,7 @@ paseo workspace create --isolation worktree --path <repoPath> --project <paseoPr
 paseo run -d --workspace <workspaceId> --provider <ownerModel> [--thinking <id>] --mode <ownerMode> \
   --title "<ID> · <title>" \
   --label taro.project=<project> --label taro.role=owner --label taro.ticket=<ID> \
-  --env BACKLOG_CWD=<tracker> --env TARO_TRACKER=<tracker> --env TARO_PROJECT=<project> --env TARO_SKILL=<skill> \
+  --env TARO_TRACKER=<tracker> --env TARO_PROJECT=<project> --env TARO_SKILL=<skill> \
   --json "<owner brief>"
 # → agentId
 ```
@@ -28,7 +28,7 @@ paseo run -d --workspace <workspaceId> --provider <ownerModel> [--thinking <id>]
 paseo run -d --workspace <your workspaceId> --provider <model> [--thinking <id>] --mode <bypass mode> \
   --title "<ID> · <job>: <task>" \
   --label taro.project=<project> --label taro.role=<job> --label taro.ticket=<ID> \
-  --env BACKLOG_CWD=<tracker> --env TARO_TRACKER=<tracker> --env TARO_PROJECT=<project> --env TARO_SKILL=<skill> \
+  --env TARO_TRACKER=<tracker> --env TARO_PROJECT=<project> --env TARO_SKILL=<skill> \
   --json "<brief: an implementer's is its definition of done>"
 ```
 

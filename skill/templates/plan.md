@@ -1,4 +1,4 @@
-<!-- The plan of every scope approval, written with `backlog task edit <ID> --plan`. Keep the six sections, in this order, with these headings; stay within each limit (cut, never exceed). The approval card shows Goal, Choices I made and Size; View plan shows the rest. -->
+<!-- The plan of every scope approval, written with `taro ticket edit <ID> --plan`. Keep the six sections, in this order, with these headings; stay within each limit (cut, never exceed). The approval card shows Goal, Choices I made and Size; View plan shows the rest. -->
 ## Goal
 <the user outcome, one line>
 

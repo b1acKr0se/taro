@@ -82,10 +82,10 @@ one a "helper".
   /sys/fs/cgroup/pids.current /sys/fs/cgroup/pids.max` and wait while usage is above 85% (skip where
   the files are missing). Stop test daemons and finished subagents promptly. Before you finish,
   stop every test daemon you started (`paseo daemon stop --home <its home>`, or kill its pid) and
-  check `ps -eo pid,ppid,etime,args` for what it left: its plugin's processes, a `backlog` or `git`
+  check `ps -eo pid,ppid,etime,args` for what it left: its plugin's processes, a `git`
   under PID 1 from its home or tracker. Kill those by pid and delete the home.
-- **Unattended commands:** follow `reference/shell.md` (removals that need no approval, throwaway
-  Backlog projects without `BACKLOG_CWD`), and tell each subagent to read it.
+- **Unattended commands:** follow `reference/shell.md` (removals that need no approval, scratch
+  trackers with `--tracker`), and tell each subagent to read it.
 - Pick each subagent's model and thinking by the task's difficulty from the allowed list: mechanical
   → the cheapest; routine implementation → middle; risky or hard → the strongest. A model the user
   named (in the brief or in your chat) wins over this. Start them with
@@ -98,7 +98,7 @@ one a "helper".
 
 Split only high-complexity work with distinct deliverables. The breakdown is part of your proposal,
 so one approval covers both (a later split needs a `child-breakdown` decision). Create children with
-`backlog task create … -p <your id>`. Default: children run one at a time in **your** worktree, each
+`taro ticket create … -p <your id>`. Default: children run one at a time in **your** worktree, each
 by an implementer committing onto your branch; you review each child's commits against its definition of
 done and mark it Done. Parallel children (approved in the proposal) get their own worktree and
 branch, merged locally into yours when done. A child touching contracts, money, auth or stored data

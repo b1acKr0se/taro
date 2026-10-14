@@ -43,7 +43,11 @@ EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
   (`client/image-shrink.ts`); Paseo's own cap is 10 attachments and 30 MB a message.
 - Code adapted from FirstMate (MIT) or ported from Paseo (Apache-2.0) keeps its header comment and
   its entry in `THIRD_PARTY_NOTICES.md`. The plugin theme has no `borderAccent` or `surface3`.
-- Never store plugin-only data in a ticket's frontmatter: the Backlog CLI drops unknown keys.
+- Tickets are Taro's own files on the `taro/backlog` branch: `tickets/<ID>.md`, one `key: <JSON>`
+  frontmatter line per field, sections between `<!-- taro:… -->` markers. Every write goes through
+  one locked path in `server/ticket-store.ts`. The `taro` command (`bin/taro`) runs `.ts` under
+  Node ≥ 22.18 type stripping, so every file reachable from `server/taro-cli.ts` uses erasable
+  syntax (no enums, namespaces or parameter properties), `.ts` import extensions and no npm packages.
 - Agent-facing text lives in `skill/` (what agents read) and `templates/` (what the plugin writes or
   sends), never in code.
 - Comments explain why, briefly. Full identifiers, no abbreviations.
@@ -99,11 +103,10 @@ daemon with its own home and port, unique to your ticket:
   "$R" init -q -b main; echo "$R"`.
 - Installing writes `plugins` into that home's `config.json`; keep that key if you rewrite it.
 - Stop your daemon when done: `paseo daemon stop --home $HOME_DIR` (or kill its pid), then check
-  `ps -eo pid,ppid,etime,args` for leftovers (its plugin process, a `backlog` or `git` reparented to
+  `ps -eo pid,ppid,etime,args` for leftovers (its plugin process, a `git` reparented to
   PID 1), kill them by pid, and delete the home and the scratch repository by their literal paths:
   `rm -rf -- /tmp/paseo-TR-012 /tmp/notes-app.Ab12Cd` (`skill/reference/shell.md`; a target worked
-  out by a command, such as `"$(dirname $R)"`, stops you for approval). Orphaned `backlog` processes once held a sixth of
-  the host's threads (TR-073).
+  out by a command, such as `"$(dirname $R)"`, stops you for approval).
 - Every command the plugin runs goes through `server/process.ts`: its own process group, killed
   whole on a timeout or the plugin's stop. Never `spawn` elsewhere.
 

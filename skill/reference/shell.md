@@ -21,11 +21,12 @@ Write removals so they pass instead:
 - **Guard any variable you remove under**: `"${NAME:?}/sub"`, never `$NAME/` or `$NAME/*`.
 - Never remove a worktree or directory you are working in; leave that to the plugin or the user.
 
-## Throwaway Backlog projects
+## Scratch trackers
 
-`BACKLOG_CWD` and `TARO_TRACKER` in your environment point at the live tracker, and the Backlog
-CLI follows `BACKLOG_CWD` from any directory: `backlog init` there renames the live project. For a
-scratch or test Backlog project, make a `mktemp -d` directory and run every `backlog` command for it
-as `env -u BACKLOG_CWD -u TARO_TRACKER backlog …` from inside it. Never run `backlog init` with
-`BACKLOG_CWD` set. The plugin restores a tracker renamed this way and raises an alert, but the
-user then has to look into it.
+`$TARO_TRACKER` in your environment is the live tracker. To try `taro ticket` commands, make a
+scratch tracker with `mktemp -d` and pass it as `--tracker`; never experiment against
+`$TARO_TRACKER`.
+
+    T=$(mktemp -d /tmp/x-tracker.XXXXXX); taro ticket create "Try" --tracker "$T"
+
+Remove it later by its literal path: `rm -rf -- /tmp/x-tracker.Ab12Cd`.

@@ -1,24 +1,33 @@
 # Tickets
 
-The tracker is a Backlog.md project. Run every command with `BACKLOG_CWD` set to the tracker path
-from your brief (your environment has it as `$BACKLOG_CWD` and `$TARO_TRACKER`). Pass text as single
-quoted arguments; never build shell code from user text. Never edit task files or commit them.
+The tracker holds one file per ticket, read and written only by the `taro` command; it finds the
+tracker from `$TARO_TRACKER` (the path from your brief). Pass text as single quoted arguments; never
+build shell code from user text. Never edit ticket files or commit them.
 
 ```bash
-backlog task list --plain                      # or --json; filters: -s "In Progress", -l label, -p <parent>
-backlog task view SH-012 --plain               # or --json
-backlog search "login" --plain
-backlog task create "Fix login redirect" -d "<two-part brief>" [-l investigation] [-p SH-010] [--dep SH-011]
-backlog task edit SH-012 -s "Planning"
-backlog task edit SH-012 --plan "<plan>"            # templates/plan.md; its How I'll prove it holds the criteria
-backlog task edit SH-012 --add-label complexity-medium
-backlog task edit SH-012 --append-notes "<record>" --plain
-backlog task edit SH-012 --check-ac 1                # an older ticket's acceptance criterion
-backlog task edit SH-012 --final-summary "<FINAL>" -s "Awaiting acceptance"   # templates/final.md
+taro ticket list --plain                      # or --json; filters: -s "In Progress", -l label, -p <parent>
+taro ticket view SH-012 --plain               # or --json; the last line is "Revision: <rev>"
+taro ticket search "login" --plain
+taro ticket create "Fix login redirect" -d "<two-part brief>" [-l investigation] [-p SH-010] [--dep SH-011]
+taro ticket edit SH-012 -s "Planning"
+taro ticket edit SH-012 --plan "<plan>" --revision <rev>   # templates/plan.md; its How I'll prove it holds the criteria
+taro ticket edit SH-012 --add-label complexity-medium
+taro ticket edit SH-012 --append-notes "<record>" --plain
+taro ticket edit SH-012 --check-ac 1                # an older ticket's acceptance criterion
+taro ticket edit SH-012 --final-summary "<FINAL>" -s "Awaiting acceptance" --revision <rev>   # templates/final.md
+taro ticket check                             # problems in any ticket file, one per line; exit 0 when clean
 ```
 
-After `task create`, read the allocated id back from its output or `task list` — never invent one.
+After `ticket create`, read the allocated id back from its output (`Created <ID>`) — never invent one.
 On a timeout, view the ticket before retrying an append (appends are not deduplicated).
+
+Edits that replace a whole field (`--plan`, `--final-summary`, `-d`, `-t`) take `--revision <rev>`
+from a `ticket view` you just ran: the edit is refused if the ticket changed since. Exit code 3
+means that happened (it names the current revision): view the ticket again, redo your edit on what
+is there now, and pass the new revision. Appends, labels, status and criteria need no revision.
+Other exit codes: 1 for an error such as a missing ticket, 2 for a usage mistake (it prints the
+usage). New tickets have no acceptance criteria list; the criteria live in the plan's How I'll
+prove it. Only an older ticket has a checklist, ticked with `--check-ac <n>`.
 
 ## Statuses
 
@@ -56,7 +65,7 @@ never rewrite history. Keep each within its limit; cut rather than exceed it.
   command: its log path and expected duration. Detail belongs in commits and the other records.
 - **HANDOFF**: before compaction or stopping (template: `templates/handoff.md`, with its line
   limits).
-- **HOLD** (manager): a Backlog ticket kept queued on purpose while a slot is free, with the reason
+- **HOLD** (manager): a ticket in Backlog kept queued on purpose while a slot is free, with the reason
   (`HOLD 2026-01-05T10:00Z — exclusive rewrite SH-010 first`). The plugin does not wake anyone for it.
 - **RELEASE** (manager): the hold's reason is gone; the ticket is queued like any other again.
 - **QUEUE-WAKE**, **QUEUE-ALERT**, **QUEUE-RESTART**: written by the plugin as it wakes the manager

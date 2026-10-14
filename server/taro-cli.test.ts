@@ -467,60 +467,48 @@ describe("taro ticket check", () => {
   });
 });
 
-const TESTED_LINES = [
-  `taro ticket list --plain`,
-  `taro ticket list --json`,
-  `taro ticket list --plain -s "In Progress"`,
-  `taro ticket list --plain -l label`,
-  `taro ticket list --plain -p TR-010`,
-  `taro ticket view TR-012 --plain`,
-  `taro ticket view TR-012 --json`,
-  `taro ticket search "login" --plain`,
-  `taro ticket create "Fix login redirect" -d "<two-part brief>" -l investigation -p TR-010 --dep TR-011`,
-  `taro ticket edit TR-012 -s "Planning"`,
-  `taro ticket edit TR-012 --plan "<plan>"`,
-  `taro ticket edit TR-012 --add-label complexity-medium`,
-  `taro ticket edit TR-012 --append-notes "<record>" --plain`,
-  `taro ticket edit TR-010 --check-ac 1`,
-  `taro ticket edit TR-012 --final-summary "<FINAL>" -s "Awaiting acceptance"`,
-];
+/** The command lines of the fenced block in skill/reference/tickets.md, read from the file itself. */
+function documentedLines(): string[] {
+  const text = readFileSync(resolve(import.meta.dirname, "..", "skill", "reference", "tickets.md"), "utf8");
+  const block = /```bash\n([\s\S]*?)```/.exec(text)?.[1] ?? "";
+  return block.split("\n").filter((line) => line.startsWith("taro "));
+}
 
 describe("the command lines in skill/reference/tickets.md", () => {
-  it("run successfully with backlog task → taro ticket and backlog search → taro ticket search", () => {
+  it("run successfully, as written, against a temp tracker", () => {
     writeTicket({
       id: "TR-010",
       title: "Parent",
       criteria: [{ index: 1, text: "An older criterion", checked: false }],
     });
     writeTicket({ id: "TR-011", title: "Dependency" });
-    writeTicket({ id: "TR-012", title: "Fix login", description: "login" });
-    const lines = TESTED_LINES;
-    for (const line of lines) {
-      // The documented lines are shell; run each through sh with `taro` pointing at bin/taro.
+    writeTicket({
+      id: "TR-012",
+      title: "Fix login",
+      description: "login",
+      criteria: [{ index: 1, text: "An older criterion", checked: false }],
+    });
+    const lines = documentedLines();
+    expect(lines.length).toBeGreaterThanOrEqual(10);
+    for (const verb of ["list", "view", "search", "create", "edit", "check"]) {
+      expect(lines.some((line) => line.startsWith(`taro ticket ${verb}`)), verb).toBe(true);
+    }
+    for (const documented of lines) {
+      // Documented ids are examples (SH-…); the tracker's are TR-…. [optional] parts are used as written.
+      const id = /\b(?:SH|TR)-\d+/.exec(documented)?.[0].replace("SH", "TR");
+      const revision = id === undefined ? "" : JSON.parse(ok(["view", id, "--json"]).stdout).ticket.revision;
+      const line = documented
+        .replace(/\s+#.*$/, "")
+        .replace(/\[([^\]]*)\]/g, "$1")
+        .replace(/\bSH-/g, "TR-")
+        .replace("<rev>", revision);
+      // The lines are shell; run each through sh with `taro` pointing at bin/taro.
       const result = spawnSync("sh", ["-c", `taro() { "${BIN}" "$@" --tracker "${tracker}"; }; ${line}`], { encoding: "utf8" });
       expect(result.stderr, line).toBe("");
       expect(result.status, line).toBe(0);
     }
     expect(readdirSync(join(tracker, "tickets")).filter((name) => name.startsWith("TR-010.")).sort()).toEqual(["TR-010.01.md", "TR-010.md"]);
     expect(readTicket("TR-012")).toMatchObject({ status: "Awaiting acceptance", plan: "<plan>", finalSummary: "<FINAL>" });
-    expect(readTicket("TR-010").criteria[0]?.checked).toBe(true);
-  });
-
-  it("covers every command line the file documents", () => {
-    const normalise = (line: string) =>
-      line
-        .replace(/\s+#.*$/, "")
-        .replace(/\[[^\]]*\]/g, "")
-        .replace("backlog task", "taro ticket")
-        .replace("backlog search", "taro ticket search")
-        .replace(/\b(SH|TR)-\d+/g, "ID")
-        .trim();
-    const documented = readFileSync(resolve(import.meta.dirname, "..", "skill", "reference", "tickets.md"), "utf8")
-      .split("\n")
-      .filter((line) => /^(backlog (task|search)|taro ticket)/.test(line))
-      .map(normalise);
-    const tested = TESTED_LINES.map(normalise);
-    expect(documented).toHaveLength(10);
-    for (const line of documented) expect(tested.some((candidate) => candidate.startsWith(line)), line).toBe(true);
+    expect(readTicket("TR-012").criteria[0]?.checked).toBe(true);
   });
 });

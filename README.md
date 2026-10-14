@@ -5,17 +5,17 @@
 Taro is a [Paseo](https://github.com/getpaseo/paseo) plugin that runs software work through agents.
 Each project gets its own Manager, ticket tracker and board. You tell a **Manager** agent what you want; it files a ticket and starts a
 **task owner** agent, which takes the ticket from proposal to a delivered, reviewed change. You
-answer their questions and accept the result. Tickets live in a [Backlog.md](https://github.com/MrLesk/Backlog.md)
-tracker on the project's `taro/backlog` branch.
+answer their questions and accept the result. Tickets are Taro's own
+files, kept in a tracker on the project's `taro/backlog` branch and read and written with the `taro`
+command. A tracker made with an earlier Taro (which used Backlog.md) is converted once with
+`taro convert`; `taro convert --dry-run` shows what it would do first.
 
 ## Requirements
 
 On the machine that runs the Paseo daemon:
 
 - Paseo 0.11.2 or later, with plugins enabled (`"pluginsEnabled": true` in the daemon's `config.json`)
-- the [Backlog.md](https://github.com/MrLesk/Backlog.md) CLI (`backlog`). Taro can install Backlog.md for you:
-  without one on the daemon's PATH, press Install under "Before you start". It installs a pinned
-  version with `npm` into Taro's own data folder (nothing global, no sudo), so it needs Node.js and npm.
+- Node.js 22.18 or later (the `taro` command runs TypeScript directly)
 - `git`
 - optional: the GitHub CLI `gh`, logged in with `gh auth login`, for projects that deliver through pull
   requests; until it is, Taro offers only local-branch delivery
