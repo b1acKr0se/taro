@@ -14,6 +14,7 @@ import { dependsOn, holdsSlot, shouldWakeManager, statusChanges, type StatusChan
 import {
   handoffSincePauseRequest,
   PAUSE_HANDOFF_TIMEOUT_MS,
+  pausedAgainHoldText,
   pausedByTaro,
   pausedHoldText,
   pauseProgress,
@@ -277,6 +278,11 @@ export class Actions {
     const refusal = pauseRefusal({ id: detail.id, status: detail.status, parentTaskId: detail.parentTaskId, notes }, merging);
     if (refusal !== null) throw new Error(refusal);
     const owner = await this.liveOwner(paseo, project, detail.id);
+    // Queued to resume and not started yet: back to Paused at once, from what the earlier pause left.
+    if (owner === null && queuedToResume(notes)) {
+      await appendTicketNote(paths.tracker, detail.id, pausedAgainHoldText(new Date().toISOString().slice(0, 16) + "Z", notes));
+      return `${detail.id} is paused again: it will not start until you resume it.`;
+    }
     const minutes = PAUSE_HANDOFF_TIMEOUT_MS / 60_000;
     await appendTicketNote(paths.tracker, detail.id, `PAUSE-REQUESTED ${new Date().toISOString()} — the user pressed Pause; waiting up to ${minutes} minutes for the owner's HANDOFF`);
     if (owner === null) {

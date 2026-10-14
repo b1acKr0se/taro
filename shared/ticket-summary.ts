@@ -21,6 +21,8 @@ export interface TicketFacts {
   finalSummary: string | null;
   children: readonly { status: string | null }[];
   evidence: { checks: readonly unknown[]; screenshots: readonly unknown[] } | null;
+  /** Paused by the user (TR-088): only their Resume moves it on. */
+  pause?: { state: string } | null;
 }
 
 /** An open decision of this ticket (the caller picks the ticket's open ones), the parts read here. */
@@ -51,7 +53,9 @@ export function ticketSummary(ticket: TicketFacts, decisions: readonly OpenDecis
       ? `${first.id === SCOPE_APPROVAL ? "Approve the plan" : first.question}${more}`
       : need === "acceptance"
         ? "Accept or request changes"
-        : `nothing, ${ticket.status}`;
+        : ticket.pause?.state === "paused"
+          ? "Resume when you want it continued"
+          : `nothing, ${ticket.status}`;
   const goal = parsePlan(ticket.plan)?.goal || firstTextLine(descriptionParts(ticket.description).userWords) || ticket.title;
   return { need, needText, goal, result: resultLine(ticket.finalSummary) };
 }

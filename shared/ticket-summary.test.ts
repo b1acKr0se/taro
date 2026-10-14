@@ -60,6 +60,13 @@ describe("ticketSummary", () => {
   it("asks for acceptance while the delivery waits", () => {
     expect(ticketSummary({ ...SHORT, status: "Awaiting acceptance" }, [])).toMatchObject({ need: "acceptance", needText: "Accept or request changes" });
   });
+
+  it("asks to resume a paused ticket, and nothing while it is pausing or queued to resume (TR-088)", () => {
+    expect(ticketSummary({ ...EMPTY, status: "In Progress", pause: { state: "paused" } }, [])).toMatchObject({ need: "nothing", needText: "Resume when you want it continued" });
+    expect(ticketSummary({ ...EMPTY, status: "In Progress", pause: { state: "pausing" } }, []).needText).toBe("nothing, In Progress");
+    expect(ticketSummary({ ...EMPTY, status: "In Progress", pause: { state: "queued-to-resume" } }, []).needText).toBe("nothing, In Progress");
+    expect(ticketSummary({ ...EMPTY, status: "In Progress", pause: { state: "paused" } }, [{ id: "naming", question: "Rename it?", blocking: true }]).needText).toBe("Rename it?");
+  });
 });
 
 describe("resultLine", () => {

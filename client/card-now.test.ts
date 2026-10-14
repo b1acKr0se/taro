@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Card } from "../shared/contracts";
 import type { StoredDecision } from "../shared/state";
-import { cardFooterParts, cardNowLine, offersCompact, questionContext } from "./card-now";
+import { cardFooterParts, cardNowLine, offersCompact, pauseRow, questionContext } from "./card-now";
 
 const NOW = Date.parse("2026-01-01T12:00:00Z");
 
@@ -307,6 +307,22 @@ describe("pause lines (TR-088)", () => {
     expect(paused(true)?.detail).toBe("1h ago · no handoff: resumes from the latest milestone");
     const queued = cardNowLine(card({ column: "queued", owner: null, pause: { state: "queued-to-resume", since: null, withoutHandoff: false } }), NOW);
     expect(queued).toEqual({ kind: "pause", state: "queued-to-resume", headline: "Queued to resume", detail: "a fresh owner starts when a slot frees" });
+    const queuedSince = cardNowLine(card({ column: "queued", owner: null, pause: { state: "queued-to-resume", since: "2026-01-01T11:58Z", withoutHandoff: false } }), NOW);
+    expect(queuedSince?.detail).toBe("a fresh owner starts when a slot frees · Resume pressed 2m ago");
+  });
+
+  it("words the ticket view's row without repeating its label", () => {
+    expect(pauseRow({ state: "pausing", since: "2026-01-01T11:58:00Z", withoutHandoff: false }, NOW)).toEqual({
+      label: "Pausing:",
+      value: "the owner is writing its handoff · asked 2m ago · pauses without one after 10 min",
+    });
+    expect(pauseRow({ state: "paused", since: "2026-01-01T11:00Z", withoutHandoff: false }, NOW)).toEqual({ label: "Paused:", value: "by you · 1h ago · resumes from its handoff" });
+    expect(pauseRow({ state: "paused", since: null, withoutHandoff: true }, NOW)).toEqual({ label: "Paused:", value: "by you · no handoff: resumes from the latest milestone" });
+    expect(pauseRow({ state: "queued-to-resume", since: "2026-01-01T11:58Z", withoutHandoff: false }, NOW)).toEqual({
+      label: "Resuming:",
+      value: "queued: a fresh owner starts when a slot frees · Resume pressed 2m ago",
+    });
+    expect(pauseRow({ state: "queued-to-resume", since: null, withoutHandoff: false }, NOW).value).toBe("queued: a fresh owner starts when a slot frees");
   });
 });
 

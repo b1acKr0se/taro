@@ -23,7 +23,7 @@ import { parsePlan } from "../shared/plan";
 import type { StoredDecision } from "../shared/state";
 import { foldList, ticketSections, ticketSummary, type TicketSectionKey, type TicketSummary } from "../shared/ticket-summary";
 import { PhaseBadge } from "./badges";
-import { pauseLines } from "./card-now";
+import { pauseRow } from "./card-now";
 import { EvidenceBlock } from "./evidence-view";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
@@ -311,8 +311,8 @@ function SummaryBlock({
         : row(
             pause.state === "queued-to-resume" ? "Clock" : "Pause",
             colors.foregroundMuted,
-            pause.state === "pausing" ? "Pausing:" : pause.state === "paused" ? "Paused:" : "Resuming:",
-            <Text style={text}>{[pauseLines(pause, now).headline, pauseLines(pause, now).detail].filter((part) => part !== null).join(" · ")}</Text>,
+            pauseRow(pause, now).label,
+            <Text style={text}>{pauseRow(pause, now).value}</Text>,
           )}
       {row(
         wanted ? "Hand" : "CircleCheck",

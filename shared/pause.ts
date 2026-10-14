@@ -124,6 +124,17 @@ export function pausedHoldText(at: string, progress: Exclude<PauseProgress, "wai
   return `HOLD ${at} — ${PAUSED_REASON}; no handoff (${why}): resume from the latest milestone`;
 }
 
+/**
+ * The HOLD that puts a ticket queued to resume back to Paused, before any owner started: it resumes
+ * from what the earlier pause left, a HANDOFF or, without one, the latest milestone.
+ */
+export function pausedAgainHoldText(at: string, notes: string | null): string {
+  const records = noteRecords(notes);
+  const earlier = [...records].reverse().find((record) => /^HOLD\b/.test(record)) ?? "";
+  const from = /\bno handoff\b/i.test(earlier) ? "no handoff: resume from the latest milestone" : "resume from the latest HANDOFF";
+  return `HOLD ${at} — ${PAUSED_REASON} again before it resumed; ${from}`;
+}
+
 /** The RELEASE record Resume appends: with `queued`, the plugin starts the owner when a slot frees. */
 export function resumedReleaseText(at: string, queued: { counting: number; cap: number } | null): string {
   if (queued === null) return `RELEASE ${at} — resumed by the user: a fresh owner starts from the latest HANDOFF`;
@@ -146,7 +157,6 @@ export function pauseRefusal(ticket: PauseTicket, merging: boolean): string | nu
   if (ticket.status === "Done" || ticket.status === "Cancelled") return `${ticket.id} is ${ticket.status}: there is nothing to pause.`;
   if (ticket.status === QUEUED_STATUS) return `${ticket.id} has not started: it is ${QUEUED_STATUS.toLowerCase()} and has no owner to pause.`;
   if (pausedHold(ticket.notes) !== null) return `${ticket.id} is already paused.`;
-  if (queuedToResume(ticket.notes)) return `${ticket.id} is queued to resume: it has no owner to pause yet.`;
   if (pauseRequestedAt(ticket.notes) !== null) return `${ticket.id} is already pausing: its owner is writing a handoff.`;
   return null;
 }

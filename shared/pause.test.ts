@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   handoffSincePauseRequest,
   PAUSE_HANDOFF_TIMEOUT_MS,
+  pausedAgainHoldText,
   pausedByTaro,
   pausedHold,
   pausedHoldText,
@@ -134,8 +135,8 @@ describe("pauseRefusal", () => {
     expect(pauseRefusal({ ...ticket, notes: notes(EXECUTION, pausedHoldText("2026-01-05T10:04Z", "handoff", true)) }, false)).toBe("NA-1 is already paused.");
     expect(pauseRefusal({ ...ticket, notes: notes(EXECUTION, REQUESTED) }, false)).toContain("already pausing");
     const queued = notes(EXECUTION, pausedHoldText("2026-01-05T10:04Z", "handoff", true), resumedReleaseText("2026-01-05T11:00Z", { counting: 3, cap: 3 }));
-    expect(pauseRefusal({ ...ticket, notes: queued }, false)).toBe("NA-1 is queued to resume: it has no owner to pause yet.");
-    // Once its fresh owner runs, it may pause again.
+    // Queued to resume, it may go back to Paused; once its fresh owner runs, it may pause again.
+    expect(pauseRefusal({ ...ticket, notes: queued }, false)).toBeNull();
     expect(pauseRefusal({ ...ticket, notes: notes(queued, "RESUMED 2026-01-05T11:20:00Z — a slot freed") }, false)).toBeNull();
   });
 });
@@ -231,5 +232,20 @@ describe("pausedByTaro", () => {
     expect(pausedByTaro(notes(EXECUTION, REQUESTED, "HOLD 2026-01-05T10:05Z — waits for NA-2"))).toBe(false);
     expect(pausedByTaro(null)).toBe(false);
     expect(pausedByTaro("")).toBe(false);
+  });
+});
+
+describe("pausedAgainHoldText", () => {
+  const queued = resumedReleaseText("2026-01-05T11:00Z", { counting: 1, cap: 1 });
+
+  it("pauses again from the earlier pause's handoff, or its milestone when it had none", () => {
+    const withHandoff = notes(EXECUTION, REQUESTED, HANDOFF, pausedHoldText("2026-01-05T10:04Z", "handoff", true), queued);
+    const again = pausedAgainHoldText("2026-01-05T11:05Z", withHandoff);
+    expect(again).toBe("HOLD 2026-01-05T11:05Z — paused by the user again before it resumed; resume from the latest HANDOFF");
+    expect(pausedHold(notes(withHandoff, again))).toEqual({ at: "2026-01-05T11:05Z", withoutHandoff: false });
+    expect(queuedToResume(notes(withHandoff, again))).toBe(false);
+
+    const without = notes(EXECUTION, REQUESTED, pausedHoldText("2026-01-05T10:10Z", "timed-out", false), queued);
+    expect(pausedHold(notes(without, pausedAgainHoldText("2026-01-05T11:05Z", without)))).toEqual({ at: "2026-01-05T11:05Z", withoutHandoff: true });
   });
 });

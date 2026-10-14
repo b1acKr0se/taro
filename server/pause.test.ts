@@ -219,6 +219,16 @@ describe("Resume", () => {
     expect(find("NA-3").notes).toContain("resumed by the user; queued to resume: no free slot (owners 2 of 2)");
     expect(created).toEqual([]);
     await expect(actions.resume(paseo, "notes", "NA-3")).rejects.toThrow("NA-3 is already queued to resume.");
+    // Pause takes it back to Paused before it starts, and Resume queues it again.
+    expect(await actions.pause(paseo, "notes", "NA-3")).toBe("NA-3 is paused again: it will not start until you resume it.");
+    expect(find("NA-3").notes).toMatch(/\nHOLD \S+ — paused by the user again before it resumed; resume from the latest HANDOFF$/);
+    expect(sendFromPlugin).not.toHaveBeenCalled();
+    await actions.advancePauses(paseo, "notes", Date.now());
+    find("NA-2").status = "Awaiting acceptance";
+    await actions.advancePauses(paseo, "notes", Date.now());
+    expect(created).toEqual([]);
+    find("NA-2").status = "Reviewing";
+    expect((await actions.resume(paseo, "notes", "NA-3")).agentId).toBeNull();
 
     await actions.advancePauses(paseo, "notes", Date.now());
     expect(created).toEqual([]);
