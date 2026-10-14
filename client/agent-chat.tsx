@@ -1,20 +1,25 @@
 /**
  * A conversation with one agent — a project's manager or a task owner — folded
- * to the words, with a composer. Adapted from FirstMate's `client/chat.tsx`
- * (MIT), without attachments. The full session is one press away in Paseo.
+ * to the words, with a composer that also sends images and files (TR-036). Adapted from
+ * FirstMate's `client/chat.tsx` (MIT). The full session is one press away in Paseo.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Platform, Pressable, SafeAreaView, ScrollView, Text, View, type LayoutRectangle } from "react-native";
+import { Keyboard, Platform, Pressable, SafeAreaView, ScrollView, Text, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
 
+import { attachmentProblem, outgoingAttachments, type DraftAttachment, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
 import { listSentImages, type SentImagesMessage } from "../shared/contracts";
+import { imagesFromPaste, pickAttachments } from "./attachment-pickers";
+import { availableSources, type AttachmentSource } from "./attachment-sources";
+import { AttachButton, AttachmentPreviews } from "./composer-attachments";
 import type { StoredDecision } from "../shared/state";
 import { ContextMeter } from "./context-meter";
 import { DecisionCard } from "./decision-card";
 import { drafts } from "./draft";
+import { draftAttachments } from "./draft-attachments";
 import { useFollowEnd } from "./follow-end";
 import { ImageThumbnail } from "./image-view";
 import { useKeyboardOverlap } from "./keyboard";
@@ -45,8 +50,8 @@ export interface ChatAgent {
 type ChatComposer =
   | {
       placeholder: string;
-      /** Sends the user's words; rejects with a sentence on failure. */
-      onSend: (text: string) => Promise<void>;
+      /** Sends the user's words and attachments (the words may be empty when there are some); rejects with a sentence on failure. */
+      onSend: (text: string, attachments: { images: OutgoingImage[]; files: OutgoingFile[] }) => Promise<void>;
       /** Buttons above the composer (Catch up, Compact, …). */
       actions?: ReactNode;
       /** The agent's context window, drawn as a ring inside the composer beside the send button. */
@@ -163,6 +168,8 @@ export function AgentChat({
   }
   const { pending, respond } = usePendingRequests(agent.id, timeline.agent?.pendingPermissions, follow.pin);
   const [draft, setDraftState] = useState(() => drafts.get(agent.id));
+  const [attachments, setAttachmentsState] = useState(() => draftAttachments.get(agent.id));
+  const field = useRef<NativeTextInput>(null);
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
   /** The height a phone's draft lays out at, padding included, for `composerFieldHeight`. */
@@ -178,30 +185,86 @@ export function AgentChat({
     return stop;
   }, [agent.id]);
   useEffect(() => {
+    const reread = () => setAttachmentsState(draftAttachments.get(agent.id));
+    const stop = draftAttachments.subscribe(reread);
+    reread();
+    return stop;
+  }, [agent.id]);
+  // A browser pastes an image into the field as Paseo's composer takes it: as an attachment. On the web the field is the DOM's textarea.
+  useEffect(() => {
+    const node = field.current as unknown as { addEventListener?: (type: string, listener: (event: WebPasteEvent) => void) => void; removeEventListener?: (type: string, listener: (event: WebPasteEvent) => void) => void } | null;
+    if (Platform.OS !== "web" || node === null || typeof node.addEventListener !== "function") return;
+    const onPaste = (event: WebPasteEvent) => {
+      const files = Array.from(event.clipboardData?.files ?? []);
+      if (!files.some((file) => file.type.startsWith("image/"))) return;
+      event.preventDefault();
+      imagesFromPaste(globalThis, event.clipboardData)
+        .then(addAttachments)
+        .catch((caught: unknown) => toast.error(errorText(caught)));
+    };
+    node.addEventListener("paste", onPaste);
+    return () => node.removeEventListener?.("paste", onPaste);
+  }, [agent.id, readOnly === undefined]);
+  useEffect(() => {
     if (keyboard > 0) follow.keepAtEnd();
   }, [keyboard]);
 
   const submitOnEnter = Platform.OS === "web" && !compact;
-  const nothingToSend = sending || draft.trim() === "";
+  const nothingToSend = sending || (draft.trim() === "" && attachments.length === 0);
 
   function setDraft(text: string): void {
     drafts.set(agent.id, text);
     setDraftState(text);
   }
 
+  function setAttachments(next: readonly DraftAttachment[]): void {
+    draftAttachments.set(agent.id, next);
+    setAttachmentsState(next);
+  }
+
+  /** Adds to what is attached, unless together they are too many or too large to send. */
+  function addAttachments(added: readonly DraftAttachment[]): void {
+    if (added.length === 0) return;
+    const next = [...draftAttachments.get(agent.id), ...added];
+    const problem = attachmentProblem(next);
+    if (problem !== null) toast.error(problem);
+    else setAttachments(next);
+  }
+
+  function pick(source: AttachmentSource): void {
+    pickAttachments(globalThis, Platform.OS, source)
+      .then(addAttachments)
+      .catch((caught: unknown) => toast.error(errorText(caught)));
+  }
+
   function sendDraft(): void {
     const text = draft.trim();
-    if (onSend === undefined || text === "" || sending) return;
+    const sent = attachments;
+    if (onSend === undefined || (text === "" && sent.length === 0) || sending) return;
     setSending(true);
     follow.pin();
     setDraft("");
-    onSend(text)
+    setAttachments([]);
+    onSend(text, outgoingAttachments(sent))
       .catch((caught: unknown) => {
         toast.error(errorText(caught));
+        // Put back only into an empty composer: whatever was written or attached since stays.
         if (drafts.get(agent.id).trim() === "") drafts.set(agent.id, text);
+        if (draftAttachments.get(agent.id).length === 0) draftAttachments.set(agent.id, sent);
       })
       .finally(() => setSending(false));
   }
+
+  const attachButton = (
+    <AttachButton
+      theme={theme}
+      compact={compact}
+      disabled={sending}
+      sources={() => availableSources(globalThis, Platform.OS)}
+      onBeforeOpen={compact ? Keyboard.dismiss : undefined}
+      onPick={pick}
+    />
+  );
 
   function openLink(url: string): void {
     void openExternalUrl(url).catch((caught: unknown) => toast.error(errorText(caught)));
@@ -268,13 +331,18 @@ export function AgentChat({
       quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
       // One box, as in Paseo's composer: the text, then the context ring and the send button inside it.
       // On a phone they share one row, so an empty composer is one line tall (TR-031).
+      // The previews of what is attached sit at its top, above the text (TR-036).
       inputBox: {
         borderWidth: 1,
         borderColor: colors.border,
         borderRadius: 14,
         backgroundColor: colors.surface1,
-        ...(compact ? { flexDirection: "row" as const, alignItems: "flex-end" as const } : null),
       },
+      inputRow: compact ? { flexDirection: "row" as const, alignItems: "flex-end" as const } : {},
+      // The + at the bottom left: before the field on a phone, at the start of the tools row on a wide screen.
+      attach: compact
+        ? { paddingLeft: SPACE.sm, paddingBottom: (COMPOSER_ONE_LINE - COMPOSER_CONTROL_SIZE) / 2 }
+        : { marginRight: "auto" as const },
       input: {
         color: colors.foreground,
         fontSize: FONT_SIZE.content,
@@ -500,6 +568,9 @@ export function AgentChat({
             )}
             {actions === undefined ? null : <View style={styles.quick}>{actions}</View>}
             <View style={[styles.inputBox, typing ? { borderColor: theme.colors.accent } : null]}>
+              <AttachmentPreviews theme={theme} attachments={attachments} onRemove={(id) => setAttachments(attachments.filter((attachment) => attachment.id !== id))} />
+              <View style={styles.inputRow}>
+              {compact ? <View style={styles.attach}>{attachButton}</View> : null}
               <View style={compact ? styles.fieldFrame : null}>
               {compact ? (
                 // The draft laid out at the field's width, unseen: its height sizes the field. A web
@@ -516,6 +587,7 @@ export function AgentChat({
                 </Text>
               ) : null}
               <TextInput
+                ref={field}
                 value={draft}
                 onChangeText={setDraft}
                 onFocus={() => setTyping(true)}
@@ -536,6 +608,7 @@ export function AgentChat({
               />
               </View>
               <View style={styles.inputTools}>
+                {compact ? null : <View style={styles.attach}>{attachButton}</View>}
                 {context === undefined ? null : <ContextMeter theme={theme} used={context.used} max={context.max} />}
                 <Pressable
                   accessibilityRole="button"
@@ -547,6 +620,7 @@ export function AgentChat({
                 >
                   <Icon name="ArrowUp" size={15} color={theme.colors.accentForeground} />
                 </Pressable>
+              </View>
               </View>
             </View>
           </View>
@@ -568,3 +642,9 @@ function useSentImages(agentId: string, newestEntry: number) {
 }
 
 const EMPTY_SENT: readonly SentImagesMessage[] = [];
+
+/** The part of a browser's paste event the composer reads. */
+interface WebPasteEvent {
+  clipboardData: { files: ArrayLike<{ type: string }> } | null;
+  preventDefault(): void;
+}

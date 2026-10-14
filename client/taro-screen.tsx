@@ -441,8 +441,8 @@ function ManagerPane({
         placeholder="Tell the manager what you need…"
         transformText={withoutDecisionBlocks}
         asks={{ decisions, onAnswered: onChanged }}
-        onSend={async (text) => {
-          await tell({ project, text });
+        onSend={async (text, attachments) => {
+          await tell({ project, text, ...attachments });
         }}
         actions={
           <>
