@@ -8,6 +8,8 @@ import {
   PULL_REQUEST_KEPT_WITHOUT_GH,
   PULL_REQUEST_NEEDS_GH,
   pullRequestNote,
+  createBlocker,
+  CREATE_NEEDS_BACKLOG,
   pullRequestsReady,
   settingsFrom,
   setupProblems,
@@ -161,5 +163,18 @@ describe("pull requests without gh (TR-063)", () => {
     expect(pullRequestNote(false, false)).toBe(PULL_REQUEST_NEEDS_GH);
     expect(pullRequestNote(false, true)).toBe(PULL_REQUEST_KEPT_WITHOUT_GH);
     expect(PULL_REQUEST_NEEDS_GH).toContain("gh auth login");
+  });
+});
+
+describe("creating while Backlog.md is missing", () => {
+  it("waits for Backlog.md only when its check failed", () => {
+    expect(createBlocker([{ id: "git", ok: true }, { id: "backlog", ok: false }])).toBe(CREATE_NEEDS_BACKLOG);
+    expect(createBlocker([{ id: "backlog", ok: true }, { id: "gh", ok: false }])).toBeNull();
+  });
+
+  it("blocks nothing before the checks arrive or without a Backlog.md check", () => {
+    expect(createBlocker(undefined)).toBeNull();
+    expect(createBlocker([])).toBeNull();
+    expect(createBlocker([{ id: "git", ok: false }])).toBeNull();
   });
 });

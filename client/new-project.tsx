@@ -21,7 +21,7 @@ import {
   type PaseoProjectCandidate,
   type SettingsTemplate,
 } from "../shared/project-candidates";
-import { deliveryWithoutGh, pullRequestsReady, setupProblems, settingsFrom, ticketExample, type SetupDraft, type SetupProblems } from "../shared/setup-form";
+import { createBlocker, deliveryWithoutGh, pullRequestsReady, setupProblems, settingsFrom, ticketExample, type SetupDraft, type SetupProblems } from "../shared/setup-form";
 import { errorText } from "./format";
 import { KeyboardScrollView } from "./keyboard";
 import { keptMap, keptObject } from "./kept";
@@ -386,7 +386,12 @@ function ProjectReview({
   onBack: () => void;
 }) {
   const models = useModels();
-  const pullRequests = pullRequestsReady(usePrerequisites().data?.checks);
+  const checks = usePrerequisites().data?.checks;
+  const pullRequests = pullRequestsReady(checks);
+  const blocker = createBlocker(checks);
+  const backlogCheck = checks?.find((check) => check.id === "backlog") ?? null;
+  // Once missing, the line stays after Install, so it visibly turns green.
+  const [backlogFlagged, setBacklogFlagged] = useState(false);
   const guardFor = usePressGuards();
   const [busy, setBusy] = useState(false);
   const [serverProblems, setServerProblems] = useState<SetupProblems>({});
@@ -395,6 +400,9 @@ function ProjectReview({
   const wide = width >= TWO_COLUMN_MIN_WIDTH;
   const colors = theme.colors;
   useEffect(() => setFailure(error), [error]);
+  useEffect(() => {
+    if (blocker !== null) setBacklogFlagged(true);
+  }, [blocker]);
   // Picked before the checks arrived, or gh went away: pull requests fall back to a local branch.
   useEffect(() => {
     const fitted = deliveryWithoutGh(draft, pullRequests);
@@ -406,6 +414,7 @@ function ProjectReview({
   const problem = (key: keyof SetupDraft): string | null => serverProblems[key] ?? local[key] ?? null;
   const otherProblems = Object.keys(local).filter((key) => !(REVIEW_FIELDS as readonly string[]).includes(key));
   const valid = Object.keys(local).length === 0;
+  const canCreate = valid && blocker === null;
   const remote = candidate === null ? null : remoteLabel(candidate.remoteUrl);
   const canSync = candidate === null || remote !== null;
   const example = ticketExample(draft.ticketPrefix);
@@ -443,8 +452,8 @@ function ProjectReview({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Create tracker and start Manager"
-      accessibilityState={{ busy, disabled: busy || !valid }}
-      disabled={busy || !valid}
+      accessibilityState={{ busy, disabled: busy || !canCreate }}
+      disabled={busy || !canCreate}
       onPress={submit}
       style={({ pressed }) => ({
         minHeight: 44,
@@ -454,7 +463,7 @@ function ProjectReview({
         justifyContent: "center",
         gap: SPACE.sm,
         backgroundColor: colors.accent,
-        opacity: !valid ? 0.5 : pressed ? 0.85 : 1,
+        opacity: !canCreate ? 0.5 : pressed ? 0.85 : 1,
       })}
     >
       {busy ? <Spinner size={16} color={colors.accentForeground} /> : <Icon name="Rocket" size={16} color={colors.accentForeground} />}
@@ -470,6 +479,8 @@ function ProjectReview({
     <View style={{ gap: SPACE.sm }}>
       {failure === null ? null : <Text style={[muted, { color: colors.statusDanger }]}>{failure}</Text>}
       {valid || otherProblems.length === 0 ? null : <Text style={[muted, { color: colors.statusDanger }]}>Some settings need fixing: open All settings.</Text>}
+      {backlogFlagged && backlogCheck !== null ? <PrerequisiteList theme={theme} checks={[backlogCheck]} /> : null}
+      {blocker === null ? null : <Text style={muted}>{blocker}</Text>}
       {createButton}
       {allSettings}
     </View>

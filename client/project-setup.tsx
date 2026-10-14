@@ -21,6 +21,7 @@ import {
 import { modelOptions as modelPickerOptions, thinkingAfterModelChange, thinkingOptions, toggleSubagentModel } from "../shared/model-picker";
 import type { ProjectConfig } from "../shared/project";
 import {
+  createBlocker,
   deliveryWithoutGh,
   draftFrom,
   pullRequestNote,
@@ -75,6 +76,8 @@ export function ProjectSetup({
 
   const prerequisites = usePrerequisites();
   const pullRequests = pullRequestsReady(prerequisites.data?.checks);
+  // Only a new project needs Backlog.md now; an existing one's settings save without it.
+  const blocker = existing === null ? createBlocker(prerequisites.data?.checks) : null;
   const models = useQuery({ queryKey: ["taro", "models"], queryFn: () => modelsRpc({}) });
   const modelOptions = models.data?.models ?? [];
   const defaultModel = useMemo(
@@ -417,9 +420,9 @@ export function ProjectSetup({
 
       {failure === null ? null : <Text style={[muted, { color: colors.statusDanger }]}>{failure}</Text>}
       <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center", gap: SPACE.sm }}>
-        {valid ? null : (
+        {valid && blocker === null ? null : (
           <Text style={[muted, { flexGrow: 1, flexBasis: 200 }]}>
-            {existing === null ? "Fill in the project's name, repository and ticket prefix to continue." : "Fix the fields marked in red to save."}
+            {!valid ? (existing === null ? "Fill in the project's name, repository and ticket prefix to continue." : "Fix the fields marked in red to save.") : blocker}
           </Text>
         )}
         {onCancel === null ? null : <IconButton theme={theme} icon="X" label="Cancel" showLabel disabled={busy} onPress={onCancel} />}
@@ -429,7 +432,7 @@ export function ProjectSetup({
           icon={existing === null ? "Rocket" : "Check"}
           label={existing === null ? "Create tracker and start Manager" : "Save"}
           showLabel
-          disabled={busy || !valid}
+          disabled={busy || !valid || blocker !== null}
           state={presses.stateOf("submit")}
           onPress={submit}
         />
