@@ -1,6 +1,7 @@
 /**
- * The Manager's suggestions, above its composer where the user talks to it (TR-045): exactly one
- * row that scrolls sideways and never wraps, fading at the edge while more lie past it (TR-032).
+ * The Manager's suggestions, above its composer where the user talks to it (TR-045): the rest of the
+ * line after the Catch up and Compact buttons (TR-047), scrolling sideways and never wrapping, fading
+ * at the edge while more lie past it (TR-032).
  * Each pill sends itself to the Manager when tapped and shows sending, sent or not sent inside it;
  * its × dismisses it.
  */
@@ -48,7 +49,7 @@ export function SuggestionRow({
   const { colors } = theme;
   const styles = useMemo(
     () => ({
-      frame: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.xs },
+      frame: { flex: 1, minWidth: 0, flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.xs },
       bulb: { paddingRight: SPACE.xxs },
       fade: { position: "absolute" as const, top: 0, bottom: 0, right: 0, flexDirection: "row" as const },
       // The composer's own background, so the pills fade into it.

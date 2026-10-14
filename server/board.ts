@@ -15,7 +15,7 @@ import { pastTicketAgents } from "../shared/past-agents";
 import { isSubagentRole, roleFromLabel, TARO_LABELS } from "../shared/project";
 import { boardAlerts } from "../shared/recovery";
 import { decisionsOfLiveAgents, type StoredDecision } from "../shared/state";
-import { currentSuggestions, parseSuggestions, suggestionKey } from "../shared/suggestions";
+import { currentSuggestions, parseSuggestions, suggestionKey, withoutFixedActions } from "../shared/suggestions";
 import { projectAgents, projectArchivedAgents } from "./agents";
 import { statePath } from "./data-dir";
 import { judgeTicketEvidence, ticketEvidence } from "./evidence";
@@ -261,7 +261,7 @@ async function readDismissed(): Promise<Record<string, string[]>> {
   return typeof raw === "object" && raw !== null ? (raw as Record<string, string[]>) : {};
 }
 
-/** The manager's suggestions the user has not dismissed and the tickets they name have not outdated. */
+/** The manager's suggestions the user has not dismissed, the tickets they name have not outdated and no fixed button repeats. */
 export async function readSuggestions(project: string, tickets: readonly { id: string; updatedAt: string | null }[]): Promise<{ label: string; prompt: string }[]> {
   const path = (await projectPaths(project)).suggestions;
   const text = (await readTextIfPresent(path)) ?? "";
@@ -270,7 +270,7 @@ export async function readSuggestions(project: string, tickets: readonly { id: s
   if (written === null) return [];
   const dismissed = new Set((await readDismissed())[project] ?? []);
   const kept = parseSuggestions(text).filter((suggestion) => !dismissed.has(suggestionKey(suggestion)));
-  return currentSuggestions(kept, written.mtimeMs, tickets);
+  return currentSuggestions(withoutFixedActions(kept), written.mtimeMs, tickets);
 }
 
 export function dismissSuggestion(project: string, label: string, prompt: string): Promise<void> {

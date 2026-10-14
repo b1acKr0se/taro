@@ -56,6 +56,17 @@ export function currentSuggestions(
   });
 }
 
+/** A suggestion starting like this, about no ticket, is what the Catch up or Compact button beside the composer already does. */
+const FIXED_ACTION = /^\s*(?:catch (?:me )?up|compact)\b/i;
+
+/** Drops suggestions that repeat the always-present Catch up and Compact buttons (TR-047); "Compact TR-012" is another action. */
+export function withoutFixedActions(suggestions: readonly Suggestion[]): Suggestion[] {
+  return suggestions.filter((suggestion) => {
+    const duplicates = FIXED_ACTION.test(suggestion.label) || FIXED_ACTION.test(suggestion.prompt);
+    return !duplicates || mentionedTicketIds(`${suggestion.label} ${suggestion.prompt}`).size > 0;
+  });
+}
+
 /** Where sending one suggestion to the manager stands, as the board draws it (TR-032). */
 export type SendState = "sending" | "sent" | "failed";
 

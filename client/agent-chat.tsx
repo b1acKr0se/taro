@@ -50,7 +50,7 @@ type ChatComposer =
       placeholder: string;
       /** Sends the user's words and attachments (the words may be empty when there are some); rejects with a sentence on failure. */
       onSend: (text: string, attachments: { images: OutgoingImage[]; files: OutgoingFile[] }) => Promise<void>;
-      /** Buttons above the composer (Catch up, Compact, …). */
+      /** Buttons above the composer (Catch up, Compact, …), at the left of one line with the suggestions. */
       actions?: ReactNode;
       /** The agent's context window, drawn as a ring inside the composer beside the send button. */
       context?: { used: number | null | undefined; max: number | null | undefined };
@@ -99,7 +99,7 @@ export function AgentChat({
    * as a jump link at the composer while it is off screen. `ready`: Accept is offered.
    */
   delivery?: { card: ReactNode; label: string; ready: boolean } | undefined;
-  /** One row of things to send, above the composer's buttons (the Manager's suggestions, TR-045). */
+  /** Things to send (the Manager's suggestions, TR-045), in the buttons' line after them; it fills the rest of the line. */
   suggestions?: ReactNode;
 } & ChatComposer) {
   const toast = useToast();
@@ -338,6 +338,9 @@ export function AgentChat({
         gap: SPACE.sm,
       },
       quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
+      // The buttons stay whole at the left; the suggestions take the rest of the one line and scroll (TR-047).
+      actionRow: { flexDirection: "row" as const, gap: SPACE.sm, alignItems: "center" as const },
+      fixedActions: { flexDirection: "row" as const, gap: SPACE.sm, alignItems: "center" as const, flexShrink: 0 },
       // Paseo's composer box (TR-039): attachments, then the text across the full width, then a row
       // of controls: the + at the left, the context ring and the send button at the right. Its border
       // stays plain while typing, as Paseo's does.
@@ -593,8 +596,15 @@ export function AgentChat({
                 <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Show</Text>
               </Pressable>
             )}
-            {suggestions}
-            {actions === undefined ? null : <View style={styles.quick}>{actions}</View>}
+            {suggestions === undefined ? (
+              // An owner's chat: its one action is a full-width link.
+              actions === undefined ? null : <View style={styles.quick}>{actions}</View>
+            ) : (
+              <View style={styles.actionRow}>
+                {actions === undefined ? null : <View style={styles.fixedActions}>{actions}</View>}
+                {suggestions}
+              </View>
+            )}
             <View style={styles.inputBox}>
               <AttachmentPreviews theme={theme} attachments={attachments} onRemove={(id) => setAttachments(attachments.filter((attachment) => attachment.id !== id))} />
               <TextInput

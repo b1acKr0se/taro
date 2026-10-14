@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { currentSuggestions, mentionedTicketIds, moreToTheRight, parseSuggestions, suggestionPills, type SuggestionSend } from "./suggestions";
+import { currentSuggestions, mentionedTicketIds, moreToTheRight, parseSuggestions, suggestionPills, withoutFixedActions, type SuggestionSend } from "./suggestions";
 
 describe("parseSuggestions", () => {
   it("reads label :: prompt lines and skips notes", () => {
@@ -63,6 +63,40 @@ describe("currentSuggestions", () => {
 
   it("does not let a child's change retire a suggestion about its parent", () => {
     expect(currentSuggestions([relaunch], writtenAt, [ticket("TR-005.1", "2026-10-13T11:50:00Z")])).toEqual([relaunch]);
+  });
+});
+
+describe("withoutFixedActions", () => {
+  const suggestion = (label: string, prompt: string) => ({ label, prompt });
+
+  it("drops a suggestion repeating Catch up or Compact, by its label or its prompt, in any case", () => {
+    const suggestions = [
+      suggestion("Catch up", "Catch me up on the project"),
+      suggestion("What changed?", "catch up on everything"),
+      suggestion("Get me up to speed", "Catch me up"),
+      suggestion("COMPACT", "Compact your context"),
+      suggestion("Free some context", "compact"),
+    ];
+    expect(withoutFixedActions(suggestions)).toEqual([]);
+  });
+
+  it("keeps a suggestion about a ticket, since it is another action than the button", () => {
+    const suggestions = [suggestion("Compact DM-012", "Compact the owner of DM-012"), suggestion("Catch up on DM-4", "Catch me up on DM-004")];
+    expect(withoutFixedActions(suggestions)).toEqual(suggestions);
+  });
+
+  it("keeps words that only contain or mention the actions", () => {
+    const suggestions = [
+      suggestion("Compaction stats", "How many compactions this week?"),
+      suggestion("Plan a catch-up page", "File a ticket to catch up readers"),
+      suggestion("Status of DM-002", "What is the status of DM-002?"),
+    ];
+    expect(withoutFixedActions(suggestions)).toEqual(suggestions);
+  });
+
+  it("keeps the order of what it keeps, and an empty list stays empty", () => {
+    expect(withoutFixedActions([suggestion("A", "a"), suggestion("Catch up", "Catch me up"), suggestion("B", "b")])).toEqual([suggestion("A", "a"), suggestion("B", "b")]);
+    expect(withoutFixedActions([])).toEqual([]);
   });
 });
 
