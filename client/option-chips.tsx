@@ -33,6 +33,8 @@ export function OptionChips({
   const toast = useToast();
   const answer = useRpc(answerDecision);
   const [sending, setSending] = useState<string | null>(null);
+  // Stays set: the chips remain off until the board reloads without this question, so a second tap cannot answer it again.
+  const [answered, setAnswered] = useState(false);
   const chips = useMemo(() => optionChips(decision), [decision]);
   const { colors } = theme;
   const styles = useMemo(
@@ -66,6 +68,7 @@ export function OptionChips({
     setSending(chip.label);
     answer({ key: decision.key, label: chip.label, text: "", from: "screen" }).then(
       () => {
+        setAnswered(true);
         setSending(null);
         onAnswered();
       },
@@ -80,14 +83,15 @@ export function OptionChips({
     <View style={styles.row}>
       {chips.map((chip, index) => {
         const busy = sending === chip.label;
+        const off = sending !== null || answered;
         return (
           <Pressable
             key={`${index}:${chip.label}`}
             accessibilityRole="button"
             accessibilityLabel={`${chip.asksForWords ? "Open to answer" : "Answer"}: ${chip.label}${chip.recommended ? " (recommended)" : ""}`}
-            accessibilityState={{ busy, disabled: sending !== null }}
-            disabled={sending !== null}
-            style={[styles.chip, chip.recommended ? styles.recommended : null, sending !== null && !busy ? { opacity: 0.5 } : null]}
+            accessibilityState={{ busy, disabled: off }}
+            disabled={off}
+            style={[styles.chip, chip.recommended ? styles.recommended : null, off && !busy ? { opacity: 0.5 } : null]}
             onPress={() => press(chip)}
           >
             {busy ? <Spinner size={12} color={colors.foregroundMuted} /> : chip.recommended ? <Icon name="Star" size={11} color={colors.accent} /> : null}

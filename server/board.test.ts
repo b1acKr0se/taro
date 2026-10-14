@@ -112,6 +112,35 @@ describe("loadBoard", () => {
     expect(board.cards[1]?.evidence).toBeNull();
   });
 
+  // TR-045: a card shows what the owner's permission asks and, awaiting acceptance, the delivery in a line.
+  it("carries the owner's first pending permission as what it asks", async () => {
+    const owner = {
+      ...agent("owner-live", "owner", "TR-1", "2026-10-13T14:50:00Z"),
+      pendingPermissions: [
+        { id: "p1", name: "Bash", kind: "tool", input: { command: "npm install\nnpm test" } },
+        { id: "p2", name: "Edit", kind: "tool", input: { file_path: "/repo/a.ts" } },
+      ],
+    } as unknown as PaseoAgent;
+    const quiet = { ...agent("owner-3", "owner", "TR-3", "2026-10-13T14:50:00Z"), pendingPermissions: [{ id: "p3", name: "Custom", kind: "tool", input: null }] } as unknown as PaseoAgent;
+    vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "In Progress"), ticket("TR-2", "Done"), ticket("TR-3", "In Progress")] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    vi.mocked(projectAgents).mockResolvedValue([owner, quiet]);
+    const board = await loadBoard({} as PaseoApi, state([]), "taro");
+    expect(board.cards.find((card) => card.id === "TR-1")?.permission).toEqual({ title: "Allow Bash?", detail: "npm install" });
+    expect(board.cards.find((card) => card.id === "TR-3")?.permission).toEqual({ title: "Allow Custom?", detail: null });
+    expect(board.cards.find((card) => card.id === "TR-2")?.permission).toBeNull();
+  });
+
+  it("fills the delivered line for Awaiting acceptance cards only", async () => {
+    vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "Awaiting acceptance"), ticket("TR-3", "In Progress")] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    vi.mocked(viewTicket).mockResolvedValue({
+      implementationNotes: notes,
+      finalSummary: "FINAL 2026-10-13T14:40Z — Cards show the question. Tests pass.",
+    } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+    const board = await loadBoard({} as PaseoApi, state([]), "taro");
+    expect(board.cards.find((card) => card.id === "TR-1")?.delivered).toBe("Cards show the question.");
+    expect(board.cards.find((card) => card.id === "TR-3")?.delivered).toBeNull();
+  });
+
   it("reads the latest milestone of under-way tickets only", async () => {
     const board = await loadBoard({} as PaseoApi, state([]), "taro");
     expect(board.cards[0]?.latestMilestone).toEqual({ kind: "MILESTONE", time: "2026-10-13T14:30Z", text: "tests green" });

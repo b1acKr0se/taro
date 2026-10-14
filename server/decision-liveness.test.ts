@@ -111,6 +111,27 @@ describe("Actions.answerDecision", () => {
     expect(decisions[0]?.status).toBe("open");
   });
 
+  // TR-045: a chip on a card answers at once, and a second tap before the board reloads must not send a second answer.
+  it("sends nothing for a decision already answered or withdrawn", async () => {
+    const live = paseoWhere(async () => ({ agent: { id: "owner", status: "idle", archivedAt: null } }));
+    for (const status of ["answered", "withdrawn"] as const) {
+      vi.mocked(sendFromPlugin).mockClear();
+      const decisions = [stored("owner", "taro", status)];
+      await expect(actionsOver(decisions).answerDecision(live, key, "Approve", "")).rejects.toThrow("That decision is no longer open.");
+      expect(sendFromPlugin).not.toHaveBeenCalled();
+      expect(decisions[0]?.status).toBe(status);
+    }
+  });
+
+  it("answers once when the same key is answered twice", async () => {
+    const live = paseoWhere(async () => ({ agent: { id: "owner", status: "idle", archivedAt: null } }));
+    const decisions = [stored("owner")];
+    const actions = actionsOver(decisions);
+    await actions.answerDecision(live, key, "Approve", "");
+    await expect(actions.answerDecision(live, key, "Approve", "")).rejects.toThrow("That decision is no longer open.");
+    expect(sendFromPlugin).toHaveBeenCalledTimes(1);
+  });
+
   it("still answers a live agent, closed ones included", async () => {
     for (const status of ["idle", "closed"]) {
       vi.mocked(sendFromPlugin).mockClear();

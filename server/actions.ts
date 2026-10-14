@@ -44,7 +44,8 @@ export class Actions {
 
   async answerDecision(paseo: PaseoApi, key: string, label: string | null, text: string, from: "screen" | "tab" = "screen"): Promise<void> {
     const decision = await this.state.decision(key);
-    if (decision === null) throw new Error("That decision is no longer open.");
+    // An answered or withdrawn decision stays stored for a while; a second answer would contradict the first.
+    if (decision === null || decision.status !== "open") throw new Error("That decision is no longer open.");
     // Withdrawal is final, so only Paseo's own word that the agent is gone counts, not a failed lookup.
     if (await isAgentGone(paseo, decision.agentId)) {
       await this.supervisor.withdrawDecisionsOf(decision.agentId);
