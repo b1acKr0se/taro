@@ -121,6 +121,14 @@ describe("bin/taro", () => {
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("TR-002");
   });
+
+  // TR-081 review: Paseo's desktop app runs the daemon in Electron, whose binary is plain Node only with ELECTRON_RUN_AS_NODE.
+  it("runs TARO_NODE as plain Node with type stripping on", () => {
+    const runtime = join(tracker, "fake-runtime");
+    writeFileSync(runtime, '#!/bin/sh\necho "$ELECTRON_RUN_AS_NODE $1"\n', { mode: 0o755 });
+    const result = taro(["ticket", "list"], { TARO_NODE: runtime });
+    expect(result.stdout).toBe("1 --experimental-strip-types\n");
+  });
 });
 
 describe("taro ticket list", () => {

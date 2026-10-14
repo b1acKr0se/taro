@@ -12,4 +12,7 @@ while [ -h "$self" ]; do
   esac
 done
 directory=$(cd "$(dirname "$self")" && pwd -P)
-exec "${TARO_NODE:-node}" "$directory/../server/taro-cli.ts" "$@"
+# TARO_NODE is the daemon's own runtime, which is Electron when Paseo's desktop app runs the daemon:
+# ELECTRON_RUN_AS_NODE makes it plain Node there (Node ignores it). The flag is needed before Node 22.18.
+export ELECTRON_RUN_AS_NODE=1
+exec "${TARO_NODE:-node}" --experimental-strip-types "$directory/../server/taro-cli.ts" "$@"
