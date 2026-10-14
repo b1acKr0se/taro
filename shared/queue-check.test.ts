@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   MANAGER_HUNG_AFTER_MS,
+  alertRaisedAt,
   MANAGER_IDLE_BEFORE_WAKE_MS,
   emptyQueueWatch,
   holdReason,
@@ -9,6 +10,7 @@ import {
   markRestarted,
   markWoken,
   newlyAlerted,
+  newlyWithheld,
   newlyQueuedStartable,
   queuedAlertTicket,
   queuedAlerts,
@@ -103,7 +105,15 @@ describe("recount", () => {
       startable: ["TR-5", "TR-8"],
       waiting: [{ id: "TR-6", on: ["TR-1"] }],
       held: [{ id: "TR-7", reason: "exclusive rewrite TR-1 first" }],
+      owned: [],
     });
+  });
+
+  it("counts a queued ticket that already has a live owner, and never calls it startable", () => {
+    const paused = recount({ owners: [owner("TR-1"), owner("tr-5")], tickets, queued: [queued("TR-5"), queued("TR-8")], cap: 2, threads: null });
+    expect(paused).toMatchObject({ counting: ["TR-1", "TR-5"], freeSlot: false, startable: ["TR-8"], owned: ["TR-5"] });
+    const closed = recount({ owners: [owner("TR-5", "closed")], tickets, queued: [queued("TR-5")], cap: 2, threads: null });
+    expect(closed).toMatchObject({ counting: [], startable: ["TR-5"], owned: [] });
   });
 
   it("has no free slot at the cap", () => {
@@ -125,7 +135,7 @@ describe("recount", () => {
   });
 });
 
-const count = (overrides: Partial<Recount> = {}): Recount => ({ counting: ["TR-1"], cap: 3, threads: null, freeSlot: true, startable: ["TR-5"], waiting: [], held: [], ...overrides });
+const count = (overrides: Partial<Recount> = {}): Recount => ({ counting: ["TR-1"], cap: 3, threads: null, freeSlot: true, startable: ["TR-5"], waiting: [], held: [], owned: [], ...overrides });
 
 describe("shouldWakeIdleManager", () => {
   const now = 10 * 60 * 60_000;
@@ -195,6 +205,15 @@ describe("the escalation ladder", () => {
     ]);
   });
 
+  it("keeps a dismissal while the ticket stays queued, even with no ladder entry yet (after a reload)", () => {
+    const watch = emptyQueueWatch();
+    watch.dismissed.add("TR-5");
+    trackQueue(watch, count(), start);
+    expect(watch.dismissed.has("TR-5")).toBe(true);
+    trackQueue(watch, count({ startable: [] }), start + 1);
+    expect(watch.dismissed.has("TR-5")).toBe(false);
+  });
+
   it("drops every ticket, with its wake-up and dismissal, once the slots fill", () => {
     const watch = watched();
     markWoken(watch, count(), start);
@@ -233,7 +252,9 @@ describe("the escalation ladder", () => {
 
   it("raises the alert ten minutes after the first look when the Manager could never be woken", () => {
     const watch = watched();
-    expect(queuedAlerts(watch, minutes(10))[0]?.text).toContain("the Manager has been busy for 10 minutes and could not be told");
+    expect(queuedAlerts(watch, minutes(10))[0]?.text).toBe(
+      "TR-5 queued with a free slot: the Manager has been busy for 10 minutes, so the plugin could not tell it yet. It tells the Manager once it is idle, and restarts it only if it hangs. Open the Manager's tab to see what it is doing.",
+    );
   });
 
   it("logs an alert once, and again only after the ticket left the ladder and came back", () => {
@@ -263,8 +284,13 @@ describe("the escalation ladder", () => {
       expect(restartDue(woken(), count(), "idle", minutes(20))).toEqual(["TR-5"]);
     });
 
-    it("is due for an unresponsive Manager", () => {
+    it("is due for an unresponsive Manager, told or not", () => {
       expect(restartDue(woken(), count(), "unresponsive", minutes(20))).toEqual(["TR-5"]);
+      expect(restartDue(watched(), count(), "unresponsive", minutes(20))).toEqual(["TR-5"]);
+    });
+
+    it("is never due for an idle Manager that was never told: it is woken first", () => {
+      expect(restartDue(watched(), count(), "idle", minutes(40))).toEqual([]);
     });
 
     it("never touches a busy or missing Manager", () => {
@@ -301,18 +327,38 @@ describe("the escalation ladder", () => {
 
     it("happens at most once an hour per project, and the alert then says so", () => {
       const watch = woken();
-      markRestarted(watch, ["TR-5"], minutes(20), true);
+      markRestarted(watch, ["TR-5"], count(), minutes(20), true);
       expect(watch.wokenAt.get("TR-5")).toBe(minutes(20));
-      expect(watch.wokenFor).toBeNull();
       expect(restartDue(watch, count(), "idle", minutes(79))).toEqual([]);
       expect(restartLimited(watch, minutes(79))).toBe(true);
       expect(queuedAlerts(watch, minutes(79))[0]?.text).toContain("already restarted the Manager within the hour, so it leaves this to you");
       expect(restartDue(watch, count(), "idle", minutes(80))).toEqual(["TR-5"]);
     });
 
+    it("does not tell a replaced Manager again what its first prompt said", () => {
+      const watch = woken();
+      markRestarted(watch, ["TR-5"], count(), minutes(20), true);
+      expect(shouldWakeIdleManager({ count: count(), managerMidTurn: false, lastTurnEndedAt: minutes(21), lastWokenFor: watch.wokenFor, now: minutes(30) })).toBe(false);
+    });
+
+    it("names a restart withheld by the hourly limit once", () => {
+      const watch = woken();
+      expect(newlyWithheld(watch, count(), "idle", minutes(20))).toEqual([]);
+      watch.restarts = [minutes(5)];
+      expect(newlyWithheld(watch, count(), "idle", minutes(20))).toEqual(["TR-5"]);
+      expect(newlyWithheld(watch, count(), "idle", minutes(21))).toEqual([]);
+    });
+
+    it("dates the alert from the earliest of the tickets' ladders", () => {
+      const watch = woken();
+      markWoken(watch, count({ startable: ["TR-5", "TR-6"] }), minutes(3));
+      expect(alertRaisedAt(watch, ["TR-5", "TR-6"])).toBe(minutes(10));
+      expect(alertRaisedAt(watch, [])).toBeNull();
+    });
+
     it("counts a failed restart for the hourly limit and leaves the alert up", () => {
       const watch = woken();
-      markRestarted(watch, ["TR-5"], minutes(20), false);
+      markRestarted(watch, ["TR-5"], count(), minutes(20), false);
       expect(watch.wokenAt.get("TR-5")).toBe(start);
       expect(queuedAlerts(watch, minutes(21))).toHaveLength(1);
       expect(restartDue(watch, count(), "idle", minutes(21))).toEqual([]);
@@ -358,6 +404,7 @@ describe("recountFields", () => {
       startable: "TR-5",
       waiting: "TR-6 (on TR-1, TR-2)",
       held: "TR-7 (rewrite first)",
+      owned: "none",
     });
   });
 

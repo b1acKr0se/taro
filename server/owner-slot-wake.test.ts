@@ -134,6 +134,7 @@ describe("a freed owner slot wakes the manager", () => {
         startable: "DM-3",
         waiting: "none",
         held: "none",
+        owned: "none",
       },
     ]);
   });
@@ -221,13 +222,14 @@ describe("the dependency-cleared message", () => {
       startable: "DM-3",
       waiting: "DM-4 (on DM-1)",
       held: "DM-5 (exclusive rewrite DM-2 first)",
+      owned: "DM-6",
     });
     const text = await realMessage(TEMPLATES.dependencyCleared, { ticket: "DM-1", status: "Awaiting acceptance", dependents: "DM-4", recount });
     expect(text).not.toContain("{{");
     expect(text).toContain("DM-1 is now Awaiting acceptance");
     expect(text).toContain("Tickets that depend on it: DM-4; they can start only once DM-1 is Done.");
     expect(text).toContain("trust it over your own count: owners counting towards the cap 1 of 2 (DM-2), so 1 free; threads 820 of 2048 (40%).");
-    expect(text).toContain("startable now (no unmet dependency, no HOLD), oldest first: DM-3. Waiting on dependencies: DM-4 (on DM-1). Held: DM-5 (exclusive rewrite DM-2 first).");
+    expect(text).toContain("startable now (no unmet dependency, no HOLD), oldest first: DM-3. Waiting on dependencies: DM-4 (on DM-1). Held: DM-5 (exclusive rewrite DM-2 first). Queued but already with an owner (counted above): DM-6.");
   });
 });
 

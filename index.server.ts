@@ -240,7 +240,12 @@ export default function contribute(server: PluginServerContext) {
     actions.userToldManager(project);
     return { agentId };
   });
-  server.handle(catchUp, async ({ project }, { paseo }) => ({ agentId: await tellManager(paseo, project, await catchUpText(project)) }));
+  server.handle(catchUp, async ({ project }, { paseo }) => {
+    const agentId = await tellManager(paseo, project, await catchUpText(project));
+    // Asking the Manager to catch up acts on a queued alert as a message does (TR-062).
+    actions.userToldManager(project);
+    return { agentId };
+  });
 
   server.handle(loadBoardRpc, async ({ project }, { paseo }) => {
     void trackers.pullIfDue(project);
@@ -284,7 +289,7 @@ export default function contribute(server: PluginServerContext) {
     return { problem: await trackers.resolve(project, resolution) };
   });
   server.handle(dismissQueueAlert, async ({ project, ticket }) => {
-    actions.dismissQueueAlert(project, ticket);
+    await actions.dismissQueueAlert(project, ticket);
     invalidateBoards();
     return {};
   });

@@ -55,6 +55,17 @@ export function humanMessages(timeline: readonly TimelineItem[]): string[] {
   return timeline.flatMap((item) => (item.type === "user_message" && !isPluginMessageId(item.clientMessageId) && !isPluginMessageId(item.messageId) ? [item.text] : []));
 }
 
+/** When the user last typed to the agent themselves (not a message the plugin sent), from timeline entries; null if never. */
+export function lastHumanMessageAt(entries: readonly { item: TimelineItem; timestamp: string }[]): number | null {
+  let last: number | null = null;
+  for (const entry of entries) {
+    if (humanMessages([entry.item]).length === 0) continue;
+    const at = Date.parse(entry.timestamp);
+    if (!Number.isNaN(at) && (last === null || at > last)) last = at;
+  }
+  return last;
+}
+
 /** Every assistant message of the turn, for decision blocks anywhere in it. */
 export function allAssistantText(timeline: readonly TimelineItem[]): string {
   return timeline.flatMap((item) => (item.type === "assistant_message" ? [item.text] : [])).join("");

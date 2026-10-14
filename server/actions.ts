@@ -15,8 +15,10 @@ import {
   emptyQueueWatch,
   managerCondition,
   markRestarted,
+  alertRaisedAt,
   markWoken,
   newlyAlerted,
+  newlyWithheld,
   newlyQueuedStartable,
   queuedAlerts,
   queuedTickets,
@@ -46,7 +48,7 @@ import { sendFromPlugin, sendWithoutInterrupting } from "./send";
 import { hasAttachments, sendWithAttachments, type Attachments } from "./uploads";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
-import { identityFromLabels, managerHandoffPath, type Supervisor } from "./supervision";
+import { identityFromLabels, lastHumanMessageAt, managerHandoffPath, type Supervisor } from "./supervision";
 import { appendTicketNote, listTickets, viewTicket, type TicketSummary } from "./tickets";
 import type { Stats } from "./stats";
 import type { TrackerWatch } from "./tracker-watch";
@@ -509,6 +511,24 @@ export class Actions {
     return watch;
   }
 
+  /** The ladder with its restarts and dismissals read back from disk the first time (after a start or reload). */
+  private async loadQueueWatch(project: string): Promise<QueueWatch> {
+    const fresh = !this.queues.has(project);
+    const watch = this.queueWatch(project);
+    if (fresh) {
+      const stored = await this.state.queueLadder(project).catch(() => null);
+      for (const at of stored?.restarts ?? []) watch.restarts.push(Date.parse(at));
+      for (const id of stored?.dismissed ?? []) watch.dismissed.add(id);
+    }
+    return watch;
+  }
+
+  private async saveQueueWatch(project: string, watch: QueueWatch): Promise<void> {
+    await this.state.saveQueueLadder(project, { restarts: watch.restarts.map((at) => new Date(at).toISOString()), dismissed: [...watch.dismissed] }).catch((error: unknown) => {
+      console.error(`[taro] storing ${project}'s queue ladder:`, error);
+    });
+  }
+
   /** A wake-up naming the startable tickets went out: the ladder starts, and each ticket's first one is logged on it. */
   private woken(project: string, count: Recount, why: string): void {
     const first = markWoken(this.queueWatch(project), count, Date.now());
@@ -578,9 +598,11 @@ export class Actions {
     const paths = await projectPaths(project);
     const tickets = await listTickets(paths.tracker);
     const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners);
-    const watch = this.queueWatch(project);
+    const watch = await this.loadQueueWatch(project);
     const alertsBefore = queuedAlerts(watch, now).length;
+    const storedBefore = ladderSnapshot(watch);
     trackQueue(watch, count, now);
+    if (ladderSnapshot(watch) !== storedBefore) await this.saveQueueWatch(project, watch);
     if (watch.queuedAt.size === 0) return alertsBefore > 0;
 
     const manager = await fetchLiveAgent(paseo, config.managerAgentId);
@@ -607,14 +629,37 @@ export class Actions {
     }
 
     const condition = managerCondition(manager === null ? null : { status: manager.status, updatedAt: manager.updatedAt, stalled: managerState?.stalled ?? false }, now);
-    const due = restartDue(watch, count, condition, now);
+    const withheld = newlyWithheld(watch, count, condition, now);
+    if (withheld.length > 0) {
+      console.warn(`[taro] ${project}: ${withheld.join(", ")} still queued with a free slot; not restarting the Manager, as the ladder already did within the hour`);
+      await this.noteTickets(project, withheld, `QUEUE-RESTART ${new Date(now).toISOString()} — still queued with a free slot, but the plugin already restarted the Manager within the hour, so it does not again; the alert stays up.`);
+    }
+    let due = restartDue(watch, count, condition, now);
+    // The user may have answered the alert in the Manager's own tab, which Taro does not see: its timeline does.
+    if (due.length > 0 && manager !== null) {
+      const typed = await this.lastTypedToManager(paseo, manager.id);
+      if (typed === undefined) due = [];
+      else if (typed !== null && typed >= (alertRaisedAt(watch, due) ?? now)) {
+        watch.userToldManagerAt = Math.max(watch.userToldManagerAt ?? typed, typed);
+        due = restartDue(watch, count, condition, now);
+      }
+    }
     if (due.length > 0) await this.restartForQueue(paseo, project, manager, due, count, condition, now);
     return alerted.length > 0 || queuedAlerts(watch, now).length !== alertsBefore || due.length > 0;
   }
 
+  /** When the user last typed to the Manager themselves; undefined when its timeline cannot be read (no restart on a guess). */
+  private async lastTypedToManager(paseo: PaseoApi, managerId: string): Promise<number | null | undefined> {
+    const page = await paseo.agents
+      .ref(managerId)
+      .timeline.refetch({ direction: "tail", limit: 40, projection: "projected" })
+      .catch(() => null);
+    return page === null ? undefined : lastHumanMessageAt(page.entries);
+  }
+
   /** The ladder's last step: a fresh Manager through the usual restart, told why and given the recount. */
   private async restartForQueue(paseo: PaseoApi, project: string, manager: PaseoAgent | null, due: readonly string[], count: Recount, condition: string, now: number): Promise<void> {
-    const watch = this.queueWatch(project);
+    const watch = await this.loadQueueWatch(project);
     const start = Math.min(...due.map((id) => watch.wokenAt.get(id) ?? watch.queuedAt.get(id) ?? now));
     const why = await message(TEMPLATES.managerQueueRestart, {
       tickets: due.join(", "),
@@ -625,12 +670,14 @@ export class Actions {
     const at = new Date(now).toISOString();
     try {
       const restarted = await restartManager(paseo, project, { why, evenMidTurn: condition === "unresponsive" && manager !== null && isMidTurn(manager) });
-      markRestarted(watch, due, now, true);
+      markRestarted(watch, due, count, now, true);
+      await this.saveQueueWatch(project, watch);
       console.warn(`[taro] ${project}: restarted the ${condition} Manager ${manager?.id ?? "?"} as ${restarted.agentId}: ${due.join(", ")} stayed queued with a free slot`);
       await this.noteTickets(project, due, `QUEUE-RESTART ${at} — still queued with a free slot 20 minutes after the Manager was told; the plugin restarted the ${condition} Manager ${manager?.id ?? "?"} as ${restarted.agentId} (at most one such restart per project an hour).`);
     } catch (error: unknown) {
       const reason = error instanceof Error ? error.message : String(error);
-      markRestarted(watch, due, now, false);
+      markRestarted(watch, due, count, now, false);
+      await this.saveQueueWatch(project, watch);
       console.error(`[taro] ${project}: restarting the Manager for ${due.join(", ")} failed: ${reason}`);
       await this.noteTickets(project, due, `QUEUE-RESTART ${at} — the plugin tried to restart the Manager for this queued ticket and failed (${reason}); the alert stays up.`);
     }
@@ -643,8 +690,10 @@ export class Actions {
   }
 
   /** The user dismissed a ticket's alert: it comes down and the ladder stops for it until the ticket leaves the queue. */
-  dismissQueueAlert(project: string, ticket: string): void {
-    this.queueWatch(project).dismissed.add(ticket);
+  async dismissQueueAlert(project: string, ticket: string): Promise<void> {
+    const watch = await this.loadQueueWatch(project);
+    watch.dismissed.add(ticket);
+    await this.saveQueueWatch(project, watch);
     console.log(`[taro] ${project}: the user dismissed the queued alert for ${ticket}`);
   }
 
@@ -664,4 +713,9 @@ export class Actions {
 
 async function recountText(count: Recount): Promise<string> {
   return message(TEMPLATES.recount, recountFields(count));
+}
+
+/** What of the ladder is kept on disk, to tell whether it changed. */
+function ladderSnapshot(watch: QueueWatch): string {
+  return JSON.stringify([watch.restarts, [...watch.dismissed].sort()]);
 }

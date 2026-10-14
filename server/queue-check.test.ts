@@ -63,7 +63,17 @@ let manager: { id: string; status: string; updatedAt: string; labels: Record<str
 let managerState: { lastTurnEndedAt: string | null; stalled: boolean };
 let told: Record<string, string>[];
 let actions: Actions;
-const paseo = {} as PaseoApi;
+/** The plugin state's stored ladders, kept across the `Actions` of one test as a disk would be. */
+let ladders: Map<string, { restarts: string[]; dismissed: string[] }>;
+/** The Manager's timeline as Paseo returns it; null stands for a fetch that fails. */
+let timeline: { item: { type: string; text: string; messageId?: string }; timestamp: string }[] | null;
+const paseo = {
+  agents: {
+    ref: () => ({
+      timeline: { refetch: async () => (timeline === null ? Promise.reject(new Error("offline")) : { entries: timeline }) },
+    }),
+  },
+} as unknown as PaseoApi;
 
 function at(minutes: number): number {
   return T0 + minutes * MINUTE;
@@ -95,6 +105,8 @@ beforeEach(() => {
   notes = {};
   dependencies = {};
   told = [];
+  ladders = new Map();
+  timeline = [];
   idleSince(-10);
   vi.mocked(listTickets).mockImplementation(async () => tickets);
   vi.mocked(viewTicket).mockImplementation(
@@ -117,6 +129,8 @@ function start(): Actions {
     ticketStatuses: async () => null,
     saveTicketStatuses: async () => undefined,
     agent: async (id: string) => (id === "manager" ? { ...managerState } : null),
+    queueLadder: async (project: string) => ladders.get(project) ?? null,
+    saveQueueLadder: async (project: string, ladder: { restarts: string[]; dismissed: string[] }) => void ladders.set(project, structuredClone(ladder)),
   } as unknown as PluginState;
   const stats = { transition: async () => undefined, agentFinal: async () => undefined } as unknown as Stats;
   const recovery = {
@@ -149,6 +163,14 @@ describe("a ticket filed while a slot is free", () => {
   it("leaves a Manager mid-turn alone: it is most likely dispatching the ticket it just filed", async () => {
     manager = { id: "manager", status: "running", updatedAt: iso(0), labels: {} };
     await file("DM-3");
+    expect(told).toEqual([]);
+  });
+
+  it("does not wake for a ticket paused back to Backlog with its owner alive, and counts that owner", async () => {
+    owners = [owner("DM-1"), owner("DM-3"), owner("DM-4")];
+    await file("DM-3");
+    expect(told).toEqual([]);
+    await actions.checkQueues(paseo, at(5));
     expect(told).toEqual([]);
   });
 
@@ -283,9 +305,30 @@ describe("the escalation ladder", () => {
     expect(restartManager).toHaveBeenCalledTimes(1);
   });
 
-  it("does not restart once the user dismissed the alert", async () => {
+  it("never restarts a Manager that was busy until after twenty minutes: it is woken first, and restarted twenty minutes after that", async () => {
+    manager = { id: "manager", status: "running", updatedAt: iso(0), labels: {} };
+    for (let minute = 0; minute <= 24; minute += 1) {
+      vi.setSystemTime(at(minute));
+      manager.updatedAt = iso(minute);
+      await actions.checkQueues(paseo, at(minute));
+    }
+    expect(actions.queueAlerts("demo", at(24))[0]?.text).toContain("could not tell it yet");
+    idleSince(25);
+    await minutes(25, 26);
+    expect(told).toEqual([]);
+    expect(restartManager).not.toHaveBeenCalled();
+    await minutes(27, 27);
+    expect(told_()).toEqual(["messages/queue-idle.md: DM-3"]);
+    await minutes(28, 46);
+    expect(restartManager).not.toHaveBeenCalled();
+    await minutes(47, 47);
+    expect(restartManager).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not restart once the user dismissed the alert, even after a reload", async () => {
     await minutes(0, 12);
-    actions.dismissQueueAlert("demo", "DM-3");
+    await actions.dismissQueueAlert("demo", "DM-3");
+    actions = start();
     expect(actions.queueAlerts("demo", at(12))).toEqual([]);
     await minutes(13, 40);
     expect(restartManager).not.toHaveBeenCalled();
@@ -309,6 +352,47 @@ describe("the escalation ladder", () => {
     expect(JSON.parse(vi.mocked(restartManager).mock.calls[0]![2]?.why ?? "{}")).toMatchObject({ tickets: "DM-3" });
   });
 
+  it("does not restart once the user typed to the Manager in its own tab after the alert, but does for a message before it", async () => {
+    timeline = [{ item: { type: "user_message", text: "hold on, I am checking DM-3", messageId: "user-1" }, timestamp: iso(9) }];
+    await minutes(0, 20);
+    expect(restartManager).toHaveBeenCalledTimes(1);
+
+    vi.mocked(restartManager).mockClear();
+    actions = start();
+    ladders.clear();
+    timeline = [
+      { item: { type: "user_message", text: "status?", messageId: "user-1" }, timestamp: iso(100) },
+      { item: { type: "user_message", text: "DM-3 could start now", messageId: "taro-0001" }, timestamp: iso(115) },
+      { item: { type: "user_message", text: "leave DM-3 for now", messageId: "user-2" }, timestamp: iso(112) },
+    ];
+    await minutes(100, 130);
+    expect(restartManager).not.toHaveBeenCalled();
+  });
+
+  it("does not restart on a guess when the Manager's timeline cannot be read", async () => {
+    timeline = null;
+    await minutes(0, 30);
+    expect(restartManager).not.toHaveBeenCalled();
+  });
+
+  it("keeps the hourly limit across a reload, and logs a withheld restart once", async () => {
+    await minutes(0, 20);
+    expect(restartManager).toHaveBeenCalledTimes(1);
+    actions = start();
+    await minutes(21, 79);
+    expect(restartManager).toHaveBeenCalledTimes(1);
+    expect(notesWritten().filter((note) => note === "DM-3 QUEUE-RESTART")).toHaveLength(2);
+    expect(vi.mocked(appendTicketNote).mock.calls.at(-1)?.[2]).toContain("already restarted the Manager within the hour");
+  });
+
+  it("does not wake a Manager it just replaced for what its first prompt said", async () => {
+    await minutes(0, 20);
+    expect(restartManager).toHaveBeenCalledTimes(1);
+    idleSince(21);
+    await minutes(21, 29);
+    expect(told_()).toEqual(["messages/queue-idle.md: DM-3"]);
+  });
+
   it("does not restart while threads are near the limit", async () => {
     await minutes(0, 15);
     vi.mocked(readHeadroom).mockResolvedValue({ current: 1800, max: 2048, high: true, highSince: iso(15) });
@@ -329,7 +413,9 @@ describe("the escalation ladder", () => {
     vi.mocked(restartManager).mockRejectedValueOnce(new Error("The demo Manager is in the middle of a turn. Restart it once it is idle."));
     await minutes(0, 40);
     expect(restartManager).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(appendTicketNote).mock.calls.at(-1)?.[2]).toContain("failed (The demo Manager is in the middle of a turn");
+    const restartNotes = vi.mocked(appendTicketNote).mock.calls.map(([, , record]) => record).filter((record) => record.startsWith("QUEUE-RESTART"));
+    expect(restartNotes[0]).toContain("failed (The demo Manager is in the middle of a turn");
+    expect(restartNotes[1]).toContain("already restarted the Manager within the hour");
     expect(actions.queueAlerts("demo", at(40))).toHaveLength(1);
   });
 });

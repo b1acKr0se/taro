@@ -8,6 +8,7 @@
  */
 import { noteRecords } from "./execution";
 import { dependsOn, ticketsCountingTowardsCap, type CapOwner, type CapTicket } from "./owner-cap";
+import { TARO_LABELS } from "./project";
 import { hasHeadroom, type BoardAlert } from "./recovery";
 
 /** How long the Manager must have been idle before the minute check wakes it. */
@@ -40,6 +41,8 @@ export interface Recount {
   waiting: { id: string; on: string[] }[];
   /** Queued tickets the Manager holds, with the reason from the HOLD record. */
   held: { id: string; reason: string }[];
+  /** Queued tickets that already have a live owner (paused back to Backlog, or an owner not yet past it): they count, and are not startable. */
+  owned: string[];
 }
 
 /**
@@ -72,7 +75,14 @@ export function recount(input: {
   cap: number;
   threads: { current: number; max: number } | null;
 }): Recount {
-  const counting = ticketsCountingTowardsCap(input.owners, input.tickets);
+  const owned = new Set(
+    input.queued
+      .filter((ticket) => input.owners.some((owner) => owner.status !== "closed" && owner.labels[TARO_LABELS.role] === "owner" && dependsOn([owner.labels[TARO_LABELS.ticket] ?? ""], ticket.id)))
+      .map((ticket) => ticket.id),
+  );
+  // An owner whose label differs from the ticket's id in case counts once, under the ticket's id.
+  const others = ticketsCountingTowardsCap(input.owners, input.tickets).filter((id) => ![...owned].some((ticket) => dependsOn([id], ticket)));
+  const counting = [...others, ...owned].sort();
   const result: Recount = {
     counting,
     cap: input.cap,
@@ -81,8 +91,10 @@ export function recount(input: {
     startable: [],
     waiting: [],
     held: [],
+    owned: [...owned],
   };
   for (const ticket of input.queued) {
+    if (owned.has(ticket.id)) continue;
     const reason = holdReason(ticket.notes);
     const unmet = unmetDependencies(ticket.dependencies, input.tickets);
     if (reason !== null) result.held.push({ id: ticket.id, reason });
@@ -133,13 +145,15 @@ export interface QueueWatch {
   dismissed: Set<string>;
   /** Tickets whose alert went up and was logged; logged again only after the ticket left the ladder. */
   alerted: Set<string>;
+  /** Tickets whose restart the hourly limit withheld, logged once. */
+  withheld: Set<string>;
   /** When the user last sent the Manager a message from Taro; acting on an alert that way stops the restart. */
   userToldManagerAt: number | null;
   restarts: number[];
 }
 
 export function emptyQueueWatch(): QueueWatch {
-  return { queuedAt: new Map(), wokenAt: new Map(), wokenFor: null, dismissed: new Set(), alerted: new Set(), userToldManagerAt: null, restarts: [] };
+  return { queuedAt: new Map(), wokenAt: new Map(), wokenFor: null, dismissed: new Set(), alerted: new Set(), withheld: new Set(), userToldManagerAt: null, restarts: [] };
 }
 
 /**
@@ -153,9 +167,11 @@ export function trackQueue(watch: QueueWatch, count: Recount, now: number): void
     if (on.has(id)) continue;
     watch.queuedAt.delete(id);
     watch.wokenAt.delete(id);
-    watch.dismissed.delete(id);
     watch.alerted.delete(id);
+    watch.withheld.delete(id);
   }
+  // Dismissals are kept on disk across reloads (the ladder itself is not): pruned against the queue, not the ladder.
+  for (const id of [...watch.dismissed]) if (!on.has(id)) watch.dismissed.delete(id);
   for (const id of on) if (!watch.queuedAt.has(id)) watch.queuedAt.set(id, now);
 }
 
@@ -195,13 +211,18 @@ export function newlyAlerted(watch: QueueWatch, now: number): string[] {
 export function queuedAlerts(watch: QueueWatch, now: number): BoardAlert[] {
   return alertedTickets(watch, now).map((id) => {
     const minutes = Math.floor((now - (ladderStart(watch, id) ?? now)) / 60_000);
-    const told = watch.wokenAt.has(id) ? `the plugin told the Manager ${minutes} minutes ago` : `the Manager has been busy for ${minutes} minutes and could not be told`;
+    if (!watch.wokenAt.has(id)) {
+      return {
+        id: `${QUEUED_ALERT_PREFIX}${id}`,
+        text: `${id} queued with a free slot: the Manager has been busy for ${minutes} minutes, so the plugin could not tell it yet. It tells the Manager once it is idle, and restarts it only if it hangs. Open the Manager's tab to see what it is doing.`,
+      };
+    }
     const next = restartLimited(watch, now)
       ? "The plugin already restarted the Manager within the hour, so it leaves this to you."
       : `Unless you dismiss this or tell the Manager something, the plugin restarts the Manager ${Math.round(QUEUED_RESTART_AFTER_MS / 60_000)} minutes after it was told.`;
     return {
       id: `${QUEUED_ALERT_PREFIX}${id}`,
-      text: `${id} queued with a free slot: ${told}, and it has not dispatched it. Open the Manager's tab to see why, or ask it to dispatch the ticket. ${next}`,
+      text: `${id} queued with a free slot: the plugin told the Manager ${minutes} minutes ago, and it has not dispatched it. Open the Manager's tab to see why, or ask it to dispatch the ticket. ${next}`,
     };
   });
 }
@@ -233,41 +254,64 @@ export function managerCondition(manager: { status: string; updatedAt: string; s
 
 /**
  * The ladder's last step: the tickets that warrant restarting the Manager now, or an empty list.
- * Twenty minutes after the wake-up (or after the first look, if it was never woken), with the
- * ticket still startable, a free slot and threads under the limit (both in `count`), the alert not
- * dismissed or acted on (the user told the Manager something from Taro after it went up), the
- * Manager idle or unresponsive, and no ladder restart in the past hour. A Manager turn ending is no
- * sign the user acted: the plugin's own wake-ups for a changed queue end turns too.
+ * Twenty minutes after the wake-up, with the ticket still startable, a free slot and threads under
+ * the limit (both in `count`), the alert not dismissed or acted on (the user told the Manager
+ * something after it went up), the Manager idle or unresponsive, and no ladder restart in the past
+ * hour. A ticket the Manager was never told about is restarted for only when the Manager is
+ * unresponsive (hung or given up by crash recovery), twenty minutes after it was first seen: a busy
+ * Manager that turns idle is woken first. A Manager turn ending is no sign the user acted: the
+ * plugin's own wake-ups for a changed queue end turns too.
  */
 export function restartDue(watch: QueueWatch, count: Recount, condition: ManagerCondition, now: number): string[] {
+  return restartRipe(watch, count, condition, now).filter(() => !restartLimited(watch, now));
+}
+
+function restartRipe(watch: QueueWatch, count: Recount, condition: ManagerCondition, now: number): string[] {
   if (!count.freeSlot || (condition !== "idle" && condition !== "unresponsive")) return [];
-  if (watch.restarts.some((at) => now - at < RESTART_WINDOW_MS)) return [];
   const startable = new Set(count.startable);
   return [...watch.queuedAt.keys()].filter((id) => {
+    if (!watch.wokenAt.has(id) && condition !== "unresponsive") return false;
     const start = ladderStart(watch, id);
     if (start === null || !startable.has(id) || watch.dismissed.has(id) || now - start < QUEUED_RESTART_AFTER_MS) return false;
     return watch.userToldManagerAt === null || watch.userToldManagerAt < start + QUEUED_ALERT_AFTER_MS;
   });
 }
 
-/** Whether the hourly limit is what stops a restart that is otherwise due (for the log, once). */
+/** Whether a ladder restart happened in the past hour. */
 export function restartLimited(watch: QueueWatch, now: number): boolean {
   return watch.restarts.some((at) => now - at < RESTART_WINDOW_MS);
 }
 
+/** The tickets whose restart is ripe but withheld by the hourly limit, not logged yet; marks them logged. */
+export function newlyWithheld(watch: QueueWatch, count: Recount, condition: ManagerCondition, now: number): string[] {
+  if (!restartLimited(watch, now)) return [];
+  const fresh = restartRipe(watch, count, condition, now).filter((id) => !watch.withheld.has(id));
+  for (const id of fresh) watch.withheld.add(id);
+  return fresh;
+}
+
+/** When the alert for these tickets went up, the earliest: a user message after it acts on the alert. */
+export function alertRaisedAt(watch: QueueWatch, tickets: readonly string[]): number | null {
+  const starts = tickets.flatMap((id) => {
+    const start = ladderStart(watch, id);
+    return start === null ? [] : [start + QUEUED_ALERT_AFTER_MS];
+  });
+  return starts.length === 0 ? null : Math.min(...starts);
+}
+
 /**
  * A ladder restart, counted for the hourly limit whether or not it worked, so a failing one is not
- * retried every minute. A Manager actually replaced was told about the tickets, so their ladder
- * starts again from now; after a failure the alert stays up.
+ * retried every minute. A Manager actually replaced was told about the tickets in its first prompt:
+ * their ladder starts again from now, and the minute check does not tell it the same again.
  */
-export function markRestarted(watch: QueueWatch, tickets: readonly string[], now: number, replaced: boolean): void {
+export function markRestarted(watch: QueueWatch, tickets: readonly string[], count: Recount, now: number, replaced: boolean): void {
   watch.restarts = [...watch.restarts.filter((at) => now - at < RESTART_WINDOW_MS), now];
   if (!replaced) return;
   for (const id of tickets) {
     watch.wokenAt.set(id, now);
     watch.alerted.delete(id);
   }
-  watch.wokenFor = null;
+  watch.wokenFor = situationKey(count);
 }
 
 /** The recount as the lines a wake-up message carries. */
@@ -283,5 +327,6 @@ export function recountFields(count: Recount): Record<string, string> {
     startable: list(count.startable),
     waiting: list(count.waiting.map((ticket) => `${ticket.id} (on ${ticket.on.join(", ")})`)),
     held: list(count.held.map((ticket) => `${ticket.id} (${ticket.reason})`)),
+    owned: list(count.owned),
   };
 }

@@ -1,7 +1,8 @@
 /**
  * The plugin's own state on disk (decision 37): parsed decisions, each
  * agent's supervision record, the ticket statuses last acted on (TR-043) and
- * what the tracker guard restored (TR-051). Kept in memory, written through on every change,
+ * what the tracker guard restored (TR-051), and the queue ladder's restarts and dismissed alerts
+ * (TR-062). Kept in memory, written through on every change,
  * read back on start, so a reload or restart loses nothing.
  */
 import { z } from "zod";
@@ -17,6 +18,9 @@ const AgentsFileSchema = z.object({ agents: z.record(z.string(), AgentStateSchem
 const TrackerProtectionSchema = z.object({ at: z.string(), restored: z.array(z.string()) });
 const TrackerProtectionsFileSchema = z.object({ projects: z.record(z.string(), TrackerProtectionSchema).default({}) });
 const TicketStatusesFileSchema = z.object({ projects: z.record(z.string(), z.record(z.string(), z.string())).default({}) });
+const QueueLadderSchema = z.object({ restarts: z.array(z.string()).default([]), dismissed: z.array(z.string()).default([]) });
+export type StoredQueueLadder = z.infer<typeof QueueLadderSchema>;
+const QueueLaddersFileSchema = z.object({ projects: z.record(z.string(), QueueLadderSchema).default({}) });
 
 /** Answered and withdrawn decisions are kept this long for the record, then dropped. */
 const CLOSED_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
@@ -26,6 +30,29 @@ export class PluginState {
   private agents: Record<string, AgentState> | null = null;
   private ticketStatusesByProject: Record<string, Record<string, string>> | null = null;
   private trackerProtections: Record<string, TrackerProtection> | null = null;
+  private queueLadders: Record<string, StoredQueueLadder> | null = null;
+
+  private async loadQueueLadders(): Promise<Record<string, StoredQueueLadder>> {
+    if (this.queueLadders === null) {
+      const raw = await readJsonIfPresent(statePath("queue-ladders.json")).catch(() => null);
+      const parsed = QueueLaddersFileSchema.safeParse(raw ?? {});
+      this.queueLadders = parsed.success ? parsed.data.projects : {};
+    }
+    return this.queueLadders;
+  }
+
+  /** A project's ladder restarts (for the hourly limit) and dismissed alerts, so a reload neither repeats a restart nor brings an alert back. */
+  async queueLadder(project: string): Promise<StoredQueueLadder | null> {
+    return (await this.loadQueueLadders())[project] ?? null;
+  }
+
+  saveQueueLadder(project: string, ladder: StoredQueueLadder): Promise<void> {
+    return serialized("state:queue-ladders", async () => {
+      const projects = await this.loadQueueLadders();
+      projects[project] = ladder;
+      await writeJsonAtomically(statePath("queue-ladders.json"), { projects });
+    });
+  }
 
   private async loadDecisions(): Promise<StoredDecision[]> {
     if (this.decisions === null) {
