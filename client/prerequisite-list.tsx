@@ -25,19 +25,20 @@ export function usePrerequisites() {
   return useQuery({ queryKey: PREREQUISITES_KEY, queryFn: () => prerequisitesRpc({}) });
 }
 
-export function PrerequisiteList({ theme, checks }: { theme: PluginTheme; checks: readonly Prerequisite[] }) {
+/** `installNote` sits beside the Install button: why the page waits for it. */
+export function PrerequisiteList({ theme, checks, installNote = null }: { theme: PluginTheme; checks: readonly Prerequisite[]; installNote?: string | null }) {
   return (
     <View style={{ gap: SPACE.sm }}>
       {checks.map((check) => (
         <CheckLine key={check.id} theme={theme} ok={check.ok} name={check.name} detail={check.detail}>
-          {check.fix === "install-backlog" ? <BacklogInstallAction theme={theme} /> : null}
+          {check.fix === "install-backlog" ? <BacklogInstallAction theme={theme} note={installNote} /> : null}
         </CheckLine>
       ))}
     </View>
   );
 }
 
-function BacklogInstallAction({ theme }: { theme: PluginTheme }) {
+function BacklogInstallAction({ theme, note }: { theme: PluginTheme; note: string | null }) {
   const start = useRpc(installBacklog);
   const statusRpc = useRpc(backlogInstallStatus);
   const queryClient = useQueryClient();
@@ -70,21 +71,24 @@ function BacklogInstallAction({ theme }: { theme: PluginTheme }) {
       ) : justInstalled ? (
         <Text style={[small, { color: colors.foreground }]}>{`Installed backlog ${install.version ?? ""}. Checking again…`}</Text>
       ) : (
-        <IconButton
-          theme={theme}
-          tone="accent"
-          icon="Download"
-          label={install?.phase === "failed" ? "Try again" : "Install Backlog.md"}
-          showLabel
-          disabled={presses.busy}
-          state={presses.stateOf("install")}
-          onPress={() =>
-            presses.press("install", async () => {
-              const result = await start({});
-              queryClient.setQueryData(INSTALL_KEY, result.install);
-            })
-          }
-        />
+        <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: SPACE.sm }}>
+          <IconButton
+            theme={theme}
+            tone="accent"
+            icon="Download"
+            label={install?.phase === "failed" ? "Try again" : "Install Backlog.md"}
+            showLabel
+            disabled={presses.busy}
+            state={presses.stateOf("install")}
+            onPress={() =>
+              presses.press("install", async () => {
+                const result = await start({});
+                queryClient.setQueryData(INSTALL_KEY, result.install);
+              })
+            }
+          />
+          {note === null ? null : <Text style={[small, { color: colors.foregroundMuted }]}>{note}</Text>}
+        </View>
       )}
       {install?.phase === "failed" && install.error !== null ? <Text selectable style={[small, { color: colors.statusDanger }]}>{install.error}</Text> : null}
     </View>

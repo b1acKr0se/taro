@@ -479,8 +479,7 @@ function ProjectReview({
     <View style={{ gap: SPACE.sm }}>
       {failure === null ? null : <Text style={[muted, { color: colors.statusDanger }]}>{failure}</Text>}
       {valid || otherProblems.length === 0 ? null : <Text style={[muted, { color: colors.statusDanger }]}>Some settings need fixing: open All settings.</Text>}
-      {backlogFlagged && backlogCheck !== null ? <PrerequisiteList theme={theme} checks={[backlogCheck]} /> : null}
-      {blocker === null ? null : <Text style={muted}>{blocker}</Text>}
+      {backlogFlagged && backlogCheck !== null ? <PrerequisiteList theme={theme} checks={[backlogCheck]} installNote={blocker} /> : null}
       {createButton}
       {allSettings}
     </View>
