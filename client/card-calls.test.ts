@@ -103,7 +103,7 @@ describe("cardCalls", () => {
   });
 
   it("carries the evidence in one line, and is not ready while it is incomplete", () => {
-    const complete = { checks: [{ command: "npm test", result: "ok" }], review: "clean", screenshots: [], screenshotsNone: "no visible change", missing: [], complete: true };
+    const complete = { checks: [{ command: "npm test", result: "ok" }], review: "clean", ux: null, screenshots: [], screenshotsNone: "no visible change", missing: [], complete: true };
     expect(cardCalls(card({ status: "Awaiting acceptance", evidence: complete }))).toEqual([
       { kind: "acceptance", ready: true, delivered: null, evidence: "1 check · review · no screenshots: no visible change" },
     ]);
@@ -126,14 +126,14 @@ describe("cardCalls", () => {
   });
 
   it("offers Review on a delivery that is not ready", () => {
-    const evidence = { checks: [], review: null, screenshots: [], screenshotsNone: null, missing: ["a check"], complete: false };
+    const evidence = { checks: [], review: null, ux: null, screenshots: [], screenshotsNone: null, missing: ["a check"], complete: false };
     const [call] = cardCalls(card({ status: "Awaiting acceptance", evidence }));
     expect(call === undefined ? null : callAction(call)).toBe("Review");
   });
 });
 
 describe("acceptanceReady", () => {
-  const evidence = { checks: [], review: null, screenshots: [], screenshotsNone: null, missing: ["a check"], complete: false };
+  const evidence = { checks: [], review: null, ux: null, screenshots: [], screenshotsNone: null, missing: ["a check"], complete: false };
   it("is ready without an evidence record to judge, and with complete evidence", () => {
     expect(acceptanceReady({ evidence: null })).toBe(true);
     expect(acceptanceReady({ evidence: { ...evidence, missing: [], complete: true } })).toBe(true);

@@ -143,6 +143,7 @@ export const SuggestionSchema = z.object({ label: z.string(), prompt: z.string()
 export const EvidenceViewSchema = z.object({
   checks: z.array(z.object({ command: z.string(), result: z.string() })),
   review: z.string().nullable(),
+  ux: z.string().nullable().default(null),
   screenshots: z.array(z.object({ file: z.string(), caption: z.string(), present: z.boolean(), path: z.string() })),
   screenshotsNone: z.string().nullable(),
   missing: z.array(z.string()),

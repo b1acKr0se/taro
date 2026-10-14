@@ -1,6 +1,6 @@
 /**
  * The evidence an owner records before Accept (TR-021): an `EVIDENCE <time> — …` notes record whose
- * lines are `check:`, `review:`, `screenshot:` and `screenshots: none`. Owners write it by hand, so
+ * lines are `check:`, `review:`, `ux:`, `screenshot:` and `screenshots: none`. Owners write it by hand, so
  * the parsing tolerates the label's case, a bullet in front, and three separators. Only the newest
  * record counts; whether it is enough is judged here, whether a file exists is told by the caller.
  */
@@ -9,6 +9,8 @@ import { noteRecords } from "./execution";
 export interface ParsedEvidence {
   checks: { command: string; result: string }[];
   review: string | null;
+  /** The visual check (TR-060): the owner's user's-eyes pass and the reviewer's final visual verdict. */
+  ux: string | null;
   screenshots: { file: string; caption: string }[];
   /** The reason after `screenshots: none`; "" when the line has no reason; null without the line. */
   screenshotsNone: string | null;
@@ -17,6 +19,7 @@ export interface ParsedEvidence {
 export interface JudgedEvidence {
   checks: { command: string; result: string }[];
   review: string | null;
+  ux: string | null;
   screenshots: { file: string; caption: string; present: boolean }[];
   screenshotsNone: string | null;
   missing: string[];
@@ -35,7 +38,7 @@ export function splitAtSeparator(text: string): [string, string] {
 }
 
 /** A line that belongs to an EVIDENCE record even in capitals (`CHECK: …`), which `noteRecords` takes for a record of its own. */
-const EVIDENCE_LINE = /^(checks?|review|screenshots?)\s*:/i;
+const EVIDENCE_LINE = /^(checks?|review|ux|screenshots?)\s*:/i;
 
 /** The notes' EVIDENCE records, each with the capitalised evidence lines `noteRecords` split off it. */
 function evidenceRecords(notes: string | null): string[] {
@@ -58,11 +61,11 @@ export function parseEvidence(notes: string | null): ParsedEvidence | null {
   const records = evidenceRecords(notes);
   const record = records[records.length - 1];
   if (record === undefined) return null;
-  const parsed: ParsedEvidence = { checks: [], review: null, screenshots: [], screenshotsNone: null };
+  const parsed: ParsedEvidence = { checks: [], review: null, ux: null, screenshots: [], screenshotsNone: null };
   // The first line is the record's own heading.
   for (const rawLine of record.split("\n").slice(1)) {
     const line = rawLine.replace(/^[\s>*•-]+/, "").replace(/\*\*/g, "").trim();
-    const labelled = /^(checks?|review|screenshots?)\s*:\s*(.*)$/i.exec(line);
+    const labelled = /^(checks?|review|ux|screenshots?)\s*:\s*(.*)$/i.exec(line);
     if (labelled === null) continue;
     const label = (labelled[1] ?? "").toLowerCase();
     const value = (labelled[2] ?? "").trim();
@@ -71,6 +74,8 @@ export function parseEvidence(notes: string | null): ParsedEvidence | null {
       parsed.checks.push({ command, result });
     } else if (label === "review") {
       if (value !== "") parsed.review = value;
+    } else if (label === "ux") {
+      if (value !== "") parsed.ux = value;
     } else {
       const [first, rest] = splitAtSeparator(value);
       // `screenshot: none` is the same as `screenshots: none`; a file is never called that.
@@ -91,7 +96,7 @@ export function judgeEvidence(
   options: { investigation: boolean; existingFiles: ReadonlySet<string> },
 ): JudgedEvidence {
   if (parsed === null) {
-    return { checks: [], review: null, screenshots: [], screenshotsNone: null, missing: ["an EVIDENCE record"], complete: false };
+    return { checks: [], review: null, ux: null, screenshots: [], screenshotsNone: null, missing: ["an EVIDENCE record"], complete: false };
   }
   const checks = parsed.checks.filter((check) => check.command !== "" && check.result !== "");
   const screenshots = parsed.screenshots.map((shot) => ({
@@ -105,6 +110,9 @@ export function judgeEvidence(
     if (screenshots.length === 0) {
       if (parsed.screenshotsNone === null) missing.push("screenshots (or screenshots: none with a reason)");
       else if (parsed.screenshotsNone === "") missing.push("a reason after screenshots: none");
+    } else if (parsed.ux === null) {
+      // Screenshots are not proof until someone looked at them with the user's eyes (TR-060).
+      missing.push("the visual check (ux:)");
     }
     for (const shot of screenshots) {
       // The caption is what tells the reader what the image shows (TR-055).
@@ -116,6 +124,7 @@ export function judgeEvidence(
   return {
     checks,
     review: parsed.review,
+    ux: parsed.ux,
     screenshots,
     screenshotsNone: parsed.screenshotsNone === "" ? null : parsed.screenshotsNone,
     missing,

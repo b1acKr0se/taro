@@ -147,7 +147,7 @@ describe("cardNowLine", () => {
   });
 
   it("leads a delivery with its summary, readiness and evidence under it", () => {
-    const evidence = { checks: [{ command: "npm test", result: "ok" }], review: "self", screenshots: [], screenshotsNone: "no visible change", missing: [], complete: true };
+    const evidence = { checks: [{ command: "npm test", result: "ok" }], review: "self", ux: null, screenshots: [], screenshotsNone: "no visible change", missing: [], complete: true };
     expect(cardNowLine(card({ status: "Awaiting acceptance", column: "needs-you", evidence, delivered: "Notes sync offline." }), NOW)).toMatchObject({
       headline: "Notes sync offline.",
       detail: "Ready to accept · 1 check · review · no screenshots: no visible change",
@@ -156,7 +156,7 @@ describe("cardNowLine", () => {
   });
 
   it("puts the whole evidence under Ready to accept", () => {
-    const evidence = { checks: [{ command: "npm test", result: "ok" }], review: "self", screenshots: [{ file: "a.png", caption: "", present: true, path: "/tmp/a.png" }], screenshotsNone: null, missing: [], complete: true };
+    const evidence = { checks: [{ command: "npm test", result: "ok" }], review: "self", ux: null, screenshots: [{ file: "a.png", caption: "", present: true, path: "/tmp/a.png" }], screenshotsNone: null, missing: [], complete: true };
     expect(cardNowLine(card({ status: "Awaiting acceptance", column: "needs-you", evidence }), NOW)).toMatchObject({
       kind: "call",
       action: "Request changes",
@@ -166,7 +166,7 @@ describe("cardNowLine", () => {
   });
 
   it("says a delivery with incomplete evidence is not ready, naming what is missing", () => {
-    const evidence = { checks: [], review: null, screenshots: [], screenshotsNone: null, missing: ["checks", "review"], complete: false };
+    const evidence = { checks: [], review: null, ux: null, screenshots: [], screenshotsNone: null, missing: ["checks", "review"], complete: false };
     expect(cardNowLine(card({ status: "Awaiting acceptance", column: "needs-you", evidence }), NOW)).toMatchObject({ headline: "Not ready to accept", detail: "Evidence missing: checks, review", action: "Review" });
   });
 

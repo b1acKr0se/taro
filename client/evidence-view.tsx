@@ -66,6 +66,11 @@ export function EvidenceBlock({
               Review: {evidence.review}
             </Text>
           )}
+          {evidence.ux === null ? null : (
+            <Text style={text}>
+              Visual check: {evidence.ux}
+            </Text>
+          )}
         </>
       )}
       {evidence.screenshots.length === 0 && evidence.screenshotsNone !== null ? (

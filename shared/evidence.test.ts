@@ -16,7 +16,7 @@ describe("parseEvidence and judgeEvidence", () => {
 
   it("completes a change with a check, a review and an existing screenshot", () => {
     const judged = judge(
-      record("check: npm test — 37 files, 360 passed", "review: one independent round (Sonnet) — 1 blocker, fixed", "screenshot: board-phone.png — the board on a phone"),
+      record("check: npm test — 37 files, 360 passed", "review: one independent round (Sonnet) — 1 blocker, fixed", "ux: own pass fixed 2; reviewer — nothing open", "screenshot: board-phone.png — the board on a phone"),
       change(["board-phone.png"]),
     );
     expect(judged).toEqual({
@@ -24,6 +24,7 @@ describe("parseEvidence and judgeEvidence", () => {
       review: "one independent round (Sonnet) — 1 blocker, fixed",
       screenshots: [{ file: "board-phone.png", caption: "the board on a phone", present: true }],
       screenshotsNone: null,
+      ux: "own pass fixed 2; reviewer — nothing open",
       missing: [],
       complete: true,
     });
@@ -64,24 +65,40 @@ describe("parseEvidence and judgeEvidence", () => {
     expect(judge(record("review: self"), investigation).missing).toEqual(["a check with its result"]);
   });
 
+  it("asks for the visual check whenever screenshots are listed (TR-060)", () => {
+    const shot = "screenshot: a.png — the list on a phone";
+    expect(judge(record("check: npm test — ok", "review: self", shot), change(["a.png"])).missing).toEqual(["the visual check (ux:)"]);
+    expect(judge(record("check: npm test — ok", "review: self", "ux:", shot), change(["a.png"])).missing).toEqual(["the visual check (ux:)"]);
+    // In capitals and bulleted, it still belongs to the record.
+    const judged = judge(record("check: npm test — ok", "review: self", "UX: reviewer — Submit was half-hidden, fixed", shot), change(["a.png"]));
+    expect(judged.ux).toBe("reviewer — Submit was half-hidden, fixed");
+    expect(judged.complete).toBe(true);
+    expect(judge(record("check: npm test — ok", "review: self", "- **ux:** nothing open", shot), change(["a.png"])).complete).toBe(true);
+  });
+
+  it("does not ask for the visual check without screenshots or for an investigation", () => {
+    expect(judge(record("check: npm test — ok", "review: self", "screenshots: none — no visible change")).complete).toBe(true);
+    expect(judge(record("check: grep -rn x src — 2 hits", "screenshot: a.png — c"), { investigation: true, existingFiles: new Set(["a.png"]) }).complete).toBe(true);
+  });
+
   it("asks for a caption on every screenshot, with or without a separator (TR-055)", () => {
     for (const line of ["screenshot: a.png", "screenshot: a.png — ", "screenshot: a.png -"]) {
-      const judged = judge(record("check: npm test — ok", "review: self", line), change(["a.png"]));
+      const judged = judge(record("check: npm test — ok", "review: self", "ux: nothing open", line), change(["a.png"]));
       expect(judged.complete).toBe(false);
       expect(judged.missing).toEqual(["a caption for screenshot a.png"]);
     }
-    expect(judge(record("check: npm test — ok", "review: self", "screenshot: b.png"), change([])).missing).toEqual(["a caption for screenshot b.png", "screenshot file b.png"]);
+    expect(judge(record("check: npm test — ok", "review: self", "ux: own pass fixed 2; reviewer — nothing open", "screenshot: b.png"), change([])).missing).toEqual(["a caption for screenshot b.png", "screenshot file b.png"]);
   });
 
   it("names a missing screenshot file, and requires every listed one", () => {
-    const notes = record("check: npm test — ok", "review: self", "screenshot: a.png — one", "screenshot: b.png — two");
+    const notes = record("check: npm test — ok", "review: self", "ux: own pass fixed 2; reviewer — nothing open", "screenshot: a.png — one", "screenshot: b.png — two");
     expect(judge(notes, change(["a.png"])).missing).toEqual(["screenshot file b.png"]);
     expect(judge(notes, change(["a.png", "b.png"])).complete).toBe(true);
   });
 
   it("rejects a file name with a folder or `..`", () => {
     for (const file of ["sub/a.png", "..\\a.png", "../a.png", "a..png"]) {
-      const judged = judge(record("check: x — ok", "review: self", `screenshot: ${file} — c`), change([file, "a.png"]));
+      const judged = judge(record("check: x — ok", "review: self", "ux: own pass fixed 2; reviewer — nothing open", `screenshot: ${file} — c`), change([file, "a.png"]));
       expect(judged.complete).toBe(false);
       expect(judged.screenshots[0]?.present).toBe(false);
       expect(judged.missing[0]).toContain("plain file name");
@@ -98,7 +115,7 @@ describe("parseEvidence and judgeEvidence", () => {
   });
 
   it("holds a listed screenshot to its file even beside `none`", () => {
-    const notes = record("check: x — ok", "review: self", "screenshots: none — headless", "screenshot: a.png — c");
+    const notes = record("check: x — ok", "review: self", "ux: own pass fixed 2; reviewer — nothing open", "screenshots: none — headless", "screenshot: a.png — c");
     expect(judge(notes).missing).toEqual(["screenshot file a.png"]);
     expect(judge(notes, change(["a.png"])).complete).toBe(true);
   });
@@ -125,9 +142,9 @@ describe("parseEvidence and judgeEvidence", () => {
 
 describe("evidenceSummary", () => {
   it("counts checks and screenshots, singular and plural", () => {
-    const one = judge(record("check: npm test — ok", "review: clean", "screenshot: a.png — wide"), change(["a.png"]));
+    const one = judge(record("check: npm test — ok", "review: clean", "ux: own pass fixed 2; reviewer — nothing open", "screenshot: a.png — wide"), change(["a.png"]));
     expect(evidenceSummary(one)).toBe("1 check · review · 1 screenshot");
-    const two = judge(record("check: npm test — ok", "check: npm run typecheck — clean", "review: clean", "screenshot: a.png — wide", "screenshot: b.png — phone"), change(["a.png", "b.png"]));
+    const two = judge(record("check: npm test — ok", "check: npm run typecheck — clean", "review: clean", "ux: own pass fixed 2; reviewer — nothing open", "screenshot: a.png — wide", "screenshot: b.png — phone"), change(["a.png", "b.png"]));
     expect(evidenceSummary(two)).toBe("2 checks · review · 2 screenshots");
   });
 

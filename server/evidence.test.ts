@@ -16,6 +16,7 @@ const complete = [
   "EVIDENCE 2026-10-13T11:00Z — before FINAL",
   "check: npm test — 3 passed",
   "review: self-review — clean",
+  "ux: own pass — nothing a user would reject",
   "screenshot: list-phone.png — the list on a phone",
 ].join("\n");
 
