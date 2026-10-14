@@ -22,6 +22,7 @@ export function IconButton({
   tone = "default",
   disabled = false,
   showLabel = false,
+  grow = false,
 }: {
   icon: string;
   label: string;
@@ -31,6 +32,8 @@ export function IconButton({
   disabled?: boolean;
   /** Draws the label beside the icon; otherwise it is only the accessibility label. */
   showLabel?: boolean;
+  /** Takes a share of its row's spare width, its content centred: one of a pair that wraps to equal full-width rows. */
+  grow?: boolean;
 }) {
   const colors = theme.colors;
   const color =
@@ -40,6 +43,8 @@ export function IconButton({
       button: {
         flexDirection: "row" as const,
         alignItems: "center" as const,
+        justifyContent: "center" as const,
+        flexGrow: grow ? 1 : 0,
         gap: 6,
         paddingHorizontal: showLabel ? 10 : 7,
         paddingVertical: 6,
@@ -53,7 +58,7 @@ export function IconButton({
       },
       label: { color, fontSize: FONT_SIZE.small, fontWeight: "500" as const, flexShrink: 1 },
     }),
-    [colors, tone, disabled, showLabel, color],
+    [colors, tone, disabled, showLabel, grow, color],
   );
   return (
     <Pressable
@@ -67,6 +72,37 @@ export function IconButton({
       <Icon name={icon} size={14} color={color} />
       {showLabel ? <Text style={styles.label}>{label}</Text> : null}
     </Pressable>
+  );
+}
+
+/** The widest the acceptance pair grows, so on a wide card it stays a pair of buttons rather than a bar. */
+const ACCEPTANCE_PAIR_MAX_WIDTH = 320;
+
+/**
+ * Accept and Request changes as one matched pair (TR-048), wherever a delivery waits for the user: the
+ * same button twice, Accept filled as the primary and Request changes outlined as the secondary. Side
+ * by side, sharing the row; where the card is too narrow for both, each takes a full row of its own.
+ * Accept is left out while the evidence is incomplete.
+ */
+export function AcceptancePair({
+  theme,
+  busy,
+  requestLabel,
+  onAccept,
+  onRequestChanges,
+}: {
+  theme: PluginTheme;
+  busy: boolean;
+  /** "Request changes…" where the field opens here; "Request changes" where it opens the ticket. */
+  requestLabel: string;
+  onAccept: (() => void) | null;
+  onRequestChanges: () => void;
+}) {
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, width: "100%", maxWidth: ACCEPTANCE_PAIR_MAX_WIDTH }}>
+      {onAccept === null ? null : <IconButton icon="Check" label="Accept" showLabel grow tone="accent" theme={theme} disabled={busy} onPress={onAccept} />}
+      <IconButton icon="MessageSquare" label={requestLabel} showLabel grow theme={theme} disabled={busy} onPress={onRequestChanges} />
+    </View>
   );
 }
 

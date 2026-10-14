@@ -50,17 +50,52 @@ function firstLine(value: unknown): string | null {
 }
 
 /**
- * The delivery in a line: the FINAL summary's first sentence, without its record header or Markdown
- * markers. Null when the owner wrote no summary.
+ * The delivery in a line: the FINAL summary's first sentence as plain text (TR-048), without its
+ * record header, HTML, Markdown or code markup. Null when the owner wrote no summary.
  */
 export function deliveredLine(finalSummary: string | null): string | null {
   if (finalSummary === null) return null;
   const line = finalSummaryBody(finalSummary)
+    // A fenced block's fences go; a line made only of markup (an HTML block, a rule) reads empty and is skipped.
     .split("\n")
-    .map((part) => part.replace(/^\s*(?:#+|[-*+]|\d+[.)])\s+/, "").replace(/\*\*|__|`/g, "").trim())
-    .find((part) => part !== "" && !/^-{3,}$/.test(part));
+    .filter((part) => !/^\s*(?:```|~~~)/.test(part) && !/^\s*(?:[-*_=]\s*){3,}$/.test(part))
+    .map((part) => plainText(part.replace(/^\s*(?:>\s*)*(?:#+|[-*+]|\d+[.)])\s+/, "").replace(/^\s*>\s*/, "")))
+    .find((part) => part !== "");
   if (line === undefined) return null;
   // A sentence ends at a full stop followed by a space; "v1.2" or "e.g. x" stay whole enough.
   const sentence = /^(.+?[.!?])\s+[A-Z(]/.exec(line)?.[1] ?? line;
   return sentence.length > DETAIL_CHARACTERS ? `${sentence.slice(0, DETAIL_CHARACTERS - 1)}…` : sentence;
+}
+
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+
+/**
+ * One line of Markdown as the words a reader sees: HTML tags dropped, an image by its alt text, a link
+ * by its text, emphasis, strike-through and code marks gone, entities decoded, brackets left empty by
+ * the stripping removed, whitespace collapsed.
+ */
+export function plainText(line: string): string {
+  return (
+    line
+      .replace(/<!--.*?(?:-->|$)/g, " ")
+      .replace(/<\/?[A-Za-z][^>]*>/g, " ")
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      .replace(/\*\*|__|~~|`+/g, "")
+      // Single emphasis only where it wraps words, so "5 * 3" and "file_name" keep theirs.
+      .replace(/(^|[\s(])[*_](?=\S)([^*_]*?\S)[*_](?=[\s).,;:!?]|$)/g, "$1$2")
+      .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole: string, name: string) => entity(whole, name))
+      .replace(/\s+/g, " ")
+      .replace(/\s*\(\s*\)|\s*\[\s*\]/g, "")
+      .replace(/\s+([.,;:!?])/g, "$1")
+      .trim()
+  );
+}
+
+function entity(whole: string, name: string): string {
+  const lower = name.toLowerCase();
+  if (!lower.startsWith("#")) return ENTITIES[lower] ?? whole;
+  const code = lower.startsWith("#x") ? Number.parseInt(lower.slice(2), 16) : Number.parseInt(lower.slice(1), 10);
+  // Past Unicode's last code point there is no character; the text stays as written.
+  return code <= 0x10ffff ? String.fromCodePoint(code) : whole;
 }

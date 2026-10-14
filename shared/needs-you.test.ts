@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deliveredLine, permissionAsk } from "./needs-you";
+import { deliveredLine, permissionAsk, plainText } from "./needs-you";
 
 describe("permissionAsk", () => {
   it("names a tool by its title and the command it runs", () => {
@@ -62,5 +62,61 @@ describe("deliveredLine", () => {
 
   it("keeps a sentence whole when no capital follows the full stop", () => {
     expect(deliveredLine("Bumped to v1.2 and e.g. kept the API")).toBe("Bumped to v1.2 and e.g. kept the API");
+  });
+});
+
+describe("deliveredLine as plain text (TR-048)", () => {
+  it("drops HTML the summary quotes, and the brackets it leaves empty", () => {
+    expect(
+      deliveredLine(
+        'FINAL 2026-10-14T06:22Z — The README opens with the logo, centred at 120 px above the title (<p align="center"><img src="assets/logo.svg" width="120" alt="Logo"></p>). Revision 29ab312.',
+      ),
+    ).toBe("The README opens with the logo, centred at 120 px above the title.");
+  });
+
+  it("skips a first line that is only markup", () => {
+    expect(deliveredLine('<p align="center">\n  <img src="assets/logo.svg" width="120">\n</p>\n\nThe logo sits on top.')).toBe("The logo sits on top.");
+    expect(deliveredLine("```ts\nconst x = 1;\n```\nShipped the parser.")).toBe("const x = 1;");
+    expect(deliveredLine("***\n> **Delivered** the export")).toBe("Delivered the export");
+  });
+
+  it("is null when nothing but markup was written", () => {
+    expect(deliveredLine("<br>\n<!-- note -->\n---")).toBeNull();
+  });
+
+  it("cuts the plain text, not the markup, to its limit", () => {
+    const line = deliveredLine(`<b>${"word ".repeat(80)}</b>`);
+    expect(line).toHaveLength(240);
+    expect(line?.endsWith("…")).toBe(true);
+    expect(line).not.toContain("<b>");
+  });
+});
+
+describe("plainText", () => {
+  it("reads links by their text and images by their alt text", () => {
+    expect(plainText("See [the guide](https://example.com/guide) and ![a chart](chart.png)")).toBe("See the guide and a chart");
+    expect(plainText("Logo: ![](logo.svg) done")).toBe("Logo: done");
+  });
+
+  it("drops emphasis, strike-through and code marks but keeps the words", () => {
+    expect(plainText("**Bold**, __strong__, *soft*, _quiet_, ~~gone~~ and `npm test` or ``a`b``")).toBe("Bold, strong, soft, quiet, gone and npm test or ab");
+  });
+
+  it("leaves a lone asterisk or underscore inside words alone", () => {
+    expect(plainText("5 * 3 in file_name and snake_case_name")).toBe("5 * 3 in file_name and snake_case_name");
+  });
+
+  it("drops tags and comments, decodes entities, and collapses whitespace", () => {
+    expect(plainText('A <span class="x">tag</span>,<br/>  a <!-- note --> comment &amp; &lt;p&gt; &#169; &#x2014; &bogus;')).toBe("A tag, a comment & <p> © — &bogus;");
+    expect(plainText("an out-of-range &#99999999; stays")).toBe("an out-of-range &#99999999; stays");
+  });
+
+  it("keeps brackets that hold something, and a sentence's closing stop", () => {
+    expect(plainText("Revision (29ab312) [main] ( ) [ ] .")).toBe("Revision (29ab312) [main].");
+  });
+
+  it("is empty for empty input", () => {
+    expect(plainText("")).toBe("");
+    expect(plainText("   ")).toBe("");
   });
 });

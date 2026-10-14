@@ -21,7 +21,7 @@ import { useRevealFocused } from "./keyboard";
 import { Markdown } from "./markdown";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
-import { IconButton } from "./ui";
+import { AcceptancePair, IconButton } from "./ui";
 
 export function AcceptanceCard({ card, project, theme, compact, onChanged }: { card: Card; project: string; theme: PluginTheme; compact: boolean; onChanged: () => void }) {
   const toast = useToast();
@@ -119,9 +119,6 @@ export function AcceptanceCard({ card, project, theme, compact, onChanged }: { c
         />
       ) : null}
       <View ref={foot} collapsable={false} style={styles.foot}>
-        {ready && !writing ? (
-          <IconButton icon="Check" label="Accept" showLabel tone="accent" theme={theme} disabled={busy} onPress={() => void run(() => accept({ project, ticket: card.id }), `Accepted ${card.id}.`)} />
-        ) : null}
         {writing ? (
           <>
             <IconButton
@@ -142,7 +139,13 @@ export function AcceptanceCard({ card, project, theme, compact, onChanged }: { c
             <IconButton icon="X" label="Cancel" showLabel theme={theme} disabled={busy} onPress={() => setWriting(false)} />
           </>
         ) : (
-          <IconButton icon="MessageSquare" label="Request changes…" showLabel theme={theme} disabled={busy} onPress={() => setWriting(true)} />
+          <AcceptancePair
+            theme={theme}
+            busy={busy}
+            requestLabel="Request changes…"
+            onAccept={ready ? () => void run(() => accept({ project, ticket: card.id }), `Accepted ${card.id}.`) : null}
+            onRequestChanges={() => setWriting(true)}
+          />
         )}
       </View>
     </View>

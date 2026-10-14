@@ -26,6 +26,10 @@ EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
   `client/attachment-sources.ts`. Look a module up when it is used, never at module scope. If the
   phone stops offering Add image, Paste image or Upload file after a Paseo update, or refuses every
   large photo as one that "could not be made smaller", a module was renamed or reshaped there.
+- The image viewer keeps its top bar below the macOS desktop app's traffic lights (TR-048) by reading
+  `window.paseoDesktop`, the undocumented object Paseo's desktop shell injects (`windowChromeMode`,
+  `platform`, `window.getCurrentWindow()` for full screen): `client/window-chrome.ts`. If the ✕ sits
+  under the window controls again after a Paseo update, that object was renamed or reshaped.
 - Kept view state (the screen's view, drafts, the timeline cache) lives on `globalThis` slots
   (`client/kept.ts`): Paseo's app unloads every plugin when it disconnects and evaluates the bundles
   again on reconnect. Change a kept field's type and it starts over; version the slot.

@@ -4,7 +4,7 @@
  * own line, all in one column beside the icon), children folded to one line, and one muted footer
  * (complexity, context, subagents, PR, and Compact when it applies). An ask is in the asker's words
  * (TR-045): a question with its options as chips that answer at once, what a permission asks to do, a
- * delivery's summary with Accept beside Request changes. Once finished: what it was and what it cost.
+ * delivery's summary with Accept and Request changes as one pair. Once finished: what it was and what it cost.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
@@ -20,7 +20,7 @@ import { SPACE } from "./spacing";
 import { OptionChips } from "./option-chips";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
-import { IconButton } from "./ui";
+import { AcceptancePair, IconButton } from "./ui";
 import { useNow } from "./use-now";
 import { statusStateLook, toneColor } from "./visual-meta";
 
@@ -214,11 +214,19 @@ export function TicketCard({
               <OptionChips decision={line.call.decision} theme={theme} onOpen={onOpen} onAnswered={onChanged} />
             </View>
           ) : null}
-          {line.kind === "call" ? (
+          {line.kind === "call" && line.call.kind === "acceptance" && line.call.ready ? (
+            // Request changes opens the ticket, where its owner's chat holds the field to write them in.
+            <View style={{ marginTop: SPACE.xs }}>
+              <AcceptancePair
+                theme={theme}
+                busy={busy}
+                requestLabel="Request changes"
+                onAccept={() => void run(() => accept({ project, ticket: card.id }), `Accepted ${card.id}.`)}
+                onRequestChanges={onOpen}
+              />
+            </View>
+          ) : line.kind === "call" ? (
             <View style={styles.actions}>
-              {line.call.kind === "acceptance" && line.call.ready ? (
-                <IconButton icon="Check" label="Accept" showLabel tone="accent" theme={theme} disabled={busy} onPress={() => void run(() => accept({ project, ticket: card.id }), `Accepted ${card.id}.`)} />
-              ) : null}
               <Pressable accessibilityRole="button" accessibilityLabel={`${line.action}: ${line.headline}`} style={styles.action} onPress={onOpen}>
                 <Text style={styles.actionText}>{line.action}</Text>
                 <Icon name="ArrowRight" size={12} color={colors.accent} />

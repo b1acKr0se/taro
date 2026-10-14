@@ -1,7 +1,8 @@
 /**
  * An image in a chat (and, from TR-021.02, in a ticket's evidence): a thumbnail that opens full
  * size, in a gallery of the images beside it that zooms and pans (TR-033; the arithmetic is in
- * `./zoom`; the top bar, the safe area and smooth gestures are TR-042). The client cannot read the
+ * `./zoom`; the top bar, the safe area and smooth gestures are TR-042; clearing the macOS desktop
+ * app's window controls is TR-048). The client cannot read the
  * daemon's disk, so a `file://` URI or an absolute path is read through `taro.image.read`, which serves only the directories Taro's images live in; an `https://`
  * image loads directly.
  */
@@ -9,12 +10,13 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Image, Modal, PanResponder, Platform, Pressable, SafeAreaView, StatusBar, Text, View, type GestureResponderEvent } from "react-native";
+import { Animated, Image, Modal, PanResponder, Platform, Pressable, SafeAreaView, StatusBar, Text, View, type GestureResponderEvent, type ViewStyle } from "react-native";
 
 import { readImageRpc } from "../shared/contracts";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE } from "./type-scale";
+import { isMacDesktopShell, windowControlsInset } from "./window-chrome";
 import {
   DOUBLE_TAP_MS,
   FIT,
@@ -193,6 +195,68 @@ interface WebDocument {
   addEventListener(type: string, listener: (event: WebKeyEvent) => void): void;
   removeEventListener(type: string, listener: (event: WebKeyEvent) => void): void;
 }
+
+/** What Paseo's desktop shell offers about its window, as its own app calls it; each part may be missing. */
+interface DesktopWindow {
+  isFullscreen?: () => Promise<boolean>;
+  onResized?: (listener: () => void) => Promise<() => void>;
+}
+
+function desktopWindowOf(shell: unknown): DesktopWindow | null {
+  const open = (shell as { window?: { getCurrentWindow?: unknown } } | null)?.window?.getCurrentWindow;
+  if (typeof open !== "function") return null;
+  try {
+    const found: unknown = open();
+    return typeof found === "object" && found !== null ? (found as DesktopWindow) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The strip the macOS desktop app keeps for its traffic lights (`./window-chrome`), zero on the web, on a
+ * phone and in full screen. The shell is looked up when the viewer opens, as Paseo's app injects it.
+ */
+function useWindowControlsInset(): number {
+  const web = Platform.OS === "web";
+  const shell: unknown = web ? (globalThis as { paseoDesktop?: unknown }).paseoDesktop : undefined;
+  const userAgent = web ? ((globalThis as { navigator?: { userAgent?: string } }).navigator?.userAgent ?? "") : "";
+  const mac = isMacDesktopShell(shell, userAgent);
+  const [fullScreen, setFullScreen] = useState(false);
+  useEffect(() => {
+    if (!mac) return;
+    const window = desktopWindowOf((globalThis as { paseoDesktop?: unknown }).paseoDesktop);
+    if (window === null) return;
+    let live = true;
+    let unsubscribe: (() => void) | undefined;
+    const read = () => {
+      void window
+        .isFullscreen?.()
+        .then((value) => {
+          if (live) setFullScreen(value === true);
+        })
+        .catch(() => undefined);
+    };
+    read();
+    // Entering or leaving full screen resizes the window; the traffic lights hide and return with it.
+    void window
+      .onResized?.(read)
+      .then((stop) => {
+        if (live) unsubscribe = stop;
+        else stop();
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+      unsubscribe?.();
+    };
+  }, [mac]);
+  return windowControlsInset(shell, userAgent, fullScreen);
+}
+
+/** Electron's title-bar dragging, as Paseo's own desktop screens mark it; React Native's style types do not know the property. */
+const WINDOW_DRAG = { WebkitAppRegion: "drag" } as unknown as ViewStyle;
+const WINDOW_NO_DRAG = { WebkitAppRegion: "no-drag" } as unknown as ViewStyle;
 
 /** A wheel delta in lines (Firefox) as pixels, so every browser zooms at the same rate. */
 const WHEEL_LINE = 16;
@@ -412,6 +476,8 @@ function GalleryPage({
   // Android draws the modal under its status bar (statusBarTranslucent); iOS pads in SafeAreaView; the web needs neither.
   const statusBarHeight = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
   const SafeArea = Platform.OS === "ios" ? SafeAreaView : View;
+  // The macOS desktop app's traffic lights sit over the window's top-left corner: the bar goes below their strip, which drags the window as the title bar would.
+  const windowControls = useWindowControlsInset();
   const control = { minWidth: 44, height: 44, alignItems: "center" as const, justifyContent: "center" as const, borderRadius: 22 };
   const controlText = { color: VIEWER.text, fontSize: FONT_SIZE.body, fontWeight: "600" as const };
 
@@ -448,7 +514,11 @@ function GalleryPage({
           ))}
         </View>
         <SafeArea pointerEvents="box-none">
-          <View pointerEvents="box-none" style={{ marginTop: statusBarHeight, height: BAR_HEIGHT, flexDirection: "row", alignItems: "center", paddingHorizontal: SPACE.xs }}>
+          {windowControls === 0 ? null : <View style={[{ height: windowControls }, WINDOW_DRAG]} />}
+          <View
+            pointerEvents="box-none"
+            style={[{ marginTop: statusBarHeight, height: BAR_HEIGHT, flexDirection: "row", alignItems: "center", paddingHorizontal: SPACE.xs }, windowControls === 0 ? null : WINDOW_NO_DRAG]}
+          >
             <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} hitSlop={SPACE.xs} style={control}>
               <Text style={{ color: VIEWER.text, fontSize: FONT_SIZE.subtitle + 4 }}>✕</Text>
             </Pressable>
