@@ -607,7 +607,7 @@ export class Actions {
     }
 
     const condition = managerCondition(manager === null ? null : { status: manager.status, updatedAt: manager.updatedAt, stalled: managerState?.stalled ?? false }, now);
-    const due = restartDue(watch, count, condition, now, lastTurnEnded === null ? null : Date.parse(lastTurnEnded));
+    const due = restartDue(watch, count, condition, now);
     if (due.length > 0) await this.restartForQueue(paseo, project, manager, due, count, condition, now);
     return alerted.length > 0 || queuedAlerts(watch, now).length !== alertsBefore || due.length > 0;
   }

@@ -220,7 +220,10 @@ describe("the escalation ladder", () => {
 
   /** Minute checks from `from` to `to`, as the timer runs them. */
   async function minutes(from: number, to: number): Promise<void> {
-    for (let minute = from; minute <= to; minute += 1) await actions.checkQueues(paseo, at(minute));
+    for (let minute = from; minute <= to; minute += 1) {
+      vi.setSystemTime(at(minute));
+      await actions.checkQueues(paseo, at(minute));
+    }
   }
 
   it("raises the alert ten minutes after the wake-up and restarts the Manager at twenty, logging each step", async () => {
@@ -252,6 +255,7 @@ describe("the escalation ladder", () => {
     await minutes(0, 5);
     manager = { id: "manager", status: "running", updatedAt: iso(5), labels: {} };
     for (let minute = 6; minute <= 30; minute += 1) {
+      vi.setSystemTime(at(minute));
       manager.updatedAt = iso(minute);
       await actions.checkQueues(paseo, at(minute));
     }
@@ -289,18 +293,20 @@ describe("the escalation ladder", () => {
 
   it("does not restart once the user told the Manager something after the alert went up", async () => {
     await minutes(0, 12);
-    vi.setSystemTime(at(12));
     actions.userToldManager("demo");
     await minutes(13, 40);
     expect(restartManager).not.toHaveBeenCalled();
   });
 
-  it("does not restart once someone engaged the Manager in its own tab after the alert", async () => {
-    await minutes(0, 14);
+  it("still restarts a Manager that answered later wake-ups for a changed queue without dispatching", async () => {
+    await minutes(0, 12);
+    tickets = [...tickets, ticket("DM-4", "Backlog")];
+    await minutes(13, 14);
     managerState.lastTurnEndedAt = iso(14);
-    await minutes(15, 40);
-    expect(restartManager).not.toHaveBeenCalled();
-    expect(actions.queueAlerts("demo", at(40))).toHaveLength(1);
+    await minutes(15, 20);
+    expect(told_()).toEqual(["messages/queue-idle.md: DM-3", "messages/queue-idle.md: DM-3, DM-4"]);
+    expect(restartManager).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(vi.mocked(restartManager).mock.calls[0]![2]?.why ?? "{}")).toMatchObject({ tickets: "DM-3" });
   });
 
   it("does not restart while threads are near the limit", async () => {

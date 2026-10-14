@@ -299,11 +299,6 @@ describe("the escalation ladder", () => {
       expect(restartDue(after, count(), "idle", minutes(25))).toEqual([]);
     });
 
-    it("is stopped by a Manager turn that ended after the alert went up, not one before", () => {
-      expect(restartDue(woken(), count(), "idle", minutes(25), minutes(9))).toEqual(["TR-5"]);
-      expect(restartDue(woken(), count(), "idle", minutes(25), minutes(10))).toEqual([]);
-    });
-
     it("happens at most once an hour per project, and the alert then says so", () => {
       const watch = woken();
       markRestarted(watch, ["TR-5"], minutes(20), true);
