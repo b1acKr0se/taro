@@ -27,8 +27,10 @@ vi.mock("./board", () => ({
   ),
 }));
 
+let notifyIn: Record<string, boolean> = {};
+
 vi.mock("./projects", () => ({
-  readProjectConfig: vi.fn(async () => ({ managerAgentId: "agent-manager", managerWorkspaceId: "workspace-manager", notify: true })),
+  readProjectConfig: vi.fn(async (project: string) => ({ managerAgentId: "agent-manager", managerWorkspaceId: "workspace-manager", notify: notifyIn[project] ?? true })),
 }));
 
 const NOW = Date.parse("2026-01-01T12:00:00Z");
@@ -58,6 +60,7 @@ beforeEach(async () => {
   await writeFile(join(home, "push-tokens.json"), JSON.stringify({ subscriptions: [{ token: "ExponentPushToken[a]", expiresAt: "2026-02-01T00:00:00.000Z" }] }));
   await writeFile(join(home, "server-id"), "srv_test\n");
   boardAlerts = [];
+  notifyIn = {};
   pushed = [];
 });
 
@@ -95,5 +98,33 @@ describe("Notifier and board alerts", () => {
     expect(await taro.check(paseo, state, "notes-app", [])).toBe(0);
     expect(await taro.check(paseo, state, "notes-app", [queued(["NA-003"], 10)])).toBe(1);
     expect(pushed.map((message) => message.title)).toEqual(["Queued with a free slot in notes-app", "Queued with a free slot in notes-app"]);
+  });
+
+  it("announces threads running low once for the host, not once per project", async () => {
+    const taro = notifier();
+    await taro.check(paseo, state, "notes-app");
+    await taro.check(paseo, state, "shop");
+    boardAlerts = [{ id: "headroom", tickets: [], text: "The host is at 1900 of 2048 threads (93%)." }];
+    expect(await taro.check(paseo, state, "notes-app")).toBe(1);
+    expect(await taro.check(paseo, state, "shop")).toBe(0);
+    expect(pushed.map((message) => message.title)).toEqual(["Threads running low"]);
+    // Cleared and back: announced again, once.
+    boardAlerts = [];
+    await taro.check(paseo, state, "notes-app");
+    await taro.check(paseo, state, "shop");
+    boardAlerts = [{ id: "headroom", tickets: [], text: "The host is at 1900 of 2048 threads (93%)." }];
+    await taro.check(paseo, state, "shop");
+    await taro.check(paseo, state, "notes-app");
+    expect(pushed).toHaveLength(2);
+  });
+
+  it("lets a project with notifications switched off leave the host's alert to the others", async () => {
+    notifyIn = { "notes-app": false };
+    const taro = notifier();
+    await taro.check(paseo, state, "notes-app");
+    await taro.check(paseo, state, "shop");
+    boardAlerts = [{ id: "headroom", tickets: [], text: "The host is at 1900 of 2048 threads (93%)." }];
+    expect(await taro.check(paseo, state, "notes-app")).toBe(0);
+    expect(await taro.check(paseo, state, "shop")).toBe(1);
   });
 });

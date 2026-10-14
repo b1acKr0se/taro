@@ -88,15 +88,27 @@ function cardEntries(card: Card): NeedsYouEntry[] {
  * clears, so its next episode is announced. A tap opens the Manager, which can act on any of them.
  */
 function alertEntry(project: string, alert: BoardAlert, managerAgentId: string | null, managerWorkspaceId: string | null): NeedsYouEntry {
+  const key = `${WHILE_WAITING}alert:${alert.id}`;
   return {
-    key: `${WHILE_WAITING}alert:${alert.id}`,
-    // The project is named: a host-wide alert (threads) is on every project's board.
-    title: `${alertHeading(alert.id)} in ${project}`,
+    key,
+    // A project's alert names it; the host's (threads) is on every board and is announced once, unnamed.
+    title: isHostEntry(key) ? alertHeading(alert.id) : `${alertHeading(alert.id)} in ${project}`,
     body: clip(alert.text),
     agentId: managerAgentId,
     workspaceId: managerWorkspaceId,
   };
 }
+
+/** The alerts about the host, not a project: every project's board carries them. */
+const HOST_ALERT_IDS: readonly string[] = ["headroom"];
+
+/** An entry about the host, kept seen once for all projects (`HOST_SEEN`), so it is announced once. */
+export function isHostEntry(key: string): boolean {
+  return HOST_ALERT_IDS.some((id) => key === `${WHILE_WAITING}alert:${id}`);
+}
+
+/** Where host entries are kept seen; not a project name, which never starts with "*". */
+export const HOST_SEEN = "*host";
 
 /** Every entry of a project's board that waits on the user. */
 export function needsYouEntries(board: Board, managerWorkspaceId: string | null, managerAgentId: string | null = null): NeedsYouEntry[] {

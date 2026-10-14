@@ -169,7 +169,8 @@ describe("needsYouEntries", () => {
     ];
     const found = needsYouEntries({ ...board([]), alerts }, "workspace-manager", "agent-manager");
     expect(found.map((entry) => [entry.key, entry.title])).toEqual([
-      ["while-waiting:alert:headroom", "Threads running low in notes-app"],
+      // The host's alert is on every board and names no project.
+      ["while-waiting:alert:headroom", "Threads running low"],
       ["while-waiting:alert:manager-crashed", "Manager crashed in notes-app"],
       ["while-waiting:alert:tracker-protected", "Tracker protected in notes-app"],
       ["while-waiting:alert:queued-free-slot", "Queued with a free slot in notes-app"],

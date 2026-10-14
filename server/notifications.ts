@@ -13,7 +13,7 @@
 import { join } from "node:path";
 
 import type { FeedNotification } from "../shared/contracts";
-import { freshEntries, needsYouEntries, SeenEntriesSchema, someonePresent, type NeedsYouEntry, type SeenEntries } from "../shared/notifications";
+import { freshEntries, HOST_SEEN, isHostEntry, needsYouEntries, SeenEntriesSchema, someonePresent, type NeedsYouEntry, type SeenEntries } from "../shared/notifications";
 import { loadBoard } from "./board";
 import { paseoHome, statePath } from "./data-dir";
 import { readJsonIfPresent, readTextIfPresent, writeJsonAtomically } from "./files";
@@ -123,14 +123,24 @@ export class Notifier {
     });
   }
 
-  /** Announces the entries not seen before, and keeps them all as seen; switched off, only keeps them. */
+  /**
+   * Announces the entries not seen before, and keeps them all as seen; switched off, only keeps them.
+   * Host entries (threads running low) are kept seen once for every project, so they are announced once.
+   */
   async announce(project: string, entries: readonly NeedsYouEntry[], notify: boolean): Promise<number> {
     const fresh = await serialized("notified", async () => {
       const all = await this.readSeen();
-      const result = freshEntries(all[project] ?? null, entries, this.now());
-      all[project] = result.seen;
+      const own = freshEntries(all[project] ?? null, entries.filter((entry) => !isHostEntry(entry.key)), this.now());
+      all[project] = own.seen;
+      // Only a project that announces looks after the host's entries: one switched off must not swallow them for the rest.
+      if (!notify) {
+        await writeJsonAtomically(seenPath(), all);
+        return own.fresh;
+      }
+      const host = freshEntries(all[HOST_SEEN] ?? null, entries.filter((entry) => isHostEntry(entry.key)), this.now());
+      all[HOST_SEEN] = host.seen;
       await writeJsonAtomically(seenPath(), all);
-      return result.fresh;
+      return [...host.fresh, ...own.fresh];
     });
     // Switched off, entries are still taken as seen: switching on again announces nothing old.
     if (!notify || fresh.length === 0) return 0;
