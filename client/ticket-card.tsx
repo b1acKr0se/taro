@@ -95,7 +95,8 @@ export function TicketCard({
       muted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
       link: { color: colors.accent, fontSize: FONT_SIZE.caption },
       track: { width: 44, height: 3, borderRadius: 2, backgroundColor: colors.surface2, overflow: "hidden" as const },
-      childRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm, paddingLeft: SPACE.sm },
+      // Indented past the chevron, so the children start where the progress line beside it does.
+      childRow: { flexDirection: "row" as const, alignItems: "flex-start" as const, gap: SPACE.sm, paddingLeft: 12 + SPACE.sm },
       footer: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "center" as const, gap: SPACE.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: SPACE.sm },
       actionText: { color: colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
     }),
@@ -274,11 +275,14 @@ export function TicketCard({
           </Pressable>
           {childrenOpen
             ? card.children.map((child) => (
+                // The badge ends the row (shortened in a narrow column), so every id and title starts at one edge.
                 <View key={child.id} style={styles.childRow}>
-                  <PhaseBadge theme={theme} status={child.status} />
-                  <Text style={[styles.muted, { flex: 1 }]} numberOfLines={2}>
+                  <Text style={[styles.muted, { flex: 1, minWidth: 0 }]} numberOfLines={2}>
                     {child.id} · {child.title}
                   </Text>
+                  <View style={{ flexShrink: 0, maxWidth: "50%" }}>
+                    <PhaseBadge theme={theme} status={child.status} />
+                  </View>
                 </View>
               ))
             : null}

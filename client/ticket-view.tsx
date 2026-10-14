@@ -45,6 +45,11 @@ const SCREENSHOTS_SHOWN = 4;
 const STACK_BELOW_WIDTH = 380;
 /** The names' column where the summary sits beside them, so the summaries line up; "DESCRIPTION" fits. */
 const NAME_COLUMN = 104;
+/** The summary block's icon and label columns; "Needs you:" fits the label column. */
+const SUMMARY_ICON = 16;
+const SUMMARY_LABEL = 88;
+/** A child's status badge at the row's end shortens past this, so a phone keeps room for the title. */
+const CHILD_BADGE_MAX = 150;
 
 const SECTION_LOOK: Record<TicketSectionKey, { icon: string; name: string }> = {
   plan: { icon: "Map", name: "Plan" },
@@ -85,6 +90,7 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
       notesFrame: { borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: SPACE.md, backgroundColor: colors.surface1 },
       subheading: { color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "700" as const },
       planActions: { marginTop: SPACE.sm },
+      childBadge: { flexShrink: 0, maxWidth: CHILD_BADGE_MAX },
     }),
     [colors],
   );
@@ -146,11 +152,14 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
         return (
           <View style={{ gap: SPACE.sm }}>
             {data.children.map((child) => (
+              // The badge ends the row, so every id and title starts at one edge whatever its status's length.
               <View key={child.id} style={styles.line}>
-                <PhaseBadge theme={theme} status={child.status ?? "Unknown"} />
-                <Text style={styles.text}>
+                <Text style={[styles.text, { minWidth: 0 }]}>
                   <Text style={{ color: colors.foregroundMuted, fontWeight: "600" }}>{child.id}</Text> {child.title}
                 </Text>
+                <View style={styles.childBadge}>
+                  <PhaseBadge theme={theme} status={child.status ?? "Unknown"} />
+                </View>
               </View>
             ))}
           </View>
@@ -212,7 +221,7 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
   );
 }
 
-/** Status and labels, then Needs you, Goal and Result as labelled lines that wrap whole. */
+/** Status and labels, then Needs you, Goal and Result as rows of one grid: icon, label, value. */
 function SummaryBlock({
   theme,
   status,
@@ -234,10 +243,22 @@ function SummaryBlock({
 }) {
   const { colors } = theme;
   const wanted = summary.need !== "nothing";
-  const text = { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) };
-  const label = { color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body), fontWeight: "700" as const };
+  const text = { flex: 1, minWidth: 0, color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) };
+  const label = { width: SUMMARY_LABEL, flexShrink: 0, color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body), fontWeight: "700" as const };
   const line = { flexDirection: "row" as const, alignItems: "flex-start" as const, gap: SPACE.sm };
-  const iconBox = { height: lineHeightFor(FONT_SIZE.body), justifyContent: "center" as const };
+  const iconBox = { width: SUMMARY_ICON, height: lineHeightFor(FONT_SIZE.body), justifyContent: "center" as const, flexShrink: 0 };
+  // Every row is icon, label, value in three fixed columns, so the values and their wrapped lines start at one edge.
+  const row = (icon: string, iconColor: string, name: string, value: ReactNode, labelColor = colors.foregroundMuted) => (
+    <View style={line}>
+      <View style={iconBox}>
+        <Icon name={icon} size={15} color={iconColor} />
+      </View>
+      <Text style={[label, { color: labelColor }]} numberOfLines={1}>
+        {name}
+      </Text>
+      {value}
+    </View>
+  );
   return (
     <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface1, padding: SPACE.md, gap: SPACE.sm }}>
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: SPACE.sm }}>
@@ -246,34 +267,35 @@ function SummaryBlock({
           <Chip key={each} theme={theme} icon="Tag" text={each} color={colors.foregroundMuted} />
         ))}
       </View>
-      <View style={[line, { alignItems: "center", flexWrap: "wrap" }]}>
-        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm, flex: 1, minWidth: 180 }}>
-          <View style={iconBox}>
-            <Icon name={wanted ? "Hand" : "CircleCheck"} size={15} color={wanted ? colors.statusWarning : colors.foregroundMuted} />
-          </View>
-          <Text style={[text, { flex: 1, color: wanted ? colors.statusWarning : colors.foregroundMuted }]}>
-            <Text style={{ fontWeight: "700" }}>Needs you:</Text> {summary.needText}
-          </Text>
-        </View>
-        {approve === null ? null : <SummaryApprove decision={approve.decision} options={approve.options} presses={approve.presses} theme={theme} answeredFrom={answeredFrom} onAnswered={onAnswered} />}
-      </View>
-      <View style={line}>
-        <Text style={label}>Goal:</Text>
-        <Text style={[text, { flex: 1 }]}>
-          <MarkdownInline text={summary.goal} theme={theme} fontSize={FONT_SIZE.body} onOpenLink={onOpenLink} />
-        </Text>
-      </View>
-      {summary.result === null ? null : (
-        <View style={line}>
-          <Text style={label}>Result:</Text>
-          <View style={iconBox}>
-            <Icon name="Check" size={15} color={colors.statusSuccess} />
-          </View>
-          <Text style={[text, { flex: 1 }]}>
-            <MarkdownInline text={summary.result} theme={theme} fontSize={FONT_SIZE.body} onOpenLink={onOpenLink} />
-          </Text>
-        </View>
+      {row(
+        wanted ? "Hand" : "CircleCheck",
+        wanted ? colors.statusWarning : colors.foregroundMuted,
+        "Needs you:",
+        // Approve sits under the words it answers, in the value column.
+        <View style={{ flex: 1, minWidth: 0, alignItems: "flex-start", gap: SPACE.sm }}>
+          <Text style={[text, { flex: undefined, alignSelf: "stretch", color: wanted ? colors.statusWarning : colors.foregroundMuted }]}>{summary.needText}</Text>
+          {approve === null ? null : <SummaryApprove decision={approve.decision} options={approve.options} presses={approve.presses} theme={theme} answeredFrom={answeredFrom} onAnswered={onAnswered} />}
+        </View>,
+        wanted ? colors.statusWarning : colors.foregroundMuted,
       )}
+      {row(
+        "Star",
+        colors.foregroundMuted,
+        "Goal:",
+        <Text style={text}>
+          <MarkdownInline text={summary.goal} theme={theme} fontSize={FONT_SIZE.body} onOpenLink={onOpenLink} />
+        </Text>,
+      )}
+      {summary.result === null
+        ? null
+        : row(
+            "Check",
+            colors.statusSuccess,
+            "Result:",
+            <Text style={text}>
+              <MarkdownInline text={summary.result} theme={theme} fontSize={FONT_SIZE.body} onOpenLink={onOpenLink} />
+            </Text>,
+          )}
     </View>
   );
 }
