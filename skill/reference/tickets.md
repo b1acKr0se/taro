@@ -6,7 +6,7 @@ build shell code from user text. Never edit ticket files or commit them.
 
 ```bash
 taro ticket list --plain                      # or --json; filters: -s "In Progress", -l label, -p <parent>
-taro ticket view SH-012 --plain               # or --json; the last line is "Revision: <rev>"
+taro ticket view SH-012 --plain               # or --json; shows "Revision: <rev>"
 taro ticket search "login" --plain
 taro ticket create "Fix login redirect" -d "<two-part brief>" [-l investigation] [-p SH-010] [--dep SH-011]
 taro ticket edit SH-012 -s "Planning"
