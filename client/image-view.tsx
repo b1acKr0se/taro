@@ -43,6 +43,7 @@ import {
 } from "./zoom";
 
 const THUMBNAIL_HEIGHT = 160;
+const CAPTION_MIN_WIDTH = 120;
 
 type ImageSource = { kind: "local"; path: string } | { kind: "remote"; uri: string } | { kind: "none" };
 
@@ -159,7 +160,8 @@ export function ImageThumbnail({
     );
   if (!captioned || alt.trim() === "") return shown;
   return (
-    <View style={{ width: frame.width, maxWidth: "100%", gap: SPACE.xxs }}>
+    // A portrait shot is narrow: its caption gets room for a few words a line, the shot at its left.
+    <View style={{ width: Math.max(frame.width, CAPTION_MIN_WIDTH), maxWidth: "100%", gap: SPACE.xxs }}>
       {shown}
       <Text numberOfLines={2} style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption) }}>
         {alt}
