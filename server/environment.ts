@@ -15,15 +15,16 @@ import { projectPaths, projectsDirectory } from "./projects";
 import { backlogBinary } from "./tracker";
 
 /**
- * When the `backlog` in use is the copy Taro installed (TR-063), its folder and the daemon's Node
- * go first on the agent's PATH, so the agent runs `backlog` as the plugin does.
+ * When the `backlog` in use is the copy Taro installed (TR-063), its folder goes first on the agent's
+ * PATH, so the agent runs `backlog` as the plugin does; the daemon's Node goes last, only so that copy
+ * has a `node`: a project's own Node (nvm, Volta, asdf) keeps winning.
  */
 export function pathWithBacklog(backlog: string | null, basePath: string | undefined): Record<string, string> {
   if (backlog === null || dirname(backlog) !== taroBacklogDirectory()) return {};
-  const first = [taroBacklogDirectory(), nodeDirectory()];
-  // A resumed agent's PATH may hold them already: never twice.
-  const rest = (basePath ?? "").split(delimiter).filter((part) => part !== "" && !first.includes(part));
-  return { PATH: [...first, ...rest].join(delimiter) };
+  // A resumed agent's PATH may hold them already: never twice, and a Node folder already there keeps its place.
+  const rest = (basePath ?? "").split(delimiter).filter((part) => part !== "" && part !== taroBacklogDirectory());
+  const node = rest.includes(nodeDirectory()) ? [] : [nodeDirectory()];
+  return { PATH: [taroBacklogDirectory(), ...rest, ...node].join(delimiter) };
 }
 
 export async function taroEnvironment(project: string, trackerPath: string, basePath: string | undefined = process.env.PATH): Promise<Record<string, string>> {

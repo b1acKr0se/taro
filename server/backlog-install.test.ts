@@ -96,12 +96,25 @@ describe("the agents' PATH", () => {
     expect(pathWithBacklog("/usr/local/bin/backlog", "/usr/bin")).toEqual({});
   });
 
-  it("puts Taro's copy and Node first, once, before the rest", () => {
-    const first = pathWithBacklog(taroBacklogPath(), ["/opt/tools/bin", nodeDirectory(), "/bin"].join(delimiter)).PATH ?? "";
-    expect(first.split(delimiter)).toEqual([taroBacklogDirectory(), nodeDirectory(), "/opt/tools/bin", "/bin"]);
+  it("puts Taro's copy first and the daemon's Node last, once", () => {
+    const first = pathWithBacklog(taroBacklogPath(), ["/opt/tools/bin", "/bin"].join(delimiter)).PATH ?? "";
+    expect(first.split(delimiter)).toEqual([taroBacklogDirectory(), "/opt/tools/bin", "/bin", nodeDirectory()]);
     // A resumed agent arrives with that PATH already.
     expect(pathWithBacklog(taroBacklogPath(), first).PATH).toBe(first);
     expect(pathWithBacklog(taroBacklogPath(), undefined).PATH).toBe([taroBacklogDirectory(), nodeDirectory()].join(delimiter));
+  });
+
+  it("keeps a project's own Node ahead of the daemon's", () => {
+    const projectNode = "/home/user/.nvm/versions/node/v22.0.0/bin";
+    const path = (pathWithBacklog(taroBacklogPath(), [projectNode, "/bin"].join(delimiter)).PATH ?? "").split(delimiter);
+    expect(path.indexOf(projectNode)).toBeLessThan(path.indexOf(nodeDirectory()));
+    expect(path).toEqual([taroBacklogDirectory(), projectNode, "/bin", nodeDirectory()]);
+  });
+
+  it("leaves the daemon's Node where it already is", () => {
+    const projectNode = "/home/user/.volta/bin";
+    const path = pathWithBacklog(taroBacklogPath(), [projectNode, nodeDirectory(), "/bin"].join(delimiter)).PATH ?? "";
+    expect(path.split(delimiter)).toEqual([taroBacklogDirectory(), projectNode, nodeDirectory(), "/bin"]);
   });
 });
 
