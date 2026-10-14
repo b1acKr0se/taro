@@ -11,7 +11,7 @@
  * Runs under plain `node` type stripping too (the `taro` command): erasable TypeScript only, `.ts`
  * import extensions, Node builtins only.
  */
-import { mkdir, readdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -826,29 +826,53 @@ export async function convertTracker(trackerPath: string): Promise<ConversionRes
   const store = createTicketStore(trackerPath);
   await store.withLock(async () => {
     await assertConvertible(trackerPath);
-    const ticketsDirectory = join(trackerPath, "tickets");
-    await mkdir(ticketsDirectory);
-    for (const { ticket } of plan.tickets) {
-      await replaceFile(ticketsDirectory, `.${ticket.id}.${tempSuffix()}`, join(ticketsDirectory, `${ticket.id}.md`), serializeTicket(ticket));
+    try {
+      await writeConversion(trackerPath, plan);
+    } catch (error) {
+      throw await rolledBack(trackerPath, error);
     }
-    await replaceFile(join(trackerPath, ".taro"), `tracker.json.${tempSuffix()}`, join(trackerPath, "tracker.json"), `${JSON.stringify(plan.tracker)}\n`);
-    const gitignore = join(trackerPath, ".gitignore");
-    const existing = await readFile(gitignore, "utf8").catch(() => "");
-    await replaceFile(join(trackerPath, ".taro"), `gitignore.${tempSuffix()}`, gitignore, withGitignoreEntries(existing));
-    await git(trackerPath, ["rm", "-r", "-q", "backlog"]);
-    await git(trackerPath, ["add", "tickets", "tracker.json", ".gitignore"]);
-    await git(trackerPath, [
-      "-c",
-      "user.name=Taro",
-      "-c",
-      "user.email=taro@localhost",
-      "commit",
-      "--no-verify",
-      "-q",
-      "-m",
-      CONVERSION_COMMIT_MESSAGE,
-    ]);
   });
   const commit = (await git(trackerPath, ["rev-parse", "HEAD"])).trim();
   return { plan, commit };
+}
+
+/**
+ * A step failed after writing began (git's index lock held a moment, a signing setup that
+ * fails): the tree was clean before, so HEAD plus removing the new files puts it back exactly.
+ */
+async function rolledBack(trackerPath: string, error: unknown): Promise<ConversionRefused> {
+  const reason = error instanceof Error ? error.message.split("\n")[0] : String(error);
+  try {
+    await git(trackerPath, ["reset", "-q", "--hard", "HEAD"]);
+    await rm(join(trackerPath, "tickets"), { recursive: true, force: true });
+    await rm(join(trackerPath, "tracker.json"), { force: true });
+    return new ConversionRefused(`${reason} — the tracker was put back as it was; fix that and run taro convert again.`);
+  } catch {
+    return new ConversionRefused(`${reason} — and putting the tracker back failed; restore it with: git -C ${trackerPath} reset --hard && rm -rf -- ${join(trackerPath, "tickets")} ${join(trackerPath, "tracker.json")}`);
+  }
+}
+
+async function writeConversion(trackerPath: string, plan: ConversionPlan): Promise<void> {
+  const ticketsDirectory = join(trackerPath, "tickets");
+  await mkdir(ticketsDirectory);
+  for (const { ticket } of plan.tickets) {
+    await replaceFile(ticketsDirectory, `.${ticket.id}.${tempSuffix()}`, join(ticketsDirectory, `${ticket.id}.md`), serializeTicket(ticket));
+  }
+  await replaceFile(join(trackerPath, ".taro"), `tracker.json.${tempSuffix()}`, join(trackerPath, "tracker.json"), `${JSON.stringify(plan.tracker)}\n`);
+  const gitignore = join(trackerPath, ".gitignore");
+  const existing = await readFile(gitignore, "utf8").catch(() => "");
+  await replaceFile(join(trackerPath, ".taro"), `gitignore.${tempSuffix()}`, gitignore, withGitignoreEntries(existing));
+  await git(trackerPath, ["rm", "-r", "-q", "backlog"]);
+  await git(trackerPath, ["add", "tickets", "tracker.json", ".gitignore"]);
+  await git(trackerPath, [
+    "-c",
+    "user.name=Taro",
+    "-c",
+    "user.email=taro@localhost",
+    "commit",
+    "--no-verify",
+    "-q",
+    "-m",
+    CONVERSION_COMMIT_MESSAGE,
+  ]);
 }

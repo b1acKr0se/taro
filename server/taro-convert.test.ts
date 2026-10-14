@@ -146,6 +146,17 @@ describe("taro convert refuses, changing nothing", () => {
     expect(snapshot()).toEqual(before);
   }
 
+  // Regression (TR-081.03 review): a git step failing after the writes left a half-converted tree.
+  it("when the commit fails after the writes, putting the tracker back as it was", () => {
+    smallTracker();
+    git(["config", "commit.gpgsign", "true"]);
+    git(["config", "gpg.program", "false"]);
+    expectRefusal(/^Not converted: .*put back as it was/);
+    expect(git(["status", "--porcelain"])).toBe("");
+    git(["config", "commit.gpgsign", "false"]);
+    expect(taro(["convert", "--tracker", repository]).code).toBe(0);
+  });
+
   it("when tickets/ exists", () => {
     smallTracker();
     write("tickets/.keep", "");
