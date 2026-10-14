@@ -7,6 +7,7 @@ import { Icon } from "@getpaseo/plugin/client/react-native";
 import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 
+import { CentredLabel } from "./centred-label";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, labelLineHeightFor } from "./type-scale";
@@ -33,9 +34,9 @@ export function PhaseBadge({ theme, status }: { theme: PluginTheme; status: stri
       }}
     >
       <Icon name={look.icon} size={12} color={color} />
-      <Text style={{ flexShrink: 1, color, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" }} numberOfLines={1}>
+      <CentredLabel style={{ flexShrink: 1, color, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" }} numberOfLines={1}>
         {status}
-      </Text>
+      </CentredLabel>
     </View>
   );
 }

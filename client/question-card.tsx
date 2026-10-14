@@ -11,6 +11,7 @@ import { Text, View } from "react-native";
 
 import type { StoredDecision } from "../shared/state";
 import { questionContext } from "./card-now";
+import { CentredLabel } from "./centred-label";
 import { Pressable } from "./focus";
 import { OptionChips } from "./option-chips";
 import { SPACE } from "./spacing";
@@ -88,7 +89,7 @@ export function QuestionCard({
       {/* Buttons start at the card's left edge, under the asker, not under the question (TR-089). */}
       <OptionChips decision={decision} theme={theme} onOpen={onOpen} onAnswered={onAnswered} />
       <Pressable accessibilityRole="button" accessibilityLabel={`Answer: ${decision.question}`} style={styles.action} onPress={onOpen}>
-        <Text style={styles.actionText}>Answer</Text>
+        <CentredLabel style={styles.actionText}>Answer</CentredLabel>
         <Icon name="ArrowRight" size={12} color={colors.accent} />
       </Pressable>
     </Pressable>

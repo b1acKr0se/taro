@@ -17,6 +17,7 @@ import { AlertCard } from "./alert-card";
 import { SectionHeading } from "./badges";
 import { useBoard, useLoadMore, useRefreshBoard } from "./board-data";
 import { columnPage, type ColumnPage } from "./board-paging";
+import { CentredLabel } from "./centred-label";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { keptObject } from "./kept";
@@ -204,9 +205,9 @@ export function ProjectBoard({
                 }}
               >
                 <Icon name={COLUMN_META[id].icon} size={14} color={active ? color : colors.foregroundMuted} />
-                <Text style={[styles.chipText, active ? { color } : null]}>{COLUMN_TITLES[id]}</Text>
+                <CentredLabel style={[styles.chipText, active ? { color } : null]}>{COLUMN_TITLES[id]}</CentredLabel>
                 <View style={[styles.pill, active ? { backgroundColor: withAlpha(color, 0.25) } : null]}>
-                  <Text style={[styles.pillText, active ? { color } : null]}>{counts[id]}</Text>
+                  <CentredLabel style={[styles.pillText, active ? { color } : null]}>{counts[id]}</CentredLabel>
                 </View>
               </Pressable>
             );

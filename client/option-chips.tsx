@@ -8,11 +8,12 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
-import { Text, View } from "react-native";
+import { View } from "react-native";
 
 import { answerDecision } from "../shared/contracts";
 import { optionChips, type OptionChip } from "../shared/decision-view";
 import type { StoredDecision } from "../shared/state";
+import { CentredLabel } from "./centred-label";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { SPACE } from "./spacing";
@@ -100,9 +101,9 @@ export function OptionChips({
             onPress={() => press(chip)}
           >
             {busy ? <Spinner size={12} color={colors.foregroundMuted} /> : chip.recommended ? <Icon name="Star" size={11} color={colors.accent} /> : null}
-            <Text style={styles.label} numberOfLines={1}>
+            <CentredLabel style={styles.label} numberOfLines={1}>
               {chip.label}
-            </Text>
+            </CentredLabel>
           </Pressable>
         );
       })}

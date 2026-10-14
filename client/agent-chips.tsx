@@ -7,6 +7,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { ScrollView, Text, View } from "react-native";
 
+import { CentredLabel } from "./centred-label";
 import { Pressable } from "./focus";
 import { paneAgentDetail, paneAgentState, roleIcon, type PaneAgent, type PaneAgentState } from "./pane-agents";
 import { SPACE } from "./spacing";
@@ -69,9 +70,9 @@ export function AgentChips({
               }}
             >
               {mark}
-              <Text style={{ color: selected ? colors.foreground : colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600", maxWidth: 180 }} numberOfLines={1}>
+              <CentredLabel style={{ color: selected ? colors.foreground : colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600", maxWidth: 180 }} numberOfLines={1}>
                 {agent.label}
-              </Text>
+              </CentredLabel>
             </Pressable>
           );
         }
@@ -95,9 +96,9 @@ export function AgentChips({
           >
             <Icon name={roleIcon(agent)} size={14} color={selected ? colors.accent : colors.foregroundMuted} />
             <View style={{ gap: SPACE.xxs, maxWidth: 280 }}>
-              <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: labelLineHeightFor(FONT_SIZE.small), fontWeight: "600" }} numberOfLines={1}>
+              <CentredLabel style={{ color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: labelLineHeightFor(FONT_SIZE.small), fontWeight: "600" }} numberOfLines={1}>
                 {agent.label}
-              </Text>
+              </CentredLabel>
               <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs }}>
                 {mark}
                 <Text style={{ color: state === "running" ? color : colors.foregroundMuted, fontSize: FONT_SIZE.caption }} numberOfLines={1}>

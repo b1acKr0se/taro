@@ -16,6 +16,7 @@ import { Text, View } from "react-native";
 import { acceptTicket, compactAgent, nudgeAgent, pauseTicket, relaunchOwner, resumeTicket, type Card, type StatsSummary } from "../shared/contracts";
 import { PhaseBadge } from "./badges";
 import { cardFooterParts, cardNowLine, offersCompact, type NowLine } from "./card-now";
+import { CentredLabel } from "./centred-label";
 import { Pressable } from "./focus";
 import { errorText, formatCost, pullRequestLabel, formatDuration } from "./format";
 import { SPACE } from "./spacing";
@@ -238,7 +239,7 @@ export function TicketCard({
         ) : line.kind === "call" ? (
           <View style={styles.actions}>
             <Pressable accessibilityRole="button" accessibilityLabel={`${line.action}: ${line.headline}`} style={styles.action} onPress={onOpen}>
-              <Text style={styles.actionText}>{line.action}</Text>
+              <CentredLabel style={styles.actionText}>{line.action}</CentredLabel>
               <Icon name="ArrowRight" size={12} color={colors.accent} />
             </Pressable>
           </View>

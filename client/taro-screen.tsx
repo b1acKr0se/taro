@@ -24,6 +24,7 @@ import { AgentChat } from "./agent-chat";
 import { useBoard, useOpenTicketCard, useRefreshBoard } from "./board-data";
 import { isOpenTicketAsked } from "./board-paging";
 import { ProjectBoard } from "./board";
+import { CentredLabel } from "./centred-label";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { Inbox } from "./inbox";
@@ -212,10 +213,10 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
     return (
       <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: active }} accessibilityLabel={label} style={[styles.tab, active ? styles.tabActive : null]} onPress={onPress}>
         <Icon name={icon} size={15} color={active ? colors.foreground : colors.foregroundMuted} />
-        <Text style={active ? styles.tabText : styles.tabMuted}>{label}</Text>
+        <CentredLabel style={active ? styles.tabText : styles.tabMuted}>{label}</CentredLabel>
         {count > 0 ? (
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>{count}</Text>
+            <CentredLabel style={styles.badgeText}>{count}</CentredLabel>
           </View>
         ) : null}
       </Pressable>

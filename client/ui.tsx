@@ -7,6 +7,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useEffect, useMemo, useRef } from "react";
 import { ActivityIndicator, Animated, Easing, Platform, Text, View } from "react-native";
+import { CentredLabel } from "./centred-label";
 import { BUTTON, SEGMENTED } from "./control-size";
 import { Pressable } from "./focus";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
@@ -365,9 +366,9 @@ export function Chip({ theme, text, color, icon }: { theme: PluginTheme; text: s
   return (
     <View style={styles.chip}>
       {icon === undefined ? <View style={styles.dot} /> : <Icon name={icon} size={12} color={color} />}
-      <Text style={styles.text} numberOfLines={1}>
+      <CentredLabel style={styles.text} numberOfLines={1}>
         {text}
-      </Text>
+      </CentredLabel>
     </View>
   );
 }

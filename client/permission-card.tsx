@@ -17,6 +17,7 @@ import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 
+import { CentredLabel } from "./centred-label";
 import { Pressable } from "./focus";
 import { useRevealFocused } from "./keyboard";
 import { Markdown } from "./markdown";
@@ -221,7 +222,7 @@ function QuestionCard({ request, asker, theme, compact, onRespond, questions }: 
                 onPress={() => setActive(entryIndex)}
               >
                 {done ? <Icon name="Check" size={11} color={theme.colors.statusSuccess} /> : null}
-                <Text style={[styles.tabText, current ? styles.tabTextActive : null]}>{entry.header}</Text>
+                <CentredLabel style={[styles.tabText, current ? styles.tabTextActive : null]}>{entry.header}</CentredLabel>
               </Pressable>
             );
           })}

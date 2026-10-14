@@ -24,7 +24,7 @@ describe("chip labels", () => {
   const labels: Array<[file: string, start: string]> = [
     ["board.tsx", "chipText:"],
     ["board.tsx", "pillText:"],
-    ["badges.tsx", "<Text style={{ flexShrink: 1, color"],
+    ["badges.tsx", "style={{ flexShrink: 1, color"],
     ["ui.tsx", "text: { color: theme.colors.foreground, fontSize: FONT_SIZE.caption"],
     ["option-chips.tsx", "label: { flexShrink: 1"],
     ["ticket-card.tsx", "actionText:"],
@@ -44,6 +44,31 @@ describe("chip labels", () => {
     const size = /fontSize: (FONT_SIZE\.\w+)/.exec(style)?.[1];
     expect(size).toBeDefined();
     expect(style).toContain(`lineHeight: labelLineHeightFor(${size})`);
+  });
+
+  // Each one-line chip, pill, badge or tab label, drawn as a CentredLabel so its capitals sit level with
+  // the icon on the phone (TR-092); the regression was the board's column chips.
+  const centred: Array<[file: string, style: string]> = [
+    ["board.tsx", "styles.chipText"],
+    ["board.tsx", "styles.pillText"],
+    ["badges.tsx", "{ flexShrink: 1, color, fontSize: FONT_SIZE.caption"],
+    ["ui.tsx", "styles.text} numberOfLines={1}"],
+    ["option-chips.tsx", "styles.label"],
+    ["ticket-card.tsx", "styles.actionText"],
+    ["question-card.tsx", "styles.actionText"],
+    ["permission-card.tsx", "styles.tabText"],
+    ["taro-screen.tsx", "active ? styles.tabText : styles.tabMuted"],
+    ["taro-screen.tsx", "styles.badgeText"],
+    ["sidebar.tsx", "{ color: theme.colors.surface0, fontSize: FONT_SIZE.micro"],
+    ["agent-chips.tsx", "fontSize: FONT_SIZE.caption"],
+    ["agent-chips.tsx", "fontSize: FONT_SIZE.small"],
+  ];
+  it.each(centred)("%s draws %s as a CentredLabel", (file, style) => {
+    const text = source(file);
+    const at = text.indexOf(style);
+    expect(at).toBeGreaterThan(-1);
+    const tag = text.lastIndexOf("<", at);
+    expect(text.slice(tag, at)).toMatch(/^<CentredLabel style=/);
   });
 
   it("never fixes a chip's height, so a larger system font grows it", () => {

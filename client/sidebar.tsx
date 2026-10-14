@@ -1,8 +1,9 @@
 /** The sidebar row: Taro, with a badge counting what waits on the user across projects. */
 import type { PluginSidebarItemProps } from "@getpaseo/plugin/client";
 import { SidebarRow } from "@getpaseo/plugin/client/ui";
-import { Text, View } from "react-native";
+import { View } from "react-native";
 
+import { CentredLabel } from "./centred-label";
 import { useProjects } from "./queries";
 import { TARO_SCREEN_ID } from "./screen";
 import { useNeedsYouNotifications } from "./use-notifications";
@@ -21,7 +22,7 @@ export function TaroSidebarItem({ currentScreen, openScreen, theme }: PluginSide
       trailing={
         waiting === 0 ? undefined : (
           <View style={{ minWidth: 18, paddingHorizontal: 5, borderRadius: 9, backgroundColor: theme.colors.statusWarning, alignItems: "center" }}>
-            <Text style={{ color: theme.colors.surface0, fontSize: FONT_SIZE.micro, lineHeight: labelLineHeightFor(FONT_SIZE.micro), fontWeight: "700" }}>{waiting}</Text>
+            <CentredLabel style={{ color: theme.colors.surface0, fontSize: FONT_SIZE.micro, lineHeight: labelLineHeightFor(FONT_SIZE.micro), fontWeight: "700" }}>{waiting}</CentredLabel>
           </View>
         )
       }
