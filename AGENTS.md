@@ -1,8 +1,8 @@
 # Taro — developer guide
 
-A Paseo plugin (0.11.2). Read `docs/spec.md` (what to build), `docs/decisions.md` (why), and
-`docs/build-log.md` (what is verified) before changing behaviour. This repository is also run as a
-Taro project, so the plugin you change is the one supervising you: change it carefully.
+A Paseo plugin (0.11.2). This repository is also run as a Taro project, so the plugin you change
+is the one supervising you: change it carefully. The tracker tickets (intent, plan, approvals,
+EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
 
 ## Layout and rules
 
@@ -25,9 +25,33 @@ Taro project, so the plugin you change is the one supervising you: change it car
   `client/attachment-sources.ts`. Look a module up when it is used, never at module scope. If the
   phone stops offering Add image, Paste image or Upload file after a Paseo update, or refuses every
   large photo as one that "could not be made smaller", a module was renamed or reshaped there.
+- Kept view state (the screen's view, drafts, the timeline cache) lives on `globalThis` slots
+  (`client/kept.ts`): Paseo's app unloads every plugin when it disconnects and evaluates the bundles
+  again on reconnect. Change a kept field's type and it starts over; version the slot.
+- Text fields on the phone use `KeyboardScrollView` or `useRevealFocused()` (`client/keyboard.tsx`);
+  a plugin cannot import `react-native-keyboard-controller`.
+- Images over Claude's limit (5 MB of base64, about 3.75 MB of file) are shrunk when attached
+  (`client/image-shrink.ts`); Paseo's own cap is 10 attachments and 30 MB a message.
+- Code adapted from FirstMate (MIT) or ported from Paseo (Apache-2.0) keeps its header comment and
+  its entry in `THIRD_PARTY_NOTICES.md`. The plugin theme has no `borderAccent` or `surface3`.
+- Never store plugin-only data in a ticket's frontmatter: the Backlog CLI drops unknown keys.
 - Agent-facing text lives in `skill/` (what agents read) and `templates/` (what the plugin writes or
   sends), never in code.
 - Comments explain why, briefly. Full identifiers, no abbreviations.
+
+## Paseo plugin API essentials
+
+- `index.client.tsx` exports `contribute(client)`: `addScreen` (string `params`),
+  `addSidebarHeaderItem`, `addWorkspacePanel`, `addTimelineTransformer` / `addTimelineRenderer`.
+  A transformer's `transform({ item, phase })` is synchronous: `undefined` keeps Paseo's item,
+  `{ items }` replaces it with plugin items, `[]` hides it; a plugin item cannot reuse Paseo's
+  rendering, so Taro draws the message text too. `props.navigation` may be undefined on older hosts.
+- Server calls are `rpc(contract, input)` against zod contracts in `shared/contracts.ts`.
+- The `before("agent.session_open")` hook also runs on resume; it sees the working directory and
+  title but not labels, so Taro agents are recognised by working directory. Env set there reaches
+  the agent's shell.
+- Each Claude agent costs about 65 of the host's 2,048 threads; read
+  `/sys/fs/cgroup/pids.current` and `pids.max` before starting agents or daemons.
 
 ## Checks
 

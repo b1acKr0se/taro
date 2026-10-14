@@ -3,3 +3,4 @@ node_modules/
 *.log
 tools/gh-stub/state/
 images/
+docs/

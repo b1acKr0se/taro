@@ -51,8 +51,6 @@ Taro then appears in Paseo's sidebar.
 - **Stats**: time, turns, agents and cost per ticket.
 - **Ticket view**: the conversation with the task owner (Chat) and the ticket itself (Ticket):
   status, acceptance criteria, milestones, delivery and evidence.
-- **Attachments**: the + in a chat adds images and files to your message (on the phone: Add image,
-  Paste image, Upload file).
 
 ## Settings
 
