@@ -126,6 +126,7 @@ export function pauseRefusal(ticket: PauseTicket, merging: boolean): string | nu
   if (ticket.status === "Done" || ticket.status === "Cancelled") return `${ticket.id} is ${ticket.status}: there is nothing to pause.`;
   if (ticket.status === QUEUED_STATUS) return `${ticket.id} has not started: it is ${QUEUED_STATUS.toLowerCase()} and has no owner to pause.`;
   if (pausedHold(ticket.notes) !== null) return `${ticket.id} is already paused.`;
+  if (queuedToResume(ticket.notes)) return `${ticket.id} is queued to resume: it has no owner to pause yet.`;
   if (pauseRequestedAt(ticket.notes) !== null) return `${ticket.id} is already pausing: its owner is writing a handoff.`;
   return null;
 }

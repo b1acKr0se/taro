@@ -132,6 +132,10 @@ describe("pauseRefusal", () => {
     expect(pauseRefusal({ ...ticket, parentTaskId: "NA-0" }, false)).toBe("NA-1 is a child: pause its parent NA-0 instead.");
     expect(pauseRefusal({ ...ticket, notes: notes(EXECUTION, pausedHoldText("2026-01-05T10:04Z", "handoff", true)) }, false)).toBe("NA-1 is already paused.");
     expect(pauseRefusal({ ...ticket, notes: notes(EXECUTION, REQUESTED) }, false)).toContain("already pausing");
+    const queued = notes(EXECUTION, pausedHoldText("2026-01-05T10:04Z", "handoff", true), resumedReleaseText("2026-01-05T11:00Z", { counting: 3, cap: 3 }));
+    expect(pauseRefusal({ ...ticket, notes: queued }, false)).toBe("NA-1 is queued to resume: it has no owner to pause yet.");
+    // Once its fresh owner runs, it may pause again.
+    expect(pauseRefusal({ ...ticket, notes: notes(queued, "RESUMED 2026-01-05T11:20:00Z — a slot freed") }, false)).toBeNull();
   });
 });
 
