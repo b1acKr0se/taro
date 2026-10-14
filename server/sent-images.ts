@@ -41,6 +41,13 @@ export function claudeSessionPath(cwd: string, sessionId: string, configDirector
   return join(configDirectory, "projects", claudeProjectDirectoryName(cwd), `${sessionId}.jsonl`);
 }
 
+/**
+ * A file sent with the message (TR-036), as Claude's provider writes Paseo's `uploaded_file`
+ * attachment into the session (`renderPromptAttachmentAsText`). Paseo's timeline leaves attachments
+ * out of a message's words, so they are left out here too, or the chat could not match the words.
+ */
+const UPLOADED_FILE_TEXT = /^Uploaded file: [^\n]*\nPath: [^\n]*\nMIME: [^\n]*\nSize: \d+ bytes$/;
+
 interface ParsedMessage {
   text: string;
   images: { mimeType: string; data: string }[];
@@ -70,7 +77,7 @@ export function userMessageOf(line: string): ParsedMessage | null {
     if (typeof block !== "object" || block === null) return;
     const { type: kind, text, source } = block as { type?: unknown; text?: unknown; source?: unknown };
     if (kind === "tool_result") toolResult = true;
-    if (kind === "text" && typeof text === "string") texts.push(text);
+    if (kind === "text" && typeof text === "string" && !UPLOADED_FILE_TEXT.test(text)) texts.push(text);
     if (kind !== "image" || typeof source !== "object" || source === null) return;
     const { type: sourceType, media_type: mediaType, data } = source as { type?: unknown; media_type?: unknown; data?: unknown };
     if (sourceType === "base64" && typeof mediaType === "string" && typeof data === "string" && EXTENSIONS[mediaType] !== undefined) {

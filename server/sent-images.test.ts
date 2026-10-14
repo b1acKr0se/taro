@@ -77,6 +77,23 @@ describe("readSentImages", () => {
     ]);
   });
 
+  it("leaves a sent file's block out of the words, as Paseo's timeline does (TR-036)", async () => {
+    const fileBlock = { type: "text", text: "Uploaded file: note.txt\nPath: /home/u/.paseo/uploads/upload_1/note.txt\nMIME: text/plain\nSize: 30 bytes" };
+    const path = await session([
+      user([{ type: "text", text: "with a file" }, image(RED), fileBlock]),
+      user([image(RED), fileBlock]),
+      // The user's own words that only look like the start of one stay.
+      user([{ type: "text", text: "Uploaded file: see above" }, image(RED)]),
+    ]);
+    const images = join(base, "images");
+    const redPath = join(images, `${createHash("sha256").update(Buffer.from(RED, "base64")).digest("hex")}.png`);
+    expect(await readSentImages(path, images)).toEqual([
+      { text: "with a file", images: [{ path: redPath, mimeType: "image/png" }] },
+      { text: "", images: [{ path: redPath, mimeType: "image/png" }] },
+      { text: "Uploaded file: see above", images: [{ path: redPath, mimeType: "image/png" }] },
+    ]);
+  });
+
   it("reads a line the agent was still writing once its newline arrives", async () => {
     const path = join(base, "session.jsonl");
     const line = user([{ type: "text", text: "half" }, image(RED)]);
