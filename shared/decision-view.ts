@@ -89,7 +89,8 @@ export function decisionOptionRows(decision: Pick<StoredDecision, "options" | "r
     label: option.label,
     prompt: option.prompt,
     consequence: option.consequence,
-    images: option.images,
+    // A decision held in a cache from before TR-055 has no images.
+    images: option.images ?? [],
     recommended: index === recommendedIndex,
     reason: index === recommendedIndex ? decision.reason : "",
   }));

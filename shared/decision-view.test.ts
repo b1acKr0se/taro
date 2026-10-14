@@ -119,6 +119,13 @@ describe("decisionOptionRows", () => {
     expect(looseReason).toBe("");
   });
 
+  it("carries each option's images to its row, and none for an option stored before TR-055", () => {
+    const image = { file: "option-a-phone.png", caption: "on a phone", path: "/evidence/notes/NA-1/option-a-phone.png" };
+    const old = { label: "B", prompt: "B", consequence: "" } as unknown as ReturnType<typeof option>;
+    const { rows } = decisionOptionRows({ options: [{ ...option("A"), images: [image] }, old], recommended: "A", reason: "r" });
+    expect(rows.map((row) => row.images)).toEqual([[image], []]);
+  });
+
   it("returns the reason loose when the recommendation names no option", () => {
     const { rows, looseReason } = decisionOptionRows({ options: [option("A"), option("B")], recommended: "Z", reason: "because" });
     expect(rows.every((row) => !row.recommended && row.reason === "")).toBe(true);

@@ -79,7 +79,7 @@ function useMarkdownStyles(theme: PluginTheme, fontSize: number): MarkdownStyles
       tableRow: { flexDirection: "row" as const, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
       tableCell: { flex: 1, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.xs },
       tableHeader: { fontWeight: "600" as const },
-      images: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm },
+      images: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "flex-start" as const, gap: SPACE.sm },
     }),
     [theme, fontSize],
   );
@@ -188,6 +188,7 @@ function renderBlocks(blocks: Block[], styles: MarkdownStyles, context: InlineCo
                 theme={context.theme}
                 set={context.images.map((each) => ({ source: each.src, alt: each.alt }))}
                 index={context.images.indexOf(image)}
+                captioned
               />
             ))}
           </View>

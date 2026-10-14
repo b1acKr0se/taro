@@ -1,6 +1,6 @@
 /**
- * The judged evidence of a ticket (TR-021): its checks, the review outcome, small screenshots and,
- * when incomplete, what is missing. No border, padding or heading of its own: the caller places it
+ * The judged evidence of a ticket (TR-021): its checks, the review outcome, a row per screenshot
+ * (a small thumbnail beside its whole caption and file name, TR-055) and, when incomplete, what is missing. No border, padding or heading of its own: the caller places it
  * (the Ticket tab's Evidence section, the acceptance card in the owner's chat).
  */
 import type { PluginTheme } from "@getpaseo/plugin";
@@ -10,10 +10,13 @@ import { Text, View } from "react-native";
 
 import { loadTicket, type EvidenceView } from "../shared/contracts";
 import { ImageThumbnail } from "./image-view";
+import { MONOSPACE } from "./ui";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 
-const SCREENSHOT_HEIGHT = 72;
+const SCREENSHOT_HEIGHT = 64;
+/** The thumbnails' column: a desktop shot at the row's height fills it, a phone shot sits centred in it. */
+const SCREENSHOT_COLUMN = SCREENSHOT_HEIGHT * 1.6;
 
 /**
  * A ticket's evidence, read with the same query as the Ticket tab (so the two share one fetch); nothing
@@ -30,13 +33,11 @@ export function EvidenceBlock({
   evidence,
   theme,
   layout = "lines",
-  thumbnailHeight = SCREENSHOT_HEIGHT,
 }: {
   evidence: EvidenceView;
   theme: PluginTheme;
   /** `lines`: a line per check, wrapped whole (the Ticket tab, the acceptance card); `inline`: checks and review on two lines at most. */
   layout?: "inline" | "lines";
-  thumbnailHeight?: number;
 }) {
   const { colors } = theme;
   const text = { color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) };
@@ -72,26 +73,27 @@ export function EvidenceBlock({
         </Text>
       ) : null}
       {evidence.screenshots.length === 0 ? null : (
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: SPACE.sm }}>
+        <View style={{ gap: SPACE.sm }}>
           {evidence.screenshots.map((shot) => (
-            <View key={shot.file} style={{ gap: SPACE.xxs, maxWidth: thumbnailHeight * 2 }}>
-              {shot.present ? (
-                <ImageThumbnail
-                  source={shot.path}
-                  alt={shot.caption === "" ? shot.file : shot.caption}
-                  theme={theme}
-                  height={thumbnailHeight}
-                  set={gallery}
-                  index={gallery.findIndex((each) => each.source === shot.path)}
-                />
-              ) : (
-                <Text style={{ color: colors.statusDanger, fontSize: FONT_SIZE.caption }}>{shot.file} (missing)</Text>
-              )}
-              {shot.caption === "" ? null : (
-                <Text numberOfLines={1} style={muted}>
-                  {shot.caption}
-                </Text>
-              )}
+            <View key={shot.file} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.md }}>
+              <View style={{ width: SCREENSHOT_COLUMN, alignItems: "center" }}>
+                {shot.present ? (
+                  <ImageThumbnail
+                    source={shot.path}
+                    alt={shot.caption === "" ? shot.file : shot.caption}
+                    theme={theme}
+                    height={SCREENSHOT_HEIGHT}
+                    set={gallery}
+                    index={gallery.findIndex((each) => each.source === shot.path)}
+                  />
+                ) : (
+                  <Text style={{ color: colors.statusDanger, fontSize: FONT_SIZE.caption, textAlign: "center" }}>missing</Text>
+                )}
+              </View>
+              <View style={{ flex: 1, minWidth: 0, gap: SPACE.xxs }}>
+                {shot.caption === "" ? null : <Text style={text}>{shot.caption}</Text>}
+                <Text style={[muted, { fontFamily: MONOSPACE }]}>{shot.file}</Text>
+              </View>
             </View>
           ))}
         </View>

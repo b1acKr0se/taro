@@ -17,7 +17,8 @@ import { watchFullScreen } from "./desktop-window";
 import { ErrorBoundary } from "./error-boundary";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
-import { FONT_SIZE } from "./type-scale";
+import { FONT_SIZE, lineHeightFor } from "./type-scale";
+import { captionOf, viewerBarText } from "./viewer-bar";
 import { isMacDesktopShell, windowControlsInset } from "./window-chrome";
 import {
   DOUBLE_TAP_MS,
@@ -90,15 +91,14 @@ function useImageSize(uri: string | null | undefined): Size | null {
   return size;
 }
 
-/** One image of a gallery: what `ImageThumbnail` takes as `source` and `alt`. */
+/** One image of a gallery: what `ImageThumbnail` takes as `source` and `alt`, and the decision option it shows, if any (TR-055). */
 export interface GalleryImage {
   source: string;
   alt: string;
+  title?: string;
 }
 
-function labelOf(alt: string): string {
-  return alt.trim() === "" ? "Image" : alt;
-}
+const labelOf = captionOf;
 
 export function ImageThumbnail({
   source,
@@ -107,10 +107,13 @@ export function ImageThumbnail({
   height = THUMBNAIL_HEIGHT,
   set,
   index = 0,
+  captioned = false,
 }: {
   source: string;
   alt: string;
   theme: PluginTheme;
+  /** Shows the alt text under the thumbnail, two lines at most and no wider than it (TR-055). */
+  captioned?: boolean;
   /** The thumbnail's height; its width follows the image. */
   height?: number;
   /** The images the full-size view moves through (those of one message or evidence record), this one at `index`; alone without. */
@@ -139,21 +142,29 @@ export function ImageThumbnail({
   const images = set === undefined || set.length === 0 ? [{ source, alt }] : set;
 
   if (kind.kind === "none") return <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small }}>[{label}]</Text>;
-  if (uri === undefined) return <View accessibilityLabel={`${label}, loading`} style={frame} />;
-  if (uri === null) {
-    return (
+  const shown =
+    uri === undefined ? (
+      <View accessibilityLabel={`${label}, loading`} style={frame} />
+    ) : uri === null ? (
       <View accessibilityLabel={`${label}: image not available`} style={frame}>
         <Text style={note}>Image not available</Text>
       </View>
+    ) : (
+      <>
+        <Pressable accessibilityRole="imagebutton" accessibilityLabel={`${label}, open full size`} style={frame} onPress={() => setOpen(true)}>
+          <Image source={{ uri }} accessibilityLabel={label} resizeMode="cover" style={{ width: "100%", height: "100%" }} />
+        </Pressable>
+        <ImageGallery images={images} start={open ? Math.min(Math.max(0, index), images.length - 1) : null} onClose={() => setOpen(false)} />
+      </>
     );
-  }
+  if (!captioned || alt.trim() === "") return shown;
   return (
-    <>
-      <Pressable accessibilityRole="imagebutton" accessibilityLabel={`${label}, open full size`} style={frame} onPress={() => setOpen(true)}>
-        <Image source={{ uri }} accessibilityLabel={label} resizeMode="cover" style={{ width: "100%", height: "100%" }} />
-      </Pressable>
-      <ImageGallery images={images} start={open ? Math.min(Math.max(0, index), images.length - 1) : null} onClose={() => setOpen(false)} />
-    </>
+    <View style={{ width: frame.width, maxWidth: "100%", gap: SPACE.xxs }}>
+      {shown}
+      <Text numberOfLines={2} style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption) }}>
+        {alt}
+      </Text>
+    </View>
   );
 }
 
@@ -269,6 +280,7 @@ function GalleryPage({
   const uri = useImageUri(kind);
   const natural = useImageSize(uri);
   const label = labelOf(image.alt);
+  const bar = viewerBarText({ title: image.title, alt: image.alt, index, count });
   const [stage, setStage] = useState<Size>({ width: 0, height: 0 });
   // The bar's height with its safe-area padding: the image at fit keeps clear of it and its fade, top and bottom.
   const [barHeight, setBarHeight] = useState(0);
@@ -498,13 +510,13 @@ function GalleryPage({
               <Text style={{ color: VIEWER.text, fontSize: FONT_SIZE.subtitle + 4 }}>✕</Text>
             </Pressable>
             <View pointerEvents="none" style={{ flex: 1, alignItems: "center", paddingHorizontal: SPACE.sm }}>
-              {count > 1 ? (
+              {bar.heading === null ? null : (
                 <Text numberOfLines={1} style={controlText}>
-                  {index + 1} of {count}
+                  {bar.heading}
                 </Text>
-              ) : null}
-              <Text numberOfLines={1} style={count > 1 ? { color: VIEWER.textMuted, fontSize: FONT_SIZE.caption } : controlText}>
-                {label}
+              )}
+              <Text numberOfLines={1} style={bar.heading === null ? controlText : { color: VIEWER.textMuted, fontSize: FONT_SIZE.caption }}>
+                {bar.caption}
               </Text>
             </View>
             {natural === null ? (
