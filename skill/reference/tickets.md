@@ -72,6 +72,10 @@ rather than exceed it.
 - **HOLD** (manager): a Queued ticket kept waiting on purpose while a slot is free, with the reason
   (`HOLD 2026-01-05T10:00Z — exclusive rewrite SH-010 first`). The plugin does not wake anyone for it.
 - **RELEASE** (manager): the hold's reason is gone; the ticket is queued like any other again.
+- **PAUSE-REQUESTED**, **HOLD** "paused by the user", **RELEASE** "resumed by the user",
+  **RESUMED**: written by the plugin when the user presses Pause (the owner writes a HANDOFF and is
+  archived; the ticket keeps its status) and Resume (a fresh owner starts in the same worktree, at
+  once or, as "queued to resume", when a slot frees). A paused owner is told so by a message.
 - **QUEUE-WAKE**, **QUEUE-ALERT**, **QUEUE-RESTART**: written by the plugin as it wakes the manager
   for a queued ticket, alerts the user, and restarts the manager.
 - **REVIEW**: reviewer, revision, verdict, every finding answered (fixed, or rejected with the

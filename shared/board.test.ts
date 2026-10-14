@@ -5,6 +5,15 @@ import { boardColumn, columnCounts, complexityOf, inboxCount, needsYouExtras, ti
 const base: CardInputs = { status: "In Progress", ownerElsewhere: false, agent: { status: "idle", pendingPermissions: 0 }, lastStatus: "waiting", openBlockingDecisions: 0, stalledAfterNudge: false };
 
 describe("boardColumn", () => {
+  it("queues a paused ticket with no owner, never Stalled (TR-088)", () => {
+    for (const status of ["Planning", "In Progress", "Reviewing", "Ready", "Blocked"]) {
+      expect(boardColumn({ ...base, status, agent: null, paused: true })).toBe("queued");
+    }
+    expect(boardColumn({ ...base, agent: null })).toBe("stalled");
+    // A fresh owner started from the pause is placed by its own state.
+    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, paused: true })).toBe("working");
+  });
+
   it("files finished tickets under Done", () => {
     expect(boardColumn({ ...base, status: "Done" })).toBe("done");
     expect(boardColumn({ ...base, status: "Cancelled" })).toBe("done");

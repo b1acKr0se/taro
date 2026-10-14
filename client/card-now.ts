@@ -6,6 +6,7 @@
  * mid-fact), a muted detail under it, and for an ask the action that opens it. Pure.
  */
 import type { Card } from "../shared/contracts";
+import { PAUSE_HANDOFF_TIMEOUT_MS, type PauseView } from "../shared/pause";
 import type { StatusState } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import { callAction, cardCalls, readinessText, waitingOnPermissions, type CardCall } from "./card-calls";
@@ -20,6 +21,7 @@ interface Lines {
 
 export type NowLine =
   | ({ kind: "stalled" } & Lines)
+  | ({ kind: "pause"; state: PauseView["state"] } & Lines)
   | ({ kind: "call"; call: CardCall; action: string } & Lines)
   | ({ kind: "accepted" } & Lines)
   | ({ kind: "elsewhere" } & Lines)
@@ -30,6 +32,7 @@ export type NowLine =
 
 export function cardNowLine(card: Card, now: number): NowLine | null {
   if (card.column === "stalled") return { kind: "stalled", ...stalledLines(card, now) };
+  if (card.pause !== null) return { kind: "pause", state: card.pause.state, ...pauseLines(card.pause, now) };
   const calls = cardCalls(card);
   const first = calls[0];
   if (first !== undefined) return { kind: "call", call: first, action: callAction(first), ...callLines(first, calls.slice(1), now) };
@@ -122,6 +125,19 @@ function callLines(call: CardCall, others: readonly CardCall[], now: number): Li
 export function questionContext(decision: Pick<StoredDecision, "blocking" | "askedAt">, now: number): string | null {
   const asked = ago(decision.askedAt, now);
   return joined([decision.blocking ? "Blocking" : null, asked === null ? null : `asked ${asked}`]);
+}
+
+/** Pausing, paused or queued to resume (TR-088): what happens next, and since when. */
+export function pauseLines(pause: PauseView, now: number): Lines {
+  const since = pause.since === null ? null : ago(pause.since, now);
+  if (pause.state === "pausing") {
+    return { headline: "Pausing: the owner is writing its handoff", detail: joined([since === null ? null : `asked ${since}`, `pauses without one after ${PAUSE_HANDOFF_TIMEOUT_MS / 60_000} min`]) };
+  }
+  if (pause.state === "queued-to-resume") return { headline: "Queued to resume", detail: joined(["a fresh owner starts when a slot frees", since === null ? null : `resumed ${since}`]) };
+  return {
+    headline: "Paused by you",
+    detail: joined([since, pause.withoutHandoff ? "no handoff: resumes from the latest milestone" : "resumes from its handoff"]),
+  };
 }
 
 /** Why a stalled card stopped, from the plugin's reason or else from the owner's Paseo status and last words. */

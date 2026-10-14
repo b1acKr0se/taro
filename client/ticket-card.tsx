@@ -13,7 +13,7 @@ import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 
-import { acceptTicket, compactAgent, nudgeAgent, relaunchOwner, type Card, type StatsSummary } from "../shared/contracts";
+import { acceptTicket, compactAgent, nudgeAgent, pauseTicket, relaunchOwner, resumeTicket, type Card, type StatsSummary } from "../shared/contracts";
 import { PhaseBadge } from "./badges";
 import { cardFooterParts, cardNowLine, offersCompact, type NowLine } from "./card-now";
 import { Pressable } from "./focus";
@@ -53,6 +53,8 @@ export function TicketCard({
   const relaunch = useRpc(relaunchOwner);
   const compactRpc = useRpc(compactAgent);
   const accept = useRpc(acceptTicket);
+  const pause = useRpc(pauseTicket);
+  const resume = useRpc(resumeTicket);
   const actions = useActions();
   const busy = actions.busy;
   const [childrenOpen, setChildrenOpen] = useState(false);
@@ -160,7 +162,12 @@ export function TicketCard({
   const nowLine = cardNowLine(card, now);
   const footer = cardFooterParts(card);
   const compactOffered = offersCompact(card);
-  const hasFooter = footer.length > 0 || card.pullRequest !== null || compactOffered;
+  const hasFooter = footer.length > 0 || card.pullRequest !== null || compactOffered || card.pausable;
+  // What Pause and Resume did is the server's to say: paused at once, pausing, started or queued (TR-088).
+  const told = (result: { message: string }) => {
+    toast.show(result.message, { variant: "success" });
+    onChanged();
+  };
 
   function lineLook(line: NowLine): { icon: string; color: string; headline: object | null } {
     switch (line.kind) {
@@ -172,6 +179,8 @@ export function TicketCard({
       }
       case "stalled":
         return { icon: "CircleAlert", color: colors.statusDanger, headline: styles.danger };
+      case "pause":
+        return { icon: line.state === "queued-to-resume" ? "Clock" : "Pause", color: colors.foregroundMuted, headline: styles.strong };
       case "accepted":
         return { icon: "GitMerge", color: colors.statusSuccess, headline: styles.strong };
       case "subagent":
@@ -232,6 +241,19 @@ export function TicketCard({
               <Text style={styles.actionText}>{line.action}</Text>
               <Icon name="ArrowRight" size={12} color={colors.accent} />
             </Pressable>
+          </View>
+        ) : null}
+        {line.kind === "pause" && line.state === "paused" ? (
+          <View style={styles.actions}>
+            <IconButton
+              icon="Play"
+              label="Resume"
+              showLabel
+              theme={theme}
+              disabled={busy}
+              state={actions.stateOf("resume")}
+              onPress={() => actions.press("resume", () => resume({ project, ticket: card.id }), { after: "hold", onSuccess: told })}
+            />
           </View>
         ) : null}
         {line.kind === "stalled" ? (
@@ -312,6 +334,17 @@ export function TicketCard({
             </Pressable>
           )}
           <View style={{ flex: 1 }} />
+          {card.pausable ? (
+            <IconButton
+              icon="Pause"
+              label="Pause"
+              showLabel
+              theme={theme}
+              disabled={busy}
+              state={actions.stateOf("pause")}
+              onPress={() => actions.press("pause", () => pause({ project, ticket: card.id }), { after: "hold", onSuccess: told })}
+            />
+          ) : null}
           {compactOffered && owner !== null ? (
             <IconButton
               icon="Minimize2"

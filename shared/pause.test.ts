@@ -128,7 +128,7 @@ describe("pauseRefusal", () => {
   it("refuses finished, unstarted, child, paused and pausing tickets", () => {
     expect(pauseRefusal({ ...ticket, status: "Done" }, false)).toBe("NA-1 is Done: there is nothing to pause.");
     expect(pauseRefusal({ ...ticket, status: "Cancelled" }, false)).toContain("nothing to pause");
-    expect(pauseRefusal({ ...ticket, status: "Backlog" }, false)).toContain("has not started");
+    expect(pauseRefusal({ ...ticket, status: "Queued" }, false)).toContain("has not started");
     expect(pauseRefusal({ ...ticket, parentTaskId: "NA-0" }, false)).toBe("NA-1 is a child: pause its parent NA-0 instead.");
     expect(pauseRefusal({ ...ticket, notes: notes(EXECUTION, pausedHoldText("2026-01-05T10:04Z", "handoff", true)) }, false)).toBe("NA-1 is already paused.");
     expect(pauseRefusal({ ...ticket, notes: notes(EXECUTION, REQUESTED) }, false)).toContain("already pausing");

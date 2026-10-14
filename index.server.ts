@@ -14,7 +14,9 @@ import {
   loadBoard as loadBoardRpc,
   loadTicket,
   nudgeAgent,
+  pauseTicket,
   relaunchOwner,
+  resumeTicket,
   requestChanges,
   resolveTrackerSync as resolveTrackerSyncRpc,
   tellAgent,
@@ -283,6 +285,16 @@ export default function contribute(server: PluginServerContext) {
   server.handle(compactAgent, async ({ agentId }, { paseo }) => {
     await actions.compact(keep(paseo), agentId);
     return {};
+  });
+  server.handle(pauseTicket, async ({ project, ticket }, { paseo }) => {
+    const text = await actions.pause(keep(paseo), project, ticket);
+    invalidateBoards();
+    return { message: text };
+  });
+  server.handle(resumeTicket, async ({ project, ticket }, { paseo }) => {
+    const result = await actions.resume(keep(paseo), project, ticket);
+    invalidateBoards();
+    return result;
   });
   server.handle(relaunchOwner, async ({ project, ticket }, { paseo }) => ({ agentId: await actions.relaunchOwner(keep(paseo), project, ticket) }));
   server.handle(resolveTrackerSyncRpc, async ({ project, resolution }) => {

@@ -339,7 +339,7 @@ export class Actions {
         candidates.push({ ticket, notes: cached.notes });
         continue;
       }
-      const notes = (await viewTicket(paths.tracker, ticket.id)).implementationNotes;
+      const notes = (await viewTicket(paths.tracker, ticket.id)).implementationNotes ?? null;
       if (ticket.updatedAt !== null) this.pauseNotes.set(key, { updatedAt: ticket.updatedAt, notes });
       candidates.push({ ticket, notes });
     }
@@ -489,6 +489,11 @@ export class Actions {
     const agent = await fetchLiveAgent(paseo, agentId);
     const project = agent?.labels[TARO_LABELS.project];
     if (agent === null || project === undefined) return;
+    // An owner asked to pause is archived as soon as the turn that wrote its HANDOFF ends (TR-088).
+    if (agent.labels[TARO_LABELS.role] === "owner") {
+      // A failed pause check must not hold up the Done release below; the minute check tries again.
+      await serialized(`tracker-changed:${project}`, () => this.advancePauses(paseo, project)).catch((error: unknown) => reportFailure(`[taro] pause check for ${project} failed:`, error));
+    }
     const statuses = this.lastStatuses.get(project);
     if (statuses === undefined) return;
     const done = new Set([...statuses].filter(([, status]) => status === "Done").map(([ticket]) => ticket));
@@ -751,6 +756,15 @@ export class Actions {
   }
 
   private async checkQueue(paseo: PaseoApi, project: string, now: number): Promise<boolean> {
+    // Pauses run out and queued resumes take freed slots on the same minute, before the Manager hears of a slot (TR-088).
+    const paused = await this.advancePauses(paseo, project, now).catch((error: unknown) => {
+      reportFailure(`[taro] pause check for ${project} failed:`, error);
+      return false;
+    });
+    return (await this.checkQueueAfterPauses(paseo, project, now)) || paused;
+  }
+
+  private async checkQueueAfterPauses(paseo: PaseoApi, project: string, now: number): Promise<boolean> {
     const config = await requireProjectConfig(project);
     const paths = await projectPaths(project);
     const tickets = await listTickets(paths.tracker);

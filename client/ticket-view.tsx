@@ -12,16 +12,18 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 
-import { answerDecision, listOpenDecisions, loadTicket } from "../shared/contracts";
+import { answerDecision, listOpenDecisions, loadTicket, pauseTicket, resumeTicket } from "../shared/contracts";
 import { ticketViewApproval } from "../shared/decision-view";
 import { descriptionParts } from "../shared/description";
 import { finalSummaryBody } from "../shared/execution";
 import { FINAL_SECTIONS, finalSections, type FinalSections } from "../shared/final-summary";
 import { ticketMilestones, type Milestone } from "../shared/milestones";
+import type { PauseView } from "../shared/pause";
 import { parsePlan } from "../shared/plan";
 import type { StoredDecision } from "../shared/state";
 import { foldList, ticketSections, ticketSummary, type TicketSectionKey, type TicketSummary } from "../shared/ticket-summary";
 import { PhaseBadge } from "./badges";
+import { pauseLines } from "./card-now";
 import { EvidenceBlock } from "./evidence-view";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
@@ -36,6 +38,7 @@ import { Chip, IconButton, MONOSPACE } from "./ui";
 import { useActions, type Actions } from "./use-actions";
 import { recordKindLook, toneColor } from "./visual-meta";
 import { polled } from "./polling";
+import { useNow } from "./use-now";
 
 /** The timeline's dot, the rail column it sits in, and the clock column before it. */
 const DOT = 10;
@@ -78,6 +81,14 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
   const approving = useMemo(() => ticketViewApproval(open, ticket), [open, ticket]);
   // One owner of both Approve presses: while one is in flight the other is disabled.
   const approvePresses = useActions();
+  const pauseRpc = useRpc(pauseTicket);
+  const resumeRpc = useRpc(resumeTicket);
+  const pausePresses = useActions();
+  // What Pause and Resume did is the server's to say (TR-088).
+  const told = (result: { message: string }) => {
+    toast.show(result.message, { variant: "success" });
+    void detail.refetch();
+  };
   const { colors } = theme;
   const styles = useMemo(
     () => ({
@@ -190,6 +201,14 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
         theme={theme}
         status={data.status}
         labels={data.labels}
+        pause={data.pause}
+        pauseAction={
+          data.pausable
+            ? { kind: "pause", run: () => pausePresses.press("pause", () => pauseRpc({ project, ticket }), { after: "hold", onSuccess: told }), state: pausePresses.stateOf("pause"), busy: pausePresses.busy }
+            : data.pause?.state === "paused"
+              ? { kind: "resume", run: () => pausePresses.press("resume", () => resumeRpc({ project, ticket }), { after: "hold", onSuccess: told }), state: pausePresses.stateOf("resume"), busy: pausePresses.busy }
+              : null
+        }
         summary={summary}
         approve={approving === null ? null : { ...approving, presses: approvePresses }}
         answeredFrom={answeredFrom}
@@ -227,6 +246,8 @@ function SummaryBlock({
   theme,
   status,
   labels,
+  pause,
+  pauseAction,
   summary,
   approve,
   answeredFrom,
@@ -236,6 +257,9 @@ function SummaryBlock({
   theme: PluginTheme;
   status: string;
   labels: readonly string[];
+  pause: PauseView | null;
+  /** Pause for a ticket under way, Resume for a paused one (TR-088). */
+  pauseAction: { kind: "pause" | "resume"; run: () => void; state: "busy" | "done" | undefined; busy: boolean } | null;
   summary: TicketSummary;
   approve: { decision: StoredDecision; options: PlanCardOptions; presses: Actions } | null;
   answeredFrom: "screen" | "tab";
@@ -243,6 +267,7 @@ function SummaryBlock({
   onOpenLink: (url: string) => void;
 }) {
   const { colors } = theme;
+  const now = useNow();
   const wanted = summary.need !== "nothing";
   const text = { flex: 1, minWidth: 0, color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) };
   const label = { width: SUMMARY_LABEL, flexShrink: 0, color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body), fontWeight: "700" as const };
@@ -267,7 +292,28 @@ function SummaryBlock({
         {labels.map((each) => (
           <Chip key={each} theme={theme} icon="Tag" text={each} color={colors.foregroundMuted} />
         ))}
+        {pauseAction === null ? null : (
+          <View style={{ marginLeft: "auto" }}>
+            <IconButton
+              icon={pauseAction.kind === "pause" ? "Pause" : "Play"}
+              label={pauseAction.kind === "pause" ? "Pause" : "Resume"}
+              showLabel
+              theme={theme}
+              disabled={pauseAction.busy}
+              state={pauseAction.state}
+              onPress={pauseAction.run}
+            />
+          </View>
+        )}
       </View>
+      {pause === null
+        ? null
+        : row(
+            pause.state === "queued-to-resume" ? "Clock" : "Pause",
+            colors.foregroundMuted,
+            pause.state === "pausing" ? "Pausing:" : pause.state === "paused" ? "Paused:" : "Resuming:",
+            <Text style={text}>{[pauseLines(pause, now).headline, pauseLines(pause, now).detail].filter((part) => part !== null).join(" · ")}</Text>,
+          )}
       {row(
         wanted ? "Hand" : "CircleCheck",
         wanted ? colors.statusWarning : colors.foregroundMuted,

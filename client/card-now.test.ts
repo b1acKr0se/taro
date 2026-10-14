@@ -295,6 +295,21 @@ describe("cardNowLine", () => {
   });
 });
 
+describe("pause lines (TR-088)", () => {
+  it("says pausing over the owner's own line and questions", () => {
+    const line = cardNowLine(card({ pause: { state: "pausing", since: "2026-01-01T11:58:00Z", withoutHandoff: false }, lastStatus: status, decisions: [decision({})] }), NOW);
+    expect(line).toEqual({ kind: "pause", state: "pausing", headline: "Pausing: the owner is writing its handoff", detail: "asked 2m ago · pauses without one after 10 min" });
+  });
+
+  it("says paused, with or without a handoff, and queued to resume", () => {
+    const paused = (withoutHandoff: boolean) => cardNowLine(card({ column: "queued", owner: null, pause: { state: "paused", since: "2026-01-01T11:00:00Z", withoutHandoff } }), NOW);
+    expect(paused(false)).toEqual({ kind: "pause", state: "paused", headline: "Paused by you", detail: "1h ago · resumes from its handoff" });
+    expect(paused(true)?.detail).toBe("1h ago · no handoff: resumes from the latest milestone");
+    const queued = cardNowLine(card({ column: "queued", owner: null, pause: { state: "queued-to-resume", since: null, withoutHandoff: false } }), NOW);
+    expect(queued).toEqual({ kind: "pause", state: "queued-to-resume", headline: "Queued to resume", detail: "a fresh owner starts when a slot frees" });
+  });
+});
+
 describe("cardFooterParts", () => {
   it("is empty for a bare card", () => {
     expect(cardFooterParts(card({ owner: null }))).toEqual([]);
