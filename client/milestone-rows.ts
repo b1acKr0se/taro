@@ -12,6 +12,11 @@ import { formatClock, formatDay } from "./format";
 const KEY_KINDS: ReadonlySet<string> = new Set(["APPROVAL", "REVIEW", "FINAL", "ACCEPTANCE", "RECOVERY"]);
 
 export interface MilestoneRow {
+  /**
+   * Stays with its record while newer ones arrive (the list is newest first, so an index would
+   * move): its position counted from the oldest record, its kind and time.
+   */
+  id: string;
   /** The day heading drawn above this row; null when the day is the row before's or unknown. */
   day: string | null;
   clock: string | null;
@@ -25,13 +30,20 @@ export interface MilestoneRow {
 /** How many of the newest records show before "Show N older". */
 export const RECENT_MILESTONES = 3;
 
-export function milestoneRows(milestones: readonly Milestone[], now: number = Date.now()): MilestoneRow[] {
+/** A row's `id`: the record's position counted from the oldest, its kind and time. */
+export function milestoneRowId(position: number, milestone: Pick<Milestone, "kind" | "time">): string {
+  return `${position}:${milestone.kind}:${milestone.time ?? ""}`;
+}
+
+/** `positions` are the records' places counted from the oldest, when `milestones` is not the whole list in order. */
+export function milestoneRows(milestones: readonly Milestone[], now: number = Date.now(), positions?: readonly number[]): MilestoneRow[] {
   let lastDay: string | null = null;
-  return milestones.map((milestone) => {
+  return milestones.map((milestone, index) => {
     const day = formatDay(milestone.time, now);
     const heading = day !== null && day !== lastDay ? day : null;
     if (day !== null) lastDay = day;
     return {
+      id: milestoneRowId(positions?.[index] ?? index, milestone),
       day: heading,
       clock: formatClock(milestone.time),
       label: kindLabel(milestone.kind),
@@ -44,6 +56,14 @@ export function milestoneRows(milestones: readonly Milestone[], now: number = Da
 
 /** The records newest first: the newest `RECENT_MILESTONES` unless `showAll`, and how many older ones are folded. */
 export function recentMilestoneRows(milestones: readonly Milestone[], showAll: boolean, now: number = Date.now()): { rows: MilestoneRow[]; older: number } {
-  const { shown, hidden } = foldList([...milestones].reverse(), RECENT_MILESTONES, showAll);
-  return { rows: milestoneRows(shown, now), older: hidden };
+  const newestFirst = milestones.map((milestone, position) => ({ milestone, position })).reverse();
+  const { shown, hidden } = foldList(newestFirst, RECENT_MILESTONES, showAll);
+  return {
+    rows: milestoneRows(
+      shown.map((each) => each.milestone),
+      now,
+      shown.map((each) => each.position),
+    ),
+    older: hidden,
+  };
 }

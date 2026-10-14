@@ -460,7 +460,8 @@ function Timeline({ notes, theme, onOpenLink }: { notes: string | null; theme: P
   const milestones: readonly Milestone[] = useMemo(() => ticketMilestones(notes), [notes]);
   const [showAll, setShowAll] = useState(false);
   const { rows, older } = useMemo(() => recentMilestoneRows(milestones, showAll), [milestones, showAll]);
-  const [open, setOpen] = useState<ReadonlySet<number>>(new Set());
+  // Keyed by the record, not the row: a newer record arriving (the list refetches) shifts every row down.
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const line = withAlpha(colors.foregroundMuted, 0.35);
   const caption = { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.small) };
 
@@ -481,16 +482,16 @@ function Timeline({ notes, theme, onOpenLink }: { notes: string | null; theme: P
         const color = row.key ? toneColor(theme, recordKindLook(row.kind).tone) : colors.foregroundMuted;
         const first = index === 0;
         const last = index === rows.length - 1 && !foldRow;
-        const expanded = open.has(index);
+        const expanded = open.has(row.id);
         const toggle = () =>
           setOpen((current) => {
             const next = new Set(current);
-            if (expanded) next.delete(index);
-            else next.add(index);
+            if (expanded) next.delete(row.id);
+            else next.add(row.id);
             return next;
           });
         return (
-          <View key={`${index}:${row.kind}:${row.clock ?? ""}`}>
+          <View key={row.id}>
             {row.day === null ? null : (
               <View style={{ flexDirection: "row", gap: SPACE.sm }}>
                 <View style={{ width: CLOCK }} />

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { milestoneRows, recentMilestoneRows } from "./milestone-rows";
+import { milestoneRowId, milestoneRows, recentMilestoneRows } from "./milestone-rows";
 
 // Built from local dates so the test holds in any time zone.
 const now = new Date(2026, 9, 13, 18, 0).getTime();
@@ -70,5 +70,32 @@ describe("recentMilestoneRows", () => {
   it("heads the newest day first", () => {
     const rows = recentMilestoneRows([{ kind: "MILESTONE", time: at(12, 9), text: "a" }, { kind: "MILESTONE", time: at(13, 9), text: "b" }], false, now).rows;
     expect(rows.map((row) => row.day)).toEqual(["Today", "Yesterday"]);
+  });
+
+  it("keeps each record's id when a newer record arrives, though every row moves down", () => {
+    const before = recentMilestoneRows(records(4), true, now).rows;
+    const after = recentMilestoneRows(records(5), true, now).rows;
+    const idOf = (rows: typeof before, text: string) => rows.find((row) => row.text === text)?.id;
+    // m2 was the second row and is now the third: an index key would open m3 instead.
+    expect(before.findIndex((row) => row.text === "m2")).toBe(1);
+    expect(after.findIndex((row) => row.text === "m2")).toBe(2);
+    expect(idOf(after, "m2")).toBe(idOf(before, "m2"));
+    expect(new Set(after.map((row) => row.id)).size).toBe(5);
+  });
+
+  it("keeps the ids of folded and shown rows the same", () => {
+    expect(recentMilestoneRows(records(5), false, now).rows.map((row) => row.id)).toEqual(recentMilestoneRows(records(5), true, now).rows.slice(0, 3).map((row) => row.id));
+  });
+});
+
+describe("milestoneRowId", () => {
+  it("is the position from the oldest, the kind and the time", () => {
+    expect(milestoneRowId(0, { kind: "MILESTONE", time: "2026-10-13T09:00:00Z" })).toBe("0:MILESTONE:2026-10-13T09:00:00Z");
+    expect(milestoneRowId(3, { kind: "FINAL", time: null })).toBe("3:FINAL:");
+  });
+
+  it("tells apart two records of one kind and time", () => {
+    const record = { kind: "MILESTONE", time: null };
+    expect(milestoneRowId(1, record)).not.toBe(milestoneRowId(2, record));
   });
 });
