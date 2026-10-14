@@ -18,6 +18,7 @@ import { walkOrder } from "./walk-order";
 import { askedBy } from "../shared/decision-view";
 import { DecisionCard } from "./decision-card";
 import { KeyboardScrollView } from "./keyboard";
+import { keptObject } from "./kept";
 import { PlanDecision } from "./plan-card";
 import { QuestionCard } from "./question-card";
 import { paneGutter, SPACE } from "./spacing";
@@ -25,6 +26,12 @@ import { SyncProblemCard } from "./sync-problem-card";
 import { TicketCard } from "./ticket-card";
 import { FONT_SIZE } from "./type-scale";
 import { IconButton } from "./ui";
+
+/**
+ * Walk me through, kept: View plan on a walked question leaves the Inbox (the host unmounts it), and
+ * Back from the plan returns to the same step rather than the list (TR-061).
+ */
+const walk = keptObject(globalThis, "inbox-walk", { walking: false, step: 0 });
 
 export function Inbox({
   projects,
@@ -39,8 +46,16 @@ export function Inbox({
 }) {
   const listDecisions = useRpc(listOpenDecisions);
   const decisions = useQuery({ queryKey: ["taro", "decisions", "all"], queryFn: () => listDecisions({ project: null }), refetchInterval: 4_000 });
-  const [walking, setWalking] = useState(false);
-  const [step, setStep] = useState(0);
+  const [walking, setWalkingState] = useState(walk.walking);
+  const [step, setStepState] = useState(walk.step);
+  const setWalking = (value: boolean) => {
+    walk.walking = value;
+    setWalkingState(value);
+  };
+  const setStep = (value: number) => {
+    walk.step = value;
+    setStepState(value);
+  };
   const ordered = useMemo(() => walkOrder(decisions.data?.decisions ?? []), [decisions.data]);
   const { colors } = theme;
   const refetch = () => void decisions.refetch();
@@ -55,7 +70,7 @@ export function Inbox({
           color={colors.accent}
           text={`Walk me through · ${ordered.length === 0 ? "nothing open" : `${Math.min(step, ordered.length - 1) + 1} of ${ordered.length}`}`}
         >
-          <IconButton icon="ChevronRight" label="Skip" showLabel theme={theme} disabled={step >= ordered.length - 1} onPress={() => setStep((value) => value + 1)} />
+          <IconButton icon="ChevronRight" label="Skip" showLabel theme={theme} disabled={step >= ordered.length - 1} onPress={() => setStep(step + 1)} />
           <IconButton icon="X" label="Done" showLabel theme={theme} onPress={() => setWalking(false)} />
         </SectionHeading>
         {current === undefined ? (

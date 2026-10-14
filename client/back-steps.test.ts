@@ -1,6 +1,22 @@
 import { describe, expect, it } from "vitest";
 
-import { createBackStack, pressBack, screenBackStep, ticketBackTarget, ticketOrigin, ticketShown } from "./back-steps";
+import {
+  chooseMove,
+  createBackStack,
+  planShown,
+  pressBack,
+  screenBackStep,
+  ticketBackMove,
+  ticketBackTarget,
+  ticketOrigin,
+  ticketShown,
+  viewPlanMove,
+  type OpenPlan,
+  type PhoneTab,
+  type ScreenMove,
+  type ScreenPlace,
+  type TicketFrom,
+} from "./back-steps";
 
 describe("createBackStack", () => {
   it("takes no step when nothing is open, so back leaves Taro", () => {
@@ -107,5 +123,125 @@ describe("ticketShown", () => {
 
   it("is missing once the board has loaded without its card", () => {
     expect(ticketShown({ ticket: "NA-002", boardLoaded: true, cardFound: false })).toBe("missing");
+  });
+});
+
+/** The screen as `taro-screen.tsx` keeps it, moved the way its `go` applies a move. */
+interface Screen {
+  place: ScreenPlace;
+  ticketFrom: TicketFrom;
+  plan: OpenPlan | null;
+}
+
+function start(place: Partial<ScreenPlace>, ticketFrom: TicketFrom = { project: null, view: "project" }): Screen {
+  return { place: { project: "notes", view: "project", ticket: null, phoneTab: "manager", ...place }, ticketFrom, plan: null };
+}
+
+const nowOf = (screen: Screen) => ({ ...screen.place, ticketOpen: screen.place.ticket !== null });
+
+function apply(screen: Screen, move: ScreenMove): Screen {
+  return {
+    place: { project: move.project, view: move.view, ticket: move.ticket, phoneTab: move.phoneTab ?? screen.place.phoneTab },
+    ticketFrom: move.ticketFrom ?? screen.ticketFrom,
+    plan: move.plan,
+  };
+}
+
+const choose = (screen: Screen, project: string | null, view: ScreenPlace["view"], ticket: string | null = null) => apply(screen, chooseMove(nowOf(screen), project, view, ticket));
+const viewPlan = (screen: Screen, project: string, ticket: string) => apply(screen, viewPlanMove(nowOf(screen), screen.plan, project, ticket));
+const back = (screen: Screen) => apply(screen, ticketBackMove(nowOf(screen), screen.plan, screen.ticketFrom));
+/** The ticket's Chat tab, chosen while its plan shows: the plan closes (`onLeavePlan`). */
+const leavePlan = (screen: Screen): Screen => ({ ...screen, plan: null });
+
+describe("View plan and Back (TR-061)", () => {
+  it("returns from a plan to the wide Inbox it was opened from", () => {
+    const inbox = start({ view: "inbox" });
+    const inPlan = viewPlan(inbox, "shop", "SH-004");
+    expect(inPlan.place).toMatchObject({ project: "shop", view: "project", ticket: "SH-004" });
+    expect(planShown(inPlan.plan, inPlan.place.ticket)).toBe(true);
+    const backAgain = back(inPlan);
+    expect(backAgain.place).toEqual(inbox.place);
+    expect(backAgain.plan).toBeNull();
+  });
+
+  it("returns from a plan to the phone's Inbox tab", () => {
+    const inbox = start({ phoneTab: "inbox" });
+    const inPlan = viewPlan(inbox, "notes", "NA-002");
+    expect(back(inPlan).place).toEqual({ project: "notes", view: "project", ticket: null, phoneTab: "inbox" });
+  });
+
+  it("returns from a plan to the board: the project view on a wide screen, the Board tab on a phone", () => {
+    expect(back(viewPlan(start({}), "notes", "NA-002")).place).toEqual({ project: "notes", view: "project", ticket: null, phoneTab: "manager" });
+    expect(back(viewPlan(start({ phoneTab: "board" }), "notes", "NA-002")).place).toEqual({ project: "notes", view: "project", ticket: null, phoneTab: "board" });
+  });
+
+  it("puts back the phone tab View plan was pressed on, though the plan's project opened on another", () => {
+    const inPlan = viewPlan(start({ project: "shop", phoneTab: "inbox" }), "notes", "NA-002");
+    // As if the plan's project view had its tab changed: Back still lands on the Inbox tab of the first project.
+    const moved: Screen = { ...inPlan, place: { ...inPlan.place, phoneTab: "board" as PhoneTab } };
+    expect(back(moved).place).toEqual({ project: "shop", view: "project", ticket: null, phoneTab: "inbox" });
+  });
+
+  it("returns to the owner's chat it was pressed in, on the same ticket or another", () => {
+    const sameChat = start({ ticket: "NA-002" }, { project: "notes", view: "project" });
+    const fromSame = back(viewPlan(sameChat, "notes", "NA-002"));
+    expect(fromSame.place).toEqual(sameChat.place);
+    expect(planShown(fromSame.plan, fromSame.place.ticket)).toBe(false);
+
+    const otherChat = start({ ticket: "NA-001" }, { project: "notes", view: "inbox" });
+    const fromOther = back(viewPlan(otherChat, "notes", "NA-002"));
+    expect(fromOther.place).toEqual(otherChat.place);
+    // That chat's own Back still goes where it was opened from.
+    expect(back(fromOther).place).toMatchObject({ view: "inbox", ticket: null });
+  });
+
+  it("keeps the first return point when View plan is pressed again inside a plan", () => {
+    const inbox = start({ view: "inbox" });
+    const twice = viewPlan(viewPlan(inbox, "notes", "NA-002"), "notes", "NA-003");
+    expect(twice.place.ticket).toBe("NA-003");
+    expect(planShown(twice.plan, "NA-003")).toBe(true);
+    expect(back(twice).place).toEqual(inbox.place);
+  });
+
+  it("after switching to Chat, Back takes the ticket's own way: where it was opened from", () => {
+    const inbox = start({ view: "inbox" });
+    const inChat = leavePlan(viewPlan(inbox, "notes", "NA-002"));
+    expect(planShown(inChat.plan, inChat.place.ticket)).toBe(false);
+    expect(inChat.ticketFrom).toEqual({ project: "notes", view: "inbox" });
+    expect(back(inChat).place).toEqual({ project: "notes", view: "inbox", ticket: null, phoneTab: "manager" });
+
+    // Pressed in another ticket's chat, the plan's ticket keeps that first ticket's origin (TR-065).
+    const fromBoard = start({ ticket: "NA-001" }, { project: "notes", view: "project" });
+    expect(back(leavePlan(viewPlan(fromBoard, "notes", "NA-002"))).place).toEqual({ project: "notes", view: "project", ticket: null, phoneTab: "manager" });
+  });
+
+  it("leaves the plan on any other move, so Back no longer returns from it", () => {
+    const inPlan = viewPlan(start({ view: "inbox" }), "notes", "NA-002");
+    const elsewhere = choose(inPlan, "notes", "project", "NA-005");
+    expect(elsewhere.plan).toBeNull();
+    expect(back(elsewhere).place).toMatchObject({ view: "inbox", ticket: null });
+  });
+
+  it("makes Android's back while a plan is open do what the Back button does", () => {
+    // `use-back.ts` pushes the open ticket's step with the same handler its Back button runs.
+    let screen = viewPlan(start({ view: "inbox" }), "notes", "NA-002");
+    const button = back(screen);
+    const stack = createBackStack();
+    stack.push(() => {
+      screen = back(screen);
+    });
+    expect(pressBack(stack, () => false)).toBe(true);
+    expect(screen).toEqual(button);
+  });
+});
+
+describe("planShown", () => {
+  const plan: OpenPlan = { ticket: "NA-002", back: { project: "notes", view: "inbox", ticket: null, phoneTab: "manager" } };
+
+  it("shows the plan only on its own ticket", () => {
+    expect(planShown(plan, "NA-002")).toBe(true);
+    expect(planShown(plan, "NA-001")).toBe(false);
+    expect(planShown(plan, null)).toBe(false);
+    expect(planShown(null, "NA-002")).toBe(false);
   });
 });

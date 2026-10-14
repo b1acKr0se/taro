@@ -41,10 +41,9 @@ import { FONT_SIZE } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
 import { useActions } from "./use-actions";
 import { useBackStep, useScreenBack } from "./use-back";
-import { screenBackStep, ticketBackTarget, ticketOrigin, ticketShown } from "./back-steps";
+import { chooseMove, planShown, screenBackStep, ticketBackMove, ticketBackTarget, ticketShown, viewPlanMove, type OpenPlan, type PhoneTab, type ScreenMove, type ScreenNow, type ScreenView } from "./back-steps";
 
-type View_ = "inbox" | "project" | "setup" | "settings";
-type PhoneTab = "manager" | "inbox" | "board" | "stats";
+type View_ = ScreenView;
 type RightPane = "board" | "stats";
 
 /**
@@ -60,12 +59,12 @@ const remembered = keptObject(globalThis, "screen-view", {
   boardHidden: false,
   // Where the open ticket was opened from, for Back (TR-065): the project and the wide Inbox or the project.
   ticketFromProject: null as string | null,
-  ticketFromView: "project" as View_,
+  ticketFromView: "project" as "inbox" | "project",
 });
 
 /**
  * View plan (TR-061): the ticket whose plan is open (null when none), and where Back returns to.
- * Its own slot, so the fields keep their kinds (`kept.ts` keeps no object in a null field).
+ * Its own slot, flat, so the fields keep their kinds (`kept.ts` keeps no object in a null field).
  */
 const planReturn = keptObject(globalThis, "plan-return", {
   ticket: null as string | null,
@@ -74,6 +73,20 @@ const planReturn = keptObject(globalThis, "plan-return", {
   openTicket: null as string | null,
   phoneTab: "manager" as PhoneTab,
 });
+
+function keptPlan(): OpenPlan | null {
+  if (planReturn.ticket === null) return null;
+  return { ticket: planReturn.ticket, back: { project: planReturn.project, view: planReturn.view, ticket: planReturn.openTicket, phoneTab: planReturn.phoneTab } };
+}
+
+function keepPlan(plan: OpenPlan | null): void {
+  planReturn.ticket = plan?.ticket ?? null;
+  if (plan === null) return;
+  planReturn.project = plan.back.project;
+  planReturn.view = plan.back.view;
+  planReturn.openTicket = plan.back.ticket;
+  planReturn.phoneTab = plan.back.phoneTab;
+}
 
 export function TaroScreen({ theme, layout, params, navigation }: PluginScreenProps) {
   const projects = useProjects();
@@ -109,29 +122,37 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
     choose(project, "project");
   }, [next]);
 
-  const [planTicket, setPlanTicket] = useState<string | null>(() => planReturn.ticket);
+  const [plan, setPlan] = useState<OpenPlan | null>(keptPlan);
 
-  function choose(project: string | null, nextView: View_, nextTicket: string | null = null): void {
-    // Opening another ticket from inside one (its Answer →) keeps where the first was opened from.
-    const origin = nextTicket === null ? null : ticketOrigin({ ticketOpen, project: current?.config.project ?? null, view: showing });
-    if (origin !== null) {
-      remembered.ticketFromProject = origin.project;
-      remembered.ticketFromView = origin.view;
+  /** The screen now, for the moves in `back-steps.ts`. */
+  function now(): ScreenNow {
+    return { project: current?.config.project ?? null, view: showing, ticket: ticketOpen ? ticket : null, ticketOpen, phoneTab: remembered.phoneTab };
+  }
+
+  function go(move: ScreenMove): void {
+    if (move.ticketFrom !== null) {
+      remembered.ticketFromProject = move.ticketFrom.project;
+      remembered.ticketFromView = move.ticketFrom.view;
     }
-    // Going anywhere else leaves the plan; Back returns from it alone.
-    planReturn.ticket = null;
-    setPlanTicket(null);
-    remembered.project = project;
-    remembered.view = nextView;
-    remembered.ticket = nextTicket;
-    setSelected(project);
-    setView(nextView);
-    setTicket(nextTicket);
+    if (move.phoneTab !== null) remembered.phoneTab = move.phoneTab;
+    keepPlan(move.plan);
+    setPlan(move.plan);
+    remembered.project = move.project;
+    remembered.view = move.view;
+    remembered.ticket = move.ticket;
+    setSelected(move.project);
+    setView(move.view);
+    setTicket(move.ticket);
     setTicketMissing(false);
   }
 
-  function closeTicket(): void {
-    choose(remembered.ticketFromProject ?? current?.config.project ?? null, remembered.ticketFromView);
+  function choose(project: string | null, nextView: View_, nextTicket: string | null = null): void {
+    go(chooseMove(now(), project, nextView, nextTicket));
+  }
+
+  /** The open ticket's Back, its button's and Android's: from a plan to where View plan was pressed, else to where the ticket was opened from. */
+  function ticketBack(): void {
+    go(ticketBackMove(now(), plan, { project: remembered.ticketFromProject, view: remembered.ticketFromView }));
   }
 
   useScreenBack(() => {
@@ -143,21 +164,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   });
 
   function viewPlan(project: string, planFor: string): void {
-    // Pressed again from inside the plan, Back still returns to where the user first was.
-    if (planReturn.ticket === null) {
-      planReturn.view = showing;
-      planReturn.project = selected;
-      planReturn.openTicket = ticket;
-      planReturn.phoneTab = remembered.phoneTab;
-    }
-    choose(project, "project", planFor);
-    planReturn.ticket = planFor;
-    setPlanTicket(planFor);
-  }
-
-  function backFromPlan(): void {
-    remembered.phoneTab = planReturn.phoneTab;
-    choose(planReturn.project, planReturn.view, planReturn.openTicket);
+    go(viewPlanMove(now(), plan, project, planFor));
   }
 
   const { colors } = theme;
@@ -332,14 +339,13 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
         theme={theme}
         compact={layout.compact}
         ticket={ticket}
-        planOpen={planTicket !== null && planTicket === ticket}
-        onBackFromPlan={backFromPlan}
+        planOpen={planShown(plan, ticket)}
         onLeavePlan={() => {
-          planReturn.ticket = null;
-          setPlanTicket(null);
+          keepPlan(null);
+          setPlan(null);
         }}
         onTicket={(next) => choose(current.config.project, "project", next)}
-        onCloseTicket={closeTicket}
+        onTicketBack={ticketBack}
         onShowManager={() => choose(current.config.project, "project")}
         onTicketMissing={setTicketMissing}
         backTo={(phoneTab) => ticketBackTarget(layout.compact, phoneTab, remembered.ticketFromView)}
@@ -371,10 +377,9 @@ function ProjectView({
   compact,
   ticket,
   planOpen,
-  onBackFromPlan,
   onLeavePlan,
   onTicket,
-  onCloseTicket,
+  onTicketBack,
   onShowManager,
   onTicketMissing,
   backTo,
@@ -388,8 +393,8 @@ function ProjectView({
   compact: boolean;
   ticket: string | null;
   onTicket: (ticket: string) => void;
-  /** Closes the open ticket, back to where it was opened from. */
-  onCloseTicket: () => void;
+  /** The open ticket's Back (its button and Android's): out of a plan to where View plan was pressed, else to where the ticket was opened from. */
+  onTicketBack: () => void;
   /** Closes the ticket to this project's Manager, where its questions are answered. */
   onShowManager: () => void;
   /** Whether the board has loaded without the open ticket's card. */
@@ -398,7 +403,6 @@ function ProjectView({
   backTo: (phoneTab: PhoneTab) => string;
   /** The open ticket was opened by View plan: its Ticket tab shows, and Back returns to where it was pressed. */
   planOpen: boolean;
-  onBackFromPlan: () => void;
   /** The user left the plan for the ticket's chat: Back goes to the Manager again. */
   onLeavePlan: () => void;
   onSettings: () => void;
@@ -424,8 +428,8 @@ function ProjectView({
   };
   const shownState = ticketShown({ ticket, boardLoaded: board.data !== undefined, cardFound: openCard !== null });
   useEffect(() => onTicketMissing(shownState === "missing"), [shownState]);
-  // Android's back leaves a plan the way its Back button does: to where View plan was pressed.
-  useBackStep(openCard !== null, planOpen ? onBackFromPlan : onCloseTicket);
+  // Android's back is the ticket's Back button: out of a plan, to where View plan was pressed.
+  useBackStep(openCard !== null, onTicketBack);
 
   const left =
     openCard === null ? (
@@ -449,7 +453,7 @@ function ProjectView({
         ticketBeside={layout.ticketBeside}
         backTo={backTo(phoneTab)}
         planOpen={planOpen}
-        onBack={planOpen ? onBackFromPlan : onCloseTicket}
+        onBack={onTicketBack}
         onLeavePlan={onLeavePlan}
         onOpenAgent={onOpenAgent}
         onChanged={refreshBoard}
