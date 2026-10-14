@@ -233,9 +233,9 @@ function GalleryPage({
   const natural = useImageSize(uri);
   const label = labelOf(image.alt);
   const [stage, setStage] = useState<Size>({ width: 0, height: 0 });
-  // The bar's height with its safe-area padding: the image at fit keeps clear of it, top and bottom.
+  // The bar's height with its safe-area padding: the image at fit keeps clear of it and its fade, top and bottom.
   const [barHeight, setBarHeight] = useState(0);
-  const frame = useMemo(() => frameOf(stage, natural, { width: 0, height: barHeight }), [stage, natural, barHeight]);
+  const frame = useMemo(() => frameOf(stage, natural, { width: 0, height: barHeight + FADE_REACH }), [stage, natural, barHeight]);
   // The only state a gesture touches is whether the image is at fit, set when that changes; a moving
   // finger only sets the animated values, so it never re-renders the page.
   const [atFit, setAtFit] = useState(true);
