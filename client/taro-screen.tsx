@@ -459,23 +459,32 @@ function ProjectView({
   // The manager's questions are answered in its chat: on a phone its tab, on a wide screen the left pane.
   const openManager = useLatestCallback(() => (compact ? onPhoneTab("manager") : onShowManager()));
   const openElsewhere = useLatestCallback(onOpenElsewhere);
+  // Stable callbacks, so a tab switch does not redraw the memoised Manager and ticket panes beneath it.
+  const settings = useLatestCallback(onSettings);
+  const changed = useLatestCallback(refreshBoard);
+  const ticketBackLatest = useLatestCallback(onTicketBack);
+  const leavePlan = useLatestCallback(onLeavePlan);
+  const openAgentLatest = useLatestCallback((agentId: string) => onOpenAgent?.(agentId));
+  const openAgent = onOpenAgent === null ? null : openAgentLatest;
+  const showBoardLatest = useLatestCallback(() => onShowBoard?.());
+  const showBoard = onShowBoard === null ? null : showBoardLatest;
 
   const managerPane = (
-    <ManagerPane
+    <MemoManagerPane
       summary={summary}
       decisions={board.data?.managerDecisions ?? NO_DECISIONS}
       suggestions={board.data?.suggestions ?? NO_SUGGESTIONS}
       theme={theme}
       compact={compact}
-      onSettings={onSettings}
-      onOpenAgent={onOpenAgent}
-      onShowBoard={onShowBoard}
-      onChanged={refreshBoard}
+      onSettings={settings}
+      onOpenAgent={openAgent}
+      onShowBoard={showBoard}
+      onChanged={changed}
     />
   );
   const ownerPane =
     openCard === null ? null : (
-      <OwnerPane
+      <MemoOwnerPane
         card={openCard}
         project={project}
         theme={theme}
@@ -483,11 +492,11 @@ function ProjectView({
         ticketBeside={layout.ticketBeside}
         backTo={backTo(phoneTab)}
         planOpen={planOpen}
-        onBack={onTicketBack}
-        onLeavePlan={onLeavePlan}
-        onOpenAgent={onOpenAgent}
-        onChanged={refreshBoard}
-        onShowBoard={onShowBoard}
+        onBack={ticketBackLatest}
+        onLeavePlan={leavePlan}
+        onOpenAgent={openAgent}
+        onChanged={changed}
+        onShowBoard={showBoard}
       />
     );
   // The open ticket's pane over the manager's, which stays mounted beneath it for Back (TR-069).
@@ -598,6 +607,8 @@ const NO_SUGGESTIONS: readonly Suggestion[] = [];
 const MemoBoard = memo(ProjectBoard);
 const MemoInbox = memo(Inbox);
 const MemoStats = memo(StatsView);
+const MemoOwnerPane = memo(OwnerPane);
+const MemoManagerPane = memo(ManagerPane);
 
 /**
  * How many of `count` panes to build ahead of their first use: none at first, so the pane asked for
