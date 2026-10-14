@@ -140,3 +140,10 @@ export function complexityOf(labels: readonly string[]): string | null {
   const label = labels.find((candidate) => candidate.startsWith("complexity-"));
   return label === undefined ? null : label.slice("complexity-".length);
 }
+
+/** How many cards each column shows: its tickets, and in Needs you the Manager's open questions too (TR-045). */
+export function columnCounts(cards: readonly { column: ColumnId }[], managerQuestions: number): Record<ColumnId, number> {
+  const counts: Record<ColumnId, number> = { "needs-you": managerQuestions, working: 0, stalled: 0, queued: 0, done: 0 };
+  for (const card of cards) counts[card.column] += 1;
+  return counts;
+}

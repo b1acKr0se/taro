@@ -14,9 +14,11 @@ import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
+import { columnCounts } from "../shared/board";
 import { catchUp, compactManager, tellManager, type Card, type ProjectSummary } from "../shared/contracts";
 import { withoutDecisionBlocks } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
+import type { Suggestion } from "../shared/suggestions";
 import { AgentChat } from "./agent-chat";
 import { useBoard, useRefreshBoard } from "./board-data";
 import { ProjectBoard } from "./board";
@@ -30,6 +32,7 @@ import { ProjectSetup } from "./project-setup";
 import { useProjects, useRefreshProjects } from "./queries";
 import { paneGutter, SPACE } from "./spacing";
 import { StatsView } from "./stats-view";
+import { SuggestionRow } from "./suggestion-row";
 import { TicketView } from "./ticket-view";
 import { FONT_SIZE } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
@@ -277,6 +280,7 @@ function ProjectView({
       <ManagerPane
         summary={summary}
         decisions={board.data?.managerDecisions ?? []}
+        suggestions={board.data?.suggestions ?? []}
         theme={theme}
         compact={compact}
         onSettings={onSettings}
@@ -311,7 +315,9 @@ function ProjectView({
 
   if (compact) {
     if (openCard !== null) return left;
-    const needsYou = (board.data?.cards ?? []).filter((card) => card.column === "needs-you").length + (board.data?.alerts.length ?? 0) + (summary.trackerSyncProblem === null ? 0 : 1);
+    // The Manager's questions are Needs you cards too (TR-045).
+    const needsYou =
+      columnCounts(board.data?.cards ?? [], board.data?.managerDecisions.length ?? 0)["needs-you"] + (board.data?.alerts.length ?? 0) + (summary.trackerSyncProblem === null ? 0 : 1);
     return (
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm, paddingHorizontal: paneGutter(true), paddingVertical: SPACE.sm }}>
@@ -389,6 +395,7 @@ function ProjectView({
 function ManagerPane({
   summary,
   decisions,
+  suggestions,
   theme,
   compact,
   onSettings,
@@ -399,6 +406,8 @@ function ManagerPane({
   summary: ProjectSummary;
   /** The manager's open decisions, drawn in its chat where it asked them (TR-026). */
   decisions: readonly StoredDecision[];
+  /** Its suggestions, offered above its composer (TR-045). */
+  suggestions: readonly Suggestion[];
   theme: PluginTheme;
   compact: boolean;
   onSettings: () => void;
@@ -445,6 +454,7 @@ function ManagerPane({
         placeholder="Tell the Manager what you need…"
         transformText={withoutDecisionBlocks}
         asks={{ decisions, onAnswered: onChanged }}
+        suggestions={<SuggestionRow project={project} suggestions={suggestions} theme={theme} compact={compact} onChanged={onChanged} />}
         onSend={async (text, attachments) => {
           await tell({ project, text, ...attachments });
         }}

@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { READ_ONLY_NOTES, decisionBlockView, decisionOptionRows, decisionSubmit, decisionTimelineItems, untrackedDecision, type DecisionLookup } from "./decision-view";
+import {
+  READ_ONLY_NOTES,
+  decisionBlockView,
+  decisionOptionRows,
+  decisionSubmit,
+  decisionTimelineItems,
+  optionAsksForWords,
+  optionChips,
+  untrackedDecision,
+  type DecisionLookup,
+} from "./decision-view";
 import { decisionMessageSegments, parseDecisionBody, type ParsedDecision } from "./reports";
 import type { StoredDecision } from "./state";
 
@@ -159,5 +169,41 @@ describe("decisionSubmit", () => {
 
   it("treats a pick past the end as no pick", () => {
     expect(decisionSubmit(rows, 7, "")).toMatchObject({ enabled: false, label: null });
+  });
+});
+
+describe("optionChips", () => {
+  const option = (label: string, prompt = label) => ({ label, prompt, consequence: "" });
+
+  it("is empty for a question without options", () => {
+    expect(optionChips({ options: [], recommended: "", reason: "" })).toEqual([]);
+  });
+
+  it("keeps the agent's order and labels, marking only the recommended one", () => {
+    const chips = optionChips({ options: [option("Approve"), option("Change…"), option("Split into children")], recommended: "Approve", reason: "clear" });
+    expect(chips).toEqual([
+      { label: "Approve", recommended: true, asksForWords: false },
+      { label: "Change…", recommended: false, asksForWords: true },
+      { label: "Split into children", recommended: false, asksForWords: false },
+    ]);
+  });
+
+  it("marks none when the recommendation names no option", () => {
+    expect(optionChips({ options: [option("A"), option("B")], recommended: "C", reason: "" }).some((chip) => chip.recommended)).toBe(false);
+  });
+
+  it("keeps every option of a long list", () => {
+    const options = Array.from({ length: 9 }, (_, index) => option(`Option ${index + 1}`));
+    expect(optionChips({ options, recommended: "Option 9", reason: "" }).map((chip) => chip.recommended)).toEqual([false, false, false, false, false, false, false, false, true]);
+  });
+});
+
+describe("optionAsksForWords", () => {
+  it("reads the ellipsis on the label or the prompt, ignoring trailing space", () => {
+    expect(optionAsksForWords({ label: "Change…", prompt: "Change" })).toBe(true);
+    expect(optionAsksForWords({ label: "Other", prompt: "Say how… " })).toBe(true);
+    expect(optionAsksForWords({ label: "Keep", prompt: "Keep it" })).toBe(false);
+    // Three dots are not the ellipsis the format names.
+    expect(optionAsksForWords({ label: "Wait...", prompt: "Wait" })).toBe(false);
   });
 });

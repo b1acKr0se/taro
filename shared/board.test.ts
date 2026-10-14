@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { boardColumn, complexityOf, ticketAgents, type CardInputs, type JoinedAgent } from "./board";
+import { boardColumn, columnCounts, complexityOf, ticketAgents, type CardInputs, type JoinedAgent } from "./board";
 
 const base: CardInputs = { status: "In Progress", ownerElsewhere: false, agent: { status: "idle", pendingPermissions: 0 }, lastStatus: "waiting", openBlockingDecisions: 0, stalledAfterNudge: false };
 
@@ -141,5 +141,17 @@ describe("ticketAgents", () => {
     const newer = agent("newer", "owner", "DEMO-1", "idle", "DEMO-1 · b", "2026-10-13T11:00:00Z");
     const closed = agent("closed", "owner", "DEMO-1", "closed", "DEMO-1 · c", "2026-10-13T12:00:00Z");
     expect(ticketAgents("DEMO-1", null, grouped([older, closed, newer])).owner?.id).toBe("newer");
+  });
+});
+
+describe("columnCounts", () => {
+  it("is zero everywhere on an empty board", () => {
+    expect(columnCounts([], 0)).toEqual({ "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 });
+  });
+
+  it("counts the Manager's questions in Needs you with the tickets there (TR-045)", () => {
+    expect(columnCounts([], 3)["needs-you"]).toBe(3);
+    const cards = [{ column: "needs-you" as const }, { column: "working" as const }, { column: "working" as const }, { column: "done" as const }];
+    expect(columnCounts(cards, 2)).toEqual({ "needs-you": 3, working: 2, stalled: 0, queued: 0, done: 1 });
   });
 });

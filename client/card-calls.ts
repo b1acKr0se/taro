@@ -1,31 +1,43 @@
 /**
- * What a board card asks of the user, one line each (TR-022). The card only names the call; it is
- * answered where its context is: in the owner's chat, under the message that asked it. Pure.
+ * What a board card asks of the user (TR-022), each in the asker's own words (TR-045): the question
+ * itself with its options, what a permission asks to do, the delivery's summary. The card draws the
+ * first; answering in full happens where its context is, in the owner's chat. Pure.
  */
 import type { Card } from "../shared/contracts";
 import { evidenceSummary } from "../shared/evidence";
+import type { StoredDecision } from "../shared/state";
 import { walkOrder } from "./walk-order";
 
 export type CardCall =
   /** The first open decision in Walk me through order; `more` counts the rest. */
-  | { kind: "decision"; text: string; blocking: boolean; more: number }
-  /** Delivered and waiting for Accept / Request changes. `evidence` is the evidence in one line (TR-021). */
-  | { kind: "acceptance"; text: string; evidence: string | null }
-  /** The owner stopped on Paseo permission requests (a tool to run, a question form). */
-  | { kind: "permission"; text: string };
+  | { kind: "decision"; decision: StoredDecision; more: number }
+  /** Delivered and waiting for Accept / Request changes: the delivery in a line and the evidence in one (TR-021). */
+  | { kind: "acceptance"; ready: boolean; delivered: string | null; evidence: string | null }
+  /** The owner stopped on Paseo permission requests: what the first asks, and how many wait. */
+  | { kind: "permission"; title: string | null; detail: string | null; count: number };
 
 export function cardCalls(card: Card): CardCall[] {
   const calls: CardCall[] = [];
   const open = walkOrder(card.decisions.filter((decision) => decision.status === "open"));
   const first = open[0];
-  if (first !== undefined) calls.push({ kind: "decision", text: first.question, blocking: first.blocking, more: open.length - 1 });
+  if (first !== undefined) calls.push({ kind: "decision", decision: first, more: open.length - 1 });
   // Accepting messages the owner, so without one there is nothing to press; once accepted, nothing is left to press.
   if (card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null) {
-    calls.push({ kind: "acceptance", text: acceptanceReady(card) ? "Ready to accept" : "Not ready to accept", evidence: card.evidence === null ? null : evidenceSummary(card.evidence) });
+    calls.push({ kind: "acceptance", ready: acceptanceReady(card), delivered: card.delivered, evidence: card.evidence === null ? null : evidenceSummary(card.evidence) });
   }
   const permissions = card.owner?.pendingPermissions ?? 0;
-  if (permissions > 0) calls.push({ kind: "permission", text: permissions === 1 ? "Waiting on a permission" : `Waiting on ${permissions} permissions` });
+  if (permissions > 0) calls.push({ kind: "permission", title: card.permission?.title ?? null, detail: card.permission?.detail ?? null, count: permissions });
   return calls;
+}
+
+/** An acceptance's readiness in words. */
+export function readinessText(ready: boolean): string {
+  return ready ? "Ready to accept" : "Not ready to accept";
+}
+
+/** How a permission call reads when it cannot say what is asked. */
+export function waitingOnPermissions(count: number): string {
+  return count === 1 ? "Waiting on a permission" : `Waiting on ${count} permissions`;
 }
 
 /**
@@ -36,7 +48,7 @@ export function acceptanceReady(card: Pick<Card, "evidence">): boolean {
   return card.evidence === null || card.evidence.complete;
 }
 
-/** The link at the end of a call's line. */
+/** The link that opens the call where it is answered in full. */
 export function callAction(call: CardCall): string {
-  return call.kind === "decision" ? "Answer" : call.kind === "acceptance" ? "Review" : "Allow";
+  return call.kind === "decision" ? "Answer" : call.kind === "acceptance" && call.ready ? "Request changes" : "Review";
 }

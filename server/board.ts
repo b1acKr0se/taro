@@ -10,6 +10,7 @@ import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
 import { acceptedRecord, executionMachine, pullRequestUrl, type AcceptedRecord } from "../shared/execution";
 import type { Board, Card, TicketDetailView } from "../shared/contracts";
 import { latestMilestone, type Milestone } from "../shared/milestones";
+import { deliveredLine, permissionAsk, type PermissionAsk } from "../shared/needs-you";
 import { pastTicketAgents } from "../shared/past-agents";
 import { isSubagentRole, roleFromLabel, TARO_LABELS } from "../shared/project";
 import { boardAlerts } from "../shared/recovery";
@@ -33,7 +34,14 @@ const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing", "Awaiting acc
 async function recordedFacts(
   trackerPath: string,
   ticketId: string,
-): Promise<{ hostElsewhere: string | null; pullRequest: string | null; latestMilestone: Milestone | null; evidenceRecord: ParsedEvidence | null; accepted: AcceptedRecord | null }> {
+): Promise<{
+  hostElsewhere: string | null;
+  pullRequest: string | null;
+  latestMilestone: Milestone | null;
+  evidenceRecord: ParsedEvidence | null;
+  accepted: AcceptedRecord | null;
+  finalSummary: string | null;
+}> {
   try {
     const detail = await viewTicket(trackerPath, ticketId);
     const host = executionMachine(detail.implementationNotes);
@@ -43,9 +51,10 @@ async function recordedFacts(
       latestMilestone: latestMilestone(detail.implementationNotes),
       evidenceRecord: parseEvidence(detail.implementationNotes),
       accepted: acceptedRecord(detail.implementationNotes),
+      finalSummary: detail.finalSummary ?? null,
     };
   } catch {
-    return { hostElsewhere: null, pullRequest: null, latestMilestone: null, evidenceRecord: null, accepted: null };
+    return { hostElsewhere: null, pullRequest: null, latestMilestone: null, evidenceRecord: null, accepted: null, finalSummary: null };
   }
 }
 
@@ -97,6 +106,12 @@ export function invalidateBoards(): void {
   boardCache.clear();
   factsCache.clear();
   archivedCache.clear();
+}
+
+/** What the owner's first pending permission asks, for its card. */
+function firstPermission(owner: PaseoAgent | null): PermissionAsk | null {
+  const request = owner?.pendingPermissions[0];
+  return request === undefined ? null : permissionAsk({ ...request, input: request.input ?? undefined });
 }
 
 function groupByTicket(agents: readonly PaseoAgent[]): Map<string, PaseoAgent[]> {
@@ -191,6 +206,8 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
         latestMilestone: UNDER_WAY.has(ticket.status) ? facts?.latestMilestone ?? null : null,
         evidence,
         accepted,
+        permission: firstPermission(owner),
+        delivered: ticket.status === "Awaiting acceptance" ? deliveredLine(facts?.finalSummary ?? null) : null,
       };
     }),
   );

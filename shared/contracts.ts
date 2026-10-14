@@ -166,6 +166,10 @@ export const CardSchema = z.object({
   evidence: EvidenceViewSchema.nullable().default(null),
   /** Set from the ACCEPTED record while the ticket is still Awaiting acceptance: the owner is merging (TR-031). */
   accepted: z.object({ at: z.string(), merging: z.string().nullable() }).nullable().default(null),
+  /** What the owner's first pending permission asks, in its own words (TR-045). */
+  permission: z.object({ title: z.string(), detail: z.string().nullable() }).nullable().default(null),
+  /** The delivery in a line, from the FINAL summary, while the ticket is Awaiting acceptance (TR-045). */
+  delivered: z.string().nullable().default(null),
 });
 export type Card = z.infer<typeof CardSchema>;
 

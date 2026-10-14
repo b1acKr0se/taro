@@ -1,9 +1,10 @@
 /**
  * One ticket on the board (decision 10, TR-026, TR-031): id, phase and live dot, the title, what is
- * happening now (`card-now.ts`: a headline read whole, a muted detail under it, and the action —
- * Answer, Review, Allow, or Nudge and Relaunch — on its own line, all in one column beside the icon),
- * children folded to one line, and one muted footer (complexity, context, subagents, PR, and Compact
- * when it applies). Once finished: what it was and what it cost.
+ * happening now (`card-now.ts`: a headline read whole, a muted detail under it, and the action on its
+ * own line, all in one column beside the icon), children folded to one line, and one muted footer
+ * (complexity, context, subagents, PR, and Compact when it applies). An ask is in the asker's words
+ * (TR-045): a question with its options as chips that answer at once, what a permission asks to do, a
+ * delivery's summary with Accept beside Request changes. Once finished: what it was and what it cost.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
@@ -11,12 +12,12 @@ import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import { compactAgent, nudgeAgent, relaunchOwner, type Card, type StatsSummary } from "../shared/contracts";
+import { acceptTicket, compactAgent, nudgeAgent, relaunchOwner, type Card, type StatsSummary } from "../shared/contracts";
 import { PhaseBadge } from "./badges";
-import { acceptanceReady } from "./card-calls";
 import { cardFooterParts, cardNowLine, offersCompact, type NowLine } from "./card-now";
 import { errorText, formatCost, pullRequestLabel, formatDuration } from "./format";
 import { SPACE } from "./spacing";
+import { OptionChips } from "./option-chips";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { IconButton } from "./ui";
@@ -47,6 +48,7 @@ export function TicketCard({
   const nudge = useRpc(nudgeAgent);
   const relaunch = useRpc(relaunchOwner);
   const compactRpc = useRpc(compactAgent);
+  const accept = useRpc(acceptTicket);
   const [busy, setBusy] = useState(false);
   const [childrenOpen, setChildrenOpen] = useState(false);
   const now = useNow();
@@ -169,9 +171,9 @@ export function TicketCard({
     switch (line.kind) {
       case "call": {
         const call = line.call;
-        if (call.kind === "decision") return { icon: "Hand", color: call.blocking ? colors.statusWarning : colors.foregroundMuted, headline: styles.strong };
+        if (call.kind === "decision") return { icon: "Hand", color: call.decision.blocking ? colors.statusWarning : colors.foregroundMuted, headline: styles.strong };
         if (call.kind === "permission") return { icon: "KeyRound", color: colors.statusWarning, headline: styles.strong };
-        return acceptanceReady(card) ? { icon: "PackageCheck", color: colors.accent, headline: styles.strong } : { icon: "PackageX", color: colors.statusWarning, headline: styles.strong };
+        return call.ready ? { icon: "PackageCheck", color: colors.accent, headline: styles.strong } : { icon: "PackageX", color: colors.statusWarning, headline: styles.strong };
       }
       case "stalled":
         return { icon: "CircleAlert", color: colors.statusDanger, headline: styles.danger };
@@ -198,8 +200,8 @@ export function TicketCard({
           <Icon name={look.icon} size={13} color={look.color} />
         </View>
         <View style={styles.lineText}>
-          {/* Read whole: a long question wraps; six lines keep one card from filling the column. */}
-          <Text style={[styles.headline, look.headline]} numberOfLines={6}>
+          {/* Read whole: a long status wraps; six lines keep one card from filling the column. A question gets three, its options follow. */}
+          <Text style={[styles.headline, look.headline]} numberOfLines={line.kind === "call" && line.call.kind === "decision" ? 3 : 6}>
             {line.headline}
           </Text>
           {line.detail === null ? null : (
@@ -207,8 +209,16 @@ export function TicketCard({
               {line.detail}
             </Text>
           )}
+          {line.kind === "call" && line.call.kind === "decision" ? (
+            <View style={{ marginTop: SPACE.xs }}>
+              <OptionChips decision={line.call.decision} theme={theme} onOpen={onOpen} onAnswered={onChanged} />
+            </View>
+          ) : null}
           {line.kind === "call" ? (
             <View style={styles.actions}>
+              {line.call.kind === "acceptance" && line.call.ready ? (
+                <IconButton icon="Check" label="Accept" showLabel tone="accent" theme={theme} disabled={busy} onPress={() => void run(() => accept({ project, ticket: card.id }), `Accepted ${card.id}.`)} />
+              ) : null}
               <Pressable accessibilityRole="button" accessibilityLabel={`${line.action}: ${line.headline}`} style={styles.action} onPress={onOpen}>
                 <Text style={styles.actionText}>{line.action}</Text>
                 <Icon name="ArrowRight" size={12} color={colors.accent} />

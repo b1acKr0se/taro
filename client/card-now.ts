@@ -6,7 +6,8 @@
  */
 import type { Card } from "../shared/contracts";
 import type { StatusState } from "../shared/reports";
-import { callAction, cardCalls, type CardCall } from "./card-calls";
+import type { StoredDecision } from "../shared/state";
+import { callAction, cardCalls, readinessText, waitingOnPermissions, type CardCall } from "./card-calls";
 import { formatTokenCount, relativeTime } from "./format";
 import { waitingOn } from "./pane-agents";
 
@@ -28,7 +29,7 @@ export function cardNowLine(card: Card, now: number): NowLine | null {
   if (card.column === "stalled") return { kind: "stalled", ...stalledLines(card, now) };
   const calls = cardCalls(card);
   const first = calls[0];
-  if (first !== undefined) return { kind: "call", call: first, action: callAction(first), ...callLines(card, first, calls.slice(1)) };
+  if (first !== undefined) return { kind: "call", call: first, action: callAction(first), ...callLines(first, calls.slice(1), now) };
   if (card.accepted !== null) {
     return {
       kind: "accepted",
@@ -49,19 +50,33 @@ export function cardNowLine(card: Card, now: number): NowLine | null {
   return null;
 }
 
-function callLines(card: Card, call: CardCall, others: readonly CardCall[]): Lines {
-  // Other asks beside the first: further questions, then acceptance or permissions in their own words.
-  const also = [
-    call.kind === "decision" && call.more > 0 ? `${call.more} more question${call.more === 1 ? "" : "s"}` : null,
-    ...others.map((other) => (other.kind === "decision" ? `${other.more + 1} more question${other.more === 0 ? "" : "s"}` : `also ${lowercased(other.text)}`)),
-  ];
-  if (call.kind === "decision") return { headline: call.text, detail: joined([call.blocking ? "Blocking" : null, ...also]) };
-  if (call.kind === "acceptance") {
-    const evidence = card.evidence;
-    const facts = evidence === null ? null : evidence.complete ? call.evidence : `Missing: ${evidence.missing.join(", ")}`;
-    return { headline: call.text, detail: joined([facts, ...also]) };
+function callLines(call: CardCall, others: readonly CardCall[], now: number): Lines {
+  // Other asks beside the first, counted or named in a few words: the card shows only the first.
+  const also = others.map((other) =>
+    other.kind === "decision"
+      ? `${other.more + 1} more question${other.more === 0 ? "" : "s"}`
+      : other.kind === "acceptance"
+        ? `also ${lowercased(readinessText(other.ready))}`
+        : `also ${lowercased(waitingOnPermissions(other.count))}`,
+  );
+  if (call.kind === "decision") {
+    const more = call.more > 0 ? `${call.more} more question${call.more === 1 ? "" : "s"}` : null;
+    return { headline: call.decision.question, detail: joined([questionContext(call.decision, now), more, ...also]) };
   }
-  return { headline: call.text, detail: joined(also) };
+  if (call.kind === "acceptance") {
+    const readiness = readinessText(call.ready);
+    // Incomplete evidence names what is missing, which is what holds Accept back.
+    return call.delivered === null ? { headline: readiness, detail: joined([call.evidence, ...also]) } : { headline: call.delivered, detail: joined([readiness, call.evidence, ...also]) };
+  }
+  const more = call.count > 1 ? `${call.count - 1} more permission${call.count === 2 ? "" : "s"}` : null;
+  if (call.title === null) return { headline: waitingOnPermissions(call.count), detail: joined(also) };
+  return { headline: call.title, detail: joined([call.detail, more, ...also]) };
+}
+
+/** What a question card says under the question: whether it blocks and how long ago it was asked (TR-045). */
+export function questionContext(decision: Pick<StoredDecision, "blocking" | "askedAt">, now: number): string | null {
+  const asked = ago(decision.askedAt, now);
+  return joined([decision.blocking ? "Blocking" : null, asked === null ? null : `asked ${asked}`]);
 }
 
 /** Why a stalled card stopped, from the plugin's reason or else from the owner's Paseo status and last words. */

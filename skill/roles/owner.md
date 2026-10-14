@@ -27,8 +27,8 @@ ones) — they outrank defaults here. Then follow the flow.
 
    **Risk floor:** anything touching contracts, money or fee math, auth, or stored data is at least
    medium.
-4. **Approval** — ask for it (blocking decision `scope-approval`, with the proposal summarised in
-   `why`) **whenever you made a choice the user did not**: an interpretation, a design, a fix
+4. **Approval** — ask for it (blocking decision `scope-approval`, its question `Approve <the plan in
+   one line>?`, with the proposal summarised in `why`) **whenever you made a choice the user did not**: an interpretation, a design, a fix
    approach that could differ from what they meant. Trivial work needs none — your one clarifying
    question's answer, if any, is the approval. Record **APPROVAL** with the user's exact words. No
    code before approval except a throwaway check when feasibility is unknown. Changed scope needs a

@@ -48,6 +48,10 @@ default: Per trade         # what you do if the user does not answer (non-blocki
 - **Blocking** (`blocking: true`): stop and wait. Only for real gates: scope approval when you made a
   choice the user did not, a child breakdown, a merge, anything destructive, a review dispute you
   cannot settle.
+- The board shows the `question` and the option labels on a card with nothing else, and a tap on a
+  label answers. So the `question` stands alone, in at most about three lines: say what is to be
+  decided, never "three options", "recommends A" or "see above". Labels are a few words each and
+  read as answers to it.
 - An option whose `prompt` ends with `…` asks the user to type (e.g. `Change…`).
 - A long value (any field, option fields too) may span lines as a YAML block scalar: `why: |`
   keeps the line breaks, `why: >` joins the lines into one paragraph; indent the lines under it.
@@ -59,7 +63,7 @@ Use these ids and options for recurring decisions (add free-form ones as needed)
 
 | id | Options | Recommend |
 | --- | --- | --- |
-| `scope-approval` | Approve · Change… · Split into children | Approve |
+| `scope-approval` | Approve · Change… · Split into children | Approve; the `question` is `Approve <the plan in one line>?` |
 | `complexity` | Keep · Lower · Raise | Keep |
 | `child-breakdown` | Approve · Fewer children · Adjust… | Approve |
 | `merge` | Merge · Hold | Merge, when review passed and the head is unchanged |

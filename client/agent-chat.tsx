@@ -78,6 +78,7 @@ export function AgentChat({
   transformText,
   asks,
   delivery,
+  suggestions,
 }: {
   agent: ChatAgent;
   theme: PluginTheme;
@@ -98,6 +99,8 @@ export function AgentChat({
    * as a jump link at the composer while it is off screen. `ready`: Accept is offered.
    */
   delivery?: { card: ReactNode; label: string; ready: boolean } | undefined;
+  /** One row of things to send, above the composer's buttons (the Manager's suggestions, TR-045). */
+  suggestions?: ReactNode;
 } & ChatComposer) {
   const toast = useToast();
   const timeline = useAgentTimeline(agent.id, `${agent.updatedAt}:${agent.pendingPermissions}`);
@@ -590,6 +593,7 @@ export function AgentChat({
                 <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Show</Text>
               </Pressable>
             )}
+            {suggestions}
             {actions === undefined ? null : <View style={styles.quick}>{actions}</View>}
             <View style={styles.inputBox}>
               <AttachmentPreviews theme={theme} attachments={attachments} onRemove={(id) => setAttachments(attachments.filter((attachment) => attachment.id !== id))} />

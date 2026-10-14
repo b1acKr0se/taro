@@ -105,11 +105,24 @@ export type DecisionSubmit = { enabled: boolean; label: string | null; text: str
 export function decisionSubmit(rows: DecisionOptionRow[], picked: number | null, typed: string): DecisionSubmit {
   const row = picked === null ? null : rows[picked] ?? null;
   const words = typed.trim();
-  const asksForWords = row !== null && (row.label.trim().endsWith("…") || row.prompt.trim().endsWith("…"));
+  const asksForWords = row !== null && optionAsksForWords(row);
   return {
     enabled: asksForWords ? words !== "" : row !== null || words !== "",
     label: row?.label ?? null,
     text: words,
     placeholder: asksForWords ? `Say how for “${row.label.trim().replace(/…$/, "")}”…` : row === null ? "Or answer in your own words…" : "Add a note (optional)…",
   };
+}
+
+/** An option ending with "…" (its label or prompt) asks the user for words. */
+export function optionAsksForWords(option: { label: string; prompt: string }): boolean {
+  return option.label.trim().endsWith("…") || option.prompt.trim().endsWith("…");
+}
+
+/** One option as a board card's chip (TR-045): pressing it answers at once, unless it asks for words. */
+export type OptionChip = { label: string; recommended: boolean; asksForWords: boolean };
+
+/** The card's chips in the agent's order, the recommended one marked; labels keep the agent's words. */
+export function optionChips(decision: Pick<StoredDecision, "options" | "recommended" | "reason">): OptionChip[] {
+  return decisionOptionRows(decision).rows.map((row) => ({ label: row.label, recommended: row.recommended, asksForWords: optionAsksForWords(row) }));
 }

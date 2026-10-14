@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Card } from "../shared/contracts";
 import type { StoredDecision } from "../shared/state";
-import { cardFooterParts, cardNowLine, offersCompact } from "./card-now";
+import { cardFooterParts, cardNowLine, offersCompact, questionContext } from "./card-now";
 
 const NOW = Date.parse("2026-01-01T12:00:00Z");
 
@@ -77,6 +77,8 @@ function card(parts: Partial<Card>): Card {
     latestMilestone: null,
     evidence: null,
     accepted: null,
+    permission: null,
+    delivered: null,
     ...parts,
   };
 }
@@ -117,22 +119,47 @@ describe("cardNowLine", () => {
       }),
       NOW,
     );
-    expect(line).toMatchObject({ kind: "call", action: "Answer", headline: "Approve the plan?", detail: "Blocking · 1 more question · also ready to accept · also waiting on 2 permissions" });
+    expect(line).toMatchObject({
+      kind: "call",
+      action: "Answer",
+      headline: "Approve the plan?",
+      detail: "Blocking · asked 12h ago · 1 more question · also ready to accept · also waiting on 2 permissions",
+    });
   });
 
-  it("gives a non-blocking question alone no detail", () => {
-    expect(cardNowLine(card({ decisions: [decision({})] }), NOW)).toMatchObject({ headline: "Call it drafts?", detail: null, action: "Answer" });
+  it("gives the question in the asker's words, with how long ago it was asked (TR-045)", () => {
+    expect(cardNowLine(card({ decisions: [decision({ askedAt: "2026-01-01T11:55:00Z" })] }), NOW)).toMatchObject({ headline: "Call it drafts?", detail: "asked 5m ago", action: "Answer" });
   });
 
-  it("offers Allow for a permission", () => {
-    expect(cardNowLine(card({ owner: { ...owner, pendingPermissions: 1 } }), NOW)).toMatchObject({ headline: "Waiting on a permission", detail: null, action: "Allow" });
+  it("leaves the age out when the time is unknown", () => {
+    expect(cardNowLine(card({ decisions: [decision({ askedAt: "" })] }), NOW)).toMatchObject({ headline: "Call it drafts?", detail: null });
+  });
+
+  it("says what a permission asks, the rest counted", () => {
+    const permission = { title: "Run a command", detail: "npm install" };
+    expect(cardNowLine(card({ owner: { ...owner, pendingPermissions: 1 }, permission }), NOW)).toMatchObject({ headline: "Run a command", detail: "npm install", action: "Review" });
+    expect(cardNowLine(card({ owner: { ...owner, pendingPermissions: 3 }, permission }), NOW)).toMatchObject({ detail: "npm install · 2 more permissions" });
+    expect(cardNowLine(card({ owner: { ...owner, pendingPermissions: 2 }, permission: { title: "Edit", detail: null } }), NOW)).toMatchObject({ detail: "1 more permission" });
+  });
+
+  it("falls back to a count when the permission's words are unknown", () => {
+    expect(cardNowLine(card({ owner: { ...owner, pendingPermissions: 1 } }), NOW)).toMatchObject({ headline: "Waiting on a permission", detail: null, action: "Review" });
+  });
+
+  it("leads a delivery with its summary, readiness and evidence under it", () => {
+    const evidence = { checks: [{ command: "npm test", result: "ok" }], review: "self", screenshots: [], screenshotsNone: "no visible change", missing: [], complete: true };
+    expect(cardNowLine(card({ status: "Awaiting acceptance", column: "needs-you", evidence, delivered: "Notes sync offline." }), NOW)).toMatchObject({
+      headline: "Notes sync offline.",
+      detail: "Ready to accept · 1 check · review · no screenshots: no visible change",
+      action: "Request changes",
+    });
   });
 
   it("puts the whole evidence under Ready to accept", () => {
     const evidence = { checks: [{ command: "npm test", result: "ok" }], review: "self", screenshots: [{ file: "a.png", caption: "", present: true, path: "/tmp/a.png" }], screenshotsNone: null, missing: [], complete: true };
     expect(cardNowLine(card({ status: "Awaiting acceptance", column: "needs-you", evidence }), NOW)).toMatchObject({
       kind: "call",
-      action: "Review",
+      action: "Request changes",
       headline: "Ready to accept",
       detail: "1 check · review · 1 screenshot",
     });
@@ -140,7 +167,7 @@ describe("cardNowLine", () => {
 
   it("says a delivery with incomplete evidence is not ready, naming what is missing", () => {
     const evidence = { checks: [], review: null, screenshots: [], screenshotsNone: null, missing: ["checks", "review"], complete: false };
-    expect(cardNowLine(card({ status: "Awaiting acceptance", column: "needs-you", evidence }), NOW)).toMatchObject({ headline: "Not ready to accept", detail: "Missing: checks, review", action: "Review" });
+    expect(cardNowLine(card({ status: "Awaiting acceptance", column: "needs-you", evidence }), NOW)).toMatchObject({ headline: "Not ready to accept", detail: "Evidence missing: checks, review", action: "Review" });
   });
 
   it("shows acceptance without an evidence record with no detail", () => {
@@ -204,5 +231,16 @@ describe("offersCompact", () => {
     expect(offersCompact(card({ owner: { ...owner, contextUsedTokens: null } }))).toBe(false);
     expect(offersCompact(card({ owner: null }))).toBe(false);
     expect(offersCompact(card({ parent: "NA-027", owner: { ...owner, contextUsedTokens: 200_000 } }))).toBe(false);
+  });
+});
+
+describe("questionContext", () => {
+  it("says whether it blocks and how long ago it was asked", () => {
+    expect(questionContext({ blocking: true, askedAt: "2026-01-01T11:58:00Z" }, NOW)).toBe("Blocking · asked 2m ago");
+    expect(questionContext({ blocking: false, askedAt: "2026-01-01T11:59:50Z" }, NOW)).toBe("asked just now");
+  });
+  it("is empty for a non-blocking question asked at an unknown time", () => {
+    expect(questionContext({ blocking: false, askedAt: "" }, NOW)).toBeNull();
+    expect(questionContext({ blocking: true, askedAt: "" }, NOW)).toBe("Blocking");
   });
 });
