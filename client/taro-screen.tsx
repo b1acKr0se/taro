@@ -171,25 +171,9 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   const styles = useMemo(
     () => ({
       root: { flex: 1, backgroundColor: colors.surface0 },
-      // The project tabs scroll; New project stays at the bar's right end, apart from them (TR-031).
-      tabBar: { flexDirection: "row" as const, alignItems: "center" as const, borderBottomWidth: 1, borderBottomColor: colors.border, paddingRight: paneGutter(false) },
-      tabsFrame: { flexGrow: 1, flexShrink: 1 },
-      newProject: {
-        flexDirection: "row" as const,
-        alignItems: "center" as const,
-        gap: SPACE.xs,
-        marginLeft: SPACE.md,
-        paddingHorizontal: SPACE.md,
-        paddingVertical: SPACE.xs,
-        borderRadius: 7,
-        borderWidth: 1,
-        borderColor: colors.border,
-        backgroundColor: colors.surface1,
-      },
-      newProjectActive: { borderColor: colors.accent },
-      newProjectRound: { paddingHorizontal: SPACE.xs + 2, paddingVertical: SPACE.xs + 2, borderRadius: 16 },
-      newProjectText: { color: colors.foreground, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
-      tabs: { flexDirection: "row" as const, gap: SPACE.lg, paddingHorizontal: paneGutter(false) },
+      tabBar: { borderBottomWidth: 1, borderBottomColor: colors.border },
+      // New project follows the last tab and scrolls with them (TR-071), centred in the row.
+      tabs: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.lg, paddingHorizontal: paneGutter(false) },
       // Flat tabs: the chosen one is marked by its text and a line under it, not by a box.
       tab: {
         flexDirection: "row" as const,
@@ -227,28 +211,19 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   }
 
   const settingUp = showing === "setup";
-  const newProject = (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="New project"
-      accessibilityState={{ selected: settingUp }}
-      style={[styles.newProject, layout.compact ? styles.newProjectRound : null, settingUp ? styles.newProjectActive : null]}
-      onPress={() => choose(selected, "setup")}
-    >
-      <Icon name="Plus" size={layout.compact ? 16 : 13} color={settingUp ? colors.accent : colors.foreground} />
-      {layout.compact ? null : <Text style={styles.newProjectText}>New project</Text>}
-    </Pressable>
-  );
+  // The Catch up button's look (TR-071): a labelled button, not a round "+".
+  const newProject = <IconButton icon="Plus" label="New Project" showLabel theme={theme} onPress={() => choose(selected, "setup")} />;
 
   const projectTabs = layout.compact ? (
     // A phone: the project pill row only; Manager · Inbox · Board live inside the project view.
-    <ScrollView horizontal style={styles.tabsFrame} contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
+    <ScrollView horizontal contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
       {list.map((summary) =>
         tab(summary.config.project, summary.config.project, "FolderKanban", !settingUp && current?.config.project === summary.config.project, () => choose(summary.config.project, "project")),
       )}
+      {newProject}
     </ScrollView>
   ) : (
-    <ScrollView horizontal style={styles.tabsFrame} contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
+    <ScrollView horizontal contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
       {list.length === 0 ? null : tab("inbox", "Inbox", "Inbox", showing === "inbox", () => choose(selected, "inbox"))}
       {list.map((summary) =>
         tab(
@@ -260,14 +235,10 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
           summary.needsYou,
         ),
       )}
+      {newProject}
     </ScrollView>
   );
-  const tabs = (
-    <View style={styles.tabBar}>
-      {projectTabs}
-      {newProject}
-    </View>
-  );
+  const tabs = <View style={styles.tabBar}>{projectTabs}</View>;
 
   let body;
   if (showing === "setup" && creating.step !== "idle") {
