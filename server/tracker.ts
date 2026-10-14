@@ -10,12 +10,14 @@ import { join } from "node:path";
 import type { TrackerSyncProblem } from "../shared/contracts";
 import { TICKET_STATUSES } from "../shared/project";
 import { gainedGuidelines, identityChanges, INSTRUCTION_FILES, TRACKER_CONFIG, withCommittedIdentity } from "../shared/tracker-guard";
-import { backlogEnvironment, findExecutable, searchDirectories, taroBacklogDirectory } from "./backlog-install";
-import { commandError, runChecked, runCommand, type CommandResult } from "./process";
+import { backlogEnvironment, findExecutable, nativeBacklog, searchDirectories, taroBacklogDirectory } from "./backlog-install";
+import { commandError, concurrencyLimit, runChecked, runCommand, type CommandResult } from "./process";
 
 export const TRACKER_BRANCH = "taro/backlog";
 
 let backlogLookup: Promise<string | null> | null = null;
+/** The native binary behind each wrapper found, looked up once. */
+const nativeLookups = new Map<string, Promise<string | null>>();
 
 /** A `backlog` the user installed comes first; Taro's own copy (TR-063) only when there is none. */
 export async function findBacklog(directories: readonly string[] = searchDirectories()): Promise<string | null> {
@@ -34,6 +36,7 @@ export function backlogBinary(find: () => Promise<string | null> = () => findBac
 /** After Taro installs its copy: the next lookup searches again. */
 export function forgetBacklogLookup(): void {
   backlogLookup = null;
+  nativeLookups.clear();
 }
 
 async function requireBacklog(): Promise<string> {
@@ -42,9 +45,21 @@ async function requireBacklog(): Promise<string> {
   return binary;
 }
 
+/** Backlog processes under way at once: each holds several threads, and a host short of threads makes the CLI abort or hang (TR-073). */
+const BACKLOG_AT_ONCE = 4;
+const backlogTurn = concurrencyLimit(BACKLOG_AT_ONCE);
+
 export async function runBacklog(trackerPath: string, args: readonly string[]): Promise<string> {
   const binary = await requireBacklog();
-  return runChecked(binary, args, { cwd: trackerPath, env: { ...backlogEnvironment(binary), BACKLOG_CWD: trackerPath }, timeoutMs: 60_000 });
+  let nativeLookup = nativeLookups.get(binary);
+  if (nativeLookup === undefined) {
+    nativeLookup = nativeBacklog(binary);
+    nativeLookups.set(binary, nativeLookup);
+  }
+  const native = await nativeLookup;
+  const environment = native === null ? backlogEnvironment(binary) : {};
+  // The timeout counts from the process's start, not from the wait for a turn.
+  return backlogTurn(() => runChecked(native ?? binary, args, { cwd: trackerPath, env: { ...environment, BACKLOG_CWD: trackerPath }, timeoutMs: 60_000 }));
 }
 
 function git(directory: string, args: readonly string[]): Promise<string> {

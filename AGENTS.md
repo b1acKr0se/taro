@@ -96,8 +96,12 @@ daemon with its own home and port, unique to your ticket:
 - Onboard a scratch git repository (not this one) with cheap models (Sonnet/Haiku) for end-to-end
   runs; agents on a throwaway daemon cost real money, so keep runs short.
 - Installing writes `plugins` into that home's `config.json`; keep that key if you rewrite it.
-- Stop your daemon when done: `paseo daemon stop --home $HOME_DIR` (or kill its pid), and delete
-  the home.
+- Stop your daemon when done: `paseo daemon stop --home $HOME_DIR` (or kill its pid), then check
+  `ps -eo pid,ppid,etime,args` for leftovers (its plugin process, a `backlog` or `git` reparented to
+  PID 1), kill them by pid, and delete the home. Orphaned `backlog` processes once held a sixth of
+  the host's threads (TR-073).
+- Every command the plugin runs goes through `server/process.ts`: its own process group, killed
+  whole on a timeout or the plugin's stop. Never `spawn` elsewhere.
 
 ## Commits
 

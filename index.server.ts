@@ -66,7 +66,7 @@ import { sentImagesOf } from "./server/sent-images";
 import { agentBrief, listModelOptions } from "./server/summaries";
 import { TrackerWatch } from "./server/tracker-watch";
 import { forgetBacklogLookup } from "./server/tracker";
-import { runCommand } from "./server/process";
+import { runCommand, stopCommands } from "./server/process";
 import { isStopping, markStopping, reportFailure } from "./server/stopping";
 
 export default function contribute(server: PluginServerContext) {
@@ -377,7 +377,7 @@ export default function contribute(server: PluginServerContext) {
 
   // Paseo has already disposed the API when this runs: stop everything that could start a pass first,
   // so nothing new calls it, and keep what was in flight from logging the stop as errors (TR-067).
-  return () => {
+  return async () => {
     markStopping();
     trackers.stop();
     clearInterval(idleTimer);
@@ -388,5 +388,7 @@ export default function contribute(server: PluginServerContext) {
     removeTurnStartHook();
     removeArchiveHook();
     removeSessionHook();
+    // Last: commands under way get a moment to finish, then are killed with their children (TR-073).
+    await stopCommands();
   };
 }

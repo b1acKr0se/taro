@@ -74,7 +74,10 @@ one a "helper".
   contradicts, everything traces to the approved spec.
 - **Threads are finite:** before starting a subagent or a test daemon, read `cat
   /sys/fs/cgroup/pids.current /sys/fs/cgroup/pids.max` and wait while usage is above 85% (skip where
-  the files are missing). Stop test daemons and finished subagents promptly.
+  the files are missing). Stop test daemons and finished subagents promptly. Before you finish,
+  stop every test daemon you started (`paseo daemon stop --home <its home>`, or kill its pid) and
+  check `ps -eo pid,ppid,etime,args` for what it left: its plugin's processes, a `backlog` or `git`
+  under PID 1 from its home or tracker. Kill those by pid and delete the home.
 - **Unattended commands:** follow `reference/shell.md` (removals that need no approval, throwaway
   Backlog projects without `BACKLOG_CWD`), and tell each subagent to read it.
 - Pick each subagent's model and thinking by the task's difficulty from the allowed list: mechanical

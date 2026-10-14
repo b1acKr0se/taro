@@ -4,9 +4,9 @@
  * An install can outlast Paseo's 60-second RPC timeout, so it runs in the background and the setup
  * page polls its state.
  */
-import { access, constants, mkdir } from "node:fs/promises";
+import { access, constants, mkdir, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { basename, delimiter, dirname, join } from "node:path";
 
 import { dataPath } from "./data-dir";
 import { commandError, runCommand, type CommandOptions, type CommandResult } from "./process";
@@ -64,6 +64,21 @@ export function nodeDirectory(): string {
 
 export function withNodeOnPath(): Record<string, string> {
   return { PATH: [nodeDirectory(), process.env.PATH ?? ""].filter((part) => part !== "").join(delimiter) };
+}
+
+/**
+ * The native binary behind npm's `backlog`, a Node wrapper (`backlog.md/cli.js`) that starts
+ * `backlog.md-<platform>-<arch>/backlog` and waits on it (TR-073). Running the binary directly
+ * saves a Node process per call. Null when `binary` is not that wrapper or the platform package is
+ * not beside it (nested or hoisted, as npm places it); then the wrapper is run as before.
+ */
+export async function nativeBacklog(binary: string, platform: string = process.platform, arch: string = process.arch): Promise<string | null> {
+  const script = await realpath(binary).catch(() => null);
+  if (script === null || basename(script) !== "cli.js" || basename(dirname(script)) !== "backlog.md") return null;
+  const packageDirectory = dirname(script);
+  const platformPackage = `backlog.md-${platform === "win32" ? "windows" : platform}-${arch}`;
+  const executable = platform === "win32" ? "backlog.exe" : "backlog";
+  return findExecutable(join(platformPackage, executable), [join(packageDirectory, "node_modules"), dirname(packageDirectory)]);
 }
 
 /** What running `binary` needs: Taro's copy is a Node script, so it gets the daemon's Node. */
