@@ -59,11 +59,16 @@ export interface Frame {
   maximum: number;
 }
 
-/** The frame of an image in a stage; empty (nothing to draw) before either is measured. */
-export function frameOf(stage: Size, image: Size | null): Frame {
+/**
+ * The frame of an image in a stage; empty (nothing to draw) before either is measured. At fit the
+ * image keeps `inset` clear on each side (the controls drawn over the stage), and stays centred;
+ * zoomed in, it may pass under them to the stage's edges.
+ */
+export function frameOf(stage: Size, image: Size | null, inset: Size = { width: 0, height: 0 }): Frame {
   const empty = { stage, fitted: { width: 0, height: 0 }, pointsPerPixel: 1, minimum: 1, maximum: maxScale(1) };
-  if (image === null || stage.width <= 0 || stage.height <= 0 || image.width <= 0 || image.height <= 0) return empty;
-  const pointsPerPixel = Math.min(stage.width / image.width, stage.height / image.height);
+  const room = { width: stage.width - 2 * Math.max(0, inset.width), height: stage.height - 2 * Math.max(0, inset.height) };
+  if (image === null || room.width <= 0 || room.height <= 0 || image.width <= 0 || image.height <= 0) return empty;
+  const pointsPerPixel = Math.min(room.width / image.width, room.height / image.height);
   return {
     stage,
     fitted: { width: image.width * pointsPerPixel, height: image.height * pointsPerPixel },
@@ -89,11 +94,6 @@ export function isAtFit(transform: Transform): boolean {
 /** Larger than fit: a one-finger drag pans instead of swiping to the next image. */
 export function isZoomedIn(transform: Transform): boolean {
   return transform.scale > 1 + FIT_TOLERANCE;
-}
-
-/** The zoom as the user reads it: percent of the image's real size. */
-export function zoomPercent(transform: Transform, pointsPerPixel: number): number {
-  return Math.round(transform.scale * pointsPerPixel * 100);
 }
 
 function clamp(value: number, low: number, high: number): number {
@@ -265,4 +265,21 @@ export type TapOutcome = { kind: "zoom"; transform: Transform } | { kind: "close
 export function tapOutcome(previous: Tap | null, tap: Tap, current: Transform, frame: Frame): TapOutcome {
   if (isDoubleTap(previous, tap)) return { kind: "zoom", transform: doubleTapAt(current, tap.at, frame) };
   return isOutsideImage(tap.at, current, frame.fitted) ? { kind: "close" } : { kind: "none" };
+}
+
+/** How an eased move (a double-tap, the Fit / 1:1 button, a snap back) runs: fast, then slowing to rest. */
+export function settleEasing(progress: number): number {
+  const done = clamp(progress, 0, 1);
+  return 1 - (1 - done) ** 3;
+}
+
+/**
+ * Where an eased move from `from` to `to` is at `progress` (0 to 1 of its duration). The native
+ * driver reports its values only asynchronously, so a finger landing mid-move takes the image from
+ * here rather than reading it back.
+ */
+export function transformBetween(from: Transform, to: Transform, progress: number): Transform {
+  const eased = settleEasing(progress);
+  const mix = (start: number, end: number) => start + (end - start) * eased;
+  return { scale: mix(from.scale, to.scale), x: mix(from.x, to.x), y: mix(from.y, to.y) };
 }

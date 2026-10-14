@@ -5,6 +5,8 @@ import {
   clampTransform,
   doubleTapAt,
   frameOf,
+  settleEasing,
+  transformBetween,
   gestureEnd,
   gestureMove,
   gestureStart,
@@ -21,7 +23,6 @@ import {
   toggleRealSize,
   wheelAt,
   zoomAround,
-  zoomPercent,
   type Gesture,
 } from "./zoom";
 
@@ -56,13 +57,6 @@ describe("frameOf, realScale, maxScale", () => {
     expect(maxScale(0.2)).toBe(10);
     expect(maxScale(1)).toBe(4);
     expect(maxScale(4)).toBe(4);
-  });
-
-  it("reads the zoom as percent of the real size", () => {
-    expect(zoomPercent(FIT, 0.2)).toBe(20);
-    expect(zoomPercent({ scale: 5, x: 0, y: 0 }, 0.2)).toBe(100);
-    expect(zoomPercent({ scale: 0.25, x: 0, y: 0 }, 4)).toBe(100);
-    expect(zoomPercent({ scale: 1.234, x: 0, y: 0 }, 0.333)).toBe(41);
   });
 
   it("tells fit, zoomed in and zoomed out apart, a hair counting as fit", () => {
@@ -170,7 +164,7 @@ describe("toggleRealSize", () => {
   it("shows a small image at its real size, smaller than fit", () => {
     const real = toggleRealSize(FIT, SMALL);
     expect(real).toEqual({ scale: 0.25, x: 0, y: 0 });
-    expect(zoomPercent(real, SMALL.pointsPerPixel)).toBe(100);
+    expect(real.scale * SMALL.pointsPerPixel).toBe(1);
     expect(toggleRealSize(real, SMALL)).toBe(FIT);
   });
 
@@ -321,5 +315,39 @@ describe("gestures", () => {
 
   it("lands a pinch let go within a hair of fit exactly on fit", () => {
     expect(gestureEnd(gestureStart(FIT, two(-50, 50), 0), { scale: 1.004, x: 1, y: 0 }, { dx: 0, dy: 0, vx: 0 }, 400, 0, 3, FRAME)).toEqual({ kind: "settle", transform: FIT });
+  });
+});
+
+describe("frameOf with an inset", () => {
+  it("fits the image inside the inset on each side and keeps the full stage", () => {
+    const frame = frameOf({ width: 400, height: 800 }, { width: 400, height: 800 }, { width: 0, height: 100 });
+    expect(frame.stage).toEqual({ width: 400, height: 800 });
+    expect(frame.fitted).toEqual({ width: 300, height: 600 });
+    expect(frame.pointsPerPixel).toBe(0.75);
+  });
+  it("lets a zoomed image reach the stage's edges, past the inset", () => {
+    const frame = frameOf({ width: 400, height: 800 }, { width: 400, height: 800 }, { width: 0, height: 100 });
+    expect(clampTransform({ scale: 2, x: 0, y: 1000 }, frame)).toEqual({ scale: 2, x: 0, y: 200 });
+  });
+  it("is empty when the inset leaves no room, and ignores a negative inset", () => {
+    expect(frameOf({ width: 400, height: 200 }, { width: 10, height: 10 }, { width: 0, height: 100 }).fitted).toEqual({ width: 0, height: 0 });
+    expect(frameOf({ width: 400, height: 200 }, { width: 400, height: 200 }, { width: -50, height: -50 }).fitted).toEqual({ width: 400, height: 200 });
+  });
+});
+
+describe("settleEasing and transformBetween", () => {
+  it("runs from 0 to 1, slowing towards the end, and holds outside the move", () => {
+    expect(settleEasing(0)).toBe(0);
+    expect(settleEasing(1)).toBe(1);
+    expect(settleEasing(0.5)).toBeCloseTo(0.875);
+    expect(settleEasing(-1)).toBe(0);
+    expect(settleEasing(2)).toBe(1);
+  });
+  it("places the image between the two transforms by the eased progress", () => {
+    const to = { scale: 3, x: 100, y: -40 };
+    expect(transformBetween(FIT, to, 0)).toEqual(FIT);
+    expect(transformBetween(FIT, to, 1)).toEqual(to);
+    expect(transformBetween(FIT, to, 0.5)).toEqual({ scale: 2.75, x: 87.5, y: -35 });
+    expect(transformBetween(FIT, to, 5)).toEqual(to);
   });
 });

@@ -1,15 +1,15 @@
 /**
  * An image in a chat (and, from TR-021.02, in a ticket's evidence): a thumbnail that opens full
  * size, in a gallery of the images beside it that zooms and pans (TR-033; the arithmetic is in
- * `./zoom`). The client cannot read the daemon's disk, so a `file://` URI or an absolute path is read
- * through `taro.image.read`, which serves only the directories Taro's images live in; an `https://`
+ * `./zoom`; the top bar, the safe area and smooth gestures are TR-042). The client cannot read the
+ * daemon's disk, so a `file://` URI or an absolute path is read through `taro.image.read`, which serves only the directories Taro's images live in; an `https://`
  * image loads directly.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Image, Modal, PanResponder, Platform, Pressable, Text, View, type GestureResponderEvent } from "react-native";
+import { Animated, Image, Modal, PanResponder, Platform, Pressable, SafeAreaView, StatusBar, Text, View, type GestureResponderEvent } from "react-native";
 
 import { readImageRpc } from "../shared/contracts";
 import { SPACE } from "./spacing";
@@ -24,10 +24,11 @@ import {
   gestureStart,
   isAtFit,
   isZoomedIn,
+  settleEasing,
   tapOutcome,
   toggleRealSize,
+  transformBetween,
   wheelAt,
-  zoomPercent,
   type Gesture,
   type Point,
   type Size,
@@ -159,7 +160,9 @@ export function ImageGallery({ images, start, theme, onClose }: { images: readon
   }, [start]);
   const shown = images[index];
   return (
-    <Modal visible={start !== null} transparent animationType="fade" onRequestClose={onClose}>
+    // Drawn under Android's status and navigation bars, as the app's edge-to-edge screens are, so the
+    // top bar can pad by the status bar's height itself.
+    <Modal visible={start !== null} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
       {start === null || shown === undefined ? null : (
         // Keyed by position, so each image starts at fit with its own gesture state.
         <GalleryPage key={index} image={shown} index={index} count={images.length} theme={theme} onIndex={setIndex} onClose={onClose} />
@@ -193,6 +196,21 @@ interface WebDocument {
 /** A wheel delta in lines (Firefox) as pixels, so every browser zooms at the same rate. */
 const WHEEL_LINE = 16;
 const SETTLE_MS = 180;
+/** Eased moves run on the UI thread on a phone; the web has no native driver. */
+const NATIVE_DRIVER = Platform.OS !== "web";
+/** The top bar's row, below the status bar: a touch target's height. */
+const BAR_HEIGHT = 52;
+/** How far the bar's fade reaches below the bar, and in how many steps (core React Native draws no gradient). */
+const FADE_REACH = 28;
+const FADE_STEPS = 10;
+const FADE_ALPHA = 0.8;
+
+/** An eased move under way: where it started, where it goes, and when. */
+interface Easing {
+  from: Transform;
+  to: Transform;
+  startedAt: number;
+}
 
 function GalleryPage({
   image,
@@ -215,10 +233,13 @@ function GalleryPage({
   const natural = useImageSize(uri);
   const label = labelOf(image.alt);
   const [stage, setStage] = useState<Size>({ width: 0, height: 0 });
-  const frame = useMemo(() => frameOf(stage, natural), [stage, natural]);
-  // Only what the header reads is state, so a moving finger does not re-render the page.
-  const [percent, setPercent] = useState(0);
+  // The bar's height with its safe-area padding: the image at fit keeps clear of it, top and bottom.
+  const [barHeight, setBarHeight] = useState(0);
+  const frame = useMemo(() => frameOf(stage, natural, { width: 0, height: barHeight }), [stage, natural, barHeight]);
+  // The only state a gesture touches is whether the image is at fit, set when that changes; a moving
+  // finger only sets the animated values, so it never re-renders the page.
   const [atFit, setAtFit] = useState(true);
+  const atFitShown = useRef(true);
   const translateX = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(1)).current;
@@ -227,46 +248,55 @@ function GalleryPage({
   const live = useRef({ frame, index, count, onIndex, onClose, transform: FIT, origin: { x: 0, y: 0 } });
   live.current = { ...live.current, frame, index, count, onIndex, onClose };
   const gesture = useRef<Gesture | null>(null);
+  const easing = useRef<Easing | null>(null);
   const lastTap = useRef<Tap | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    setPercent(zoomPercent(live.current.transform, frame.pointsPerPixel));
-  }, [frame.pointsPerPixel]);
-
-  /** Shows a transform at once (following fingers) or eased (a tap, a button, a snap back). */
-  function show(next: Transform, eased: boolean): void {
-    live.current.transform = next;
-    setPercent(zoomPercent(next, live.current.frame.pointsPerPixel));
-    setAtFit(isAtFit(next));
-    if (!eased) {
-      translateX.setValue(next.x);
-      translateY.setValue(next.y);
-      scale.setValue(next.scale);
-      return;
-    }
-    Animated.parallel([
-      Animated.timing(translateX, { toValue: next.x, duration: SETTLE_MS, useNativeDriver: false }),
-      Animated.timing(translateY, { toValue: next.y, duration: SETTLE_MS, useNativeDriver: false }),
-      Animated.timing(scale, { toValue: next.scale, duration: SETTLE_MS, useNativeDriver: false }),
-    ]).start();
+  function showFit(transform: Transform): void {
+    const fit = isAtFit(transform);
+    if (fit === atFitShown.current) return;
+    atFitShown.current = fit;
+    setAtFit(fit);
   }
-  const showRef = useRef(show);
-  showRef.current = show;
 
-  /** Stops an easing under a new touch and takes the image from where it is, not where it was heading. */
+  /** Puts the image at a transform at once, following fingers: animated values only. */
+  function place(next: Transform): void {
+    live.current.transform = next;
+    translateX.setValue(next.x);
+    translateY.setValue(next.y);
+    scale.setValue(next.scale);
+  }
+
+  /** Eases the image to a transform (a tap, a button, a snap back); the bar's Fit / 1:1 follows once it is there. */
+  function settle(next: Transform): void {
+    easing.current = { from: live.current.transform, to: next, startedAt: Date.now() };
+    live.current.transform = next;
+    const timing = (value: Animated.Value, toValue: number) => Animated.timing(value, { toValue, duration: SETTLE_MS, easing: settleEasing, useNativeDriver: NATIVE_DRIVER });
+    Animated.parallel([timing(translateX, next.x), timing(translateY, next.y), timing(scale, next.scale)]).start(({ finished }) => {
+      if (!finished) return;
+      easing.current = null;
+      showFitRef.current(next);
+    });
+  }
+  const settleRef = useRef(settle);
+  settleRef.current = settle;
+  const placeRef = useRef(place);
+  placeRef.current = place;
+  const showFitRef = useRef(showFit);
+  showFitRef.current = showFit;
+
+  /**
+   * Stops an easing under a new touch and takes the image from where it is, not where it was heading.
+   * Where it is comes from the easing's own curve: the native driver reports values only later.
+   */
   function holdStill(): void {
-    const held = { ...live.current.transform };
-    translateX.stopAnimation((value) => {
-      held.x = value;
-    });
-    translateY.stopAnimation((value) => {
-      held.y = value;
-    });
-    scale.stopAnimation((value) => {
-      held.scale = value;
-    });
-    live.current.transform = held;
+    const moving = easing.current;
+    if (moving === null) return;
+    easing.current = null;
+    translateX.stopAnimation();
+    translateY.stopAnimation();
+    scale.stopAnimation();
+    placeRef.current(transformBetween(moving.from, moving.to, (Date.now() - moving.startedAt) / SETTLE_MS));
   }
 
   /** A touch in stage coordinates, measured from the stage's centre. */
@@ -286,7 +316,7 @@ function GalleryPage({
     if (closeTimer.current !== null) clearTimeout(closeTimer.current);
     closeTimer.current = null;
     lastTap.current = outcome.kind === "zoom" ? null : tap;
-    if (outcome.kind === "zoom") showRef.current(outcome.transform, true);
+    if (outcome.kind === "zoom") settleRef.current(outcome.transform);
     // Waits to see that this is not the first of a double-tap.
     else if (outcome.kind === "close") closeTimer.current = setTimeout(() => live.current.onClose(), DOUBLE_TAP_MS);
   }
@@ -305,7 +335,7 @@ function GalleryPage({
         const { transform: current, count: total, frame: bounds } = live.current;
         const step = gestureMove(gesture.current, current, pointsOf(event), total, bounds);
         gesture.current = step.gesture;
-        if (step.transform !== null) showRef.current(step.transform, false);
+        if (step.transform !== null) placeRef.current(step.transform);
       },
       onPanResponderRelease: (_event, moved) => {
         const state = gesture.current;
@@ -315,12 +345,16 @@ function GalleryPage({
         const end = gestureEnd(state, current, moved, Date.now(), at, total, bounds);
         if (end.kind === "tap") onTap(end.at);
         else if (end.kind === "show") live.current.onIndex(end.index);
-        else if (end.kind === "settle") showRef.current(end.transform, true);
+        else if (end.kind === "settle") settleRef.current(end.transform);
+        // An ease just started updates the bar when it lands.
+        if (easing.current === null) showFitRef.current(live.current.transform);
       },
       onPanResponderTerminate: () => {
         const state = gesture.current;
         gesture.current = null;
-        if (state !== null && !isZoomedIn(state.start)) showRef.current(state.start, true);
+        if (state === null) return;
+        if (!isZoomedIn(state.start)) settleRef.current(state.start);
+        if (easing.current === null) showFitRef.current(live.current.transform);
       },
     }),
   ).current;
@@ -344,7 +378,9 @@ function GalleryPage({
       holdStill();
       const at = { x: event.clientX - box.left - box.width / 2, y: event.clientY - box.top - box.height / 2 };
       const delta = event.deltaMode === 1 ? event.deltaY * WHEEL_LINE : event.deltaY;
-      showRef.current(wheelAt(live.current.transform, delta, event.ctrlKey, at, live.current.frame), false);
+      const next = wheelAt(live.current.transform, delta, event.ctrlKey, at, live.current.frame);
+      placeRef.current(next);
+      showFitRef.current(next);
     }
     function onKey(event: WebKeyEvent): void {
       const { index: at, count: total } = live.current;
@@ -367,49 +403,14 @@ function GalleryPage({
     });
   }
 
-  const button = { paddingHorizontal: SPACE.md, paddingVertical: SPACE.xs, borderRadius: 6, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface1 };
-  const buttonText = { color: colors.foreground, fontSize: FONT_SIZE.small };
-  const arrow = {
-    position: "absolute" as const,
-    top: "50%" as const,
-    marginTop: -20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: withAlpha(colors.surface1, 0.85),
-    alignItems: "center" as const,
-    justifyContent: "center" as const,
-  };
-  const arrowText = { color: colors.foreground, fontSize: FONT_SIZE.display, lineHeight: FONT_SIZE.display + 2 };
+  // Android draws the modal under its status bar (statusBarTranslucent); iOS pads in SafeAreaView; the web needs neither.
+  const statusBarHeight = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
+  const SafeArea = Platform.OS === "ios" ? SafeAreaView : View;
+  const control = { minWidth: 44, height: 44, alignItems: "center" as const, justifyContent: "center" as const, borderRadius: 22 };
+  const controlText = { color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" as const };
 
   return (
-    <View style={{ flex: 1, backgroundColor: withAlpha(colors.surface0, 0.94), padding: SPACE.lg, gap: SPACE.md }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm }}>
-        <Text numberOfLines={1} style={{ flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.small }}>
-          {count > 1 ? `${index + 1} / ${count}  ` : ""}
-          {label}
-        </Text>
-        {natural === null ? null : (
-          <>
-            <Text accessibilityLabel={`Zoom ${percent} percent`} style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small }}>
-              {percent}%
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={atFit ? "Show at real size" : "Fit to screen"}
-              onPress={() => show(toggleRealSize(live.current.transform, frame), true)}
-              style={button}
-            >
-              <Text style={buttonText}>{atFit ? "100%" : "Fit"}</Text>
-            </Pressable>
-          </>
-        )}
-        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={button}>
-          <Text style={buttonText}>Close</Text>
-        </Pressable>
-      </View>
+    <View style={{ flex: 1, backgroundColor: withAlpha(colors.surface0, 0.94) }}>
       <View
         ref={stageRef}
         onLayout={(event) => onStageLayout(event.nativeEvent.layout.width, event.nativeEvent.layout.height)}
@@ -417,7 +418,7 @@ function GalleryPage({
         {...responder.panHandlers}
       >
         {uri === null ? (
-          <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center", marginTop: SPACE.xl }}>Image not available</Text>
+          <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center", marginTop: barHeight + SPACE.xl }}>Image not available</Text>
         ) : uri === undefined || frame.fitted.width === 0 ? null : (
           <Animated.View
             style={{
@@ -432,16 +433,44 @@ function GalleryPage({
             <Image source={{ uri }} accessibilityLabel={label} resizeMode="contain" style={{ width: "100%", height: "100%" }} />
           </Animated.View>
         )}
-        {index > 0 ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Previous image" onPress={() => onIndex(index - 1)} style={[arrow, { left: SPACE.sm }]}>
-            <Text style={arrowText}>‹</Text>
-          </Pressable>
-        ) : null}
-        {index < count - 1 ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Next image" onPress={() => onIndex(index + 1)} style={[arrow, { right: SPACE.sm }]}>
-            <Text style={arrowText}>›</Text>
-          </Pressable>
-        ) : null}
+      </View>
+      {/* Over the stage; touches between the controls pass through to it. */}
+      <View pointerEvents="box-none" style={{ position: "absolute", top: 0, left: 0, right: 0 }} onLayout={(event) => setBarHeight(event.nativeEvent.layout.height)}>
+        <View pointerEvents="none" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: -FADE_REACH }}>
+          {Array.from({ length: FADE_STEPS }, (_, step) => (
+            <View key={step} style={{ flex: 1, backgroundColor: withAlpha(colors.surface0, FADE_ALPHA * (1 - step / FADE_STEPS) ** 1.5) }} />
+          ))}
+        </View>
+        <SafeArea pointerEvents="box-none">
+          <View pointerEvents="box-none" style={{ marginTop: statusBarHeight, height: BAR_HEIGHT, flexDirection: "row", alignItems: "center", paddingHorizontal: SPACE.xs }}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} hitSlop={SPACE.xs} style={control}>
+              <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.subtitle + 4 }}>✕</Text>
+            </Pressable>
+            <View pointerEvents="none" style={{ flex: 1, alignItems: "center", paddingHorizontal: SPACE.sm }}>
+              {count > 1 ? (
+                <Text numberOfLines={1} style={controlText}>
+                  {index + 1} of {count}
+                </Text>
+              ) : null}
+              <Text numberOfLines={1} style={count > 1 ? { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption } : controlText}>
+                {label}
+              </Text>
+            </View>
+            {natural === null ? (
+              <View style={control} />
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={atFit ? "Show at real size" : "Fit to screen"}
+                onPress={() => settle(toggleRealSize(live.current.transform, live.current.frame))}
+                hitSlop={SPACE.xs}
+                style={control}
+              >
+                <Text style={controlText}>{atFit ? "1:1" : "Fit"}</Text>
+              </Pressable>
+            )}
+          </View>
+        </SafeArea>
       </View>
     </View>
   );
