@@ -240,8 +240,12 @@ export async function liveOpenDecisions(paseo: PaseoApi, state: PluginState, pro
 }
 
 export async function loadTicketDetail(project: string, ticketId: string): Promise<TicketDetailView> {
-  const detail = await viewTicket((await projectPaths(project)).tracker, ticketId);
+  const tracker = (await projectPaths(project)).tracker;
+  const detail = await viewTicket(tracker, ticketId);
   const hasRecord = parseEvidence(detail.implementationNotes) !== null;
+  // Backlog's task view lists the children without their status; the ticket list has it, as on the board.
+  const listedStatus =
+    detail.subtasks.length === 0 ? new Map<string, string>() : new Map((await listTickets(tracker)).map((ticket) => [ticket.id, ticket.status]));
   return {
     id: detail.id,
     title: detail.title,
@@ -253,7 +257,7 @@ export async function loadTicketDetail(project: string, ticketId: string): Promi
     notes: detail.implementationNotes,
     finalSummary: detail.finalSummary,
     dependencies: detail.dependencies,
-    children: detail.subtasks.map((child) => ({ id: child.id, title: child.title, status: child.status ?? null })),
+    children: detail.subtasks.map((child) => ({ id: child.id, title: child.title, status: listedStatus.get(child.id) ?? child.status ?? null })),
     evidence: hasRecord || detail.status === "Awaiting acceptance" ? await ticketEvidence(project, detail.id, detail.implementationNotes, detail.labels) : null,
   };
 }
