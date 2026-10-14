@@ -15,6 +15,7 @@ import {
   optionAsksForWords,
   optionChips,
   planCardOptions,
+  ticketViewApproval,
   untrackedDecision,
   type DecisionLookup,
 } from "./decision-view";
@@ -242,15 +243,35 @@ describe("planCardOptions", () => {
   it("sends the option starting with Approve, the others beside it, change options hidden", () => {
     expect(planCardOptions({ options: [option("Split into children"), option("Approve the plan"), option("Change…")], recommended: "Split into children" })).toEqual({
       approve: "Approve the plan",
+      approveLabel: "Approve the plan",
       others: [{ label: "Split into children", asksForWords: false }],
     });
   });
 
-  it("sends the recommended option when none starts with Approve", () => {
+  it("sends the recommended one of two Approve options, and its button says what it sends", () => {
+    const options = planCardOptions({ options: [option("Approve as planned"), option("Approve without the migration"), option("Split into children")], recommended: "Approve without the migration" });
+    expect(options?.approve).toBe("Approve without the migration");
+    expect(options?.approveLabel).toBe("Approve without the migration");
+    expect(options?.others.map((other) => other.label)).toEqual(["Approve as planned", "Split into children"]);
+  });
+
+  it("sends the first Approve option when the recommended one does not start with Approve", () => {
+    const options = planCardOptions({ options: [option("Approve now"), option("Approve later"), option("Wait")], recommended: "Wait" });
+    expect(options?.approve).toBe("Approve now");
+    expect(options?.others.map((other) => other.label)).toEqual(["Approve later", "Wait"]);
+  });
+
+  it("sends the recommended option when none starts with Approve, and the button shows its label", () => {
     expect(planCardOptions({ options: [option("Go ahead"), option("Rename", "Rename it…")], recommended: "Go ahead" })).toEqual({
       approve: "Go ahead",
+      approveLabel: "Go ahead",
       others: [{ label: "Rename", asksForWords: true }],
     });
+  });
+
+  it("says Approve on the button only when plain Approve is what it sends", () => {
+    expect(planCardOptions({ options: [option("Approve"), option("Split into children")], recommended: "Split into children" })?.approveLabel).toBe("Approve");
+    expect(planCardOptions({ options: [option(" approve ")], recommended: "" })).toEqual({ approve: " approve ", approveLabel: "Approve", others: [] });
   });
 
   it("is null when there is neither, or the recommended one is a hidden change option", () => {
@@ -318,22 +339,32 @@ describe("askedBy", () => {
 describe("answeredInPlan", () => {
   const option = (label: string) => ({ label, prompt: label, consequence: "", images: [] });
   const approval = { id: "scope-approval", ticket: "NA-001", options: [option("Approve"), option("Split into children")], recommended: "Approve" };
-  const plan = parsePlan("## Goal\nShip it.\n## Size\nLow");
 
-  it("leaves out a scope approval on the panel's ticket whose plan parses", () => {
-    expect(answeredInPlan(approval, "NA-001", plan)).toBe(true);
+  it("answers a scope approval on the panel's ticket in its Ticket view", () => {
+    expect(answeredInPlan(approval, "NA-001")).toBe(true);
   });
 
-  it("keeps the card while the plan loads or when it does not parse", () => {
-    expect(answeredInPlan(approval, "NA-001", null)).toBe(false);
-    expect(answeredInPlan(approval, "NA-001", parsePlan("1. Do it\n2. Test it"))).toBe(false);
+  it("answers it once, in the Ticket view, whether or not the plan follows the template", () => {
+    // A free-form (legacy) plan: the Ticket view draws its Approve rows and the panel draws no card, by one condition.
+    expect(parsePlan("1. Do it\n2. Test it")).toBeNull();
+    const decisions = [{ ...approval, status: "open" as const }, { ...approval, id: "zip-name", status: "open" as const }];
+    expect(ticketViewApproval(decisions, "NA-001")?.decision.id).toBe("scope-approval");
+    expect(ticketViewApproval(decisions, "NA-001")?.options.approve).toBe("Approve");
+    expect(decisions.filter((decision) => !answeredInPlan(decision, "NA-001")).map((decision) => decision.id)).toEqual(["zip-name"]);
+  });
+
+  it("gives the Ticket view nothing to answer when Approve has nothing to send, so the panel keeps the card", () => {
+    const decisions = [{ ...approval, options: [option("Go"), option("Wait")], recommended: "", status: "open" as const }];
+    expect(ticketViewApproval(decisions, "NA-001")).toBeNull();
+    expect(decisions.filter((decision) => !answeredInPlan(decision, "NA-001"))).toHaveLength(1);
+    expect(ticketViewApproval([{ ...approval, status: "answered" as const }], "NA-001")).toBeNull();
   });
 
   it("keeps other decisions, another ticket's approval, and one with nothing for Approve to send", () => {
-    expect(answeredInPlan({ ...approval, id: "zip-name" }, "NA-001", plan)).toBe(false);
-    expect(answeredInPlan(approval, "NA-002", plan)).toBe(false);
-    expect(answeredInPlan(approval, null, plan)).toBe(false);
-    expect(answeredInPlan({ ...approval, ticket: null }, "NA-001", plan)).toBe(false);
-    expect(answeredInPlan({ ...approval, options: [option("Go"), option("Wait")], recommended: "" }, "NA-001", plan)).toBe(false);
+    expect(answeredInPlan({ ...approval, id: "zip-name" }, "NA-001")).toBe(false);
+    expect(answeredInPlan(approval, "NA-002")).toBe(false);
+    expect(answeredInPlan(approval, null)).toBe(false);
+    expect(answeredInPlan({ ...approval, ticket: null }, "NA-001")).toBe(false);
+    expect(answeredInPlan({ ...approval, options: [option("Go"), option("Wait")], recommended: "" }, "NA-001")).toBe(false);
   });
 });

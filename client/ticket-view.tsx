@@ -13,7 +13,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { answerDecision, listOpenDecisions, loadTicket } from "../shared/contracts";
-import { SCOPE_APPROVAL, planCardOptions } from "../shared/decision-view";
+import { ticketViewApproval } from "../shared/decision-view";
 import { descriptionParts } from "../shared/description";
 import { finalSummaryBody } from "../shared/execution";
 import { FINAL_SECTIONS, finalSections, type FinalSections } from "../shared/final-summary";
@@ -32,7 +32,7 @@ import { recentMilestoneRows } from "./milestone-rows";
 import { paneGutter, SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { Chip, IconButton, MONOSPACE } from "./ui";
-import { useActions } from "./use-actions";
+import { useActions, type Actions } from "./use-actions";
 import { recordKindLook, toneColor } from "./visual-meta";
 
 /** The timeline's dot, the rail column it sits in, and the clock column before it. */
@@ -69,9 +69,10 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
   const plan = useMemo(() => parsePlan(planSource), [planSource]);
   const allDecisions = decisions.data?.decisions;
   const open = useMemo(() => (allDecisions ?? []).filter((decision) => decision.ticket === ticket && decision.status === "open"), [allDecisions, ticket]);
-  // The open scope approval is answered at the end of the plan too, after reading it.
-  const approval = open.find((decision) => decision.id === SCOPE_APPROVAL) ?? null;
-  const approvalOptions = useMemo(() => (approval === null ? null : planCardOptions(approval)), [approval]);
+  // The open scope approval is answered here (beside Needs you, and at the end of the plan after reading it), plan template or not.
+  const approving = useMemo(() => ticketViewApproval(open, ticket), [open, ticket]);
+  // One owner of both Approve presses: while one is in flight the other is disabled.
+  const approvePresses = useActions();
   const { colors } = theme;
   const styles = useMemo(
     () => ({
@@ -134,9 +135,9 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
                 )}
               </View>
             )}
-            {approval === null || approvalOptions === null ? null : (
+            {approving === null ? null : (
               <View style={styles.planActions}>
-                <PlanActions decision={approval} options={approvalOptions} theme={theme} answeredFrom={answeredFrom} onAnswered={() => void decisions.refetch()} />
+                <PlanActions decision={approving.decision} options={approving.options} presses={approvePresses} theme={theme} answeredFrom={answeredFrom} onAnswered={() => void decisions.refetch()} />
               </View>
             )}
           </View>
@@ -180,7 +181,7 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
         status={data.status}
         labels={data.labels}
         summary={summary}
-        approve={approval === null || approvalOptions === null ? null : { decision: approval, options: approvalOptions }}
+        approve={approving === null ? null : { ...approving, presses: approvePresses }}
         answeredFrom={answeredFrom}
         onAnswered={() => void decisions.refetch()}
         onOpenLink={openLink}
@@ -226,7 +227,7 @@ function SummaryBlock({
   status: string;
   labels: readonly string[];
   summary: TicketSummary;
-  approve: { decision: StoredDecision; options: PlanCardOptions } | null;
+  approve: { decision: StoredDecision; options: PlanCardOptions; presses: Actions } | null;
   answeredFrom: "screen" | "tab";
   onAnswered: () => void;
   onOpenLink: (url: string) => void;
@@ -254,7 +255,7 @@ function SummaryBlock({
             <Text style={{ fontWeight: "700" }}>Needs you:</Text> {summary.needText}
           </Text>
         </View>
-        {approve === null ? null : <SummaryApprove decision={approve.decision} options={approve.options} theme={theme} answeredFrom={answeredFrom} onAnswered={onAnswered} />}
+        {approve === null ? null : <SummaryApprove decision={approve.decision} options={approve.options} presses={approve.presses} theme={theme} answeredFrom={answeredFrom} onAnswered={onAnswered} />}
       </View>
       <View style={line}>
         <Text style={label}>Goal:</Text>
@@ -277,32 +278,33 @@ function SummaryBlock({
   );
 }
 
-/** Approve beside Needs you: the plan's own Approve, for a user who has read it already. */
+/** Approve beside Needs you: the plan's own Approve, for a user who has read it already; it shares the plan row's presses. */
 function SummaryApprove({
   decision,
   options,
+  presses,
   theme,
   answeredFrom,
   onAnswered,
 }: {
   decision: StoredDecision;
   options: PlanCardOptions;
+  presses: Actions;
   theme: PluginTheme;
   answeredFrom: "screen" | "tab";
   onAnswered: () => void;
 }) {
   const answer = useRpc(answerDecision);
-  const presses = useActions();
   return (
     <IconButton
       icon="Check"
-      label="Approve"
+      label={options.approveLabel}
       showLabel
       tone="accent"
       theme={theme}
       disabled={presses.busy}
-      state={presses.stateOf("approve")}
-      onPress={() => presses.press("approve", () => answer({ key: decision.key, label: options.approve, text: "", from: answeredFrom }), { after: "hold", onSuccess: onAnswered })}
+      state={presses.stateOf("summary-approve")}
+      onPress={() => presses.press("summary-approve", () => answer({ key: decision.key, label: options.approve, text: "", from: answeredFrom }), { after: "hold", onSuccess: onAnswered })}
     />
   );
 }

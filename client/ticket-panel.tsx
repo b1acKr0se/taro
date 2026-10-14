@@ -1,8 +1,8 @@
 /**
  * The ticket beside a Taro agent's own tab (spec §6): its open decisions and
- * the ticket. Elsewhere it says the agent is not one of Taro's. A scope approval
- * with a template plan is answered at the end of the ticket's Plan (TR-061), so
- * it has no card of its own here.
+ * the ticket. Elsewhere it says the agent is not one of Taro's. The ticket's scope
+ * approval is answered in its Ticket view (TR-061), template plan or not, so it
+ * has no card of its own here.
  */
 import type { PluginAgentPanelProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -13,7 +13,6 @@ import { findAgentTicket, listOpenDecisions } from "../shared/contracts";
 import { answeredInPlan } from "../shared/decision-view";
 import { DecisionCard } from "./decision-card";
 import { KeyboardScrollView } from "./keyboard";
-import { useTicketPlan } from "./plan-card";
 import { TicketView } from "./ticket-view";
 import { FONT_SIZE } from "./type-scale";
 
@@ -29,11 +28,10 @@ export function TicketPanel({ agentId, theme, layout }: PluginAgentPanelProps) {
     enabled: project !== null,
     refetchInterval: 4_000,
   });
-  const plan = useTicketPlan(project ?? "", ticket);
   const muted = { color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small, padding: 14 };
   if (identity.isLoading) return <Text style={muted}>Looking this agent up…</Text>;
   if (project === null) return <Text style={muted}>This agent is not one of Taro's.</Text>;
-  const mine = (decisions.data?.decisions ?? []).filter((decision) => decision.agentId === agentId && !answeredInPlan(decision, ticket, plan));
+  const mine = (decisions.data?.decisions ?? []).filter((decision) => decision.agentId === agentId && !answeredInPlan(decision, ticket));
   return (
     <View style={{ flex: 1 }}>
       {mine.length === 0 ? null : (

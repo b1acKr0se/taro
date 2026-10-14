@@ -4,7 +4,6 @@
  * became of it. Pure, so the in-tab renderer stays a thin view.
  */
 import { decisionMessageSegments, sameQuestion, type OptionImage, type ParsedDecision } from "./reports";
-import type { ParsedPlan } from "./plan";
 import type { StoredDecision } from "./state";
 
 export type DecisionBlockView =
@@ -132,16 +131,23 @@ export function answerPlaceholder(decision: Pick<StoredDecision, "id" | "options
 }
 
 /**
- * The plan card's buttons (TR-061): Approve sends the option starting with "Approve", or else the
- * recommended one; every other shown option is a button beside it. Null when there is nothing for
- * Approve to send, and the decision keeps the usual card.
+ * The plan card's buttons (TR-061): Approve sends an option starting with "Approve" (the
+ * recommended one when there are several), or else the recommended one; every other shown option
+ * is a button beside it. `approveLabel` is what the filled button says: "Approve" only when that is
+ * the label it sends, so it never reads Approve while sending other words. Null when there is
+ * nothing for Approve to send, and the decision keeps the usual card.
  */
-export function planCardOptions(decision: Pick<StoredDecision, "options" | "recommended">): { approve: string; others: { label: string; asksForWords: boolean }[] } | null {
+export function planCardOptions(
+  decision: Pick<StoredDecision, "options" | "recommended">,
+): { approve: string; approveLabel: string; others: { label: string; asksForWords: boolean }[] } | null {
   const options = shownOptions(decision.options);
-  const approve = options.find((option) => isApproveLabel(option.label)) ?? options.find((option) => option.label === decision.recommended);
+  const approves = options.filter((option) => isApproveLabel(option.label));
+  const recommended = options.find((option) => option.label === decision.recommended);
+  const approve = approves.find((option) => option === recommended) ?? approves[0] ?? recommended;
   if (approve === undefined) return null;
   return {
     approve: approve.label,
+    approveLabel: approve.label.trim().toLowerCase() === "approve" ? "Approve" : approve.label.trim(),
     others: options.filter((option) => option !== approve).map((option) => ({ label: option.label, asksForWords: optionAsksForWords(option) })),
   };
 }
@@ -190,10 +196,22 @@ export function askedBy(decision: Pick<StoredDecision, "project" | "ticket" | "a
 }
 
 /**
- * Whether the ticket panel leaves a decision's own card out (TR-061): a scope approval on the
- * panel's ticket, with a plan that parses and something for Approve to send, is answered from the
- * row at the end of the Ticket view's Plan, so a card above it would be a second place to answer.
+ * Whether a scope approval is answered from the Ticket view (TR-061): one on this ticket with
+ * something for Approve to send. The Ticket view then draws its Approve rows (the summary block's
+ * and the Plan's), and the ticket panel leaves the decision's own card out, so it is answered in one
+ * place whether or not the plan follows the template. The Plan section shows while a scope approval
+ * is open, so its row and field are there even without a plan.
  */
-export function answeredInPlan(decision: Pick<StoredDecision, "id" | "ticket" | "options" | "recommended">, ticket: string | null, plan: ParsedPlan | null): boolean {
-  return ticket !== null && decision.ticket === ticket && decision.id === SCOPE_APPROVAL && plan !== null && planCardOptions(decision) !== null;
+export function answeredInPlan(decision: Pick<StoredDecision, "id" | "ticket" | "options" | "recommended">, ticket: string | null): boolean {
+  return ticket !== null && decision.ticket === ticket && decision.id === SCOPE_APPROVAL && planCardOptions(decision) !== null;
+}
+
+/** The open scope approval the Ticket view answers, with its buttons; null when it has none to answer. */
+export function ticketViewApproval<Decision extends Pick<StoredDecision, "id" | "ticket" | "options" | "recommended" | "status">>(
+  decisions: readonly Decision[],
+  ticket: string,
+): { decision: Decision; options: NonNullable<ReturnType<typeof planCardOptions>> } | null {
+  const decision = decisions.find((each) => each.status === "open" && answeredInPlan(each, ticket));
+  const options = decision === undefined ? null : planCardOptions(decision);
+  return decision === undefined || options === null ? null : { decision, options };
 }

@@ -25,7 +25,7 @@ import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { IconButton } from "./ui";
-import { useActions } from "./use-actions";
+import { useActions, type Actions } from "./use-actions";
 
 /** Below this width the box's labels sit above their text instead of in a column beside it. */
 const STACK_BELOW_WIDTH = 460;
@@ -265,6 +265,7 @@ export function PlanActions({
   answeredFrom,
   onAnswered,
   viewPlan = null,
+  presses: sharedPresses = null,
 }: {
   decision: StoredDecision;
   options: PlanCardOptions;
@@ -272,9 +273,12 @@ export function PlanActions({
   answeredFrom: "screen" | "tab";
   onAnswered: () => void;
   viewPlan?: { label: string; onPress: () => void } | null;
+  /** The presses of another Approve for the same decision on the screen, so only one runs at a time. */
+  presses?: Actions | null;
 }) {
   const answer = useRpc(answerDecision);
-  const presses = useActions();
+  const ownPresses = useActions();
+  const presses = sharedPresses ?? ownPresses;
   const [typed, setTyped] = useState("");
   const field = useRef<NativeTextInput>(null);
   // The field is the card's last row: revealed with it, Send stays above the keyboard.
@@ -329,7 +333,7 @@ export function PlanActions({
     <View style={styles.group}>
       <View style={styles.buttons} onLayout={(event) => setRowWidth(event.nativeEvent.layout.width)}>
         <View style={styles.slot}>
-          <IconButton icon={icon("Check")} label="Approve" showLabel tone="accent" theme={theme} disabled={busy} state={presses.stateOf("approve")} onPress={() => send("approve", options.approve)} />
+          <IconButton icon={icon("Check")} label={options.approveLabel} showLabel tone="accent" theme={theme} disabled={busy} state={presses.stateOf("approve")} onPress={() => send("approve", options.approve)} />
         </View>
         {viewPlan === null ? null : (
           <View style={styles.slot}>
