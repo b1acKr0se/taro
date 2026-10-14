@@ -37,9 +37,10 @@ describe("the Manager's action row", () => {
   it("draws the suggestion chips with the buttons' measurements, not as pills", () => {
     const pills = source("suggestion-pills.tsx");
     expect(pills).not.toContain("999");
+    expect(pills).toContain("minHeight: BUTTON.height");
     expect(pills).not.toContain("FONT_SIZE");
     expect(pills).not.toMatch(/size=\{\d+\}/);
-    for (const measure of ["borderRadius", "fontSize", "paddingVertical"]) {
+    for (const measure of ["borderRadius", "fontSize", "lineHeight", "paddingVertical"]) {
       expect(pills).toMatch(new RegExp(`${measure}: BUTTON\\.`));
     }
     const ui = source("ui.tsx");

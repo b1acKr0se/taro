@@ -50,7 +50,7 @@ export function OwnerPane({
   compact: boolean;
   /** The ticket is drawn in a panel beside this pane: no Chat · Ticket switch. */
   ticketBeside: boolean;
-  /** Where Back returns, as named on its button: "Board" (TR-065). */
+  /** Where Back returns, as named on its button on a wide screen and read out on a phone: "Board" (TR-065). */
   backTo: string;
   /** Opened by View plan: the Ticket tab shows, and Back returns to where it was pressed. */
   planOpen?: boolean;
@@ -105,7 +105,8 @@ export function OwnerPane({
         subtitle={shown === null ? undefined : `${shown.label} · ${shown.live ? shown.brief.status : "archived"}`}
         icon={shown === null ? "Bot" : roleIcon(shown)}
         compact={compact}
-        leading={compact ? <IconButton icon="ArrowLeft" label={planOpen ? "Back" : backTo} accessibilityLabel={backLabel} showLabel theme={theme} onPress={onBack} /> : undefined}
+        // An arrow alone on a phone, the size of Open beside it, so the title keeps the row (TR-077); its target is still read out.
+        leading={compact ? <IconButton icon="ArrowLeft" label={backLabel} theme={theme} onPress={onBack} /> : undefined}
       >
         {compact && !ticketBeside ? tabSwitch(true) : null}
         {shown !== null && onOpenAgent !== null ? <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(shown.id)} /> : null}

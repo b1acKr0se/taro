@@ -15,7 +15,8 @@ import { suggestionKey, suggestionPills, type SendState, type Suggestion, type S
 import { errorText } from "./format";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
-import { BUTTON, Spinner } from "./ui";
+import { BUTTON } from "./control-size";
+import { Spinner } from "./ui";
 import { usePressGuards } from "./use-actions";
 
 /** How long a sent suggestion shows "Sent to the Manager" before it leaves the row. */
@@ -45,7 +46,8 @@ export function SuggestionPills({
       suggestion: {
         flexDirection: "row" as const,
         alignItems: "center" as const,
-        borderWidth: 1,
+        minHeight: BUTTON.height,
+        borderWidth: BUTTON.borderWidth,
         borderColor: colors.border,
         borderRadius: BUTTON.borderRadius,
         backgroundColor: colors.surface1,
@@ -58,8 +60,8 @@ export function SuggestionPills({
         paddingRight: BUTTON.gap,
         paddingVertical: BUTTON.paddingVertical,
       },
-      suggestionText: { color: colors.foreground, fontSize: BUTTON.fontSize, fontWeight: "500" as const },
-      suggestionState: { fontSize: BUTTON.fontSize, fontWeight: "500" as const },
+      suggestionText: { color: colors.foreground, fontSize: BUTTON.fontSize, lineHeight: BUTTON.lineHeight, fontWeight: "500" as const },
+      suggestionState: { fontSize: BUTTON.fontSize, lineHeight: BUTTON.lineHeight, fontWeight: "500" as const },
       suggestionDismiss: { paddingLeft: SPACE.xxs, paddingRight: BUTTON.paddingHorizontal, paddingVertical: BUTTON.paddingVertical },
     }),
     [colors],

@@ -7,6 +7,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useEffect, useMemo, useRef } from "react";
 import { ActivityIndicator, Animated, Easing, Platform, Pressable, Text, View } from "react-native";
+import { BUTTON, SEGMENTED } from "./control-size";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 
 /** A fixed-width font on every platform; iOS has no font named "monospace". */
@@ -14,8 +15,6 @@ export const MONOSPACE = Platform.select({ ios: "Menlo", default: "monospace" })
 
 export type Tone = "default" | "accent" | "danger";
 
-/** One button's measurements, shared by `IconButton` and the suggestion chips beside it (TR-070). */
-export const BUTTON = { gap: 6, paddingHorizontal: 10, iconOnlyPaddingHorizontal: 7, paddingVertical: 6, borderRadius: 8, iconSize: 14, fontSize: FONT_SIZE.small } as const;
 
 export function IconButton({
   icon,
@@ -58,18 +57,20 @@ export function IconButton({
         alignItems: "center" as const,
         justifyContent: "center" as const,
         flexGrow: grow ? 1 : 0,
+        // At least: a long label wraps onto more lines in a narrow card.
+        minHeight: BUTTON.height,
         gap: BUTTON.gap,
         paddingHorizontal: showLabel ? BUTTON.paddingHorizontal : BUTTON.iconOnlyPaddingHorizontal,
         paddingVertical: BUTTON.paddingVertical,
         borderRadius: BUTTON.borderRadius,
-        borderWidth: 1,
+        borderWidth: BUTTON.borderWidth,
         borderColor: tone === "accent" ? colors.accent : colors.border,
         backgroundColor: tone === "accent" ? colors.accent : colors.surface1,
         opacity: faded ? 0.5 : 1,
         // A long label — a card action the agent named — wraps inside a narrow card instead of overflowing it.
         maxWidth: "100%" as const,
       },
-      label: { color, fontSize: BUTTON.fontSize, fontWeight: "500" as const, flexShrink: 1 },
+      label: { color, fontSize: BUTTON.fontSize, lineHeight: BUTTON.lineHeight, fontWeight: "500" as const, flexShrink: 1 },
     }),
     [colors, tone, faded, showLabel, grow, color],
   );
@@ -129,8 +130,7 @@ export function AcceptancePair({
 
 /**
  * A two-or-more-way switch, drawn to sit in a row of `IconButton`s: the same
- * 28-point height (a 14-point icon, 6 points of padding each side, a 1-point
- * border), radius and border, with the selected segment in the accent colour.
+ * height and radius, centred on the row's line like them (TR-077).
  */
 export function Segmented<Value extends string>({
   theme,
@@ -151,40 +151,52 @@ export function Segmented<Value extends string>({
   const styles = useMemo(
     () => ({
       // A quiet track with the chosen segment raised on it, rather than a block of accent colour.
+      // Sized to its segments in a column as in a row, yet centred in a row like the buttons beside it (pinned to its top it sat higher, TR-077).
+      holder: { flexDirection: "row" as const },
       frame: {
         flexDirection: "row" as const,
-        alignSelf: "flex-start" as const,
-        height: 30,
-        padding: 2,
-        gap: 2,
-        borderRadius: 8,
+        height: BUTTON.height,
+        padding: SEGMENTED.padding,
+        gap: SEGMENTED.gap,
+        borderRadius: BUTTON.borderRadius,
         backgroundColor: colors.surface1,
       },
-      segment: { flexDirection: "row" as const, alignItems: "center" as const, gap: 6, paddingHorizontal: 10, borderRadius: 6 },
-      selected: { backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
-      label: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, fontWeight: "500" as const },
+      segment: {
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: BUTTON.gap,
+        paddingHorizontal: BUTTON.paddingHorizontal,
+        borderRadius: SEGMENTED.segmentRadius,
+        // The track's colour until selected, so choosing a segment does not widen it by its border.
+        borderWidth: BUTTON.borderWidth,
+        borderColor: colors.surface1,
+      },
+      selected: { backgroundColor: colors.surface2, borderColor: colors.border },
+      label: { color: colors.foregroundMuted, fontSize: BUTTON.fontSize, lineHeight: BUTTON.lineHeight, fontWeight: "500" as const },
       labelSelected: { color: colors.foreground, fontWeight: "600" as const },
     }),
     [colors],
   );
   return (
-    <View style={styles.frame} accessibilityRole="tablist">
-      {options.map((option) => {
-        const selected = option.value === value;
-        return (
-          <Pressable
-            key={option.value}
-            accessibilityRole="tab"
-            accessibilityLabel={option.label}
-            accessibilityState={{ selected }}
-            style={[styles.segment, selected ? styles.selected : null, iconsOnly ? { paddingHorizontal: 8 } : null]}
-            onPress={() => onChange(option.value)}
-          >
-            {option.icon === undefined ? null : <Icon name={option.icon} size={14} color={selected ? colors.foreground : colors.foregroundMuted} />}
-            {iconsOnly && option.icon !== undefined ? null : <Text style={[styles.label, selected ? styles.labelSelected : null]}>{option.label}</Text>}
-          </Pressable>
-        );
-      })}
+    <View style={styles.holder}>
+      <View style={styles.frame} accessibilityRole="tablist">
+        {options.map((option) => {
+          const selected = option.value === value;
+          return (
+            <Pressable
+              key={option.value}
+              accessibilityRole="tab"
+              accessibilityLabel={option.label}
+              accessibilityState={{ selected }}
+              style={[styles.segment, selected ? styles.selected : null, iconsOnly ? { paddingHorizontal: BUTTON.iconOnlyPaddingHorizontal } : null]}
+              onPress={() => onChange(option.value)}
+            >
+              {option.icon === undefined ? null : <Icon name={option.icon} size={BUTTON.iconSize} color={selected ? colors.foreground : colors.foregroundMuted} />}
+              {iconsOnly && option.icon !== undefined ? null : <Text style={[styles.label, selected ? styles.labelSelected : null]}>{option.label}</Text>}
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
