@@ -49,4 +49,15 @@ describe("stored ticket statuses", () => {
     await new PluginState().saveTicketStatuses("demo", new Map());
     expect(await new PluginState().ticketStatuses("demo")).toEqual(new Map());
   });
+
+  it("are forgotten for one project, the others kept", async () => {
+    const first = new PluginState();
+    await first.saveTicketStatuses("demo", new Map([["DM-1", "Done"]]));
+    await first.saveTicketStatuses("other", new Map([["OT-1", "Done"]]));
+    await first.forgetTicketStatuses("demo");
+    await first.forgetTicketStatuses("never");
+    const second = new PluginState();
+    expect(await second.ticketStatuses("demo")).toBeNull();
+    expect(await second.ticketStatuses("other")).toEqual(new Map([["OT-1", "Done"]]));
+  });
 });

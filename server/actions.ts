@@ -30,6 +30,11 @@ import type { TrackerWatch } from "./tracker-watch";
 export class Actions {
   /** Last seen status per project and ticket, to notice transitions to Done; on disk once acted on (TR-043). */
   private readonly lastStatuses = new Map<string, Map<string, string>>();
+  /**
+   * Per project, the tickets whose wake-up is held until threads allow, with the status each had
+   * before: stored in place of the new one until the wake-up went out, so a reload repeats it.
+   */
+  private readonly undelivered = new Map<string, Map<string, string | undefined>>();
   /** The release running per project, so two never archive the same agents at once. */
   private readonly releasing = new Map<string, Promise<void>>();
   /** Agents already archived here: Paseo may still list one for a moment after archiving it. */
@@ -225,8 +230,9 @@ export class Actions {
   /**
    * Called after every tracker commit, and once per project after a start: releases Done tickets'
    * agents and wakes the manager for cleared dependencies and freed owner slots. One pass at a time
-   * per project; the statuses are stored only once the pass has acted on them, so a pass cut short by
-   * a stop is repeated by the next start (a wake-up may come twice, never not at all).
+   * per project. A change counts as seen only once acted on: one whose wake-up failed stays unseen
+   * and is retried by the next pass, and one whose wake-up is held for threads is stored unseen until
+   * it went out, so a stop repeats it at the next start (a wake-up may come twice, never not at all).
    */
   onTrackerChanged(paseo: PaseoApi, project: string): Promise<void> {
     return serialized(`tracker-changed:${project}`, () => this.trackerChanged(paseo, project));
@@ -235,7 +241,8 @@ export class Actions {
   private async trackerChanged(paseo: PaseoApi, project: string): Promise<void> {
     const paths = await projectPaths(project);
     const tickets = await listTickets(paths.tracker);
-    const previous = this.lastStatuses.get(project) ?? new Map<string, string>();
+    // A pass may come before the start's priming: the stored statuses are what it compares with then.
+    const previous = this.lastStatuses.get(project) ?? (await this.state.ticketStatuses(project).catch(() => null)) ?? new Map<string, string>();
     const current = new Map(tickets.map((ticket) => [ticket.id, ticket.status]));
     this.lastStatuses.set(project, current);
     const at = new Date().toISOString();
@@ -244,12 +251,47 @@ export class Actions {
       if (before !== ticket.status) await this.stats.transition(project, ticket.id, ticket.title, before, ticket.status, at);
     }
     const done = tickets.filter((ticket) => ticket.status === "Done" && previous.get(ticket.id) !== "Done");
-    // Every Done ticket, not only the new ones: a transition missed during a reload still releases its agents.
-    await this.releaseDoneTickets(paseo, project, done.map((ticket) => ticket.id));
+    let failure: unknown = null;
+    // Every Done ticket, not only the new ones: a transition missed during a reload still releases its
+    // agents, so a failed release is retried by the next pass and need not hold up the wake-ups.
+    await this.releaseDoneTickets(paseo, project, done.map((ticket) => ticket.id)).catch((error: unknown) => {
+      failure = error;
+    });
     for (const change of statusChanges(previous, tickets)) {
-      await this.wakeManager(paseo, project, change, tickets);
+      const before = previous.get(change.ticket);
+      try {
+        await this.wakeManager(paseo, project, change, tickets, () => this.markUndelivered(project, change.ticket, before));
+      } catch (error: unknown) {
+        failure ??= error;
+        if (before === undefined) current.delete(change.ticket);
+        else current.set(change.ticket, before);
+      }
     }
-    await this.state.saveTicketStatuses(project, current);
+    await this.storeStatuses(project);
+    if (failure !== null) throw failure;
+  }
+
+  /** A wake-up held for threads: stored as unseen until it goes out; returns what to call then. */
+  private markUndelivered(project: string, ticket: string, before: string | undefined): () => void {
+    const pending = this.undelivered.get(project) ?? new Map<string, string | undefined>();
+    this.undelivered.set(project, pending);
+    if (!pending.has(ticket)) pending.set(ticket, before);
+    return () => {
+      pending.delete(ticket);
+      void serialized(`tracker-changed:${project}`, () => this.storeStatuses(project)).catch((error: unknown) => {
+        console.error(`[taro] storing ${project}'s ticket statuses:`, error);
+      });
+    };
+  }
+
+  /** The statuses acted on, with each held wake-up's ticket at its status from before. */
+  private async storeStatuses(project: string): Promise<void> {
+    const statuses = new Map(this.lastStatuses.get(project) ?? []);
+    for (const [ticket, before] of this.undelivered.get(project) ?? []) {
+      if (before === undefined) statuses.delete(ticket);
+      else statuses.set(ticket, before);
+    }
+    await this.state.saveTicketStatuses(project, statuses);
   }
 
   /** An agent's turn ended: if its ticket is Done (it was mid-turn when Done landed), release it now. */
@@ -362,7 +404,7 @@ export class Actions {
    * by a Done, and no queued ticket or no room under the cap. The dependents are listed either way
    * (TR-043); they wake the manager only once the ticket is Done.
    */
-  private async wakeManager(paseo: PaseoApi, project: string, change: StatusChange, tickets: readonly TicketSummary[]): Promise<void> {
+  private async wakeManager(paseo: PaseoApi, project: string, change: StatusChange, tickets: readonly TicketSummary[], whenHeld: () => () => void): Promise<void> {
     const queued = tickets.filter((candidate) => candidate.status === "Backlog" && candidate.parentTaskId === null).map((candidate) => candidate.id);
     const cleared = change.status === "Done";
     // Reading every open ticket's dependencies is a CLI call each: only when a message may follow.
@@ -392,7 +434,13 @@ export class Actions {
       countingTickets: counting.length === 0 ? "none" : counting.join(", "),
     });
     // Held while threads are short (TR-012): a free owner slot is no reason to start one then.
-    await this.recovery.tellManagerWhenHeadroom(paseo, project, manager.id, text);
+    let sent = false;
+    let delivered: (() => void) | null = null;
+    await this.recovery.tellManagerWhenHeadroom(paseo, project, manager.id, text, () => {
+      sent = true;
+      delivered?.();
+    });
+    if (!sent) delivered = whenHeld();
   }
 
   /** Statuses this plugin knows; used to sanity-check a ticket a user moved by hand. */

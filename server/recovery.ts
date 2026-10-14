@@ -38,10 +38,15 @@ interface QueuedCrash {
 
 export type RelaunchOwner = (paseo: PaseoApi, project: string, ticket: string) => Promise<string>;
 
+interface HeldMessage {
+  text: string;
+  onSent: (() => void) | undefined;
+}
+
 export class Recovery {
   private readonly queue: QueuedCrash[] = [];
-  /** Wake-ups for each project's manager, held while threads are short. */
-  private readonly heldForManager = new Map<string, string[]>();
+  /** Wake-ups for each project's manager, held while threads are short; `onSent` runs once one went out. */
+  private readonly heldForManager = new Map<string, HeldMessage[]>();
   private paseo: PaseoApi | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private busy = false;
@@ -98,16 +103,22 @@ export class Recovery {
     return queued;
   }
 
-  /** Sends to the manager now, or once threads allow when they are short. */
-  async tellManagerWhenHeadroom(paseo: PaseoApi, project: string, managerId: string, text: string): Promise<void> {
-    if (this.disposed) return;
+  /**
+   * Sends to the manager now, or once threads allow when they are short; `onSent` runs when it went
+   * out. Throws once disposed, so a caller does not take an unsent wake-up for a sent one (TR-043);
+   * a held one is dropped at dispose and `onSent` never runs.
+   */
+  async tellManagerWhenHeadroom(paseo: PaseoApi, project: string, managerId: string, text: string, onSent?: () => void): Promise<void> {
+    if (this.disposed) throw new Error("the plugin is stopping; the Manager was not told");
     this.paseo = paseo;
     const headroom = await readHeadroom();
+    if (this.disposed) throw new Error("the plugin is stopping; the Manager was not told");
     if (hasHeadroom(headroom) && !this.heldForManager.has(project)) {
       await sendFromPlugin(paseo, managerId, text);
+      onSent?.();
       return;
     }
-    this.heldForManager.set(project, [...(this.heldForManager.get(project) ?? []), text]);
+    this.heldForManager.set(project, [...(this.heldForManager.get(project) ?? []), { text, onSent }]);
     console.warn(`[taro] threads short (${headroom === null ? "?" : `${headroom.current}/${headroom.max}`}); holding a message to ${project}'s manager`);
     this.schedule(TICK_MS);
   }
@@ -227,19 +238,20 @@ export class Recovery {
   }
 
   private async releaseHeld(paseo: PaseoApi, current: string, max: string): Promise<void> {
-    for (const [project, texts] of [...this.heldForManager]) {
+    for (const [project, held] of [...this.heldForManager]) {
       this.heldForManager.delete(project);
       const config = await requireProjectConfig(project).catch(() => null);
       const manager = config === null ? null : await fetchLiveAgent(paseo, config.managerAgentId);
       if (manager === null) continue;
       const opening = await message(TEMPLATES.headroomRecovered, { current, max });
       try {
-        await sendFromPlugin(paseo, manager.id, [opening, ...texts].join("\n\n---\n\n"));
+        await sendFromPlugin(paseo, manager.id, [opening, ...held.map((entry) => entry.text)].join("\n\n---\n\n"));
       } catch (error: unknown) {
         // Kept for the next tick (ahead of anything held since), not dropped.
-        this.heldForManager.set(project, [...texts, ...(this.heldForManager.get(project) ?? [])]);
+        this.heldForManager.set(project, [...held, ...(this.heldForManager.get(project) ?? [])]);
         throw error;
       }
+      for (const entry of held) entry.onSent?.();
     }
   }
 }

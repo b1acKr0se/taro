@@ -54,7 +54,10 @@ let dependencies: Record<string, string[]>;
 let actions: Actions;
 /** The plugin state's stored statuses, kept across the `Actions` of one test as a disk would be. */
 let stored: Map<string, ReadonlyMap<string, string>>;
-let tell: (text: string) => Promise<void>;
+/** Tells the manager; resolving to "held" stands for a wake-up held while threads are short. */
+let tell: (text: string) => Promise<void | "held">;
+/** Sends the held wake-ups go out with, once threads allow. */
+let held: (() => void)[];
 const paseo = { agents: { ref: () => ({ archive: async () => undefined }) }, workspaces: { archive: async () => undefined } } as unknown as PaseoApi;
 
 async function move(before: ReturnType<typeof ticket>[], after: ReturnType<typeof ticket>[]): Promise<void> {
@@ -69,6 +72,7 @@ beforeEach(() => {
   told = [];
   dependencies = {};
   stored = new Map();
+  held = [];
   tell = async (text) => void told.push(JSON.parse(text) as Record<string, string>);
   vi.mocked(projectAgents).mockClear().mockImplementation(async () => [...live]);
   vi.mocked(projectArchivedAgents).mockImplementation(async () => []);
@@ -87,7 +91,15 @@ function start(): Actions {
     saveTicketStatuses: async (project: string, statuses: ReadonlyMap<string, string>) => void stored.set(project, new Map(statuses)),
   } as unknown as PluginState;
   const stats = { transition: async () => undefined, agentFinal: async () => undefined } as unknown as Stats;
-  const recovery = { tellManagerWhenHeadroom: async (_paseo: PaseoApi, _project: string, _manager: string, text: string) => tell(text) } as unknown as Recovery;
+  const recovery = {
+    tellManagerWhenHeadroom: async (_paseo: PaseoApi, _project: string, _manager: string, text: string, onSent?: () => void) => {
+      if ((await tell(text)) === "held") {
+        held.push(() => onSent?.());
+        return;
+      }
+      onSent?.();
+    },
+  } as unknown as Recovery;
   return new Actions(state, {} as Supervisor, {} as TrackerWatch, stats, recovery);
 }
 
@@ -256,5 +268,93 @@ describe("a change made while the plugin was down or stopping still wakes the ma
     release();
     await Promise.all([first, second]);
     expect(stored.get("demo")?.get("DM-1")).toBe("Awaiting acceptance");
+  });
+
+  it("compares with the stored statuses when a tracker pass comes before the start's priming", async () => {
+    // A freed slot needs the status from before: compared with nothing, it would pass unnoticed.
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Reviewing"), ticket("DM-2", "Backlog")]);
+    await actions.primeStatuses();
+    actions = start();
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Awaiting acceptance"), ticket("DM-2", "Backlog")]);
+    await actions.onTrackerChanged(paseo, "demo");
+    expect(told.map((entry) => [entry.ticket, entry.status])).toEqual([["DM-1", "Awaiting acceptance"]]);
+    await actions.primeStatuses();
+    await actions.catchUpAfterStart(paseo);
+    expect(told).toHaveLength(1);
+  });
+
+  it("retries a wake-up that failed at the next pass of the same instance", async () => {
+    dependencies = { "DM-2": ["DM-1"] };
+    vi.mocked(listTickets).mockResolvedValue(before);
+    await actions.primeStatuses();
+    tell = async () => {
+      throw new Error("daemon busy");
+    };
+    vi.mocked(listTickets).mockResolvedValue(after);
+    await expect(actions.onTrackerChanged(paseo, "demo")).rejects.toThrow("daemon busy");
+    tell = async (text) => void told.push(JSON.parse(text) as Record<string, string>);
+    await actions.onTrackerChanged(paseo, "demo");
+    expect(told.map((entry) => [entry.ticket, entry.status])).toEqual([["DM-1", "Done"]]);
+    expect(stored.get("demo")?.get("DM-1")).toBe("Done");
+  });
+
+  it("acts on the other changes of a pass when one wake-up fails", async () => {
+    dependencies = { "DM-3": ["DM-1"], "DM-4": ["DM-2"] };
+    const four = (one: string, two: string) => [ticket("DM-1", one), ticket("DM-2", two), ticket("DM-3", "Backlog"), ticket("DM-4", "Backlog")];
+    vi.mocked(listTickets).mockResolvedValue(four("Awaiting acceptance", "Awaiting acceptance"));
+    await actions.primeStatuses();
+    tell = async (text) => {
+      const entry = JSON.parse(text) as Record<string, string>;
+      if (entry.ticket === "DM-1") throw new Error("daemon busy");
+      told.push(entry);
+    };
+    vi.mocked(listTickets).mockResolvedValue(four("Done", "Done"));
+    await expect(actions.onTrackerChanged(paseo, "demo")).rejects.toThrow("daemon busy");
+    expect(told.map((entry) => entry.ticket)).toEqual(["DM-2"]);
+    expect(stored.get("demo")?.get("DM-1")).toBe("Awaiting acceptance");
+    expect(stored.get("demo")?.get("DM-2")).toBe("Done");
+  });
+
+  it("stores a wake-up held for threads as unseen until it goes out, so a stop meanwhile repeats it", async () => {
+    dependencies = { "DM-2": ["DM-1"] };
+    vi.mocked(listTickets).mockResolvedValue(before);
+    await actions.primeStatuses();
+    tell = async () => "held";
+    vi.mocked(listTickets).mockResolvedValue(after);
+    await actions.onTrackerChanged(paseo, "demo");
+    expect(stored.get("demo")?.get("DM-1")).toBe("Awaiting acceptance");
+    // The same instance does not hold it twice.
+    await actions.onTrackerChanged(paseo, "demo");
+    expect(held).toHaveLength(1);
+
+    // Stopped before threads allowed: the held wake-up is dropped, and the next start sends it.
+    tell = async (text) => void told.push(JSON.parse(text) as Record<string, string>);
+    actions = start();
+    await actions.catchUpAfterStart(paseo);
+    expect(told.map((entry) => [entry.ticket, entry.status])).toEqual([["DM-1", "Done"]]);
+  });
+
+  it("stores a held wake-up's change as seen once it went out", async () => {
+    dependencies = { "DM-2": ["DM-1"] };
+    vi.mocked(listTickets).mockResolvedValue(before);
+    await actions.primeStatuses();
+    tell = async () => "held";
+    vi.mocked(listTickets).mockResolvedValue(after);
+    await actions.onTrackerChanged(paseo, "demo");
+    expect(held).toHaveLength(1);
+    held[0]?.();
+    await vi.waitFor(() => expect(stored.get("demo")?.get("DM-1")).toBe("Done"));
+  });
+
+  it("wakes it although releasing the Done ticket's agents failed", async () => {
+    dependencies = { "DM-2": ["DM-1"] };
+    live = [agent("one", "DM-1", "owner", "idle")];
+    vi.mocked(listTickets).mockResolvedValue(before);
+    await actions.primeStatuses();
+    vi.mocked(projectAgents).mockRejectedValueOnce(new Error("daemon busy"));
+    vi.mocked(listTickets).mockResolvedValue(after);
+    await expect(actions.onTrackerChanged(paseo, "demo")).rejects.toThrow("daemon busy");
+    expect(told.map((entry) => [entry.ticket, entry.status])).toEqual([["DM-1", "Done"]]);
+    expect(stored.get("demo")?.get("DM-1")).toBe("Done");
   });
 });

@@ -49,7 +49,7 @@ import { catchUpText, compactManager, launchManager, restartManager, tellManager
 import { onboardProject } from "./server/onboard";
 import { readImage } from "./server/images";
 import { checkPrerequisites } from "./server/prerequisites";
-import { listProjectConfigs, projectPaths, requireProjectConfig, taroHome, updateProjectConfig } from "./server/projects";
+import { listProjectConfigs, projectPaths, readProjectConfig, requireProjectConfig, taroHome, updateProjectConfig } from "./server/projects";
 import { sentImagesOf } from "./server/sent-images";
 import { agentBrief, listModelOptions } from "./server/summaries";
 import { TrackerWatch } from "./server/tracker-watch";
@@ -140,7 +140,9 @@ export default function contribute(server: PluginServerContext) {
   server.handle(listModels, async (_input, { paseo }) => ({ models: await listModelOptions(paseo) }));
 
   server.handle(onboardProjectRpc, async (input, { paseo }) => {
+    const known = (await readProjectConfig(input.project).catch(() => null)) !== null;
     const result = await onboardProject(keep(paseo), input);
+    if (!known) await state.forgetTicketStatuses(input.project);
     await trackers.refresh();
     await actions.primeStatuses();
     return result;

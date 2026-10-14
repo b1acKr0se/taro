@@ -104,6 +104,16 @@ export class PluginState {
     return stored === undefined ? null : new Map(Object.entries(stored));
   }
 
+  /** For a project onboarded afresh under a name used before: its old tracker's statuses are moot. */
+  forgetTicketStatuses(project: string): Promise<void> {
+    return serialized("state:ticket-statuses", async () => {
+      const projects = await this.loadTicketStatuses();
+      if (!(project in projects)) return;
+      delete projects[project];
+      await writeJsonAtomically(statePath("ticket-statuses.json"), { projects });
+    });
+  }
+
   saveTicketStatuses(project: string, statuses: ReadonlyMap<string, string>): Promise<void> {
     return serialized("state:ticket-statuses", async () => {
       const projects = await this.loadTicketStatuses();

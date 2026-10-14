@@ -159,7 +159,8 @@ describe("Recovery", () => {
     await vi.advanceTimersByTimeAsync(120_000);
     expect(reloads()).toEqual(["owner-1"]);
     await crashed(recovery, targets[0]!);
-    await recovery.tellManagerWhenHeadroom(paseo, "taro", "manager-1", "TR-5 is Done");
+    // Thrown, not swallowed: the caller must not take it for a sent wake-up (TR-043).
+    await expect(recovery.tellManagerWhenHeadroom(paseo, "taro", "manager-1", "TR-5 is Done")).rejects.toThrow("stopping");
     await vi.advanceTimersByTimeAsync(120_000);
     expect(reloads()).toEqual(["owner-1"]);
     expect(sentTo("TR-5 is Done")).toEqual([]);
@@ -268,6 +269,44 @@ describe("Recovery", () => {
     await vi.advanceTimersByTimeAsync(15_000);
     const calls = vi.mocked(sendFromPlugin).mock.calls.filter(([, , text]) => text.includes("TR-5 is Done"));
     expect(calls).toHaveLength(2);
+  });
+
+  it("says when a held wake-up went out, and never for one dropped at dispose (TR-043)", async () => {
+    vi.mocked(fetchLiveAgent).mockResolvedValue(agent("manager-1", "manager", null, "idle"));
+    vi.mocked(readHeadroom).mockResolvedValue(high);
+    const { recovery } = setUp();
+    const sent: string[] = [];
+    await recovery.tellManagerWhenHeadroom(paseo, "taro", "manager-1", "TR-5 is Done", () => sent.push("TR-5"));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sent).toEqual([]);
+    vi.mocked(readHeadroom).mockResolvedValue({ current: 900, max: 2048, high: false, highSince: null });
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(sent).toEqual(["TR-5"]);
+
+    vi.mocked(readHeadroom).mockResolvedValue(high);
+    await recovery.tellManagerWhenHeadroom(paseo, "taro", "manager-1", "TR-6 is Done", () => sent.push("TR-6"));
+    recovery.dispose();
+    vi.mocked(readHeadroom).mockResolvedValue(null);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sent).toEqual(["TR-5"]);
+  });
+
+  it("throws for a wake-up whose stop came while it read the headroom", async () => {
+    let finishRead: () => void = () => undefined;
+    vi.mocked(readHeadroom).mockImplementationOnce(() => new Promise((resolve) => (finishRead = () => resolve(null))));
+    const { recovery } = setUp();
+    const telling = recovery.tellManagerWhenHeadroom(paseo, "taro", "manager-1", "TR-5 is Done");
+    recovery.dispose();
+    finishRead();
+    await expect(telling).rejects.toThrow("stopping");
+    expect(sentTo("TR-5 is Done")).toEqual([]);
+  });
+
+  it("sends the wake-up at once when there is headroom, and says so", async () => {
+    const { recovery } = setUp();
+    const sent: string[] = [];
+    await recovery.tellManagerWhenHeadroom(paseo, "taro", "manager-1", "TR-5 is Done", () => sent.push("TR-5"));
+    expect(sent).toEqual(["TR-5"]);
   });
 
   it("sends the wake-up at once when there is headroom", async () => {
