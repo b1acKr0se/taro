@@ -9,7 +9,7 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 
 import { listOpenDecisions, type Card, type ProjectSummary } from "../shared/contracts";
 import { AlertCard } from "./alert-card";
@@ -17,6 +17,7 @@ import { SectionHeading } from "./badges";
 import { useBoard, useRefreshBoard } from "./board-data";
 import { walkOrder } from "./walk-order";
 import { DecisionCard, askedBy } from "./decision-card";
+import { KeyboardScrollView } from "./keyboard";
 import { paneGutter, SPACE } from "./spacing";
 import { SyncProblemCard } from "./sync-problem-card";
 import { TicketCard } from "./ticket-card";
@@ -45,7 +46,7 @@ export function Inbox({
   if (walking) {
     const current = ordered[Math.min(step, ordered.length - 1)];
     return (
-      <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ paddingVertical: SPACE.lg, paddingHorizontal: paneGutter(compact), gap: SPACE.md, maxWidth: 760, width: "100%", alignSelf: "center" }}>
+      <KeyboardScrollView contentContainerStyle={{ paddingVertical: SPACE.lg, paddingHorizontal: paneGutter(compact), gap: SPACE.md, maxWidth: 760, width: "100%", alignSelf: "center" }}>
         <SectionHeading
           theme={theme}
           icon="ListChecks"
@@ -60,12 +61,12 @@ export function Inbox({
         ) : (
           <DecisionCard key={current.key} decision={current} theme={theme} compact={compact} showAgent onAnswered={refetch} />
         )}
-      </ScrollView>
+      </KeyboardScrollView>
     );
   }
 
   return (
-    <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ paddingVertical: SPACE.lg, paddingHorizontal: paneGutter(compact), gap: SPACE.lg }}>
+    <KeyboardScrollView contentContainerStyle={{ paddingVertical: SPACE.lg, paddingHorizontal: paneGutter(compact), gap: SPACE.lg }}>
       <SectionHeading theme={theme} icon="MessageCircleQuestion" text={`Decisions · ${ordered.length}`} color={ordered.length === 0 ? colors.foregroundMuted : colors.statusWarning}>
         <IconButton
           icon="ListChecks"
@@ -118,7 +119,7 @@ export function Inbox({
       {projects.map((summary) => (
         <InboxProject key={summary.config.project} summary={summary} theme={theme} compact={compact} onOpenTicket={onOpenTicket} />
       ))}
-    </ScrollView>
+    </KeyboardScrollView>
   );
 }
 

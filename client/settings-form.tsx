@@ -10,6 +10,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { addableModelGroups, type PickerOption } from "../shared/model-picker";
+import { KeyboardRevealBoundary, useRevealFocused } from "./keyboard";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { IconButton, MONOSPACE } from "./ui";
@@ -161,10 +162,12 @@ export function TextField({
   accessibilityLabel: string;
 }) {
   const colors = theme.colors;
+  const reveal = useRevealFocused();
   return (
     <TextInput
       value={value}
       onChangeText={onChangeText}
+      onFocus={reveal}
       placeholder={placeholder}
       placeholderTextColor={colors.foregroundMuted}
       accessibilityLabel={accessibilityLabel}
@@ -410,7 +413,10 @@ export function ModelChooser({
         }}
       >
         <Modal.Content contentContainerStyle={{ padding: SPACE.md, gap: SPACE.md }}>
-          <TextField theme={theme} accessibilityLabel="Search models" value={query} onChangeText={setQuery} placeholder="Search models" />
+          {/* The host keeps a modal's field above the keyboard; the page behind stays put. */}
+          <KeyboardRevealBoundary>
+            <TextField theme={theme} accessibilityLabel="Search models" value={query} onChangeText={setQuery} placeholder="Search models" />
+          </KeyboardRevealBoundary>
           {groups.length === 0 ? (
             <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small }}>{query.trim() === "" ? "Every model is chosen." : "No model matches."}</Text>
           ) : null}

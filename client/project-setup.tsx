@@ -5,7 +5,7 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
-import { Icon, ScrollView, useToast } from "@getpaseo/plugin/client/react-native";
+import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
@@ -24,6 +24,7 @@ import { modelOptions as modelPickerOptions, thinkingAfterModelChange, thinkingO
 import type { ProjectConfig } from "../shared/project";
 import { draftFrom, settingsFrom, setupProblems, ticketExample, type SetupDraft } from "../shared/setup-form";
 import { errorText } from "./format";
+import { KeyboardScrollView } from "./keyboard";
 import { CheckLine, ChoiceCards, Dropdown, Field, FixedValue, FormSection, ModelChooser, TextField, TWO_COLUMN_MIN_WIDTH } from "./settings-form";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
@@ -167,8 +168,7 @@ export function ProjectSetup({
   };
 
   return (
-    <ScrollView
-      automaticallyAdjustKeyboardInsets
+    <KeyboardScrollView
       onLayout={(event) => setWidth(Math.min(PAGE_MAX_WIDTH, event.nativeEvent.layout.width))}
       contentContainerStyle={{ padding: SPACE.lg, paddingBottom: SPACE.xxl * 2, gap: SPACE.lg, maxWidth: PAGE_MAX_WIDTH, width: "100%", alignSelf: "center" }}
     >
@@ -388,6 +388,6 @@ export function ProjectSetup({
       <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption) }}>
         Tickets live on the taro/backlog branch of the repository, in a separate checkout Taro manages.
       </Text>
-    </ScrollView>
+    </KeyboardScrollView>
   );
 }

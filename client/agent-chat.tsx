@@ -22,7 +22,7 @@ import { drafts } from "./draft";
 import { draftAttachments } from "./draft-attachments";
 import { useFollowEnd } from "./follow-end";
 import { ImageThumbnail } from "./image-view";
-import { useKeyboardOverlap } from "./keyboard";
+import { KeyboardRevealProvider, useKeyboardOverlap, useKeyboardScroll } from "./keyboard";
 import { isSendKey, type WebKeyPressEvent } from "./keys";
 import { Markdown } from "./markdown";
 import { PermissionCard, usePendingRequests } from "./permission-card";
@@ -177,6 +177,9 @@ export function AgentChat({
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set());
   const pane = useRef<View>(null);
   const keyboard = useKeyboardOverlap(pane);
+  // The pane pads itself clear of the keyboard, so the transcript only scrolls a field inside it
+  // (a decision's or a permission's text) into view; its room measures zero once the pane is padded.
+  const keyboardScroll = useKeyboardScroll(follow.scrollProps.ref);
 
   useEffect(() => {
     const reread = () => setDraftState(drafts.get(agent.id));
@@ -512,29 +515,48 @@ export function AgentChat({
       {/* Re-reading behind the conversation already drawn (cached, or the last agent's read). */}
       <LoadingBar theme={theme} active={timeline.loading && groups.length > 0} />
       <View style={styles.transcript}>
-        <ScrollView {...follow.scrollProps} style={styles.transcript} contentContainerStyle={styles.transcriptBody}>
-          {timeline.error === null ? null : <Text style={styles.error}>{timeline.error}</Text>}
-          {groups.length === 0 && pending.length === 0 ? (
-            <Text style={styles.hint}>{timeline.loading ? "Loading the conversation…" : "Nothing said yet."}</Text>
-          ) : (
-            groups.map(renderGroup)
-          )}
-          {places === null || places.unplaced.length === 0 ? null : (
-            <View style={styles.agentRow} onLayout={(event) => noteLayout(places.unplaced.map((decision) => decision.key), event.nativeEvent.layout)}>
-              {decisionCards(places.unplaced)}
-            </View>
-          )}
-          {/* The message that presented the delivery is older than the loaded timeline. */}
-          {delivery === undefined || deliveryKey !== null ? null : (
-            <View style={styles.agentRow} onLayout={(event) => noteLayout([deliveryTarget], event.nativeEvent.layout)}>
-              {delivery.card}
-            </View>
-          )}
-          {pending.map((request) => (
-            <View key={request.id} onLayout={(event) => follow.reveal(request.id, event.nativeEvent.layout)}>
-              <PermissionCard request={request} theme={theme} compact={compact} onRespond={(response) => respond(request.id, response)} onOpenLink={openLink} />
-            </View>
-          ))}
+        <ScrollView
+          {...follow.scrollProps}
+          onScroll={(event) => {
+            follow.scrollProps.onScroll(event);
+            keyboardScroll.onScroll(event);
+          }}
+          onContentSizeChange={(width, height) => {
+            follow.scrollProps.onContentSizeChange(width, height);
+            keyboardScroll.onContentSizeChange();
+          }}
+          onLayout={(event) => {
+            follow.scrollProps.onLayout(event);
+            keyboardScroll.onLayout();
+          }}
+          style={styles.transcript}
+          contentContainerStyle={styles.transcriptBody}
+        >
+          <KeyboardRevealProvider value={keyboardScroll.claim}>
+            {timeline.error === null ? null : <Text style={styles.error}>{timeline.error}</Text>}
+            {groups.length === 0 && pending.length === 0 ? (
+              <Text style={styles.hint}>{timeline.loading ? "Loading the conversation…" : "Nothing said yet."}</Text>
+            ) : (
+              groups.map(renderGroup)
+            )}
+            {places === null || places.unplaced.length === 0 ? null : (
+              <View style={styles.agentRow} onLayout={(event) => noteLayout(places.unplaced.map((decision) => decision.key), event.nativeEvent.layout)}>
+                {decisionCards(places.unplaced)}
+              </View>
+            )}
+            {/* The message that presented the delivery is older than the loaded timeline. */}
+            {delivery === undefined || deliveryKey !== null ? null : (
+              <View style={styles.agentRow} onLayout={(event) => noteLayout([deliveryTarget], event.nativeEvent.layout)}>
+                {delivery.card}
+              </View>
+            )}
+            {pending.map((request) => (
+              <View key={request.id} onLayout={(event) => follow.reveal(request.id, event.nativeEvent.layout)}>
+                <PermissionCard request={request} theme={theme} compact={compact} onRespond={(response) => respond(request.id, response)} onOpenLink={openLink} />
+              </View>
+            ))}
+          </KeyboardRevealProvider>
+          {keyboardScroll.room > 0 ? <View style={{ height: keyboardScroll.room }} /> : null}
         </ScrollView>
         {follow.away ? <JumpToEnd theme={theme} onPress={follow.jumpToEnd} /> : null}
       </View>

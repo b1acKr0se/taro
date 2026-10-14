@@ -1,0 +1,317 @@
+/**
+ * Keeping what the reader types clear of the on-screen keyboard.
+ *
+ * Paseo moves its own composer with `react-native-keyboard-controller`, which
+ * is not among the modules a plugin may import, and a plugin surface is not
+ * resized when the keyboard opens — so fields disappeared under it. React
+ * Native's `KeyboardAvoidingView` is importable but measures itself against its
+ * parent, which inside the host's screen needs an offset nobody here can know,
+ * and `automaticallyAdjustKeyboardInsets` is iOS-only. So everything here
+ * measures in window coordinates instead, the same space the keyboard's frame
+ * is reported in, which is exact wherever the host puts the surface:
+ *
+ * - `useKeyboardOverlap` pads a view (the chat pane, composer included) clear
+ *   of the keyboard;
+ * - `KeyboardScrollView` (or `useKeyboardScroll` on a scroll view of your own)
+ *   adds room at the end of its content for the part the keyboard covers and
+ *   scrolls the focused field above the keyboard: when the keyboard opens, on
+ *   the field's focus, and as its content grows while the reader types. Every
+ *   field passes `useRevealFocused()` as its `onFocus`: that is how a scroll
+ *   area knows the focused field is its own, not one in a modal over it or in
+ *   the composer under it.
+ *
+ * Where the platform resizes the window for the keyboard itself, the overlap
+ * measures as zero and nothing moves. On the web, a phone browser's keyboard
+ * shrinks the visual viewport, which stands in for the keyboard's frame.
+ */
+import { ScrollView } from "@getpaseo/plugin/client/react-native";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import {
+  Keyboard,
+  LayoutAnimation,
+  Platform,
+  TextInput,
+  View,
+  type KeyboardEvent,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  type ScrollViewProps,
+  type ScrollView as NativeScrollView,
+} from "react-native";
+
+import { holds, keyboardRoom, revealOffset, visibleSpan } from "./keyboard-reveal";
+
+/** The keyboard's top edge in window coordinates (null once it hides), and how long its move takes. */
+type KeyboardListener = (top: number | null, duration: number) => void;
+
+/** A window-coordinate box, as `measureInWindow` reports it. */
+interface WindowBox {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+/** The parts of the browser's visual viewport read here; typed locally, the project has no DOM types. */
+interface VisualViewportLike {
+  height: number;
+  offsetTop: number;
+  scale: number;
+  addEventListener(type: "resize" | "scroll", listener: () => void): void;
+  removeEventListener(type: "resize" | "scroll", listener: () => void): void;
+}
+
+interface ElementLike {
+  tagName?: string;
+  getBoundingClientRect?(): { left: number; right: number; top: number; bottom: number };
+}
+
+interface BrowserLike {
+  innerHeight: number;
+  visualViewport?: VisualViewportLike | null;
+  document?: { activeElement?: ElementLike | null };
+}
+
+/** Less than this shrinking of the viewport is the browser's own bars moving, not a keyboard, in points. */
+const WEB_KEYBOARD_MIN = 80;
+
+function browser(): BrowserLike | null {
+  const candidate = globalThis as unknown as Partial<BrowserLike>;
+  return typeof candidate.innerHeight === "number" ? (candidate as BrowserLike) : null;
+}
+
+/** The focused element on the web, when it is a field the reader types in. */
+function focusedWebField(): ElementLike | null {
+  const active = browser()?.document?.activeElement ?? null;
+  return active !== null && (active.tagName === "INPUT" || active.tagName === "TEXTAREA") ? active : null;
+}
+
+/** Hears the keyboard's frame: native keyboard events, or the visual viewport in a browser. */
+function listenToKeyboard(listener: KeyboardListener): () => void {
+  if (Platform.OS === "web") {
+    const window = browser();
+    const viewport = window?.visualViewport ?? null;
+    if (window === null || viewport === null) return () => undefined;
+    const onViewport = () => {
+      const bottom = viewport.offsetTop + viewport.height;
+      // Zooming shrinks the visual viewport too; a keyboard leaves the scale alone.
+      const keyboard = Math.abs(viewport.scale - 1) < 0.01 && window.innerHeight - bottom >= WEB_KEYBOARD_MIN && focusedWebField() !== null;
+      listener(keyboard ? bottom : null, 0);
+    };
+    viewport.addEventListener("resize", onViewport);
+    viewport.addEventListener("scroll", onViewport);
+    return () => {
+      viewport.removeEventListener("resize", onViewport);
+      viewport.removeEventListener("scroll", onViewport);
+    };
+  }
+  const shown = (event: KeyboardEvent) => listener(event.endCoordinates.screenY, event.duration);
+  const hidden = (event: KeyboardEvent) => listener(null, event.duration);
+  // iOS announces every frame change before it happens, show and hide
+  // included; Android only reports after the fact.
+  const subscriptions =
+    Platform.OS === "ios"
+      ? [Keyboard.addListener("keyboardWillChangeFrame", shown), Keyboard.addListener("keyboardWillHide", hidden)]
+      : [Keyboard.addListener("keyboardDidShow", shown), Keyboard.addListener("keyboardDidHide", hidden)];
+  return () => {
+    subscriptions.map((subscription) => subscription.remove());
+  };
+}
+
+/** Moves with the keyboard on iOS, as its own views do; Android and the web just snap. */
+function animate(duration: number): void {
+  if (Platform.OS !== "ios" || !(duration > 0)) return;
+  LayoutAnimation.configureNext({ duration, update: { duration, type: LayoutAnimation.Types.keyboard } });
+}
+
+type Measurable = { measureInWindow(callback: (x: number, y: number, width: number, height: number) => void): void };
+
+function measure(target: Measurable, done: (box: WindowBox) => void): void {
+  target.measureInWindow((x, y, width, height) => done({ left: x, right: x + width, top: y, bottom: y + height }));
+}
+
+/** The focused text field's box in the window, if a field has focus. */
+function measureFocusedField(done: (box: WindowBox) => void): void {
+  if (Platform.OS === "web") {
+    const rect = focusedWebField()?.getBoundingClientRect?.();
+    if (rect !== undefined) done({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom });
+    return;
+  }
+  const field = TextInput.State.currentlyFocusedInput() as Measurable | null;
+  if (field !== null) measure(field, done);
+}
+
+/** How far the keyboard covers `target`, so the view can pad itself clear of it. */
+export function useKeyboardOverlap(target: RefObject<View | null>): number {
+  const [overlap, setOverlap] = useState(0);
+
+  // The padding sits inside the view, so it does not change the frame being
+  // measured; there is no feedback loop.
+  useEffect(
+    () =>
+      listenToKeyboard((top, duration) => {
+        const view = target.current;
+        if (top === null || view === null) {
+          animate(duration);
+          setOverlap(0);
+          return;
+        }
+        measure(view, (box) => {
+          animate(duration);
+          setOverlap(keyboardRoom(box, top));
+        });
+      }),
+    [target],
+  );
+
+  return overlap;
+}
+
+/** The scroll area whose field has focus, if any: only that one moves for the keyboard. */
+let focusedArea: object | null = null;
+
+const RevealContext = createContext<() => void>(() => releaseFocus());
+
+/**
+ * A text field's `onFocus`: claims the scroll area around it and brings the
+ * field into view, also when the keyboard is already open. Outside a scroll
+ * area (the composer, a modal) it tells every area the focus is not theirs.
+ */
+export function useRevealFocused(): () => void {
+  return useContext(RevealContext);
+}
+
+export const KeyboardRevealProvider = RevealContext.Provider;
+
+/** Fields inside are no scroll area's, as in a modal over one: the host places those. */
+export function KeyboardRevealBoundary({ children }: { children: ReactNode }) {
+  return <RevealContext.Provider value={releaseFocus}>{children}</RevealContext.Provider>;
+}
+
+function releaseFocus(): void {
+  focusedArea = null;
+}
+
+/**
+ * Keeps the focused field inside `scroller` above the keyboard. Render `room`
+ * as space at the end of the content, call the handlers from the scroll view's
+ * own, and hand `claim` to the fields through `KeyboardRevealProvider`.
+ */
+export function useKeyboardScroll(scroller: RefObject<NativeScrollView | null>) {
+  /** This area's identity, for `focusedArea`. */
+  const self = useRef({}).current;
+  const [room, setRoom] = useState(0);
+  const roomNow = useRef(0);
+  const keyboardTop = useRef<number | null>(null);
+  const offset = useRef(0);
+  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function place(): void {
+    const top = keyboardTop.current;
+    const view = scroller.current;
+    if (top === null || view === null) return;
+    if (focusedArea !== self) {
+      releaseRoom();
+      return;
+    }
+    const native = typeof view.getNativeScrollRef === "function" ? view.getNativeScrollRef() : null;
+    measure((native ?? view) as unknown as Measurable, (area) => {
+      const needed = keyboardRoom(area, top);
+      if (needed !== roomNow.current) {
+        // The room lands first, or the scroll would stop at the old end; its render reveals again.
+        roomNow.current = needed;
+        setRoom(needed);
+        return;
+      }
+      measureFocusedField((field) => {
+        if (!holds(area, field)) return;
+        const y = revealOffset(field, visibleSpan(area, top), offset.current);
+        if (y !== null) view.scrollTo({ y, animated: true });
+      });
+    });
+  }
+
+  /** Brings the focused field into view after this layout pass, if the keyboard is open. */
+  function reveal(): void {
+    if (keyboardTop.current === null) return;
+    if (pending.current !== null) clearTimeout(pending.current);
+    pending.current = setTimeout(() => {
+      pending.current = null;
+      place();
+    }, 0);
+  }
+
+  function releaseRoom(): void {
+    if (roomNow.current === 0) return;
+    roomNow.current = 0;
+    setRoom(0);
+  }
+
+  /** A field inside took focus. */
+  function claim(): void {
+    focusedArea = self;
+    reveal();
+  }
+
+  useEffect(() => {
+    const stop = listenToKeyboard((top) => {
+      keyboardTop.current = top;
+      if (top !== null) reveal();
+      else releaseRoom();
+    });
+    return () => {
+      stop();
+      if (pending.current !== null) clearTimeout(pending.current);
+      if (focusedArea === self) focusedArea = null;
+    };
+  }, [scroller]);
+
+  useEffect(reveal, [room]);
+
+  return {
+    room,
+    claim,
+    onScroll(event: NativeSyntheticEvent<NativeScrollEvent>): void {
+      offset.current = event.nativeEvent.contentOffset.y;
+    },
+    /** The scroll view moved or resized (the chat pane padding itself clear, say): measure again. */
+    onLayout: reveal,
+    /** A field grew as the reader typed. */
+    onContentSizeChange: reveal,
+  };
+}
+
+/** The host's `ScrollView`, keeping the focused field inside it above the keyboard. */
+export function KeyboardScrollView({
+  children,
+  onScroll,
+  onLayout,
+  onContentSizeChange,
+  ...props
+}: ScrollViewProps & { children?: ReactNode }) {
+  const scroller = useRef<NativeScrollView>(null);
+  const keyboard = useKeyboardScroll(scroller);
+  return (
+    <ScrollView
+      ref={scroller}
+      scrollEventThrottle={100}
+      {...props}
+      onScroll={(event) => {
+        keyboard.onScroll(event);
+        onScroll?.(event);
+      }}
+      onLayout={(event: LayoutChangeEvent) => {
+        keyboard.onLayout();
+        onLayout?.(event);
+      }}
+      onContentSizeChange={(width: number, height: number) => {
+        keyboard.onContentSizeChange();
+        onContentSizeChange?.(width, height);
+      }}
+    >
+      <KeyboardRevealProvider value={keyboard.claim}>{children}</KeyboardRevealProvider>
+      {keyboard.room > 0 ? <View style={{ height: keyboard.room }} /> : null}
+    </ScrollView>
+  );
+}

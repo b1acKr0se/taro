@@ -17,6 +17,7 @@ import { answerDecision } from "../shared/contracts";
 import { decisionOptionRows, decisionSubmit } from "../shared/decision-view";
 import type { StoredDecision } from "../shared/state";
 import { errorText } from "./format";
+import { useRevealFocused } from "./keyboard";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
@@ -53,6 +54,7 @@ export function DecisionCard({
   readOnlyNote?: string | null;
 }) {
   const toast = useToast();
+  const reveal = useRevealFocused();
   const answer = useRpc(answerDecision);
   const [typed, setTyped] = useState("");
   const [picked, setPicked] = useState<number | null>(null);
@@ -184,6 +186,7 @@ export function DecisionCard({
           <TextInput
             value={typed}
             onChangeText={setTyped}
+            onFocus={reveal}
             placeholder={submit.placeholder}
             placeholderTextColor={colors.foregroundMuted}
             multiline

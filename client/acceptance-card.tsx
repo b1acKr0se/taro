@@ -17,6 +17,7 @@ import { finalSummaryBody } from "../shared/execution";
 import { acceptanceReady } from "./card-calls";
 import { EvidenceBlock } from "./evidence-view";
 import { errorText, pullRequestLabel } from "./format";
+import { useRevealFocused } from "./keyboard";
 import { Markdown } from "./markdown";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
@@ -24,6 +25,7 @@ import { IconButton } from "./ui";
 
 export function AcceptanceCard({ card, project, theme, compact, onChanged }: { card: Card; project: string; theme: PluginTheme; compact: boolean; onChanged: () => void }) {
   const toast = useToast();
+  const reveal = useRevealFocused();
   const load = useRpc(loadTicket);
   const accept = useRpc(acceptTicket);
   const changes = useRpc(requestChanges);
@@ -106,6 +108,7 @@ export function AcceptanceCard({ card, project, theme, compact, onChanged }: { c
         <TextInput
           value={typed}
           onChangeText={setTyped}
+          onFocus={reveal}
           placeholder="What should change?"
           placeholderTextColor={colors.foregroundMuted}
           multiline

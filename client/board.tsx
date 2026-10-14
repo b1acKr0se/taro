@@ -19,6 +19,7 @@ import { AlertCard } from "./alert-card";
 import { SectionHeading } from "./badges";
 import { useBoard, useRefreshBoard } from "./board-data";
 import { errorText } from "./format";
+import { KeyboardScrollView } from "./keyboard";
 import { useStats } from "./queries";
 import { paneGutter, SPACE } from "./spacing";
 import { SyncProblemCard } from "./sync-problem-card";
@@ -381,10 +382,10 @@ export function ProjectBoard({
             );
           })}
         </ScrollView>
-        <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={{ padding: SPACE.md, gap: SPACE.md }}>
+        <KeyboardScrollView contentContainerStyle={{ padding: SPACE.md, gap: SPACE.md }}>
           {top}
           {shown.length === 0 ? empty(column) : shown.map(renderCard)}
-        </ScrollView>
+        </KeyboardScrollView>
       </View>
     );
   }

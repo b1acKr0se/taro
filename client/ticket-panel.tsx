@@ -5,10 +5,11 @@
 import type { PluginAgentPanelProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
-import { ScrollView, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { findAgentTicket, listOpenDecisions } from "../shared/contracts";
 import { DecisionCard } from "./decision-card";
+import { KeyboardScrollView } from "./keyboard";
 import { TicketView } from "./ticket-view";
 import { FONT_SIZE } from "./type-scale";
 
@@ -31,11 +32,11 @@ export function TicketPanel({ agentId, theme, layout }: PluginAgentPanelProps) {
   return (
     <View style={{ flex: 1 }}>
       {mine.length === 0 ? null : (
-        <ScrollView style={{ maxHeight: "50%" }} contentContainerStyle={{ padding: 10, gap: 8 }}>
+        <KeyboardScrollView style={{ maxHeight: "50%" }} contentContainerStyle={{ padding: 10, gap: 8 }}>
           {mine.map((decision) => (
             <DecisionCard key={decision.key} decision={decision} theme={theme} compact={layout.compact} onAnswered={() => void decisions.refetch()} />
           ))}
-        </ScrollView>
+        </KeyboardScrollView>
       )}
       {ticket === null ? (
         <Text style={muted}>

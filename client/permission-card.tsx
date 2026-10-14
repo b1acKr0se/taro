@@ -16,6 +16,7 @@ import { Icon, TextInput, useToast } from "@getpaseo/plugin/client/react-native"
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
+import { useRevealFocused } from "./keyboard";
 import { Markdown } from "./markdown";
 import {
   allAnswered,
@@ -149,6 +150,7 @@ export function PermissionCard(props: CardProps) {
 
 function QuestionCard({ request, theme, compact, onRespond, questions }: CardProps & { questions: Question[] }) {
   const styles = useCardStyles(theme, compact);
+  const reveal = useRevealFocused();
   const [selections, setSelections] = useState<Selections>({});
   const [otherTexts, setOtherTexts] = useState<OtherTexts>({});
   const [active, setActive] = useState(0);
@@ -265,6 +267,7 @@ function QuestionCard({ request, theme, compact, onRespond, questions }: CardPro
           key={`other-${index}`}
           value={otherTexts[index] ?? ""}
           onChangeText={(text) => type(index, text)}
+          onFocus={reveal}
           placeholder={question.placeholder ?? (question.options.length > 0 ? "Other…" : "Your answer…")}
           placeholderTextColor={theme.colors.foregroundMuted}
           accessibilityLabel={question.question}
