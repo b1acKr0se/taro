@@ -23,8 +23,8 @@ export async function findBacklog(directories: readonly string[] = searchDirecto
 }
 
 /** Looked up once while found; a miss is looked up again, so an install shows without a reload. */
-export function backlogBinary(): Promise<string | null> {
-  backlogLookup ??= findBacklog().then((found) => {
+export function backlogBinary(find: () => Promise<string | null> = () => findBacklog()): Promise<string | null> {
+  backlogLookup ??= find().then((found) => {
     if (found === null) backlogLookup = null;
     return found;
   });

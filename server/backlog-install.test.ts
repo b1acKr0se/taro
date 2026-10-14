@@ -17,7 +17,7 @@ import {
 import { pathWithBacklog } from "./environment";
 import { backlogCheck, backlogVersion, ghCheck } from "./prerequisites";
 import { runCommand } from "./process";
-import { findBacklog } from "./tracker";
+import { backlogBinary, findBacklog, forgetBacklogLookup } from "./tracker";
 
 vi.mock("./package-files", () => ({ skillDirectory: async () => "/skill" }));
 
@@ -61,6 +61,29 @@ describe("which backlog Taro uses", () => {
     expect(await findBacklog([join(scratch, "bin")])).toBeNull();
   });
 
+  it("looks again after finding nothing, so a backlog installed from a terminal shows", async () => {
+    forgetBacklogLookup();
+    const directories = [join(scratch, "bin")];
+    const find = vi.fn(() => findBacklog(directories));
+    expect(await backlogBinary(find)).toBeNull();
+    const installed = script(join(scratch, "bin", "backlog"), "echo 1.53.0");
+    expect(await backlogBinary(find)).toBe(installed);
+    expect(find).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a found backlog without searching again", async () => {
+    forgetBacklogLookup();
+    const found = script(join(scratch, "bin", "backlog"), "echo 1.53.0");
+    const find = vi.fn(() => findBacklog([join(scratch, "bin")]));
+    expect(await backlogBinary(find)).toBe(found);
+    expect(await backlogBinary(find)).toBe(found);
+    expect(find).toHaveBeenCalledTimes(1);
+    forgetBacklogLookup();
+    expect(await backlogBinary(find)).toBe(found);
+    expect(find).toHaveBeenCalledTimes(2);
+    forgetBacklogLookup();
+  });
+
   it("gives only its own copy the daemon's Node", () => {
     expect(backlogEnvironment("/usr/local/bin/backlog")).toEqual({});
     expect(backlogEnvironment(taroBacklogPath()).PATH?.split(delimiter)[0]).toBe(nodeDirectory());
@@ -83,7 +106,7 @@ describe("the agents' PATH", () => {
 });
 
 /** A stand-in npm: records its arguments, then acts as `mode` says. */
-function standInNpm(mode: "ok" | "offline" | "missing-version" | "denied" | "other" | "broken-copy"): string {
+function standInNpm(mode: "ok" | "offline" | "missing-version" | "denied" | "other" | "no-space" | "broken-copy"): string {
   const record = join(scratch, "npm-args");
   const linkBody = mode === "broken-copy" ? "echo boom >&2; exit 3" : `echo ${BACKLOG_VERSION}`;
   const outcomes: Record<typeof mode, string> = {
@@ -92,7 +115,20 @@ function standInNpm(mode: "ok" | "offline" | "missing-version" | "denied" | "oth
     offline: "echo 'npm error code ENOTFOUND' >&2; echo 'npm error network request to https://registry.npmjs.org/backlog.md failed, reason: getaddrinfo ENOTFOUND registry.npmjs.org' >&2; exit 1",
     "missing-version": `echo 'npm error code ETARGET' >&2; echo 'npm error notarget No matching version found for backlog.md@${BACKLOG_VERSION}.' >&2; exit 1`,
     denied: "echo 'npm error code EACCES' >&2; exit 243",
-    other: "echo 'npm warn something harmless' >&2; echo 'npm error code E500' >&2; echo 'npm error 500 Internal Server Error' >&2; exit 1",
+    other: [
+      "echo 'npm warn something harmless' >&2",
+      "echo 'npm error code E500' >&2",
+      "echo 'npm error 500 Internal Server Error - GET https://registry.example.com/backlog.md' >&2",
+      "echo 'npm error A complete log of this run can be found in: /home/user/.npm/_logs/debug.log' >&2",
+      "exit 1",
+    ].join("; "),
+    "no-space": [
+      "echo 'npm error code ENOSPC' >&2",
+      "echo 'npm error syscall write' >&2",
+      "echo 'npm error errno -28' >&2",
+      "echo 'npm error nospc Invalid response body while trying to fetch backlog.md: ENOSPC: no space left on device, write' >&2",
+      "exit 1",
+    ].join("; "),
   };
   return script(
     join(scratch, "npm-bin", "npm"),
@@ -164,7 +200,18 @@ describe("installing Backlog.md", () => {
     const { installer } = installerWith(standInNpm("other"));
     installer.start();
     await installer.settled();
-    expect(installer.state().error).toBe("npm could not install Backlog.md: E500");
+    expect(installer.state().error).toBe(
+      "npm could not install Backlog.md: 500 Internal Server Error - GET https://registry.example.com/backlog.md (E500)",
+    );
+  });
+
+  it("shows npm's message rather than its code, syscall or errno", async () => {
+    const { installer } = installerWith(standInNpm("no-space"));
+    installer.start();
+    await installer.settled();
+    expect(installer.state().error).toBe(
+      "npm could not install Backlog.md: nospc Invalid response body while trying to fetch backlog.md: ENOSPC: no space left on device, write",
+    );
   });
 
   it("refuses a copy that does not run", async () => {

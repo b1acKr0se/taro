@@ -105,13 +105,25 @@ export function describeNpmFailure(result: CommandResult): string {
   return `npm could not install Backlog.md: ${npmErrorLine(output) ?? commandError(result)}`;
 }
 
-/** npm's first `npm error` line without its prefix, as the most telling one. */
+/**
+ * npm's first message line, with its code alongside: npm prints `code`, `errno`, `syscall` and `path`
+ * lines first, and a bare code such as E500 or ENOSPC tells the user nothing.
+ */
 function npmErrorLine(output: string): string | null {
+  let code: string | null = null;
+  let message: string | null = null;
   for (const line of output.split("\n")) {
-    const match = /^npm (?:ERR!|error)\s+(?:code\s+)?(.+)$/.exec(line.trim());
-    if (match?.[1] !== undefined && match[1].trim() !== "") return match[1].trim();
+    const text = /^npm (?:ERR!|error)\s+(.+)$/.exec(line.trim())?.[1]?.trim();
+    if (text === undefined || text === "") continue;
+    const detail = /^(code|errno|syscall|path|dest)\s+(.+)$/.exec(text);
+    if (detail !== null) {
+      if (detail[1] === "code") code ??= detail[2]?.trim() ?? null;
+    } else if (!/^A complete log of this run/i.test(text)) {
+      message ??= text;
+    }
   }
-  return null;
+  if (message === null) return code;
+  return code === null || message.includes(code) ? message : `${message} (${code})`;
 }
 
 export interface InstallDependencies {
