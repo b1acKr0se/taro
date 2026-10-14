@@ -10,6 +10,7 @@ import {
   composerScrollEnabled,
   measurableWidth,
   mirrorValue,
+  sendsOnEnter,
 } from "./composer-height";
 
 describe("composerMetrics", () => {
@@ -116,5 +117,19 @@ describe("composerScrollEnabled", () => {
     expect(composerScrollEnabled(449.5, 450)).toBe(false);
     expect(composerScrollEnabled(450, 450)).toBe(true);
     expect(composerScrollEnabled(451, 450)).toBe(true);
+  });
+});
+
+describe("sendsOnEnter", () => {
+  it("sends on Enter only on the web in a wide layout", () => {
+    expect(sendsOnEnter({ web: true, compact: false, windowWidth: 400 })).toBe(true);
+    expect(sendsOnEnter({ web: true, compact: true, windowWidth: 1600 })).toBe(false);
+    expect(sendsOnEnter({ web: false, compact: false, windowWidth: 1600 })).toBe(false);
+  });
+
+  it("takes a window narrower than Paseo's md as compact when the screen does not say", () => {
+    expect(sendsOnEnter({ web: true, compact: undefined, windowWidth: COMPOSER_WIDE_WIDTH })).toBe(true);
+    expect(sendsOnEnter({ web: true, compact: undefined, windowWidth: COMPOSER_WIDE_WIDTH - 1 })).toBe(false);
+    expect(sendsOnEnter({ web: true, compact: undefined, windowWidth: 0 })).toBe(false);
   });
 });

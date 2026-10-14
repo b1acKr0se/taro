@@ -17,19 +17,24 @@ import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 
-import { Pressable, TextInput } from "./focus";
+import { Pressable } from "./focus";
 import { useRevealFocused } from "./keyboard";
 import { Markdown } from "./markdown";
 import { permissionHeading, type Asker } from "./permission-heading";
+import { ReplyBox } from "./reply-box";
 import {
   allAnswered,
   buildAnswers,
   dismissLabel,
   dismissSubmitsEmpty,
+  hasOtherRow,
   isAnswered,
   parseQuestions,
+  pickOption,
+  pickOther,
   showsTextInput,
-  toggleOption,
+  typingEnabled,
+  type OtherPicks,
   type OtherTexts,
   type Question,
   type Selections,
@@ -115,18 +120,6 @@ function useCardStyles(theme: PluginTheme, compact: boolean) {
       optionText: { flex: 1, gap: 2 },
       optionLabel: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) },
       optionDescription: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
-      input: {
-        color: colors.foreground,
-        fontSize: FONT_SIZE.body,
-        minHeight: 44,
-        borderWidth: 1,
-        borderColor: colors.border,
-        borderRadius: 8,
-        paddingHorizontal: 10,
-        paddingVertical: 8,
-        backgroundColor: colors.surface0,
-        textAlignVertical: "top" as const,
-      },
       actions: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 8 },
       body: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) },
       code: {
@@ -154,6 +147,7 @@ function QuestionCard({ request, asker, theme, compact, onRespond, questions }: 
   const reveal = useRevealFocused();
   const [selections, setSelections] = useState<Selections>({});
   const [otherTexts, setOtherTexts] = useState<OtherTexts>({});
+  const [otherPicks, setOtherPicks] = useState<OtherPicks>({});
   const [active, setActive] = useState(0);
   const presses = useActions();
   const busy = presses.busy;
@@ -161,7 +155,7 @@ function QuestionCard({ request, asker, theme, compact, onRespond, questions }: 
   const index = Math.min(active, questions.length - 1);
   const question = questions[index];
   const last = index === questions.length - 1;
-  const ready = allAnswered(questions, selections, otherTexts);
+  const ready = allAnswered(questions, selections, otherTexts, otherPicks);
 
   function respond(key: string, response: PermissionResponse): void {
     // Stays busy on success: the request leaves the list once the daemon has
@@ -171,38 +165,40 @@ function QuestionCard({ request, asker, theme, compact, onRespond, questions }: 
 
   function submit(): void {
     if (!ready) return;
-    respond("submit", { behavior: "allow", updatedInput: { ...request.input, answers: buildAnswers(questions, selections, otherTexts) } });
+    respond("submit", { behavior: "allow", updatedInput: { ...request.input, answers: buildAnswers(questions, selections, otherTexts, otherPicks) } });
   }
 
   function dismiss(): void {
     if (dismissSubmitsEmpty(questions)) {
-      respond("dismiss", { behavior: "allow", updatedInput: { ...request.input, answers: buildAnswers(questions, selections, otherTexts) } });
+      respond("dismiss", { behavior: "allow", updatedInput: { ...request.input, answers: buildAnswers(questions, selections, otherTexts, otherPicks) } });
       return;
     }
     respond("dismiss", { behavior: "deny", message: "Dismissed by user" });
   }
 
+  // A pick never clears what was typed: the words stay, greyed, until Other is picked again (TR-083).
   function choose(questionIndex: number, option: number, multiSelect: boolean): void {
-    const next = toggleOption(selections[questionIndex], option, multiSelect);
-    setSelections({ ...selections, [questionIndex]: next });
-    if (otherTexts[questionIndex] !== undefined) {
-      const { [questionIndex]: _dropped, ...rest } = otherTexts;
-      setOtherTexts(rest);
-    }
+    const next = pickOption(selections[questionIndex], otherPicks[questionIndex] === true, option, multiSelect);
+    setSelections({ ...selections, [questionIndex]: next.selection });
+    setOtherPicks({ ...otherPicks, [questionIndex]: next.otherPicked });
     // A single choice moves on to the next question, as the agent's tab does.
-    if (!multiSelect && next.size > 0 && !last) setActive(questionIndex + 1);
+    if (!multiSelect && next.selection.size > 0 && !last) setActive(questionIndex + 1);
+  }
+
+  function chooseOther(questionIndex: number, multiSelect: boolean): void {
+    const next = pickOther(selections[questionIndex], otherPicks[questionIndex] === true, multiSelect);
+    setSelections({ ...selections, [questionIndex]: next.selection });
+    setOtherPicks({ ...otherPicks, [questionIndex]: next.otherPicked });
   }
 
   function type(questionIndex: number, text: string): void {
     setOtherTexts({ ...otherTexts, [questionIndex]: text });
-    if (text.length > 0 && (selections[questionIndex]?.size ?? 0) > 0) {
-      setSelections({ ...selections, [questionIndex]: new Set<number>() });
-    }
   }
 
   if (question === undefined) return null;
   const selected = selections[index] ?? new Set<number>();
-  const answeredHere = isAnswered(question, index, selections, otherTexts);
+  const answeredHere = isAnswered(question, index, selections, otherTexts, otherPicks);
+  const otherOn = otherPicks[index] === true;
 
   return (
     <View style={styles.card}>
@@ -215,7 +211,7 @@ function QuestionCard({ request, asker, theme, compact, onRespond, questions }: 
         <View style={styles.tabs}>
           {questions.map((entry, entryIndex) => {
             const current = entryIndex === index;
-            const done = isAnswered(entry, entryIndex, selections, otherTexts);
+            const done = isAnswered(entry, entryIndex, selections, otherTexts, otherPicks);
             return (
               <Pressable
                 key={`${entry.header}-${entryIndex}`}
@@ -236,44 +232,39 @@ function QuestionCard({ request, asker, theme, compact, onRespond, questions }: 
 
       {question.options.length === 0 ? null : (
         <View accessibilityRole={question.multiSelect ? undefined : "radiogroup"}>
-          {question.options.map((option, optionIndex) => {
-            const on = selected.has(optionIndex);
-            return (
-              <Pressable
-                key={`${option.label}-${optionIndex}`}
-                accessibilityRole={question.multiSelect ? "checkbox" : "radio"}
-                accessibilityState={{ checked: on, disabled: busy }}
-                disabled={busy}
-                style={styles.option}
-                onPress={() => choose(index, optionIndex, question.multiSelect)}
-              >
-                <Text style={[styles.mark, on ? styles.markSelected : null]}>
-                  {question.multiSelect ? (on ? "☑" : "☐") : on ? "◉" : "○"}
-                </Text>
-                <View style={styles.optionText}>
-                  <Text style={styles.optionLabel}>{option.label}</Text>
-                  {option.description === undefined ? null : (
-                    <Text style={styles.optionDescription}>{option.description}</Text>
-                  )}
-                </View>
-              </Pressable>
-            );
-          })}
+          {question.options.map((option, optionIndex) => (
+            <OptionRow
+              key={`${option.label}-${optionIndex}`}
+              styles={styles}
+              multiSelect={question.multiSelect}
+              on={selected.has(optionIndex)}
+              busy={busy}
+              label={option.label}
+              description={option.description}
+              onPress={() => choose(index, optionIndex, question.multiSelect)}
+            />
+          ))}
+          {hasOtherRow(question) ? (
+            <OptionRow styles={styles} multiSelect={question.multiSelect} on={otherOn} busy={busy} label="Other" description={undefined} onPress={() => chooseOther(index, question.multiSelect)} />
+          ) : null}
         </View>
       )}
 
       {showsTextInput(question) ? (
-        <TextInput
+        // Submit or Next answers the whole form; the box is greyed until Other is picked.
+        <ReplyBox
           key={`other-${index}`}
+          theme={theme}
+          compact={compact}
           value={otherTexts[index] ?? ""}
           onChangeText={(text) => type(index, text)}
           onFocus={reveal}
-          placeholder={question.placeholder ?? (question.options.length > 0 ? "Other…" : "Your answer…")}
-          placeholderTextColor={theme.colors.foregroundMuted}
+          placeholder={question.placeholder ?? "Your answer…"}
           accessibilityLabel={question.question}
           editable={!busy}
-          multiline
-          style={styles.input}
+          greyed={!typingEnabled(question, index, otherPicks)}
+          onPressGreyed={busy ? undefined : () => chooseOther(index, question.multiSelect)}
+          background={theme.colors.surface0}
         />
       ) : null}
 
@@ -303,6 +294,35 @@ function QuestionCard({ request, asker, theme, compact, onRespond, questions }: 
         )}
       </View>
     </View>
+  );
+}
+
+/** One option of a question: a radio, or a checkbox in a multi-select, then its label and description. */
+function OptionRow({
+  styles,
+  multiSelect,
+  on,
+  busy,
+  label,
+  description,
+  onPress,
+}: {
+  styles: ReturnType<typeof useCardStyles>;
+  multiSelect: boolean;
+  on: boolean;
+  busy: boolean;
+  label: string;
+  description: string | undefined;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable accessibilityRole={multiSelect ? "checkbox" : "radio"} accessibilityState={{ checked: on, disabled: busy }} disabled={busy} style={styles.option} onPress={onPress}>
+      <Text style={[styles.mark, on ? styles.markSelected : null]}>{multiSelect ? (on ? "☑" : "☐") : on ? "◉" : "○"}</Text>
+      <View style={styles.optionText}>
+        <Text style={styles.optionLabel}>{label}</Text>
+        {description === undefined ? null : <Text style={styles.optionDescription}>{description}</Text>}
+      </View>
+    </Pressable>
   );
 }
 

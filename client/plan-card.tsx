@@ -15,14 +15,15 @@ import { useMemo, useRef, useState, type ReactNode } from "react";
 import { Text, View, type TextInput as NativeTextInput } from "react-native";
 
 import { answerDecision, loadTicket } from "../shared/contracts";
-import { CHANGE_PLACEHOLDER, SCOPE_APPROVAL, planCardOptions, planChangeField, type PlanActionsPlace } from "../shared/decision-view";
+import { CHANGE_PLACEHOLDER, SCOPE_APPROVAL, planCardOptions, planChangeField, planPrimaryButton, type PlanActionsPlace } from "../shared/decision-view";
 import { parsePlan, splitChoice, type ParsedPlan, type PlanSection } from "../shared/plan";
 import type { StoredDecision } from "../shared/state";
-import { Pressable, TextInput } from "./focus";
+import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { useRevealFocused } from "./keyboard";
 import { Markdown, MarkdownInline } from "./markdown";
 import { useViewPlan } from "./plan-navigation";
+import { ReplyBox } from "./reply-box";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
@@ -259,9 +260,8 @@ function PlanSummary({ plan, theme, compact, brief }: { plan: ParsedPlan; theme:
 }
 
 /**
- * Approve (it sends the approve option, with any typed words), View plan when given, the other real
- * options, then, under the full plan only, the field: Send appears once there is text and sends the
- * words alone.
+ * Under the full plan only, the reply box first; then Approve, which reads Send change and sends the
+ * words alone once something is typed (TR-083), View plan when given, and the other real options.
  */
 export function PlanActions({
   decision,
@@ -289,7 +289,7 @@ export function PlanActions({
   const presses = sharedPresses ?? ownPresses;
   const [typed, setTyped] = useState("");
   const field = useRef<NativeTextInput>(null);
-  // The field is the card's last row: revealed with it, Send stays above the keyboard.
+  // The box and the buttons under it are revealed together, so Approve / Send change stays above the keyboard.
   const fieldRow = useRef<View>(null);
   const reveal = useRevealFocused(fieldRow);
   const withField = planChangeField(place);
@@ -305,19 +305,6 @@ export function PlanActions({
       buttons: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm },
       // Equal shares of the row, each button filling its share, so siblings match in size.
       slot: { flexGrow: 1, flexBasis: 0, minWidth: narrow ? NARROW_BUTTON_MIN_WIDTH : BUTTON_MIN_WIDTH },
-      fieldRow: { flexDirection: "row" as const, alignItems: "flex-end" as const, gap: SPACE.sm },
-      input: {
-        flex: 1,
-        color: colors.foreground,
-        fontSize: FONT_SIZE.small,
-        borderWidth: 1,
-        borderColor: colors.border,
-        borderRadius: 8,
-        paddingHorizontal: 10,
-        paddingVertical: SPACE.sm,
-        minHeight: 38,
-        backgroundColor: colors.surface0,
-      },
     }),
     [colors, narrow],
   );
@@ -340,11 +327,34 @@ export function PlanActions({
     });
   }
 
+  const primary = planPrimaryButton(options.approveLabel, options.approve, words);
   return (
-    <View style={styles.group}>
+    <View ref={fieldRow} collapsable={false} style={styles.group}>
+      {withField ? (
+        <ReplyBox
+          theme={theme}
+          fieldRef={field}
+          value={typed}
+          onChangeText={setTyped}
+          onFocus={reveal}
+          placeholder={CHANGE_PLACEHOLDER}
+          editable={!busy}
+          // The unfolded card is surface1 itself; the Ticket view's Plan sits on the pane.
+          background={place === "unfolded card" ? colors.surface0 : undefined}
+        />
+      ) : null}
       <View style={styles.buttons} onLayout={(event) => setRowWidth(event.nativeEvent.layout.width)}>
         <View style={styles.slot}>
-          <IconButton icon={icon("Check")} label={options.approveLabel} showLabel tone="accent" theme={theme} disabled={busy} state={presses.stateOf("approve")} onPress={() => send("approve", options.approve)} />
+          <IconButton
+            icon={icon(primary.icon)}
+            label={primary.label}
+            showLabel
+            tone="accent"
+            theme={theme}
+            disabled={busy}
+            state={presses.stateOf("approve")}
+            onPress={() => send("approve", primary.option)}
+          />
         </View>
         {viewPlan === null ? null : (
           <View style={styles.slot}>
@@ -365,22 +375,6 @@ export function PlanActions({
           </View>
         ))}
       </View>
-      {withField ? (
-        <View ref={fieldRow} collapsable={false} style={styles.fieldRow}>
-          <TextInput
-            ref={field}
-            value={typed}
-            onChangeText={setTyped}
-            onFocus={reveal}
-            placeholder={CHANGE_PLACEHOLDER}
-            placeholderTextColor={colors.foregroundMuted}
-            multiline
-            editable={!busy}
-            style={styles.input}
-          />
-          {words === "" ? null : <IconButton icon="Send" label="Send" showLabel theme={theme} disabled={busy} state={presses.stateOf("send")} onPress={() => send("send", null)} />}
-        </View>
-      ) : null}
     </View>
   );
 }

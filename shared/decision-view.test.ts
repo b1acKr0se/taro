@@ -16,6 +16,7 @@ import {
   optionChips,
   planCardOptions,
   planChangeField,
+  planPrimaryButton,
   ticketViewApproval,
   untrackedDecision,
   type DecisionLookup,
@@ -180,33 +181,36 @@ describe("decisionSubmit", () => {
     reason: "",
   });
 
-  it("is disabled with nothing picked or typed (blank text counts as nothing)", () => {
-    expect(decisionSubmit(rows, null, "")).toMatchObject({ enabled: false, label: null, placeholder: "Or answer in your own words…" });
-    expect(decisionSubmit(rows, null, "   \n").enabled).toBe(false);
+  it("is disabled, the box greyed, with nothing picked, whatever was typed", () => {
+    expect(decisionSubmit(rows, null, "")).toEqual({ enabled: false, label: null, text: "", placeholder: "Or answer in your own words…", fieldEnabled: false });
+    expect(decisionSubmit(rows, null, "my own way")).toMatchObject({ enabled: false, text: "", fieldEnabled: false });
   });
 
-  it("sends typed words alone, trimmed", () => {
-    expect(decisionSubmit(rows, null, "  my own way \n")).toEqual({ enabled: true, label: null, text: "my own way", placeholder: "Or answer in your own words…" });
+  it("sends the words typed under Other alone, trimmed, and needs them", () => {
+    expect(decisionSubmit(rows, "other", "  my own way \n")).toEqual({ enabled: true, label: null, text: "my own way", placeholder: "Or answer in your own words…", fieldEnabled: true });
+    expect(decisionSubmit(rows, "other", "")).toMatchObject({ enabled: false, fieldEnabled: true });
+    expect(decisionSubmit(rows, "other", "   \n").enabled).toBe(false);
   });
 
-  it("sends a picked option alone or with a note", () => {
-    expect(decisionSubmit(rows, 0, "")).toMatchObject({ enabled: true, label: "Keep", text: "", placeholder: "Add a note (optional)…" });
-    expect(decisionSubmit(rows, 0, " and log it ")).toMatchObject({ enabled: true, label: "Keep", text: "and log it" });
+  it("sends a regular option alone, its box greyed and the kept words left out", () => {
+    expect(decisionSubmit(rows, 0, "")).toEqual({ enabled: true, label: "Keep", text: "", placeholder: "Or answer in your own words…", fieldEnabled: false });
+    expect(decisionSubmit(rows, 0, " typed under Other ")).toMatchObject({ enabled: true, label: "Keep", text: "", fieldEnabled: false });
   });
 
-  it("waits for words on an option whose label or prompt ends with …", () => {
-    expect(decisionSubmit(rows, 1, "")).toMatchObject({ enabled: false, label: "Rename…", placeholder: "Say how for “Rename”…" });
+  it("opens the box on an option whose label or prompt ends with …, and waits for words", () => {
+    expect(decisionSubmit(rows, 1, "")).toMatchObject({ enabled: false, label: "Rename…", placeholder: "Say how for “Rename”…", fieldEnabled: true });
     expect(decisionSubmit(rows, 1, "call it fees")).toMatchObject({ enabled: true, label: "Rename…", text: "call it fees" });
-    expect(decisionSubmit(rows, 2, " ").enabled).toBe(false);
+    expect(decisionSubmit(rows, 2, " ")).toMatchObject({ enabled: false, fieldEnabled: true });
   });
 
   it("treats a pick past the end as no pick", () => {
-    expect(decisionSubmit(rows, 7, "")).toMatchObject({ enabled: false, label: null });
+    expect(decisionSubmit(rows, 7, "words")).toMatchObject({ enabled: false, label: null, fieldEnabled: false });
   });
 
-  it("says the field asks for a change when told to, until an option is picked", () => {
+  it("says the box asks for a change when told to, except under an option asking for words", () => {
     expect(decisionSubmit(rows, null, "", CHANGE_PLACEHOLDER).placeholder).toBe("Or describe a change…");
-    expect(decisionSubmit(rows, 0, "", CHANGE_PLACEHOLDER).placeholder).toBe("Add a note (optional)…");
+    expect(decisionSubmit(rows, "other", "", CHANGE_PLACEHOLDER).placeholder).toBe("Or describe a change…");
+    expect(decisionSubmit(rows, 1, "", CHANGE_PLACEHOLDER).placeholder).toBe("Say how for “Rename”…");
   });
 });
 
@@ -375,5 +379,16 @@ describe("answeredInPlan", () => {
     expect(answeredInPlan(approval, null)).toBe(false);
     expect(answeredInPlan({ ...approval, ticket: null }, "NA-001")).toBe(false);
     expect(answeredInPlan({ ...approval, options: [option("Go"), option("Wait")], recommended: "" }, "NA-001")).toBe(false);
+  });
+});
+
+describe("planPrimaryButton", () => {
+  it("approves while the change box is empty or blank", () => {
+    expect(planPrimaryButton("Approve", "Approve", "")).toEqual({ label: "Approve", icon: "Check", option: "Approve" });
+    expect(planPrimaryButton("Approve the split", "Approve the split", "  \n")).toEqual({ label: "Approve the split", icon: "Check", option: "Approve the split" });
+  });
+
+  it("sends the typed change alone once there are words", () => {
+    expect(planPrimaryButton("Approve", "Approve", "drop the second chart")).toEqual({ label: "Send change", icon: "Send", option: null });
   });
 });

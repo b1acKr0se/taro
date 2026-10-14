@@ -32,6 +32,8 @@ export interface Question {
 export type Selections = Readonly<Record<number, ReadonlySet<number>>>;
 /** Typed answers, by question index. */
 export type OtherTexts = Readonly<Record<number, string>>;
+/** Whether the Other row is picked, by question index (TR-083). */
+export type OtherPicks = Readonly<Record<number, boolean>>;
 
 function optionalString(record: Record<string, unknown>, key: string): string | undefined {
   const value = record[key];
@@ -75,43 +77,52 @@ export function showsTextInput(question: Question): boolean {
   return question.options.length === 0 || question.allowOther;
 }
 
-export function isAnswered(question: Question, index: number, selections: Selections, otherTexts: OtherTexts): boolean {
-  if ((selections[index]?.size ?? 0) > 0) return true;
+/** A question with options that takes words gets an Other row, last, which opens its box (TR-083). */
+export function hasOtherRow(question: Question): boolean {
+  return question.options.length > 0 && question.allowOther;
+}
+
+/**
+ * Whether the box takes words: always on a question of words alone, otherwise only with Other picked.
+ * Words typed under Other stay in the greyed box when another option is picked, and are not sent.
+ */
+export function typingEnabled(question: Question, index: number, otherPicks: OtherPicks): boolean {
   if (!showsTextInput(question)) return false;
-  if ((otherTexts[index]?.trim() ?? "") !== "") return true;
-  return question.allowEmpty;
+  return question.options.length === 0 || otherPicks[index] === true;
 }
 
-export function allAnswered(questions: readonly Question[], selections: Selections, otherTexts: OtherTexts): boolean {
-  return questions.every((question, index) => isAnswered(question, index, selections, otherTexts));
+function typedAnswer(question: Question, index: number, otherTexts: OtherTexts, otherPicks: OtherPicks): string {
+  return typingEnabled(question, index, otherPicks) ? (otherTexts[index]?.trim() ?? "") : "";
 }
 
-/** A typed answer wins over a selection; several selections are joined with commas. */
+export function isAnswered(question: Question, index: number, selections: Selections, otherTexts: OtherTexts, otherPicks: OtherPicks): boolean {
+  if (typedAnswer(question, index, otherTexts, otherPicks) !== "") return true;
+  // Other picked asks for words, even beside options ticked in a multi-select.
+  if (hasOtherRow(question) && otherPicks[index] === true && !question.allowEmpty) return false;
+  if ((selections[index]?.size ?? 0) > 0) return true;
+  return showsTextInput(question) && question.allowEmpty;
+}
+
+export function allAnswered(questions: readonly Question[], selections: Selections, otherTexts: OtherTexts, otherPicks: OtherPicks): boolean {
+  return questions.every((question, index) => isAnswered(question, index, selections, otherTexts, otherPicks));
+}
+
+/** The picked options' labels and the words typed under Other, joined with commas; an optional question of words alone may be empty. */
 export function buildAnswers(
   questions: readonly Question[],
   selections: Selections,
   otherTexts: OtherTexts,
+  otherPicks: OtherPicks,
 ): Record<string, string> {
   const answers: Record<string, string> = {};
   questions.forEach((question, index) => {
-    const typed = otherTexts[index]?.trim() ?? "";
-    if (showsTextInput(question)) {
-      if (typed !== "") {
-        answers[question.header] = typed;
-        return;
-      }
-      if (question.allowEmpty && question.options.length === 0) {
-        answers[question.header] = "";
-        return;
-      }
-    }
-    const selected = selections[index];
-    if (selected !== undefined && selected.size > 0) {
-      answers[question.header] = [...selected]
-        .map((option) => question.options[option]?.label)
-        .filter((label): label is string => label !== undefined)
-        .join(", ");
-    }
+    const labels = [...(selections[index] ?? [])]
+      .map((option) => question.options[option]?.label)
+      .filter((label): label is string => label !== undefined);
+    const typed = typedAnswer(question, index, otherTexts, otherPicks);
+    const parts = typed === "" ? labels : [...labels, typed];
+    if (parts.length > 0) answers[question.header] = parts.join(", ");
+    else if (question.allowEmpty && question.options.length === 0) answers[question.header] = "";
   });
   return answers;
 }
@@ -127,7 +138,8 @@ export function dismissLabel(questions: readonly Question[], fallback = "Dismiss
 
 /**
  * The next selection after pressing an option: toggled in a multi-select,
- * otherwise the one option (or none, pressing it again).
+ * otherwise the one option (or none, pressing it again). A single choice also
+ * unpicks Other (`pickOption`).
  */
 export function toggleOption(current: ReadonlySet<number> | undefined, option: number, multiSelect: boolean): Set<number> {
   const next = new Set(current ?? []);
@@ -139,4 +151,14 @@ export function toggleOption(current: ReadonlySet<number> | undefined, option: n
   next.clear();
   if (!wasSelected) next.add(option);
   return next;
+}
+
+/** Pressing an option: a single choice unpicks Other, keeping its words; a multi-select leaves Other as it is. */
+export function pickOption(current: ReadonlySet<number> | undefined, otherPicked: boolean, option: number, multiSelect: boolean): { selection: Set<number>; otherPicked: boolean } {
+  return { selection: toggleOption(current, option, multiSelect), otherPicked: multiSelect ? otherPicked : false };
+}
+
+/** Pressing Other: toggled; in a single choice picking it unpicks the option picked before. */
+export function pickOther(current: ReadonlySet<number> | undefined, otherPicked: boolean, multiSelect: boolean): { selection: Set<number>; otherPicked: boolean } {
+  return { selection: multiSelect || otherPicked ? new Set(current ?? []) : new Set<number>(), otherPicked: !otherPicked };
 }

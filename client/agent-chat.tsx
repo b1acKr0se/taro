@@ -22,13 +22,13 @@ import { useOnPaneHidden } from "./pane-visibility";
 import { DecisionCard } from "./decision-card";
 import { drafts } from "./draft";
 import { draftAttachments } from "./draft-attachments";
-import { Pressable, TextInput } from "./focus";
+import { Pressable } from "./focus";
 import { useFollowEnd } from "./follow-end";
 import { ImageThumbnail } from "./image-view";
 import { KeyboardRevealProvider, useKeyboardOverlap, useKeyboardScroll, useRevealFocused } from "./keyboard";
-import { isSendKey, type WebKeyPressEvent } from "./keys";
 import { Markdown } from "./markdown";
 import { PermissionCard, usePendingRequests } from "./permission-card";
+import { ReplyBox } from "./reply-box";
 import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
 import { cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
@@ -37,8 +37,7 @@ import { transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
 import { usePressGuards } from "./use-actions";
-import { COMPOSER_CONTROL_SIZE, COMPOSER_FONT_SIZE, COMPOSER_WEB_LINE_HEIGHT, composerMaxHeight, composerMetrics } from "./composer-height";
-import { useComposerHeight } from "./composer-input-height";
+import { composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
 import { useLatestCallback } from "./latest-callback";
@@ -226,10 +225,8 @@ export function AgentChat({
     if (keyboard > 0) follow.keepAtEnd();
   }, [keyboard]);
 
-  const submitOnEnter = Platform.OS === "web" && !compact;
   const windowSize = useWindowDimensions();
   const metrics = composerMetrics(Platform.OS === "web", windowSize.width);
-  const fieldHeight = useComposerHeight({ text: draft, field, minHeight: metrics.minHeight, maxHeight: composerMaxHeight(windowSize.height) });
   const nothingToSend = sending || (draft.trim() === "" && attachments.length === 0);
 
   function setDraft(text: string): void {
@@ -309,8 +306,8 @@ export function AgentChat({
   const decisionCardsLatest = useLatestCallback(decisionCards);
 
   const styles = useMemo(
-    () => chatStyles(theme, compact, { paddingTop: metrics.paddingTop, paddingBottom: metrics.paddingBottom, paddingHorizontal: metrics.paddingHorizontal }),
-    [theme, compact, metrics.paddingTop, metrics.paddingBottom, metrics.paddingHorizontal],
+    () => chatStyles(theme, compact),
+    [theme, compact],
   );
 
   return (
@@ -422,45 +419,21 @@ export function AgentChat({
                 {suggestions}
               </ActionRow>
             )}
-            <View style={styles.inputBox}>
-              <AttachmentPreviews theme={theme} attachments={attachments} onRemove={(id) => setAttachments(attachments.filter((attachment) => attachment.id !== id))} />
-              <TextInput
-                ref={field}
-                value={draft}
-                onChangeText={setDraft}
-                onFocus={releaseKeyboardClaim}
-                placeholder={submitOnEnter ? `${placeholder} (Enter sends, Shift+Enter for a new line)` : placeholder}
-                placeholderTextColor={theme.colors.foregroundMuted}
-                multiline
-                scrollEnabled={fieldHeight.scrollEnabled}
-                onKeyPress={
-                  submitOnEnter
-                    ? (event: WebKeyPressEvent) => {
-                        if (!isSendKey(event.nativeEvent) || nothingToSend) return;
-                        event.preventDefault();
-                        sendDraft();
-                      }
-                    : undefined
-                }
-                style={[styles.input, fieldHeight.style]}
-              />
-              <View style={styles.controls}>
-                {attachButton}
-                <View style={styles.controlsEnd}>
-                  {context === undefined ? null : <ContextMeter theme={theme} used={context.used} max={context.max} ringSize={metrics.ringSize} />}
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Send"
-                    accessibilityState={{ disabled: nothingToSend }}
-                    disabled={nothingToSend}
-                    style={[styles.send, { opacity: nothingToSend ? 0.5 : 1 }]}
-                    onPress={sendDraft}
-                  >
-                    <Icon name="ArrowUp" size={metrics.iconSize} color={theme.colors.accentForeground} />
-                  </Pressable>
-                </View>
-              </View>
-            </View>
+            <ReplyBox
+              theme={theme}
+              compact={compact}
+              fieldRef={field}
+              value={draft}
+              onChangeText={setDraft}
+              onFocus={releaseKeyboardClaim}
+              placeholder={placeholder}
+              enterHint
+              onSend={sendDraft}
+              canSend={!nothingToSend}
+              above={<AttachmentPreviews theme={theme} attachments={attachments} onRemove={(id) => setAttachments(attachments.filter((attachment) => attachment.id !== id))} />}
+              leading={attachButton}
+              trailing={context === undefined ? null : <ContextMeter theme={theme} used={context.used} max={context.max} ringSize={metrics.ringSize} />}
+            />
           </View>
         )}
       </SafeAreaView>
@@ -619,7 +592,7 @@ const TranscriptGroup = memo(
 const NO_DECISIONS: readonly StoredDecision[] = [];
 
 /** The chat's styles, built once per theme, width and composer size. */
-function chatStyles(theme: PluginTheme, compact: boolean, metrics: { paddingTop: number; paddingBottom: number; paddingHorizontal: number }) {
+function chatStyles(theme: PluginTheme, compact: boolean) {
   const { colors } = theme;
   return {
     pane: { flex: 1, minHeight: 0, backgroundColor: colors.surface0 },
@@ -678,50 +651,6 @@ function chatStyles(theme: PluginTheme, compact: boolean, metrics: { paddingTop:
       gap: SPACE.sm,
     },
     quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
-    // Paseo's composer box (TR-039): attachments, then the text across the full width, then a row
-    // of controls: the + at the left, the context ring and the send button at the right. Its border
-    // stays plain while typing, as Paseo's does.
-    inputBox: {
-      flexShrink: 1,
-      flexDirection: "column" as const,
-      gap: SPACE.md,
-      backgroundColor: colors.surface1,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 16,
-      paddingTop: metrics.paddingTop,
-      paddingBottom: metrics.paddingBottom,
-      paddingHorizontal: metrics.paddingHorizontal,
-    },
-    input: {
-      flexShrink: 1,
-      width: "100%" as const,
-      color: colors.foreground,
-      fontSize: COMPOSER_FONT_SIZE,
-      textAlignVertical: "top" as const,
-      // No line height on a phone, as in Paseo: React Native draws one as a span over the text, and
-      // an empty last line takes the font's own, so the field jumped when a new line began.
-      ...(Platform.OS === "web" ? { lineHeight: COMPOSER_WEB_LINE_HEIGHT } : null),
-    },
-    // The row reaches 6 px into the box's padding, so the round buttons sit in its corners.
-    controls: {
-      flexShrink: 0,
-      flexDirection: "row" as const,
-      alignItems: "flex-end" as const,
-      justifyContent: "space-between" as const,
-      marginHorizontal: -6,
-    },
-    controlsEnd: { flexShrink: 0, flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.xs },
-    // A filled circle, the size of the + and the ring's slot.
-    send: {
-      width: COMPOSER_CONTROL_SIZE,
-      height: COMPOSER_CONTROL_SIZE,
-      borderRadius: COMPOSER_CONTROL_SIZE / 2,
-      alignItems: "center" as const,
-      justifyContent: "center" as const,
-      backgroundColor: colors.accent,
-      marginLeft: SPACE.xs,
-    },
     readOnly: {
       width: "100%" as const,
       maxWidth: CHAT_MAX_WIDTH,

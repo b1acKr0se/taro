@@ -152,6 +152,14 @@ export function planCardOptions(
   };
 }
 
+/**
+ * The plan's filled button (TR-083): Approve while the change box is empty, sending the approve option;
+ * Send change once words are typed, sending them alone.
+ */
+export function planPrimaryButton(approveLabel: string, approve: string, typed: string): { label: string; icon: string; option: string | null } {
+  return typed.trim() === "" ? { label: approveLabel, icon: "Check", option: approve } : { label: "Send change", icon: "Send", option: null };
+}
+
 /** Where a scope approval's buttons are drawn: the compact card, the card with the plan unfolded in place, or the Ticket tab's Plan. */
 export type PlanActionsPlace = "card" | "unfolded card" | "ticket plan";
 
@@ -163,23 +171,29 @@ export function planChangeField(place: PlanActionsPlace): boolean {
   return place !== "card";
 }
 
-/** What Submit sends and whether it can: the picked option (or none) and the typed words. */
-export type DecisionSubmit = { enabled: boolean; label: string | null; text: string; placeholder: string };
+/** What is picked on a decision card: one of its option rows, the Other row under them, or nothing. */
+export type DecisionPick = number | "other" | null;
 
 /**
- * The card's Submit (TR-030): a picked option, typed words, or both (the server joins them,
- * TR-028). An option ending with "…" asks for words, so it waits for them.
+ * What Submit sends and whether it can: the picked option (or none) and the typed words. `fieldEnabled`:
+ * whether the box takes words; otherwise it is greyed, keeping whatever was typed (TR-083).
  */
-export function decisionSubmit(rows: DecisionOptionRow[], picked: number | null, typed: string, freePlaceholder: string = ANSWER_PLACEHOLDER): DecisionSubmit {
-  const row = picked === null ? null : rows[picked] ?? null;
+export type DecisionSubmit = { enabled: boolean; label: string | null; text: string; placeholder: string; fieldEnabled: boolean };
+
+/**
+ * The card's Submit (TR-030, TR-083): a regular option is sent alone, with no note; Other sends the
+ * typed words; an option ending with "…" asks for words and sends both (the server joins them,
+ * TR-028). Words typed under Other and then left greyed by another pick are not sent with it.
+ */
+export function decisionSubmit(rows: DecisionOptionRow[], picked: DecisionPick, typed: string, freePlaceholder: string = ANSWER_PLACEHOLDER): DecisionSubmit {
   const words = typed.trim();
-  const asksForWords = row !== null && optionAsksForWords(row);
-  return {
-    enabled: asksForWords ? words !== "" : row !== null || words !== "",
-    label: row?.label ?? null,
-    text: words,
-    placeholder: asksForWords ? `Say how for “${row.label.trim().replace(/…$/, "")}”…` : row === null ? freePlaceholder : "Add a note (optional)…",
-  };
+  if (picked === "other") return { enabled: words !== "", label: null, text: words, placeholder: freePlaceholder, fieldEnabled: true };
+  const row = picked === null ? null : rows[picked] ?? null;
+  if (row === null) return { enabled: false, label: null, text: "", placeholder: freePlaceholder, fieldEnabled: false };
+  if (optionAsksForWords(row)) {
+    return { enabled: words !== "", label: row.label, text: words, placeholder: `Say how for “${row.label.trim().replace(/…$/, "")}”…`, fieldEnabled: true };
+  }
+  return { enabled: true, label: row.label, text: "", placeholder: freePlaceholder, fieldEnabled: false };
 }
 
 /** An option ending with "…" (its label or prompt) asks the user for words. */

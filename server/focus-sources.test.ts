@@ -41,7 +41,7 @@ describe("focus sources", () => {
     const native = [...clientFiles, entry].filter((file) => valueImports(file.source, "react-native").includes("TextInput") && /<TextInput\b/.test(file.source));
     expect(native.map((file) => file.name)).toEqual([]);
     const users = clientFiles.filter((file) => valueImports(file.source, "./focus").includes("TextInput")).map((file) => file.name);
-    expect(users).toEqual(expect.arrayContaining(["client/acceptance-card.tsx", "client/agent-chat.tsx", "client/decision-card.tsx", "client/permission-card.tsx", "client/plan-card.tsx", "client/settings-form.tsx"]));
+    expect(users).toEqual(expect.arrayContaining(["client/reply-box.tsx", "client/settings-form.tsx"]));
   });
 
   it("draws every button with Taro's Pressable", () => {

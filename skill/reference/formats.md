@@ -52,8 +52,9 @@ default: Per trade         # what you do if the user does not answer (non-blocki
   label answers. So the `question` stands alone, in at most about three lines: say what is to be
   decided, never "three options", "recommends A" or "see above". Labels are a few words each and
   read as answers to it.
-- Every card has a text field, and typing in it is how the user asks for a change or answers in
-  their own words (a `scope-approval` card has its field under the full plan, which View plan opens). So never offer an option that only stands for that: no "Change…", "Adjust…",
+- Every card ends with an Other row and a text box: picking Other and typing is how the user asks for
+  a change or answers in their own words (a `scope-approval` card has its box under the full plan,
+  which View plan opens). A picked option is sent alone, with no note. So never offer an option that only stands for that: no "Change…", "Adjust…",
   "Alternative…", "Other" or "Something else" (the plugin hides them). Real options stay, such as
   "Split into children".
 - An option whose `prompt` ends with `…` asks the user to type more words with it (e.g. `Pick a

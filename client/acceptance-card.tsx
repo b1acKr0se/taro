@@ -16,10 +16,11 @@ import { evidenceSummary } from "../shared/evidence";
 import { finalSummaryBody } from "../shared/execution";
 import { acceptanceReady } from "./card-calls";
 import { EvidenceBlock } from "./evidence-view";
-import { Pressable, TextInput } from "./focus";
+import { Pressable } from "./focus";
 import { errorText, pullRequestLabel } from "./format";
 import { useRevealFocused } from "./keyboard";
 import { Markdown } from "./markdown";
+import { ReplyBox } from "./reply-box";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { AcceptancePair, IconButton } from "./ui";
@@ -28,7 +29,7 @@ import { polled } from "./polling";
 
 export function AcceptanceCard({ card, project, theme, compact, onChanged }: { card: Card; project: string; theme: PluginTheme; compact: boolean; onChanged: () => void }) {
   const toast = useToast();
-  // Send changes is revealed with the field, so it stays above the keyboard while the reader types.
+  // The buttons are revealed with the box, so they stay above the keyboard while the reader types.
   const foot = useRef<View>(null);
   const reveal = useRevealFocused(foot);
   const load = useRpc(loadTicket);
@@ -54,18 +55,7 @@ export function AcceptanceCard({ card, project, theme, compact, onChanged }: { c
       section: { color: colors.foregroundMuted, fontSize: FONT_SIZE.micro, fontWeight: "700" as const, letterSpacing: 0.5 },
       rule: { height: 1, backgroundColor: colors.border },
       foot: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "center" as const, gap: SPACE.sm },
-      input: {
-        color: colors.foreground,
-        fontSize: FONT_SIZE.small,
-        borderWidth: 1,
-        borderColor: colors.border,
-        borderRadius: 8,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        minHeight: 64,
-        backgroundColor: colors.surface0,
-        textAlignVertical: "top" as const,
-      },
+      writing: { gap: SPACE.sm },
     }),
     [colors, compact, ready],
   );
@@ -97,42 +87,43 @@ export function AcceptanceCard({ card, project, theme, compact, onChanged }: { c
       {/* The evidence names what is missing itself; until it loads, the card's summary does. */}
       {ready || evidence !== null || card.evidence === null ? null : <Text style={[styles.muted, { color: colors.statusWarning }]}>{evidenceSummary(card.evidence)}</Text>}
       <View style={styles.rule} />
-      {writing ? (
-        <TextInput
-          value={typed}
-          onChangeText={setTyped}
-          onFocus={reveal}
-          placeholder="What should change?"
-          placeholderTextColor={colors.foregroundMuted}
-          multiline
-          autoFocus
-          style={styles.input}
-        />
-      ) : null}
-      <View ref={foot} collapsable={false} style={styles.foot}>
+      <View ref={foot} collapsable={false} style={writing ? styles.writing : styles.foot}>
         {writing ? (
           <>
-            <IconButton
-              icon="Send"
-              label="Send changes"
-              showLabel
-              tone="accent"
+            <ReplyBox
               theme={theme}
-              disabled={busy || typed.trim() === ""}
-              state={actions.stateOf("request-changes")}
-              // Success closes the field, and the toast says it went.
-              onPress={() =>
-                actions.press("request-changes", () => changes({ project, ticket: card.id, text: typed.trim() }), {
-                  success: "Sent to the owner.",
-                  onSuccess: () => {
-                    setTyped("");
-                    setWriting(false);
-                    onChanged();
-                  },
-                })
-              }
+              compact={compact}
+              value={typed}
+              onChangeText={setTyped}
+              onFocus={reveal}
+              placeholder="What should change?"
+              autoFocus
+              editable={!busy}
+              background={colors.surface0}
             />
-            <IconButton icon="X" label="Cancel" showLabel theme={theme} disabled={busy} onPress={() => setWriting(false)} />
+            <View style={styles.foot}>
+              <IconButton
+                icon="Send"
+                label="Send changes"
+                showLabel
+                tone="accent"
+                theme={theme}
+                disabled={busy || typed.trim() === ""}
+                state={actions.stateOf("request-changes")}
+                // Success closes the box, and the toast says it went.
+                onPress={() =>
+                  actions.press("request-changes", () => changes({ project, ticket: card.id, text: typed.trim() }), {
+                    success: "Sent to the owner.",
+                    onSuccess: () => {
+                      setTyped("");
+                      setWriting(false);
+                      onChanged();
+                    },
+                  })
+                }
+              />
+              <IconButton icon="X" label="Cancel" showLabel theme={theme} disabled={busy} onPress={() => setWriting(false)} />
+            </View>
           </>
         ) : (
           <AcceptancePair

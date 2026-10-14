@@ -2,10 +2,11 @@
  * One decision an agent asked (decision 28): the question, why it matters,
  * the options as a light radio list (label, then a muted description; the
  * recommended one tagged with its reason), the default for a non-blocking
- * decision, a box for your own words, and Submit / Dismiss. TR-030: the
+ * decision, then Other, the reply box and Dismiss / Submit. TR-030: the
  * side-by-side option boxes broke on long text and phones; the list follows
- * Claude Code's question prompt, and Submit sends the picked option with any
- * typed words (TR-028). TR-055: an option's images sit under it, captioned, and open in a
+ * Claude Code's question prompt. TR-083: Submit sends the picked option alone,
+ * or with words when it ends with "…" (TR-028); the box is greyed, keeping what
+ * was typed, until Other or such an option is picked. TR-055: an option's images sit under it, captioned, and open in a
  * viewer of that option's images alone, its label in the bar. TR-061: options that only stand for
  * typing ("Change…", "Other") are hidden, the field says it takes a change on an approval, and a scope
  * approval with a template plan is the compact plan card (`./plan-card`).
@@ -16,15 +17,16 @@ import { useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 
 import { answerDecision } from "../shared/contracts";
-import { answerPlaceholder, askedBy, decisionOptionRows, decisionSubmit } from "../shared/decision-view";
+import { answerPlaceholder, askedBy, decisionOptionRows, decisionSubmit, type DecisionPick } from "../shared/decision-view";
 import type { StoredDecision } from "../shared/state";
-import { Pressable, TextInput } from "./focus";
+import { Pressable } from "./focus";
 import { useRevealFocused } from "./keyboard";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { ImageThumbnail } from "./image-view";
 import { PlanDecision } from "./plan-card";
+import { ReplyBox } from "./reply-box";
 import { IconButton } from "./ui";
 import { useActions } from "./use-actions";
 
@@ -66,12 +68,12 @@ export function DecisionCard(props: DecisionCardProps) {
 }
 
 function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, answeredFrom = "screen", readOnlyNote = null }: DecisionCardProps) {
-  // Submit is revealed with the field, so it stays above the keyboard while the reader types.
+  // The box and Dismiss are revealed together, so both stay above the keyboard while the reader types.
   const actions = useRef<View>(null);
   const reveal = useRevealFocused(actions);
   const answer = useRpc(answerDecision);
   const [typed, setTyped] = useState("");
-  const [picked, setPicked] = useState<number | null>(null);
+  const [picked, setPicked] = useState<DecisionPick>(null);
   const [whyOpen, setWhyOpen] = useState(false);
   const presses = useActions();
   const busy = presses.busy;
@@ -124,17 +126,7 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
       reason: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontStyle: "italic" as const },
       defaultNote: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
       problems: { color: colors.statusWarning, fontSize: FONT_SIZE.caption },
-      input: {
-        color: colors.foreground,
-        fontSize: FONT_SIZE.small,
-        borderWidth: 1,
-        borderColor: colors.border,
-        borderRadius: 8,
-        paddingHorizontal: 10,
-        paddingVertical: SPACE.sm,
-        minHeight: 38,
-        backgroundColor: colors.surface0,
-      },
+      answer: { gap: SPACE.sm },
       actions: { flexDirection: "row" as const, gap: SPACE.sm, alignItems: "center" as const },
     }),
     [colors, compact, waiting],
@@ -166,7 +158,7 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
                 accessibilityLabel={row.recommended ? `${row.label}, recommended` : row.label}
                 disabled={busy || !answerable}
                 style={styles.option}
-                // Pressing the picked option again unpicks it, leaving only the typed words.
+                // Pressing the picked option again unpicks it; what was typed stays, greyed.
                 onPress={() => setPicked(isPicked ? null : index)}
               >
                 <View style={[styles.radio, isPicked ? styles.radioPicked : null]}>{isPicked ? <View style={styles.radioDot} /> : null}</View>
@@ -204,6 +196,19 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
             </View>
           );
         })}
+        {/* Always last: the agent's own "Other" and "Change…" options are hidden (TR-061); this one opens the box. */}
+        <Pressable
+          accessibilityRole="radio"
+          accessibilityState={{ checked: picked === "other", disabled: busy || !answerable }}
+          disabled={busy || !answerable}
+          style={styles.option}
+          onPress={() => setPicked(picked === "other" ? null : "other")}
+        >
+          <View style={[styles.radio, picked === "other" ? styles.radioPicked : null]}>{picked === "other" ? <View style={styles.radioDot} /> : null}</View>
+          <View style={styles.optionText}>
+            <Text style={[styles.optionLabel, picked === "other" ? styles.optionLabelPicked : null]}>Other</Text>
+          </View>
+        </Pressable>
       </View>
       {optionRows.looseReason === "" ? null : <Text style={styles.reason}>Why recommended: {optionRows.looseReason}</Text>}
       {!decision.blocking && answerable && decision.default !== "" ? <Text style={styles.defaultNote}>Going with “{decision.default}” unless you say otherwise.</Text> : null}
@@ -211,17 +216,21 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
       {!answerable ? (
         <Text style={styles.defaultNote}>{readOnlyNote}</Text>
       ) : (
-        <>
-          <TextInput
+        <View ref={actions} collapsable={false} style={styles.answer}>
+          <ReplyBox
+            theme={theme}
+            compact={compact}
             value={typed}
             onChangeText={setTyped}
             onFocus={reveal}
             placeholder={submit.placeholder}
-            placeholderTextColor={colors.foregroundMuted}
-            multiline
-            style={styles.input}
+            background={colors.surface0}
+            editable={!busy}
+            greyed={!submit.fieldEnabled}
+            onPressGreyed={busy ? undefined : () => setPicked("other")}
           />
-          <View ref={actions} collapsable={false} style={styles.actions}>
+          <View style={styles.actions}>
+            <IconButton icon="X" label="Dismiss" showLabel theme={theme} disabled={busy || picked === null} onPress={() => setPicked(null)} />
             <IconButton
               icon="Check"
               label="Submit"
@@ -242,11 +251,8 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
                 })
               }
             />
-            {picked === null && typed === "" ? null : (
-              <IconButton icon="X" label="Dismiss" showLabel theme={theme} disabled={busy} onPress={() => { setPicked(null); setTyped(""); }} />
-            )}
           </View>
-        </>
+        </View>
       )}
     </View>
   );

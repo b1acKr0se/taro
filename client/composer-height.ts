@@ -74,3 +74,12 @@ export function composerScrollEnabled(height: number, maxHeight: number): boolea
 export function boundedComposerHeight(measured: number, minHeight: number, maxHeight: number): number {
   return Math.max(minHeight, Math.min(maxHeight, measured));
 }
+
+/**
+ * Whether Enter sends (Shift+Enter making a new line), as in Paseo's composer: on the web renderer in
+ * a wide layout, where there is a keyboard. A phone's return key makes new lines; its send button sends.
+ * Without a `compact` from the screen, a window narrower than Paseo's `md` counts as compact.
+ */
+export function sendsOnEnter({ web, compact, windowWidth }: { web: boolean; compact: boolean | undefined; windowWidth: number }): boolean {
+  return web && !(compact ?? windowWidth < COMPOSER_WIDE_WIDTH);
+}
