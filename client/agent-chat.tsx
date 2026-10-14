@@ -22,7 +22,7 @@ import { drafts } from "./draft";
 import { draftAttachments } from "./draft-attachments";
 import { useFollowEnd } from "./follow-end";
 import { ImageThumbnail } from "./image-view";
-import { KeyboardRevealProvider, useKeyboardOverlap, useKeyboardScroll } from "./keyboard";
+import { KeyboardRevealProvider, useKeyboardOverlap, useKeyboardScroll, useRevealFocused } from "./keyboard";
 import { isSendKey, type WebKeyPressEvent } from "./keys";
 import { Markdown } from "./markdown";
 import { PermissionCard, usePendingRequests } from "./permission-card";
@@ -180,6 +180,8 @@ export function AgentChat({
   // The pane pads itself clear of the keyboard, so the transcript only scrolls a field inside it
   // (a decision's or a permission's text) into view; its room measures zero once the pane is padded.
   const keyboardScroll = useKeyboardScroll(follow.scrollProps.ref);
+  // Outside the transcript's provider: the composer's focus is no scroll area's, which tells the transcript so.
+  const releaseKeyboardClaim = useRevealFocused();
 
   useEffect(() => {
     const reread = () => setDraftState(drafts.get(agent.id));
@@ -612,7 +614,10 @@ export function AgentChat({
                 ref={field}
                 value={draft}
                 onChangeText={setDraft}
-                onFocus={() => setTyping(true)}
+                onFocus={() => {
+                  setTyping(true);
+                  releaseKeyboardClaim();
+                }}
                 onBlur={() => setTyping(false)}
                 placeholder={submitOnEnter ? `${placeholder} (Enter sends, Shift+Enter for a new line)` : placeholder}
                 placeholderTextColor={theme.colors.foregroundMuted}

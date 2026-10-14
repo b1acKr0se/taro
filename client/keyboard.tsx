@@ -30,6 +30,7 @@ import {
   Keyboard,
   LayoutAnimation,
   Platform,
+  StatusBar,
   TextInput,
   View,
   type KeyboardEvent,
@@ -40,7 +41,7 @@ import {
   type ScrollView as NativeScrollView,
 } from "react-native";
 
-import { holds, keyboardRoom, revealOffset, visibleSpan } from "./keyboard-reveal";
+import { createFieldClaims, holds, keyboardRoom, revealOffset, roomNeeded, visibleSpan } from "./keyboard-reveal";
 
 /** The keyboard's top edge in window coordinates (null once it hides), and how long its move takes. */
 type KeyboardListener = (top: number | null, duration: number) => void;
@@ -106,7 +107,10 @@ function listenToKeyboard(listener: KeyboardListener): () => void {
       viewport.removeEventListener("scroll", onViewport);
     };
   }
-  const shown = (event: KeyboardEvent) => listener(event.endCoordinates.screenY, event.duration);
+  // Android reports the keyboard's top in screen coordinates, but `measureInWindow` there counts
+  // from below the status bar (React Native's RootViewUtil.getViewportOffset): bring it across.
+  const origin = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
+  const shown = (event: KeyboardEvent) => listener(event.endCoordinates.screenY - origin, event.duration);
   const hidden = (event: KeyboardEvent) => listener(null, event.duration);
   // iOS announces every frame change before it happens, show and hide
   // included; Android only reports after the fact.
@@ -131,15 +135,20 @@ function measure(target: Measurable, done: (box: WindowBox) => void): void {
   target.measureInWindow((x, y, width, height) => done({ left: x, right: x + width, top: y, bottom: y + height }));
 }
 
-/** The focused text field's box in the window, if a field has focus. */
-function measureFocusedField(done: (box: WindowBox) => void): void {
+/** The focused text field, if one has focus: a native input, or the browser's element. */
+function focusedField(): object | null {
+  if (Platform.OS === "web") return focusedWebField();
+  return (TextInput.State.currentlyFocusedInput() as object | null) ?? null;
+}
+
+/** A field's box in the window. */
+function measureField(field: object, done: (box: WindowBox) => void): void {
   if (Platform.OS === "web") {
-    const rect = focusedWebField()?.getBoundingClientRect?.();
+    const rect = (field as ElementLike).getBoundingClientRect?.();
     if (rect !== undefined) done({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom });
     return;
   }
-  const field = TextInput.State.currentlyFocusedInput() as Measurable | null;
-  if (field !== null) measure(field, done);
+  measure(field as Measurable, done);
 }
 
 /** How far the keyboard covers `target`, so the view can pad itself clear of it. */
@@ -169,7 +178,7 @@ export function useKeyboardOverlap(target: RefObject<View | null>): number {
 }
 
 /** The scroll area whose field has focus, if any: only that one moves for the keyboard. */
-let focusedArea: object | null = null;
+const claims = createFieldClaims<object>();
 
 const RevealContext = createContext<() => void>(() => releaseFocus());
 
@@ -190,7 +199,7 @@ export function KeyboardRevealBoundary({ children }: { children: ReactNode }) {
 }
 
 function releaseFocus(): void {
-  focusedArea = null;
+  claims.release();
 }
 
 /**
@@ -199,10 +208,12 @@ function releaseFocus(): void {
  * own, and hand `claim` to the fields through `KeyboardRevealProvider`.
  */
 export function useKeyboardScroll(scroller: RefObject<NativeScrollView | null>) {
-  /** This area's identity, for `focusedArea`. */
+  /** This area's identity, for `claims`. */
   const self = useRef({}).current;
   const [room, setRoom] = useState(0);
   const roomNow = useRef(0);
+  /** The area's height when last measured without room, for `roomNeeded`. */
+  const bareHeight = useRef<number | null>(null);
   const keyboardTop = useRef<number | null>(null);
   const offset = useRef(0);
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -211,22 +222,24 @@ export function useKeyboardScroll(scroller: RefObject<NativeScrollView | null>) 
     const top = keyboardTop.current;
     const view = scroller.current;
     if (top === null || view === null) return;
-    if (focusedArea !== self) {
+    const field = focusedField();
+    if (!claims.owns(self, field) || field === null) {
       releaseRoom();
       return;
     }
     const native = typeof view.getNativeScrollRef === "function" ? view.getNativeScrollRef() : null;
     measure((native ?? view) as unknown as Measurable, (area) => {
-      const needed = keyboardRoom(area, top);
+      if (roomNow.current === 0) bareHeight.current = area.bottom - area.top;
+      const needed = roomNeeded(area, bareHeight.current, roomNow.current, top);
       if (needed !== roomNow.current) {
         // The room lands first, or the scroll would stop at the old end; its render reveals again.
         roomNow.current = needed;
         setRoom(needed);
         return;
       }
-      measureFocusedField((field) => {
-        if (!holds(area, field)) return;
-        const y = revealOffset(field, visibleSpan(area, top), offset.current);
+      measureField(field, (box) => {
+        if (!holds(area, box)) return;
+        const y = revealOffset(box, visibleSpan(area, top), offset.current);
         if (y !== null) view.scrollTo({ y, animated: true });
       });
     });
@@ -250,7 +263,8 @@ export function useKeyboardScroll(scroller: RefObject<NativeScrollView | null>) 
 
   /** A field inside took focus. */
   function claim(): void {
-    focusedArea = self;
+    // React Native records the focused input before calling `onFocus`, so this is the claiming field.
+    claims.claim(self, focusedField());
     reveal();
   }
 
@@ -263,7 +277,7 @@ export function useKeyboardScroll(scroller: RefObject<NativeScrollView | null>) 
     return () => {
       stop();
       if (pending.current !== null) clearTimeout(pending.current);
-      if (focusedArea === self) focusedArea = null;
+      claims.releaseArea(self);
     };
   }, [scroller]);
 

@@ -54,3 +54,45 @@ export function holds(area: Span & { left: number; right: number }, field: Span 
   const middleX = (field.left + field.right) / 2;
   return middleX >= area.left && middleX <= area.right;
 }
+
+/**
+ * The room a scroll area needs for the keyboard, given the room it already
+ * has. An area sized by its content (a `maxHeight` list) grows with the room
+ * added to it; counted as the area's own height, that growth would ask for more
+ * room each time. So growth since the area was last measured without room
+ * (`bareHeight`), up to the room it has, is taken to be that room.
+ */
+export function roomNeeded(area: Span, bareHeight: number | null, room: number, keyboardTop: number | null): number {
+  const grown = bareHeight === null ? 0 : Math.min(room, Math.max(0, area.bottom - area.top - bareHeight));
+  return keyboardRoom({ top: area.top, bottom: area.bottom - grown }, keyboardTop);
+}
+
+/**
+ * Which scroll area the focused field belongs to. A field claims its area on
+ * focus; the area acts only while that same field still has focus, so a focus
+ * that moved elsewhere (the composer, a modal) never scrolls it, even when the
+ * new field forgot to release the claim.
+ */
+export function createFieldClaims<Field>() {
+  let area: object | null = null;
+  let field: Field | null = null;
+  return {
+    claim(by: object, focused: Field | null): void {
+      area = by;
+      field = focused;
+    },
+    release(): void {
+      area = null;
+      field = null;
+    },
+    /** An area going away drops its claim, if it holds it. */
+    releaseArea(by: object): void {
+      if (area !== by) return;
+      area = null;
+      field = null;
+    },
+    owns(by: object, focused: Field | null): boolean {
+      return area === by && focused !== null && focused === field;
+    },
+  };
+}

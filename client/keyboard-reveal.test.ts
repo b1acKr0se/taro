@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { REVEAL_MARGIN, holds, keyboardRoom, revealOffset, visibleSpan } from "./keyboard-reveal";
+import { REVEAL_MARGIN, createFieldClaims, holds, keyboardRoom, revealOffset, roomNeeded, visibleSpan } from "./keyboard-reveal";
 
 // A phone-sized scroll area under the tabs, from y 200 to 800; the keyboard's top at 500.
 const area = { top: 200, bottom: 800 };
@@ -96,5 +96,82 @@ describe("holds", () => {
 
   it("claims nothing for an area with no height, as on a hidden tab", () => {
     expect(holds({ left: 0, right: 0, top: 0, bottom: 0 }, { left: 0, right: 0, top: 0, bottom: 0 })).toBe(false);
+  });
+});
+
+describe("roomNeeded", () => {
+  it("is the covered part for an area that fills its space", () => {
+    expect(roomNeeded(area, 600, 0, 500)).toBe(300);
+    // Room added; the area's frame did not change: still 300, not more.
+    expect(roomNeeded(area, 600, 300, 500)).toBe(300);
+  });
+
+  it("does not feed on itself in an area sized by its content", () => {
+    // 200 tall bare with 100 covered; 100 room added grew the frame to 300: still 100.
+    const bare = { top: 300, bottom: 500 };
+    expect(roomNeeded(bare, 200, 0, 400)).toBe(100);
+    expect(roomNeeded({ top: 300, bottom: 600 }, 200, 100, 400)).toBe(100);
+  });
+
+  it("counts growth capped short of the room (a maxHeight) as room", () => {
+    // Bare 200, room 100, the cap let it grow by 50 only.
+    expect(roomNeeded({ top: 300, bottom: 550 }, 200, 100, 400)).toBe(100);
+  });
+
+  it("follows an area that shrank, as the chat transcript when its pane pads itself", () => {
+    expect(roomNeeded({ top: 200, bottom: 500 }, 600, 300, 500)).toBe(0);
+  });
+
+  it("is nothing without a keyboard, and works before any bare measurement", () => {
+    expect(roomNeeded(area, 600, 300, null)).toBe(0);
+    expect(roomNeeded(area, null, 0, 500)).toBe(300);
+  });
+});
+
+describe("createFieldClaims", () => {
+  const inbox = {};
+  const chat = {};
+  const cardField = { name: "card field" };
+  const composer = { name: "composer" };
+
+  it("lets the area a field claimed act while that field has focus", () => {
+    const claims = createFieldClaims<object>();
+    claims.claim(inbox, cardField);
+    expect(claims.owns(inbox, cardField)).toBe(true);
+    expect(claims.owns(chat, cardField)).toBe(false);
+  });
+
+  it("stops the area once focus moves to a field that claims nothing, released or not", () => {
+    const claims = createFieldClaims<object>();
+    claims.claim(chat, cardField);
+    // The composer took focus but (say) forgot to release: the content then grows.
+    expect(claims.owns(chat, composer)).toBe(false);
+    claims.release();
+    expect(claims.owns(chat, cardField)).toBe(false);
+  });
+
+  it("owns nothing with no field focused", () => {
+    const claims = createFieldClaims<object>();
+    claims.claim(inbox, cardField);
+    expect(claims.owns(inbox, null)).toBe(false);
+    claims.claim(inbox, null);
+    expect(claims.owns(inbox, null)).toBe(false);
+  });
+
+  it("drops a claim when its area goes away, and only that area's", () => {
+    const claims = createFieldClaims<object>();
+    claims.claim(inbox, cardField);
+    claims.releaseArea(chat);
+    expect(claims.owns(inbox, cardField)).toBe(true);
+    claims.releaseArea(inbox);
+    expect(claims.owns(inbox, cardField)).toBe(false);
+  });
+
+  it("moves with the focus from one area to another", () => {
+    const claims = createFieldClaims<object>();
+    claims.claim(inbox, cardField);
+    claims.claim(chat, composer);
+    expect(claims.owns(inbox, cardField)).toBe(false);
+    expect(claims.owns(chat, composer)).toBe(true);
   });
 });
