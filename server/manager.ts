@@ -159,9 +159,9 @@ export function resumeManager(paseo: PaseoApi, project: string, state: Pick<Plug
     }
     const why =
       stalled !== null
-        ? `after the plugin stopped recovering it (${stalled.replace(/\.$/, "")})`
+        ? `after the plugin stopped recovering you (${stalled.replace(/^Crashed:\s*/, "").replace(/\.$/, "")})`
         : agent.status === "error"
-          ? `after it stopped with an error (${(agent.lastError ?? "no reason given").replace(/\s+/g, " ").trim()})`
+          ? `after you stopped with an error (${(agent.lastError ?? "no reason given").replace(/\s+/g, " ").trim()})`
           : "at their request";
     await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.managerResumed, { why, skill: await skillDirectory() }));
     return { agentId: agent.id, workspaceId: config.managerWorkspaceId };

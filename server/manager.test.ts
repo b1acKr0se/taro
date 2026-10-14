@@ -106,7 +106,7 @@ describe("resumeManager", () => {
     expect(sent()[0]!.id).toBe("manager-1");
     expect(sent()[0]!.text).toMatch(/^resumed:/);
     expect(JSON.parse(sent()[0]!.text.slice("resumed:".length)).why).toBe(
-      `after the plugin stopped recovering it (Crashed: crashed 3 times within an hour, so it was not restarted again (last: ${crash}))`,
+      `after the plugin stopped recovering you (crashed 3 times within an hour, so it was not restarted again (last: ${crash}))`,
     );
     // Same agent: nothing archived, nothing new.
     expect(archived).toEqual([]);
@@ -117,7 +117,7 @@ describe("resumeManager", () => {
     vi.mocked(fetchLiveAgent).mockResolvedValue(manager("error"));
     const { paseo } = fakePaseo();
     await resumeManager(paseo, "notes-app", fakeState({}));
-    expect(JSON.parse(sent()[0]!.text.slice("resumed:".length)).why).toBe(`after it stopped with an error (${crash})`);
+    expect(JSON.parse(sent()[0]!.text.slice("resumed:".length)).why).toBe(`after you stopped with an error (${crash})`);
   });
 
   it("says the user asked when the Manager was idle and healthy", async () => {
