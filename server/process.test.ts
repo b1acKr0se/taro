@@ -3,8 +3,10 @@
  * `backlog`, a wrapper that starts the real binary and waits on it; both hang.
  */
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { nativeBacklog } from "./backlog-install";
@@ -21,10 +23,10 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-/** A wrapper that starts a child, writes both process ids, and waits on the child. */
-function hangingWrapper(): { path: string; pids: string } {
+/** A wrapper that starts a child, writes both process ids, and waits on the child; `prelude` runs first. */
+function hangingWrapper(prelude = ""): { path: string; pids: string } {
   const path = join(root, "wrapper.sh");
-  writeFileSync(path, '#!/bin/sh\nsleep 300 &\necho "$$ $!" > "$1"\nwait\n');
+  writeFileSync(path, `#!/bin/sh\n${prelude}\nsleep 300 &\necho "$$ $!" > "$1"\nwait\n`);
   chmodSync(path, 0o755);
   return { path, pids: join(root, "pids") };
 }
@@ -77,6 +79,38 @@ describe.skipIf(process.platform === "win32")("runCommand", () => {
     expect(await gone(pids)).toBe(true);
   });
 
+  it("asks with SIGTERM first, so git can remove its lock files", async () => {
+    const said = join(root, "said");
+    const wrapper = hangingWrapper(`trap 'echo terminated > "${said}"; exit 0' TERM`);
+    const run = runCommand(wrapper.path, [wrapper.pids], { timeoutMs: 300 });
+    const pids = await startedPids(wrapper.pids);
+    await expect(run).rejects.toThrow(/did not finish/);
+    expect(await gone(pids)).toBe(true);
+    expect(readFileSync(said, "utf8")).toBe("terminated\n");
+  });
+
+  it("kills a group that ignores SIGTERM", async () => {
+    const wrapper = hangingWrapper("trap '' TERM");
+    const run = runCommand(wrapper.path, [wrapper.pids], { timeoutMs: 300 });
+    const pids = await startedPids(wrapper.pids);
+    await expect(run).rejects.toThrow(/did not finish/);
+    expect(await gone(pids)).toBe(true);
+  });
+
+  it.each(["SIGTERM", "SIGINT", "SIGHUP"])("takes its commands along when the plugin process ends on %s", async (signal) => {
+    const wrapper = hangingWrapper();
+    const script = join(root, "plugin.mts");
+    const processModule = join(fileURLToPath(import.meta.url), "..", "process.ts");
+    writeFileSync(script, `import { runCommand } from ${JSON.stringify(processModule)};\nvoid runCommand(${JSON.stringify(wrapper.path)}, [${JSON.stringify(wrapper.pids)}]).catch(() => {});\n`);
+    const plugin = spawn(process.execPath, [script], { stdio: "ignore" });
+    const pids = await startedPids(wrapper.pids);
+    const ended = new Promise<NodeJS.Signals | null>((resolve) => plugin.on("exit", (_code, how) => resolve(how)));
+    plugin.kill(signal as NodeJS.Signals);
+    // Ends as it would have without the listener: by the same signal.
+    expect(await ended).toBe(signal);
+    expect(await gone(pids)).toBe(true);
+  });
+
   it("returns a quick command's output and exit code", async () => {
     await expect(runCommand("sh", ["-c", "echo out; echo err >&2; exit 3"])).resolves.toEqual({ code: 3, stdout: "out\n", stderr: "err\n" });
     expect(runningCommands()).toBe(0);
@@ -90,7 +124,8 @@ describe.skipIf(process.platform === "win32")("stopCommands", () => {
     const pids = await startedPids(wrapper.pids);
     const started = Date.now();
     await stopCommands(200);
-    expect(Date.now() - started).toBeGreaterThanOrEqual(150);
+    // The grace, then SIGTERM's.
+    expect(Date.now() - started).toBeGreaterThanOrEqual(450);
     expect(await gone(pids)).toBe(true);
     expect((await run).code).toBeNull();
     await expect(runCommand("true", [])).rejects.toThrow(/Taro is stopping/);

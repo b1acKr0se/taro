@@ -4,7 +4,8 @@
  *
  * Each command starts in its own process group, and a timeout or the plugin's stop kills the whole
  * group (TR-073): `backlog` is a Node wrapper that starts the native binary, and killing only the
- * wrapper left the binary running under init, holding its threads, whenever it hung.
+ * wrapper left the binary running under init, holding its threads, whenever it hung. SIGTERM goes
+ * first, as git removes its lock files on it; SIGKILL follows for what is left.
  */
 import { spawn, type ChildProcess } from "node:child_process";
 
@@ -22,8 +23,14 @@ export interface CommandOptions {
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 
-/** Within Paseo's two seconds between asking a plugin to stop and SIGTERM. */
-export const STOP_GRACE_MS = 1_500;
+/** With TERM_GRACE_MS, within Paseo's two seconds between asking a plugin to stop and SIGTERM. */
+export const STOP_GRACE_MS = 1_200;
+
+/** Between SIGTERM and SIGKILL. */
+const TERM_GRACE_MS = 300;
+
+/** Signals that end the plugin process without its `exit` event: Paseo's escalation, a terminal's Ctrl-C or hang-up. */
+const ENDING_SIGNALS = ["SIGTERM", "SIGINT", "SIGHUP"] as const;
 
 /** Windows has no process groups to signal; there the command itself is killed. */
 const GROUPS = process.platform !== "win32";
@@ -31,20 +38,46 @@ const GROUPS = process.platform !== "win32";
 /** Commands still running, until their streams close. */
 const running = new Set<ChildProcess>();
 let stopped = false;
-let exitHooked = false;
+let endHooked = false;
 
-function killGroup(child: ChildProcess): void {
+function signalGroup(child: ChildProcess, signal: NodeJS.Signals): void {
   if (child.pid === undefined) return;
   try {
-    if (GROUPS) process.kill(-child.pid, "SIGKILL");
-    else child.kill("SIGKILL");
+    if (GROUPS) process.kill(-child.pid, signal);
+    else child.kill(signal);
   } catch {
     // Already gone.
   }
 }
 
+function terminate(children: readonly ChildProcess[]): Promise<void> {
+  for (const child of children) signalGroup(child, "SIGTERM");
+  return new Promise((resolve) =>
+    setTimeout(() => {
+      for (const child of children) signalGroup(child, "SIGKILL");
+      resolve();
+    }, TERM_GRACE_MS),
+  );
+}
+
 function killAll(): void {
-  for (const child of running) killGroup(child);
+  for (const child of running) signalGroup(child, "SIGKILL");
+}
+
+/**
+ * Commands are in their own groups, so nothing reaches them when the plugin process ends: it takes
+ * them along. After a signal it re-raises it, with this listener gone, to end as it would have.
+ */
+function hookEnd(): void {
+  if (endHooked) return;
+  endHooked = true;
+  process.once("exit", killAll);
+  for (const signal of ENDING_SIGNALS) {
+    process.once(signal, () => {
+      killAll();
+      process.kill(process.pid, signal);
+    });
+  }
 }
 
 export function runCommand(command: string, args: readonly string[], options: CommandOptions = {}): Promise<CommandResult> {
@@ -54,11 +87,7 @@ export function runCommand(command: string, args: readonly string[], options: Co
       reject(new Error(`${command} ${args[0] ?? ""} not started: Taro is stopping`));
       return;
     }
-    if (!exitHooked) {
-      // A plugin process that exits without a stop still takes its commands with it.
-      process.once("exit", killAll);
-      exitHooked = true;
-    }
+    hookEnd();
     const child = spawn(command, [...args], {
       cwd: options.cwd,
       env: { ...process.env, ...(options.env ?? {}) },
@@ -70,7 +99,7 @@ export function runCommand(command: string, args: readonly string[], options: Co
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => {
-      killGroup(child);
+      void terminate([child]);
       reject(new Error(`${command} ${args[0] ?? ""} did not finish within ${timeoutMs / 1000} seconds`));
     }, timeoutMs);
     child.stdout?.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
@@ -96,7 +125,7 @@ export async function stopCommands(graceMs: number = STOP_GRACE_MS): Promise<voi
   stopped = true;
   const deadline = Date.now() + graceMs;
   while (running.size > 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
-  killAll();
+  if (running.size > 0) await terminate([...running]);
 }
 
 /** How many commands are under way. */
