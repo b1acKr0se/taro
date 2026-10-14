@@ -15,6 +15,7 @@ import type { BoardAlert } from "../shared/recovery";
 import { PROTECTION_ALERT_ID } from "../shared/tracker-guard";
 import { errorText } from "./format";
 import { useRefreshBoard } from "./board-data";
+import { useRefreshProjects } from "./queries";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 
 const HEADINGS: Readonly<Record<string, string>> = {
@@ -26,7 +27,9 @@ const HEADINGS: Readonly<Record<string, string>> = {
 export function AlertCard({ project, alert, theme, compact }: { project: string; alert: BoardAlert; theme: PluginTheme; compact: boolean }) {
   const toast = useToast();
   const dismiss = useRpc(dismissTrackerProtection);
-  const refresh = useRefreshBoard(project);
+  const refreshBoard = useRefreshBoard(project);
+  // The project list carries the Needs you badge, which counts the alert.
+  const refreshProjects = useRefreshProjects();
   const [busy, setBusy] = useState(false);
   const { colors } = theme;
   const styles = useMemo(
@@ -42,7 +45,10 @@ export function AlertCard({ project, alert, theme, compact }: { project: string;
   function onDismiss(): void {
     setBusy(true);
     dismiss({ project })
-      .then(refresh)
+      .then(() => {
+        refreshBoard();
+        refreshProjects();
+      })
       .catch((caught: unknown) => toast.error(errorText(caught)))
       .finally(() => setBusy(false));
   }
