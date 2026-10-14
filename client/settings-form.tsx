@@ -14,6 +14,7 @@ import { KeyboardRevealBoundary, useRevealFocused } from "./keyboard";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { IconButton, MONOSPACE } from "./ui";
+import { useBackStep } from "./use-back";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 
 /** Below this page width a field's label goes above its control instead of beside it. */
@@ -289,6 +290,7 @@ export function Dropdown<Value extends string>({
 }) {
   const colors = theme.colors;
   const [open, setOpen] = useState(false);
+  useBackStep(open, () => setOpen(false));
   const chosen = options.find((option) => option.value === value)?.label ?? (value === "" ? "—" : value);
   return (
     <>
@@ -393,6 +395,10 @@ export function ModelChooser({
   const colors = theme.colors;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  useBackStep(open, () => {
+    setOpen(false);
+    setQuery("");
+  });
   const groups = addableModelGroups(options, selected, query);
   const labelOf = (value: string) => options.find((option) => option.value === value)?.label ?? value;
   return (

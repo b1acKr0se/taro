@@ -38,6 +38,8 @@ import { TicketView } from "./ticket-view";
 import { FONT_SIZE } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
 import { useActions } from "./use-actions";
+import { useBackStep, useScreenBack } from "./use-back";
+import { screenBackStep, ticketBackLabel, ticketOrigin } from "./back-steps";
 
 type View_ = "inbox" | "project" | "setup" | "settings";
 type PhoneTab = "manager" | "inbox" | "board" | "stats";
@@ -54,6 +56,9 @@ const remembered = keptObject(globalThis, "screen-view", {
   rightPane: "board" as RightPane,
   ticket: null as string | null,
   boardHidden: false,
+  // Where the open ticket was opened from, for Back (TR-065): the project and the wide Inbox or the project.
+  ticketFromProject: null as string | null,
+  ticketFromView: "project" as View_,
 });
 
 export function TaroScreen({ theme, layout, params, navigation }: PluginScreenProps) {
@@ -88,6 +93,12 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   }, [next]);
 
   function choose(project: string | null, nextView: View_, nextTicket: string | null = null): void {
+    // Opening another ticket from inside one (its Answer →) keeps where the first was opened from.
+    const origin = nextTicket === null ? null : ticketOrigin({ ticketOpen: ticket !== null, project: current?.config.project ?? null, view: showing });
+    if (origin !== null) {
+      remembered.ticketFromProject = origin.project;
+      remembered.ticketFromView = origin.view;
+    }
     remembered.project = project;
     remembered.view = nextView;
     remembered.ticket = nextTicket;
@@ -95,6 +106,18 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
     setView(nextView);
     setTicket(nextTicket);
   }
+
+  function closeTicket(): void {
+    choose(remembered.ticketFromProject ?? current?.config.project ?? null, remembered.ticketFromView);
+  }
+
+  useScreenBack(() => {
+    const step = screenBackStep({ view: showing, hasProject: current !== null, creating: creating.step !== "idle" });
+    if (step !== "to-project" || current === null) return false;
+    if (showing === "setup") resetNewProject();
+    choose(current.config.project, "project");
+    return true;
+  });
 
   const { colors } = theme;
   const styles = useMemo(
@@ -269,6 +292,8 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
         compact={layout.compact}
         ticket={ticket}
         onTicket={(next) => choose(current.config.project, "project", next)}
+        onCloseTicket={closeTicket}
+        backLabel={(phoneTab) => ticketBackLabel(layout.compact, phoneTab, remembered.ticketFromView)}
         onSettings={() => choose(current.config.project, "settings")}
         onOpenAgent={onOpenAgent}
         onOpenElsewhere={(project, card) => choose(project, "project", card.id)}
@@ -295,6 +320,8 @@ function ProjectView({
   compact,
   ticket,
   onTicket,
+  onCloseTicket,
+  backLabel,
   onSettings,
   onOpenAgent,
   onOpenElsewhere,
@@ -304,7 +331,11 @@ function ProjectView({
   theme: PluginTheme;
   compact: boolean;
   ticket: string | null;
-  onTicket: (ticket: string | null) => void;
+  onTicket: (ticket: string) => void;
+  /** Closes the open ticket, back to where it was opened from. */
+  onCloseTicket: () => void;
+  /** The ticket's Back button label, for the phone tab it returns to. */
+  backLabel: (phoneTab: PhoneTab) => string;
   onSettings: () => void;
   onOpenAgent: ((agentId: string) => void) | null;
   onOpenElsewhere: (project: string, card: Card) => void;
@@ -326,6 +357,7 @@ function ProjectView({
     remembered.phoneTab = value;
     setPhoneTab(value);
   };
+  useBackStep(openCard !== null, onCloseTicket);
 
   const left =
     openCard === null ? (
@@ -347,7 +379,8 @@ function ProjectView({
         theme={theme}
         compact={compact}
         ticketBeside={layout.ticketBeside}
-        onBack={() => onTicket(null)}
+        backLabel={backLabel(phoneTab)}
+        onBack={onCloseTicket}
         onOpenAgent={onOpenAgent}
         onChanged={refreshBoard}
         onShowBoard={onShowBoard}
@@ -361,7 +394,7 @@ function ProjectView({
       selectedTicket={ticket}
       onOpenTicket={(card) => onTicket(card.id)}
       // The manager's questions are answered in its chat: on a phone its tab, on a wide screen the left pane.
-      onOpenManager={() => (compact ? choosePhoneTab("manager") : onTicket(null))}
+      onOpenManager={() => (compact ? choosePhoneTab("manager") : onCloseTicket())}
     />
   );
 

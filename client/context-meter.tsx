@@ -18,6 +18,7 @@ import { Pressable, Text, View } from "react-native";
 import { contextPercent, contextTone, formatTokenCount } from "./format";
 import { COMPOSER_CONTROL_SIZE } from "./composer-height";
 import { FONT_SIZE } from "./type-scale";
+import { useBackStep } from "./use-back";
 
 /** Paseo's ring stroke; its size is the composer's (`composerMetrics`, TR-039). */
 const RING_STROKE = 2;
@@ -122,6 +123,7 @@ export function ContextMeter({
   ringSize: number;
 }) {
   const [open, setOpen] = useState(false);
+  useBackStep(open, () => setOpen(false));
   const hovering = useRef(false);
   const percent = contextPercent(used, max);
   const tone = contextTone(theme, percent ?? 0);
