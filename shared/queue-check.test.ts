@@ -224,7 +224,7 @@ describe("the escalation ladder", () => {
     expect(queuedAlerts(watch, minutes(12))).toEqual([
       {
         id: "queued-free-slot:TR-5",
-        text: "TR-5 queued with a free slot: the plugin told the Manager 10 minutes ago, and it has not dispatched it. Open the Manager's tab to see why, or ask it to dispatch TR-5. Unless you dismiss this or tell the Manager something, the plugin restarts the Manager 20 minutes after it was told.",
+        text: "TR-5 queued with a free slot: the plugin told the Manager 10 minutes ago, and it has not dispatched it. Open the Manager's tab to see why, or ask it to dispatch the ticket. Unless you dismiss this or tell the Manager something, the plugin restarts the Manager 20 minutes after it was told.",
       },
     ]);
     expect(queuedAlertTicket("queued-free-slot:TR-5")).toBe("TR-5");

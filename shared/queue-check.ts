@@ -201,7 +201,7 @@ export function queuedAlerts(watch: QueueWatch, now: number): BoardAlert[] {
       : `Unless you dismiss this or tell the Manager something, the plugin restarts the Manager ${Math.round(QUEUED_RESTART_AFTER_MS / 60_000)} minutes after it was told.`;
     return {
       id: `${QUEUED_ALERT_PREFIX}${id}`,
-      text: `${id} queued with a free slot: ${told}, and it has not dispatched it. Open the Manager's tab to see why, or ask it to dispatch ${id}. ${next}`,
+      text: `${id} queued with a free slot: ${told}, and it has not dispatched it. Open the Manager's tab to see why, or ask it to dispatch the ticket. ${next}`,
     };
   });
 }
