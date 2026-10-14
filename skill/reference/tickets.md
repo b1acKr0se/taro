@@ -10,12 +10,11 @@ backlog task view SH-012 --plain               # or --json
 backlog search "login" --plain
 backlog task create "Fix login redirect" -d "<two-part brief>" [-l investigation] [-p SH-010] [--dep SH-011]
 backlog task edit SH-012 -s "Planning"
-backlog task edit SH-012 -d "<proposal>" --acceptance-criteria "<criterion 1>" --acceptance-criteria "<criterion 2>"
-backlog task edit SH-012 --plan "<plan>"
+backlog task edit SH-012 --plan "<plan>"            # templates/plan.md; its How I'll prove it holds the criteria
 backlog task edit SH-012 --add-label complexity-medium
 backlog task edit SH-012 --append-notes "<record>" --plain
-backlog task edit SH-012 --check-ac 1
-backlog task edit SH-012 --final-summary "<FINAL record>" -s "Awaiting acceptance"
+backlog task edit SH-012 --check-ac 1                # an older ticket's acceptance criterion
+backlog task edit SH-012 --final-summary "<FINAL>" -s "Awaiting acceptance"   # templates/final.md
 ```
 
 After `task create`, read the allocated id back from its output or `task list` — never invent one.
@@ -46,15 +45,17 @@ and `Cancelled`. Trivial tasks go from Backlog straight to In Progress.
 
 Append these to the notes, each starting with its name and the real current time from
 `date -u +%Y-%m-%dT%H:%MZ` (never a guessed time), e.g. `MILESTONE 2026-10-13T14:02Z — …`. Append;
-never rewrite history.
+never rewrite history. Keep each within its limit; cut rather than exceed it.
 
 - **DISPATCH-INTENT** (manager, before launching): ticket, unique token, intended branch.
 - **EXECUTION**: owner agent id, workspace id, machine (`hostname`), worktree path, branch, base
   SHA; later the subagents (agent id, job, task) and `review-head: <sha>`.
-- **APPROVAL**: the user's exact words, time, and what they approved (scope and criteria).
-- **MILESTONE**: what happened, decisions, commit or uncommitted state, checks run with results,
-  next step. Before a long command: its log path and expected duration.
-- **HANDOFF**: before compaction or stopping (template: `templates/handoff.md`).
+- **APPROVAL**: the user's exact words, time, and what they approved (the plan).
+- **MILESTONE**: one line of at most about 150 characters: what happened and what's next, e.g.
+  `MILESTONE 2026-10-13T14:02Z — Picker built (6cdd38a), checks green; next: review`. Before a long
+  command: its log path and expected duration. Detail belongs in commits and the other records.
+- **HANDOFF**: before compaction or stopping (template: `templates/handoff.md`, with its line
+  limits).
 - **HOLD** (manager): a Backlog ticket kept queued on purpose while a slot is free, with the reason
   (`HOLD 2026-01-05T10:00Z — exclusive rewrite SH-010 first`). The plugin does not wake anyone for it.
 - **RELEASE** (manager): the hold's reason is gone; the ticket is queued like any other again.
@@ -81,7 +82,9 @@ never rewrite history.
 
   `$TARO_EVIDENCE` is `$PASEO_HOME/plugin-data/taro/evidence/<project>` when unset
   (`~/.paseo/…` without `PASEO_HOME`).
-- **FINAL**: delivered behaviour, revision, PR URL, evidence per criterion (see EVIDENCE), review
-  result, limitations. Also set with `--final-summary`.
+- **FINAL**: set with `--final-summary`, following `templates/final.md`: What changed (at most 5
+  bullets; the first is the ticket's one-line result), How it was verified (at most 3, the review
+  among them), Limitations (at most 3), then `Revision: <sha> on <branch> · PR: <URL or none>`.
+  The evidence per criterion is the EVIDENCE record; do not repeat it.
 - **ACCEPTANCE**: the user's words, time, accepted revision and PR, merge result.
 - **ANSWER**: written by the plugin when the user answers a decision.

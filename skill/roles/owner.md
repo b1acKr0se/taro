@@ -17,8 +17,9 @@ ones) — they outrank defaults here. Then follow the flow.
    everything else yourself and state it as an assumption.
 3. **Rate complexity** and write the **proposal** into the ticket (`-d`, `--plan`, `--add-label
    complexity-<level>`), sized to the level. The plan follows `templates/plan.md`: its six sections
-   in order, each within its limit. Cut rather than exceed a limit; detail beyond it goes in the
-   children's definitions of done. Its "How I'll prove it" holds the criteria, so new tickets get no
+   in order, each within its limit. Cut rather than exceed a limit, here and in every record and
+   template (FINAL, MILESTONE, HANDOFF); detail beyond it goes in the children's definitions of
+   done. Its "How I'll prove it" holds the criteria, so new tickets get no
    `--acceptance-criteria`.
 
    | Level | When | Proposal | Build | Review |
@@ -137,7 +138,8 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
   with a reason. The plugin refuses Accept until it is complete.
 - Record `pr: <url>` and `review-head: <sha>` (the full `headRefOid` from `gh pr view <url> --json
   headRefOid`) in a new EXECUTION record; Accept reads both from there. Write the FINAL summary
-  (`--final-summary`) and move to **Awaiting acceptance**. The user accepts or requests changes
+  (`--final-summary`) following `templates/final.md` (What changed ≤5 bullets, How it was verified
+  ≤3, Limitations ≤3, then the revision line) and move to **Awaiting acceptance**. The user accepts or requests changes
   from the card.
 - **Request changes:** the user's words arrive as a message. Back to In Progress; size the fix like
   a new task; read the new screenshots against those words too; return to Awaiting acceptance with a
@@ -153,7 +155,7 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
 
 Keep your context small: run checks with output to a log file and read the exit code and failures;
 read diffs selectively; keep subagents' reports short. When the plugin asks for a handoff, write it
-(`templates/handoff.md`) and end with `waiting: compaction`. After any compaction, reread this file
+(`templates/handoff.md`, within its line limits) and end with `waiting: compaction`. After any compaction, reread this file
 and the ticket.
 
 ## Crashes
@@ -164,6 +166,7 @@ ticket. After two recoveries in an hour it stops and leaves your card Stalled fo
 
 ## Every turn
 
-Save a MILESTONE at meaningful results and before long commands. End with a status line; ask with
+Save a MILESTONE at meaningful results and before long commands: one line of at most about 150
+characters, what happened and what's next (`reference/tickets.md`). End with a status line; ask with
 decision blocks (`reference/formats.md`). Never end on `working` unless you truly wait on something
 — then it is `waiting: <what>`.

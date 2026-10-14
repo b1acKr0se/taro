@@ -19,7 +19,8 @@ others' commits or open a PR.
 - Your **final message is your report**, about 20 lines: commits (SHAs); each criterion → the command
   you ran and its actual result; checks with results; deviations and why; anything noticed outside
   scope. Put full logs in a file under `.taro/reports/` in the worktree (not committed) and give its
-  path.
+  path. Cut rather than exceed a length the brief or a template sets: one line per fact, the detail
+  in the log.
 - Last line: `done: <one line>` only if every criterion and check passed; otherwise
   `blocked: <what stops you, what you tried>`.
 - Same obstacle twice → `blocked`. A choice the brief does not settle → a decision block (the owner

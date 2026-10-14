@@ -21,9 +21,10 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
 ## Filing and dispatch
 
 1. Create the ticket with the **two-part brief** (`templates/brief.md`) as its description:
-   the user's intent nearly verbatim, then your notes (the outcomes the user expects, related
-   tickets and PRs, likely areas, known facts, out of scope). Add `-l investigation` when it is
-   one. Read the id back.
+   the user's intent nearly verbatim, then at most 5 bullets of notes (the outcomes the user
+   expects, related tickets, PRs and known facts, likely areas, out of scope, kind). Cut rather
+   than exceed: the owner reads the code, and the Ticket tab folds the notes away. Add
+   `-l investigation` when it is one. Read the id back.
 2. Append **DISPATCH-INTENT** (unique token, intended branch `taro/<id-lowercase>`).
 3. **Respect the cap on owners running at once** (AGENTS.md). List live owners with
    `paseo ls -g --label taro.project=<project> --label taro.role=owner --json` (any status but
