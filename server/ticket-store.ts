@@ -100,6 +100,8 @@ export interface TicketStore {
   edit(id: string, changes: TicketChanges, options?: { revision?: string }): Promise<Ticket>;
   appendNote(id: string, record: string): Promise<Ticket>;
   forget(file?: string): void;
+  /** Runs work under the tracker lock, as every write does (`taro convert` writes the whole tracker this way). */
+  withLock<T>(work: () => Promise<T>): Promise<T>;
   /** The cached entries by file name, for tests and diagnostics. */
   cacheEntries(): ReadonlyMap<string, CacheEntry>;
 }
@@ -163,12 +165,13 @@ function processIsAlive(pid: number): boolean {
   }
 }
 
-function tempSuffix(): string {
+/** A unique ending for a temp file name: `<pid>.<random>.tmp`. */
+export function tempSuffix(): string {
   return `${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
 }
 
 /** Writes beside the target, fsyncs and renames over it, so a reader sees the old file or the new one. */
-async function replaceFile(directory: string, tempName: string, target: string, text: string): Promise<void> {
+export async function replaceFile(directory: string, tempName: string, target: string, text: string): Promise<void> {
   const temp = join(directory, tempName);
   const handle = await open(temp, "w");
   try {
@@ -628,5 +631,5 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
     cache.delete(file.slice(slash + 1));
   }
 
-  return { list, view, search, create, edit, appendNote, forget, cacheEntries: () => cache };
+  return { list, view, search, create, edit, appendNote, forget, withLock: locked, cacheEntries: () => cache };
 }
