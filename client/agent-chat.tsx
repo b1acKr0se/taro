@@ -330,7 +330,7 @@ export function AgentChat({
       },
       quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
       // One box, as in Paseo's composer: the text, then the context ring and the send button inside it.
-      // On a phone they share one row, so an empty composer is one line tall (TR-031).
+      // On a phone they share one row with the +, so an empty composer is as tall as its placeholder (TR-031, TR-036).
       // The previews of what is attached sit at its top, above the text (TR-036).
       inputBox: {
         borderWidth: 1,
@@ -582,8 +582,8 @@ export function AgentChat({
                   importantForAccessibility="no-hide-descendants"
                   onLayout={(event) => setContentHeight(event.nativeEvent.layout.height)}
                 >
-                  {/* A trailing new line still takes a line in the field. */}
-                  {draft.endsWith("\n") ? `${draft} ` : draft}
+                  {/* A trailing new line still takes a line in the field; an empty field is as tall as its placeholder, which the + beside it can wrap. */}
+                  {draft === "" ? placeholder : draft.endsWith("\n") ? `${draft} ` : draft}
                 </Text>
               ) : null}
               <TextInput
@@ -604,7 +604,7 @@ export function AgentChat({
                       }
                     : undefined
                 }
-                style={compact ? [styles.input, { height: composerFieldHeight(draft, contentHeight) }] : styles.input}
+                style={compact ? [styles.input, { height: composerFieldHeight(draft === "" ? placeholder : draft, contentHeight) }] : styles.input}
               />
               </View>
               <View style={styles.inputTools}>

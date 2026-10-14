@@ -18,6 +18,12 @@ Taro project, so the plugin you change is the one supervising you: change it car
   `.map`). `server/client-bundle.test.ts` compiles the client as Paseo does and fails on either;
   it also loads the bundle in a Hermes VM (`hermes-engine-cli`) as the phone app does and fails
   when the load throws or `contribute()` stops registering the Taro screen.
+- Composer attachments on the phone (TR-036, decision 53) use Expo native modules Paseo's app ships
+  for its own composer, through the undocumented `globalThis.expo.modules` (`ExponentImagePicker`,
+  `ExpoClipboard`, `ExpoDocumentPicker`, `ExponentFileSystem`): names and functions are in
+  `client/attachment-sources.ts`. Look a module up when it is used, never at module scope. If the
+  phone stops offering Add image, Paste image or Upload file after a Paseo update, a module was
+  renamed or reshaped there.
 - Agent-facing text lives in `skill/` (what agents read) and `templates/` (what the plugin writes or
   sends), never in code.
 - Comments explain why, briefly. Full identifiers, no abbreviations.

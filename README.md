@@ -29,6 +29,11 @@ Taro's client. Open Settings → Plugins in the same app: Taro's row shows the e
 into a bug report before you do anything else, because closing the app clears it. Then close the
 app fully and reopen it, so it fetches the plugin list again.
 
+The + in Taro's chats attaches images and files. On the phone app it uses the image picker,
+clipboard and document picker built into Paseo's app, which plugins reach only through an
+undocumented path (`globalThis.expo.modules`). If a Paseo update changes them, the matching item
+disappears from the + menu; see `client/attachment-sources.ts`.
+
 ## Read first
 
 | Document | What it holds |
