@@ -13,9 +13,12 @@ tracker on the project's `taro/backlog` branch.
 On the machine that runs the Paseo daemon:
 
 - Paseo 0.11.2 or later, with plugins enabled (`"pluginsEnabled": true` in the daemon's `config.json`)
-- the [Backlog.md](https://github.com/MrLesk/Backlog.md) CLI (`backlog`)
+- the [Backlog.md](https://github.com/MrLesk/Backlog.md) CLI (`backlog`). Taro can install Backlog.md for you:
+  without one on the daemon's PATH, press Install under "Before you start". It installs a pinned
+  version with `npm` into Taro's own data folder (nothing global, no sudo), so it needs Node.js and npm.
 - `git`
-- optional: the GitHub CLI `gh`, for projects that deliver through pull requests
+- optional: the GitHub CLI `gh`, logged in with `gh auth login`, for projects that deliver through pull
+  requests; until it is, Taro offers only local-branch delivery
 
 ## Install and update
 

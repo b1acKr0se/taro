@@ -20,7 +20,9 @@ import {
   resolveTrackerSync as resolveTrackerSyncRpc,
   tellAgent,
   checkOnboarding,
+  backlogInstallStatus,
   checkPrerequisites as checkPrerequisitesRpc,
+  installBacklog,
   compactManager as compactManagerRpc,
   launchManager as launchManagerRpc,
   listModels,
@@ -56,10 +58,13 @@ import { listPaseoProjects, settingsTemplate } from "./server/paseo-projects";
 import { readImage } from "./server/images";
 import { Notifier } from "./server/notifications";
 import { checkPrerequisites } from "./server/prerequisites";
+import { createBacklogInstaller, findNpm } from "./server/backlog-install";
 import { listProjectConfigs, projectPaths, readProjectConfig, requireProjectConfig, taroHome, updateProjectConfig } from "./server/projects";
 import { sentImagesOf } from "./server/sent-images";
 import { agentBrief, listModelOptions } from "./server/summaries";
 import { TrackerWatch } from "./server/tracker-watch";
+import { forgetBacklogLookup } from "./server/tracker";
+import { runCommand } from "./server/process";
 
 export default function contribute(server: PluginServerContext) {
   const startedAt = Date.now();
@@ -67,6 +72,7 @@ export default function contribute(server: PluginServerContext) {
   const state = new PluginState();
   const stats = new Stats();
   const recovery = new Recovery(state, stats);
+  const backlogInstaller = createBacklogInstaller({ findNpm, run: runCommand, installed: forgetBacklogLookup });
   const supervisor = new Supervisor(state, stats, recovery);
   const actions = new Actions(state, supervisor, trackers, stats, recovery);
   recovery.setRelaunchOwner((paseo, project, ticket) => actions.relaunchOwner(paseo, project, ticket));
@@ -193,6 +199,8 @@ export default function contribute(server: PluginServerContext) {
   });
 
   server.handle(checkPrerequisitesRpc, async (_input, { paseo }) => ({ checks: await checkPrerequisites(paseo) }));
+  server.handle(installBacklog, async () => ({ install: backlogInstaller.start() }));
+  server.handle(backlogInstallStatus, async () => ({ install: backlogInstaller.state() }));
   server.handle(listModels, async (_input, { paseo }) => ({ models: await listModelOptions(paseo) }));
 
   server.handle(onboardProjectRpc, async (input, { paseo }) => {
@@ -360,7 +368,7 @@ export default function contribute(server: PluginServerContext) {
 
   // Every Taro agent knows where its tracker and skill are, on create and on resume (decision 38).
   const removeSessionHook = server.before("agent.session_open", async ({ request }, { paseo }) => {
-    const environment = await sessionEnvironment(paseo, request.agentId, request.cwd).catch(() => null);
+    const environment = await sessionEnvironment(paseo, request.agentId, request.cwd, request.env?.PATH).catch(() => null);
     if (environment === null) return;
     return { ...request, env: { ...request.env, ...environment } };
   });

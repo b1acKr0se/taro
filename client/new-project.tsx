@@ -11,7 +11,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import { checkOnboarding, checkPrerequisites, launchManager, listPaseoProjects, onboardProject } from "../shared/contracts";
+import { checkOnboarding, launchManager, listPaseoProjects, onboardProject } from "../shared/contracts";
 import {
   candidateDraft,
   filterCandidates,
@@ -21,14 +21,15 @@ import {
   type PaseoProjectCandidate,
   type SettingsTemplate,
 } from "../shared/project-candidates";
-import { setupProblems, settingsFrom, ticketExample, type SetupDraft, type SetupProblems } from "../shared/setup-form";
+import { deliveryWithoutGh, pullRequestsReady, setupProblems, settingsFrom, ticketExample, type SetupDraft, type SetupProblems } from "../shared/setup-form";
 import { errorText } from "./format";
 import { KeyboardScrollView } from "./keyboard";
 import { keptMap, keptObject } from "./kept";
 import { creation, retryManager, startCreation, type CreationState } from "./project-creation";
+import { PrerequisiteList, usePrerequisites } from "./prerequisite-list";
 import { ProjectSetup } from "./project-setup";
 import { useModels } from "./queries";
-import { CheckLine, ChoiceCards, Field, FormSection, TextField, TWO_COLUMN_MIN_WIDTH } from "./settings-form";
+import { ChoiceCards, Field, FormSection, TextField, TWO_COLUMN_MIN_WIDTH } from "./settings-form";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { IconButton, MONOSPACE, Spinner } from "./ui";
@@ -168,6 +169,11 @@ export function NewProject({
   );
 }
 
+function deliveryHint(template: SettingsTemplate | null, pullRequests: boolean | null): string {
+  const source = template === null ? "Taro's defaults; change them in All settings." : `As in ${template.project}; change them in All settings.`;
+  return pullRequests === false ? `${source} Pull requests need gh: install it and run \`gh auth login\`.` : source;
+}
+
 type Listing = UseQueryResult<{ projects: PaseoProjectCandidate[]; template: SettingsTemplate | null; takenPrefixes: string[] }>;
 
 function ProjectPicker({
@@ -191,8 +197,9 @@ function ProjectPicker({
   onManual: () => void;
   onCancel: (() => void) | null;
 }) {
-  const prerequisitesRpc = useRpc(checkPrerequisites);
-  const prerequisites = useQuery({ queryKey: ["taro", "prerequisites"], queryFn: () => prerequisitesRpc({}) });
+  const prerequisites = usePrerequisites();
+  // A check that failed stays listed once fixed, so Install visibly turns it green.
+  const [flagged, setFlagged] = useState<ReadonlySet<string>>(() => new Set());
   const [width, setWidth] = useState(0);
   const wide = width >= TWO_COLUMN_MIN_WIDTH;
   const colors = theme.colors;
@@ -201,7 +208,12 @@ function ProjectPicker({
   const shown = filterCandidates(all, search);
   const fresh = shown.filter((candidate) => candidate.taroProject === null);
   const onboarded = shown.filter((candidate) => candidate.taroProject !== null);
-  const failing = (prerequisites.data?.checks ?? []).filter((check) => !check.ok);
+  const checks = prerequisites.data?.checks ?? [];
+  const failingIds = checks.filter((check) => !check.ok).map((check) => check.id);
+  useEffect(() => {
+    if (failingIds.some((id) => !flagged.has(id))) setFlagged((current) => new Set([...current, ...failingIds]));
+  }, [failingIds.join(" ")]);
+  const failing = checks.filter((check) => !check.ok || flagged.has(check.id));
   const muted = { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) };
   const nothingInPaseo = listing.data !== undefined && all.length === 0;
 
@@ -290,11 +302,7 @@ function ProjectPicker({
 
       {failing.length === 0 ? null : (
         <FormSection theme={theme} icon="ListChecks" title="Before you start" description="Taro needs these on this machine.">
-          <View style={{ gap: SPACE.sm }}>
-            {failing.map((check) => (
-              <CheckLine key={check.name} theme={theme} ok={check.ok} name={check.name} detail={check.detail} />
-            ))}
-          </View>
+          <PrerequisiteList theme={theme} checks={failing} />
         </FormSection>
       )}
 
@@ -378,6 +386,7 @@ function ProjectReview({
   onBack: () => void;
 }) {
   const models = useModels();
+  const pullRequests = pullRequestsReady(usePrerequisites().data?.checks);
   const guardFor = usePressGuards();
   const [busy, setBusy] = useState(false);
   const [serverProblems, setServerProblems] = useState<SetupProblems>({});
@@ -386,6 +395,11 @@ function ProjectReview({
   const wide = width >= TWO_COLUMN_MIN_WIDTH;
   const colors = theme.colors;
   useEffect(() => setFailure(error), [error]);
+  // Picked before the checks arrived, or gh went away: pull requests fall back to a local branch.
+  useEffect(() => {
+    const fitted = deliveryWithoutGh(draft, pullRequests);
+    if (fitted !== draft) onChange(fitted);
+  }, [pullRequests, draft.delivery]);
 
   const local = setupProblems(draft, true);
   // Every field starts filled, so a problem shows at once; the server's are for the field until it changes.
@@ -525,7 +539,7 @@ function ProjectReview({
               <Text style={[muted, { color: colors.foreground, paddingTop: wide ? SPACE.sm : 0 }]}>This machine only</Text>
             )}
           </Field>
-          <Field theme={theme} wide={wide} label="Agents and delivery" hint={template === null ? "Taro's defaults; change them in All settings." : `As in ${template.project}; change them in All settings.`}>
+          <Field theme={theme} wide={wide} label="Agents and delivery" hint={deliveryHint(template, pullRequests)}>
             <Text style={[muted, { color: colors.foreground, paddingTop: wide ? SPACE.sm : 0 }]}>{summary}</Text>
           </Field>
         </View>

@@ -11,7 +11,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import {
-  checkPrerequisites,
   launchManager,
   listModels,
   readStandingOrders,
@@ -21,10 +20,21 @@ import {
 } from "../shared/contracts";
 import { modelOptions as modelPickerOptions, thinkingAfterModelChange, thinkingOptions, toggleSubagentModel } from "../shared/model-picker";
 import type { ProjectConfig } from "../shared/project";
-import { draftFrom, settingsFrom, setupProblems, ticketExample, type SetupDraft, type SetupProblems } from "../shared/setup-form";
+import {
+  deliveryWithoutGh,
+  draftFrom,
+  pullRequestNote,
+  pullRequestsReady,
+  settingsFrom,
+  setupProblems,
+  ticketExample,
+  type SetupDraft,
+  type SetupProblems,
+} from "../shared/setup-form";
 import { errorText } from "./format";
 import { KeyboardScrollView } from "./keyboard";
-import { CheckLine, ChoiceCards, Dropdown, Field, FixedValue, FormSection, ModelChooser, TextField, TWO_COLUMN_MIN_WIDTH } from "./settings-form";
+import { PrerequisiteList, usePrerequisites } from "./prerequisite-list";
+import { ChoiceCards, Dropdown, Field, FixedValue, FormSection, ModelChooser, TextField, TWO_COLUMN_MIN_WIDTH } from "./settings-form";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { IconButton } from "./ui";
@@ -56,7 +66,6 @@ export function ProjectSetup({
   onCancel: (() => void) | null;
 }) {
   const toast = useToast();
-  const prerequisitesRpc = useRpc(checkPrerequisites);
   const modelsRpc = useRpc(listModels);
   const save = useRpc(writeProjectSettings);
   const readOrders = useRpc(readStandingOrders);
@@ -64,7 +73,8 @@ export function ProjectSetup({
   const launch = useRpc(launchManager);
   const restart = useRpc(restartManager);
 
-  const prerequisites = useQuery({ queryKey: ["taro", "prerequisites"], queryFn: () => prerequisitesRpc({}) });
+  const prerequisites = usePrerequisites();
+  const pullRequests = pullRequestsReady(prerequisites.data?.checks);
   const models = useQuery({ queryKey: ["taro", "models"], queryFn: () => modelsRpc({}) });
   const modelOptions = models.data?.models ?? [];
   const defaultModel = useMemo(
@@ -86,6 +96,11 @@ export function ProjectSetup({
     if (existing === null) return;
     void readOrders({ project: existing.project }).then((result) => setOrders(result.text)).catch(() => setOrders(""));
   }, [existing?.project]);
+
+  // A new project cannot start on pull requests gh cannot open; an existing one keeps its choice and is warned.
+  useEffect(() => {
+    if (existing === null) setDraft((current) => deliveryWithoutGh(current, pullRequests));
+  }, [pullRequests]);
 
   useEffect(() => {
     if (modelOptions.length === 0) return;
@@ -207,9 +222,7 @@ export function ProjectSetup({
       {showChecks ? (
         <FormSection theme={theme} icon="ListChecks" title="Before you start" description="What Taro needs on this machine.">
           <View style={{ gap: SPACE.sm }}>
-            {checks.map((check) => (
-              <CheckLine key={check.name} theme={theme} ok={check.ok} name={check.name} detail={check.detail} />
-            ))}
+            <PrerequisiteList theme={theme} checks={checks} />
             {prerequisites.isLoading ? <Text style={muted}>Checking…</Text> : null}
           </View>
         </FormSection>
@@ -304,7 +317,12 @@ export function ProjectSetup({
             value={draft.delivery}
             onChange={(value) => update("delivery", value)}
             options={[
-              { value: "pull-request", title: "Pull request", description: "The owner pushes its branch, opens a pull request, has it reviewed and marks it ready." },
+              {
+                value: "pull-request",
+                title: "Pull request",
+                description: "The owner pushes its branch, opens a pull request, has it reviewed and marks it ready.",
+                unavailable: pullRequestNote(pullRequests, draft.delivery === "pull-request"),
+              },
               { value: "local-only", title: "Local branch only", description: "The owner leaves a clean branch that fast-forwards from the base branch. Nothing is pushed." },
             ]}
           />

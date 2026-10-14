@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import type { ProjectConfig } from "./project";
-import { draftFrom, parseCount, settingsFrom, setupProblems, ticketExample, type SetupDraft } from "./setup-form";
+import {
+  deliveryWithoutGh,
+  draftFrom,
+  parseCount,
+  PULL_REQUEST_KEPT_WITHOUT_GH,
+  PULL_REQUEST_NEEDS_GH,
+  pullRequestNote,
+  pullRequestsReady,
+  settingsFrom,
+  setupProblems,
+  ticketExample,
+  type SetupDraft,
+} from "./setup-form";
 
 const config: ProjectConfig = {
   schemaVersion: 1,
@@ -121,5 +133,33 @@ describe("ticketExample", () => {
 
   it("is null for an empty or unusable prefix", () => {
     for (const prefix of ["", "A1", "ABCDEFGHI", "A-B"]) expect(ticketExample(prefix)).toBeNull();
+  });
+});
+
+describe("pull requests without gh (TR-063)", () => {
+  const gh = (ok: boolean) => [{ id: "git", ok: true }, { id: "gh", ok }];
+
+  it("knows gh's state only from its check", () => {
+    expect(pullRequestsReady(undefined)).toBeNull();
+    expect(pullRequestsReady([{ id: "git", ok: true }])).toBeNull();
+    expect(pullRequestsReady(gh(true))).toBe(true);
+    expect(pullRequestsReady(gh(false))).toBe(false);
+  });
+
+  it("moves a new project to a local branch only when gh is known not to be ready", () => {
+    const pullRequest = validNew({ delivery: "pull-request" });
+    expect(deliveryWithoutGh(pullRequest, false).delivery).toBe("local-only");
+    expect(deliveryWithoutGh(pullRequest, null)).toBe(pullRequest);
+    expect(deliveryWithoutGh(pullRequest, true)).toBe(pullRequest);
+    const local = validNew({ delivery: "local-only" });
+    expect(deliveryWithoutGh(local, false)).toBe(local);
+  });
+
+  it("says why Pull request is unavailable, and warns a project already on it", () => {
+    expect(pullRequestNote(true, false)).toBeNull();
+    expect(pullRequestNote(null, true)).toBeNull();
+    expect(pullRequestNote(false, false)).toBe(PULL_REQUEST_NEEDS_GH);
+    expect(pullRequestNote(false, true)).toBe(PULL_REQUEST_KEPT_WITHOUT_GH);
+    expect(PULL_REQUEST_NEEDS_GH).toContain("gh auth login");
   });
 });

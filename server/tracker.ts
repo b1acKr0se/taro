@@ -5,36 +5,35 @@
  * answer records, and is the only committer.
  */
 import { access, constants, readFile, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { delimiter, join } from "node:path";
+import { join } from "node:path";
 
 import type { TrackerSyncProblem } from "../shared/contracts";
 import { TICKET_STATUSES } from "../shared/project";
 import { gainedGuidelines, identityChanges, INSTRUCTION_FILES, TRACKER_CONFIG, withCommittedIdentity } from "../shared/tracker-guard";
+import { backlogEnvironment, findExecutable, searchDirectories, taroBacklogDirectory } from "./backlog-install";
 import { commandError, runChecked, runCommand, type CommandResult } from "./process";
 
 export const TRACKER_BRANCH = "taro/backlog";
 
 let backlogLookup: Promise<string | null> | null = null;
 
-async function findBacklog(): Promise<string | null> {
-  const onPath = (process.env.PATH ?? "").split(delimiter).filter((directory) => directory !== "");
-  const directories = [...onPath, join(homedir(), ".local", "bin"), "/usr/local/bin", "/opt/homebrew/bin", "/usr/bin"];
-  for (const directory of directories) {
-    const candidate = join(directory, "backlog");
-    try {
-      await access(candidate, constants.X_OK);
-      return candidate;
-    } catch {
-      // Not here.
-    }
-  }
-  return null;
+/** A `backlog` the user installed comes first; Taro's own copy (TR-063) only when there is none. */
+export async function findBacklog(directories: readonly string[] = searchDirectories()): Promise<string | null> {
+  return (await findExecutable("backlog", directories)) ?? (await findExecutable("backlog", [taroBacklogDirectory()]));
 }
 
+/** Looked up once while found; a miss is looked up again, so an install shows without a reload. */
 export function backlogBinary(): Promise<string | null> {
-  backlogLookup ??= findBacklog();
+  backlogLookup ??= findBacklog().then((found) => {
+    if (found === null) backlogLookup = null;
+    return found;
+  });
   return backlogLookup;
+}
+
+/** After Taro installs its copy: the next lookup searches again. */
+export function forgetBacklogLookup(): void {
+  backlogLookup = null;
 }
 
 async function requireBacklog(): Promise<string> {
@@ -44,7 +43,8 @@ async function requireBacklog(): Promise<string> {
 }
 
 export async function runBacklog(trackerPath: string, args: readonly string[]): Promise<string> {
-  return runChecked(await requireBacklog(), args, { cwd: trackerPath, env: { BACKLOG_CWD: trackerPath }, timeoutMs: 60_000 });
+  const binary = await requireBacklog();
+  return runChecked(binary, args, { cwd: trackerPath, env: { ...backlogEnvironment(binary), BACKLOG_CWD: trackerPath }, timeoutMs: 60_000 });
 }
 
 function git(directory: string, args: readonly string[]): Promise<string> {

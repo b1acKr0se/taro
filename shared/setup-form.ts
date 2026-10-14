@@ -116,3 +116,24 @@ export function ticketExample(prefix: string): string | null {
   const upper = prefix.trim().toUpperCase();
   return TicketPrefixSchema.safeParse(upper).success ? `${upper}-001` : null;
 }
+
+/** What the Pull request choice says while gh cannot open pull requests (TR-063). */
+export const PULL_REQUEST_NEEDS_GH = "Unavailable: install gh and run `gh auth login` on this machine.";
+export const PULL_REQUEST_KEPT_WITHOUT_GH = "gh is not ready, so owners cannot open pull requests: install gh and run `gh auth login`, or choose Local branch only.";
+
+/** Whether gh can open pull requests, by the prerequisite check; null until the checks arrive. */
+export function pullRequestsReady(checks: ReadonlyArray<{ id: string; ok: boolean }> | undefined): boolean | null {
+  if (checks === undefined) return null;
+  return checks.find((check) => check.id === "gh")?.ok ?? null;
+}
+
+/** A new project's delivery once gh is known not to be ready: pull requests fall back to a local branch. */
+export function deliveryWithoutGh(draft: SetupDraft, ready: boolean | null): SetupDraft {
+  return ready === false && draft.delivery === "pull-request" ? { ...draft, delivery: "local-only" } : draft;
+}
+
+/** The Pull request choice's note: none when gh is ready or unknown; a warning on a project already set to it. */
+export function pullRequestNote(ready: boolean | null, selected: boolean): string | null {
+  if (ready !== false) return null;
+  return selected ? PULL_REQUEST_KEPT_WITHOUT_GH : PULL_REQUEST_NEEDS_GH;
+}

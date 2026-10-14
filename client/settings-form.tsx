@@ -198,6 +198,8 @@ export interface Choice<Value extends string> {
   value: Value;
   title: string;
   description: string;
+  /** Why it cannot be picked now (TR-063); a chosen one keeps its selection and says it. */
+  unavailable?: string | null;
 }
 
 /** A radio group drawn as cards, each choice with a sentence on what it means. */
@@ -217,11 +219,13 @@ export function ChoiceCards<Value extends string>({
     <View accessibilityRole="radiogroup" style={{ gap: SPACE.sm }}>
       {options.map((option) => {
         const selected = option.value === value;
+        const unavailable = option.unavailable ?? null;
         return (
           <Pressable
             key={option.value}
             accessibilityRole="radio"
-            accessibilityState={{ checked: selected }}
+            accessibilityState={{ checked: selected, disabled: unavailable !== null }}
+            disabled={unavailable !== null}
             onPress={() => onChange(option.value)}
             style={{
               flexDirection: "row",
@@ -232,6 +236,7 @@ export function ChoiceCards<Value extends string>({
               borderRadius: 10,
               borderColor: selected ? colors.accent : colors.border,
               backgroundColor: selected ? withAlpha(colors.accent, 0.1) : colors.surface0,
+              opacity: unavailable !== null && !selected ? 0.6 : 1,
             }}
           >
             <View
@@ -251,6 +256,14 @@ export function ChoiceCards<Value extends string>({
             <View style={{ flex: 1, gap: SPACE.xxs }}>
               <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" }}>{option.title}</Text>
               <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) }}>{option.description}</Text>
+              {unavailable === null ? null : (
+                <View style={{ flexDirection: "row", alignItems: "flex-start", gap: SPACE.xs, paddingTop: SPACE.xxs }}>
+                  <View style={{ paddingTop: 2 }}>
+                    <Icon name={selected ? "TriangleAlert" : "Lock"} size={12} color={selected ? colors.statusWarning : colors.foregroundMuted} />
+                  </View>
+                  <Text style={{ flex: 1, color: selected ? colors.statusWarning : colors.foreground, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) }}>{unavailable}</Text>
+                </View>
+              )}
             </View>
           </Pressable>
         );
@@ -337,17 +350,20 @@ export function Dropdown<Value extends string>({
 }
 
 /** One prerequisite: a tick or a cross, its name and what was found. */
-export function CheckLine({ theme, ok, name, detail }: { theme: PluginTheme; ok: boolean; name: string; detail: string }) {
+export function CheckLine({ theme, ok, name, detail, children }: { theme: PluginTheme; ok: boolean; name: string; detail: string; children?: ReactNode }) {
   const colors = theme.colors;
   return (
     <View style={{ flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm }}>
       <View style={{ paddingTop: 2 }}>
         <Icon name={ok ? "CircleCheck" : "CircleX"} size={16} color={ok ? colors.statusSuccess : colors.statusDanger} />
       </View>
-      <Text style={{ flex: 1, color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) }}>
-        {name}
-        {detail === "" ? null : <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small }}>{`  ${detail}`}</Text>}
-      </Text>
+      <View style={{ flex: 1, gap: SPACE.sm }}>
+        <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) }}>
+          {name}
+          {detail === "" ? null : <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small }}>{`  ${detail}`}</Text>}
+        </Text>
+        {children}
+      </View>
     </View>
   );
 }

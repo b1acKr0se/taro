@@ -4,21 +4,36 @@
  * Set at launch by whoever launches, and again by the `agent.session_open`
  * hook, which also runs when an agent resumes.
  */
-import { relative, isAbsolute } from "node:path";
+import { delimiter, dirname, isAbsolute, relative } from "node:path";
 
 import { TARO_LABELS } from "../shared/project";
+import { nodeDirectory, taroBacklogDirectory } from "./backlog-install";
 import type { PaseoApi } from "./host-types";
 import { projectEvidenceDirectory } from "./evidence";
 import { skillDirectory } from "./package-files";
 import { projectPaths, projectsDirectory } from "./projects";
+import { backlogBinary } from "./tracker";
 
-export async function taroEnvironment(project: string, trackerPath: string): Promise<Record<string, string>> {
+/**
+ * When the `backlog` in use is the copy Taro installed (TR-063), its folder and the daemon's Node
+ * go first on the agent's PATH, so the agent runs `backlog` as the plugin does.
+ */
+export function pathWithBacklog(backlog: string | null, basePath: string | undefined): Record<string, string> {
+  if (backlog === null || dirname(backlog) !== taroBacklogDirectory()) return {};
+  const first = [taroBacklogDirectory(), nodeDirectory()];
+  // A resumed agent's PATH may hold them already: never twice.
+  const rest = (basePath ?? "").split(delimiter).filter((part) => part !== "" && !first.includes(part));
+  return { PATH: [...first, ...rest].join(delimiter) };
+}
+
+export async function taroEnvironment(project: string, trackerPath: string, basePath: string | undefined = process.env.PATH): Promise<Record<string, string>> {
   return {
     BACKLOG_CWD: trackerPath,
     TARO_PROJECT: project,
     TARO_TRACKER: trackerPath,
     TARO_SKILL: await skillDirectory(),
     TARO_EVIDENCE: projectEvidenceDirectory(project),
+    ...pathWithBacklog(await backlogBinary(), basePath),
   };
 }
 
@@ -43,9 +58,10 @@ export async function projectForSession(paseo: PaseoApi, agentId: string, cwd: s
   }
 }
 
-export async function sessionEnvironment(paseo: PaseoApi, agentId: string, cwd: string): Promise<Record<string, string> | null> {
+/** `basePath`: the PATH the session already asks for, if any, else the daemon's. */
+export async function sessionEnvironment(paseo: PaseoApi, agentId: string, cwd: string, basePath?: string): Promise<Record<string, string> | null> {
   const project = await projectForSession(paseo, agentId, cwd);
   if (project === null) return null;
   const paths = await projectPaths(project);
-  return taroEnvironment(project, paths.tracker);
+  return taroEnvironment(project, paths.tracker, basePath ?? process.env.PATH);
 }
