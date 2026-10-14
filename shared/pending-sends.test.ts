@@ -24,6 +24,10 @@ function entry(type: string, at = T0, clientMessageId?: string): SendTimelineEnt
   return { seqStart: seq * 10, timestamp: new Date(at).toISOString(), item: { type, ...(clientMessageId === undefined ? null : { clientMessageId }) } };
 }
 
+function tool(detail: string, status = "completed"): SendTimelineEntry {
+  return { ...entry("tool_call"), item: { type: "tool_call", status, detail: { type: detail } } };
+}
+
 const WORKING = { stoppedAt: null, hasOlder: false };
 
 describe("viewSends", () => {
@@ -45,6 +49,21 @@ describe("viewSends", () => {
       const { views, read } = viewSends([sent("chat-a")], [entry("user_message", T0, "chat-a"), entry(step)], WORKING, T0);
       expect(views).toEqual([]);
       expect(read).toEqual(["chat-a"]);
+    }
+  });
+
+  it("does not count what an interrupt leaves after the message as reading it (seen end to end)", () => {
+    // A Claude owner running a shell command, a message steered in, then the agent stopped: Paseo adds
+    // the command's label as it ends and an empty failed call, and the agent never read the message.
+    const entries = [entry("user_message"), tool("shell", "canceled"), entry("user_message", T0, "chat-a"), tool("plain_text"), tool("unknown", "failed")];
+    const { views, read } = viewSends([sent("chat-a")], entries, { stoppedAt: T0, hasOlder: false }, T0 + STOPPED_GRACE_MS);
+    expect(read).toEqual([]);
+    expect(views.map((view) => view.mark)).toEqual(["unread"]);
+  });
+
+  it("counts a real tool call after the message as reading it, even a failed one", () => {
+    for (const step of [tool("shell"), tool("edit", "failed"), tool("unknown")]) {
+      expect(viewSends([sent("chat-a")], [entry("user_message", T0, "chat-a"), step], WORKING, T0).read).toEqual(["chat-a"]);
     }
   });
 

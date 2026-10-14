@@ -3,8 +3,7 @@
  *
  * Paseo puts a message sent to a running agent in its timeline the moment it accepts it, and never
  * says when the agent reads it: Claude reads a steered message after the step it is on. So a sent
- * message is "waiting" until the agent's first step after it in the timeline (a reply, reasoning or
- * a tool call), and "unread" when the agent stopped without one. A provider that cannot take a
+ * message is "waiting" until the agent's first step after it in the timeline (`isAgentStep`), and "unread" when the agent stopped without one. A provider that cannot take a
  * message mid-turn has the running turn replaced by Paseo, so the chat holds the message until the
  * turn ends unless the user sends it anyway. Pure, for vitest.
  */
@@ -64,10 +63,20 @@ export interface SendView {
 export interface SendTimelineEntry {
   seqStart: number;
   timestamp: string;
-  item: { type: string; clientMessageId?: string | undefined };
+  item: { type: string; clientMessageId?: string | undefined; status?: string | undefined; detail?: { type: string } | undefined };
 }
 
-const STEPS: ReadonlySet<string> = new Set(["assistant_message", "reasoning", "tool_call"]);
+/**
+ * Whether an entry is the agent doing something new: a reply, reasoning, or a tool call. Not the label
+ * Paseo adds as a running tool ends (`plain_text`), nor the empty failed call an interrupt leaves: both
+ * follow a steered message without the agent having read it.
+ */
+export function isAgentStep(item: SendTimelineEntry["item"]): boolean {
+  if (item.type === "assistant_message" || item.type === "reasoning") return true;
+  if (item.type !== "tool_call") return false;
+  const kind = item.detail?.type;
+  return kind !== "plain_text" && !(kind === "unknown" && item.status !== "completed");
+}
 
 /**
  * Each pending message's mark, in the order sent, and the ids the agent has taken up (to forget).
@@ -94,7 +103,7 @@ export function viewSends(
         read.push(send.id);
         return;
       }
-    } else if (entries.slice(index + 1).some((entry) => STEPS.has(entry.item.type))) {
+    } else if (entries.slice(index + 1).some((entry) => isAgentStep(entry.item))) {
       read.push(send.id);
       return;
     }
