@@ -17,6 +17,15 @@ function attempt(call: () => unknown): Promise<unknown> {
   }
 }
 
+/** The object's `name` property, or undefined when reading it throws. */
+function property(object: Record<string, unknown>, name: string): unknown {
+  try {
+    return object[name];
+  } catch {
+    return undefined;
+  }
+}
+
 function desktopWindowOf(shell: unknown): Record<string, unknown> | null {
   try {
     const open = (shell as { window?: { getCurrentWindow?: unknown } } | null)?.window?.getCurrentWindow;
@@ -41,7 +50,7 @@ export function watchFullScreen(shell: unknown, onChange: (fullScreen: boolean) 
     if (typeof stop === "function") void attempt(() => stop.call(undefined)).catch(() => undefined);
   };
   const read = () => {
-    const isFullscreen = window.isFullscreen;
+    const isFullscreen = property(window, "isFullscreen");
     if (typeof isFullscreen !== "function") return;
     attempt(() => isFullscreen.call(window))
       .then((value) => {
@@ -51,7 +60,7 @@ export function watchFullScreen(shell: unknown, onChange: (fullScreen: boolean) 
   };
   read();
   // Entering or leaving full screen resizes the window; the traffic lights hide and return with it.
-  const onResized = window.onResized;
+  const onResized = property(window, "onResized");
   if (typeof onResized === "function") {
     attempt(() => onResized.call(window, read))
       .then((stop) => {

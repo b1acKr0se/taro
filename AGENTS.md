@@ -28,8 +28,12 @@ EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
   large photo as one that "could not be made smaller", a module was renamed or reshaped there.
 - The image viewer keeps its top bar below the macOS desktop app's traffic lights (TR-048) by reading
   `window.paseoDesktop`, the undocumented object Paseo's desktop shell injects (`windowChromeMode`,
-  `platform`, `window.getCurrentWindow()` for full screen): `client/window-chrome.ts`. If the ✕ sits
-  under the window controls again after a Paseo update, that object was renamed or reshaped.
+  `platform`): `client/window-chrome.ts`; full screen comes from its `window.getCurrentWindow()`
+  (`client/desktop-window.ts`), whose calls may answer with a promise, a plain value or nothing
+  (`onResized` returns a plain unsubscribe; assuming a promise failed the plugin, TR-054), so every
+  call there is feature-detected and guarded. If the ✕ sits under the window controls again after a
+  Paseo update, that object was renamed or reshaped. The viewer sits in an error boundary
+  (`client/error-boundary.ts`, a constructor function, as classes are out).
 - Kept view state (the screen's view, drafts, the timeline cache) lives on `globalThis` slots
   (`client/kept.ts`): Paseo's app unloads every plugin when it disconnects and evaluates the bundles
   again on reconnect. Change a kept field's type and it starts over; version the slot.

@@ -159,6 +159,14 @@ describe("watchFullScreen", () => {
       { window: { getCurrentWindow: () => null } },
       shellWith({}),
       shellWith({ isFullscreen: "no", onResized: "no" }),
+      shellWith({
+        get isFullscreen() {
+          throw new Error("no window");
+        },
+        get onResized() {
+          throw new Error("no window");
+        },
+      }),
       getterThatThrows,
     ];
     for (const shell of shells) {
