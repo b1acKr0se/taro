@@ -15,8 +15,11 @@ ones) — they outrank defaults here. Then follow the flow.
 2. **Ask** only questions whose answers would change the implementation: one at a time, as decision
    blocks with a recommendation and its reason. Zero questions is normal for a clear ask. Decide
    everything else yourself and state it as an assumption.
-3. **Rate complexity** and write the **proposal** into the ticket (`-d`, `--acceptance-criteria`,
-   `--plan`, `--add-label complexity-<level>`), sized to the level:
+3. **Rate complexity** and write the **proposal** into the ticket (`-d`, `--plan`, `--add-label
+   complexity-<level>`), sized to the level. The plan follows `templates/plan.md`: its six sections
+   in order, each within its limit. Cut rather than exceed a limit; detail beyond it goes in the
+   children's definitions of done. Its "How I'll prove it" holds the criteria, so new tickets get no
+   `--acceptance-criteria`.
 
    | Level | When | Proposal | Build | Review |
    | --- | --- | --- | --- | --- |
@@ -31,10 +34,14 @@ ones) — they outrank defaults here. Then follow the flow.
    **Criteria are user outcomes**, starting from the brief's Outcomes: what the user can do or see,
    and how you will show it. "The user can type an answer and press Submit with the keyboard open
    (phone screenshot)", not "the field scrolls above the keyboard". A criterion met to the letter
-   while the user would still reject the result is not met. Mechanisms go in the plan.
-4. **Approval** — ask for it (blocking decision `scope-approval`, its question `Approve <the plan in
-   one line>?`, with the proposal summarised in `why`) **whenever you made a choice the user did not**: an interpretation, a design, a fix
-   approach that could differ from what they meant. Trivial work needs none — your one clarifying
+   while the user would still reject the result is not met. Mechanisms go in "Choices I made" only
+   when the user must check them.
+4. **Approval** — ask for it **whenever you made a choice the user did not**: an interpretation, a
+   design, a fix approach that could differ from what they meant. Write the plan first (`--plan`,
+   step 3), then ask with a blocking decision `scope-approval` whose question is `Approve the plan
+   for <ID>?`, options Approve (and Split into children when you propose children), and `why` one
+   line at most: the card shows the plan's Goal, Choices I made and Size from the ticket, and View
+   plan opens the rest. The user asks for a change by typing in the field. Trivial work needs none — your one clarifying
    question's answer, if any, is the approval. Record **APPROVAL** with the user's exact words. No
    code before approval except a throwaway check when feasibility is unknown. Changed scope needs a
    new approval; details inside the scope do not.

@@ -52,7 +52,12 @@ default: Per trade         # what you do if the user does not answer (non-blocki
   label answers. So the `question` stands alone, in at most about three lines: say what is to be
   decided, never "three options", "recommends A" or "see above". Labels are a few words each and
   read as answers to it.
-- An option whose `prompt` ends with `…` asks the user to type (e.g. `Change…`).
+- Every card has a text field, and typing in it is how the user asks for a change or answers in
+  their own words. So never offer an option that only stands for that: no "Change…", "Adjust…",
+  "Alternative…", "Other" or "Something else" (the plugin hides them). Real options stay, such as
+  "Split into children".
+- An option whose `prompt` ends with `…` asks the user to type more words with it (e.g. `Pick a
+  name…`).
 - A long value (any field, option fields too) may span lines as a YAML block scalar: `why: |`
   keeps the line breaks, `why: >` joins the lines into one paragraph; indent the lines under it.
 - To withdraw a decision: a block with the same `id` and `status: withdrawn`.
@@ -90,12 +95,15 @@ Use these ids and options for recurring decisions (add free-form ones as needed)
 
 | id | Options | Recommend |
 | --- | --- | --- |
-| `scope-approval` | Approve · Change… · Split into children | Approve; the `question` is `Approve <the plan in one line>?` |
+| `scope-approval` | Approve · Split into children (when proposed) | Approve; the `question` is `Approve the plan for <ID>?`, the plan in the ticket (`templates/plan.md`, `roles/owner.md`) |
 | `complexity` | Keep · Lower · Raise | Keep |
-| `child-breakdown` | Approve · Fewer children · Adjust… | Approve |
+| `child-breakdown` | Approve · Fewer children | Approve |
 | `merge` | Merge · Hold | Merge, when review passed and the head is unchanged |
 | `investigation-done` | Build the recommendation · File follow-up · Close | Build |
-| `review-dispute` | Apply the fix · Accept as a limitation · Alternative… | your verdict |
+| `review-dispute` | Apply the fix · Accept as a limitation | your verdict |
+
+The user asks for a change, or another approach, by typing in the card's field; no preset has an
+option for it.
 
 Acceptance is not a decision block: the plugin shows Accept / Request changes on tickets in
 Awaiting acceptance.
