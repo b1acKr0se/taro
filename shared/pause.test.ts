@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   handoffSincePauseRequest,
   PAUSE_HANDOFF_TIMEOUT_MS,
+  pausedByTaro,
   pausedHold,
   pausedHoldText,
   pauseProgress,
@@ -201,5 +202,34 @@ describe("pauseView", () => {
   it("is null for a ticket never paused", () => {
     expect(pauseView(EXECUTION, false)).toBeNull();
     expect(pauseView(null, false)).toBeNull();
+  });
+});
+
+describe("pausedByTaro", () => {
+  const hold = pausedHoldText("2026-01-05T10:04Z", "handoff", true);
+
+  it("is true for a pause Taro asked for and held", () => {
+    expect(pausedByTaro(notes(EXECUTION, REQUESTED, HANDOFF, hold))).toBe(true);
+    expect(pausedByTaro(notes(EXECUTION, REQUESTED, pausedHoldText("2026-01-05T10:10Z", "timed-out", false)))).toBe(true);
+  });
+
+  it("is false for a pause written by hand, with no request before it", () => {
+    expect(pausedByTaro(notes(EXECUTION, "HOLD 2026-01-05T11:00Z — paused by the user to unblock a rewrite; resume from this HANDOFF"))).toBe(false);
+  });
+
+  it("is false while the pause is still pending, and after a resume", () => {
+    expect(pausedByTaro(notes(EXECUTION, REQUESTED))).toBe(false);
+    expect(pausedByTaro(notes(EXECUTION, REQUESTED, hold, resumedReleaseText("2026-01-05T11:00Z", null)))).toBe(false);
+  });
+
+  it("is false when an earlier request belongs to an earlier pause", () => {
+    const handHold = "HOLD 2026-01-05T12:00Z — paused by the user again, by hand";
+    expect(pausedByTaro(notes(EXECUTION, REQUESTED, hold, resumedReleaseText("2026-01-05T11:00Z", null), handHold))).toBe(false);
+  });
+
+  it("is false for a manager's hold and for empty notes", () => {
+    expect(pausedByTaro(notes(EXECUTION, REQUESTED, "HOLD 2026-01-05T10:05Z — waits for NA-2"))).toBe(false);
+    expect(pausedByTaro(null)).toBe(false);
+    expect(pausedByTaro("")).toBe(false);
   });
 });

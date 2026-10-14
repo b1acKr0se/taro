@@ -14,6 +14,7 @@ import { dependsOn, holdsSlot, shouldWakeManager, statusChanges, type StatusChan
 import {
   handoffSincePauseRequest,
   PAUSE_HANDOFF_TIMEOUT_MS,
+  pausedByTaro,
   pausedHoldText,
   pauseProgress,
   pauseRefusal,
@@ -264,6 +265,11 @@ export class Actions {
    * the minute check finish the pause (`advancePauses`). With no live owner it pauses at once.
    */
   async pause(paseo: PaseoApi, project: string, ticket: string): Promise<string> {
+    // Under the project's tracker lock, with the minute check and the turn-end hook, so a pause is never finished twice.
+    return serialized(`tracker-changed:${project}`, () => this.pauseTicket(paseo, project, ticket));
+  }
+
+  private async pauseTicket(paseo: PaseoApi, project: string, ticket: string): Promise<string> {
     const paths = await projectPaths(project);
     const detail = await viewTicket(paths.tracker, ticket);
     const notes = detail.implementationNotes;
@@ -285,6 +291,12 @@ export class Actions {
   private async finishPause(paseo: PaseoApi, project: string, ticket: string, progress: Exclude<PauseProgress, "waiting">, handoffWritten: boolean): Promise<void> {
     const paths = await projectPaths(project);
     await appendTicketNote(paths.tracker, ticket, pausedHoldText(new Date().toISOString().slice(0, 16) + "Z", progress, handoffWritten));
+    const archived = await this.archiveTicketAgents(paseo, project, ticket);
+    console.log(`[taro] ${project}: paused ${ticket} (${progress}); archived ${archived} agent(s)`);
+  }
+
+  /** Archives the live agents of a ticket and its children (never the Manager); safe to repeat. Returns how many. */
+  private async archiveTicketAgents(paseo: PaseoApi, project: string, ticket: string): Promise<number> {
     const agents = (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] !== "manager" && doneTicketOf(agent.labels[TARO_LABELS.ticket], new Set([ticket])) !== null);
     for (const agent of agents) {
       await paseo.agents
@@ -294,7 +306,7 @@ export class Actions {
       await this.supervisor.withdrawDecisionsOf(agent.id);
       await this.state.forgetAgent(agent.id);
     }
-    console.log(`[taro] ${project}: paused ${ticket} (${progress}); archived ${agents.length} agent(s)`);
+    return agents.length;
   }
 
   /**
@@ -302,6 +314,11 @@ export class Actions {
    * from the latest HANDOFF now; otherwise the ticket is queued to resume and the minute check starts it.
    */
   async resume(paseo: PaseoApi, project: string, ticket: string): Promise<{ message: string; agentId: string | null }> {
+    // Under the project's tracker lock: two quick Resumes (card and ticket view, phone and desktop) start one owner.
+    return serialized(`tracker-changed:${project}`, () => this.resumeTicket(paseo, project, ticket));
+  }
+
+  private async resumeTicket(paseo: PaseoApi, project: string, ticket: string): Promise<{ message: string; agentId: string | null }> {
     const config = await requireProjectConfig(project);
     const paths = await projectPaths(project);
     const detail = await viewTicket(paths.tracker, ticket);
@@ -366,6 +383,14 @@ export class Actions {
       changed = true;
     }
     if (changed) tickets = await listTickets(paths.tracker);
+    // A pause cut short after its HOLD (a reload, a failed archive) leaves agents alive under it: archive them now.
+    for (const { ticket, notes } of await this.pauseCandidates(project, tickets)) {
+      if (!pausedByTaro(notes)) continue;
+      const archived = await this.archiveTicketAgents(paseo, project, ticket.id);
+      if (archived === 0) continue;
+      console.log(`[taro] ${project}: finished pausing ${ticket.id}; archived ${archived} agent(s) left alive`);
+      changed = true;
+    }
     const queued = [];
     for (const candidate of await this.pauseCandidates(project, tickets)) {
       if (queuedToResume(candidate.notes) && (await this.liveOwner(paseo, project, candidate.ticket.id)) === null) queued.push(candidate.ticket);

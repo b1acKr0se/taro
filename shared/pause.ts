@@ -3,7 +3,7 @@
  * marks when), then archives the ticket's agents and appends a HOLD whose reason starts with
  * "paused by the user"; the ticket keeps its status, so a fresh owner knows the phase. Resume
  * appends RELEASE and relaunches at once with a free slot; without one the RELEASE says "queued to
- * resume" and the plugin relaunches it when a slot frees, oldest first with the queued tickets, and
+ * resume" and the plugin relaunches it when a slot frees, oldest first with the Queued tickets, and
  * marks that with a RESUMED record. Everything here reads the ticket's notes, which are append-only,
  * so record order is time order. Pure.
  */
@@ -44,6 +44,26 @@ export function pausedHold(notes: string | null): PausedHold | null {
   if (reason === null || !reason.toLowerCase().startsWith(PAUSED_REASON)) return null;
   const record = lastHoldOrRelease(notes) ?? "";
   return { at: recordTime(record), withoutHandoff: /\bno handoff\b/i.test(reason) };
+}
+
+/**
+ * Whether the pause in force was Taro's own: a PAUSE-REQUESTED record comes before its HOLD with no
+ * other HOLD or RELEASE between. Only such a pause may have its leftover agents archived (a pause
+ * cut short by a reload or a failed archive); a hold the user wrote by hand is left alone.
+ */
+export function pausedByTaro(notes: string | null): boolean {
+  if (pausedHold(notes) === null) return false;
+  const records = noteRecords(notes);
+  let seenHold = false;
+  for (let index = records.length - 1; index >= 0; index--) {
+    const record = records[index] ?? "";
+    if (/^PAUSE-REQUESTED\b/.test(record)) return seenHold;
+    if (/^(?:HOLD|RELEASE)\b/.test(record)) {
+      if (seenHold) return false;
+      seenHold = true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -142,8 +162,8 @@ export function resumeRefusal(ticket: PauseTicket, merging: boolean, ownerAlive:
 }
 
 /**
- * Whether a ticket queued to resume takes a free slot now: oldest first with the queued tickets
- * (the tracker's order), so it starts only when the free slots outnumber the startable queued
+ * Whether a ticket queued to resume takes a free slot now: oldest first with the Queued tickets
+ * (the tracker's order), so it starts only when the free slots outnumber the startable Queued
  * tickets ahead of it. A slot the Manager is filling for an older ticket stays its own.
  */
 export function resumesNow(input: { ticket: string; order: readonly string[]; startable: readonly string[]; counting: number; cap: number; headroom: boolean }): boolean {

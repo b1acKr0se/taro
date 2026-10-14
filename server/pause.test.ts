@@ -164,6 +164,32 @@ describe("Pause", () => {
     expect(find("NA-1").notes).toContain("no handoff (the owner had already stopped)");
   });
 
+  it("is finished by the owner's turn end once its handoff is written", async () => {
+    tickets = [ticket("NA-1", "In Progress")];
+    live = [agent("owner-1", "NA-1")];
+    await actions.pause(paseo, "notes", "NA-1");
+    await actions.onAgentTurnEnded(paseo, "owner-1");
+    expect(archived).toEqual([]);
+    find("NA-1").notes += "\n\nHANDOFF 2026-01-05T10:03Z\n- Phase: x";
+    find("NA-1").updatedAt = "2026-01-05T10:03:00Z";
+    await actions.onAgentTurnEnded(paseo, "owner-1");
+    expect(archived).toEqual(["owner-1"]);
+    expect(find("NA-1").notes).toMatch(/\nHOLD \S+ — paused by the user; resume from the latest HANDOFF$/);
+  });
+
+  it("archives the agents a pause cut short left alive, but not under a hold written by hand", async () => {
+    const cutShort = `${EXECUTION("NA-1")}\n\nPAUSE-REQUESTED 2026-01-05T10:00:12Z — the user pressed Pause\n\nHANDOFF 2026-01-05T10:03Z\n- Phase: x\n\nHOLD 2026-01-05T10:04Z — paused by the user; resume from the latest HANDOFF`;
+    const byHand = `${EXECUTION("NA-2")}\n\nHOLD 2026-01-05T10:04Z — paused by the user to unblock a rewrite; resume from this HANDOFF`;
+    tickets = [ticket("NA-1", "In Progress", cutShort), ticket("NA-2", "Planning", byHand)];
+    live = [agent("owner-1", "NA-1"), agent("implementer-1", "NA-1.1", "implementer"), agent("owner-2", "NA-2")];
+    expect(await actions.advancePauses(paseo, "notes", Date.now())).toBe(true);
+    expect(archived).toEqual(["owner-1", "implementer-1"]);
+    // Done once: the next minute changes nothing.
+    expect(await actions.advancePauses(paseo, "notes", Date.now())).toBe(false);
+    expect(archived).toEqual(["owner-1", "implementer-1"]);
+    expect((await actions.resume(paseo, "notes", "NA-1")).message).toBe("A fresh owner is starting on NA-1.");
+  });
+
   it("is refused while awaiting acceptance or merging, and the owner hears nothing", async () => {
     tickets = [ticket("NA-1", "Awaiting acceptance"), ticket("NA-2", "Awaiting acceptance", `${EXECUTION("NA-2")}\n\nACCEPTED 2026-01-05T10:00:00Z — the user accepted; merging: into main`)];
     live = [agent("owner-1", "NA-1"), agent("owner-2", "NA-2")];
@@ -229,6 +255,14 @@ describe("Resume", () => {
     find("NA-1").status = "Done";
     await actions.advancePauses(paseo, "notes", Date.now());
     expect(created.map((each) => each.ticket)).toEqual(["NA-3"]);
+  });
+
+  it("starts one owner when Resume is pressed twice at once", async () => {
+    tickets = [paused("NA-1")];
+    const results = await Promise.allSettled([actions.resume(paseo, "notes", "NA-1"), actions.resume(paseo, "notes", "NA-1")]);
+    expect(results.map((result) => result.status)).toEqual(["fulfilled", "rejected"]);
+    expect(created).toHaveLength(1);
+    expect(find("NA-1").notes.match(/\nRELEASE /g)).toHaveLength(1);
   });
 
   it("is refused for a ticket not paused or awaiting acceptance", async () => {

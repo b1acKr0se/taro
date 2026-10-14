@@ -124,6 +124,31 @@ describe("loadBoard", () => {
     expect((await columns({ status: "running" }))["TR-1.01"]?.[0]).toBe("working");
   });
 
+  it("puts a paused ticket without an owner in Queued with Resume, and keeps a pausing one where it is (TR-088)", async () => {
+    const requested = "PAUSE-REQUESTED 2026-10-13T14:58:00Z — the user pressed Pause";
+    const hold = "HOLD 2026-10-13T14:59Z — paused by the user; resume from the latest HANDOFF";
+    const recordsOf: Record<string, string> = {
+      "TR-1": `${notes}\n\n${requested}`,
+      "TR-3": `${notes}\n\n${requested}\n\nHANDOFF 2026-10-13T14:58Z\n- Phase: x\n\n${hold}`,
+      "TR-4": `${notes}\n\n${hold}`,
+      "TR-5": notes,
+    };
+    vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "In Progress"), ticket("TR-3", "In Progress"), ticket("TR-4", "Ready"), ticket("TR-5", "In Progress")] as unknown as Awaited<
+      ReturnType<typeof listTickets>
+    >);
+    vi.mocked(viewTicket).mockImplementation(async (_tracker: string, id: string) => ({ implementationNotes: recordsOf[id] ?? null, finalSummary: "" }) as unknown as Awaited<ReturnType<typeof viewTicket>>);
+    vi.mocked(projectAgents).mockResolvedValue([agent("owner-live", "owner", "TR-1", "2026-10-13T14:50:00Z")]);
+    const board = await loadBoard({ agents: { ref: () => ({ timeline: { refetch: async () => ({ entries: [] }) } }) } } as unknown as PaseoApi, state([]), "taro");
+    const cards = Object.fromEntries(board.cards.map((card) => [card.id, [card.column, card.pause?.state ?? null, card.pausable]]));
+    expect(cards).toEqual({
+      "TR-1": ["working", "pausing", false],
+      "TR-3": ["queued", "paused", false],
+      "TR-4": ["queued", "paused", false],
+      // Not paused and with no owner: still Stalled, and Pause is offered.
+      "TR-5": ["stalled", null, true],
+    });
+  });
+
   it("reads a running owner's latest tool call as its activity, and none for an idle one", async () => {
     const refetch = vi.fn(async () => ({
       entries: [
