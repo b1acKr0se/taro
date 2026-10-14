@@ -33,3 +33,13 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Paseo
+
+Parts of the composer are ported from **Paseo** (`github.com/getpaseo/paseo`, `packages/app`, tag
+`v0.11.2`), Copyright (c) 2025-present Mohamed Boudra, used under the Apache License, Version 2.0.
+Ported files say so in their header comment, with what was changed: `client/composer-input-height.ts`
+(from `src/composer/input/height.web.ts` and `height.native.ts`) and `client/composer-height.ts`
+(the composer's measurements and maximum height from `src/composer/input/input.tsx`). Paseo ships
+no NOTICE file. Its license, with the Apache License 2.0 in full, is in
+`LICENSES/paseo-LICENSE.txt`.

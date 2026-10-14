@@ -38,6 +38,10 @@ undocumented path (`globalThis.expo.modules`), and its image manipulator to shri
 large for the agent. If a Paseo update changes them, the matching item disappears from the + menu,
 or large photos are refused instead of shrunk; see `client/attachment-sources.ts`.
 
+Taro's composer takes Paseo's own layout, sizes and input growth, ported from Paseo's source
+(Apache-2.0, Copyright (c) 2025-present Mohamed Boudra); FirstMate's adapted files are MIT. Both
+are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ## Read first
 
 | Document | What it holds |
