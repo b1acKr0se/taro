@@ -7,7 +7,10 @@
  * plugin's own rebase and abort rewrite the tracker's files, which would
  * otherwise pull again every few seconds. Board reads also pull, at most once
  * a minute, so tickets edited on another machine show up; a conflict pauses
- * that until the user resolves it.
+ * that until the user resolves it. A backstop (TR-050) catches a missed
+ * file-watch event: a project whose listeners have not run for five minutes is
+ * committed and passed again when its tracker has uncommitted changes or a HEAD
+ * they have not seen.
  */
 import { watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
@@ -15,11 +18,12 @@ import { join } from "node:path";
 import { listProjectConfigs, projectPaths } from "./projects";
 import { serialized } from "./serialize";
 import type { SyncResolution, TrackerSyncProblem } from "../shared/contracts";
-import { runCommand } from "./process";
+import { runChecked, runCommand } from "./process";
 import { commitTracker, syncTracker, type SyncStrategy } from "./tracker";
 
 const DEBOUNCE_MS = 5_000;
 const PULL_INTERVAL_MS = 60_000;
+export const BACKSTOP_INTERVAL_MS = 5 * 60_000;
 
 export type TrackerChangeListener = (project: string) => void;
 export type TrackerSyncer = (trackerPath: string, strategy?: SyncStrategy) => Promise<TrackerSyncProblem | null>;
@@ -42,6 +46,8 @@ export class TrackerWatch {
   private readonly lastSync = new Map<string, number>();
   private readonly pulling = new Set<string>();
   private readonly listeners = new Set<TrackerChangeListener>();
+  /** When each project's listeners last ran, or the backstop last found nothing new, and the tracker's HEAD then. */
+  private readonly lastLook = new Map<string, { at: number; head: string | null }>();
 
   constructor(
     private readonly sync: TrackerSyncer = syncTracker,
@@ -96,7 +102,7 @@ export class TrackerWatch {
       } catch (error) {
         console.error(`[taro] committing ${project}'s tracker failed: ${error instanceof Error ? error.message : String(error)}`);
       }
-      for (const listener of this.listeners) listener(project);
+      await this.notify(project, paths.tracker);
     });
   }
 
@@ -110,7 +116,7 @@ export class TrackerWatch {
       }
       const paths = await projectPaths(project);
       const problem = await this.syncAndRecord(project, paths.tracker, RESOLUTION_STRATEGIES[resolution]);
-      for (const listener of this.listeners) listener(project);
+      await this.notify(project, paths.tracker);
       return problem;
     });
   }
@@ -144,8 +150,46 @@ export class TrackerWatch {
       const before = await this.head(paths.tracker);
       await this.syncAndRecord(project, paths.tracker, "rebase");
       if ((await this.head(paths.tracker)) === before) return;
-      for (const listener of this.listeners) listener(project);
+      await this.notify(project, paths.tracker);
     });
+  }
+
+  private async notify(project: string, trackerPath: string): Promise<void> {
+    this.lastLook.set(project, { at: this.now(), head: await this.head(trackerPath).catch(() => null) });
+    for (const listener of this.listeners) listener(project);
+  }
+
+  /**
+   * Called every minute. A file-watch event can be missed, and then nothing commits the change or
+   * runs the status pass until the next one, which overnight may be hours away. For each project
+   * not looked at for five minutes: commits and runs the listeners when the tracker has
+   * uncommitted changes or a HEAD the listeners have not seen; otherwise only notes the look. Right
+   * after a start the HEAD is taken as seen (the start's catch-up reads the tracker). Returns the
+   * projects it ran the listeners for.
+   */
+  async backstop(): Promise<string[]> {
+    const ran: string[] = [];
+    for (const config of await listProjectConfigs()) {
+      const last = this.lastLook.get(config.project);
+      if (last !== undefined && this.now() - last.at < BACKSTOP_INTERVAL_MS) continue;
+      try {
+        const paths = await projectPaths(config.project);
+        const head = await this.head(paths.tracker);
+        if (!(await this.uncommitted(paths.tracker)) && (last === undefined || head === last.head)) {
+          this.lastLook.set(config.project, { at: this.now(), head });
+          continue;
+        }
+        await this.commit(config.project);
+        ran.push(config.project);
+      } catch (error) {
+        console.error(`[taro] tracker backstop for ${config.project} failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    return ran;
+  }
+
+  private async uncommitted(trackerPath: string): Promise<boolean> {
+    return (await runChecked("git", ["-C", trackerPath, "status", "--porcelain", "--", "backlog"], { timeoutMs: 30_000 })).trim() !== "";
   }
 
   private async head(trackerPath: string): Promise<string> {

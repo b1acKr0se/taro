@@ -97,6 +97,19 @@ export default function contribute(server: PluginServerContext) {
     console.error("[taro] could not start tracker watches:", error);
   });
 
+  // A missed file-watch event must not stall the queue until something else writes the tracker (TR-050).
+  let backstopping = false;
+  const backstopTimer = setInterval(() => {
+    if (backstopping) return;
+    backstopping = true;
+    void trackers
+      .backstop()
+      .catch((error: unknown) => console.error("[taro] tracker backstop failed:", error))
+      .finally(() => {
+        backstopping = false;
+      });
+  }, 60_000);
+
   // Idle compaction (TR-015): once a minute, so an agent is caught inside its 55–60 minute window.
   const idleAfterMs = idleCompactAfterMs(process.env.TARO_IDLE_COMPACT_AFTER_SECONDS);
   let checkingIdle = false;
@@ -280,6 +293,7 @@ export default function contribute(server: PluginServerContext) {
     removeArchiveHook();
     removeSessionHook();
     clearInterval(idleTimer);
+    clearInterval(backstopTimer);
     recovery.dispose();
     trackers.stop();
   };
