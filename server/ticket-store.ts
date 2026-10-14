@@ -137,6 +137,8 @@ export class TicketInvalid extends Error {
 
 const DEFAULT_LOCK_TIMEOUT_MS = 30_000;
 const OWNERLESS_LOCK_STALE_MS = 10_000;
+/** A breaker holds its mutex for a few file operations; one older than this died mid-break. */
+const BREAKER_STALE_MS = 5_000;
 const STRAY_TEMP_MS = 60_000;
 const TRACKER_SCHEMA = 1;
 const ID_PATTERN = /^[A-Za-z][A-Za-z0-9]*-\d+(\.\d+)*$/;
@@ -199,6 +201,7 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
   const ticketsDirectory = join(trackerPath, "tickets");
   const taroDirectory = join(trackerPath, ".taro");
   const lockDirectory = join(taroDirectory, "lock");
+  const breakerDirectory = join(taroDirectory, "lock.break");
   const trackerFile = join(trackerPath, "tracker.json");
   const lockTimeoutMs = options.lockTimeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS;
   const now = options.now ?? (() => new Date());
@@ -223,26 +226,33 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
     }
   }
 
-  /** Moves the lock aside and removes it, then checks it was the one judged stale; a live lock taken meanwhile goes back. */
+  /**
+   * Removes the lock judged stale, never a live one: breakers take turns under `.taro/lock.break`,
+   * and under it the lock is checked again (same token, or still ownerless and old) before it is
+   * renamed aside, so a lock that changed hands since the waiter looked is left alone.
+   */
   async function breakLock(expectedToken: string | null): Promise<void> {
-    const aside = join(taroDirectory, `lock.broken.${tempSuffix()}`);
     try {
-      await rename(lockDirectory, aside);
+      await mkdir(breakerDirectory);
     } catch {
+      // Another process is breaking: its break (or the next look) settles this one. A breaker that died leaves an old mutex.
+      const breakerStat = await stat(breakerDirectory).catch(() => null);
+      if (breakerStat !== null && Date.now() - breakerStat.mtimeMs > BREAKER_STALE_MS) await rm(breakerDirectory, { recursive: true, force: true });
       return;
     }
-    let token: string | null = null;
     try {
-      const owner = JSON.parse(await readFile(join(aside, "owner.json"), "utf8")) as { token?: unknown };
-      token = typeof owner.token === "string" ? owner.token : "";
-    } catch {
-      token = null;
+      const owner = await readOwner();
+      const stillStale =
+        expectedToken === null
+          ? owner === null && Date.now() - ((await stat(lockDirectory).catch(() => null))?.mtimeMs ?? Date.now()) > OWNERLESS_LOCK_STALE_MS
+          : owner !== null && owner.token === expectedToken;
+      if (!stillStale) return;
+      const aside = join(taroDirectory, `lock.broken.${tempSuffix()}`);
+      await rename(lockDirectory, aside).catch(() => undefined);
+      await rm(aside, { recursive: true, force: true });
+    } finally {
+      await rm(breakerDirectory, { recursive: true, force: true });
     }
-    if (token !== expectedToken) {
-      await rename(aside, lockDirectory).catch(() => undefined);
-      return;
-    }
-    await rm(aside, { recursive: true, force: true });
   }
 
   async function acquireLock(): Promise<string> {
@@ -311,6 +321,20 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
     );
   }
 
+  /** A breaker that died between its rename and its removal leaves a `lock.broken.*` folder behind. */
+  async function removeBrokenLocks(): Promise<void> {
+    const names = await readdir(taroDirectory).catch(() => [] as string[]);
+    await Promise.all(
+      names
+        .filter((name) => name.startsWith("lock.broken."))
+        .map(async (name) => {
+          const path = join(taroDirectory, name);
+          const folderStat = await stat(path).catch(() => null);
+          if (folderStat !== null && Date.now() - folderStat.mtimeMs > STRAY_TEMP_MS) await rm(path, { recursive: true, force: true });
+        }),
+    );
+  }
+
   /** The one write path: lock, sweep stray temp files, run the change, unlock. */
   function locked<T>(work: () => Promise<T>): Promise<T> {
     const run = async (): Promise<T> => {
@@ -318,6 +342,7 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
       try {
         await removeStrayTemps(ticketsDirectory);
         await removeStrayTemps(taroDirectory);
+        await removeBrokenLocks();
         return await work();
       } finally {
         await releaseLock(token);

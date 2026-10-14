@@ -341,6 +341,27 @@ describe("ticket store", () => {
       expect((await store().view("TR-001")).ticket.notes).toBe("after stale");
     });
 
+    // Regression (TR-081.01 review): two waiters breaking one dead lock used to move a live lock aside, letting two writers in.
+    it("processes contending for a dead holder's lock land every record once and leave no lock behind", async () => {
+      await store().create({ title: "Shared" });
+      const rounds = 15;
+      const writers = 12;
+      for (let round = 0; round < rounds; round++) {
+        await holdLock({ pid: deadPid(), host: hostname(), at: "2026-10-14T16:00:00Z", token: `dead-${round}` });
+        await Promise.all(
+          Array.from({ length: writers }, (_, index) =>
+            inNode(`await createTicketStore(process.env.TRACKER).appendNote("TR-001", "round ${round} writer ${index}");`),
+          ),
+        );
+      }
+      const parsed = parseTicket(await readFile(ticketPath("TR-001"), "utf8"), "TR-001.md");
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      const expected = Array.from({ length: rounds * writers }, (_, index) => `round ${Math.floor(index / writers)} writer ${index % writers}`);
+      expect(parsed.ticket.notes.split("\n\n").sort()).toEqual(expected.sort());
+      expect(await readdir(join(tracker, ".taro"))).toEqual([]);
+    }, 180_000);
+
     it("a fresh lock dir without owner.json is waited on", async () => {
       await store().create({ title: "One" });
       await holdLock(null);
