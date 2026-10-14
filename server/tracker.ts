@@ -9,6 +9,7 @@ import { join } from "node:path";
 
 import type { TrackerSyncProblem } from "../shared/contracts";
 import { commandError, runChecked, runCommand, type CommandResult } from "./process";
+import { createTicketStore } from "./ticket-store";
 
 export const TRACKER_BRANCH = "taro/backlog";
 
@@ -143,9 +144,22 @@ export async function trackerPathspecs(trackerPath: string): Promise<string[]> {
 /**
  * Commits the tickets, tracker.json and .gitignore. Skipped while a write holds `.taro/lock`, so a
  * half-made change of several files is never committed; the debounce or the backstop commits later.
+ * A lock its holder left behind (a killed `taro`, a plugin stopped mid-write) is broken as a write
+ * would break it, and the commit made under it: otherwise nothing is committed until the next write.
  */
 export async function commitTracker(trackerPath: string): Promise<TrackerCommit> {
-  if (await exists(join(trackerPath, ".taro", "lock"))) return { subject: null, locked: true };
+  const lock = join(trackerPath, ".taro", "lock");
+  if (!(await exists(lock))) return commitUnlocked(trackerPath);
+  try {
+    // No waiting: a live holder fails this at once, and the pass is tried again later.
+    return await createTicketStore(trackerPath, { lockTimeoutMs: 0 }).withLock(() => commitUnlocked(trackerPath));
+  } catch (error) {
+    if (await exists(lock)) return { subject: null, locked: true };
+    throw error;
+  }
+}
+
+async function commitUnlocked(trackerPath: string): Promise<TrackerCommit> {
   const pathspecs = await trackerPathspecs(trackerPath);
   if (pathspecs.length === 0) return { subject: null, locked: false };
   await git(trackerPath, ["add", "-A", "--", ...pathspecs]);

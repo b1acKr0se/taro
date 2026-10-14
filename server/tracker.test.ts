@@ -1,6 +1,6 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -95,6 +95,23 @@ describe("trackers on disk (scratch repositories, never the live tracker)", () =
     expect(await commitTracker(tracker)).toEqual({ subject: "taro: update NA-001", locked: false });
     expect(git(tracker, "ls-files").trim().split("\n").sort()).toEqual([".gitignore", "tickets/NA-001.md", "tracker.json"]);
     expect(git(tracker, "status", "--porcelain", "--untracked-files=all").trim().split("\n").sort()).toEqual(["?? stray.txt", "?? tickets/.NA-001.123.abc.tmp"]);
+  });
+
+  // Regression (TR-081 review): a lock left by a killed writer stopped every commit until the next write.
+  it("breaks a lock whose holder is gone and commits, but leaves a live holder's lock alone", async () => {
+    await ensureTracker(setup());
+    writeFileSync(join(tracker, "tickets", "NA-001.md"), "one\n");
+    mkdirSync(join(tracker, ".taro", "lock"), { recursive: true });
+    const dead = spawnSync(process.execPath, ["-e", ""]).pid;
+    writeFileSync(join(tracker, ".taro", "lock", "owner.json"), JSON.stringify({ pid: dead, host: hostname(), token: "gone" }));
+    expect(await commitTracker(tracker)).toEqual({ subject: "taro: update NA-001", locked: false });
+    expect(existsSync(join(tracker, ".taro", "lock"))).toBe(false);
+
+    writeFileSync(join(tracker, "tickets", "NA-001.md"), "two\n");
+    mkdirSync(join(tracker, ".taro", "lock"));
+    writeFileSync(join(tracker, ".taro", "lock", "owner.json"), JSON.stringify({ pid: process.pid, host: hostname(), token: "live" }));
+    expect(await commitTracker(tracker)).toEqual({ subject: null, locked: true });
+    expect(JSON.parse(readFileSync(join(tracker, ".taro", "lock", "owner.json"), "utf8")).token).toBe("live");
   });
 });
 
