@@ -14,7 +14,7 @@ import { useMemo, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { answerDecision } from "../shared/contracts";
-import { decisionOptionRows, decisionSubmit } from "../shared/decision-view";
+import { askedBy, decisionOptionRows, decisionSubmit } from "../shared/decision-view";
 import type { StoredDecision } from "../shared/state";
 import { errorText } from "./format";
 import { useRevealFocused } from "./keyboard";
@@ -22,13 +22,6 @@ import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { IconButton } from "./ui";
-
-/** "SC-003 · Add validation" — the agent's title already starts with its ticket when it has one. */
-export function askedBy(decision: StoredDecision): string {
-  const title = decision.agentTitle ?? decision.agentRole;
-  if (decision.ticket === null || title.startsWith(decision.ticket)) return `${decision.project} · ${title}`;
-  return `${decision.project} · ${decision.ticket} · ${title}`;
-}
 
 /** A "why" longer than this folds to four lines behind "more". */
 const WHY_FOLD_CHARACTERS = 220;

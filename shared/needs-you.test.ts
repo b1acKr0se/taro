@@ -10,11 +10,12 @@ describe("permissionAsk", () => {
     });
   });
 
-  it("falls back to the tool's name, then a file, an address or the description", () => {
-    expect(permissionAsk({ name: "Edit", kind: "tool", input: { file_path: "/repo/src/index.ts" } })).toEqual({ title: "Edit", detail: "/repo/src/index.ts" });
-    expect(permissionAsk({ name: "WebFetch", kind: "tool", input: { url: "https://example.com" } })).toEqual({ title: "WebFetch", detail: "https://example.com" });
-    expect(permissionAsk({ name: "Custom", kind: "tool", description: "Writes the cache" })).toEqual({ title: "Custom", detail: "Writes the cache" });
-    expect(permissionAsk({ name: "Custom", kind: "tool" })).toEqual({ title: "Custom", detail: null });
+  it("asks to allow the tool by name without a title, acting on a file, an address or the description", () => {
+    expect(permissionAsk({ name: "Bash", kind: "tool", input: { command: "ls" } })).toEqual({ title: "Allow Bash?", detail: "ls" });
+    expect(permissionAsk({ name: "Edit", kind: "tool", input: { file_path: "/repo/src/index.ts" } })).toEqual({ title: "Allow Edit?", detail: "/repo/src/index.ts" });
+    expect(permissionAsk({ name: "WebFetch", kind: "tool", input: { url: "https://example.com" } })).toEqual({ title: "Allow WebFetch?", detail: "https://example.com" });
+    expect(permissionAsk({ name: "Custom", kind: "tool", description: "Writes the cache" })).toEqual({ title: "Allow Custom?", detail: "Writes the cache" });
+    expect(permissionAsk({ name: "Custom", kind: "tool" })).toEqual({ title: "Allow Custom?", detail: null });
   });
 
   it("keeps the first line of a multi-line command", () => {
@@ -33,7 +34,7 @@ describe("permissionAsk", () => {
   });
 
   it("treats a question form without questions as a tool", () => {
-    expect(permissionAsk({ name: "AskUserQuestion", kind: "question", input: { questions: [] } })).toEqual({ title: "AskUserQuestion", detail: null });
+    expect(permissionAsk({ name: "AskUserQuestion", kind: "question", input: { questions: [] } })).toEqual({ title: "Allow AskUserQuestion?", detail: null });
   });
 
   it("shows a plan's first line", () => {

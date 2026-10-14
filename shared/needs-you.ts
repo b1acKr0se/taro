@@ -14,13 +14,13 @@ export interface PermissionRequestParts {
 }
 
 export interface PermissionAsk {
-  /** What is asked: the tool's title, or a question form's first question. */
+  /** What is asked: the tool's title or "Allow <tool>?", or a question form's first question. */
   title: string;
   /** The command, file or address it acts on, or the request's description; one line. */
   detail: string | null;
 }
 
-/** The longest detail kept; the card shows two lines of it at most. */
+/** The longest detail kept; the card shows three lines of it at most. */
 const DETAIL_CHARACTERS = 240;
 
 export function permissionAsk(request: PermissionRequestParts): PermissionAsk {
@@ -31,7 +31,8 @@ export function permissionAsk(request: PermissionRequestParts): PermissionAsk {
   }
   if (request.kind === "plan") return { title: request.title ?? "Approve the plan", detail: firstLine(input.plan) };
   const detail = firstLine(input.command) ?? firstLine(input.file_path) ?? firstLine(input.url) ?? firstLine(request.description);
-  return { title: request.title ?? request.name, detail };
+  // A bare tool name ("Bash") does not say it is asking; the question does.
+  return { title: request.title ?? `Allow ${request.name}?`, detail };
 }
 
 function firstQuestion(questions: unknown): string | null {

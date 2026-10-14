@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   READ_ONLY_NOTES,
+  askedBy,
   decisionBlockView,
   decisionOptionRows,
   decisionSubmit,
@@ -205,5 +206,19 @@ describe("optionAsksForWords", () => {
     expect(optionAsksForWords({ label: "Keep", prompt: "Keep it" })).toBe(false);
     // Three dots are not the ellipsis the format names.
     expect(optionAsksForWords({ label: "Wait...", prompt: "Wait" })).toBe(false);
+  });
+});
+
+describe("askedBy", () => {
+  const base = { project: "notes", ticket: null, agentTitle: null, agentRole: "manager" as const };
+  it("names the project once for a Manager whose title already carries it", () => {
+    expect(askedBy({ ...base, agentTitle: "notes · Manager" })).toBe("notes · Manager");
+  });
+  it("adds the project, and the ticket when the title lacks it", () => {
+    expect(askedBy({ ...base, ticket: "NA-002", agentRole: "owner", agentTitle: "NA-002 · Sync" })).toBe("notes · NA-002 · Sync");
+    expect(askedBy({ ...base, ticket: "NA-002", agentRole: "reviewer", agentTitle: "Reviewer checking the branch" })).toBe("notes · NA-002 · Reviewer checking the branch");
+  });
+  it("falls back to the role without a title", () => {
+    expect(askedBy(base)).toBe("notes · manager");
   });
 });

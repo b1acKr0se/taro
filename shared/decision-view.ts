@@ -126,3 +126,14 @@ export type OptionChip = { label: string; recommended: boolean; asksForWords: bo
 export function optionChips(decision: Pick<StoredDecision, "options" | "recommended" | "reason">): OptionChip[] {
   return decisionOptionRows(decision).rows.map((row) => ({ label: row.label, recommended: row.recommended, asksForWords: optionAsksForWords(row) }));
 }
+
+/**
+ * Who asked, as a card's head says it: "notes · SC-003 · Add validation". The agent's title already
+ * starts with its ticket when it has one, and a Manager's with its project ("notes · Manager").
+ */
+export function askedBy(decision: Pick<StoredDecision, "project" | "ticket" | "agentTitle" | "agentRole">): string {
+  const title = decision.agentTitle ?? decision.agentRole;
+  const project = title.startsWith(`${decision.project} ·`) ? "" : `${decision.project} · `;
+  if (decision.ticket === null || title.startsWith(decision.ticket)) return `${project}${title}`;
+  return `${project}${decision.ticket} · ${title}`;
+}

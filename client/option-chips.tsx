@@ -38,21 +38,21 @@ export function OptionChips({
   const styles = useMemo(
     () => ({
       // Wraps rather than scrolls: every answer stays in view, however many there are.
-      row: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.xs + 2 },
+      row: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.xs },
       chip: {
         flexDirection: "row" as const,
         alignItems: "center" as const,
         gap: SPACE.xs,
         maxWidth: "100%" as const,
-        paddingHorizontal: SPACE.sm + 2,
-        paddingVertical: SPACE.xs,
+        paddingHorizontal: SPACE.sm,
+        paddingVertical: SPACE.xxs + 1,
         borderRadius: 999,
         borderWidth: 1,
         borderColor: colors.border,
         backgroundColor: colors.surface1,
       },
       recommended: { borderColor: withAlpha(colors.accent, 0.6), backgroundColor: withAlpha(colors.accent, 0.08) },
-      label: { flexShrink: 1, color: colors.foreground, fontSize: FONT_SIZE.small },
+      label: { flexShrink: 1, color: colors.foreground, fontSize: FONT_SIZE.caption },
     }),
     [colors],
   );
