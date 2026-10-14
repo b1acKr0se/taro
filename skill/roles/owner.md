@@ -53,7 +53,9 @@ too, test-daemon and scratch-repository cleanup most of all. Then follow the flo
 6. **Review** (below), then deliver (below).
 
 **Bugs:** reproduce first (end to end; separate trigger from symptom; compare with a path that
-works). The reproduction becomes the regression test and must fail before the fix. Clear cause and
+works). The reproduction becomes the regression test and must fail before the fix. When the defect
+shipped with an earlier ticket, append an **ESCAPE** record to that ticket naming the check that
+should have caught it (`reference/tickets.md`), so the review's misses can be counted. Clear cause and
 one correct fix that changes nothing else → trivial; otherwise low, with a cause / fix /
 alternatives proposal.
 
@@ -104,7 +106,8 @@ decisions to the user.
 ## Review (decision 25)
 
 - **trivial / low:** self-review — reread your whole diff against the criteria, apply the finding
-  rule below, run the full checks, fix what you find.
+  rule below, run the full checks, fix what you find. A visible change gets the coverage map and the
+  per-screenshot checks of your user's-eyes pass (Delivery) all the same.
 - **medium:** one independent reviewer (`roles/reviewer.md`), started like an implementer with
   `taro.role=reviewer` and the strongest model for risky code. For a visible change, capture the
   screenshots first and give it their absolute paths, the user's words and the criteria: it looks at
@@ -114,7 +117,11 @@ decisions to the user.
 
 You verify every finding against the code yourself (valid / partially valid / invalid, with
 evidence), fix the valid blockers and should-fix findings yourself, and record a REVIEW note that
-answers every finding: fixed, or rejected with the reason. **Every** review checks test
+answers every finding: fixed, or rejected with the reason. A **Question** (a preference the plan or
+the user did not settle: a label, wording, density, a layout choice) is not yours or the
+reviewer's to settle: raise it as a non-blocking decision with your recommendation as the default,
+carry on, and note it in the REVIEW record. A reviewer blocker that is really a preference is a
+Question too. **Every** review checks test
 sufficiency: each changed behaviour has a test that would fail if it regressed; a bug fix keeps its
 reproduction; tests cover the input space (empty, zero, maximum, rounding, ordering), not the code's
 own assumption. A missing or empty test for a changed behaviour is a blocker.
@@ -130,13 +137,22 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
     carries (a delivery summary with Markdown and HTML, not "Lorem"), long names, many items, the
     empty state; plus **at least one stress case per screen touched** (the longest, the most, the
     emptiest). Names in it stay neutral (SKILL.md rule 8).
+  - **Coverage map:** list each screen section or state the diff renders or changes (only those, not
+    the whole app) and the screenshot that shows it, as EVIDENCE `coverage:` lines. Capture each
+    with data that exercises it: a parent with children for a children section, a long value for a
+    value column. A changed section with no screenshot is not delivered; Accept is refused without
+    the map when there are screenshots.
   - **User's-eyes pass:** open every screenshot and read it against the user's words in the ticket
-    as a picky user would. Reject: misalignment; mismatched controls (sibling buttons of different
-    size, style or order); clipped, overlapping or covered UI (a keyboard over a button); see-through
-    layers; raw markup or escaped HTML; wrong case; leftover debug or placeholder text. Fix and
-    re-capture what you find, or name it in FINAL as a limitation.
-  - Record the result as the EVIDENCE `ux:` line (`reference/tickets.md`); a reviewer's visual
-    verdict goes on it too. Accept is refused without it when there are screenshots.
+    as a picky user would. On each changed screen, check and write down two things: whether label
+    and value columns and row edges line up (where values start, for rows that share a layout), and
+    any fallback or placeholder text (Unknown, undefined, null, NaN, `{}`, `[object Object]`, an
+    empty label). Reject those and also: mismatched controls (sibling buttons of different size,
+    style or order); clipped, overlapping or covered UI (a keyboard over a button); see-through
+    layers; raw markup or escaped HTML; wrong case; leftover debug text. Fix and re-capture what you
+    find, or name it in FINAL as a limitation. This takes minutes, not a round.
+  - Record the result as the EVIDENCE `ux:` line (`reference/tickets.md`), naming the alignment and
+    placeholder result per changed screen; a reviewer's visual verdict goes on it too. Accept is
+    refused without it when there are screenshots.
 - Before FINAL, write an EVIDENCE record (`reference/tickets.md`): checks with results, the review
   outcome, the `ux:` line, and screenshots in `$TARO_EVIDENCE/<ID>/` (desktop and phone for visible changes), each
   named for what it shows and captioned (`reference/formats.md`, Images), or `screenshots: none`

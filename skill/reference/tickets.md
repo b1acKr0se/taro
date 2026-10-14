@@ -66,8 +66,12 @@ never rewrite history. Keep each within its limit; cut rather than exceed it.
 - **EVIDENCE**: what the user sees before Accept; the newest record counts. One fact per line,
   label in any case, separator ` — ` (` -- ` and ` - ` also work):
   `check: <command> — <result>` (one or more), `review: <outcome>`,
-  `ux: <the user's-eyes result>` (what your pass found and fixed, the reviewer's visual verdict if
-  there was one, anything left open; required whenever there are screenshots),
+  `ux: <the user's-eyes result>` (per changed screen: where values start and whether columns and
+  row edges line up, any placeholder text found; what your pass fixed, the reviewer's visual
+  verdict if there was one, anything left open; required whenever there are screenshots),
+  `coverage: <section or state> — <screenshot file>[, <file>…]` (one per section or state the diff
+  renders or changes, each naming screenshots of this record; required whenever there are
+  screenshots: `roles/owner.md`, Delivery),
   `screenshot: <file name> — <caption>` (a bare name; the file is in `$TARO_EVIDENCE/<ID>/`; a name
   that says what it shows and a caption are required: `reference/formats.md`, Images), or
   `screenshots: none — <reason>`. A change needs a check, a review line and screenshots with a `ux:`
@@ -76,9 +80,12 @@ never rewrite history. Keep each within its limit; cut rather than exceed it.
       EVIDENCE 2026-01-05T10:00Z — before FINAL
       check: npm test — 37 files, 360 passed
       review: one independent round (Sonnet) — 1 blocker, fixed
-      ux: own pass fixed a clipped Save button; reviewer: a long title ran under the menu, fixed
+      ux: list rows: titles and dates start at one x on both; no placeholder text; own pass fixed a clipped Save button; reviewer agrees
+      coverage: notes list, 40 notes with long titles — notes-list-desktop.png, notes-list-phone.png
+      coverage: empty list — notes-empty-phone.png
       screenshot: notes-list-desktop.png — the list on a wide screen
       screenshot: notes-list-phone.png — the same on a phone
+      screenshot: notes-empty-phone.png — no notes yet, on a phone
 
   `$TARO_EVIDENCE` is `$PASEO_HOME/plugin-data/taro/evidence/<project>` when unset
   (`~/.paseo/…` without `PASEO_HOME`).
@@ -88,3 +95,7 @@ never rewrite history. Keep each within its limit; cut rather than exceed it.
   The evidence per criterion is the EVIDENCE record; do not repeat it.
 - **ACCEPTANCE**: the user's words, time, accepted revision and PR, merge result.
 - **ANSWER**: written by the plugin when the user answers a decision.
+- **ESCAPE**: on a delivered ticket, when a later ticket fixes a defect it shipped; written by the
+  later ticket's owner. What escaped, the fixing ticket, and the check that should have caught it
+  (coverage map, alignment, placeholder text, a test, a review area):
+  `ESCAPE 2026-01-06T09:00Z — children listed as "Unknown"; fixed by NA-14; missed by: coverage map (no screenshot had children)`.

@@ -11,10 +11,19 @@ Give each area a one-line verdict: **pass**, **findings** or **not applicable**,
 
 1. **Does what was asked** — the user's intent and each outcome criterion, with the evidence that
    shows it. For a UI change, judge the screenshots against the user's words **first**, before the
-   plan or the diff, as a picky user would: layout and alignment, consistent controls, clipped,
-   overlapping or covered UI, see-through layers, raw markup, leftover debug text; states (empty,
-   long text, many items, errors); phone and desktop where relevant. Content too short or too tidy
-   to prove anything is a finding.
+   plan or the diff, as a picky user would; keep to the screens the change touches:
+   - **Coverage:** check the owner's coverage map (EVIDENCE `coverage:` lines) against the diff:
+     every section or state the diff renders or changes has a screenshot, taken with data that
+     exercises it (a parent with children, not a ticket without any). A changed section with no
+     screenshot, or one shown only empty, is a blocker.
+   - **Per screenshot**, confirm or correct the owner's `ux:` line: do label and value columns and
+     row edges line up (where do values start in rows that share a layout)? Is there fallback or
+     placeholder text: Unknown, undefined, null, NaN, `{}`, `[object Object]`, an empty label?
+     Then the rest: consistent controls; clipped, overlapping or covered UI; see-through layers; raw
+     markup; leftover debug text; states (empty, long text, many items, errors); phone and desktop.
+   Content too short or too tidy to prove anything is a finding. Your verdict names what you
+   checked, e.g. "values start at one x in Goal/Result/Size rows; no placeholder text; Children
+   shown with 3 children".
 2. **Correct and robust** — bugs with a concrete triggering input or state, error paths, edge cases
    with a realistic path, behaviour across restarts and retries.
 3. **Tested** — each changed behaviour has a test that would fail if it regressed (a bug fix keeps
@@ -32,6 +41,12 @@ Two severities only:
 - **Should-fix** — a real defect with lower impact; the owner fixes it in this ticket or records why
   not.
 
+A matter of preference is neither: a label, wording, density or layout choice that the plan or the
+user did not settle is a **Question** for the user, never a blocker ("the Back button shows only an
+arrow: label it?"). Report it with the options and your recommendation; the owner asks the user.
+Misalignment, mismatched sibling controls and placeholder text are defects; whether a control
+carries a label is a preference.
+
 Each finding: severity, area, location (`file:line` or screenshot name), the failure scenario, a
 specific fix. No nits, style, "consider…", or cases with no realistic path; list anything outside
 the ticket's scope separately as follow-ups. "No findings" is a valid review. On a recheck, look
@@ -40,6 +55,6 @@ only at the fixes and their screenshots.
 Any command you run follows `$TARO_SKILL/reference/shell.md`: nobody may be watching to approve it.
 
 When the change has a PR, also post your review as a PR comment (`gh pr comment <url> --body-file
-<file>`). Your final message is the review: the four verdicts, then the findings; end with
-`done: <n> blockers, <n> should-fix`. Keep each verdict to one line and each finding to a few;
-cut rather than exceed, as the owner copies them into a REVIEW record.
+<file>`). Your final message is the review: the four verdicts, then the findings and questions;
+end with `done: <n> blockers, <n> should-fix, <n> questions`. Keep each verdict to one line and each
+finding to a few; cut rather than exceed, as the owner copies them into a REVIEW record.
