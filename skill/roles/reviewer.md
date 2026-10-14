@@ -21,5 +21,7 @@ a specific fix. Do not report style, naming or formatting; hypothetical edge cas
 path; "consider…" suggestions; extra defensive code; anything outside the ticket's scope (list those
 separately as follow-ups). "No findings" is a valid review — do not invent findings.
 
+Any command you run follows `$TARO_SKILL/reference/shell.md`: nobody may be watching to approve it.
+
 When the change has a PR, also post your review as a PR comment (`gh pr comment <url> --body-file
 <file>`). Your final message is the review; end with `done: <n> blockers, <n> smells`.

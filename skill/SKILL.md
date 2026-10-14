@@ -42,3 +42,6 @@ Read only your role and the references it names.
 5. **Use absolute paths** in everything you write for another agent.
 6. **Never** push to the base branch, merge without the user's acceptance, deploy, or delete work
    that has not landed.
+7. **Write shell commands that need no approval**, as nobody may be there to give it: remove only
+   literal or guarded absolute paths, make scratch space with `mktemp -d`, and run a throwaway
+   Backlog project with `BACKLOG_CWD` and `TARO_TRACKER` unset. Details: `reference/shell.md`.

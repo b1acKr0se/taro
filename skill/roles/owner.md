@@ -62,6 +62,8 @@ one a "helper".
 - **Threads are finite:** before starting a subagent or a test daemon, read `cat
   /sys/fs/cgroup/pids.current /sys/fs/cgroup/pids.max` and wait while usage is above 85% (skip where
   the files are missing). Stop test daemons and finished subagents promptly.
+- **Unattended commands:** follow `reference/shell.md` (removals that need no approval, throwaway
+  Backlog projects without `BACKLOG_CWD`), and tell each subagent to read it.
 - Pick each subagent's model and thinking by the task's difficulty from the allowed list: mechanical
   → the cheapest; routine implementation → middle; risky or hard → the strongest. A model the user
   named (in the brief or in your chat) wins over this. Start them with
