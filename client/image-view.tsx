@@ -148,13 +148,13 @@ export function ImageThumbnail({
       <Pressable accessibilityRole="imagebutton" accessibilityLabel={`${label}, open full size`} style={frame} onPress={() => setOpen(true)}>
         <Image source={{ uri }} accessibilityLabel={label} resizeMode="cover" style={{ width: "100%", height: "100%" }} />
       </Pressable>
-      <ImageGallery images={images} start={open ? Math.min(Math.max(0, index), images.length - 1) : null} theme={theme} onClose={() => setOpen(false)} />
+      <ImageGallery images={images} start={open ? Math.min(Math.max(0, index), images.length - 1) : null} onClose={() => setOpen(false)} />
     </>
   );
 }
 
 /** The full-size view: the image at `start` of `images`, closed while `start` is null. */
-export function ImageGallery({ images, start, theme, onClose }: { images: readonly GalleryImage[]; start: number | null; theme: PluginTheme; onClose: () => void }) {
+export function ImageGallery({ images, start, onClose }: { images: readonly GalleryImage[]; start: number | null; onClose: () => void }) {
   const [index, setIndex] = useState(start ?? 0);
   useEffect(() => {
     if (start !== null) setIndex(start);
@@ -166,7 +166,7 @@ export function ImageGallery({ images, start, theme, onClose }: { images: readon
     <Modal visible={start !== null} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
       {start === null || shown === undefined ? null : (
         // Keyed by position, so each image starts at fit with its own gesture state.
-        <GalleryPage key={index} image={shown} index={index} count={images.length} theme={theme} onIndex={setIndex} onClose={onClose} />
+        <GalleryPage key={index} image={shown} index={index} count={images.length} onIndex={setIndex} onClose={onClose} />
       )}
     </Modal>
   );
@@ -206,23 +206,26 @@ const BAR_HEIGHT = 52;
 const FADE_REACH = 28;
 const FADE_STEPS = 24;
 const FADE_ALPHA = 0.9;
+/**
+ * The viewer's own colours, the one place Taro draws outside `theme.colors`: an enlarged image sits
+ * on opaque black in either theme, so nothing behind it shows through (the user's choice, TR-042),
+ * and the theme has no black, nor text that reads on it in the light theme.
+ */
+const VIEWER = { backdrop: "#000000", text: "#ffffff", textMuted: withAlpha("#ffffff", 0.7) } as const;
 
 function GalleryPage({
   image,
   index,
   count,
-  theme,
   onIndex,
   onClose,
 }: {
   image: GalleryImage;
   index: number;
   count: number;
-  theme: PluginTheme;
   onIndex: (index: number) => void;
   onClose: () => void;
 }) {
-  const { colors } = theme;
   const kind = useMemo(() => sourceOf(image.source), [image.source]);
   const uri = useImageUri(kind);
   const natural = useImageSize(uri);
@@ -410,10 +413,10 @@ function GalleryPage({
   const statusBarHeight = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
   const SafeArea = Platform.OS === "ios" ? SafeAreaView : View;
   const control = { minWidth: 44, height: 44, alignItems: "center" as const, justifyContent: "center" as const, borderRadius: 22 };
-  const controlText = { color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" as const };
+  const controlText = { color: VIEWER.text, fontSize: FONT_SIZE.body, fontWeight: "600" as const };
 
   return (
-    <View style={{ flex: 1, backgroundColor: withAlpha(colors.surface0, 0.94) }}>
+    <View style={{ flex: 1, backgroundColor: VIEWER.backdrop }}>
       <View
         ref={stageRef}
         onLayout={(event) => onStageLayout(event.nativeEvent.layout.width, event.nativeEvent.layout.height)}
@@ -421,7 +424,7 @@ function GalleryPage({
         {...responder.panHandlers}
       >
         {uri === null ? (
-          <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center", marginTop: barHeight + SPACE.xl }}>Image not available</Text>
+          <Text style={{ color: VIEWER.textMuted, fontSize: FONT_SIZE.small, textAlign: "center", marginTop: barHeight + SPACE.xl }}>Image not available</Text>
         ) : uri === undefined || frame.fitted.width === 0 ? null : (
           <Animated.View
             style={{
@@ -441,13 +444,13 @@ function GalleryPage({
       <View pointerEvents="box-none" style={{ position: "absolute", top: 0, left: 0, right: 0 }} onLayout={(event) => setBarHeight(event.nativeEvent.layout.height)}>
         <View pointerEvents="none" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: -FADE_REACH }}>
           {Array.from({ length: FADE_STEPS }, (_, step) => (
-            <View key={step} style={{ flex: 1, backgroundColor: withAlpha(colors.surface0, FADE_ALPHA * (1 - (step / FADE_STEPS) ** 2)) }} />
+            <View key={step} style={{ flex: 1, backgroundColor: withAlpha(VIEWER.backdrop, FADE_ALPHA * (1 - (step / FADE_STEPS) ** 2)) }} />
           ))}
         </View>
         <SafeArea pointerEvents="box-none">
           <View pointerEvents="box-none" style={{ marginTop: statusBarHeight, height: BAR_HEIGHT, flexDirection: "row", alignItems: "center", paddingHorizontal: SPACE.xs }}>
             <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} hitSlop={SPACE.xs} style={control}>
-              <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.subtitle + 4 }}>✕</Text>
+              <Text style={{ color: VIEWER.text, fontSize: FONT_SIZE.subtitle + 4 }}>✕</Text>
             </Pressable>
             <View pointerEvents="none" style={{ flex: 1, alignItems: "center", paddingHorizontal: SPACE.sm }}>
               {count > 1 ? (
@@ -455,7 +458,7 @@ function GalleryPage({
                   {index + 1} of {count}
                 </Text>
               ) : null}
-              <Text numberOfLines={1} style={count > 1 ? { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption } : controlText}>
+              <Text numberOfLines={1} style={count > 1 ? { color: VIEWER.textMuted, fontSize: FONT_SIZE.caption } : controlText}>
                 {label}
               </Text>
             </View>

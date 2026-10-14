@@ -12,7 +12,8 @@ EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
   the root other than the two entries fails Paseo's compile.
 - No runtime dependencies: everything is a devDependency (`server/host-imports.test.ts` guards it).
   Paseo types come from `server/host-types.ts`, never `@getpaseo/client` in reachable code.
-- RPC wire names match `/^[a-z][a-z0-9._-]*$/`. Colours only from `theme.colors`.
+- RPC wire names match `/^[a-z][a-z0-9._-]*$/`. Colours only from `theme.colors`, except the
+  image viewer's opaque black backdrop and white controls (`VIEWER` in `client/image-view.tsx`).
 - Client code reaches the phone's Hermes from source, without Metro: no classes (use a factory
   function returning an object), and never capture a `for…of` loop variable in a closure (use
   `.map`). `server/client-bundle.test.ts` compiles the client as Paseo does and fails on either;
