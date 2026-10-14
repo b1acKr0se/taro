@@ -57,6 +57,7 @@ function stateOver(decisions: StoredDecision[]): PluginState {
     allDecisions: async () => [...decisions],
     decision: async (key: string) => decisions.find((decision) => decision.key === key) ?? null,
     updateDecisions: async <T>(change: (stored: StoredDecision[]) => T) => change(decisions),
+    trackerProtection: async () => null,
   } as unknown as PluginState;
 }
 

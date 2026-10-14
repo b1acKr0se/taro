@@ -4,12 +4,13 @@
  * creates it, reads tickets through the Backlog CLI's JSON output, appends
  * answer records, and is the only committer.
  */
-import { access, constants, readFile, writeFile } from "node:fs/promises";
+import { access, constants, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 
 import type { TrackerSyncProblem } from "../shared/contracts";
 import { TICKET_STATUSES } from "../shared/project";
+import { gainedGuidelines, identityChanges, INSTRUCTION_FILES, TRACKER_CONFIG } from "../shared/tracker-guard";
 import { commandError, runChecked, runCommand, type CommandResult } from "./process";
 
 export const TRACKER_BRANCH = "taro/backlog";
@@ -164,15 +165,74 @@ export function withTaroStatuses(configText: string): string {
   return configText.replace(match[0], `statuses: ${JSON.stringify(statuses)}`);
 }
 
-/** Commits everything changed under `backlog/`; returns the commit message, or null when nothing changed. */
-export async function commitTracker(trackerPath: string): Promise<string | null> {
+export interface TrackerCommit {
+  /** The commit message, or null when nothing changed. */
+  subject: string | null;
+  /** What the guard restored instead of committing (TR-051); empty when nothing. */
+  restored: string[];
+}
+
+/**
+ * Commits everything changed under `backlog/`, after restoring what a stray
+ * `backlog init` against the tracker changed (see protectTracker).
+ */
+export async function commitTracker(trackerPath: string): Promise<TrackerCommit> {
+  const restored = await protectTracker(trackerPath);
   await git(trackerPath, ["add", "-A", "backlog"]);
   const staged = (await git(trackerPath, ["diff", "--cached", "--name-only"])).split("\n").filter((line) => line.trim() !== "");
-  if (staged.length === 0) return null;
+  if (staged.length === 0) return { subject: null, restored };
   const ticketIds = [...new Set(staged.map(ticketIdInPath).filter((id): id is string => id !== null))].sort();
   const subject = ticketIds.length === 0 ? "taro: update tracker" : `taro: update ${ticketIds.slice(0, 8).join(", ")}${ticketIds.length > 8 ? ", …" : ""}`;
   await git(trackerPath, ["-c", "user.name=Taro", "-c", "user.email=taro@localhost", "commit", "--no-verify", "-q", "-m", subject]);
-  return subject;
+  return { subject, restored };
+}
+
+/** A file's committed text at HEAD, or null when HEAD lacks it. */
+async function committedText(trackerPath: string, file: string): Promise<string | null> {
+  const result = await runCommand("git", ["-C", trackerPath, "show", `HEAD:${file}`], { timeoutMs: 30_000 });
+  return result.code === 0 ? result.stdout : null;
+}
+
+async function workingText(trackerPath: string, file: string): Promise<string | null> {
+  try {
+    return await readFile(join(trackerPath, file), "utf8");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Undoes what `backlog init` does to an existing tracker (TR-051): a changed
+ * project name, ticket prefix or id padding in `backlog/config.yml` restores
+ * the committed config; Backlog's guidelines written into an instruction file
+ * at the tracker's root restore the committed file, or remove it when it was
+ * not committed. A tracker without a committed config (onboarding) is left
+ * alone. Returns what it restored.
+ */
+export async function protectTracker(trackerPath: string): Promise<string[]> {
+  const restored: string[] = [];
+  const committedConfig = await committedText(trackerPath, TRACKER_CONFIG);
+  if (committedConfig === null) return restored;
+  const changes = identityChanges(committedConfig, (await workingText(trackerPath, TRACKER_CONFIG)) ?? "");
+  if (changes.length > 0) {
+    await git(trackerPath, ["checkout", "HEAD", "--", TRACKER_CONFIG]);
+    restored.push(`${TRACKER_CONFIG} (${changes.join(", ")})`);
+  }
+  for (const file of INSTRUCTION_FILES) {
+    const working = await workingText(trackerPath, file);
+    if (working === null) continue;
+    const committed = await committedText(trackerPath, file);
+    if (!gainedGuidelines(committed, working)) continue;
+    if (committed === null) {
+      await rm(join(trackerPath, file), { force: true });
+      restored.push(`${file} (removed: Backlog wrote it)`);
+    } else {
+      await git(trackerPath, ["checkout", "HEAD", "--", file]);
+      restored.push(`${file} (Backlog's guidelines taken out)`);
+    }
+  }
+  if (restored.length > 0) console.warn(`[taro] refused to commit ${trackerPath}: restored ${restored.join("; ")}`);
+  return restored;
 }
 
 /** `backlog/tasks/sh-012 - Title.md` → `SH-012`. */

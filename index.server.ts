@@ -8,6 +8,7 @@ import {
   catchUp,
   compactAgent,
   dismissSuggestion as dismissSuggestionRpc,
+  dismissTrackerProtection,
   findAgentTicket,
   listOpenDecisions,
   loadBoard as loadBoardRpc,
@@ -85,6 +86,7 @@ export default function contribute(server: PluginServerContext) {
     return kept;
   };
   void actions.primeStatuses().catch((error: unknown) => console.error("[taro] could not read ticket statuses:", error));
+  trackers.onRestored((project, restored) => state.recordTrackerProtection(project, restored, new Date().toISOString()));
   trackers.onChange((project) => {
     // A pull may have brought tickets edited elsewhere; the next read must not serve the cached board.
     invalidateBoards();
@@ -225,6 +227,11 @@ export default function contribute(server: PluginServerContext) {
   server.handle(resolveTrackerSyncRpc, async ({ project, resolution }) => {
     await requireProjectConfig(project);
     return { problem: await trackers.resolve(project, resolution) };
+  });
+  server.handle(dismissTrackerProtection, async ({ project }) => {
+    await state.dismissTrackerProtection(project);
+    invalidateBoards();
+    return {};
   });
   server.handle(acceptTicket, async ({ project, ticket }, { paseo }) => {
     await actions.accept(keep(paseo), project, ticket);

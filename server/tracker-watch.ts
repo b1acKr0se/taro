@@ -26,6 +26,8 @@ const PULL_INTERVAL_MS = 60_000;
 export const BACKSTOP_INTERVAL_MS = 5 * 60_000;
 
 export type TrackerChangeListener = (project: string) => void;
+/** Keeps what the guard restored instead of committing (TR-051), before the change listeners run. */
+export type TrackerRestoredHandler = (project: string, restored: readonly string[]) => Promise<void>;
 export type TrackerSyncer = (trackerPath: string, strategy?: SyncStrategy) => Promise<TrackerSyncProblem | null>;
 
 const RESOLUTION_STRATEGIES: Readonly<Record<SyncResolution, SyncStrategy>> = {
@@ -48,6 +50,7 @@ export class TrackerWatch {
   private readonly listeners = new Set<TrackerChangeListener>();
   /** When each project's listeners last ran, or the backstop last found nothing new, and the tracker's HEAD then. */
   private readonly lastLook = new Map<string, { at: number; head: string | null }>();
+  private restoredHandler: TrackerRestoredHandler | null = null;
 
   constructor(
     private readonly sync: TrackerSyncer = syncTracker,
@@ -57,6 +60,10 @@ export class TrackerWatch {
   onChange(listener: TrackerChangeListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  onRestored(handler: TrackerRestoredHandler): void {
+    this.restoredHandler = handler;
   }
 
   syncProblem(project: string): TrackerSyncProblem | null {
@@ -97,8 +104,9 @@ export class TrackerWatch {
       const paths = await projectPaths(project);
       try {
         const committed = await commitTracker(paths.tracker);
+        if (committed.restored.length > 0) await this.restoredHandler?.(project, committed.restored);
         if (config.trackerSync !== "remote") this.syncProblems.delete(project);
-        else if (committed !== null) await this.syncAndRecord(project, paths.tracker, "rebase");
+        else if (committed.subject !== null) await this.syncAndRecord(project, paths.tracker, "rebase");
       } catch (error) {
         console.error(`[taro] committing ${project}'s tracker failed: ${error instanceof Error ? error.message : String(error)}`);
       }

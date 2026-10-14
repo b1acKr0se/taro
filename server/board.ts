@@ -15,6 +15,7 @@ import { pastTicketAgents } from "../shared/past-agents";
 import { isSubagentRole, roleFromLabel, TARO_LABELS } from "../shared/project";
 import { boardAlerts } from "../shared/recovery";
 import { decisionsOfLiveAgents, type StoredDecision } from "../shared/state";
+import { protectionAlert } from "../shared/tracker-guard";
 import { currentSuggestions, parseSuggestions, suggestionKey, withoutFixedActions } from "../shared/suggestions";
 import { projectAgents, projectArchivedAgents } from "./agents";
 import { statePath } from "./data-dir";
@@ -214,13 +215,15 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
 
   const manager = agents.find((agent) => agent.labels[TARO_LABELS.role] === "manager" && agentStates[agent.id]?.stalled === true);
   const managerState = manager === undefined ? null : agentStates[manager.id] ?? null;
+  const protection = await state.trackerProtection(project);
+  const now = Date.now();
   return {
     project,
     cards,
     managerDecisions: openDecisions.filter((decision) => decision.ticket === null),
     suggestions: await readSuggestions(project, tickets),
     headroom,
-    alerts: boardAlerts(headroom, managerState?.stalledReason ?? null, Date.now()),
+    alerts: [...boardAlerts(headroom, managerState?.stalledReason ?? null, now), ...[protectionAlert(protection, now)].filter((alert) => alert !== null)],
     loadedAt: new Date().toISOString(),
   };
 }

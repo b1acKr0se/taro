@@ -162,7 +162,7 @@ export function ProjectBoard({
           <View style={styles.section}>
             <SectionHeading theme={theme} icon="TriangleAlert" text="Alerts" color={colors.statusWarning} />
             {alerts.map((alert) => (
-              <AlertCard key={alert.id} alert={alert} theme={theme} compact={compact} />
+              <AlertCard key={alert.id} project={project} alert={alert} theme={theme} compact={compact} />
             ))}
           </View>
         )}

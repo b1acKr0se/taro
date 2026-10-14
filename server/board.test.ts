@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { StoredDecision } from "../shared/state";
+import type { TrackerProtection } from "../shared/tracker-guard";
 import { projectAgents, projectArchivedAgents } from "./agents";
 import { invalidateBoards, loadBoard } from "./board";
 import type { PaseoAgent, PaseoApi } from "./host-types";
@@ -41,7 +42,8 @@ function stored(agentId: string, ticketId: string): StoredDecision {
   return { key: `${agentId}:scope-approval`, id: "scope-approval", agentId, project: "taro", ticket: ticketId, status: "open", blocking: true } as unknown as StoredDecision;
 }
 
-const state = (decisions: StoredDecision[]) => ({ allDecisions: async () => decisions, allAgents: async () => ({}) }) as unknown as PluginState;
+const state = (decisions: StoredDecision[], protection: TrackerProtection | null = null) =>
+  ({ allDecisions: async () => decisions, allAgents: async () => ({}), trackerProtection: async () => protection }) as unknown as PluginState;
 const notes = "EXECUTION 2026-10-13T14:00Z — owner o\n\nMILESTONE 2026-10-13T14:30Z — tests green";
 
 let now = Date.parse("2026-10-13T15:00:00Z");
@@ -110,6 +112,18 @@ describe("loadBoard", () => {
     const board = await loadBoard({} as PaseoApi, state([]), "taro");
     expect(board.cards[0]?.evidence).toMatchObject({ complete: true, missing: [], screenshotsNone: "no visible change" });
     expect(board.cards[1]?.evidence).toBeNull();
+  });
+
+  // TR-051: what the tracker guard restored is an alert, kept in the plugin's state, for a day.
+  it("alerts on a tracker refusal from the last day only", async () => {
+    vi.mocked(listTickets).mockResolvedValue([] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    const recent = { at: new Date().toISOString(), restored: ['backlog/config.yml (project_name "taro" → "scratch")'] };
+    const alerts = (await loadBoard({} as PaseoApi, state([], recent), "taro")).alerts;
+    expect(alerts.map((alert) => alert.id)).toEqual(["tracker-protected"]);
+    expect(alerts[0]?.text).toContain('project_name "taro" → "scratch"');
+    invalidateBoards();
+    const old = { ...recent, at: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString() };
+    expect((await loadBoard({} as PaseoApi, state([], old), "taro")).alerts).toEqual([]);
   });
 
   // TR-045: a card shows what the owner's permission asks and, awaiting acceptance, the delivery in a line.

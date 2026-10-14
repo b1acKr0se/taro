@@ -253,6 +253,8 @@ export const resolveTrackerSync = defineRpc({
   input: z.object({ project: ProjectNameSchema, resolution: SyncResolutionSchema }),
   output: z.object({ problem: TrackerSyncProblemSchema.nullable() }),
 });
+/** Dismisses the board alert for what the tracker guard restored (TR-051). */
+export const dismissTrackerProtection = defineRpc({ name: "taro.tracker.dismiss-protection", input: ProjectInput, output: Empty });
 export const requestChanges = defineRpc({
   name: "taro.ticket.request-changes",
   input: z.object({ project: ProjectNameSchema, ticket: z.string(), text: z.string().min(1) }),
