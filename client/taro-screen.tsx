@@ -630,7 +630,7 @@ function ManagerPane({
             <IconButton
               icon="Minimize2"
               label="Compact"
-              showLabel={!compact}
+              showLabel
               theme={theme}
               disabled={running || actions.busy}
               state={actions.stateOf("compact")}

@@ -14,6 +14,9 @@ export const MONOSPACE = Platform.select({ ios: "Menlo", default: "monospace" })
 
 export type Tone = "default" | "accent" | "danger";
 
+/** One button's measurements, shared by `IconButton` and the suggestion chips beside it (TR-070). */
+export const BUTTON = { gap: 6, paddingHorizontal: 10, iconOnlyPaddingHorizontal: 7, paddingVertical: 6, borderRadius: 8, iconSize: 14, fontSize: FONT_SIZE.small } as const;
+
 export function IconButton({
   icon,
   label,
@@ -55,10 +58,10 @@ export function IconButton({
         alignItems: "center" as const,
         justifyContent: "center" as const,
         flexGrow: grow ? 1 : 0,
-        gap: 6,
-        paddingHorizontal: showLabel ? 10 : 7,
-        paddingVertical: 6,
-        borderRadius: 8,
+        gap: BUTTON.gap,
+        paddingHorizontal: showLabel ? BUTTON.paddingHorizontal : BUTTON.iconOnlyPaddingHorizontal,
+        paddingVertical: BUTTON.paddingVertical,
+        borderRadius: BUTTON.borderRadius,
         borderWidth: 1,
         borderColor: tone === "accent" ? colors.accent : colors.border,
         backgroundColor: tone === "accent" ? colors.accent : colors.surface1,
@@ -66,7 +69,7 @@ export function IconButton({
         // A long label — a card action the first mate named — wraps inside a narrow card instead of overflowing it.
         maxWidth: "100%" as const,
       },
-      label: { color, fontSize: FONT_SIZE.small, fontWeight: "500" as const, flexShrink: 1 },
+      label: { color, fontSize: BUTTON.fontSize, fontWeight: "500" as const, flexShrink: 1 },
     }),
     [colors, tone, faded, showLabel, grow, color],
   );
@@ -80,11 +83,11 @@ export function IconButton({
       style={styles.button}
     >
       {busy ? (
-        <Spinner size={14} color={color} />
+        <Spinner size={BUTTON.iconSize} color={color} />
       ) : state === "done" ? (
-        <Icon name="Check" size={14} color={tone === "default" ? colors.statusSuccess : color} />
+        <Icon name="Check" size={BUTTON.iconSize} color={tone === "default" ? colors.statusSuccess : color} />
       ) : icon === null ? null : (
-        <Icon name={icon} size={14} color={color} />
+        <Icon name={icon} size={BUTTON.iconSize} color={color} />
       )}
       {showLabel ? <Text style={styles.label}>{label}</Text> : null}
     </Pressable>

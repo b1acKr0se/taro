@@ -1,6 +1,6 @@
 /**
- * The Manager's suggestions, above its composer where the user talks to it (TR-045): pills after the
- * Catch up and Compact buttons, scrolling sideways with them in one row (`ActionRow`, TR-057).
+ * The Manager's suggestions, above its composer where the user talks to it (TR-045): chips shaped like
+ * the Catch up and Compact buttons (TR-070), after them, scrolling sideways with them in one row (`ActionRow`, TR-057).
  * Each pill sends itself to the Manager when tapped and shows sending, sent or not sent inside it;
  * its × dismisses it.
  */
@@ -15,8 +15,7 @@ import { suggestionKey, suggestionPills, type SendState, type Suggestion, type S
 import { errorText } from "./format";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
-import { FONT_SIZE } from "./type-scale";
-import { Spinner } from "./ui";
+import { BUTTON, Spinner } from "./ui";
 import { usePressGuards } from "./use-actions";
 
 /** How long a sent suggestion shows "Sent to the Manager" before it leaves the row. */
@@ -42,18 +41,26 @@ export function SuggestionPills({
   const { colors } = theme;
   const styles = useMemo(
     () => ({
+      // Catch up's shape and measurements (`BUTTON`, TR-070): the send part and the × share its padding.
       suggestion: {
         flexDirection: "row" as const,
         alignItems: "center" as const,
         borderWidth: 1,
         borderColor: colors.border,
-        borderRadius: 999,
+        borderRadius: BUTTON.borderRadius,
         backgroundColor: colors.surface1,
       },
-      suggestionSend: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.xs + 2, paddingLeft: SPACE.sm + 2, paddingRight: SPACE.xs, paddingVertical: SPACE.xs },
-      suggestionText: { color: colors.foreground, fontSize: FONT_SIZE.caption, fontWeight: "500" as const },
-      suggestionState: { fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
-      suggestionDismiss: { paddingLeft: SPACE.xxs, paddingRight: SPACE.sm, paddingVertical: SPACE.xs },
+      suggestionSend: {
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: BUTTON.gap,
+        paddingLeft: BUTTON.paddingHorizontal,
+        paddingRight: BUTTON.gap,
+        paddingVertical: BUTTON.paddingVertical,
+      },
+      suggestionText: { color: colors.foreground, fontSize: BUTTON.fontSize, fontWeight: "500" as const },
+      suggestionState: { fontSize: BUTTON.fontSize, fontWeight: "500" as const },
+      suggestionDismiss: { paddingLeft: SPACE.xxs, paddingRight: BUTTON.paddingHorizontal, paddingVertical: BUTTON.paddingVertical },
     }),
     [colors],
   );
@@ -120,25 +127,25 @@ export function SuggestionPills({
           </Text>
           {state === "sending" ? (
             <>
-              <Spinner size={13} color={colors.foregroundMuted} />
+              <Spinner size={BUTTON.iconSize} color={colors.foregroundMuted} />
               <Text style={[styles.suggestionState, { color: colors.foregroundMuted }]}>Sending…</Text>
             </>
           ) : state === "sent" ? (
             <>
-              <Icon name="Check" size={13} color={colors.statusSuccess} />
+              <Icon name="Check" size={BUTTON.iconSize} color={colors.statusSuccess} />
               <Text style={[styles.suggestionState, { color: colors.statusSuccess }]}>Sent to the Manager</Text>
             </>
           ) : state === "failed" ? (
             <>
-              <Icon name="RotateCw" size={13} color={colors.statusDanger} />
+              <Icon name="RotateCw" size={BUTTON.iconSize} color={colors.statusDanger} />
               <Text style={[styles.suggestionState, { color: colors.statusDanger }]}>Not sent · Retry</Text>
             </>
           ) : (
-            <Icon name="Send" size={13} color={colors.accent} />
+            <Icon name="Send" size={BUTTON.iconSize} color={colors.accent} />
           )}
         </Pressable>
         {busy ? (
-          <View style={{ width: SPACE.sm }} />
+          <View style={{ width: BUTTON.paddingHorizontal - BUTTON.gap }} />
         ) : (
           <Pressable
             accessibilityRole="button"
@@ -147,7 +154,7 @@ export function SuggestionPills({
             style={styles.suggestionDismiss}
             onPress={() => dismissPill(suggestion)}
           >
-            <Icon name="X" size={12} color={colors.foregroundMuted} />
+            <Icon name="X" size={BUTTON.iconSize} color={colors.foregroundMuted} />
           </Pressable>
         )}
       </View>
