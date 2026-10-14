@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { descriptionParts, firstTextLine } from "./description";
 import { finalSections } from "./final-summary";
 import { LEGACY, LEGACY_DESCRIPTION, LEGACY_FINAL, SHORT, SHORT_DESCRIPTION, SHORT_FINAL } from "./ticket-fixtures.test-data";
-import { foldList, planSummary, resultLine, ticketSections, ticketSummary, type TicketFacts } from "./ticket-summary";
+import { foldList, milestoneSummary, planSummary, resultLine, ticketSections, ticketSummary, type TicketFacts } from "./ticket-summary";
 
 const EMPTY: TicketFacts = {
   title: "Fix login redirect",
@@ -79,7 +79,7 @@ describe("ticketSections", () => {
       { key: "plan", summary: "4 choices · Medium", open: false },
       { key: "result", summary: "New project lists the host's git projects; picking one pre-fills the form and Create is one more tap.", open: true },
       { key: "evidence", summary: "3 checks · 2 screenshots", open: false },
-      { key: "milestones", summary: "user's words: \"I accept NA-056.\" Accepted revision 6c5464b. Merge: main 1c45fbe → 6c5464b, clean checkout.", open: false },
+      { key: "milestones", summary: "Acceptance — user's words: \"I accept NA-056.\"", open: false },
       { key: "description", summary: "Adding a project isn't quick today.", open: false },
       { key: "records", summary: "13 records", open: false },
     ]);
@@ -113,7 +113,7 @@ describe("ticketSections", () => {
 
   it("counts one record and calls notes without records raw", () => {
     expect(ticketSections({ ...EMPTY, notes: "MILESTONE 2026-10-14T08:15Z — oriented" }, [])).toEqual([
-      { key: "milestones", summary: "oriented", open: false },
+      { key: "milestones", summary: "Milestone — oriented", open: false },
       { key: "records", summary: "1 record", open: false },
     ]);
     expect(ticketSections({ ...EMPTY, notes: "free text only" }, [])).toEqual([{ key: "records", summary: "raw notes", open: false }]);
@@ -121,6 +121,26 @@ describe("ticketSections", () => {
 
   it("names zero screenshots and one check", () => {
     expect(ticketSections({ ...EMPTY, evidence: { checks: [{}], screenshots: [] } }, [])).toEqual([{ key: "evidence", summary: "1 check · 0 screenshots", open: false }]);
+  });
+});
+
+describe("milestoneSummary", () => {
+  it("names the kind and keeps the first sentence, markup dropped", () => {
+    expect(milestoneSummary({ kind: "ACCEPTANCE", time: null, text: "The user accepted NA-056. Merged into main." })).toBe("Acceptance — The user accepted NA-056.");
+    expect(milestoneSummary({ kind: "DISPATCH-INTENT", time: null, text: "token `tok-1`, branch work/na-1" })).toBe("Dispatch intent — token tok-1, branch work/na-1");
+  });
+
+  it("ends the sentence after a closing quote", () => {
+    expect(milestoneSummary({ kind: "APPROVAL", time: null, text: 'the user: "Build A." Approved the plan.' })).toBe('Approval — the user: "Build A."');
+  });
+
+  it("closes a quotation the first sentence cuts", () => {
+    expect(milestoneSummary({ kind: "ACCEPTANCE", time: null, text: 'user\'s words: "I accept NA-056. Fast-forward main." Merged.' })).toBe('Acceptance — user\'s words: "I accept NA-056."');
+    expect(milestoneSummary({ kind: "APPROVAL", time: null, text: "the user: “Build A. Then B.”" })).toBe("Approval — the user: “Build A.”");
+  });
+
+  it("is the kind alone for a record without text", () => {
+    expect(milestoneSummary({ kind: "HANDOFF", time: null, text: "" })).toBe("Handoff");
   });
 });
 

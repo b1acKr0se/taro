@@ -58,3 +58,9 @@ export function latestMilestone(notes: string | null): Milestone | null {
   if (latest === undefined) return null;
   return latest.text.length > MAX_TEXT ? { ...latest, text: `${latest.text.slice(0, MAX_TEXT - 1)}…` } : latest;
 }
+
+/** A record's kind in plain words: "Dispatch intent" for DISPATCH-INTENT. */
+export function kindLabel(kind: string): string {
+  const words = kind.toLowerCase().replace(/[-_]+/g, " ").trim();
+  return words === "" ? kind : `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+}

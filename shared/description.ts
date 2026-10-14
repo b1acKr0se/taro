@@ -69,7 +69,13 @@ export function firstTextLine(markdown: string | null): string | null {
   return line === undefined ? null : firstSentence(line);
 }
 
-/** Up to the first full stop followed by a new sentence; "v1.2" or "e.g. x" stay whole. */
+/**
+ * Up to the first full stop followed by a new sentence, closing quotes kept; "v1.2" or "e.g. x"
+ * stay whole. A quotation cut inside is closed, so the line shows no dangling quote mark.
+ */
 export function firstSentence(line: string): string {
-  return /^(.+?[.!?])\s+[A-Z(]/.exec(line)?.[1] ?? line;
+  const sentence = /^(.+?[.!?]["'”’)]*)\s+["'“‘(]?[A-Z(]/.exec(line)?.[1] ?? line;
+  const straight = (sentence.match(/"/g) ?? []).length % 2 === 1 ? '"' : "";
+  const curly = (sentence.match(/“/g) ?? []).length > (sentence.match(/”/g) ?? []).length ? "”" : "";
+  return `${sentence}${straight}${curly}`;
 }

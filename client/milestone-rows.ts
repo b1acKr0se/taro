@@ -4,7 +4,7 @@
  * forward or trouble, so the eye can follow the ticket down the rail. Newest first, the newest few
  * shown and the rest folded (TR-061).
  */
-import type { Milestone } from "../shared/milestones";
+import { kindLabel, type Milestone } from "../shared/milestones";
 import { foldList } from "../shared/ticket-summary";
 import { formatClock, formatDay } from "./format";
 
@@ -24,11 +24,6 @@ export interface MilestoneRow {
 
 /** How many of the newest records show before "Show N older". */
 export const RECENT_MILESTONES = 3;
-
-export function kindLabel(kind: string): string {
-  const words = kind.toLowerCase().replace(/[-_]+/g, " ").trim();
-  return words === "" ? kind : `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
-}
 
 export function milestoneRows(milestones: readonly Milestone[], now: number = Date.now()): MilestoneRow[] {
   let lastDay: string | null = null;

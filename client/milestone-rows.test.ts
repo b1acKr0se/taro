@@ -1,18 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { kindLabel, milestoneRows, recentMilestoneRows } from "./milestone-rows";
+import { milestoneRows, recentMilestoneRows } from "./milestone-rows";
 
 // Built from local dates so the test holds in any time zone.
 const now = new Date(2026, 9, 13, 18, 0).getTime();
 const at = (day: number, hour: number, minute = 0) => new Date(2026, 9, day, hour, minute).toISOString();
-
-describe("kindLabel", () => {
-  it("writes a record kind in plain words", () => {
-    expect(kindLabel("MILESTONE")).toBe("Milestone");
-    expect(kindLabel("DISPATCH-INTENT")).toBe("Dispatch intent");
-    expect(kindLabel("")).toBe("");
-  });
-});
 
 describe("milestoneRows", () => {
   it("heads the first row of each day and no other", () => {

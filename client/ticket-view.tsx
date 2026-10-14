@@ -345,16 +345,17 @@ function SectionRow({
             {name.toUpperCase()}
           </Text>
           {stacked ? null : (
-            <Text style={[summaryStyle, { flex: 1 }]} numberOfLines={2}>
+            // minWidth 0: a clamped text's min-content is its whole length on the web, which would push the chevron out.
+            <Text style={[summaryStyle, { flex: 1, minWidth: 0 }]} numberOfLines={2}>
               {shownSummary ?? ""}
             </Text>
           )}
-          <View style={{ height: lineHeightFor(FONT_SIZE.small), justifyContent: "center" }}>
+          <View style={{ height: lineHeightFor(FONT_SIZE.small), justifyContent: "center", flexShrink: 0 }}>
             <Icon name={expanded ? "ChevronDown" : "ChevronRight"} size={14} color={colors.foregroundMuted} />
           </View>
         </View>
         {stacked && shownSummary !== null ? (
-          <Text style={[summaryStyle, { paddingLeft: 14 + SPACE.sm }]} numberOfLines={2}>
+          <Text style={[summaryStyle, { paddingLeft: 14 + SPACE.sm, minWidth: 0 }]} numberOfLines={2}>
             {shownSummary}
           </Text>
         ) : null}

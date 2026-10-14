@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { latestMilestone, ticketMilestones } from "./milestones";
+import { kindLabel, latestMilestone, ticketMilestones } from "./milestones";
 
 describe("ticketMilestones", () => {
   it("returns nothing for null and empty notes", () => {
@@ -76,5 +76,13 @@ describe("latestMilestone", () => {
 
   it("keeps a continuation line that opens with capitals", () => {
     expect(latestMilestone("MILESTONE 2026-10-13T10:00Z — built\nCSS tidied")?.text).toBe("built CSS tidied");
+  });
+});
+
+describe("kindLabel", () => {
+  it("writes a record kind in plain words", () => {
+    expect(kindLabel("MILESTONE")).toBe("Milestone");
+    expect(kindLabel("DISPATCH-INTENT")).toBe("Dispatch intent");
+    expect(kindLabel("")).toBe("");
   });
 });

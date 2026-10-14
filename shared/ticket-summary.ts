@@ -4,9 +4,9 @@
  * sections in a fixed order, each with a one-line summary. Pure; the view only draws it.
  */
 import { SCOPE_APPROVAL } from "./decision-view";
-import { descriptionParts, firstTextLine } from "./description";
+import { descriptionParts, firstSentence, firstTextLine } from "./description";
 import { finalSections } from "./final-summary";
-import { ticketMilestones } from "./milestones";
+import { kindLabel, ticketMilestones, type Milestone } from "./milestones";
 import { deliveredLine, plainText } from "./needs-you";
 import { parsePlan } from "./plan";
 
@@ -110,7 +110,7 @@ export function ticketSections(ticket: TicketFacts, decisions: readonly OpenDeci
   }
   const milestones = ticketMilestones(ticket.notes);
   const newest = milestones[milestones.length - 1];
-  if (newest !== undefined) sections.push({ key: "milestones", summary: plainText(newest.text) || newest.kind, open: false });
+  if (newest !== undefined) sections.push({ key: "milestones", summary: milestoneSummary(newest), open: false });
   if (ticket.description !== null && ticket.description.trim() !== "") {
     const parts = descriptionParts(ticket.description);
     const summary = firstTextLine(parts.userWords) ?? (parts.managerNoteCount > 0 ? count(parts.managerNoteCount, "manager note", "manager notes") : "");
@@ -120,6 +120,12 @@ export function ticketSections(ticket: TicketFacts, decisions: readonly OpenDeci
     sections.push({ key: "records", summary: milestones.length === 0 ? "raw notes" : count(milestones.length, "record", "records"), open: false });
   }
   return sections;
+}
+
+/** A record in a line: its kind in plain words and its first sentence, "Acceptance — the user accepted." */
+export function milestoneSummary(milestone: Milestone): string {
+  const sentence = firstSentence(plainText(milestone.text));
+  return sentence === "" ? kindLabel(milestone.kind) : `${kindLabel(milestone.kind)} — ${sentence}`;
 }
 
 /** The first `limit` items unless unfolded, and how many are left out. */
