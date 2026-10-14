@@ -15,7 +15,7 @@ import {
   toolsDirectory,
 } from "./backlog-install";
 import { pathWithBacklog } from "./environment";
-import { backlogCheck, ghCheck } from "./prerequisites";
+import { backlogCheck, backlogVersion, ghCheck } from "./prerequisites";
 import { runCommand } from "./process";
 import { findBacklog } from "./tracker";
 
@@ -220,5 +220,22 @@ describe("the prerequisite lines", () => {
     expect(ghCheck(null).detail).toContain("https://cli.github.com/");
     expect(ghCheck({ code: 1 }).detail).toContain("gh auth login");
     expect(ghCheck({ code: 0 })).toMatchObject({ ok: true, detail: "logged in" });
+  });
+});
+
+describe("a copy removed after it was found", () => {
+  it("is looked up again, so the check offers Install instead of a stale path", async () => {
+    const gone = join(scratch, "gone", "backlog");
+    const working = script(join(scratch, "bin", "backlog"), "echo 1.53.0");
+    const found = [gone, working];
+    const forget = vi.fn(() => found.shift());
+    expect(await backlogVersion({ find: async () => found[0] ?? null, forget })).toBe("1.53.0");
+    expect(forget).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports none when nothing runs, without looping", async () => {
+    const forget = vi.fn();
+    expect(await backlogVersion({ find: async () => join(scratch, "gone", "backlog"), forget })).toBeNull();
+    expect(forget).toHaveBeenCalledTimes(2);
   });
 });

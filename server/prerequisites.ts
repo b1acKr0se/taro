@@ -5,7 +5,7 @@ import { paseoCli } from "./cli";
 import type { PaseoApi } from "./host-types";
 import { runCommand } from "./process";
 import { usableProviders } from "./summaries";
-import { backlogBinary } from "./tracker";
+import { backlogBinary, forgetBacklogLookup } from "./tracker";
 
 export type PrerequisiteCheck = Prerequisite;
 
@@ -23,10 +23,10 @@ export function ghCheck(status: { code: number | null } | null): Prerequisite {
   const ok = status !== null && status.code === 0;
   const detail =
     status === null
-      ? "not installed; needed only for pull-request delivery. Install it from https://cli.github.com/, then run `gh auth login`"
+      ? "not installed; needed only for pull-request delivery. Install it from https://cli.github.com/, then run gh auth login"
       : ok
         ? "logged in"
-        : "installed but not logged in; run `gh auth login` on this machine";
+        : "installed but not logged in; run gh auth login on this machine";
   return { id: "gh", name: "GitHub CLI (for pull requests)", ok, detail, fix: null };
 }
 
@@ -36,6 +36,18 @@ export function backlogCheck(version: string | null): Prerequisite {
     : { id: "backlog", name: "Backlog.md CLI", ok: true, detail: `backlog ${version}`, fix: null };
 }
 
+/** The version of the backlog in use; one that stopped running (removed since it was found) is looked up again once. */
+export async function backlogVersion(lookup: { find: () => Promise<string | null>; forget: () => void } = { find: backlogBinary, forget: forgetBacklogLookup }): Promise<string | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const backlog = await lookup.find();
+    if (backlog === null) return null;
+    const version = await versionOf(backlog, ["--version"], backlogEnvironment(backlog));
+    if (version !== null) return version;
+    lookup.forget();
+  }
+  return null;
+}
+
 export async function checkPrerequisites(paseo: PaseoApi): Promise<PrerequisiteCheck[]> {
   const checks: PrerequisiteCheck[] = [];
   const cli = await paseoCli();
@@ -43,12 +55,11 @@ export async function checkPrerequisites(paseo: PaseoApi): Promise<PrerequisiteC
     id: "paseo-cli",
     name: "paseo CLI",
     ok: cli !== null,
-    detail: cli ?? "not found on the daemon's PATH. Install Paseo's command-line tool and restart the daemon from a shell where `paseo` runs",
+    detail: cli ?? "not found on the daemon's PATH. Install Paseo's command-line tool and restart the daemon from a shell where the paseo command runs",
     fix: null,
   });
 
-  const backlog = await backlogBinary();
-  checks.push(backlogCheck(backlog === null ? null : await versionOf(backlog, ["--version"], backlogEnvironment(backlog))));
+  checks.push(backlogCheck(await backlogVersion()));
 
   const gitVersion = await versionOf("git", ["--version"]);
   checks.push({ id: "git", name: "git", ok: gitVersion !== null, detail: gitVersion ?? "not found on the daemon's PATH. Install git from https://git-scm.com/ and restart the daemon", fix: null });

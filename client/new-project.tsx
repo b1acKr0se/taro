@@ -171,7 +171,7 @@ export function NewProject({
 
 function deliveryHint(template: SettingsTemplate | null, pullRequests: boolean | null): string {
   const source = template === null ? "Taro's defaults; change them in All settings." : `As in ${template.project}; change them in All settings.`;
-  return pullRequests === false ? `${source} Pull requests need gh: install it and run \`gh auth login\`.` : source;
+  return pullRequests === false ? `${source} Pull requests need gh: install it and run gh auth login.` : source;
 }
 
 type Listing = UseQueryResult<{ projects: PaseoProjectCandidate[]; template: SettingsTemplate | null; takenPrefixes: string[] }>;

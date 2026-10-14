@@ -5,7 +5,7 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { Text, View } from "react-native";
 
@@ -50,6 +50,9 @@ function BacklogInstallAction({ theme }: { theme: PluginTheme }) {
   });
   const install = status.data ?? null;
   const running = install?.phase === "running";
+  // "Installed" only while the checks run again: a line still failing after that (the copy was removed) offers Install again.
+  const checking = useIsFetching({ queryKey: PREREQUISITES_KEY }) > 0;
+  const justInstalled = install?.phase === "done" && checking;
 
   useEffect(() => {
     if (install?.phase === "done") void queryClient.invalidateQueries({ queryKey: PREREQUISITES_KEY });
@@ -64,7 +67,7 @@ function BacklogInstallAction({ theme }: { theme: PluginTheme }) {
           <Spinner size={14} color={colors.accent} />
           <Text style={[small, { color: colors.foreground }]}>{install.step ?? "Installing…"}</Text>
         </View>
-      ) : install?.phase === "done" ? (
+      ) : justInstalled ? (
         <Text style={[small, { color: colors.foreground }]}>{`Installed backlog ${install.version ?? ""}. Checking again…`}</Text>
       ) : (
         <IconButton

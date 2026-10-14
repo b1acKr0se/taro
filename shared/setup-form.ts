@@ -118,8 +118,8 @@ export function ticketExample(prefix: string): string | null {
 }
 
 /** What the Pull request choice says while gh cannot open pull requests (TR-063). */
-export const PULL_REQUEST_NEEDS_GH = "Unavailable: install gh and run `gh auth login` on this machine.";
-export const PULL_REQUEST_KEPT_WITHOUT_GH = "gh is not ready, so owners cannot open pull requests: install gh and run `gh auth login`, or choose Local branch only.";
+export const PULL_REQUEST_NEEDS_GH = "Unavailable: install gh and run gh auth login on this machine.";
+export const PULL_REQUEST_KEPT_WITHOUT_GH = "gh is not ready, so owners cannot open pull requests: install gh and run gh auth login, or choose Local branch only.";
 
 /** Whether gh can open pull requests, by the prerequisite check; null until the checks arrive. */
 export function pullRequestsReady(checks: ReadonlyArray<{ id: string; ok: boolean }> | undefined): boolean | null {
