@@ -56,6 +56,33 @@ default: Per trade         # what you do if the user does not answer (non-blocki
 - A long value (any field, option fields too) may span lines as a YAML block scalar: `why: |`
   keeps the line breaks, `why: >` joins the lines into one paragraph; indent the lines under it.
 - To withdraw a decision: a block with the same `id` and `status: withdrawn`.
+- A choice between things the user should see (mockups, layouts): each option names its images
+  under `images:`, one `file — caption` per line (rules: Images, below). The card shows them under
+  the option; tapping one opens that option's images with its label in the viewer's bar.
+
+  ```
+  options:
+    - label: Floating pills
+      prompt: Use floating pills
+      images: |
+        option-a-floating-pills-phone.png — the notes list on a phone
+        option-a-floating-pills-desktop.png — the notes list on a desktop
+  ```
+
+## Images
+
+Every image you show the user (evidence screenshots, mockups) is a file in `$TARO_EVIDENCE/<ID>/`
+(the folder is in `reference/tickets.md`, EVIDENCE), shown with a caption:
+
+- **The name says what it shows**: which version, which view, which screen, e.g.
+  `option-a-floating-pills-phone.png`, `after-desktop-board.png`, `before-phone-inbox.png`. Never
+  `screenshot-1.png` or `mockup.png`: the name is shown under the image.
+- **Every image has a short caption** saying what it shows: the text after ` — ` in an EVIDENCE
+  `screenshot:` line or an option's `images:` line, the alt text of an image in a message
+  (`![the board on a phone](/absolute/path/after-phone-board.png)`). A screenshot line without a
+  caption fails the evidence check; an option image without one is an incomplete block.
+- Options with images: name them `option-<letter>-<what>-<device>.png`, so each file says which
+  option it belongs to even outside the card.
 
 ### Presets
 

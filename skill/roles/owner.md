@@ -105,8 +105,9 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
   review is done, mark the PR ready. With only a self-review, open it ready. CI is not a gate.
 - **local-only delivery:** leave a clean branch that fast-forwards from the base branch.
 - Before FINAL, write an EVIDENCE record (`reference/tickets.md`): checks with results, the review
-  outcome, and screenshots in `$TARO_EVIDENCE/<ID>/` (desktop and phone for visible changes) or
-  `screenshots: none` with a reason. The plugin refuses Accept until it is complete.
+  outcome, and screenshots in `$TARO_EVIDENCE/<ID>/` (desktop and phone for visible changes), each
+  named for what it shows and captioned (`reference/formats.md`, Images), or `screenshots: none`
+  with a reason. The plugin refuses Accept until it is complete.
 - Record `pr: <url>` and `review-head: <sha>` (the full `headRefOid` from `gh pr view <url> --json
   headRefOid`) in a new EXECUTION record; Accept reads both from there. Write the FINAL summary
   (`--final-summary`) and move to **Awaiting acceptance**. The user accepts or requests changes

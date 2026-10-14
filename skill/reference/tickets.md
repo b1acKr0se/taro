@@ -59,7 +59,8 @@ never rewrite history.
 - **EVIDENCE**: what the user sees before Accept; the newest record counts. One fact per line,
   label in any case, separator ` — ` (` -- ` and ` - ` also work):
   `check: <command> — <result>` (one or more), `review: <outcome>`,
-  `screenshot: <file name> — <caption>` (a bare name; the file is in `$TARO_EVIDENCE/<ID>/`), or
+  `screenshot: <file name> — <caption>` (a bare name; the file is in `$TARO_EVIDENCE/<ID>/`; a name
+  that says what it shows and a caption are required: `reference/formats.md`, Images), or
   `screenshots: none — <reason>`. A change needs a check, a review line and screenshots (or none with
   a reason); an investigation needs a check. Accept is refused until it is complete.
 

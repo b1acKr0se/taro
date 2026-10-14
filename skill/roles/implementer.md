@@ -24,4 +24,6 @@ others' commits or open a PR.
   `blocked: <what stops you, what you tried>`.
 - Same obstacle twice → `blocked`. A choice the brief does not settle → a decision block (the owner
   answers it, not the user), then `waiting: <the question>`.
+- Images you make (screenshots, mockups) follow `$TARO_SKILL/reference/formats.md`, Images: in
+  `$TARO_EVIDENCE/<ID>/`, named for what they show, each with a caption in your report.
 - Never report done on red checks.
