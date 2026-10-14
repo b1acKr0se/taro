@@ -95,6 +95,13 @@ daemon with its own home and port, unique to your ticket:
 - Stop your daemon when done: `paseo daemon stop --home $HOME_DIR` (or kill its pid), and delete
   the home.
 
+## Commits
+
+Conventional Commits: `<type>: <summary>`, type one of `feat`, `fix`, `refactor`, `docs`, `test`,
+`chore` (`perf` and `build` only when really needed); never `change:`. A behaviour change is `feat`
+(new capability) or `fix` (wrong behaviour); restructuring is `refactor`. Keep the summary short and
+imperative, with no ticket number (put it in the body if needed).
+
 ## Delivery
 
 This project is local-only: leave a clean branch that fast-forwards from `main`. The user reloads

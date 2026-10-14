@@ -2,8 +2,8 @@
 
 <h1 align="center">Taro</h1>
 
-Taro is a [Paseo](https://github.com/getpaseo/paseo) plugin that runs software work through agents,
-one project at a time. You tell a **Manager** agent what you want; it files a ticket and starts a
+Taro is a [Paseo](https://github.com/getpaseo/paseo) plugin that runs software work through agents.
+Each project gets its own Manager, ticket tracker and board. You tell a **Manager** agent what you want; it files a ticket and starts a
 **task owner** agent, which takes the ticket from proposal to a delivered, reviewed change. You
 answer their questions and accept the result. Tickets live in a [Backlog.md](https://github.com/MrLesk/Backlog.md)
 tracker on the project's `taro/backlog` branch.
