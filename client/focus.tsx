@@ -21,8 +21,8 @@ export function withFocusRing<Props extends { theme: PluginTheme }>(Surface: Com
   };
 }
 
-/** The keyboard ring's colour as a style, for a pressable that is not a `Pressable` (a link in text). */
-export function useFocusRing(): { outlineColor: string } | null {
+/** The keyboard ring's colour as a style; text links take it from their theme (`markdown.tsx`). */
+function useFocusRing(): { outlineColor: string } | null {
   return focusRingStyle(useContext(FocusRingColor), Platform.OS === "web");
 }
 
