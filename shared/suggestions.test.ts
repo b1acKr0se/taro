@@ -87,6 +87,11 @@ describe("suggestionPills", () => {
     expect(suggestionPills([a, b, c], sends).map((pill) => pill.state)).toEqual(["sending", "idle", "failed"]);
   });
 
+  it("carries a failure's reason to its pill", () => {
+    const sends: SuggestionSend[] = [{ suggestion: a, state: "failed", index: 0, reason: "No manager yet." }];
+    expect(suggestionPills([a], sends)).toEqual([{ suggestion: a, state: "failed", reason: "No manager yet." }]);
+  });
+
   it("matches by label and prompt together", () => {
     const sends: SuggestionSend[] = [{ suggestion: { label: "A", prompt: "Something else" }, state: "failed", index: 0 }];
     expect(suggestionPills([a], sends)).toEqual([{ suggestion: a, state: "idle" }]);

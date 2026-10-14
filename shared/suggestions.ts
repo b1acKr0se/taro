@@ -64,11 +64,14 @@ export interface SuggestionSend {
   state: SendState;
   /** Its place in the row when pressed, so it stays there if the board drops it meanwhile. */
   index: number;
+  /** Why it failed, for the pill's accessibility label. */
+  reason?: string;
 }
 
 export interface SuggestionPill {
   suggestion: Suggestion;
   state: SendState | "idle";
+  reason?: string;
 }
 
 /**
@@ -79,7 +82,10 @@ export interface SuggestionPill {
 export function suggestionPills(current: readonly Suggestion[], sends: readonly SuggestionSend[]): SuggestionPill[] {
   const byKey = new Map(sends.map((send) => [suggestionKey(send.suggestion), send]));
   const present = new Set(current.map(suggestionKey));
-  const pills: SuggestionPill[] = current.map((suggestion) => ({ suggestion, state: byKey.get(suggestionKey(suggestion))?.state ?? "idle" }));
+  const pills: SuggestionPill[] = current.map((suggestion) => {
+    const send = byKey.get(suggestionKey(suggestion));
+    return send?.reason === undefined ? { suggestion, state: send?.state ?? "idle" } : { suggestion, state: send.state, reason: send.reason };
+  });
   const dropped = sends.filter((send) => send.state !== "failed" && !present.has(suggestionKey(send.suggestion))).sort((left, right) => left.index - right.index);
   for (const send of dropped) pills.splice(Math.min(send.index, pills.length), 0, { suggestion: send.suggestion, state: send.state });
   return pills;

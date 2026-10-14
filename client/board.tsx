@@ -176,9 +176,10 @@ export function ProjectBoard({
   }
 
   /** Records one suggestion's send state; `null` forgets it. */
-  function setSend(suggestion: Suggestion, index: number, state: SendState | null): void {
+  function setSend(suggestion: Suggestion, index: number, state: SendState | null, reason?: string): void {
     const key = suggestionKey(suggestion);
-    setSends((current) => [...current.filter((send) => suggestionKey(send.suggestion) !== key), ...(state === null ? [] : [{ suggestion, state, index }])]);
+    const kept = state === null ? [] : [reason === undefined ? { suggestion, state, index } : { suggestion, state, index, reason }];
+    setSends((current) => [...current.filter((send) => suggestionKey(send.suggestion) !== key), ...kept]);
   }
 
   /** Sends it, shows "Sent" for a moment and hides it for good (the manager may write it again); a failure stays to retry. */
@@ -194,14 +195,15 @@ export function ProjectBoard({
         }, SENT_VISIBLE_MS);
       },
       (caught: unknown) => {
-        setSend(suggestion, index, "failed");
-        toast.error(`Not sent to the Manager: ${errorText(caught)}`);
+        const reason = errorText(caught);
+        setSend(suggestion, index, "failed", reason);
+        toast.error(`Not sent to the Manager: ${reason}`);
       },
     );
   }
 
   function suggestionPill(item: SuggestionPill, index: number) {
-    const { suggestion, state } = item;
+    const { suggestion, state, reason } = item;
     const busy = state === "sending" || state === "sent";
     const label =
       state === "sending"
@@ -209,7 +211,7 @@ export function ProjectBoard({
         : state === "sent"
           ? `Sent to the Manager: ${suggestion.label}`
           : state === "failed"
-            ? `Not sent to the Manager, tap to retry: ${suggestion.label}`
+            ? `Not sent to the Manager${reason === undefined ? "" : ` (${reason})`}, tap to retry: ${suggestion.label}`
             : `Send to the Manager: ${suggestion.label}`;
     return (
       <View
