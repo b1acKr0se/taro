@@ -12,7 +12,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import type { PluginScreenProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 
 import { catchUp, compactManager, resumeManager, tellManager, type Card, type ProjectSummary } from "../shared/contracts";
@@ -27,6 +27,8 @@ import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { Inbox } from "./inbox";
 import { keptObject } from "./kept";
+import { KeptPane, useVisited } from "./kept-pane";
+import { useLatestCallback } from "./latest-callback";
 import { OwnerPane } from "./owner-pane";
 import { PlanNavigation } from "./plan-navigation";
 import { PaneHeader } from "./pane-header";
@@ -99,6 +101,12 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
     params.view === "setup" || params.view === "settings" || params.view === "inbox" ? params.view : remembered.view,
   );
   const [ticket, setTicket] = useState<string | null>(() => remembered.ticket);
+  // The phone's Manager · Inbox · Board · Stats, one for every project as a remount gave it (TR-069).
+  const [phoneTab, setPhoneTabState] = useState<PhoneTab>(remembered.phoneTab);
+  const setPhoneTab = (value: PhoneTab) => {
+    remembered.phoneTab = value;
+    setPhoneTabState(value);
+  };
   // Set by the project view once its board has loaded without the ticket's card (TR-065).
   const [ticketMissing, setTicketMissing] = useState(false);
   const ticketOpen = ticket !== null && !ticketMissing;
@@ -120,7 +128,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
     resetNewProject();
     refreshCreation();
     if (next === "reset" || project === null) return;
-    remembered.phoneTab = "manager";
+    setPhoneTab("manager");
     choose(project, "project");
   }, [next]);
 
@@ -136,7 +144,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
       remembered.ticketFromProject = move.ticketFrom.project;
       remembered.ticketFromView = move.ticketFrom.view;
     }
-    if (move.phoneTab !== null) remembered.phoneTab = move.phoneTab;
+    if (move.phoneTab !== null) setPhoneTab(move.phoneTab);
     keepPlan(move.plan);
     setPlan(move.plan);
     remembered.project = move.project;
@@ -288,7 +296,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
       />
     );
   } else if (showing === "inbox" && !layout.compact) {
-    body = <Inbox projects={list} theme={theme} compact={false} onOpenTicket={(project, card) => choose(project, "project", card.id)} />;
+    body = null;
   } else if (current === null) {
     body = null;
   } else if (showing === "settings") {
@@ -305,30 +313,57 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
       />
     );
   } else {
-    body = (
-      <ProjectView
-        key={current.config.project}
-        summary={current}
-        all={list}
-        theme={theme}
-        compact={layout.compact}
-        ticket={ticket}
-        planOpen={planShown(plan, ticket)}
-        onLeavePlan={() => {
-          keepPlan(null);
-          setPlan(null);
-        }}
-        onTicket={(next) => choose(current.config.project, "project", next)}
-        onTicketBack={ticketBack}
-        onShowManager={() => choose(current.config.project, "project")}
-        onTicketMissing={setTicketMissing}
-        backTo={(phoneTab) => ticketBackTarget(layout.compact, phoneTab, remembered.ticketFromView)}
-        onSettings={() => choose(current.config.project, "settings")}
-        onOpenAgent={onOpenAgent}
-        onOpenElsewhere={(project, card) => choose(project, "project", card.id)}
-      />
-    );
+    body = null;
   }
+
+  // The wide Inbox and every project shown once stay mounted, hidden, so going back draws nothing new (TR-069).
+  const inboxShown = showing === "inbox" && !layout.compact;
+  const inboxVisited = useVisited(inboxShown ? "inbox" : null);
+  const activeProject = current !== null && body === null && !inboxShown && showing !== "setup" ? current.config.project : null;
+  const projectsVisited = useVisited(activeProject);
+  const openFromInbox = useLatestCallback((project: string, card: Card) => choose(project, "project", card.id));
+  const kept = (
+    <>
+      {inboxVisited.has("inbox") ? (
+        <KeptPane shown={inboxShown}>
+          <MemoInbox projects={list} theme={theme} compact={false} onOpenTicket={openFromInbox} />
+        </KeptPane>
+      ) : null}
+      {list
+        .filter((summary) => projectsVisited.has(summary.config.project))
+        .map((summary) => {
+          const project = summary.config.project;
+          const active = project === activeProject;
+          return (
+            <KeptPane key={project} shown={active}>
+              <ProjectView
+                summary={summary}
+                all={list}
+                theme={theme}
+                compact={layout.compact}
+                active={active}
+                ticket={active ? ticket : null}
+                planOpen={active && planShown(plan, ticket)}
+                phoneTab={phoneTab}
+                onPhoneTab={setPhoneTab}
+                onLeavePlan={() => {
+                  keepPlan(null);
+                  setPlan(null);
+                }}
+                onTicket={(next) => choose(project, "project", next)}
+                onTicketBack={ticketBack}
+                onShowManager={() => choose(project, "project")}
+                onTicketMissing={setTicketMissing}
+                backTo={(tab) => ticketBackTarget(layout.compact, tab, remembered.ticketFromView)}
+                onSettings={() => choose(project, "settings")}
+                onOpenAgent={onOpenAgent}
+                onOpenElsewhere={(other, card) => choose(other, "project", card.id)}
+              />
+            </KeptPane>
+          );
+        })}
+    </>
+  );
 
   return (
     <PlanNavigation.Provider value={viewPlan}>
@@ -338,19 +373,29 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
         <View style={styles.body}>
           {projects.error !== null && projects.data === undefined ? <Text style={styles.error}>{errorText(projects.error)}</Text> : null}
           {body}
+          {kept}
         </View>
       </View>
     </PlanNavigation.Provider>
   );
 }
 
+/** The phone's tabs in the order they are built ahead of their first use. */
+const PHONE_TABS: readonly PhoneTab[] = ["manager", "board", "inbox", "stats"];
+
+/** Each phone tab not yet shown is built hidden this long after the last, so its first switch draws nothing new either. */
+const WARM_STEP_MS = 700;
+
 function ProjectView({
   summary,
   all,
   theme,
   compact,
+  active,
   ticket,
   planOpen,
+  phoneTab,
+  onPhoneTab,
   onLeavePlan,
   onTicket,
   onTicketBack,
@@ -365,7 +410,12 @@ function ProjectView({
   all: readonly ProjectSummary[];
   theme: PluginTheme;
   compact: boolean;
+  /** This project is the one showing; the others stay mounted, hidden (TR-069). */
+  active: boolean;
   ticket: string | null;
+  /** The phone's tab, shared by every project as one remount after another gave it. */
+  phoneTab: PhoneTab;
+  onPhoneTab: (tab: PhoneTab) => void;
   onTicket: (ticket: string) => void;
   /** The open ticket's Back (its button and Android's): out of a plan to where View plan was pressed, else to where the ticket was opened from. */
   onTicketBack: () => void;
@@ -386,7 +436,6 @@ function ProjectView({
   const project = summary.config.project;
   const board = useBoard(project);
   const refreshBoard = useRefreshBoard(project);
-  const [phoneTab, setPhoneTab] = useState<PhoneTab>(remembered.phoneTab);
   const [rightPane, setRightPane] = useState<RightPane>(remembered.rightPane);
   const [boardHidden, setBoardHiddenState] = useState(remembered.boardHidden);
   const openCard = ticket === null ? null : (board.data?.cards ?? []).find((card) => card.id === ticket) ?? null;
@@ -396,29 +445,36 @@ function ProjectView({
     setBoardHiddenState(hidden);
   };
   const onShowBoard = compact || layout.board ? null : () => setBoardHidden(false);
-  const choosePhoneTab = (value: PhoneTab) => {
-    remembered.phoneTab = value;
-    setPhoneTab(value);
-  };
   const shownState = ticketShown({ ticket, boardLoaded: board.data !== undefined, cardFound: openCard !== null });
-  useEffect(() => onTicketMissing(shownState === "missing"), [shownState]);
+  // Only the project showing says whether its ticket is missing; a hidden one has none open.
+  useEffect(() => {
+    if (active) onTicketMissing(shownState === "missing");
+  }, [shownState, active]);
   // Android's back is the ticket's Back button: out of a plan, to where View plan was pressed.
   useBackStep(openCard !== null, onTicketBack);
+  const tabsVisited = useVisited(active && compact ? phoneTab : null);
+  const rightVisited = useVisited(active && !compact && layout.board ? rightPane : null);
+  const warmed = useWarmUp(PHONE_TABS.length, active && compact);
+  const openTicket = useLatestCallback((card: Card) => onTicket(card.id));
+  // The manager's questions are answered in its chat: on a phone its tab, on a wide screen the left pane.
+  const openManager = useLatestCallback(() => (compact ? onPhoneTab("manager") : onShowManager()));
+  const openElsewhere = useLatestCallback(onOpenElsewhere);
 
-  const left =
-    openCard === null ? (
-      <ManagerPane
-        summary={summary}
-        decisions={board.data?.managerDecisions ?? []}
-        suggestions={board.data?.suggestions ?? []}
-        theme={theme}
-        compact={compact}
-        onSettings={onSettings}
-        onOpenAgent={onOpenAgent}
-        onShowBoard={onShowBoard}
-        onChanged={refreshBoard}
-      />
-    ) : (
+  const managerPane = (
+    <ManagerPane
+      summary={summary}
+      decisions={board.data?.managerDecisions ?? NO_DECISIONS}
+      suggestions={board.data?.suggestions ?? NO_SUGGESTIONS}
+      theme={theme}
+      compact={compact}
+      onSettings={onSettings}
+      onOpenAgent={onOpenAgent}
+      onShowBoard={onShowBoard}
+      onChanged={refreshBoard}
+    />
+  );
+  const ownerPane =
+    openCard === null ? null : (
       <OwnerPane
         card={openCard}
         project={project}
@@ -434,56 +490,60 @@ function ProjectView({
         onShowBoard={onShowBoard}
       />
     );
-  const boardView = (
-    <ProjectBoard
-      summary={summary}
-      theme={theme}
-      compact={compact}
-      selectedTicket={ticket}
-      onOpenTicket={(card) => onTicket(card.id)}
-      // The manager's questions are answered in its chat: on a phone its tab, on a wide screen the left pane.
-      onOpenManager={() => (compact ? choosePhoneTab("manager") : onShowManager())}
-    />
+  // The open ticket's pane over the manager's, which stays mounted beneath it for Back (TR-069).
+  const left = (
+    <>
+      {ownerPane === null ? null : <KeptPane shown>{ownerPane}</KeptPane>}
+      <KeptPane shown={ownerPane === null}>{managerPane}</KeptPane>
+    </>
   );
+  const boardView = <MemoBoard summary={summary} theme={theme} compact={compact} selectedTicket={ticket} onOpenTicket={openTicket} onOpenManager={openManager} />;
 
   if (compact) {
-    if (openCard !== null) return left;
     // The Inbox lists every project, so its tab counts them all, as the sidebar does (TR-064).
     const needsYou = all.reduce((total, project) => total + project.needsYou, 0);
+    const kept = (tab: PhoneTab) => tabsVisited.has(tab) || PHONE_TABS.indexOf(tab) < warmed;
     return (
-      <View style={{ flex: 1 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm, paddingHorizontal: paneGutter(true), paddingVertical: SPACE.sm }}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Segmented
-              theme={theme}
-              value={phoneTab}
-              // Words without icons: all four and the settings button fit one row of a phone.
-              options={[
-                { value: "manager", label: "Manager" },
-                { value: "inbox", label: needsYou > 0 ? `Inbox ${needsYou}` : "Inbox" },
-                { value: "board", label: "Board" },
-                { value: "stats", label: "Stats" },
-              ]}
-              onChange={choosePhoneTab}
-            />
+      <>
+        {ownerPane === null ? null : <KeptPane shown>{ownerPane}</KeptPane>}
+        {/* The tabs stay mounted under an open ticket, so its Back shows them at once (TR-069). */}
+        <KeptPane shown={ownerPane === null}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm, paddingHorizontal: paneGutter(true), paddingVertical: SPACE.sm }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Segmented
+                theme={theme}
+                value={phoneTab}
+                // Words without icons: all four and the settings button fit one row of a phone.
+                options={[
+                  { value: "manager", label: "Manager" },
+                  { value: "inbox", label: needsYou > 0 ? `Inbox ${needsYou}` : "Inbox" },
+                  { value: "board", label: "Board" },
+                  { value: "stats", label: "Stats" },
+                ]}
+                onChange={onPhoneTab}
+              />
+            </View>
+            {phoneTab === "manager" && summary.manager !== null && onOpenAgent !== null ? (
+              <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(summary.manager?.id ?? "")} />
+            ) : null}
+            <IconButton icon="Settings" label="Project settings" theme={theme} onPress={onSettings} />
           </View>
-          {phoneTab === "manager" && summary.manager !== null && onOpenAgent !== null ? (
-            <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(summary.manager?.id ?? "")} />
-          ) : null}
-          <IconButton icon="Settings" label="Project settings" theme={theme} onPress={onSettings} />
-        </View>
-        <View style={{ flex: 1 }}>
-          {phoneTab === "manager" ? (
-            left
-          ) : phoneTab === "inbox" ? (
-            <Inbox projects={all} theme={theme} compact onOpenTicket={onOpenElsewhere} />
-          ) : phoneTab === "stats" ? (
-            <StatsView project={project} theme={theme} compact />
-          ) : (
-            boardView
-          )}
-        </View>
-      </View>
+          <View style={{ flex: 1 }}>
+            {kept("manager") ? <KeptPane shown={phoneTab === "manager"}>{managerPane}</KeptPane> : null}
+            {kept("inbox") ? (
+              <KeptPane shown={phoneTab === "inbox"}>
+                <MemoInbox projects={all} theme={theme} compact onOpenTicket={openElsewhere} />
+              </KeptPane>
+            ) : null}
+            {kept("stats") ? (
+              <KeptPane shown={phoneTab === "stats"}>
+                <MemoStats project={project} theme={theme} compact />
+              </KeptPane>
+            ) : null}
+            {kept("board") ? <KeptPane shown={phoneTab === "board"}>{boardView}</KeptPane> : null}
+          </View>
+        </KeptPane>
+      </>
     );
   }
   if (!layout.board) {
@@ -518,10 +578,39 @@ function ProjectView({
           />
           <IconButton icon="PanelRightClose" label="Hide the board" showLabel theme={theme} onPress={() => setBoardHidden(true)} />
         </View>
-        <View style={{ flex: 1, minHeight: 0 }}>{rightPane === "stats" ? <StatsView project={project} theme={theme} compact={false} /> : boardView}</View>
+        <View style={{ flex: 1, minHeight: 0 }}>
+          {rightVisited.has("stats") ? (
+            <KeptPane shown={rightPane === "stats"}>
+              <MemoStats project={project} theme={theme} compact={false} />
+            </KeptPane>
+          ) : null}
+          {rightVisited.has("board") ? <KeptPane shown={rightPane === "board"}>{boardView}</KeptPane> : null}
+        </View>
       </View>
     </View>
   );
+}
+
+const NO_DECISIONS: readonly StoredDecision[] = [];
+const NO_SUGGESTIONS: readonly Suggestion[] = [];
+
+// Redrawn only when what they show changes, not on every render of the project above them (TR-069).
+const MemoBoard = memo(ProjectBoard);
+const MemoInbox = memo(Inbox);
+const MemoStats = memo(StatsView);
+
+/**
+ * How many of `count` panes to build ahead of their first use: none at first, so the pane asked for
+ * draws alone, then one more every `WARM_STEP_MS` while `enabled`.
+ */
+function useWarmUp(count: number, enabled: boolean): number {
+  const [warmed, setWarmed] = useState(0);
+  useEffect(() => {
+    if (!enabled || warmed >= count) return undefined;
+    const timer = setTimeout(() => setWarmed(warmed + 1), WARM_STEP_MS);
+    return () => clearTimeout(timer);
+  }, [enabled, warmed, count]);
+  return warmed;
 }
 
 function ManagerPane({

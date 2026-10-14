@@ -35,6 +35,7 @@ import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { Chip, IconButton, MONOSPACE } from "./ui";
 import { useActions, type Actions } from "./use-actions";
 import { recordKindLook, toneColor } from "./visual-meta";
+import { polled } from "./polling";
 
 /** The timeline's dot, the rail column it sits in, and the clock column before it. */
 const DOT = 10;
@@ -64,8 +65,8 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
   const load = useRpc(loadTicket);
   const listDecisions = useRpc(listOpenDecisions);
   const toast = useToast();
-  const detail = useQuery({ queryKey: ["taro", "ticket", project, ticket], queryFn: () => load({ project, ticket }), refetchInterval: 6_000 });
-  const decisions = useQuery({ queryKey: ["taro", "decisions", project], queryFn: () => listDecisions({ project }), refetchInterval: 4_000 });
+  const detail = useQuery({ queryKey: ["taro", "ticket", project, ticket], queryFn: () => load({ project, ticket }), ...polled(6_000) });
+  const decisions = useQuery({ queryKey: ["taro", "decisions", project], queryFn: () => listDecisions({ project }), ...polled(4_000) });
   // A row the user opened or folded stays so; the others follow the ticket (Plan while it waits for approval).
   const [toggled, setToggled] = useState<Partial<Record<TicketSectionKey, boolean>>>({});
   const [width, setWidth] = useState<number | null>(null);

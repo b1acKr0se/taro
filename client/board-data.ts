@@ -3,6 +3,7 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { loadBoard } from "../shared/contracts";
+import { polled } from "./polling";
 
 export function boardKey(project: string) {
   return ["taro", "board", project] as const;
@@ -10,7 +11,7 @@ export function boardKey(project: string) {
 
 export function useBoard(project: string) {
   const load = useRpc(loadBoard);
-  return useQuery({ queryKey: boardKey(project), queryFn: () => load({ project }), refetchInterval: 4_000 });
+  return useQuery({ queryKey: boardKey(project), queryFn: () => load({ project }), ...polled(4_000) });
 }
 
 export function useRefreshBoard(project: string): () => void {

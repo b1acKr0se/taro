@@ -7,7 +7,7 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 
 import { COLUMN_IDS, COLUMN_META, COLUMN_TITLES, columnCounts, needsYouExtras, type ColumnId } from "../shared/board";
@@ -18,6 +18,7 @@ import { useBoard, useRefreshBoard } from "./board-data";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { keptObject } from "./kept";
+import { useLatestCallback } from "./latest-callback";
 import { KeyboardScrollView } from "./keyboard";
 import { QuestionCard } from "./question-card";
 import { useStats } from "./queries";
@@ -53,6 +54,9 @@ export function ProjectBoard({
   const board = useBoard(project);
   const stats = useStats(project);
   const refresh = useRefreshBoard(project);
+  // Stable, so a card whose ticket did not change is not drawn again on each refresh (TR-069).
+  const changed = useLatestCallback(refresh);
+  const openCard = useLatestCallback(onOpenTicket);
   const [column, setColumn] = useState<ColumnId>(phoneColumn.current);
   const [paneWidth, setPaneWidth] = useState(0);
   const { colors } = theme;
@@ -110,7 +114,7 @@ export function ProjectBoard({
 
   function renderCard(card: Card) {
     return (
-      <TicketCard
+      <BoardCard
         key={card.id}
         card={card}
         project={project}
@@ -118,8 +122,8 @@ export function ProjectBoard({
         compact={compact}
         selected={card.id === selectedTicket}
         stats={card.column === "done" ? (statsByTicket.get(card.id) ?? null) : null}
-        onOpen={() => onOpenTicket(card)}
-        onChanged={refresh}
+        onOpenCard={openCard}
+        onChanged={changed}
       />
     );
   }
@@ -129,7 +133,7 @@ export function ProjectBoard({
     const questions =
       id === "needs-you"
         ? managerQuestions.map((decision) => (
-            <QuestionCard key={decision.key} decision={decision} asker="Manager" theme={theme} compact={compact} onOpen={onOpenManager} onAnswered={refresh} />
+            <QuestionCard key={decision.key} decision={decision} asker="Manager" theme={theme} compact={compact} onOpen={onOpenManager} onAnswered={changed} />
           ))
         : [];
     if (questions.length === 0 && group.length === 0) return empty(id, id === "needs-you" && waitingAbove ? "See above" : "Nothing here");
@@ -247,3 +251,8 @@ export function ProjectBoard({
     </ScrollView>
   );
 }
+
+/** A ticket's card on the board, drawn again only when its ticket, stats or selection changed (TR-069). */
+const BoardCard = memo(function BoardCard({ card, onOpenCard, ...rest }: Omit<Parameters<typeof TicketCard>[0], "onOpen"> & { onOpenCard: (card: Card) => void }) {
+  return <TicketCard card={card} onOpen={() => onOpenCard(card)} {...rest} />;
+});

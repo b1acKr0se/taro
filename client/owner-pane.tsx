@@ -27,6 +27,7 @@ import { TicketView } from "./ticket-view";
 import { FONT_SIZE } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
 import { AgentChips } from "./agent-chips";
+import { KeptPane, useVisited } from "./kept-pane";
 import { useNow } from "./use-now";
 
 const ARCHIVED_NOTE = "Finished — this agent is archived; its conversation is read-only.";
@@ -67,6 +68,8 @@ export function OwnerPane({
   // Kept with the card it was chosen on: opening another ticket (its Answer → or Review →) starts on Chat, where its asks are answered.
   const [chosenTab, setTab] = useState<{ card: string; tab: "chat" | "ticket" } | null>(null);
   const tab = ticketBeside ? "chat" : planOpen ? "ticket" : chosenTab?.card !== card.id ? "chat" : chosenTab.tab;
+  // Chat and Ticket stay mounted once shown for this card, so switching between them draws nothing new (TR-069).
+  const tabsVisited = useVisited(`${card.id}:${tab}`);
   // Back from a plan returns to wherever View plan was pressed, which it does not name.
   const backLabel = planOpen ? "Back" : `Back to ${backTo}`;
   // Remembered with the card it was made on, so opening another ticket starts from its default agent.
@@ -128,62 +131,69 @@ export function OwnerPane({
       </View>
       ) : null}
       <View style={{ flex: 1 }}>
-        {tab === "ticket" ? (
-          <TicketView key={card.id} project={project} ticket={card.id} theme={theme} />
-        ) : shown === null ? (
-          <Text style={{ color: theme.colors.foregroundMuted, padding: SPACE.lg }}>
-            {card.ownerElsewhere !== null ? `Its owner runs on ${card.ownerElsewhere}.` : "No owner is running for this ticket."}
-          </Text>
-        ) : shown.live ? (
-          <AgentChat
-            key={shown.id}
-            asker={{ kind: "ticket", ticket: card.id, role: shown.role }}
-            agent={{ id: shown.id, updatedAt: shown.brief.updatedAt, pendingPermissions: shown.brief.pendingPermissions, status: shown.brief.status }}
-            theme={theme}
-            compact={compact}
-            placeholder={`Talk to ${card.id}'s ${paneAgentJob(shown.role)}…`}
-            onSend={async (text, attachments) => {
-              await tell({ agentId: shown.id, text, ...attachments });
-            }}
-            transformText={withoutDecisionBlocks}
-            asks={{ decisions: shownAsks, onAnswered: onChanged }}
-            delivery={
-              accepting && shown.id === card.owner?.id
-                ? {
-                    card: <AcceptanceCard card={card} project={project} theme={theme} compact={compact} onChanged={onChanged} />,
-                    label: acceptanceReady(card) ? `${card.id} is ready to accept` : `${card.id} is not ready to accept`,
-                    ready: acceptanceReady(card),
-                  }
-                : undefined
-            }
-            context={{ used: shown.brief.contextUsedTokens, max: shown.brief.contextMaxTokens }}
-            actions={
-              askedElsewhere === undefined || askedElsewhereBy === undefined ? undefined : (
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => setChosen({ card: card.id, agent: askedElsewhereBy.id })}
-                  style={{ width: "100%", flexDirection: "row", alignItems: "center", gap: SPACE.sm }}
-                >
-                  <Icon name="Hand" size={13} color={askedElsewhere.blocking ? theme.colors.statusWarning : theme.colors.foregroundMuted} />
-                  <Text style={{ flex: 1, color: theme.colors.foreground, fontSize: FONT_SIZE.caption }} numberOfLines={1}>
-                    {askedElsewhere.question}
-                  </Text>
-                  <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Open {askedElsewhereBy.label}</Text>
-                </Pressable>
-              )
-            }
-          />
-        ) : (
-          <AgentChat
-            key={shown.id}
-            asker={{ kind: "ticket", ticket: card.id, role: shown.role }}
-            agent={{ id: shown.id, updatedAt: shown.brief.updatedAt, pendingPermissions: 0, status: shown.brief.status }}
-            theme={theme}
-            compact={compact}
-            // No cards for a finished agent's questions: each block reads as a quote of what it asked.
-            transformText={decisionBlocksAsText}
-            readOnly={{ note: ARCHIVED_NOTE }}
-          />
+        {tabsVisited.has(`${card.id}:ticket`) ? (
+          <KeptPane key={`ticket:${card.id}`} shown={tab === "ticket"}>
+            <TicketView project={project} ticket={card.id} theme={theme} />
+          </KeptPane>
+        ) : null}
+        {!tabsVisited.has(`${card.id}:chat`) ? null : (
+          <KeptPane key={`chat:${card.id}`} shown={tab === "chat"}>
+            {shown === null ? (
+              <Text style={{ color: theme.colors.foregroundMuted, padding: SPACE.lg }}>
+                {card.ownerElsewhere !== null ? `Its owner runs on ${card.ownerElsewhere}.` : "No owner is running for this ticket."}
+              </Text>
+            ) : shown.live ? (
+              <AgentChat
+                key={shown.id}
+                asker={{ kind: "ticket", ticket: card.id, role: shown.role }}
+                agent={{ id: shown.id, updatedAt: shown.brief.updatedAt, pendingPermissions: shown.brief.pendingPermissions, status: shown.brief.status }}
+                theme={theme}
+                compact={compact}
+                placeholder={`Talk to ${card.id}'s ${paneAgentJob(shown.role)}…`}
+                onSend={async (text, attachments) => {
+                  await tell({ agentId: shown.id, text, ...attachments });
+                }}
+                transformText={withoutDecisionBlocks}
+                asks={{ decisions: shownAsks, onAnswered: onChanged }}
+                delivery={
+                  accepting && shown.id === card.owner?.id
+                    ? {
+                        card: <AcceptanceCard card={card} project={project} theme={theme} compact={compact} onChanged={onChanged} />,
+                        label: acceptanceReady(card) ? `${card.id} is ready to accept` : `${card.id} is not ready to accept`,
+                        ready: acceptanceReady(card),
+                      }
+                    : undefined
+                }
+                context={{ used: shown.brief.contextUsedTokens, max: shown.brief.contextMaxTokens }}
+                actions={
+                  askedElsewhere === undefined || askedElsewhereBy === undefined ? undefined : (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => setChosen({ card: card.id, agent: askedElsewhereBy.id })}
+                      style={{ width: "100%", flexDirection: "row", alignItems: "center", gap: SPACE.sm }}
+                    >
+                      <Icon name="Hand" size={13} color={askedElsewhere.blocking ? theme.colors.statusWarning : theme.colors.foregroundMuted} />
+                      <Text style={{ flex: 1, color: theme.colors.foreground, fontSize: FONT_SIZE.caption }} numberOfLines={1}>
+                        {askedElsewhere.question}
+                      </Text>
+                      <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Open {askedElsewhereBy.label}</Text>
+                    </Pressable>
+                  )
+                }
+              />
+            ) : (
+              <AgentChat
+                key={shown.id}
+                asker={{ kind: "ticket", ticket: card.id, role: shown.role }}
+                agent={{ id: shown.id, updatedAt: shown.brief.updatedAt, pendingPermissions: 0, status: shown.brief.status }}
+                theme={theme}
+                compact={compact}
+                // No cards for a finished agent's questions: each block reads as a quote of what it asked.
+                transformText={decisionBlocksAsText}
+                readOnly={{ note: ARCHIVED_NOTE }}
+              />
+            )}
+          </KeptPane>
         )}
       </View>
     </View>

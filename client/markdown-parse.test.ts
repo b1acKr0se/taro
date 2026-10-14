@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { blockImages, inlineTexts, parseMarkdown } from "./markdown-parse";
+import { blockImages, inlineTexts, parseMarkdown, parseMarkdownCached } from "./markdown-parse";
 
 const SCREENSHOT = "file:///tmp/paseo-attachments-x1/9f%20a.png";
 
@@ -62,5 +62,31 @@ describe("blockImages", () => {
   it("is empty for a message without images", () => {
     expect(blockImages(parseMarkdown("just words"))).toEqual([]);
     expect(blockImages([])).toEqual([]);
+  });
+});
+
+describe("parseMarkdownCached", () => {
+  it("parses a text once: the same text drawn again gets the same blocks", () => {
+    const text = "## Status\n\n- one\n- two\n\n**Done.**";
+    const blocks = parseMarkdownCached(text);
+    expect(parseMarkdownCached(text)).toBe(blocks);
+    expect(blocks).toEqual(parseMarkdown(text));
+  });
+
+  it("parses another text afresh", () => {
+    expect(parseMarkdownCached("first reply")).not.toBe(parseMarkdownCached("second reply"));
+  });
+
+  it("parses the empty text", () => {
+    expect(parseMarkdownCached("")).toEqual(parseMarkdown(""));
+  });
+
+  it("stays bounded: after many other texts the oldest is parsed again, still to the same blocks", () => {
+    const oldest = "an early message";
+    const first = parseMarkdownCached(oldest);
+    for (let index = 0; index < 700; index += 1) parseMarkdownCached(`message ${index}`);
+    const again = parseMarkdownCached(oldest);
+    expect(again).not.toBe(first);
+    expect(again).toEqual(first);
   });
 });

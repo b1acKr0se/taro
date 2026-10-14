@@ -25,7 +25,7 @@ import { Platform, Text, View } from "react-native";
 import { focusRingStyle } from "./focus-ring";
 import { ImageThumbnail } from "./image-view";
 import { inlineTokens, type FileLookup } from "./file-links";
-import { blockImages, parseMarkdown, type Block, type ImageReference } from "./markdown-parse";
+import { blockImages, parseMarkdownCached, type Block, type ImageReference } from "./markdown-parse";
 import { MONOSPACE } from "./ui";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
@@ -200,7 +200,7 @@ function renderInline(text: string, styles: MarkdownStyles, context: InlineConte
   });
 }
 
-function renderBlocks(blocks: Block[], styles: MarkdownStyles, context: InlineContext): ReactNode[] {
+function renderBlocks(blocks: readonly Block[], styles: MarkdownStyles, context: InlineContext): ReactNode[] {
   return blocks.map((block, index) => {
     switch (block.kind) {
       case "heading":
@@ -298,7 +298,7 @@ export function Markdown({
   foldParagraphs?: boolean;
 }) {
   const styles = useMarkdownStyles(theme, fontSize);
-  const blocks = useMemo(() => parseMarkdown(source), [source]);
+  const blocks = useMemo(() => parseMarkdownCached(source), [source]);
   const images = useMemo(() => blockImages(blocks), [blocks]);
   // Blocks a little further apart than lines, so paragraphs and lists read as separate thoughts.
   return <View style={{ gap: SPACE.sm + 2 }}>{renderBlocks(blocks, styles, { theme, lookup: files, onOpenLink, onOpenFile, images, fold: foldParagraphs, lineHeight: lineHeightFor(fontSize) })}</View>;

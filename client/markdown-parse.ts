@@ -76,6 +76,25 @@ export function parseMarkdown(source: string): Block[] {
   return parseBlocks(source.replace(/\r\n?/g, "\n").split("\n"));
 }
 
+/** How many parsed texts the cache keeps; a long chat holds a few hundred messages. */
+const PARSED_LIMIT = 600;
+
+/** Parsed texts by source, oldest first, so the oldest leaves when the cache is full. */
+const parsed = new Map<string, readonly Block[]>();
+
+/**
+ * `parseMarkdown`, kept per text (TR-069): a chat or ticket drawn again after a switch, or the same
+ * text in another pane, reuses the blocks parsed before. The blocks are shared, so callers only read them.
+ */
+export function parseMarkdownCached(source: string): readonly Block[] {
+  const known = parsed.get(source);
+  if (known !== undefined) return known;
+  const blocks = parseMarkdown(source);
+  if (parsed.size >= PARSED_LIMIT) parsed.delete(parsed.keys().next().value as string);
+  parsed.set(source, blocks);
+  return blocks;
+}
+
 function parseBlocks(lines: string[]): Block[] {
   const blocks: Block[] = [];
   let paragraph: string[] = [];

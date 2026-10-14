@@ -28,6 +28,7 @@ import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { IconButton } from "./ui";
 import { useActions, type Actions } from "./use-actions";
+import { polled } from "./polling";
 
 /** Below this width the box's labels sit above their text instead of in a column beside it. */
 const STACK_BELOW_WIDTH = 460;
@@ -49,7 +50,7 @@ export function useTicketPlan(project: string, ticket: string | null, enabled = 
     queryKey: ["taro", "ticket", project, ticket ?? ""],
     queryFn: () => load({ project, ticket: ticket ?? "" }),
     enabled: enabled && ticket !== null && project !== "",
-    refetchInterval: 6_000,
+    ...polled(6_000),
   });
   const source = detail.data?.plan ?? null;
   return useMemo(() => parsePlan(source), [source]);

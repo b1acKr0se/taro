@@ -24,6 +24,7 @@ import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { AcceptancePair, IconButton } from "./ui";
 import { useActions } from "./use-actions";
+import { polled } from "./polling";
 
 export function AcceptanceCard({ card, project, theme, compact, onChanged }: { card: Card; project: string; theme: PluginTheme; compact: boolean; onChanged: () => void }) {
   const toast = useToast();
@@ -34,7 +35,7 @@ export function AcceptanceCard({ card, project, theme, compact, onChanged }: { c
   const accept = useRpc(acceptTicket);
   const changes = useRpc(requestChanges);
   // The same query as the Ticket tab and the evidence, so they share one fetch.
-  const detail = useQuery({ queryKey: ["taro", "ticket", project, card.id], queryFn: () => load({ project, ticket: card.id }), refetchInterval: 6_000 });
+  const detail = useQuery({ queryKey: ["taro", "ticket", project, card.id], queryFn: () => load({ project, ticket: card.id }), ...polled(6_000) });
   const [writing, setWriting] = useState(false);
   const [typed, setTyped] = useState("");
   const actions = useActions();

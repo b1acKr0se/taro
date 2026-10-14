@@ -15,6 +15,7 @@ import { DecisionCard } from "./decision-card";
 import { KeyboardScrollView } from "./keyboard";
 import { TicketView } from "./ticket-view";
 import { FONT_SIZE } from "./type-scale";
+import { polled } from "./polling";
 
 export function TicketPanel({ agentId, theme, layout }: PluginAgentPanelProps) {
   const find = useRpc(findAgentTicket);
@@ -26,7 +27,7 @@ export function TicketPanel({ agentId, theme, layout }: PluginAgentPanelProps) {
     queryKey: ["taro", "decisions", project],
     queryFn: () => listDecisions({ project }),
     enabled: project !== null,
-    refetchInterval: 4_000,
+    ...polled(4_000),
   });
   const muted = { color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small, padding: 14 };
   if (identity.isLoading) return <Text style={muted}>Looking this agent up…</Text>;

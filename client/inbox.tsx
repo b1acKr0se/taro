@@ -26,6 +26,7 @@ import { SyncProblemCard } from "./sync-problem-card";
 import { TicketCard } from "./ticket-card";
 import { FONT_SIZE } from "./type-scale";
 import { IconButton } from "./ui";
+import { polled } from "./polling";
 
 /**
  * Walk me through, kept: View plan on a walked question leaves the Inbox (the host unmounts it), and
@@ -45,7 +46,7 @@ export function Inbox({
   onOpenTicket: (project: string, card: Card) => void;
 }) {
   const listDecisions = useRpc(listOpenDecisions);
-  const decisions = useQuery({ queryKey: ["taro", "decisions", "all"], queryFn: () => listDecisions({ project: null }), refetchInterval: 4_000 });
+  const decisions = useQuery({ queryKey: ["taro", "decisions", "all"], queryFn: () => listDecisions({ project: null }), ...polled(4_000) });
   const [walking, setWalkingState] = useState(walk.walking);
   const [step, setStepState] = useState(walk.step);
   const setWalking = (value: boolean) => {

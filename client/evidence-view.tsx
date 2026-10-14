@@ -19,6 +19,7 @@ import { ImageThumbnail } from "./image-view";
 import { MONOSPACE } from "./ui";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
+import { polled } from "./polling";
 
 const SCREENSHOT_HEIGHT = 64;
 /** The thumbnails' column: a desktop shot at the row's height fills it, a phone shot sits centred in it. */
@@ -30,7 +31,7 @@ const SCREENSHOT_COLUMN = SCREENSHOT_HEIGHT * 1.6;
  */
 export function Evidence({ project, ticket, theme, layout = "inline" }: { project: string; ticket: string; theme: PluginTheme; layout?: "inline" | "lines" }) {
   const load = useRpc(loadTicket);
-  const detail = useQuery({ queryKey: ["taro", "ticket", project, ticket], queryFn: () => load({ project, ticket }), refetchInterval: 6_000 });
+  const detail = useQuery({ queryKey: ["taro", "ticket", project, ticket], queryFn: () => load({ project, ticket }), ...polled(6_000) });
   const evidence = detail.data?.evidence ?? null;
   return evidence === null ? null : <EvidenceBlock evidence={evidence} theme={theme} layout={layout} />;
 }

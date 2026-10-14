@@ -7,7 +7,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Keyboard, Platform, SafeAreaView, ScrollView, Text, useWindowDimensions, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
 
 import { attachmentProblem, outgoingAttachments, refuseOversizedImages, type DraftAttachment, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
@@ -40,6 +40,9 @@ import { COMPOSER_CONTROL_SIZE, COMPOSER_FONT_SIZE, COMPOSER_WEB_LINE_HEIGHT, co
 import { useComposerHeight } from "./composer-input-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
+import { useLatestCallback } from "./latest-callback";
+import { sameGroup, sameItems } from "./transcript-memo";
+import type { SentImage } from "./sent-images";
 
 export interface ChatAgent {
   id: string;
@@ -290,240 +293,22 @@ export function AgentChat({
     void openExternalUrl(url).catch((caught: unknown) => toast.error(errorText(caught)));
   }
 
-  const styles = useMemo(() => {
-    const { colors } = theme;
-    return {
-      pane: { flex: 1, minHeight: 0, backgroundColor: colors.surface0 },
-      transcript: { flex: 1 },
-      // Room between turns, so a reply, a tool run and the next message read as separate things.
-      // Centred at a reading width in a wide pane (TR-027); the scroll bar stays at the pane's edge.
-      transcriptBody: {
-        width: "100%" as const,
-        maxWidth: CHAT_MAX_WIDTH,
-        alignSelf: "center" as const,
-        paddingVertical: compact ? SPACE.md : SPACE.lg,
-        paddingHorizontal: paneGutter(compact),
-        gap: compact ? SPACE.md : SPACE.lg,
-      },
-      user: {
-        alignSelf: "flex-end" as const,
-        maxWidth: "88%" as const,
-        backgroundColor: colors.surface2,
-        borderWidth: 1,
-        borderColor: colors.border,
-        borderRadius: 12,
-        paddingHorizontal: SPACE.md,
-        paddingVertical: SPACE.sm + 2,
-      },
-      userImages: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, marginTop: SPACE.sm },
-      userText: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) },
-      agentRow: { alignSelf: "stretch" as const, gap: SPACE.sm },
-      line: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm - 2 },
-      // A run of tool calls is the agent working, not talking: one quiet line until the reader opens it.
-      toolRun: { alignSelf: "flex-start" as const, maxWidth: "100%" as const, gap: SPACE.xs },
-      toolHead: {
-        flexDirection: "row" as const,
-        alignItems: "center" as const,
-        gap: SPACE.sm - 2,
-        paddingHorizontal: SPACE.sm,
-        paddingVertical: SPACE.xs,
-        borderRadius: 6,
-        borderWidth: 1,
-        borderColor: colors.border,
-      },
-      toolList: { gap: SPACE.xs, marginLeft: SPACE.md, paddingLeft: SPACE.sm, borderLeftWidth: 1, borderLeftColor: colors.border },
-      toolLatest: { flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontFamily: MONOSPACE },
-      lineText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
-      toolText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontFamily: MONOSPACE },
-      toolTitle: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
-      error: { color: colors.statusDanger, fontSize: FONT_SIZE.small },
-      hint: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center" as const, padding: SPACE.lg },
-      composerFrame: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface0 },
-      // The transcript's side padding, so the box lines up with the messages above it.
-      composer: {
-        width: "100%" as const,
-        maxWidth: CHAT_MAX_WIDTH,
-        alignSelf: "center" as const,
-        paddingHorizontal: paneGutter(compact),
-        paddingVertical: SPACE.md,
-        gap: SPACE.sm,
-      },
-      quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
-      // Paseo's composer box (TR-039): attachments, then the text across the full width, then a row
-      // of controls: the + at the left, the context ring and the send button at the right. Its border
-      // stays plain while typing, as Paseo's does.
-      inputBox: {
-        flexShrink: 1,
-        flexDirection: "column" as const,
-        gap: SPACE.md,
-        backgroundColor: colors.surface1,
-        borderWidth: 1,
-        borderColor: colors.border,
-        borderRadius: 16,
-        paddingTop: metrics.paddingTop,
-        paddingBottom: metrics.paddingBottom,
-        paddingHorizontal: metrics.paddingHorizontal,
-      },
-      input: {
-        flexShrink: 1,
-        width: "100%" as const,
-        color: colors.foreground,
-        fontSize: COMPOSER_FONT_SIZE,
-        textAlignVertical: "top" as const,
-        // No line height on a phone, as in Paseo: React Native draws one as a span over the text, and
-        // an empty last line takes the font's own, so the field jumped when a new line began.
-        ...(Platform.OS === "web" ? { lineHeight: COMPOSER_WEB_LINE_HEIGHT } : null),
-      },
-      // The row reaches 6 px into the box's padding, so the round buttons sit in its corners.
-      controls: {
-        flexShrink: 0,
-        flexDirection: "row" as const,
-        alignItems: "flex-end" as const,
-        justifyContent: "space-between" as const,
-        marginHorizontal: -6,
-      },
-      controlsEnd: { flexShrink: 0, flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.xs },
-      // A filled circle, the size of the + and the ring's slot.
-      send: {
-        width: COMPOSER_CONTROL_SIZE,
-        height: COMPOSER_CONTROL_SIZE,
-        borderRadius: COMPOSER_CONTROL_SIZE / 2,
-        alignItems: "center" as const,
-        justifyContent: "center" as const,
-        backgroundColor: colors.accent,
-        marginLeft: SPACE.xs,
-      },
-      readOnly: {
-        width: "100%" as const,
-        maxWidth: CHAT_MAX_WIDTH,
-        alignSelf: "center" as const,
-        flexDirection: "row" as const,
-        alignItems: "center" as const,
-        gap: SPACE.sm,
-        paddingHorizontal: paneGutter(compact),
-        paddingVertical: SPACE.md,
-      },
-      // The band spans the pane; only its note is held to the reading width.
-      readOnlyBand: { backgroundColor: colors.surface1 },
-      readOnlyText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
-    };
-  }, [theme, compact, metrics.paddingTop, metrics.paddingBottom, metrics.paddingHorizontal]);
+  const toggleGroup = useLatestCallback((key: string) =>
+    setOpenGroups((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    }),
+  );
+  const rowLayoutChanged = useLatestCallback(noteRowLayout);
+  const openLinkLatest = useLatestCallback(openLink);
+  const decisionCardsLatest = useLatestCallback(decisionCards);
 
-  function renderGroup(group: Group) {
-    if ("tools" in group) {
-      const open = openGroups.has(group.key);
-      const summary = toolRunSummary(group.tools);
-      const lone = group.tools.length === 1;
-      const toggle = () =>
-        setOpenGroups((current) => {
-          const next = new Set(current);
-          if (open) next.delete(group.key);
-          else next.add(group.key);
-          return next;
-        });
-      return (
-        <View key={group.key} style={styles.toolRun}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ expanded: open }}
-            accessibilityLabel={lone ? summary.title : `${summary.title}, ${open ? "fold" : "show"}`}
-            disabled={lone}
-            style={[styles.toolHead, summary.state === "failed" ? { borderColor: theme.colors.statusDanger } : null]}
-            onPress={toggle}
-          >
-            {summary.state === "running" ? (
-              <Spinner size={11} color={theme.colors.foregroundMuted} />
-            ) : (
-              <Icon name={summary.state === "failed" ? "X" : "Wrench"} size={11} color={summary.state === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
-            )}
-            <Text style={lone ? styles.toolLatest : styles.toolTitle} numberOfLines={1}>
-              {summary.title}
-              {summary.failed > 0 && !lone ? ` · ${summary.failed} failed` : ""}
-            </Text>
-            {summary.latest === null || open ? null : (
-              <Text style={styles.toolLatest} numberOfLines={1}>
-                {summary.latest}
-              </Text>
-            )}
-            {lone ? null : <Icon name={open ? "ChevronDown" : "ChevronRight"} size={12} color={theme.colors.foregroundMuted} />}
-          </Pressable>
-          {open && !lone ? (
-            <View style={styles.toolList}>
-              {group.tools.map((tool) => (
-                <View key={tool.key} style={styles.line}>
-                  {tool.status === "running" ? (
-                    <Spinner size={11} color={theme.colors.foregroundMuted} />
-                  ) : (
-                    <Icon name={tool.status === "failed" ? "X" : "Dot"} size={11} color={tool.status === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
-                  )}
-                  <Text style={styles.toolText} numberOfLines={1}>
-                    {tool.text}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
-        </View>
-      );
-    }
-    const row = group.row;
-    switch (row.kind) {
-      case "user": {
-        const images = rowImages.get(row.key);
-        return (
-          <View key={row.key} style={styles.user}>
-            <Text selectable style={styles.userText}>
-              {row.text}
-            </Text>
-            {images === undefined ? null : (
-              <View style={styles.userImages}>
-                {images.map((image, index) => (
-                  <ImageThumbnail
-                    key={index}
-                    source={image.path}
-                    alt="Sent image"
-                    theme={theme}
-                    set={images.map((each) => ({ source: each.path, alt: "Sent image" }))}
-                    index={index}
-                  />
-                ))}
-              </View>
-            )}
-          </View>
-        );
-      }
-      case "agent": {
-        const asked = places?.byRow.get(row.key) ?? [];
-        const presented = delivery !== undefined && row.key === deliveryKey;
-        const targets = [...asked.map((decision) => decision.key), ...(presented ? [deliveryTarget] : [])];
-        return (
-          <View key={row.key} style={styles.agentRow} onLayout={targets.length === 0 ? undefined : (event) => noteRowLayout(row.key, targets, "row", event.nativeEvent.layout)}>
-            <Markdown source={transformText === undefined ? row.text : transformText(row.text)} theme={theme} onOpenLink={openLink} />
-            {decorateRow === undefined ? null : decorateRow(row.text, row.key)}
-            {targets.length === 0 ? null : (
-              <View style={styles.agentRow} onLayout={(event) => noteRowLayout(row.key, targets, "cards", event.nativeEvent.layout)}>
-                {decisionCards(asked)}
-                {presented ? delivery.card : null}
-              </View>
-            )}
-          </View>
-        );
-      }
-      case "error":
-        return (
-          <Text key={row.key} style={styles.error}>
-            {row.text}
-          </Text>
-        );
-      default:
-        return (
-          <View key={row.key} style={styles.line}>
-            <Icon name="Bell" size={11} color={theme.colors.foregroundMuted} />
-            <Text style={styles.lineText}>{row.text}</Text>
-          </View>
-        );
-    }
-  }
+  const styles = useMemo(
+    () => chatStyles(theme, compact, { paddingTop: metrics.paddingTop, paddingBottom: metrics.paddingBottom, paddingHorizontal: metrics.paddingHorizontal }),
+    [theme, compact, metrics.paddingTop, metrics.paddingBottom, metrics.paddingHorizontal],
+  );
 
   return (
     <View ref={pane} style={[styles.pane, { paddingBottom: keyboard }]}>
@@ -552,7 +337,29 @@ export function AgentChat({
             {groups.length === 0 && pending.length === 0 ? (
               <Text style={styles.hint}>{timeline.loading ? "Loading the conversation…" : "Nothing said yet."}</Text>
             ) : (
-              groups.map(renderGroup)
+              groups.map((group) => {
+                const row = "row" in group ? group.row : null;
+                const presented = delivery !== undefined && row !== null && row.key === deliveryKey;
+                return (
+                  <TranscriptGroup
+                    key={group.key}
+                    group={group}
+                    open={openGroups.has(group.key)}
+                    images={row?.kind === "user" ? rowImages.get(row.key) : undefined}
+                    asked={row?.kind === "agent" ? (places?.byRow.get(row.key) ?? NO_DECISIONS) : NO_DECISIONS}
+                    deliveryCard={presented ? delivery.card : null}
+                    deliveryTarget={deliveryTarget}
+                    transformText={transformText}
+                    decorateRow={decorateRow}
+                    theme={theme}
+                    styles={styles}
+                    onToggle={toggleGroup}
+                    onRowLayout={rowLayoutChanged}
+                    onOpenLink={openLinkLatest}
+                    renderCards={decisionCardsLatest}
+                  />
+                );
+              })
             )}
             {places === null || places.unplaced.length === 0 ? null : (
               <View style={styles.agentRow} onLayout={(event) => noteLayout(places.unplaced.map((decision) => decision.key), event.nativeEvent.layout)}>
@@ -657,6 +464,278 @@ export function AgentChat({
     </View>
   );
 }
+
+/** One message or tool run of the transcript, drawn again only when what it shows changed (TR-069). */
+interface TranscriptGroupProps {
+  group: Group;
+  /** A tool run the reader opened. */
+  open: boolean;
+  /** The images sent with a user's message. */
+  images: readonly SentImage[] | undefined;
+  /** The open decisions this message asked, drawn under it. */
+  asked: readonly StoredDecision[];
+  /** The acceptance card, under the message that presented the delivery; null elsewhere. */
+  deliveryCard: ReactNode;
+  deliveryTarget: string;
+  transformText: ((text: string) => string) | undefined;
+  decorateRow: ((text: string, key: string) => ReactNode) | undefined;
+  theme: PluginTheme;
+  styles: ChatStyles;
+  onToggle: (key: string) => void;
+  onRowLayout: (rowKey: string, keys: readonly string[], part: "row" | "cards", layout: LayoutRectangle) => void;
+  onOpenLink: (url: string) => void;
+  renderCards: (decisions: readonly StoredDecision[]) => ReactNode;
+}
+
+function TranscriptGroupView({ group, open, images, asked, deliveryCard, deliveryTarget, transformText, decorateRow, theme, styles, onToggle, onRowLayout, onOpenLink, renderCards }: TranscriptGroupProps) {
+  if ("tools" in group) {
+    const summary = toolRunSummary(group.tools);
+    const lone = group.tools.length === 1;
+    const toggle = () => onToggle(group.key);
+    return (
+      <View key={group.key} style={styles.toolRun}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+          accessibilityLabel={lone ? summary.title : `${summary.title}, ${open ? "fold" : "show"}`}
+          disabled={lone}
+          style={[styles.toolHead, summary.state === "failed" ? { borderColor: theme.colors.statusDanger } : null]}
+          onPress={toggle}
+        >
+          {summary.state === "running" ? (
+            <Spinner size={11} color={theme.colors.foregroundMuted} />
+          ) : (
+            <Icon name={summary.state === "failed" ? "X" : "Wrench"} size={11} color={summary.state === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
+          )}
+          <Text style={lone ? styles.toolLatest : styles.toolTitle} numberOfLines={1}>
+            {summary.title}
+            {summary.failed > 0 && !lone ? ` · ${summary.failed} failed` : ""}
+          </Text>
+          {summary.latest === null || open ? null : (
+            <Text style={styles.toolLatest} numberOfLines={1}>
+              {summary.latest}
+            </Text>
+          )}
+          {lone ? null : <Icon name={open ? "ChevronDown" : "ChevronRight"} size={12} color={theme.colors.foregroundMuted} />}
+        </Pressable>
+        {open && !lone ? (
+          <View style={styles.toolList}>
+            {group.tools.map((tool) => (
+              <View key={tool.key} style={styles.line}>
+                {tool.status === "running" ? (
+                  <Spinner size={11} color={theme.colors.foregroundMuted} />
+                ) : (
+                  <Icon name={tool.status === "failed" ? "X" : "Dot"} size={11} color={tool.status === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
+                )}
+                <Text style={styles.toolText} numberOfLines={1}>
+                  {tool.text}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+  const row = group.row;
+  switch (row.kind) {
+    case "user": {
+      return (
+        <View key={row.key} style={styles.user}>
+          <Text selectable style={styles.userText}>
+            {row.text}
+          </Text>
+          {images === undefined ? null : (
+            <View style={styles.userImages}>
+              {images.map((image, index) => (
+                <ImageThumbnail
+                  key={index}
+                  source={image.path}
+                  alt="Sent image"
+                  theme={theme}
+                  set={images.map((each) => ({ source: each.path, alt: "Sent image" }))}
+                  index={index}
+                />
+              ))}
+            </View>
+          )}
+        </View>
+      );
+    }
+    case "agent": {
+      const presented = deliveryCard !== null;
+      const targets = [...asked.map((decision) => decision.key), ...(presented ? [deliveryTarget] : [])];
+      return (
+        <View key={row.key} style={styles.agentRow} onLayout={targets.length === 0 ? undefined : (event) => onRowLayout(row.key, targets, "row", event.nativeEvent.layout)}>
+          <Markdown source={transformText === undefined ? row.text : transformText(row.text)} theme={theme} onOpenLink={onOpenLink} />
+          {decorateRow === undefined ? null : decorateRow(row.text, row.key)}
+          {targets.length === 0 ? null : (
+            <View style={styles.agentRow} onLayout={(event) => onRowLayout(row.key, targets, "cards", event.nativeEvent.layout)}>
+              {renderCards(asked)}
+              {deliveryCard}
+            </View>
+          )}
+        </View>
+      );
+    }
+    case "error":
+      return (
+        <Text key={row.key} style={styles.error}>
+          {row.text}
+        </Text>
+      );
+    default:
+      return (
+        <View key={row.key} style={styles.line}>
+          <Icon name="Bell" size={11} color={theme.colors.foregroundMuted} />
+          <Text style={styles.lineText}>{row.text}</Text>
+        </View>
+      );
+  }
+}
+
+const TranscriptGroup = memo(
+  TranscriptGroupView,
+  (previous, next) =>
+    sameGroup(previous.group, next.group) &&
+    sameItems(previous.images, next.images, (left, right) => left.path === right.path) &&
+    sameItems(previous.asked, next.asked) &&
+    previous.open === next.open &&
+    previous.deliveryCard === next.deliveryCard &&
+    previous.deliveryTarget === next.deliveryTarget &&
+    previous.transformText === next.transformText &&
+    previous.decorateRow === next.decorateRow &&
+    previous.theme === next.theme &&
+    previous.styles === next.styles &&
+    previous.onToggle === next.onToggle &&
+    previous.onRowLayout === next.onRowLayout &&
+    previous.onOpenLink === next.onOpenLink &&
+    previous.renderCards === next.renderCards,
+);
+
+const NO_DECISIONS: readonly StoredDecision[] = [];
+
+/** The chat's styles, built once per theme, width and composer size. */
+function chatStyles(theme: PluginTheme, compact: boolean, metrics: { paddingTop: number; paddingBottom: number; paddingHorizontal: number }) {
+  const { colors } = theme;
+  return {
+    pane: { flex: 1, minHeight: 0, backgroundColor: colors.surface0 },
+    transcript: { flex: 1 },
+    // Room between turns, so a reply, a tool run and the next message read as separate things.
+    // Centred at a reading width in a wide pane (TR-027); the scroll bar stays at the pane's edge.
+    transcriptBody: {
+      width: "100%" as const,
+      maxWidth: CHAT_MAX_WIDTH,
+      alignSelf: "center" as const,
+      paddingVertical: compact ? SPACE.md : SPACE.lg,
+      paddingHorizontal: paneGutter(compact),
+      gap: compact ? SPACE.md : SPACE.lg,
+    },
+    user: {
+      alignSelf: "flex-end" as const,
+      maxWidth: "88%" as const,
+      backgroundColor: colors.surface2,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      paddingHorizontal: SPACE.md,
+      paddingVertical: SPACE.sm + 2,
+    },
+    userImages: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, marginTop: SPACE.sm },
+    userText: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) },
+    agentRow: { alignSelf: "stretch" as const, gap: SPACE.sm },
+    line: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm - 2 },
+    // A run of tool calls is the agent working, not talking: one quiet line until the reader opens it.
+    toolRun: { alignSelf: "flex-start" as const, maxWidth: "100%" as const, gap: SPACE.xs },
+    toolHead: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: SPACE.sm - 2,
+      paddingHorizontal: SPACE.sm,
+      paddingVertical: SPACE.xs,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    toolList: { gap: SPACE.xs, marginLeft: SPACE.md, paddingLeft: SPACE.sm, borderLeftWidth: 1, borderLeftColor: colors.border },
+    toolLatest: { flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontFamily: MONOSPACE },
+    lineText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
+    toolText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontFamily: MONOSPACE },
+    toolTitle: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
+    error: { color: colors.statusDanger, fontSize: FONT_SIZE.small },
+    hint: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center" as const, padding: SPACE.lg },
+    composerFrame: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface0 },
+    // The transcript's side padding, so the box lines up with the messages above it.
+    composer: {
+      width: "100%" as const,
+      maxWidth: CHAT_MAX_WIDTH,
+      alignSelf: "center" as const,
+      paddingHorizontal: paneGutter(compact),
+      paddingVertical: SPACE.md,
+      gap: SPACE.sm,
+    },
+    quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
+    // Paseo's composer box (TR-039): attachments, then the text across the full width, then a row
+    // of controls: the + at the left, the context ring and the send button at the right. Its border
+    // stays plain while typing, as Paseo's does.
+    inputBox: {
+      flexShrink: 1,
+      flexDirection: "column" as const,
+      gap: SPACE.md,
+      backgroundColor: colors.surface1,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 16,
+      paddingTop: metrics.paddingTop,
+      paddingBottom: metrics.paddingBottom,
+      paddingHorizontal: metrics.paddingHorizontal,
+    },
+    input: {
+      flexShrink: 1,
+      width: "100%" as const,
+      color: colors.foreground,
+      fontSize: COMPOSER_FONT_SIZE,
+      textAlignVertical: "top" as const,
+      // No line height on a phone, as in Paseo: React Native draws one as a span over the text, and
+      // an empty last line takes the font's own, so the field jumped when a new line began.
+      ...(Platform.OS === "web" ? { lineHeight: COMPOSER_WEB_LINE_HEIGHT } : null),
+    },
+    // The row reaches 6 px into the box's padding, so the round buttons sit in its corners.
+    controls: {
+      flexShrink: 0,
+      flexDirection: "row" as const,
+      alignItems: "flex-end" as const,
+      justifyContent: "space-between" as const,
+      marginHorizontal: -6,
+    },
+    controlsEnd: { flexShrink: 0, flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.xs },
+    // A filled circle, the size of the + and the ring's slot.
+    send: {
+      width: COMPOSER_CONTROL_SIZE,
+      height: COMPOSER_CONTROL_SIZE,
+      borderRadius: COMPOSER_CONTROL_SIZE / 2,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+      backgroundColor: colors.accent,
+      marginLeft: SPACE.xs,
+    },
+    readOnly: {
+      width: "100%" as const,
+      maxWidth: CHAT_MAX_WIDTH,
+      alignSelf: "center" as const,
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: SPACE.sm,
+      paddingHorizontal: paneGutter(compact),
+      paddingVertical: SPACE.md,
+    },
+    // The band spans the pane; only its note is held to the reading width.
+    readOnlyBand: { backgroundColor: colors.surface1 },
+    readOnlyText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
+  };
+}
+
+type ChatStyles = ReturnType<typeof chatStyles>;
 
 /** The images the user sent this agent, re-read whenever the conversation grows. */
 function useSentImages(agentId: string, newestEntry: number) {
