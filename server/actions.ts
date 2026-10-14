@@ -18,6 +18,7 @@ import { bypassModeId } from "./models";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { listProjectConfigs, projectPaths, requireProjectConfig } from "./projects";
 import { sendFromPlugin, sendWithoutInterrupting } from "./send";
+import { attachmentExtras, hasAttachments, type Attachments } from "./uploads";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import { identityFromLabels, type Supervisor } from "./supervision";
@@ -75,11 +76,11 @@ export class Actions {
     }
   }
 
-  async tellAgent(paseo: PaseoApi, agentId: string, text: string): Promise<void> {
+  async tellAgent(paseo: PaseoApi, agentId: string, text: string, attachments: Attachments = {}): Promise<void> {
     const words = text.trim();
-    if (words === "") throw new Error("Say something first.");
+    if (words === "" && !hasAttachments(attachments)) throw new Error("Say something first.");
     if ((await fetchLiveAgent(paseo, agentId)) === null) throw new Error("That agent is no longer running.");
-    await sendWithoutInterrupting(paseo, agentId, words);
+    await sendWithoutInterrupting(paseo, agentId, words, await attachmentExtras(attachments));
   }
 
   async nudge(paseo: PaseoApi, agentId: string): Promise<void> {

@@ -166,7 +166,7 @@ export default function contribute(server: PluginServerContext) {
   server.handle(launchManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await launchManager(paseo, project)).agentId }));
   server.handle(restartManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await restartManager(paseo, project)).agentId }));
   server.handle(compactManagerRpc, async ({ project }, { paseo }) => ({ agentId: await compactManager(paseo, project) }));
-  server.handle(tellManagerRpc, async ({ project, text }, { paseo }) => ({ agentId: await tellManager(paseo, project, text) }));
+  server.handle(tellManagerRpc, async ({ project, text, images, files }, { paseo }) => ({ agentId: await tellManager(paseo, project, text, { images, files }) }));
   server.handle(catchUp, async ({ project }, { paseo }) => ({ agentId: await tellManager(paseo, project, await catchUpText(project)) }));
 
   server.handle(loadBoardRpc, async ({ project }, { paseo }) => {
@@ -193,8 +193,8 @@ export default function contribute(server: PluginServerContext) {
     return { decision, agentLive: decision?.status === "open" ? await isAgentLive(keep(paseo), agentId) : true };
   });
   server.handle(listOpenDecisions, async ({ project }, { paseo }) => ({ decisions: await liveOpenDecisions(keep(paseo), state, project) }));
-  server.handle(tellAgent, async ({ agentId, text }, { paseo }) => {
-    await actions.tellAgent(keep(paseo), agentId, text);
+  server.handle(tellAgent, async ({ agentId, text, images, files }, { paseo }) => {
+    await actions.tellAgent(keep(paseo), agentId, text, { images, files });
     return {};
   });
   server.handle(nudgeAgent, async ({ agentId }, { paseo }) => {

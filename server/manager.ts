@@ -12,6 +12,7 @@ import { bypassModeId, knownBypassMode } from "./models";
 import { TEMPLATES, fill, message, readTemplate, skillDirectory } from "./package-files";
 import { projectPaths, requireProjectConfig, updateProjectConfig } from "./projects";
 import { sendCommand, sendWithoutInterrupting } from "./send";
+import { attachmentExtras, hasAttachments, type Attachments } from "./uploads";
 import { serialized } from "./serialize";
 import { ensureTaroProject } from "./taro-project";
 import { taroEnvironment } from "./environment";
@@ -126,11 +127,11 @@ async function requireManager(paseo: PaseoApi, project: string): Promise<PaseoAg
   return agent;
 }
 
-export async function tellManager(paseo: PaseoApi, project: string, text: string): Promise<string> {
+export async function tellManager(paseo: PaseoApi, project: string, text: string, attachments: Attachments = {}): Promise<string> {
   const words = text.trim();
-  if (words === "") throw new Error("Say something to the manager.");
+  if (words === "" && !hasAttachments(attachments)) throw new Error("Say something to the manager.");
   const agent = await requireManager(paseo, project);
-  await sendWithoutInterrupting(paseo, agent.id, words);
+  await sendWithoutInterrupting(paseo, agent.id, words, await attachmentExtras(attachments));
   return agent.id;
 }
 

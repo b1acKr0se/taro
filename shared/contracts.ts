@@ -5,6 +5,7 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
+import { OutgoingAttachmentsSchema } from "./attachments";
 import { ColumnIdSchema } from "./board";
 import { MilestoneSchema } from "./milestones";
 import { ProjectConfigSchema, ProjectNameSchema, ProjectSettingsSchema, SUBAGENT_ROLES } from "./project";
@@ -102,7 +103,8 @@ export const restartManager = defineRpc({ name: "taro.manager.restart", input: P
 export const compactManager = defineRpc({ name: "taro.manager.compact", input: ProjectInput, output: ManagerResult });
 export const tellManager = defineRpc({
   name: "taro.manager.tell",
-  input: z.object({ project: ProjectNameSchema, text: z.string() }),
+  // Images and files from the composer (TR-036); the words may be empty when there are some.
+  input: z.object({ project: ProjectNameSchema, text: z.string(), ...OutgoingAttachmentsSchema }),
   output: ManagerResult,
 });
 export const catchUp = defineRpc({ name: "taro.manager.catch-up", input: ProjectInput, output: ManagerResult });
@@ -233,7 +235,7 @@ export const listOpenDecisions = defineRpc({
 
 const AgentInput = z.object({ agentId: z.string() });
 
-export const tellAgent = defineRpc({ name: "taro.agent.tell", input: z.object({ agentId: z.string(), text: z.string() }), output: Empty });
+export const tellAgent = defineRpc({ name: "taro.agent.tell", input: z.object({ agentId: z.string(), text: z.string(), ...OutgoingAttachmentsSchema }), output: Empty });
 export const nudgeAgent = defineRpc({ name: "taro.agent.nudge", input: AgentInput, output: Empty });
 export const compactAgent = defineRpc({ name: "taro.agent.compact", input: AgentInput, output: Empty });
 export const relaunchOwner = defineRpc({
