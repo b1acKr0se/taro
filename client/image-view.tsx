@@ -13,6 +13,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Image, Modal, PanResponder, Platform, Pressable, SafeAreaView, StatusBar, Text, View, type GestureResponderEvent, type ViewStyle } from "react-native";
 
 import { readImageRpc } from "../shared/contracts";
+import { watchFullScreen } from "./desktop-window";
+import { ErrorBoundary } from "./error-boundary";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE } from "./type-scale";
@@ -167,10 +169,24 @@ export function ImageGallery({ images, start, onClose }: { images: readonly Gall
     // top bar can pad by the status bar's height itself.
     <Modal visible={start !== null} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
       {start === null || shown === undefined ? null : (
-        // Keyed by position, so each image starts at fit with its own gesture state.
-        <GalleryPage key={index} image={shown} index={index} count={images.length} onIndex={setIndex} onClose={onClose} />
+        // Keyed by position, so each image starts at fit with its own gesture state. A failure inside stays in the viewer, not the whole plugin (TR-054).
+        <ErrorBoundary key={index} label="image viewer" fallback={<ViewerFailed onClose={onClose} />}>
+          <GalleryPage image={shown} index={index} count={images.length} onIndex={setIndex} onClose={onClose} />
+        </ErrorBoundary>
       )}
     </Modal>
+  );
+}
+
+/** The viewer when it failed: the image's backdrop, a line saying so and a way out, with nothing that could fail again. */
+function ViewerFailed({ onClose }: { onClose: () => void }) {
+  return (
+    <View style={{ flex: 1, backgroundColor: VIEWER.backdrop, alignItems: "center", justifyContent: "center", padding: SPACE.xl, gap: SPACE.md }}>
+      <Text style={{ color: VIEWER.textMuted, fontSize: FONT_SIZE.small, textAlign: "center" }}>This image could not be shown.</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} hitSlop={SPACE.xs} style={{ minHeight: 44, paddingHorizontal: SPACE.lg, alignItems: "center", justifyContent: "center", borderRadius: 22, borderWidth: 1, borderColor: VIEWER.textMuted }}>
+        <Text style={{ color: VIEWER.text, fontSize: FONT_SIZE.body, fontWeight: "600" }}>Close</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -196,23 +212,6 @@ interface WebDocument {
   removeEventListener(type: string, listener: (event: WebKeyEvent) => void): void;
 }
 
-/** What Paseo's desktop shell offers about its window, as its own app calls it; each part may be missing. */
-interface DesktopWindow {
-  isFullscreen?: () => Promise<boolean>;
-  onResized?: (listener: () => void) => Promise<() => void>;
-}
-
-function desktopWindowOf(shell: unknown): DesktopWindow | null {
-  const open = (shell as { window?: { getCurrentWindow?: unknown } } | null)?.window?.getCurrentWindow;
-  if (typeof open !== "function") return null;
-  try {
-    const found: unknown = open();
-    return typeof found === "object" && found !== null ? (found as DesktopWindow) : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * The strip the macOS desktop app keeps for its traffic lights (`./window-chrome`), zero on the web, on a
  * phone and in full screen. The shell is looked up when the viewer opens, as Paseo's app injects it.
@@ -225,31 +224,7 @@ function useWindowControlsInset(): number {
   const [fullScreen, setFullScreen] = useState(false);
   useEffect(() => {
     if (!mac) return;
-    const window = desktopWindowOf((globalThis as { paseoDesktop?: unknown }).paseoDesktop);
-    if (window === null) return;
-    let live = true;
-    let unsubscribe: (() => void) | undefined;
-    const read = () => {
-      void window
-        .isFullscreen?.()
-        .then((value) => {
-          if (live) setFullScreen(value === true);
-        })
-        .catch(() => undefined);
-    };
-    read();
-    // Entering or leaving full screen resizes the window; the traffic lights hide and return with it.
-    void window
-      .onResized?.(read)
-      .then((stop) => {
-        if (live) unsubscribe = stop;
-        else stop();
-      })
-      .catch(() => undefined);
-    return () => {
-      live = false;
-      unsubscribe?.();
-    };
+    return watchFullScreen((globalThis as { paseoDesktop?: unknown }).paseoDesktop, setFullScreen);
   }, [mac]);
   return windowControlsInset(shell, userAgent, fullScreen);
 }
