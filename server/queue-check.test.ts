@@ -295,6 +295,14 @@ describe("the escalation ladder", () => {
     expect(restartManager).not.toHaveBeenCalled();
   });
 
+  it("does not restart once someone engaged the Manager in its own tab after the alert", async () => {
+    await minutes(0, 14);
+    managerState.lastTurnEndedAt = iso(14);
+    await minutes(15, 40);
+    expect(restartManager).not.toHaveBeenCalled();
+    expect(actions.queueAlerts("demo", at(40))).toHaveLength(1);
+  });
+
   it("does not restart while threads are near the limit", async () => {
     await minutes(0, 15);
     vi.mocked(readHeadroom).mockResolvedValue({ current: 1800, max: 2048, high: true, highSince: iso(15) });

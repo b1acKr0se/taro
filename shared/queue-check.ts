@@ -235,17 +235,20 @@ export function managerCondition(manager: { status: string; updatedAt: string; s
  * The ladder's last step: the tickets that warrant restarting the Manager now, or an empty list.
  * Twenty minutes after the wake-up (or after the first look, if it was never woken), with the
  * ticket still startable, a free slot and threads under the limit (both in `count`), the alert not
- * dismissed and the user not having told the Manager anything since it went up, the Manager idle
- * or unresponsive, and no ladder restart in the past hour.
+ * dismissed or acted on, the Manager idle or unresponsive, and no ladder restart in the past hour.
+ * Acted on: the user told the Manager something from Taro, or a Manager turn ended after the alert
+ * went up (the plugin sends nothing more for the same situation, so someone engaged it, perhaps in
+ * its own tab, which the plugin does not see).
  */
-export function restartDue(watch: QueueWatch, count: Recount, condition: ManagerCondition, now: number): string[] {
+export function restartDue(watch: QueueWatch, count: Recount, condition: ManagerCondition, now: number, managerTurnEndedAt: number | null = null): string[] {
   if (!count.freeSlot || (condition !== "idle" && condition !== "unresponsive")) return [];
   if (watch.restarts.some((at) => now - at < RESTART_WINDOW_MS)) return [];
   const startable = new Set(count.startable);
   return [...watch.queuedAt.keys()].filter((id) => {
     const start = ladderStart(watch, id);
     if (start === null || !startable.has(id) || watch.dismissed.has(id) || now - start < QUEUED_RESTART_AFTER_MS) return false;
-    return watch.userToldManagerAt === null || watch.userToldManagerAt < start + QUEUED_ALERT_AFTER_MS;
+    const engaged = Math.max(watch.userToldManagerAt ?? -Infinity, managerTurnEndedAt ?? -Infinity);
+    return engaged < start + QUEUED_ALERT_AFTER_MS;
   });
 }
 

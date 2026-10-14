@@ -560,7 +560,9 @@ export class Actions {
     let changed = false;
     try {
       for (const config of await listProjectConfigs()) {
-        changed = (await this.checkQueue(paseo, config.project, now).catch((error: unknown) => {
+        // One at a time with the project's tracker passes, so a new ticket's wake-up and this one never cross.
+        const check = serialized(`tracker-changed:${config.project}`, () => this.checkQueue(paseo, config.project, now));
+        changed = (await check.catch((error: unknown) => {
           console.error(`[taro] queue check for ${config.project} failed:`, error);
           return false;
         })) || changed;
@@ -605,7 +607,7 @@ export class Actions {
     }
 
     const condition = managerCondition(manager === null ? null : { status: manager.status, updatedAt: manager.updatedAt, stalled: managerState?.stalled ?? false }, now);
-    const due = restartDue(watch, count, condition, now);
+    const due = restartDue(watch, count, condition, now, lastTurnEnded === null ? null : Date.parse(lastTurnEnded));
     if (due.length > 0) await this.restartForQueue(paseo, project, manager, due, count, condition, now);
     return alerted.length > 0 || queuedAlerts(watch, now).length !== alertsBefore || due.length > 0;
   }
