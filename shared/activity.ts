@@ -49,6 +49,8 @@ export function toolActivity(item: ToolCallLike): string {
     case "plan":
       return "planning";
     default:
+      // Claude's notice that a background command finished arrives as a tool call.
+      if (/task.?notification/i.test(name)) return "reading a background task's result";
       if (/screenshot/i.test(name)) return "taking screenshots";
       if (/^mcp__[^_]+__browser_/.test(name)) return "using the browser";
       return name === "" ? "working" : `using ${name.replace(/^mcp__[^_]+__/, "").replace(/_/g, " ")}`;

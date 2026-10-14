@@ -38,6 +38,7 @@ describe("toolActivity", () => {
     expect(toolActivity({ type: "tool_call", name: "mcp__paseo__browser_click", detail: { type: "unknown" } })).toBe("using the browser");
     expect(toolActivity({ type: "tool_call", name: "mcp__paseo__create_agent", detail: { type: "unknown" } })).toBe("using create agent");
     expect(toolActivity({ type: "tool_call", detail: { type: "unknown" } })).toBe("working");
+    expect(toolActivity({ type: "tool_call", name: "Task notification", detail: { type: "plain_text", label: "Run integration suite" } })).toBe("reading a background task's result");
   });
 });
 

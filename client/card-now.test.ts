@@ -154,6 +154,17 @@ describe("cardNowLine", () => {
       expect(cardNowLine(card({ owner: unknownStart, lastStatus: approval, activity }), NOW)).toMatchObject({ headline: "Editing card-now.ts", detail: "Working · 2m ago" });
     });
 
+    it("falls back to plain Working when a time cannot be read", () => {
+      const latestMilestone = { kind: "MILESTONE", time: "2026-01-01T11:55Z", text: "tests green" };
+      const activity = { text: "running tests", at: "2026-01-01T11:59:00Z" };
+      expect(cardNowLine(card({ owner: { ...running, turnStartedAt: "garbage" }, latestMilestone, activity }), NOW)).toEqual({ kind: "working", headline: "Working", detail: null });
+      expect(cardNowLine(card({ owner: running, latestMilestone: { ...latestMilestone, time: "garbage" }, activity: { ...activity, at: "" } }), NOW)).toEqual({
+        kind: "working",
+        headline: "Working",
+        detail: "started 9m ago",
+      });
+    });
+
     it("still says what it waits for when a permission is pending", () => {
       const permission = { title: "Allow Bash?", detail: "npm install", id: "p1" };
       const asking = { ...running, pendingPermissions: 1 };

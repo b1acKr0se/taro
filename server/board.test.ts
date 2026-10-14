@@ -142,6 +142,23 @@ describe("loadBoard", () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
+  it("reads a running owner's timeline once per ten seconds, and takes an empty or failed read as no activity", async () => {
+    const refetch = vi.fn(async () => ({ entries: [] as unknown[] }));
+    const paseo = { agents: { ref: () => ({ timeline: { refetch } }) } } as unknown as PaseoApi;
+    vi.mocked(projectAgents).mockResolvedValue([{ ...agent("owner-live", "owner", "TR-1", "2026-10-13T14:50:00Z"), status: "running" } as PaseoAgent]);
+    const read = async (after: number) => {
+      now += after;
+      return (await loadBoard(paseo, state([]), "taro")).cards[0]?.activity;
+    };
+    expect(await read(0)).toBeNull();
+    expect(await read(3_000)).toBeNull();
+    expect(await read(3_000)).toBeNull();
+    expect(refetch).toHaveBeenCalledTimes(1);
+    refetch.mockRejectedValueOnce(new Error("timeline unavailable"));
+    expect(await read(10_000)).toBeNull();
+    expect(refetch).toHaveBeenCalledTimes(2);
+  });
+
   it("judges evidence for Awaiting acceptance cards only", async () => {
     vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "Awaiting acceptance"), ticket("TR-3", "In Progress")] as unknown as Awaited<ReturnType<typeof listTickets>>);
     vi.mocked(viewTicket).mockResolvedValue({
