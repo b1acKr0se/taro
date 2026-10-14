@@ -252,9 +252,9 @@ export default function contribute(server: PluginServerContext) {
     void trackers.pullIfDue(project);
     return loadBoard(keep(paseo), state, project, actions.queueAlerts(project), { limits, include });
   });
-  server.handle(loadTicket, async ({ project, ticket }) => {
+  server.handle(loadTicket, async ({ project, ticket }, { paseo }) => {
     void trackers.pullIfDue(project);
-    return loadTicketDetail(project, ticket);
+    return loadTicketDetail(keep(paseo), project, ticket);
   });
   server.handle(findAgentTicket, async ({ agentId }, { paseo }) => {
     const agent = await fetchLiveAgent(paseo, agentId);

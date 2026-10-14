@@ -13,7 +13,9 @@ import { acceptedRecord, executionMachine, pullRequestUrl, type AcceptedRecord }
 import type { Board, BoardPaging, Card, TicketDetailView } from "../shared/contracts";
 import { latestMilestone, type Milestone } from "../shared/milestones";
 import { deliveredLine, permissionAsk, type PermissionAsk } from "../shared/needs-you";
+import { dependsOn } from "../shared/owner-cap";
 import { pastTicketAgents } from "../shared/past-agents";
+import { pauseRefusal, pauseView, type PauseView } from "../shared/pause";
 import { isSubagentRole, roleFromLabel, TARO_LABELS } from "../shared/project";
 import { boardAlerts, type BoardAlert } from "../shared/recovery";
 import { decisionsOfLiveAgents, type StoredDecision } from "../shared/state";
@@ -43,6 +45,7 @@ async function recordedFacts(
   evidenceRecord: ParsedEvidence | null;
   accepted: AcceptedRecord | null;
   finalSummary: string | null;
+  notes: string | null;
 }> {
   try {
     const detail = await viewTicket(trackerPath, ticketId);
@@ -54,9 +57,10 @@ async function recordedFacts(
       evidenceRecord: parseEvidence(detail.implementationNotes),
       accepted: acceptedRecord(detail.implementationNotes),
       finalSummary: detail.finalSummary ?? null,
+      notes: detail.implementationNotes,
     };
   } catch {
-    return { hostElsewhere: null, pullRequest: null, latestMilestone: null, evidenceRecord: null, accepted: null, finalSummary: null };
+    return { hostElsewhere: null, pullRequest: null, latestMilestone: null, evidenceRecord: null, accepted: null, finalSummary: null, notes: null };
   }
 }
 
@@ -191,10 +195,12 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
       const ticketDecisions = finished ? [] : openDecisions.filter((decision) => decision.ticket === ticket.id);
       const needsHost = owner === null && UNDER_WAY.has(ticket.status);
       // Reading a ticket reads its whole file: only under-way cards show what it holds, and only once per change.
-      const facts = UNDER_WAY.has(ticket.status) ? await cachedRecordedFacts(paths.tracker, ticket.id, ticket.updatedAt) : null;
+      // A Ready ticket is read too, as it may be paused (TR-088).
+      const facts = UNDER_WAY.has(ticket.status) || ticket.status === "Ready" ? await cachedRecordedFacts(paths.tracker, ticket.id, ticket.updatedAt) : null;
       // The record is cached with the other facts; whether its screenshot files exist is read each time.
       const accepted = ticket.status === "Awaiting acceptance" ? facts?.accepted ?? null : null;
       const elsewhere = needsHost ? facts?.hostElsewhere ?? null : null;
+      const pausing = ticketPause(ticket, owner, facts);
       const column = boardColumn({
         status: ticket.status,
         ownerElsewhere: elsewhere !== null,
@@ -204,8 +210,9 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         stalledAfterNudge: ownerState?.stalled ?? false,
         crashedOut: ownLine && ownerState?.stalled === true && ownerState.stalledReason !== null,
         accepted: accepted !== null,
+        paused: pausing.pause !== null && pausing.pause.state !== "pausing",
       });
-      return { id: ticket.id, updatedAt: ticket.updatedAt, column, ticket, owner, liveSubagents, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere };
+      return { id: ticket.id, updatedAt: ticket.updatedAt, column, ticket, owner, liveSubagents, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere, pausing };
     }),
   );
   const page = pageColumns(placed, paging.limits, paging.include);
@@ -216,7 +223,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
   }
 
   const cards: Card[] = await Promise.all(
-    page.kept.map(async ({ ticket, column, owner, liveSubagents, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere }) => {
+    page.kept.map(async ({ ticket, column, owner, liveSubagents, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere, pausing }) => {
       const subagents = liveSubagents.flatMap((agent) => {
         const role = roleFromLabel(agent.labels[TARO_LABELS.role]);
         return role !== null && isSubagentRole(role) ? [{ ...agentBrief(agent), role }] : [];
@@ -259,6 +266,8 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         accepted,
         permission: firstPermission(owner),
         delivered: ticket.status === "Awaiting acceptance" ? deliveredLine(facts?.finalSummary ?? null) : null,
+        pause: pausing.pause,
+        pausable: pausing.pausable,
       };
     }),
   );
@@ -279,6 +288,20 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
   };
 }
 
+/** A ticket's pause (TR-088) and whether Pause is offered, from its recorded facts and whether its owner is alive. */
+function ticketPause(
+  ticket: { id: string; status: string; parentTaskId: string | null },
+  owner: { status: string } | null,
+  facts: { notes: string | null; accepted: AcceptedRecord | null } | null,
+): { pause: PauseView | null; pausable: boolean } {
+  if (facts === null || ticket.parentTaskId !== null) return { pause: null, pausable: false };
+  const ownerAlive = owner !== null && owner.status !== "closed";
+  return {
+    pause: pauseView(facts.notes, ownerAlive),
+    pausable: pauseRefusal({ id: ticket.id, status: ticket.status, parentTaskId: ticket.parentTaskId, notes: facts.notes }, facts.accepted !== null) === null,
+  };
+}
+
 /** Open decisions across one project (or all), from live agents only, for the Inbox and the ticket panel. */
 export async function liveOpenDecisions(paseo: PaseoApi, state: PluginState, project: string | null): Promise<StoredDecision[]> {
   const open = (await state.allDecisions()).filter((decision) => decision.status === "open" && (project === null || decision.project === project));
@@ -287,9 +310,14 @@ export async function liveOpenDecisions(paseo: PaseoApi, state: PluginState, pro
   return decisionsOfLiveAgents(open, live);
 }
 
-export async function loadTicketDetail(project: string, ticketId: string): Promise<TicketDetailView> {
+export async function loadTicketDetail(paseo: PaseoApi, project: string, ticketId: string): Promise<TicketDetailView> {
   const tracker = (await projectPaths(project)).tracker;
   const detail = await viewTicket(tracker, ticketId);
+  const owners = (await projectAgents(paseo, project, "owner").catch(() => [])).filter((agent) => dependsOn([agent.labels[TARO_LABELS.ticket] ?? ""], detail.id));
+  const pausing = ticketPause(detail, owners.find((agent) => agent.status !== "closed") ?? null, {
+    notes: detail.implementationNotes,
+    accepted: detail.status === "Awaiting acceptance" ? acceptedRecord(detail.implementationNotes) : null,
+  });
   const hasRecord = parseEvidence(detail.implementationNotes) !== null;
   return {
     id: detail.id,
@@ -304,6 +332,8 @@ export async function loadTicketDetail(project: string, ticketId: string): Promi
     dependencies: detail.dependencies,
     children: detail.subtasks.map((child) => ({ id: child.id, title: child.title, status: child.status })),
     evidence: hasRecord || detail.status === "Awaiting acceptance" ? await ticketEvidence(project, detail.id, detail.implementationNotes, detail.labels, detail.status) : null,
+    pause: pausing.pause,
+    pausable: pausing.pausable,
   };
 }
 

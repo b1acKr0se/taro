@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadTicketDetail } from "./board";
+import type { PaseoApi } from "./host-types";
 import { requireCompleteEvidence, ticketEvidence, ticketEvidenceDirectory } from "./evidence";
 import { viewTicket } from "./tickets";
 
@@ -87,10 +88,10 @@ describe("loadTicketDetail evidence", () => {
 
   it("carries evidence once a record exists or the ticket awaits acceptance, else null", async () => {
     detail("In Progress", null);
-    expect((await loadTicketDetail("notes", "NA-1")).evidence).toBeNull();
+    expect((await loadTicketDetail({} as PaseoApi, "notes", "NA-1")).evidence).toBeNull();
     detail("Awaiting acceptance", null);
-    expect((await loadTicketDetail("notes", "NA-1")).evidence?.missing).toEqual(["an EVIDENCE record"]);
+    expect((await loadTicketDetail({} as PaseoApi, "notes", "NA-1")).evidence?.missing).toEqual(["an EVIDENCE record"]);
     detail("In Progress", complete);
-    expect((await loadTicketDetail("notes", "NA-1")).evidence?.checks).toHaveLength(1);
+    expect((await loadTicketDetail({} as PaseoApi, "notes", "NA-1")).evidence?.checks).toHaveLength(1);
   });
 });

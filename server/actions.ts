@@ -9,8 +9,21 @@
 import { randomUUID } from "node:crypto";
 
 import { doneTicketOf, planRelease } from "../shared/done-release";
-import { acceptedRecordText, executionWorkspace, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
-import { dependsOn, shouldWakeManager, statusChanges, type StatusChange } from "../shared/owner-cap";
+import { acceptedRecord, acceptedRecordText, executionWorkspace, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
+import { dependsOn, holdsSlot, shouldWakeManager, statusChanges, type StatusChange } from "../shared/owner-cap";
+import {
+  handoffSincePauseRequest,
+  PAUSE_HANDOFF_TIMEOUT_MS,
+  pausedHoldText,
+  pauseProgress,
+  pauseRefusal,
+  pauseRequestedAt,
+  queuedToResume,
+  resumedReleaseText,
+  resumeRefusal,
+  resumesNow,
+  type PauseProgress,
+} from "../shared/pause";
 import {
   emptyQueueWatch,
   managerCondition,
@@ -33,7 +46,7 @@ import {
   type QueuedTicket,
   type Recount,
 } from "../shared/queue-check";
-import type { BoardAlert } from "../shared/recovery";
+import { hasHeadroom, type BoardAlert } from "../shared/recovery";
 import { TARO_LABELS, TICKET_STATUSES } from "../shared/project";
 import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
 import { taroEnvironment } from "./environment";
@@ -74,6 +87,8 @@ export class Actions {
   /** Queued tickets' dependencies and notes, read again only when the ticket changes. */
   private readonly queuedDetails = new Map<string, { updatedAt: string; ticket: QueuedTicket }>();
   private checkingQueues = false;
+  /** Under-way tickets' notes, read again only when the ticket changes, for pauses and queued resumes (TR-088). */
+  private readonly pauseNotes = new Map<string, { updatedAt: string; notes: string | null }>();
   /** Projects whose stored ladder was merged in since the start. */
   private readonly ladderLoaded = new Set<string>();
 
@@ -236,6 +251,134 @@ export class Actions {
     });
     if (previous !== null) await this.state.forgetAgent(previous.id);
     return agentId;
+  }
+
+  /** A ticket's live owner, if any; ids compare without case. */
+  private async liveOwner(paseo: PaseoApi, project: string, ticket: string): Promise<PaseoAgent | null> {
+    const owners = (await projectAgents(paseo, project, "owner")).filter((agent) => agent.status !== "closed" && dependsOn([agent.labels[TARO_LABELS.ticket] ?? ""], ticket));
+    return owners.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
+  }
+
+  /**
+   * Pause (TR-088): asks the owner for a HANDOFF and records the request; the owner's turn end and
+   * the minute check finish the pause (`advancePauses`). With no live owner it pauses at once.
+   */
+  async pause(paseo: PaseoApi, project: string, ticket: string): Promise<string> {
+    const paths = await projectPaths(project);
+    const detail = await viewTicket(paths.tracker, ticket);
+    const notes = detail.implementationNotes;
+    const merging = detail.status === "Awaiting acceptance" && acceptedRecord(notes) !== null;
+    const refusal = pauseRefusal({ id: detail.id, status: detail.status, parentTaskId: detail.parentTaskId, notes }, merging);
+    if (refusal !== null) throw new Error(refusal);
+    const owner = await this.liveOwner(paseo, project, detail.id);
+    const minutes = PAUSE_HANDOFF_TIMEOUT_MS / 60_000;
+    await appendTicketNote(paths.tracker, detail.id, `PAUSE-REQUESTED ${new Date().toISOString()} — the user pressed Pause; waiting up to ${minutes} minutes for the owner's HANDOFF`);
+    if (owner === null) {
+      await this.finishPause(paseo, project, detail.id, "owner-gone", false);
+      return `${detail.id} is paused. It had no live owner, so there is no handoff: a fresh owner resumes from the latest milestone.`;
+    }
+    await sendFromPlugin(paseo, owner.id, await message(TEMPLATES.pause, { ticket: detail.id, skill: await skillDirectory(), timeoutMinutes: String(minutes) }));
+    return `Pausing ${detail.id}: its owner is writing a handoff (at most ${minutes} minutes).`;
+  }
+
+  /** Archives the ticket's agents after recording the pause, so the board never sees it without an owner and unpaused. */
+  private async finishPause(paseo: PaseoApi, project: string, ticket: string, progress: Exclude<PauseProgress, "waiting">, handoffWritten: boolean): Promise<void> {
+    const paths = await projectPaths(project);
+    await appendTicketNote(paths.tracker, ticket, pausedHoldText(new Date().toISOString().slice(0, 16) + "Z", progress, handoffWritten));
+    const agents = (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] !== "manager" && doneTicketOf(agent.labels[TARO_LABELS.ticket], new Set([ticket])) !== null);
+    for (const agent of agents) {
+      await paseo.agents
+        .ref(agent.id)
+        .archive()
+        .catch((error: unknown) => console.warn(`[taro] pausing ${ticket}: could not archive ${agent.id}: ${error instanceof Error ? error.message : String(error)}`));
+      await this.supervisor.withdrawDecisionsOf(agent.id);
+      await this.state.forgetAgent(agent.id);
+    }
+    console.log(`[taro] ${project}: paused ${ticket} (${progress}); archived ${agents.length} agent(s)`);
+  }
+
+  /**
+   * Resume (TR-088): with a free slot (and no older queued ticket waiting for it) a fresh owner starts
+   * from the latest HANDOFF now; otherwise the ticket is queued to resume and the minute check starts it.
+   */
+  async resume(paseo: PaseoApi, project: string, ticket: string): Promise<{ message: string; agentId: string | null }> {
+    const config = await requireProjectConfig(project);
+    const paths = await projectPaths(project);
+    const detail = await viewTicket(paths.tracker, ticket);
+    const notes = detail.implementationNotes;
+    const merging = detail.status === "Awaiting acceptance" && acceptedRecord(notes) !== null;
+    const owner = await this.liveOwner(paseo, project, detail.id);
+    const refusal = resumeRefusal({ id: detail.id, status: detail.status, parentTaskId: detail.parentTaskId, notes }, merging, owner !== null);
+    if (refusal !== null) throw new Error(refusal);
+    const tickets = await listTickets(paths.tracker);
+    const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners, true);
+    const at = new Date().toISOString().slice(0, 16) + "Z";
+    if (this.resumesNow(detail.id, tickets, count)) {
+      const agentId = await this.relaunchOwner(paseo, project, detail.id);
+      await appendTicketNote(paths.tracker, detail.id, resumedReleaseText(at, null));
+      return { message: `A fresh owner is starting on ${detail.id}.`, agentId };
+    }
+    await appendTicketNote(paths.tracker, detail.id, resumedReleaseText(at, { counting: count.counting.length, cap: count.cap }));
+    const why = count.counting.length >= count.cap ? `owners ${count.counting.length} of ${count.cap}` : !hasHeadroom(count.threads) ? "threads near the host's limit" : "older queued tickets come first";
+    return { message: `${detail.id} is queued to resume: no free slot (${why}). It starts when one frees.`, agentId: null };
+  }
+
+  private resumesNow(ticket: string, tickets: readonly TicketSummary[], count: Recount): boolean {
+    return resumesNow({ ticket, order: tickets.map((each) => each.id), startable: count.startable, counting: count.counting.length, cap: count.cap, headroom: hasHeadroom(count.threads) });
+  }
+
+  /** Notes of the tickets that may be pausing or queued to resume: top-level, holding a slot when owned. */
+  private async pauseCandidates(project: string, tickets: readonly TicketSummary[]): Promise<{ ticket: TicketSummary; notes: string | null }[]> {
+    const paths = await projectPaths(project);
+    const candidates: { ticket: TicketSummary; notes: string | null }[] = [];
+    for (const ticket of tickets) {
+      if (ticket.parentTaskId !== null || !holdsSlot(ticket.status)) continue;
+      const key = `${project}:${ticket.id}`;
+      const cached = this.pauseNotes.get(key);
+      if (cached !== undefined && ticket.updatedAt !== null && cached.updatedAt === ticket.updatedAt) {
+        candidates.push({ ticket, notes: cached.notes });
+        continue;
+      }
+      const notes = (await viewTicket(paths.tracker, ticket.id)).implementationNotes;
+      if (ticket.updatedAt !== null) this.pauseNotes.set(key, { updatedAt: ticket.updatedAt, notes });
+      candidates.push({ ticket, notes });
+    }
+    return candidates;
+  }
+
+  /**
+   * Finishes pauses whose HANDOFF is in (and the owner's turn over), whose owner is gone, or whose wait
+   * ran out; then starts tickets queued to resume while slots allow, oldest first (TR-088).
+   * Returns whether anything changed.
+   */
+  async advancePauses(paseo: PaseoApi, project: string, now: number = Date.now()): Promise<boolean> {
+    const config = await requireProjectConfig(project);
+    const paths = await projectPaths(project);
+    let tickets = await listTickets(paths.tracker);
+    let changed = false;
+    for (const { ticket, notes } of await this.pauseCandidates(project, tickets)) {
+      const requested = pauseRequestedAt(notes);
+      if (requested === null) continue;
+      const owner = await this.liveOwner(paseo, project, ticket.id);
+      const progress = pauseProgress({ notes, requestedAt: Date.parse(requested), now, ownerAlive: owner !== null, ownerMidTurn: owner !== null && isMidTurn(owner) });
+      if (progress === "waiting") continue;
+      await this.finishPause(paseo, project, ticket.id, progress, handoffSincePauseRequest(notes));
+      changed = true;
+    }
+    if (changed) tickets = await listTickets(paths.tracker);
+    const queued = [];
+    for (const candidate of await this.pauseCandidates(project, tickets)) {
+      if (queuedToResume(candidate.notes) && (await this.liveOwner(paseo, project, candidate.ticket.id)) === null) queued.push(candidate.ticket);
+    }
+    for (const ticket of queued) {
+      const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners, true);
+      if (!this.resumesNow(ticket.id, tickets, count)) continue;
+      const agentId = await this.relaunchOwner(paseo, project, ticket.id);
+      await appendTicketNote(paths.tracker, ticket.id, `RESUMED ${new Date().toISOString()} — a slot freed: the plugin started a fresh owner ${agentId} from the latest HANDOFF`);
+      console.log(`[taro] ${project}: resumed ${ticket.id} with a fresh owner ${agentId}`);
+      changed = true;
+    }
+    return changed;
   }
 
   /**
@@ -491,7 +634,7 @@ export class Actions {
   }
 
   /** The plugin's recount (TR-062): owners from Paseo, the queue from the tracker, threads from the host. */
-  private async recountQueue(paseo: PaseoApi, project: string, tickets: readonly TicketSummary[], cap: number): Promise<Recount> {
+  private async recountQueue(paseo: PaseoApi, project: string, tickets: readonly TicketSummary[], cap: number, withOwners = false): Promise<Recount> {
     const paths = await projectPaths(project);
     const queued: QueuedTicket[] = [];
     for (const ticket of queuedTickets(tickets)) {
@@ -506,8 +649,10 @@ export class Actions {
       if (ticket.updatedAt !== null) this.queuedDetails.set(key, { updatedAt: ticket.updatedAt, ticket: entry });
       queued.push(entry);
     }
-    const owners = queued.length === 0 ? [] : (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner");
-    const headroom = queued.length === 0 ? null : await readHeadroom();
+    // With nothing queued only a resume needs the count (TR-088); a wake-up does not.
+    const counted = withOwners || queued.length > 0;
+    const owners = !counted ? [] : (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner");
+    const headroom = !counted ? null : await readHeadroom();
     return recount({ owners, tickets, queued, cap, threads: headroom === null ? null : { current: headroom.current, max: headroom.max } });
   }
 

@@ -29,6 +29,7 @@ export const TEMPLATES = {
   managerHandoffRequest: "messages/manager-handoff-request.md",
   managerReload: "messages/manager-reload.md",
   relaunchOwner: "messages/relaunch-owner.md",
+  pause: "messages/pause.md",
   accept: "messages/accept.md",
   requestChanges: "messages/request-changes.md",
   dependencyCleared: "messages/dependency-cleared.md",

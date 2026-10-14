@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ticketSections } from "../shared/ticket-summary";
 import { loadTicketDetail } from "./board";
+import type { PaseoApi } from "./host-types";
 import { listTickets, viewTicket } from "./tickets";
 
 vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: "/tracker" }) }));
@@ -34,7 +35,7 @@ beforeEach(() => {
 describe("loadTicketDetail children", () => {
   it("gives each child its status, without listing the tracker", async () => {
     vi.mocked(viewTicket).mockResolvedValue(parent([{ id: "NA-1.01", title: "Export as CSV", status: "Done" }, { id: "NA-1.02", title: "Export as JSON", status: "In Progress" }]));
-    const detail = await loadTicketDetail("notes", "NA-1");
+    const detail = await loadTicketDetail({} as PaseoApi, "notes", "NA-1");
     expect(detail.children).toEqual([
       { id: "NA-1.01", title: "Export as CSV", status: "Done" },
       { id: "NA-1.02", title: "Export as JSON", status: "In Progress" },
@@ -46,6 +47,6 @@ describe("loadTicketDetail children", () => {
 
   it("has no children for a ticket without any", async () => {
     vi.mocked(viewTicket).mockResolvedValue(parent([]));
-    expect((await loadTicketDetail("notes", "NA-1")).children).toEqual([]);
+    expect((await loadTicketDetail({} as PaseoApi, "notes", "NA-1")).children).toEqual([]);
   });
 });

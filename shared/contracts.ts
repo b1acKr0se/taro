@@ -9,6 +9,7 @@ import { ActivitySchema } from "./activity";
 import { OutgoingAttachmentsSchema } from "./attachments";
 import { ColumnIdSchema } from "./board";
 import { MilestoneSchema } from "./milestones";
+import { PauseViewSchema } from "./pause";
 import { PaseoProjectCandidateSchema, SettingsTemplateSchema } from "./project-candidates";
 import { ProjectConfigSchema, ProjectNameSchema, ProjectSettingsSchema, SUBAGENT_ROLES } from "./project";
 import { BoardAlertSchema, HeadroomSchema } from "./recovery";
@@ -204,6 +205,10 @@ export const CardSchema = z.object({
   permission: z.object({ title: z.string(), detail: z.string().nullable(), id: z.string().nullable().default(null) }).nullable().default(null),
   /** The delivery in a line, from the FINAL summary, while the ticket is Awaiting acceptance (TR-045). */
   delivered: z.string().nullable().default(null),
+  /** Pausing, paused or queued to resume (TR-088), else null. */
+  pause: PauseViewSchema.nullable().default(null),
+  /** Pause is offered: a top-level ticket under way, not pausing or paused already. */
+  pausable: z.boolean().default(false),
 });
 export type Card = z.infer<typeof CardSchema>;
 
@@ -246,6 +251,9 @@ export const TicketDetailSchema = z.object({
   children: z.array(z.object({ id: z.string(), title: z.string(), status: z.string().nullable() })),
   /** The judged evidence, when the notes hold an EVIDENCE record or the ticket is Awaiting acceptance. */
   evidence: EvidenceViewSchema.nullable().default(null),
+  /** Pausing, paused or queued to resume (TR-088), else null. */
+  pause: PauseViewSchema.nullable().default(null),
+  pausable: z.boolean().default(false),
 });
 export type TicketDetailView = z.infer<typeof TicketDetailSchema>;
 
@@ -291,6 +299,13 @@ export const relaunchOwner = defineRpc({
   name: "taro.owner.relaunch",
   input: z.object({ project: ProjectNameSchema, ticket: z.string() }),
   output: z.object({ agentId: z.string() }),
+});
+/** Pause and Resume (TR-088): `message` is what the user is told; `agentId` the fresh owner Resume started, if any. */
+export const pauseTicket = defineRpc({ name: "taro.ticket.pause", input: z.object({ project: ProjectNameSchema, ticket: z.string() }), output: z.object({ message: z.string() }) });
+export const resumeTicket = defineRpc({
+  name: "taro.ticket.resume",
+  input: z.object({ project: ProjectNameSchema, ticket: z.string() }),
+  output: z.object({ message: z.string(), agentId: z.string().nullable() }),
 });
 export const acceptTicket = defineRpc({ name: "taro.ticket.accept", input: z.object({ project: ProjectNameSchema, ticket: z.string() }), output: Empty });
 export const resolveTrackerSync = defineRpc({

@@ -81,6 +81,8 @@ function card(parts: Partial<Card>): Card {
     accepted: null,
     permission: null,
     delivered: null,
+    pause: null,
+    pausable: false,
     ...parts,
   };
 }

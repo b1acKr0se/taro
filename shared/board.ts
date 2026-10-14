@@ -48,6 +48,8 @@ export interface CardInputs {
   crashedOut?: boolean;
   /** The user pressed Accept and the owner has not set Done yet (TR-031): it is merging, not waiting on the user. */
   accepted?: boolean;
+  /** Paused by the user or queued to resume (TR-088): queued again, never Stalled. */
+  paused?: boolean;
 }
 
 const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing"]);
@@ -61,6 +63,7 @@ export function boardColumn(card: CardInputs): ColumnId {
   const agent = card.agent;
   if (agent !== null && agent.pendingPermissions > 0) return "needs-you";
   if (agent !== null && (agent.status === "running" || agent.status === "initializing")) return "working";
+  if (card.paused === true) return "queued";
   if (card.crashedOut === true) return "stalled";
 
   if (card.openBlockingDecisions > 0) return "needs-you";
