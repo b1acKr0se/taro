@@ -16,12 +16,12 @@ import { useMemo, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { contextPercent, contextTone, formatTokenCount } from "./format";
-import { COMPOSER_CONTROL_SIZE } from "./spacing";
+import { COMPOSER_CONTROL_SIZE } from "./composer-height";
 import { FONT_SIZE } from "./type-scale";
 
-/** Most of the send button's size, so the ring carries the same visual weight beside it. */
-const RING_SIZE = 20;
-const RING_STROKE = 2.5;
+/** Paseo's ring: 14 px with a 2 px stroke unless the composer names a size (TR-039). */
+const RING_SIZE = 14;
+const RING_STROKE = 2;
 
 /**
  * The uncoloured sides of a half ring. Not a colour of the palette, so not
@@ -114,10 +114,13 @@ export function ContextMeter({
   theme,
   used,
   max,
+  ringSize,
 }: {
   theme: PluginTheme;
   used: number | null | undefined;
   max: number | null | undefined;
+  /** The ring's diameter, as Paseo's composer sizes its own (`composerMetrics`). */
+  ringSize: number;
 }) {
   const [open, setOpen] = useState(false);
   const hovering = useRef(false);
@@ -167,7 +170,7 @@ export function ContextMeter({
         if (!hovering.current) setOpen((current) => !current);
       }}
     >
-      <ProgressRing percent={percent} color={tone} track={theme.colors.foregroundMuted} />
+      <ProgressRing percent={percent} color={tone} track={theme.colors.foregroundMuted} size={ringSize} />
       {open ? (
         <View style={styles.tip} pointerEvents="none">
           <Text style={styles.title} numberOfLines={1}>

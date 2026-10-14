@@ -10,7 +10,8 @@ import { Image, Modal, Pressable, SafeAreaView, ScrollView, Text, View, useWindo
 
 import { base64ByteLength, formatBytes, type DraftAttachment } from "../shared/attachments";
 import { ATTACHMENT_SOURCES, type AttachmentSource } from "./attachment-sources";
-import { COMPOSER_CONTROL_SIZE, SPACE } from "./spacing";
+import { COMPOSER_CONTROL_SIZE } from "./composer-height";
+import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE } from "./type-scale";
 
@@ -26,6 +27,7 @@ interface Anchor {
 export function AttachButton({
   theme,
   compact,
+  iconSize,
   disabled,
   sources,
   onBeforeOpen,
@@ -33,6 +35,8 @@ export function AttachButton({
 }: {
   theme: PluginTheme;
   compact: boolean;
+  /** The composer's icon size, shared with the send button (TR-039). */
+  iconSize: number;
   disabled: boolean;
   sources: () => AttachmentSource[];
   /** Runs before the sheet shows (a phone puts its keyboard away). */
@@ -72,7 +76,7 @@ export function AttachButton({
             opacity: disabled ? 0.5 : 1,
           })}
         >
-          <Icon name="Plus" size={16} color={colors.foregroundMuted} />
+          <Icon name="Plus" size={iconSize} color={colors.foregroundMuted} />
         </Pressable>
       </View>
       <AttachmentSheet

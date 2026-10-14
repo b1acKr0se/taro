@@ -8,6 +8,3 @@ export function paneGutter(compact: boolean): number {
 
 /** The widest a chat's transcript and composer grow: a comfortable reading width, centred in a wider pane (TR-027). */
 export const CHAT_MAX_WIDTH = 820;
-
-/** The composer's send button and the context ring's box: one size, so the two read as a matched pair (TR-027). */
-export const COMPOSER_CONTROL_SIZE = 28;

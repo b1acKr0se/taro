@@ -8,7 +8,7 @@ import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Keyboard, Platform, Pressable, SafeAreaView, ScrollView, Text, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
+import { Keyboard, Platform, Pressable, SafeAreaView, ScrollView, Text, useWindowDimensions, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
 
 import { attachmentProblem, outgoingAttachments, refuseOversizedImages, type DraftAttachment, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
 import { listSentImages, type SentImagesMessage } from "../shared/contracts";
@@ -32,12 +32,10 @@ import { groupRows, toolRunSummary, type Group } from "./tool-runs";
 import { transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
-import { COMPOSER_FIELD_PADDING, COMPOSER_ONE_LINE, composerFieldHeight } from "./composer-height";
-import { CHAT_MAX_WIDTH, COMPOSER_CONTROL_SIZE, paneGutter, SPACE } from "./spacing";
+import { COMPOSER_CONTROL_SIZE, COMPOSER_FONT_SIZE, COMPOSER_WEB_LINE_HEIGHT, composerMaxHeight, composerMetrics } from "./composer-height";
+import { useComposerHeight } from "./composer-input-height";
+import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
-
-/** The text area inside the composer box, above its row of the context ring and the send button. A phone's grows from one line (`composer-height.ts`). */
-const INPUT_HEIGHT = 72;
 
 export interface ChatAgent {
   id: string;
@@ -171,9 +169,6 @@ export function AgentChat({
   const [attachments, setAttachmentsState] = useState(() => draftAttachments.get(agent.id));
   const field = useRef<NativeTextInput>(null);
   const [sending, setSending] = useState(false);
-  const [typing, setTyping] = useState(false);
-  /** The height a phone's draft lays out at, padding included, for `composerFieldHeight`. */
-  const [contentHeight, setContentHeight] = useState<number | null>(null);
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set());
   const pane = useRef<View>(null);
   const keyboard = useKeyboardOverlap(pane);
@@ -215,6 +210,9 @@ export function AgentChat({
   }, [keyboard]);
 
   const submitOnEnter = Platform.OS === "web" && !compact;
+  const windowSize = useWindowDimensions();
+  const metrics = composerMetrics(Platform.OS === "web", windowSize.width);
+  const fieldHeight = useComposerHeight({ text: draft, field, minHeight: metrics.minHeight, maxHeight: composerMaxHeight(windowSize.height) });
   const nothingToSend = sending || (draft.trim() === "" && attachments.length === 0);
 
   function setDraft(text: string): void {
@@ -266,6 +264,7 @@ export function AgentChat({
     <AttachButton
       theme={theme}
       compact={compact}
+      iconSize={metrics.iconSize}
       disabled={sending}
       sources={() => availableSources(globalThis, Platform.OS)}
       onBeforeOpen={compact ? Keyboard.dismiss : undefined}
@@ -336,44 +335,42 @@ export function AgentChat({
         gap: SPACE.sm,
       },
       quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
-      // One box, as in Paseo's composer: the text, then the context ring and the send button inside it.
-      // On a phone they share one row with the +, so an empty composer is as tall as its placeholder (TR-031, TR-036).
-      // The previews of what is attached sit at its top, above the text (TR-036).
+      // Paseo's composer box (TR-039): attachments, then the text across the full width, then a row
+      // of controls: the + at the left, the context ring and the send button at the right. Its border
+      // stays plain while typing, as Paseo's does.
       inputBox: {
+        flexShrink: 1,
+        flexDirection: "column" as const,
+        gap: SPACE.md,
+        backgroundColor: colors.surface1,
         borderWidth: 1,
         borderColor: colors.border,
-        borderRadius: 14,
-        backgroundColor: colors.surface1,
+        borderRadius: 16,
+        paddingTop: metrics.paddingTop,
+        paddingBottom: metrics.paddingBottom,
+        paddingHorizontal: metrics.paddingHorizontal,
       },
-      inputRow: compact ? { flexDirection: "row" as const, alignItems: "flex-end" as const } : {},
-      // The + at the bottom left: before the field on a phone, at the start of the tools row on a wide screen.
-      attach: compact
-        ? { paddingLeft: SPACE.sm, paddingBottom: (COMPOSER_ONE_LINE - COMPOSER_CONTROL_SIZE) / 2 }
-        : { marginRight: "auto" as const },
       input: {
+        flexShrink: 1,
+        width: "100%" as const,
         color: colors.foreground,
-        fontSize: FONT_SIZE.content,
-        lineHeight: lineHeightFor(FONT_SIZE.content),
-        ...(compact ? null : { height: INPUT_HEIGHT }),
-        paddingHorizontal: SPACE.md,
-        paddingTop: compact ? COMPOSER_FIELD_PADDING : SPACE.sm + 2,
-        paddingBottom: compact ? COMPOSER_FIELD_PADDING : 0,
+        fontSize: COMPOSER_FONT_SIZE,
         textAlignVertical: "top" as const,
-        // The box shows focus (below), not the field inside it: a browser's outline would cut the box in two.
-        outlineWidth: 0,
+        // No line height on a phone, as in Paseo: React Native draws one as a span over the text, and
+        // an empty last line takes the font's own, so the field jumped when a new line began.
+        // The box shows nothing for focus, and a browser's outline would cut it in two.
+        ...(Platform.OS === "web" ? { lineHeight: COMPOSER_WEB_LINE_HEIGHT, outlineWidth: 0 } : null),
       },
-      fieldFrame: { flex: 1, minWidth: 0 },
-      measure: { position: "absolute" as const, left: 0, right: 0, top: 0, opacity: 0 },
-      inputTools: {
+      // The row reaches 6 px into the box's padding, so the round buttons sit in its corners.
+      controls: {
+        flexShrink: 0,
         flexDirection: "row" as const,
-        justifyContent: "flex-end" as const,
-        alignItems: "center" as const,
-        gap: SPACE.sm,
-        paddingHorizontal: SPACE.sm,
-        // Centred on the field's last line: one line of text is as tall as the button plus this.
-        paddingBottom: compact ? (COMPOSER_ONE_LINE - COMPOSER_CONTROL_SIZE) / 2 : SPACE.sm,
+        alignItems: "flex-end" as const,
+        justifyContent: "space-between" as const,
+        marginHorizontal: -6,
       },
-      // Round, as in Paseo's composer, and the size of the ring's box beside it.
+      controlsEnd: { flexShrink: 0, flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.xs },
+      // A filled circle, the size of the + and the ring's slot.
       send: {
         width: COMPOSER_CONTROL_SIZE,
         height: COMPOSER_CONTROL_SIZE,
@@ -381,6 +378,7 @@ export function AgentChat({
         alignItems: "center" as const,
         justifyContent: "center" as const,
         backgroundColor: colors.accent,
+        marginLeft: SPACE.xs,
       },
       readOnly: {
         width: "100%" as const,
@@ -396,7 +394,7 @@ export function AgentChat({
       readOnlyBand: { backgroundColor: colors.surface1 },
       readOnlyText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
     };
-  }, [theme, compact]);
+  }, [theme, compact, metrics.paddingTop, metrics.paddingBottom, metrics.paddingHorizontal]);
 
   function renderGroup(group: Group) {
     if ("tools" in group) {
@@ -593,37 +591,17 @@ export function AgentChat({
               </Pressable>
             )}
             {actions === undefined ? null : <View style={styles.quick}>{actions}</View>}
-            <View style={[styles.inputBox, typing ? { borderColor: theme.colors.accent } : null]}>
+            <View style={styles.inputBox}>
               <AttachmentPreviews theme={theme} attachments={attachments} onRemove={(id) => setAttachments(attachments.filter((attachment) => attachment.id !== id))} />
-              <View style={styles.inputRow}>
-              {compact ? <View style={styles.attach}>{attachButton}</View> : null}
-              <View style={compact ? styles.fieldFrame : null}>
-              {compact ? (
-                // The draft laid out at the field's width, unseen: its height sizes the field. A web
-                // field reports at least its current height, so it could grow but never shrink back.
-                <Text
-                  style={[styles.input, styles.measure]}
-                  pointerEvents="none"
-                  accessible={false}
-                  importantForAccessibility="no-hide-descendants"
-                  onLayout={(event) => setContentHeight(event.nativeEvent.layout.height)}
-                >
-                  {/* A trailing new line still takes a line in the field; an empty field is as tall as its placeholder, which the + beside it can wrap. */}
-                  {draft === "" ? placeholder : draft.endsWith("\n") ? `${draft} ` : draft}
-                </Text>
-              ) : null}
               <TextInput
                 ref={field}
                 value={draft}
                 onChangeText={setDraft}
-                onFocus={() => {
-                  setTyping(true);
-                  releaseKeyboardClaim();
-                }}
-                onBlur={() => setTyping(false)}
+                onFocus={releaseKeyboardClaim}
                 placeholder={submitOnEnter ? `${placeholder} (Enter sends, Shift+Enter for a new line)` : placeholder}
                 placeholderTextColor={theme.colors.foregroundMuted}
                 multiline
+                scrollEnabled={fieldHeight.scrollEnabled}
                 onKeyPress={
                   submitOnEnter
                     ? (event: WebKeyPressEvent) => {
@@ -633,23 +611,23 @@ export function AgentChat({
                       }
                     : undefined
                 }
-                style={compact ? [styles.input, { height: composerFieldHeight(draft === "" ? placeholder : draft, contentHeight) }] : styles.input}
+                style={[styles.input, fieldHeight.style]}
               />
-              </View>
-              <View style={styles.inputTools}>
-                {compact ? null : <View style={styles.attach}>{attachButton}</View>}
-                {context === undefined ? null : <ContextMeter theme={theme} used={context.used} max={context.max} />}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Send"
-                  accessibilityState={{ disabled: nothingToSend }}
-                  disabled={nothingToSend}
-                  style={[styles.send, { opacity: nothingToSend ? 0.5 : 1 }]}
-                  onPress={sendDraft}
-                >
-                  <Icon name="ArrowUp" size={15} color={theme.colors.accentForeground} />
-                </Pressable>
-              </View>
+              <View style={styles.controls}>
+                {attachButton}
+                <View style={styles.controlsEnd}>
+                  {context === undefined ? null : <ContextMeter theme={theme} used={context.used} max={context.max} ringSize={metrics.ringSize} />}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Send"
+                    accessibilityState={{ disabled: nothingToSend }}
+                    disabled={nothingToSend}
+                    style={[styles.send, { opacity: nothingToSend ? 0.5 : 1 }]}
+                    onPress={sendDraft}
+                  >
+                    <Icon name="ArrowUp" size={metrics.iconSize} color={theme.colors.accentForeground} />
+                  </Pressable>
+                </View>
               </View>
             </View>
           </View>
