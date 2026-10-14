@@ -198,6 +198,7 @@ const WHEEL_LINE = 16;
 const SETTLE_MS = 180;
 /** Eased moves run on the UI thread on a phone; the web has no native driver. */
 const NATIVE_DRIVER = Platform.OS !== "web";
+const VALUE_CONFIG = NATIVE_DRIVER ? { useNativeDriver: true } : undefined;
 /** The top bar's row, below the status bar: a touch target's height. */
 const BAR_HEIGHT = 52;
 /** How far the bar's fade reaches below the bar, and in how many steps (core React Native draws no gradient); it stays dense behind the controls and drops off below them. */
@@ -240,9 +241,11 @@ function GalleryPage({
   // finger only sets the animated values, so it never re-renders the page.
   const [atFit, setAtFit] = useState(true);
   const atFitShown = useRef(true);
-  const translateX = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
-  const scale = useRef(new Animated.Value(1)).current;
+  // Native from the start on a phone: setting a native value goes straight to the UI thread, where a
+  // JS-side one makes Fabric commit the image's view again on every set (three per finger move).
+  const translateX = useRef(new Animated.Value(0, VALUE_CONFIG)).current;
+  const translateY = useRef(new Animated.Value(0, VALUE_CONFIG)).current;
+  const scale = useRef(new Animated.Value(1, VALUE_CONFIG)).current;
   const stageRef = useRef<View>(null);
   // Gesture handlers are made once and read the latest of everything through this.
   const live = useRef({ frame, index, count, onIndex, onClose, transform: FIT, origin: { x: 0, y: 0 } });
