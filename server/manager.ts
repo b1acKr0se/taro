@@ -11,8 +11,8 @@ import type { PaseoAgent, PaseoApi } from "./host-types";
 import { bypassModeId, knownBypassMode } from "./models";
 import { TEMPLATES, fill, message, readTemplate, skillDirectory } from "./package-files";
 import { projectPaths, requireProjectConfig, updateProjectConfig } from "./projects";
-import { sendCommand, sendWithoutInterrupting } from "./send";
-import { attachmentExtras, hasAttachments, type Attachments } from "./uploads";
+import { sendCommand } from "./send";
+import { hasAttachments, sendWithAttachments, type Attachments } from "./uploads";
 import { serialized } from "./serialize";
 import { ensureTaroProject } from "./taro-project";
 import { taroEnvironment } from "./environment";
@@ -131,7 +131,7 @@ export async function tellManager(paseo: PaseoApi, project: string, text: string
   const words = text.trim();
   if (words === "" && !hasAttachments(attachments)) throw new Error("Say something to the manager.");
   const agent = await requireManager(paseo, project);
-  await sendWithoutInterrupting(paseo, agent.id, words, await attachmentExtras(attachments));
+  await sendWithAttachments(paseo, agent.id, words, attachments);
   return agent.id;
 }
 

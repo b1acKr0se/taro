@@ -10,6 +10,7 @@ import {
   outgoingAttachments,
   parseDataUrl,
   safeFileName,
+  utf8Length,
   type DraftAttachment,
 } from "./attachments";
 
@@ -108,10 +109,28 @@ describe("safeFileName", () => {
     expect(safeFileName("dir/")).toBe("upload");
   });
 
-  it("shortens a long name and keeps its extension", () => {
-    const shortened = safeFileName(`${"x".repeat(300)}.json`);
-    expect(shortened.length).toBe(120);
+  it("keeps a name of exactly 255 bytes, and shortens one byte more to fit, keeping the extension", () => {
+    const exact = `${"x".repeat(250)}.json`;
+    expect(safeFileName(exact)).toBe(exact);
+    const shortened = safeFileName(`${"x".repeat(251)}.json`);
+    expect(utf8Length(shortened)).toBe(255);
     expect(shortened.endsWith(".json")).toBe(true);
+  });
+
+  it("counts bytes, not characters, for names in other scripts, and never splits a character", () => {
+    const chinese = safeFileName(`${"報告".repeat(55)}.pdf`);
+    expect(Buffer.byteLength(chinese)).toBeLessThanOrEqual(255);
+    expect(Buffer.byteLength(chinese)).toBeGreaterThan(250);
+    expect(chinese.endsWith(".pdf")).toBe(true);
+    const emoji = safeFileName(`${"😀".repeat(100)}.png`);
+    expect(Buffer.byteLength(emoji)).toBeLessThanOrEqual(255);
+    expect(emoji).toBe(`${"😀".repeat(62)}.png`);
+    expect(emoji.endsWith(".png")).toBe(true);
+  });
+
+  it("drops an extension too long to keep", () => {
+    const name = safeFileName(`a.${"x".repeat(300)}`);
+    expect(utf8Length(name)).toBe(255);
   });
 });
 
@@ -121,6 +140,12 @@ describe("imageFileName", () => {
     expect(imageFileName("image/jpeg", 2)).toBe("image-3.jpg");
     expect(imageFileName("image/svg+xml", 0)).toBe("image-1.svg");
     expect(imageFileName("application/octet-stream", 0)).toBe("image-1.bin");
+  });
+});
+
+describe("utf8Length", () => {
+  it("matches the bytes UTF-8 takes, for every width", () => {
+    ["", "abc", "é", "報", "😀", "a報😀é"].forEach((text) => expect(utf8Length(text)).toBe(Buffer.byteLength(text)));
   });
 });
 

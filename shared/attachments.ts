@@ -61,8 +61,18 @@ export function parseDataUrl(url: string): { mimeType: string; data: string } | 
   return { mimeType: match[1] === undefined || match[1] === "" ? "application/octet-stream" : match[1], data: match[2] };
 }
 
-/** Most file systems cap one file name at 255 bytes; counted here in UTF-16 units, which never undercounts a name's characters. */
-const MAX_FILE_NAME_LENGTH = 120;
+/** Most file systems cap one file name at 255 bytes of UTF-8. */
+const MAX_FILE_NAME_BYTES = 255;
+
+/** A character's size in UTF-8, by code point (counted by hand: `shared/` has no Buffer, and the phone's Hermes may lack TextEncoder). */
+function utf8Bytes(character: string): number {
+  const code = character.codePointAt(0) ?? 0;
+  return code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
+}
+
+export function utf8Length(text: string): number {
+  return Array.from(text).reduce((total, character) => total + utf8Bytes(character), 0);
+}
 
 /**
  * A file name safe as one path segment, by Paseo's own rule for its uploads: the client's name with
@@ -71,10 +81,16 @@ const MAX_FILE_NAME_LENGTH = 120;
 export function safeFileName(name: string): string {
   const base = (name.split(/[\\/]/).pop() ?? "").replace(/[\u0000-\u001f\u007f-\u009f:*?"<>|]/g, "_").trim();
   if (base === "" || base === "." || base === "..") return "upload";
-  if (base.length <= MAX_FILE_NAME_LENGTH) return base;
+  if (utf8Length(base) <= MAX_FILE_NAME_BYTES) return base;
   const dot = base.lastIndexOf(".");
-  const extension = dot > 0 && base.length - dot <= 16 ? base.slice(dot) : "";
-  return Array.from(base.slice(0, base.length - extension.length)).slice(0, MAX_FILE_NAME_LENGTH - extension.length).join("") + extension;
+  const extension = dot > 0 && utf8Length(base.slice(dot)) < MAX_FILE_NAME_BYTES ? base.slice(dot) : "";
+  // Whole characters only, so a cut never splits one.
+  let budget = MAX_FILE_NAME_BYTES - utf8Length(extension);
+  const stem = Array.from(base.slice(0, base.length - extension.length)).filter((character) => {
+    budget -= utf8Bytes(character);
+    return budget >= 0;
+  });
+  return stem.join("") + extension;
 }
 
 /** A file name for an image that came without one (a pasted image). */

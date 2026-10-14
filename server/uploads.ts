@@ -5,12 +5,13 @@
  * attachment, which the daemon renders as the file's name, path, type and size.
  */
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { attachmentProblem, safeFileName, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
 import { paseoHome } from "./data-dir";
-import type { SendExtras } from "./send";
+import type { PaseoApi } from "./host-types";
+import { sendWithoutInterrupting } from "./send";
 
 export interface Attachments {
   images?: OutgoingImage[] | undefined;
@@ -21,17 +22,23 @@ export function hasAttachments(attachments: Attachments): boolean {
   return (attachments.images?.length ?? 0) + (attachments.files?.length ?? 0) > 0;
 }
 
-/** Writes the files and returns what `send` takes; throws a sentence when they are too many or too large. */
-export async function attachmentExtras(attachments: Attachments, home = paseoHome()): Promise<SendExtras> {
+/**
+ * The user's words and attachments to an agent, joining a running turn where possible. Throws a
+ * sentence when the attachments are too many or too large, before writing anything; a write or the
+ * send failing removes every file this call wrote, so a retry leaves no orphan copy behind.
+ */
+export async function sendWithAttachments(paseo: PaseoApi, agentId: string, words: string, attachments: Attachments, home = paseoHome()): Promise<void> {
   const images = attachments.images ?? [];
   const files = attachments.files ?? [];
   const problem = attachmentProblem([...images, ...files]);
   if (problem !== null) throw new Error(problem);
-  const uploaded = await Promise.all(
-    files.map(async (file) => {
-      const id = `upload_${randomUUID()}`;
+  const ids = files.map(() => `upload_${randomUUID()}`);
+  const directories = ids.map((id) => join(home, "uploads", id));
+  const writes = await Promise.allSettled(
+    files.map(async (file, index) => {
+      const id = ids[index] ?? "";
+      const directory = directories[index] ?? "";
       const fileName = safeFileName(file.fileName);
-      const directory = join(home, "uploads", id);
       const path = join(directory, fileName);
       const bytes = Buffer.from(file.data, "base64");
       await mkdir(directory, { recursive: true });
@@ -39,8 +46,21 @@ export async function attachmentExtras(attachments: Attachments, home = paseoHom
       return { type: "uploaded_file" as const, id, fileName, mimeType: file.mimeType === "" ? "application/octet-stream" : file.mimeType, size: bytes.byteLength, path };
     }),
   );
-  return {
-    ...(images.length > 0 ? { images } : null),
-    ...(uploaded.length > 0 ? { attachments: uploaded } : null),
-  };
+  // Every write has settled, so nothing lands after the cleanup.
+  const removeAll = () => Promise.allSettled(directories.map((directory) => rm(directory, { recursive: true, force: true })));
+  const failed = writes.find((write) => write.status === "rejected");
+  if (failed !== undefined) {
+    await removeAll();
+    throw failed.reason;
+  }
+  const uploaded = writes.flatMap((write) => (write.status === "fulfilled" ? [write.value] : []));
+  try {
+    await sendWithoutInterrupting(paseo, agentId, words, {
+      ...(images.length > 0 ? { images } : null),
+      ...(uploaded.length > 0 ? { attachments: uploaded } : null),
+    });
+  } catch (error) {
+    await removeAll();
+    throw error;
+  }
 }
