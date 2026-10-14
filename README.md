@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/taro-logo.svg" width="120" alt="Taro"></p>
+
 # Taro
 
 Taro is a [Paseo](https://github.com/getpaseo/paseo) plugin that runs software work through agents,
