@@ -59,11 +59,16 @@ export function cardOnScreen(cardTop: number, cardHeight: number, scrollOffset: 
   return visible >= Math.min(VISIBLE_SLACK, cardHeight);
 }
 
+/** Whether a card fits on the screen whole, with room around it. */
+export function cardFits(cardHeight: number, viewportHeight: number): boolean {
+  return cardHeight + BOTTOM_ROOM + TOP_ROOM <= viewportHeight;
+}
+
 /**
  * The scroll offset that shows a card: its end above the jump-to-end button when it fits on the
  * screen, else its top, where its heading is (the rest is read by scrolling down).
  */
 export function offsetShowingCard(cardTop: number, cardHeight: number, viewportHeight: number): number {
-  if (cardHeight + BOTTOM_ROOM + TOP_ROOM > viewportHeight) return Math.max(0, cardTop - TOP_ROOM);
+  if (!cardFits(cardHeight, viewportHeight)) return Math.max(0, cardTop - TOP_ROOM);
   return Math.max(0, cardTop + cardHeight - viewportHeight + BOTTOM_ROOM);
 }

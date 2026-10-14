@@ -31,7 +31,7 @@ import { PermissionCard, usePendingRequests } from "./permission-card";
 import { ReplyBox } from "./reply-box";
 import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
-import { cardOnScreen, offsetShowingCard, placeDecisions } from "./inline-decisions";
+import { cardFits, cardOnScreen, offsetShowingCard, placeDecisions } from "./inline-decisions";
 import { groupRows, toolRunSummary, type Group } from "./tool-runs";
 import { ATTACHMENTS_ONLY, transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
@@ -175,7 +175,11 @@ export function AgentChat({
     const layout = firstKey === null ? undefined : cardLayouts.current.get(firstKey);
     if (firstKey === null || layout === undefined) return;
     if (openingCard.current?.agentId !== agent.id) openingCard.current = { agentId: agent.id, key: firstKey };
-    if (openingCard.current.key === firstKey) follow.revealRow(firstKey, layout, offsetShowingCard);
+    if (openingCard.current.key === firstKey) {
+      // The acceptance card is the transcript's end: one that fits is shown by following the end, as new messages arrive above it.
+      if (firstKey === deliveryTarget && cardFits(layout.height, follow.viewport.current)) follow.reveal(firstKey, layout);
+      else follow.revealRow(firstKey, layout, offsetShowingCard);
+    }
     setFirstOnScreen(cardOnScreen(layout.y, layout.height, follow.offset.current, follow.viewport.current));
   }
 
@@ -196,8 +200,38 @@ export function AgentChat({
   useEffect(placeFirst, [firstKey]);
 
   function jumpToFirst(): void {
-    const layout = firstKey === null ? undefined : cardLayouts.current.get(firstKey);
-    if (layout !== undefined) follow.scrollTo(offsetShowingCard(layout.y, layout.height, follow.viewport.current));
+    const scroll = () => {
+      const layout = firstKey === null ? undefined : cardLayouts.current.get(firstKey);
+      if (layout === undefined) return;
+      if (firstKey === deliveryTarget && cardFits(layout.height, follow.viewport.current)) follow.jumpToEnd();
+      else follow.scrollTo(offsetShowingCard(layout.y, layout.height, follow.viewport.current));
+    };
+    if (firstKey === deliveryTarget) measureDelivery(scroll);
+    else scroll();
+  }
+
+  const deliveryView = useRef<View>(null);
+  /** The transcript content's top, on screen: the acceptance card is measured from it. */
+  const contentAnchor = useRef<View>(null);
+  /**
+   * The acceptance card's place, measured afresh (TR-091): messages arriving above it move it
+   * without resizing it, and a web browser's onLayout reports only a resize, so its last layout goes
+   * stale. Both are measured on screen at once, so the scroll offset (reported late) plays no part.
+   */
+  function measureDelivery(then?: () => void): void {
+    const card = deliveryView.current;
+    const anchor = contentAnchor.current;
+    if (card === null || anchor === null) {
+      then?.();
+      return;
+    }
+    anchor.measureInWindow((anchorLeft, anchorTop) => {
+      card.measureInWindow((left, top, width, height) => {
+        // A hidden pane measures nothing.
+        if (width > 0 && height > 0) noteLayout([deliveryTarget], { x: left - anchorLeft, y: top - anchorTop, width, height });
+        then?.();
+      });
+    });
   }
 
   function decisionCards(decisions: readonly StoredDecision[]) {
@@ -356,6 +390,7 @@ export function AgentChat({
           onContentSizeChange={(width, height) => {
             follow.scrollProps.onContentSizeChange(width, height);
             keyboardScroll.onContentSizeChange();
+            if (delivery !== undefined) measureDelivery();
           }}
           onLayout={(event) => {
             follow.scrollProps.onLayout(event);
@@ -364,6 +399,8 @@ export function AgentChat({
           style={styles.transcript}
           contentContainerStyle={styles.transcriptBody}
         >
+          {/* Out of the flow, so the content's gap does not count it. */}
+          <View ref={contentAnchor} collapsable={false} pointerEvents="none" style={styles.contentAnchor} />
           <KeyboardRevealProvider value={keyboardScroll.claim}>
             {timeline.error === null ? null : <Text style={styles.error}>{timeline.error}</Text>}
             {groups.length === 0 && pending.length === 0 ? (
@@ -411,7 +448,7 @@ export function AgentChat({
             )}
             {/* Under everything said since the delivery; a permission request, which holds the agent up, stays last. */}
             {delivery === undefined ? null : (
-              <View style={styles.agentRow} onLayout={(event) => noteLayout([deliveryTarget], event.nativeEvent.layout)}>
+              <View ref={deliveryView} style={styles.agentRow} onLayout={(event) => noteLayout([deliveryTarget], event.nativeEvent.layout)}>
                 {delivery.card}
               </View>
             )}
@@ -715,6 +752,7 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
     transcript: { flex: 1 },
     // Room between turns, so a reply, a tool run and the next message read as separate things.
     // Centred at a reading width in a wide pane (TR-027); the scroll bar stays at the pane's edge.
+    contentAnchor: { position: "absolute" as const, top: 0, left: 0, width: 1, height: 1 },
     transcriptBody: {
       width: "100%" as const,
       maxWidth: CHAT_MAX_WIDTH,

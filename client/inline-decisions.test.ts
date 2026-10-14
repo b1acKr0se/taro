@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { StoredDecision } from "../shared/state";
-import { cardOnScreen, offsetShowingCard, placeDecisions } from "./inline-decisions";
+import { cardFits, cardOnScreen, offsetShowingCard, placeDecisions } from "./inline-decisions";
 
 function decision(id: string, parts: Partial<StoredDecision> = {}): StoredDecision {
   return {
@@ -127,3 +127,11 @@ describe("offsetShowingCard", () => {
   });
 });
 
+describe("cardFits", () => {
+  it("fits a card with room for the jump button under it and a margin above", () => {
+    expect(cardFits(536, 600)).toBe(true);
+    expect(cardFits(537, 600)).toBe(false);
+    expect(cardFits(0, 64)).toBe(true);
+    expect(cardFits(0, 0)).toBe(false);
+  });
+});

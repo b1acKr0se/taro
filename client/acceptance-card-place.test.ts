@@ -27,4 +27,18 @@ describe("the acceptance card's place", () => {
     expect(transcript.match(/delivery\.card/g)).toHaveLength(1);
     expect(rowView).not.toMatch(/delivery/i);
   });
+
+  it("is measured again when the transcript grows, as a web browser's onLayout reports only a resize", () => {
+    expect(chat).toMatch(/onContentSizeChange=\{[\s\S]*?if \(delivery !== undefined\) measureDelivery\(\);/);
+    expect(chat).toMatch(/<View ref=\{deliveryView\}[^\n]*\n\s*\{delivery\.card\}/);
+    const jump = chat.slice(chat.indexOf("function jumpToFirst"), chat.indexOf("function measureDelivery"));
+    expect(jump).toContain("measureDelivery(scroll)");
+  });
+
+  it("is shown by following the transcript's end when it fits, on opening and from its Show link", () => {
+    const place = chat.slice(chat.indexOf("function placeFirst"), chat.indexOf("function noteLayout"));
+    expect(place).toMatch(/firstKey === deliveryTarget && cardFits\(layout\.height, follow\.viewport\.current\)\) follow\.reveal\(/);
+    const jump = chat.slice(chat.indexOf("function jumpToFirst"), chat.indexOf("function measureDelivery"));
+    expect(jump).toMatch(/firstKey === deliveryTarget && cardFits\(layout\.height, follow\.viewport\.current\)\) follow\.jumpToEnd\(\)/);
+  });
 });
