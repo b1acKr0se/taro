@@ -18,10 +18,12 @@ import {
   requestChanges,
   resolveTrackerSync as resolveTrackerSyncRpc,
   tellAgent,
+  checkOnboarding,
   checkPrerequisites as checkPrerequisitesRpc,
   compactManager as compactManagerRpc,
   launchManager as launchManagerRpc,
   listModels,
+  listPaseoProjects as listPaseoProjectsRpc,
   listProjects,
   listSentImages,
   onboardProject as onboardProjectRpc,
@@ -47,7 +49,8 @@ import { Supervisor, identityFromLabels } from "./server/supervision";
 import { sessionEnvironment } from "./server/environment";
 import { readTextIfPresent, writeTextAtomically } from "./server/files";
 import { catchUpText, compactManager, launchManager, restartManager, tellManager, writeManagerInstructions } from "./server/manager";
-import { onboardProject } from "./server/onboard";
+import { onboardProject, onboardingProblems } from "./server/onboard";
+import { listPaseoProjects, settingsTemplate } from "./server/paseo-projects";
 import { readImage } from "./server/images";
 import { checkPrerequisites } from "./server/prerequisites";
 import { listProjectConfigs, projectPaths, readProjectConfig, requireProjectConfig, taroHome, updateProjectConfig } from "./server/projects";
@@ -161,6 +164,16 @@ export default function contribute(server: PluginServerContext) {
     await trackers.refresh();
     await actions.primeStatuses();
     return result;
+  });
+
+  server.handle(checkOnboarding, async (input) => ({ problems: await onboardingProblems(input) }));
+  server.handle(listPaseoProjectsRpc, async (_input, { paseo }) => {
+    const configs = await listProjectConfigs();
+    return {
+      projects: await listPaseoProjects(keep(paseo), configs),
+      template: await settingsTemplate(configs),
+      takenPrefixes: configs.map((config) => config.ticketPrefix),
+    };
   });
 
   server.handle(readProjectConfigRpc, async ({ project }) => ({ config: await requireProjectConfig(project) }));

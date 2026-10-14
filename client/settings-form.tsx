@@ -151,6 +151,7 @@ export function TextField({
   placeholder,
   invalid = false,
   multiline = false,
+  autoFocus = false,
   accessibilityLabel,
 }: {
   theme: PluginTheme;
@@ -159,6 +160,7 @@ export function TextField({
   placeholder?: string;
   invalid?: boolean;
   multiline?: boolean;
+  autoFocus?: boolean;
   accessibilityLabel: string;
 }) {
   const colors = theme.colors;
@@ -174,6 +176,7 @@ export function TextField({
       autoCapitalize="none"
       autoCorrect={false}
       multiline={multiline}
+      autoFocus={autoFocus}
       style={{
         minHeight: multiline ? 120 : CONTROL_HEIGHT,
         paddingHorizontal: SPACE.md,

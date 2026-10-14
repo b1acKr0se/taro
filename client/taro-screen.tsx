@@ -11,7 +11,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import type { PluginScreenProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { columnCounts } from "../shared/board";
@@ -28,6 +28,8 @@ import { keptObject } from "./kept";
 import { OwnerPane } from "./owner-pane";
 import { PaneHeader } from "./pane-header";
 import { projectLayout } from "./pane-layout";
+import { CreationProgress, NewProject, resetNewProject, returnToNewProject, useCreation } from "./new-project";
+import { resetCreation } from "./project-creation";
 import { ProjectSetup } from "./project-setup";
 import { useProjects, useRefreshProjects } from "./queries";
 import { paneGutter, SPACE } from "./spacing";
@@ -66,6 +68,22 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   const current = list.find((summary) => summary.config.project === selected) ?? list[0] ?? null;
   const showing: View_ = list.length === 0 && !projects.isLoading ? "setup" : view;
   const onOpenAgent = navigation === undefined ? null : (agentId: string) => navigation.openAgent({ agentId });
+  const creating = useCreation();
+  const createdListed = creating.step === "done" && list.some((summary) => summary.config.project === creating.project);
+
+  // A new project opens on its Manager tab once it is set up and listed; elsewhere on the screen it just appears.
+  useEffect(() => {
+    if (!createdListed || creating.project === null) return;
+    const project = creating.project;
+    resetCreation();
+    resetNewProject();
+    if (showing !== "setup") return;
+    remembered.phoneTab = "manager";
+    choose(project, "project");
+  }, [createdListed]);
+  useEffect(() => {
+    if (creating.step === "done" && !createdListed) refresh();
+  }, [creating.step]);
 
   function choose(project: string | null, nextView: View_, nextTicket: string | null = null): void {
     remembered.project = project;
@@ -179,16 +197,41 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   );
 
   let body;
-  if (showing === "setup") {
+  if (showing === "setup" && creating.step !== "idle") {
     body = (
-      <ProjectSetup
+      <CreationProgress
         theme={theme}
-        existing={null}
-        onDone={(project) => {
+        state={creating}
+        onOpenProject={(project) => {
+          resetCreation();
+          resetNewProject();
           refresh();
           choose(project, "project");
         }}
-        onCancel={current === null ? null : () => choose(current.config.project, "project")}
+        onBackToSetup={(error) => {
+          resetCreation();
+          returnToNewProject(error);
+        }}
+      />
+    );
+  } else if (showing === "setup") {
+    body = (
+      <NewProject
+        theme={theme}
+        compact={layout.compact}
+        onOpenProject={(project) => {
+          resetNewProject();
+          choose(project, "project");
+        }}
+        onCreating={() => refresh()}
+        onCancel={
+          current === null
+            ? null
+            : () => {
+                resetNewProject();
+                choose(current.config.project, "project");
+              }
+        }
       />
     );
   } else if (showing === "inbox" && !layout.compact) {

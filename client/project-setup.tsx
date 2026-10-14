@@ -22,7 +22,7 @@ import {
 } from "../shared/contracts";
 import { modelOptions as modelPickerOptions, thinkingAfterModelChange, thinkingOptions, toggleSubagentModel } from "../shared/model-picker";
 import type { ProjectConfig } from "../shared/project";
-import { draftFrom, settingsFrom, setupProblems, ticketExample, type SetupDraft } from "../shared/setup-form";
+import { draftFrom, settingsFrom, setupProblems, ticketExample, type SetupDraft, type SetupProblems } from "../shared/setup-form";
 import { errorText } from "./format";
 import { KeyboardScrollView } from "./keyboard";
 import { CheckLine, ChoiceCards, Dropdown, Field, FixedValue, FormSection, ModelChooser, TextField, TWO_COLUMN_MIN_WIDTH } from "./settings-form";
@@ -35,12 +35,21 @@ const PAGE_MAX_WIDTH = 760;
 export function ProjectSetup({
   theme,
   existing,
+  initial = null,
+  error = null,
+  onCreate,
   onDone,
   onCancel,
 }: {
   theme: PluginTheme;
   /** The project being edited, or null to add one. */
   existing: ProjectConfig | null;
+  /** A new project's values filled in from a picked Paseo project (TR-056); null for an empty form. */
+  initial?: SetupDraft | null;
+  /** Why creating failed after its check passed, shown above the button. */
+  error?: string | null;
+  /** Creates a new project; resolves with the problems by field when its check finds any. */
+  onCreate?: (draft: SetupDraft) => Promise<SetupProblems | null>;
   onDone: (project: string) => void;
   /** Leaves without saving; null when there is nowhere to go back to (no project yet). */
   onCancel: (() => void) | null;
@@ -62,7 +71,9 @@ export function ProjectSetup({
     () => modelOptions.find((option) => /opus/i.test(option.id))?.id ?? modelOptions[0]?.id ?? "claude/claude-opus-5-5",
     [modelOptions],
   );
-  const [draft, setDraft] = useState<SetupDraft>(() => draftFrom(existing));
+  const [draft, setDraft] = useState<SetupDraft>(() => initial ?? draftFrom(existing));
+  const [serverProblems, setServerProblems] = useState<SetupProblems>({});
+  const [failure, setFailure] = useState<string | null>(error);
   const [orders, setOrders] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // A field shows its problem once typed in, so a fresh form is not a wall of red; the footer says why saving is off.
@@ -86,10 +97,13 @@ export function ProjectSetup({
 
   const problems = setupProblems(draft, existing === null);
   const valid = Object.keys(problems).length === 0;
-  const problem = (key: keyof SetupDraft): string | null => (touched.has(key) ? (problems[key] ?? null) : null);
+  // A filled-in draft shows its problems at once; the server's stay on their field until it changes.
+  const problem = (key: keyof SetupDraft): string | null =>
+    serverProblems[key] ?? (touched.has(key) || initial !== null ? (problems[key] ?? null) : null);
 
   function update<Key extends keyof SetupDraft>(key: Key, value: SetupDraft[Key]): void {
     setDraft((current) => ({ ...current, [key]: value }));
+    if (serverProblems[key] !== undefined) setServerProblems(({ [key]: _gone, ...rest }) => rest);
     setTouched((current) => (current.has(key) ? current : new Set(current).add(key)));
   }
 
@@ -103,8 +117,15 @@ export function ProjectSetup({
 
   async function submit(): Promise<void> {
     setBusy(true);
+    setFailure(null);
     try {
-      if (existing === null) {
+      if (existing === null && onCreate !== undefined) {
+        const found = await onCreate(draft);
+        if (found !== null) {
+          setServerProblems(found);
+          toast.error("Fix the fields marked in red to continue.");
+        }
+      } else if (existing === null) {
         const result = await onboard({ project: draft.project.trim(), settings: settingsFrom(draft, defaultModel), startManager: true });
         toast.show(`${result.config.project} added; its Manager is starting.`, { variant: "success" });
         onDone(result.config.project);
@@ -115,7 +136,8 @@ export function ProjectSetup({
         onDone(existing.project);
       }
     } catch (caught) {
-      toast.error(errorText(caught));
+      if (existing === null) setFailure(errorText(caught));
+      else toast.error(errorText(caught));
     } finally {
       setBusy(false);
     }
@@ -368,6 +390,7 @@ export function ProjectSetup({
         </FormSection>
       )}
 
+      {failure === null ? null : <Text style={[muted, { color: colors.statusDanger }]}>{failure}</Text>}
       <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center", gap: SPACE.sm }}>
         {valid ? null : (
           <Text style={[muted, { flexGrow: 1, flexBasis: 200 }]}>

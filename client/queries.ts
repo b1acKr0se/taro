@@ -2,7 +2,7 @@
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { listProjects, loadStats } from "../shared/contracts";
+import { listModels, listProjects, loadStats } from "../shared/contracts";
 
 export const PROJECTS_KEY = ["taro", "projects"] as const;
 
@@ -22,4 +22,14 @@ export function useRefreshProjects(): () => void {
 export function useStats(project: string) {
   const load = useRpc(loadStats);
   return useQuery({ queryKey: ["taro", "stats", project] as const, queryFn: () => load({ project }), refetchInterval: 15_000 });
+}
+
+/** The models agents can run on, and the one a new project's agents get unless the user chooses: an Opus, else the first. */
+export function useModels() {
+  const load = useRpc(listModels);
+  const query = useQuery({ queryKey: ["taro", "models"] as const, queryFn: () => load({}) });
+  const options = query.data?.models ?? [];
+  const defaultModel = options.find((option) => /opus/i.test(option.id))?.id ?? options[0]?.id ?? "claude/claude-opus-5-5";
+  const label = (model: string) => options.find((option) => option.id === model)?.label ?? model;
+  return { query, options, defaultModel, label };
 }

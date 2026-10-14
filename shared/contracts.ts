@@ -8,6 +8,7 @@ import { z } from "zod";
 import { OutgoingAttachmentsSchema } from "./attachments";
 import { ColumnIdSchema } from "./board";
 import { MilestoneSchema } from "./milestones";
+import { PaseoProjectCandidateSchema, SettingsTemplateSchema } from "./project-candidates";
 import { ProjectConfigSchema, ProjectNameSchema, ProjectSettingsSchema, SUBAGENT_ROLES } from "./project";
 import { BoardAlertSchema, HeadroomSchema } from "./recovery";
 import { LastStatusSchema, StoredDecisionSchema } from "./state";
@@ -70,6 +71,22 @@ export const onboardProject = defineRpc({
   name: "taro.project.onboard",
   input: z.object({ project: ProjectNameSchema, settings: ProjectSettingsSchema, startManager: z.boolean().default(true) }),
   output: z.object({ config: ProjectConfigSchema, managerAgentId: z.string().nullable() }),
+});
+
+/** Before adding a project: what would fail, by field, so the form shows it beside the field (TR-056). */
+export const checkOnboarding = defineRpc({
+  name: "taro.project.onboard.check",
+  input: z.object({ project: z.string(), settings: ProjectSettingsSchema }),
+  output: z.object({
+    problems: z.object({ project: z.string().optional(), repoPath: z.string().optional(), ticketPrefix: z.string().optional(), baseBranch: z.string().optional() }),
+  }),
+});
+
+/** Paseo's git projects for the New project picker, and the settings a new project starts from (TR-056). */
+export const listPaseoProjects = defineRpc({
+  name: "taro.paseo-projects.list",
+  input: Empty,
+  output: z.object({ projects: z.array(PaseoProjectCandidateSchema), template: SettingsTemplateSchema.nullable(), takenPrefixes: z.array(z.string()) }),
 });
 
 export const readProjectConfig = defineRpc({
