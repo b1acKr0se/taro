@@ -58,9 +58,11 @@ export function boardColumn(card: CardInputs): ColumnId {
   if (card.status === "Done" || card.status === "Cancelled") return "done";
   // Accepted, the delivery is the owner's to finish (TR-031): it no longer waits on the user, and is placed like work under way.
   const accepted = card.accepted === true && card.status === "Awaiting acceptance";
+  const agent = card.agent;
+  // A pause is in the tracker, so it holds on every machine; a live agent here means it was started again.
+  if (card.paused === true && (agent === null || agent.status === "closed")) return "queued";
   if (card.ownerElsewhere) return recordedColumn(card.status, accepted);
 
-  const agent = card.agent;
   if (agent !== null && agent.pendingPermissions > 0) return "needs-you";
   if (agent !== null && (agent.status === "running" || agent.status === "initializing")) return "working";
   if (card.paused === true) return "queued";

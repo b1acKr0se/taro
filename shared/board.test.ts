@@ -12,6 +12,9 @@ describe("boardColumn", () => {
     expect(boardColumn({ ...base, agent: null })).toBe("stalled");
     // A fresh owner started from the pause is placed by its own state.
     expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, paused: true })).toBe("working");
+    // Its last owner's EXECUTION names another machine: the pause, in the tracker, still holds.
+    expect(boardColumn({ ...base, ownerElsewhere: true, agent: null, paused: true })).toBe("queued");
+    expect(boardColumn({ ...base, ownerElsewhere: true, agent: null })).toBe("working");
   });
 
   it("files finished tickets under Done", () => {
