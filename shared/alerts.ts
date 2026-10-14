@@ -5,11 +5,23 @@ import { QUEUED_ALERT_ID } from "./queue-check";
 import type { BoardAlert } from "./recovery";
 import type { TicketProblem } from "./ticket-format";
 
+/** A tracker still in Backlog.md format shows no tickets until `taro convert` runs (TR-081). */
+export const BACKLOG_FORMAT_ALERT_ID = "tracker-backlog-format";
+
 const HEADINGS: Readonly<Record<string, string>> = {
   headroom: "Threads running low",
   "manager-crashed": "Manager crashed",
   [QUEUED_ALERT_ID]: "Queued with a free slot",
+  [BACKLOG_FORMAT_ALERT_ID]: "Tracker not converted",
 };
+
+export function backlogFormatAlert(trackerPath: string): BoardAlert {
+  return {
+    id: BACKLOG_FORMAT_ALERT_ID,
+    tickets: [],
+    text: `This project's tracker is still in Backlog.md format, so the board shows no tickets and none can be created. Run taro convert --dry-run, then taro convert, in ${trackerPath}.`,
+  };
+}
 
 /** One alert per ticket file that cannot be read (TR-081): this prefix, then the file. */
 export const TICKET_FILE_ALERT_PREFIX = "ticket-file:";

@@ -15,7 +15,6 @@
  * they have not seen.
  */
 import { watch, type FSWatcher } from "node:fs";
-import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { listProjectConfigs, projectPaths } from "./projects";
@@ -46,6 +45,8 @@ const RESOLUTION_STRATEGIES: Readonly<Record<SyncResolution, SyncStrategy>> = {
 interface Watched {
   watchers: FSWatcher[];
   timer: NodeJS.Timeout | null;
+  /** Null until `tickets/` exists; made again when the folder is replaced (a conversion rolled back and run again). */
+  tickets: FSWatcher | null;
 }
 
 export class TrackerWatch {
@@ -81,29 +82,48 @@ export class TrackerWatch {
       const paths = await projectPaths(config.project);
       const watchers: FSWatcher[] = [];
       try {
-        await mkdir(join(paths.tracker, "tickets"), { recursive: true });
+        const entry: Watched = { watchers, timer: null, tickets: null };
+        // tracker.json is replaced by rename, so its folder is watched rather than the file itself. A tracker still in
+        // Backlog.md format has no tickets/ yet and must not get one (`taro convert` would refuse): it is watched once it appears.
         watchers.push(
-          watch(join(paths.tracker, "tickets"), (_event, name) => {
-            // No name (some platforms): any ticket may have changed.
-            const file = name === null ? undefined : String(name);
-            if (file !== undefined && !isTicketFileEvent(file)) return;
-            forgetTicketFile(paths.tracker, file);
+          watch(paths.tracker, (_event, name) => {
+            const file = name === null ? null : String(name);
+            if (file !== null && file !== "tracker.json" && file !== "tickets") return;
+            if (file !== "tracker.json") this.watchTickets(config.project, paths.tracker, entry, true);
             this.schedule(config.project);
           }),
         );
-        // tracker.json is replaced by rename, so its folder is watched rather than the file itself.
-        watchers.push(
-          watch(paths.tracker, (_event, name) => {
-            if (name !== null && String(name) === "tracker.json") this.schedule(config.project);
-          }),
-        );
         for (const watcher of watchers) watcher.on("error", (error) => console.error(`[taro] tracker watch for ${config.project} failed: ${error.message}`));
-        this.watched.set(config.project, { watchers, timer: null });
+        this.watchTickets(config.project, paths.tracker, entry);
+        this.watched.set(config.project, entry);
       } catch (error) {
         for (const watcher of watchers) watcher.close();
         console.error(`[taro] cannot watch ${config.project}'s tracker: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+  }
+
+  /** Watches `tickets/` once it exists, or again after `tickets` itself changed (`renew`); a no-op while it is missing. */
+  private watchTickets(project: string, trackerPath: string, entry: Watched, renew = false): void {
+    if (this.stopped || (entry.tickets !== null && !renew)) return;
+    let watcher: FSWatcher;
+    try {
+      watcher = watch(join(trackerPath, "tickets"), (_event, name) => {
+        // No name (some platforms): any ticket may have changed.
+        const file = name === null ? undefined : String(name);
+        if (file !== undefined && !isTicketFileEvent(file)) return;
+        forgetTicketFile(trackerPath, file);
+        this.schedule(project);
+      });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") console.error(`[taro] cannot watch ${project}'s tickets: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    watcher.on("error", (error) => console.error(`[taro] tracker watch for ${project} failed: ${error.message}`));
+    entry.tickets?.close();
+    entry.tickets = watcher;
+    // A replaced folder holds other files than the cached summaries were read from.
+    if (renew) forgetTicketFile(trackerPath, undefined);
   }
 
   private schedule(project: string): void {
@@ -249,6 +269,7 @@ export class TrackerWatch {
     for (const entry of this.watched.values()) {
       if (entry.timer !== null) clearTimeout(entry.timer);
       for (const watcher of entry.watchers) watcher.close();
+      entry.tickets?.close();
     }
     this.watched.clear();
   }

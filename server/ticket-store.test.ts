@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { parseTicket, serializeTicket, type Ticket } from "../shared/ticket-format";
-import { createTicketStore, RevisionConflict, TicketNotFound, type StoreOptions } from "./ticket-store";
+import { createTicketStore, isBacklogFormat, RevisionConflict, TicketNotFound, type StoreOptions } from "./ticket-store";
 
 const run = promisify(execFile);
 const STORE_MODULE = resolve(import.meta.dirname, "ticket-store.ts");
@@ -74,6 +74,18 @@ describe("ticket store", () => {
       console.log(JSON.stringify({ id: viewed.ticket.id, description: viewed.ticket.description }));
     `);
     expect(JSON.parse(stdout)).toEqual({ id: "TR-001", description: "body $&" });
+  });
+
+  // Regression (TR-081 review): a ticket created before `taro convert` took TR-001 again and wrote a tracker.json.
+  it("refuses to create a ticket in a tracker still in Backlog.md format, writing nothing", async () => {
+    await mkdir(join(tracker, "backlog"));
+    await writeFile(join(tracker, "backlog", "config.yml"), 'task_prefix: "NA"\n');
+    expect(await isBacklogFormat(tracker)).toBe(true);
+    await expect(store().create({ title: "Too early" })).rejects.toThrow(/still in Backlog\.md format.*taro convert/);
+    expect((await readdir(tracker)).filter((name) => name !== ".taro").sort()).toEqual(["backlog"]);
+    await writeFile(join(tracker, "tracker.json"), JSON.stringify({ schema: 1, prefix: "NA", padding: 3, lastId: 7, lastChild: {} }));
+    expect(await isBacklogFormat(tracker)).toBe(false);
+    expect((await store().create({ title: "Converted" })).id).toBe("NA-008");
   });
 
   it("creates a ticket, stamps created and updated, and views it", async () => {

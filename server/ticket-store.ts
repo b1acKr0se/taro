@@ -200,6 +200,12 @@ function unique(values: readonly string[]): string[] {
   return [...new Set(values)];
 }
 
+/** A tracker `taro convert` has not converted yet: Backlog.md's config and no tracker.json. */
+export async function isBacklogFormat(trackerPath: string): Promise<boolean> {
+  const present = async (path: string) => stat(path).then(() => true, (error: unknown) => (isMissing(error) ? false : Promise.reject(error)));
+  return (await present(join(trackerPath, "backlog", "config.yml"))) && !(await present(join(trackerPath, "tracker.json")));
+}
+
 export function createTicketStore(trackerPath: string, options: StoreOptions = {}): TicketStore {
   const ticketsDirectory = join(trackerPath, "tickets");
   const taroDirectory = join(trackerPath, ".taro");
@@ -421,6 +427,13 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
     };
   }
 
+  /** A ticket created before `taro convert` would take an id the tracker already used and make the conversion refuse. */
+  async function assertNotBacklogFormat(): Promise<void> {
+    if (await isBacklogFormat(trackerPath)) {
+      throw new Error(`${trackerPath} is still in Backlog.md format (backlog/, no tracker.json): run taro convert first.`);
+    }
+  }
+
   function nextId(tracker: TrackerFile, names: readonly string[], parent: string | null): string {
     if (parent === null) {
       const pattern = new RegExp(`^${tracker.prefix}-(\\d+)\\.md$`);
@@ -573,6 +586,7 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
     const parent = input.parent ?? null;
     if (parent !== null) assertId(parent);
     return locked(async () => {
+      await assertNotBacklogFormat();
       await mkdir(ticketsDirectory, { recursive: true });
       const names = await ticketNames();
       if (parent !== null && !names.includes(`${parent}.md`)) throw new TicketNotFound(parent);

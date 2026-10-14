@@ -796,7 +796,9 @@ async function git(trackerPath: string, args: readonly string[]): Promise<string
 
 /** The refusals that leave everything as it is. */
 async function assertConvertible(trackerPath: string): Promise<void> {
-  if (await exists(join(trackerPath, "tickets"))) throw new ConversionRefused(`${join(trackerPath, "tickets")} already exists: this tracker looks converted.`);
+  // An empty tickets/ (an older plugin made one while watching) holds nothing to lose.
+  const tickets = join(trackerPath, "tickets");
+  if (await exists(tickets) && (await readdir(tickets)).length > 0) throw new ConversionRefused(`${tickets} already exists: this tracker looks converted.`);
   if (await exists(join(trackerPath, "tracker.json"))) throw new ConversionRefused(`${join(trackerPath, "tracker.json")} already exists: this tracker looks converted.`);
 }
 
@@ -854,7 +856,7 @@ async function rolledBack(trackerPath: string, error: unknown): Promise<Conversi
 
 async function writeConversion(trackerPath: string, plan: ConversionPlan): Promise<void> {
   const ticketsDirectory = join(trackerPath, "tickets");
-  await mkdir(ticketsDirectory);
+  await mkdir(ticketsDirectory, { recursive: true });
   for (const { ticket } of plan.tickets) {
     await replaceFile(ticketsDirectory, `.${ticket.id}.${tempSuffix()}`, join(ticketsDirectory, `${ticket.id}.md`), serializeTicket(ticket));
   }

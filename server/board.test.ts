@@ -6,12 +6,12 @@ import { projectAgents, projectArchivedAgents } from "./agents";
 import { invalidateBoards, loadBoard } from "./board";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import type { PluginState } from "./state";
-import { listTickets, viewTicket } from "./tickets";
+import { isBacklogFormat, listTickets, viewTicket } from "./tickets";
 
 vi.mock("./agents", () => ({ projectAgents: vi.fn(), projectArchivedAgents: vi.fn() }));
 vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: "/tracker", suggestions: "/nonexistent/taro-suggestions.md" }) }));
 vi.mock("./headroom", () => ({ readHeadroom: async () => null }));
-vi.mock("./tickets", () => ({ listTickets: vi.fn(), viewTicket: vi.fn(), ticketProblems: async () => [] }));
+vi.mock("./tickets", () => ({ listTickets: vi.fn(), viewTicket: vi.fn(), ticketProblems: async () => [], isBacklogFormat: vi.fn(async () => false) }));
 
 const ticket = (id: string, status: string, updatedAt: string | null = "2026-10-13 15:00") => ({
   id,
@@ -229,5 +229,13 @@ describe("loadBoard", () => {
     const board = await loadBoard({} as PaseoApi, state([]), "taro");
     expect(board.cards[0]?.owner?.id).toBe("owner-live");
     expect(board.cards[0]?.pastAgents).toEqual([]);
+  });
+
+  it("says when the tracker is still in Backlog.md format, and only then (TR-081)", async () => {
+    expect((await loadBoard({} as PaseoApi, state([]), "taro")).alerts.map((alert) => alert.id)).not.toContain("tracker-backlog-format");
+    invalidateBoards();
+    vi.mocked(isBacklogFormat).mockResolvedValueOnce(true);
+    const alert = (await loadBoard({} as PaseoApi, state([]), "taro")).alerts.find((candidate) => candidate.id === "tracker-backlog-format");
+    expect(alert?.text).toMatch(/still in Backlog\.md format.*taro convert --dry-run, then taro convert/);
   });
 });

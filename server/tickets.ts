@@ -65,6 +65,8 @@ export async function listTickets(trackerPath: string): Promise<TicketSummary[]>
   }));
 }
 
+export { isBacklogFormat } from "./ticket-store";
+
 /** The files that could not be read as tickets, each with its line; their cards are left off the board. */
 export async function ticketProblems(trackerPath: string): Promise<TicketProblem[]> {
   return (await storeFor(trackerPath).list()).problems;

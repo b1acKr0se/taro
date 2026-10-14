@@ -164,6 +164,14 @@ describe("taro convert refuses, changing nothing", () => {
     expectRefusal(/^Not converted: .*tickets already exists/);
   });
 
+  // Regression (TR-081 review): the plugin's watcher used to make an empty tickets/ in a tracker not converted yet.
+  it("but converts when tickets/ exists empty", () => {
+    smallTracker();
+    mkdirSync(join(repository, "tickets"));
+    expect(taro(["convert", "--tracker", repository]).code).toBe(0);
+    expect(readTicket("NA-002").status).toBe("Backlog");
+  });
+
   it("when tracker.json exists", () => {
     smallTracker();
     write("tracker.json", "{}\n");

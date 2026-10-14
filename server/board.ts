@@ -6,7 +6,7 @@ import { stat } from "node:fs/promises";
 import { hostname } from "node:os";
 
 import { latestActivity, type Activity } from "../shared/activity";
-import { ticketFileAlerts } from "../shared/alerts";
+import { backlogFormatAlert, ticketFileAlerts } from "../shared/alerts";
 import { boardColumn, complexityOf, hasStarted, ticketAgents } from "../shared/board";
 import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
 import { acceptedRecord, executionMachine, pullRequestUrl, type AcceptedRecord } from "../shared/execution";
@@ -28,7 +28,7 @@ import { projectPaths } from "./projects";
 import { serialized } from "./serialize";
 import type { PluginState } from "./state";
 import { agentBrief } from "./summaries";
-import { listTickets, ticketProblems, viewTicket } from "./tickets";
+import { isBacklogFormat, listTickets, ticketProblems, viewTicket } from "./tickets";
 
 const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing", "Awaiting acceptance", "Blocked"]);
 
@@ -153,9 +153,10 @@ function groupByTicket(agents: readonly PaseoAgent[]): Map<string, PaseoAgent[]>
 async function readBoard(paseo: PaseoApi, state: PluginState, project: string): Promise<Board> {
   const paths = await projectPaths(project);
   // Live agents come from their own list, so a long archive can never push a live owner past its page limit.
-  const [tickets, problems, agents, archived, decisions, agentStates, headroom] = await Promise.all([
+  const [tickets, problems, unconverted, agents, archived, decisions, agentStates, headroom] = await Promise.all([
     listTickets(paths.tracker),
     ticketProblems(paths.tracker),
+    isBacklogFormat(paths.tracker).catch(() => false),
     projectAgents(paseo, project),
     cachedArchivedAgents(paseo, project).catch(() => []),
     state.allDecisions(),
@@ -252,7 +253,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string): 
     managerDecisions: openDecisions.filter((decision) => decision.ticket === null),
     suggestions: await readSuggestions(project, tickets),
     headroom,
-    alerts: [...boardAlerts(headroom, managerState?.stalledReason ?? null, now), ...ticketFileAlerts(problems)],
+    alerts: [...boardAlerts(headroom, managerState?.stalledReason ?? null, now), ...ticketFileAlerts(problems), ...(unconverted ? [backlogFormatAlert(paths.tracker)] : [])],
     loadedAt: new Date().toISOString(),
   };
 }
