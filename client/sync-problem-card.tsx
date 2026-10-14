@@ -7,7 +7,7 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
-import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
+import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
@@ -48,7 +48,6 @@ export function SyncProblemCard({
   onOpenTicket: ((ticket: string) => void) | null;
   startFolded?: boolean;
 }) {
-  const toast = useToast();
   const resolve = useRpc(resolveTrackerSync);
   const refreshProjects = useRefreshProjects();
   const presses = useActions();
@@ -73,21 +72,18 @@ export function SyncProblemCard({
   );
 
   function choose(choice: Choice): void {
+    // Still paused is a failure: the option comes back with the reason rather than a check.
     presses.press(
       choice.resolution,
       async () => {
         try {
-          return await resolve({ project, resolution: choice.resolution });
+          const { problem: left } = await resolve({ project, resolution: choice.resolution });
+          if (left !== null) throw new Error(`Still paused: ${left.message}`);
         } finally {
           refreshProjects();
         }
       },
-      {
-        onSuccess: ({ problem: left }) => {
-          if (left === null) toast.show("Tickets are in sync with the remote again.", { variant: "success" });
-          else toast.error(`Still paused: ${left.message}`);
-        },
-      },
+      { success: "Tickets are in sync with the remote again." },
     );
   }
 

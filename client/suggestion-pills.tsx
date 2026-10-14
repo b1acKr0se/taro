@@ -69,8 +69,8 @@ export function SuggestionPills({
 
   /** Sends it, shows "Sent" for a moment and hides it for good (the manager may write it again); a failure stays to retry. */
   function sendSuggestion(suggestion: Suggestion, index: number): void {
-    // Held after success: the pill shows Sent, then leaves for good.
-    const running = guardFor(suggestionKey(suggestion)).run("send", () => tell({ project, text: suggestion.prompt }), "hold");
+    // Released once sent: from then the pill's own Sent state disables it until it leaves, or comes back if the dismiss failed.
+    const running = guardFor(suggestionKey(suggestion)).run("send", () => tell({ project, text: suggestion.prompt }));
     if (running === null) return;
     setSend(suggestion, index, "sending");
     void running.then((outcome) => {
