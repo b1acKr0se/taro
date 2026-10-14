@@ -130,7 +130,7 @@ export class Notifier {
     return fresh.length;
   }
 
-  /** Sends one test push to every registered phone, for the user's say-so check. */
+  /** Sends one test push to every registered phone, for the user's say-so check (run by hand when testing). */
   async sendTest(): Promise<number> {
     const tokens = await this.tokens();
     await this.push(expoMessages(tokens, { key: "test", title: "Taro test", body: "If you can read this, Taro can reach your phone.", agentId: null, workspaceId: null }, await this.serverId()));
@@ -162,11 +162,12 @@ export class Notifier {
           console.error(`[taro] the push service answered ${response.status} ${response.statusText}`);
           continue;
         }
-        const result = (await response.json().catch(() => null)) as { data?: { status?: string; message?: string }[] } | null;
-        // A refused token is Paseo's to revoke (its token store owns the file); Taro only says so.
-        for (const ticket of result?.data ?? []) {
-          if (ticket.status === "error") console.error(`[taro] a push was refused: ${ticket.message ?? "no reason given"}`);
-        }
+        const result = (await response.json().catch(() => null)) as { data?: { status?: string; details?: { error?: string } }[] } | null;
+        // A refused token is Paseo's to revoke (its token store owns the file); Taro only says so. Expo's
+        // message quotes the token, so only its error code is logged.
+        (result?.data ?? []).forEach((ticket, index) => {
+          if (ticket.status === "error") console.error(`[taro] push ${start + index + 1} was refused: ${ticket.details?.error ?? "no reason given"}`);
+        });
       } catch (error: unknown) {
         console.error("[taro] could not send push notifications:", error);
       }

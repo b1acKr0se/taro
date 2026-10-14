@@ -220,9 +220,14 @@ describe("Notifier", () => {
     await expect(taro.announce("notes-app", [entry("NA-1")], true)).resolves.toBe(1);
     await expect(notifier(fakeFetch({}, 500).fetch).announce("notes-app", [entry("NA-1"), entry("NA-2")], true)).resolves.toBe(1);
     await expect(
-      notifier(fakeFetch({ data: [{ status: "error", message: "DeviceNotRegistered" }] }).fetch).announce("notes-app", [entry("NA-1"), entry("NA-2"), entry("NA-3")], true),
+      notifier(
+        fakeFetch({ data: [{ status: "error", message: '"ExponentPushToken[a]" is not a registered push notification recipient', details: { error: "DeviceNotRegistered" } }] }).fetch,
+      ).announce("notes-app", [entry("NA-1"), entry("NA-2"), entry("NA-3")], true),
     ).resolves.toBe(1);
-    expect(error.mock.calls.map((call) => String(call[0])).join("\n")).toMatch(/could not send[\s\S]*answered 500[\s\S]*refused: DeviceNotRegistered/);
+    const logged = error.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+    expect(logged).toMatch(/could not send[\s\S]*answered 500[\s\S]*push 1 was refused: DeviceNotRegistered/);
+    // Expo's message quotes the token; the log never does.
+    expect(logged).not.toContain("ExponentPushToken");
   });
 
   it("reads the server id from Paseo's override first", async () => {

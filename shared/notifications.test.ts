@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Board, Card } from "./contracts";
-import { freshEntries, needsYouEntries, PRESENCE_MS, REMEMBER_MS, someonePresent, type NeedsYouEntry } from "./notifications";
+import { freshEntries, needsYouEntries, PRESENCE_MS, REMEMBER_MS, someonePresent, WHILE_WAITING, type NeedsYouEntry } from "./notifications";
 import type { StoredDecision } from "./state";
 
 const owner = {
@@ -86,7 +86,7 @@ function entries(cards: Card[], managerDecisions: StoredDecision[] = []): NeedsY
 describe("needsYouEntries", () => {
   it("announces a delivery ready to accept with its first sentence, opening the owner", () => {
     expect(entries([card({ status: "Awaiting acceptance", column: "needs-you", delivered: "Drafts sync across devices." })])).toEqual([
-      { key: "NA-027:accept:Drafts sync across devices.", title: "NA-027 is ready to accept", body: "Drafts sync across devices.", agentId: "agent-1", workspaceId: "workspace-1" },
+      { key: "while-waiting:NA-027:accept", title: "NA-027 is ready to accept", body: "Drafts sync across devices.", agentId: "agent-1", workspaceId: "workspace-1" },
     ]);
   });
 
@@ -127,9 +127,24 @@ describe("needsYouEntries", () => {
   });
 
   it("announces a Blocked ticket, and an owner whose status line says blocked, with its words", () => {
-    expect(entries([card({ status: "Blocked", column: "needs-you" })])[0]).toMatchObject({ key: "NA-027:blocked:Blocked", title: "NA-027 is blocked", body: "Sync conflicts" });
+    expect(entries([card({ status: "Blocked", column: "needs-you" })])[0]).toMatchObject({ key: "while-waiting:NA-027:blocked", title: "NA-027 is blocked", body: "Sync conflicts" });
     const said = { state: "blocked" as const, text: "needs a DATABASE_URL", at: "2026-01-01T02:00:00Z" };
-    expect(entries([card({ column: "needs-you", lastStatus: said })])[0]).toMatchObject({ key: "NA-027:blocked:2026-01-01T02:00:00Z", body: "needs a DATABASE_URL" });
+    expect(entries([card({ column: "needs-you", lastStatus: said })])[0]).toMatchObject({ key: "while-waiting:NA-027:blocked", body: "needs a DATABASE_URL" });
+  });
+
+  it("keeps a delivery's and a block's key while its summary or status line changes", () => {
+    const delivery = (delivered: string | null) => entries([card({ status: "Awaiting acceptance", column: "needs-you", delivered })])[0]?.key;
+    expect(delivery(null)).toBe(delivery("Drafts sync across devices."));
+    const blocked = (lastStatus: Card["lastStatus"]) => entries([card({ status: "Blocked", column: "needs-you", lastStatus })])[0]?.key;
+    expect(blocked({ state: "blocked", text: "needs a key", at: "2026-01-01T02:00:00Z" })).toBe(blocked({ state: "working", text: "waiting", at: "2026-01-01T03:00:00Z" }));
+    expect(blocked(null)).toBe(blocked({ state: "blocked", text: "needs a key", at: "2026-01-01T02:00:00Z" }));
+  });
+
+  it("keeps a delivery's entry while its owner is stalled", () => {
+    expect(entries([card({ status: "Awaiting acceptance", column: "stalled", stalled: true, stalledReason: "crashed" })]).map((asked) => asked.key)).toEqual([
+      "NA-027:stalled:agent-1",
+      "while-waiting:NA-027:accept",
+    ]);
   });
 
   it("announces a stalled owner with the reason it stalled", () => {
@@ -187,6 +202,17 @@ describe("freshEntries", () => {
     expect(gone).toEqual({ a: NOW });
     expect(freshEntries(gone, [entry("a")], NOW + REMEMBER_MS - 1).fresh).toEqual([]);
     expect(freshEntries(gone, [entry("a")], NOW + REMEMBER_MS).fresh.map((fresh) => fresh.key)).toEqual(["a"]);
+  });
+
+  it("announces a delivery or a block again once it has left, however soon", () => {
+    const delivered = { ...entry(`${WHILE_WAITING}NA-027:accept`) };
+    const waiting = freshEntries({}, [delivered], NOW);
+    expect(waiting.fresh).toHaveLength(1);
+    expect(freshEntries(waiting.seen, [delivered], NOW + 15_000).fresh).toEqual([]);
+    // Changes requested: the delivery leaves; the fix comes back with the same summary a minute later.
+    const changes = freshEntries(waiting.seen, [], NOW + 30_000);
+    expect(changes.seen).toEqual({});
+    expect(freshEntries(changes.seen, [delivered], NOW + 90_000).fresh.map((fresh) => fresh.key)).toEqual([`${WHILE_WAITING}NA-027:accept`]);
   });
 
   it("forgets vanished entries after an hour", () => {

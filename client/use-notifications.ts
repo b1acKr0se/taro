@@ -40,8 +40,10 @@ export function useNeedsYouNotifications(): void {
     let after = -1;
     let live = true;
     let polling = false;
+    // The phone app has no document and shows nothing here (its pushes come from the server): no poll.
+    const hasDocument = (scope as { document?: unknown }).document !== undefined;
     const tick = () => {
-      if (polling) return;
+      if (polling || !hasDocument) return;
       polling = true;
       const show = desktopNotifier(scope);
       const active = show !== null && pageVisible(scope) && Date.now() - usedAt <= PRESENCE_MS;
