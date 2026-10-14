@@ -52,6 +52,7 @@ import type { PluginState } from "./state";
 import { identityFromLabels, lastHumanMessageAt, managerHandoffPath, type Supervisor } from "./supervision";
 import { appendTicketNote, listTickets, viewTicket, type TicketSummary } from "./tickets";
 import type { Stats } from "./stats";
+import { isStopping, reportFailure } from "./stopping";
 import type { TrackerWatch } from "./tracker-watch";
 
 export class Actions {
@@ -311,7 +312,7 @@ export class Actions {
     // A ticket filed while a slot is free (TR-062); missed here, the minute check still finds it.
     if (lastLook !== null && queuedTickets(tickets).some((ticket) => !lastLook.has(ticket.id))) {
       await this.wakeForNewTickets(paseo, project, tickets, lastLook).catch((error: unknown) => {
-        console.error(`[taro] waking ${project}'s Manager for a new ticket:`, error);
+        reportFailure(`[taro] waking ${project}'s Manager for a new ticket:`, error);
       });
     }
     if (failure !== null) throw failure;
@@ -360,7 +361,7 @@ export class Actions {
     for (const config of await listProjectConfigs()) {
       if (!this.lastStatuses.has(config.project)) continue;
       await this.onTrackerChanged(paseo, config.project).catch((error: unknown) => {
-        console.error(`[taro] catching up on ${config.project}'s tracker after start:`, error);
+        reportFailure(`[taro] catching up on ${config.project}'s tracker after start:`, error);
       });
     }
   }
@@ -419,7 +420,9 @@ export class Actions {
         () => {
           archivedWorkspaces += 1;
         },
-        (error: unknown) => console.warn(`[taro] could not archive workspace ${workspaceId}: ${error instanceof Error ? error.message : String(error)}`),
+        (error: unknown) => {
+          if (!isStopping()) console.warn(`[taro] could not archive workspace ${workspaceId}: ${error instanceof Error ? error.message : String(error)}`);
+        },
       );
     }
     // Questions about a finished ticket are moot.
@@ -592,7 +595,7 @@ export class Actions {
         // One at a time with the project's tracker passes, so a new ticket's wake-up and this one never cross.
         const check = serialized(`tracker-changed:${config.project}`, () => this.checkQueue(paseo, config.project, now));
         changed = (await check.catch((error: unknown) => {
-          console.error(`[taro] queue check for ${config.project} failed:`, error);
+          reportFailure(`[taro] queue check for ${config.project} failed:`, error);
           return false;
         })) || changed;
       }
@@ -699,7 +702,7 @@ export class Actions {
       const reason = error instanceof Error ? error.message : String(error);
       markRestarted(watch, due, count, now, false);
       await this.saveQueueWatch(project, watch);
-      console.error(`[taro] ${project}: restarting the Manager for ${due.join(", ")} failed: ${reason}`);
+      if (!isStopping()) console.error(`[taro] ${project}: restarting the Manager for ${due.join(", ")} failed: ${reason}`);
       await this.noteTickets(project, due, `QUEUE-RESTART ${at} — the plugin tried to restart the Manager for this queued ticket and failed (${reason}); the alert stays up.`);
     }
   }

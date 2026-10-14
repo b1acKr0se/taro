@@ -66,6 +66,7 @@ import { agentBrief, listModelOptions } from "./server/summaries";
 import { TrackerWatch } from "./server/tracker-watch";
 import { forgetBacklogLookup } from "./server/tracker";
 import { runCommand } from "./server/process";
+import { isStopping, markStopping, reportFailure } from "./server/stopping";
 
 export default function contribute(server: PluginServerContext) {
   const startedAt = Date.now();
@@ -89,31 +90,31 @@ export default function contribute(server: PluginServerContext) {
         .then((repaired) => {
           if (repaired > 0) console.log(`[taro] reconciled ${repaired} agents after start`);
         })
-        .catch((error: unknown) => console.error("[taro] reconcile after start failed:", error));
+        .catch((error: unknown) => reportFailure("[taro] reconcile after start failed:", error));
       // Changes made while the plugin was down (TR-043: the merge at an accept reloads it as the ticket
       // goes Done), and Done tickets whose agents were left open (an owner mid-turn at a reload).
-      void actions.catchUpAfterStart(paseo).catch((error: unknown) => console.error("[taro] catching up after start failed:", error));
+      void actions.catchUpAfterStart(paseo).catch((error: unknown) => reportFailure("[taro] catching up after start failed:", error));
       void stats
         .dropFinishedTurns(async (agentId) => turnMayStillEnd(await fetchLiveAgent(paseo, agentId), startedAt))
-        .catch((error: unknown) => console.error("[taro] dropping finished turn starts failed:", error));
+        .catch((error: unknown) => reportFailure("[taro] dropping finished turn starts failed:", error));
     }
     return kept;
   };
-  void actions.primeStatuses().catch((error: unknown) => console.error("[taro] could not read ticket statuses:", error));
+  void actions.primeStatuses().catch((error: unknown) => reportFailure("[taro] could not read ticket statuses:", error));
   trackers.onRestored((project, restored) => state.recordTrackerProtection(project, restored, new Date().toISOString()));
   trackers.onChange((project) => {
     // A pull may have brought tickets edited elsewhere; the next read must not serve the cached board.
     invalidateBoards();
-    if (kept === null) return;
+    if (kept === null || isStopping()) return;
     void actions
       .onTrackerChanged(kept, project)
       .catch((error: unknown) => {
-        console.error(`[taro] after ${project}'s tracker changed:`, error);
+        reportFailure(`[taro] after ${project}'s tracker changed:`, error);
       })
       .finally(checkNotifications);
   });
   void trackers.refresh().catch((error: unknown) => {
-    console.error("[taro] could not start tracker watches:", error);
+    reportFailure("[taro] could not start tracker watches:", error);
   });
 
   // A missed file-watch event must not stall the queue until something else writes the tracker (TR-050).
@@ -123,13 +124,13 @@ export default function contribute(server: PluginServerContext) {
     backstopping = true;
     void trackers
       .backstop()
-      .catch((error: unknown) => console.error("[taro] tracker backstop failed:", error))
+      .catch((error: unknown) => reportFailure("[taro] tracker backstop failed:", error))
       // The queue check (TR-062) rides the same minute: queued tickets with a free slot and an idle Manager.
-      .then(() => (kept === null ? false : actions.checkQueues(kept)))
+      .then(() => (kept === null || isStopping() ? false : actions.checkQueues(kept)))
       .then((changed) => {
         if (changed) invalidateBoards();
       })
-      .catch((error: unknown) => console.error("[taro] queue check failed:", error))
+      .catch((error: unknown) => reportFailure("[taro] queue check failed:", error))
       .finally(() => {
         backstopping = false;
       });
@@ -140,7 +141,7 @@ export default function contribute(server: PluginServerContext) {
   let notifying = false;
   let notifyAgain = false;
   const checkNotifications = (): void => {
-    if (kept === null) return;
+    if (kept === null || isStopping()) return;
     if (notifying) {
       notifyAgain = true;
       return;
@@ -148,8 +149,8 @@ export default function contribute(server: PluginServerContext) {
     const paseo = kept;
     notifying = true;
     void listProjectConfigs()
-      .then((configs) => Promise.all(configs.map((config) => notifier.check(paseo, state, config.project, actions.queueAlerts(config.project)).catch((error: unknown) => console.error(`[taro] notifications for ${config.project}:`, error)))))
-      .catch((error: unknown) => console.error("[taro] notification check failed:", error))
+      .then((configs) => Promise.all(configs.map((config) => notifier.check(paseo, state, config.project, actions.queueAlerts(config.project)).catch((error: unknown) => reportFailure(`[taro] notifications for ${config.project}:`, error)))))
+      .catch((error: unknown) => reportFailure("[taro] notification check failed:", error))
       .finally(() => {
         notifying = false;
         if (notifyAgain) {
@@ -164,7 +165,7 @@ export default function contribute(server: PluginServerContext) {
   const idleAfterMs = idleCompactAfterMs(process.env.TARO_IDLE_COMPACT_AFTER_SECONDS);
   let checkingIdle = false;
   const idleTimer = setInterval(() => {
-    if (kept === null || checkingIdle) return;
+    if (kept === null || checkingIdle || isStopping()) return;
     const paseo = kept;
     checkingIdle = true;
     void listProjectConfigs()
@@ -175,7 +176,7 @@ export default function contribute(server: PluginServerContext) {
           invalidateBoards();
         }
       })
-      .catch((error: unknown) => console.error("[taro] idle compaction check failed:", error))
+      .catch((error: unknown) => reportFailure("[taro] idle compaction check failed:", error))
       .finally(() => {
         checkingIdle = false;
       });
@@ -332,7 +333,7 @@ export default function contribute(server: PluginServerContext) {
     managerIdleCompactions: (await stats.projectCounts(project)).idleCompactions,
   }));
   const removeTurnStartHook = server.on("agent.turn_started", async ({ agent }) => {
-    await stats.turnStarted(agent.id).catch((error: unknown) => console.error(`[taro] recording ${agent.id}'s turn start:`, error));
+    await stats.turnStarted(agent.id).catch((error: unknown) => reportFailure(`[taro] recording ${agent.id}'s turn start:`, error));
   });
 
   // Supervision (decisions 28, 30, 35, 36): every Taro agent's turn end.
@@ -343,11 +344,11 @@ export default function contribute(server: PluginServerContext) {
     keep(paseo);
     const activeMs = await taking;
     await supervisor.onTurnEnded(paseo, agent, outcome, timeline, turnId, activeMs).catch((error: unknown) => {
-      console.error(`[taro] supervising ${agent.id}:`, error);
+      reportFailure(`[taro] supervising ${agent.id}:`, error);
     });
     // After supervision has read the turn: an agent mid-turn when its ticket reached Done is released now (TR-024).
     await actions.onAgentTurnEnded(paseo, agent.id).catch((error: unknown) => {
-      console.error(`[taro] releasing ${agent.id} after its turn:`, error);
+      reportFailure(`[taro] releasing ${agent.id} after its turn:`, error);
     });
     invalidateBoards();
     checkNotifications();
@@ -356,7 +357,7 @@ export default function contribute(server: PluginServerContext) {
   // An archived agent's questions are withdrawn, whoever archived it (decisions of dead agents message no one).
   const removeArchiveHook = server.on("agent.archived", async ({ agent }) => {
     const withdrawn = await supervisor.withdrawDecisionsOf(agent.id).catch((error: unknown) => {
-      console.error(`[taro] withdrawing ${agent.id}'s decisions:`, error);
+      reportFailure(`[taro] withdrawing ${agent.id}'s decisions:`, error);
       return 0;
     });
     if (withdrawn > 0) {
@@ -372,15 +373,18 @@ export default function contribute(server: PluginServerContext) {
     return { ...request, env: { ...request.env, ...environment } };
   });
 
+  // Paseo has already disposed the API when this runs: stop everything that could start a pass first,
+  // so nothing new calls it, and keep what was in flight from logging the stop as errors (TR-067).
   return () => {
-    removeTurnHook();
-    removeTurnStartHook();
-    removeArchiveHook();
-    removeSessionHook();
+    markStopping();
+    trackers.stop();
     clearInterval(idleTimer);
     clearInterval(notifyTimer);
     clearInterval(backstopTimer);
     recovery.dispose();
-    trackers.stop();
+    removeTurnHook();
+    removeTurnStartHook();
+    removeArchiveHook();
+    removeSessionHook();
   };
 }

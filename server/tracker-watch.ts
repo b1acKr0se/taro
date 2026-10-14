@@ -55,6 +55,8 @@ export class TrackerWatch {
   /** When each project's listeners last ran, or the backstop last found nothing new, and the tracker's HEAD then. */
   private readonly lastLook = new Map<string, { at: number; head: string | null }>();
   private restoredHandler: TrackerRestoredHandler | null = null;
+  /** Set by `stop`: a pass already queued or running does nothing more, and no listener runs (TR-067). */
+  private stopped = false;
 
   constructor(
     private readonly sync: TrackerSyncer = syncTracker,
@@ -77,7 +79,7 @@ export class TrackerWatch {
   /** Starts watching every project not watched yet; call after onboarding too. */
   async refresh(): Promise<void> {
     for (const config of await listProjectConfigs()) {
-      if (this.watched.has(config.project)) continue;
+      if (this.stopped || this.watched.has(config.project)) continue;
       const paths = await projectPaths(config.project);
       try {
         const watcher = watch(join(paths.tracker, "backlog"), { recursive: true }, () => this.schedule(config.project));
@@ -91,7 +93,7 @@ export class TrackerWatch {
 
   private schedule(project: string): void {
     const entry = this.watched.get(project);
-    if (entry === undefined) return;
+    if (entry === undefined || this.stopped) return;
     if (entry.timer !== null) clearTimeout(entry.timer);
     entry.timer = setTimeout(() => {
       entry.timer = null;
@@ -102,6 +104,7 @@ export class TrackerWatch {
   /** Commits (and syncs) now; also called after the plugin writes a ticket itself. */
   commit(project: string): Promise<void> {
     return serialized(`tracker:${project}`, async () => {
+      if (this.stopped) return;
       const configs = await listProjectConfigs();
       const config = configs.find((candidate) => candidate.project === project);
       if (config === undefined) return;
@@ -112,7 +115,7 @@ export class TrackerWatch {
         if (config.trackerSync !== "remote") this.syncProblems.delete(project);
         else if (committed.subject !== null) await this.syncAndRecord(project, paths.tracker, "rebase");
       } catch (error) {
-        console.error(`[taro] committing ${project}'s tracker failed: ${error instanceof Error ? error.message : String(error)}`);
+        if (!this.stopped) console.error(`[taro] committing ${project}'s tracker failed: ${error instanceof Error ? error.message : String(error)}`);
       }
       await this.notify(project, paths.tracker);
     });
@@ -141,7 +144,7 @@ export class TrackerWatch {
    */
   pullIfDue(project: string): Promise<void> {
     // A hanging remote takes up to two minutes to time out; queuing another pull behind it would hold up commits and Retry.
-    if (this.pulling.has(project) || this.syncProblems.get(project)?.kind === "conflict") return Promise.resolve();
+    if (this.stopped || this.pulling.has(project) || this.syncProblems.get(project)?.kind === "conflict") return Promise.resolve();
     const last = this.lastSync.get(project);
     if (last !== undefined && this.now() - last < PULL_INTERVAL_MS) return Promise.resolve();
     // Claimed before any await: the screen, Inbox and sidebar read together and must queue one pull, not three.
@@ -149,13 +152,14 @@ export class TrackerWatch {
     this.pulling.add(project);
     return this.pull(project)
       .catch((error: unknown) => {
-        console.error(`[taro] pulling ${project}'s tracker failed: ${error instanceof Error ? error.message : String(error)}`);
+        if (!this.stopped) console.error(`[taro] pulling ${project}'s tracker failed: ${error instanceof Error ? error.message : String(error)}`);
       })
       .finally(() => this.pulling.delete(project));
   }
 
   private pull(project: string): Promise<void> {
     return serialized(`tracker:${project}`, async () => {
+      if (this.stopped) return;
       const config = (await listProjectConfigs()).find((candidate) => candidate.project === project);
       if (config?.trackerSync !== "remote") return;
       const paths = await projectPaths(project);
@@ -168,6 +172,7 @@ export class TrackerWatch {
 
   private async notify(project: string, trackerPath: string): Promise<void> {
     this.lastLook.set(project, { at: this.now(), head: await this.head(trackerPath).catch(() => null) });
+    if (this.stopped) return;
     for (const listener of this.listeners) listener(project);
   }
 
@@ -182,6 +187,7 @@ export class TrackerWatch {
   async backstop(): Promise<string[]> {
     const ran: string[] = [];
     for (const config of await listProjectConfigs()) {
+      if (this.stopped) break;
       const last = this.lastLook.get(config.project);
       if (last !== undefined && this.now() - last.at < BACKSTOP_INTERVAL_MS) continue;
       try {
@@ -194,7 +200,7 @@ export class TrackerWatch {
         await this.commit(config.project);
         ran.push(config.project);
       } catch (error) {
-        console.error(`[taro] tracker backstop for ${config.project} failed: ${error instanceof Error ? error.message : String(error)}`);
+        if (!this.stopped) console.error(`[taro] tracker backstop for ${config.project} failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
     return ran;
@@ -225,6 +231,7 @@ export class TrackerWatch {
   }
 
   stop(): void {
+    this.stopped = true;
     for (const entry of this.watched.values()) {
       if (entry.timer !== null) clearTimeout(entry.timer);
       entry.watcher.close();

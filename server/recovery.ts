@@ -23,6 +23,7 @@ import type { PluginState } from "./state";
 import type { Stats } from "./stats";
 import { isSubagentRole } from "../shared/project";
 import { currentOwner, freshState, identityFromLabels, type TaroIdentity } from "./supervision";
+import { reportFailure } from "./stopping";
 import { appendTicketNote } from "./tickets";
 
 /** How often the queue is looked at; also the spacing between two recoveries. */
@@ -151,7 +152,7 @@ export class Recovery {
       if (next !== undefined) await this.recover(paseo, next);
       else await this.releaseHeld(paseo, headroom === null ? "?" : String(headroom.current), headroom === null ? "?" : String(headroom.max));
     } catch (error: unknown) {
-      console.error("[taro] crash recovery:", error);
+      reportFailure("[taro] crash recovery:", error);
     } finally {
       this.busy = false;
       if (this.queue.length > 0 || this.heldForManager.size > 0) this.schedule(TICK_MS);
