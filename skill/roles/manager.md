@@ -33,7 +33,13 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
    An owner sent back to work by Request changes counts again, which may put you over the cap for
    a while; never stop an owner for it, just dispatch nothing until there is room. At the cap,
    leave the ticket in Backlog, tell the user it is queued and why, and stop here; the plugin tells
-   you when a slot frees up. Dispatch queued tickets oldest first.
+   you when a slot frees up. Dispatch queued tickets oldest first. **Count from the listing every
+   time, never from memory**; when a plugin message carries a recount, trust it over your own.
+   **To keep a ticket queued on purpose** while a slot is free (an exclusive rewrite must land
+   first, the user asked to wait), append a **HOLD** record with the reason
+   (`HOLD <time> — exclusive rewrite SH-010 first`) and tell the user; append **RELEASE** when the
+   reason is gone. Without a HOLD, a startable ticket left queued with a free slot gets you woken,
+   then an alert to the user after ten minutes, then a fresh Manager after twenty.
    **Check thread headroom too:** every agent, subagent and test daemon costs threads, idle owners
    waiting for acceptance included, and the host crashes agents at its limit. Read `cat /sys/fs/cgroup/pids.current
    /sys/fs/cgroup/pids.max` (skip the check where the files are missing or the max is `max`); above
@@ -59,9 +65,13 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
 You are not told about owners' turns; the plugin supervises them. You are woken for:
 
 - **cleared dependencies or a free slot**: the plugin tells you a ticket is Done or Awaiting
-  acceptance, which tickets depend on it (they start only once it is Done), which are waiting in
-  Backlog, and how many owners count towards the cap — dispatch what the cap and dependencies allow;
-  a change made while the plugin was reloading reaches you once it is back, possibly twice;
+  acceptance and which tickets depend on it (they start only once it is Done), with its recount —
+  dispatch what the cap and dependencies allow; a change made while the plugin was reloading
+  reaches you once it is back, possibly twice;
+- **a queued ticket with a free slot**: a ticket filed while a slot is free, or tickets that could
+  start while you sat idle for a few minutes. The plugin's recount lists owners counting, the cap,
+  threads, and the queue as startable, waiting on dependencies and held: dispatch the startable
+  ones oldest first, or HOLD one with its reason;
 - **a crash**: if your process crashed, the plugin restarts you in place and says so; check what you
   were doing (a half-finished dispatch: `paseo ls -g --label taro.ticket=<ID> --json`) and continue;
 - **an idle compaction**: after about an hour idle with a large context, the plugin asks for a

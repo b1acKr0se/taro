@@ -76,7 +76,7 @@ export function autoCompactedThisTurn(timeline: readonly TimelineItem[]): boolea
 }
 
 /** The manager has no ticket: its handoff is a file in the project's home, beside its AGENTS.md. */
-async function managerHandoffPath(project: string): Promise<string> {
+export async function managerHandoffPath(project: string): Promise<string> {
   return join((await projectPaths(project)).home, "manager-handoff.md");
 }
 

@@ -1,19 +1,43 @@
 /**
  * What the user does from the Taro screen: answer a decision, accept or
  * request changes, nudge, compact or relaunch an owner (decisions 28, 30, 34).
- * Plus releasing a Done ticket's agents and workspaces (TR-024) and the manager's wake-up for
- * tickets whose dependencies cleared.
+ * Plus releasing a Done ticket's agents and workspaces (TR-024), the manager's wake-up for
+ * tickets whose dependencies cleared, and the queue check (TR-062): the plugin's own recount in
+ * every wake-up, a wake-up for a ticket filed while a slot is free or an idle Manager with a
+ * startable ticket, and the escalation ladder when the Manager still does not dispatch.
  */
 import { randomUUID } from "node:crypto";
 
 import { doneTicketOf, planRelease } from "../shared/done-release";
 import { acceptedRecordText, executionWorkspace, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
-import { dependsOn, shouldWakeManager, statusChanges, ticketsCountingTowardsCap, type StatusChange } from "../shared/owner-cap";
+import { dependsOn, shouldWakeManager, statusChanges, type StatusChange } from "../shared/owner-cap";
+import {
+  emptyQueueWatch,
+  managerCondition,
+  markRestarted,
+  markWoken,
+  newlyAlerted,
+  newlyQueuedStartable,
+  queuedAlerts,
+  queuedTickets,
+  recount,
+  recountFields,
+  restartDue,
+  shouldWakeIdleManager,
+  situationKey,
+  trackQueue,
+  type QueueWatch,
+  type QueuedTicket,
+  type Recount,
+} from "../shared/queue-check";
+import type { BoardAlert } from "../shared/recovery";
 import { TARO_LABELS, TICKET_STATUSES } from "../shared/project";
 import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
 import { taroEnvironment } from "./environment";
 import { requireCompleteEvidence } from "./evidence";
-import type { PaseoApi } from "./host-types";
+import { readHeadroom } from "./headroom";
+import type { PaseoAgent, PaseoApi } from "./host-types";
+import { restartManager } from "./manager";
 import { bypassModeId } from "./models";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { listProjectConfigs, projectPaths, requireProjectConfig } from "./projects";
@@ -22,7 +46,7 @@ import { sendFromPlugin, sendWithoutInterrupting } from "./send";
 import { hasAttachments, sendWithAttachments, type Attachments } from "./uploads";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
-import { identityFromLabels, type Supervisor } from "./supervision";
+import { identityFromLabels, managerHandoffPath, type Supervisor } from "./supervision";
 import { appendTicketNote, listTickets, viewTicket, type TicketSummary } from "./tickets";
 import type { Stats } from "./stats";
 import type { TrackerWatch } from "./tracker-watch";
@@ -39,6 +63,11 @@ export class Actions {
   private readonly releasing = new Map<string, Promise<void>>();
   /** Agents already archived here: Paseo may still list one for a moment after archiving it. */
   private readonly released = new Set<string>();
+  /** The escalation ladder per project (TR-062); in memory, so a reload starts it again. */
+  private readonly queues = new Map<string, QueueWatch>();
+  /** Queued tickets' dependencies and notes, read again only when the ticket changes. */
+  private readonly queuedDetails = new Map<string, { updatedAt: string; ticket: QueuedTicket }>();
+  private checkingQueues = false;
 
   constructor(
     private readonly state: PluginState,
@@ -67,6 +96,8 @@ export class Actions {
     if (words === "") throw new Error("Type an answer or press an option.");
     // Tagged as the plugin's, so this answer closes only its own decision, not the agent's others.
     await sendFromPlugin(paseo, decision.agentId, await message(TEMPLATES.answer, { text: words }));
+    // A decision without a ticket is the Manager's: answering it acts on a queued alert as a message would.
+    if (decision.ticket === null) this.userToldManager(decision.project);
     const at = new Date().toISOString();
     await this.state.updateDecisions((decisions) => {
       const stored = decisions.find((candidate) => candidate.key === key);
@@ -270,6 +301,12 @@ export class Actions {
       }
     }
     await this.storeStatuses(project);
+    // A ticket filed while a slot is free (TR-062); missed here, the minute check still finds it.
+    if (lastLook !== null && queuedTickets(tickets).some((ticket) => !lastLook.has(ticket.id))) {
+      await this.wakeForNewTickets(paseo, project, tickets, lastLook).catch((error: unknown) => {
+        console.error(`[taro] waking ${project}'s Manager for a new ticket:`, error);
+      });
+    }
     if (failure !== null) throw failure;
   }
 
@@ -404,10 +441,11 @@ export class Actions {
    * Tells the manager when a ticket is Done (tickets may depend on it) or stops holding an owner slot
    * (Awaiting acceptance counts as free, TR-029), unless nothing could start: no dependents cleared
    * by a Done, and no queued ticket or no room under the cap. The dependents are listed either way
-   * (TR-043); they wake the manager only once the ticket is Done.
+   * (TR-043); they wake the manager only once the ticket is Done. The message carries the plugin's
+   * recount (TR-062).
    */
   private async wakeManager(paseo: PaseoApi, project: string, change: StatusChange, tickets: readonly TicketSummary[], whenHeld: () => () => void): Promise<void> {
-    const queued = tickets.filter((candidate) => candidate.status === "Backlog" && candidate.parentTaskId === null).map((candidate) => candidate.id);
+    const queued = queuedTickets(tickets).map((candidate) => candidate.id);
     const cleared = change.status === "Done";
     // Reading every open ticket's dependencies is a CLI call each: only when a message may follow.
     if (!cleared && (!change.freesSlot || queued.length === 0)) return;
@@ -421,19 +459,15 @@ export class Actions {
     // Only the cap comparison needs the owners, and listing them is a round trip to the daemon.
     if (dependentsCleared === 0 && (!change.freesSlot || queued.length === 0)) return;
     const config = await requireProjectConfig(project);
-    const owners = (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner");
-    const counting = ticketsCountingTowardsCap(owners, tickets);
-    if (!shouldWakeManager({ dependents: dependentsCleared, queued: queued.length, freesSlot: change.freesSlot, counting: counting.length, cap: config.maxParallelOwners })) return;
+    const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners);
+    if (!shouldWakeManager({ dependents: dependentsCleared, queued: queued.length, freesSlot: change.freesSlot, counting: count.counting.length, cap: config.maxParallelOwners })) return;
     const manager = await fetchLiveAgent(paseo, config.managerAgentId);
     if (manager === null) return;
     const text = await message(TEMPLATES.dependencyCleared, {
       ticket: change.ticket,
       status: change.status,
       dependents: dependents.length === 0 ? "none" : dependents.join(", "),
-      queued: queued.length === 0 ? "none" : queued.join(", "),
-      counting: String(counting.length),
-      cap: String(config.maxParallelOwners),
-      countingTickets: counting.length === 0 ? "none" : counting.join(", "),
+      recount: await recountText(count),
     });
     // Held while threads are short (TR-012): a free owner slot is no reason to start one then.
     let sent = false;
@@ -441,8 +475,180 @@ export class Actions {
     await this.recovery.tellManagerWhenHeadroom(paseo, project, manager.id, text, () => {
       sent = true;
       delivered?.();
+      this.woken(project, count, "a slot freed or a dependency cleared");
     });
     if (!sent) delivered = whenHeld();
+  }
+
+  /** The plugin's recount (TR-062): owners from Paseo, the queue from the tracker, threads from the host. */
+  private async recountQueue(paseo: PaseoApi, project: string, tickets: readonly TicketSummary[], cap: number): Promise<Recount> {
+    const paths = await projectPaths(project);
+    const queued: QueuedTicket[] = [];
+    for (const ticket of queuedTickets(tickets)) {
+      const key = `${project}:${ticket.id}`;
+      const cached = this.queuedDetails.get(key);
+      if (cached !== undefined && ticket.updatedAt !== null && cached.updatedAt === ticket.updatedAt) {
+        queued.push(cached.ticket);
+        continue;
+      }
+      const detail = await viewTicket(paths.tracker, ticket.id);
+      const entry = { id: ticket.id, dependencies: detail.dependencies, notes: detail.implementationNotes ?? null };
+      if (ticket.updatedAt !== null) this.queuedDetails.set(key, { updatedAt: ticket.updatedAt, ticket: entry });
+      queued.push(entry);
+    }
+    const owners = queued.length === 0 ? [] : (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner");
+    const headroom = queued.length === 0 ? null : await readHeadroom();
+    return recount({ owners, tickets, queued, cap, threads: headroom === null ? null : { current: headroom.current, max: headroom.max } });
+  }
+
+  private queueWatch(project: string): QueueWatch {
+    const existing = this.queues.get(project);
+    if (existing !== undefined) return existing;
+    const watch = emptyQueueWatch();
+    this.queues.set(project, watch);
+    return watch;
+  }
+
+  /** A wake-up naming the startable tickets went out: the ladder starts, and each ticket's first one is logged on it. */
+  private woken(project: string, count: Recount, why: string): void {
+    const first = markWoken(this.queueWatch(project), count, Date.now());
+    if (first.length === 0) return;
+    const fields = recountFields(count);
+    console.log(`[taro] ${project}: told the Manager ${first.join(", ")} could start (${why}; owners ${fields.counting} of ${fields.cap}, threads ${fields.threads})`);
+    void this.noteTickets(
+      project,
+      first,
+      `QUEUE-WAKE ${new Date().toISOString()} — the plugin told the Manager this ticket could start (${why}): owners counting ${fields.counting} of ${fields.cap} (${fields.countingTickets}), threads ${fields.threads}, startable ${fields.startable}.`,
+    );
+  }
+
+  private async noteTickets(project: string, tickets: readonly string[], record: string): Promise<void> {
+    const paths = await projectPaths(project).catch(() => null);
+    if (paths === null) return;
+    for (const ticket of tickets) {
+      try {
+        await appendTicketNote(paths.tracker, ticket, record);
+      } catch (error: unknown) {
+        console.warn(`[taro] could not record on ${ticket}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
+  /** New tickets in Backlog that could start now, with the Manager idle: it may have miscounted (TR-062). */
+  private async wakeForNewTickets(paseo: PaseoApi, project: string, tickets: readonly TicketSummary[], lastLook: ReadonlyMap<string, string>): Promise<void> {
+    const config = await requireProjectConfig(project);
+    const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners);
+    const fresh = newlyQueuedStartable(lastLook, count);
+    const watch = this.queueWatch(project);
+    if (fresh.length === 0 || watch.wokenFor === situationKey(count)) return;
+    // A Manager mid-turn is most likely dispatching the ticket it just filed; the minute check follows up.
+    const manager = await fetchLiveAgent(paseo, config.managerAgentId);
+    if (manager === null || manager.status !== "idle") return;
+    trackQueue(watch, count, Date.now());
+    const text = await message(TEMPLATES.ticketQueued, { tickets: fresh.join(", "), recount: await recountText(count) });
+    await this.recovery.tellManagerWhenHeadroom(paseo, project, manager.id, text, () => this.woken(project, count, "a ticket was filed while a slot is free"));
+  }
+
+  /**
+   * The minute check (TR-062), on TR-050's timer: for each project, recounts the queue, wakes an
+   * idle Manager once per situation, and climbs the ladder for tickets it still has not dispatched.
+   * Returns whether any project's alerts may have changed.
+   */
+  async checkQueues(paseo: PaseoApi, now: number = Date.now()): Promise<boolean> {
+    if (this.checkingQueues) return false;
+    this.checkingQueues = true;
+    let changed = false;
+    try {
+      for (const config of await listProjectConfigs()) {
+        changed = (await this.checkQueue(paseo, config.project, now).catch((error: unknown) => {
+          console.error(`[taro] queue check for ${config.project} failed:`, error);
+          return false;
+        })) || changed;
+      }
+    } finally {
+      this.checkingQueues = false;
+    }
+    return changed;
+  }
+
+  private async checkQueue(paseo: PaseoApi, project: string, now: number): Promise<boolean> {
+    const config = await requireProjectConfig(project);
+    const paths = await projectPaths(project);
+    const tickets = await listTickets(paths.tracker);
+    const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners);
+    const watch = this.queueWatch(project);
+    const alertsBefore = queuedAlerts(watch, now).length;
+    trackQueue(watch, count, now);
+    if (watch.queuedAt.size === 0) return alertsBefore > 0;
+
+    const manager = await fetchLiveAgent(paseo, config.managerAgentId);
+    const managerState = manager === null ? null : await this.state.agent(manager.id);
+    const lastTurnEnded = managerState?.lastTurnEndedAt ?? null;
+    if (
+      manager !== null &&
+      shouldWakeIdleManager({
+        count,
+        managerMidTurn: manager.status !== "idle",
+        lastTurnEndedAt: lastTurnEnded === null ? null : Date.parse(lastTurnEnded),
+        lastWokenFor: watch.wokenFor,
+        now,
+      })
+    ) {
+      const text = await message(TEMPLATES.queueIdle, { tickets: count.startable.join(", "), recount: await recountText(count) });
+      await this.recovery.tellManagerWhenHeadroom(paseo, project, manager.id, text, () => this.woken(project, count, "the Manager was idle with a ticket that could start"));
+    }
+
+    const alerted = newlyAlerted(watch, now);
+    if (alerted.length > 0) {
+      console.warn(`[taro] ${project}: ${alerted.join(", ")} queued with a free slot and not dispatched; alert raised`);
+      await this.noteTickets(project, alerted, `QUEUE-ALERT ${new Date(now).toISOString()} — still queued with a free slot after the Manager was told; the board and Inbox show an alert.`);
+    }
+
+    const condition = managerCondition(manager === null ? null : { status: manager.status, updatedAt: manager.updatedAt, stalled: managerState?.stalled ?? false }, now);
+    const due = restartDue(watch, count, condition, now);
+    if (due.length > 0) await this.restartForQueue(paseo, project, manager, due, count, condition, now);
+    return alerted.length > 0 || queuedAlerts(watch, now).length !== alertsBefore || due.length > 0;
+  }
+
+  /** The ladder's last step: a fresh Manager through the usual restart, told why and given the recount. */
+  private async restartForQueue(paseo: PaseoApi, project: string, manager: PaseoAgent | null, due: readonly string[], count: Recount, condition: string, now: number): Promise<void> {
+    const watch = this.queueWatch(project);
+    const start = Math.min(...due.map((id) => watch.wokenAt.get(id) ?? watch.queuedAt.get(id) ?? now));
+    const why = await message(TEMPLATES.managerQueueRestart, {
+      tickets: due.join(", "),
+      minutes: String(Math.floor((now - start) / 60_000)),
+      handoff: await managerHandoffPath(project),
+      recount: await recountText(count),
+    });
+    const at = new Date(now).toISOString();
+    try {
+      const restarted = await restartManager(paseo, project, { why, evenMidTurn: condition === "unresponsive" && manager !== null && isMidTurn(manager) });
+      markRestarted(watch, due, now, true);
+      console.warn(`[taro] ${project}: restarted the ${condition} Manager ${manager?.id ?? "?"} as ${restarted.agentId}: ${due.join(", ")} stayed queued with a free slot`);
+      await this.noteTickets(project, due, `QUEUE-RESTART ${at} — still queued with a free slot 20 minutes after the Manager was told; the plugin restarted the ${condition} Manager ${manager?.id ?? "?"} as ${restarted.agentId} (at most one such restart per project an hour).`);
+    } catch (error: unknown) {
+      const reason = error instanceof Error ? error.message : String(error);
+      markRestarted(watch, due, now, false);
+      console.error(`[taro] ${project}: restarting the Manager for ${due.join(", ")} failed: ${reason}`);
+      await this.noteTickets(project, due, `QUEUE-RESTART ${at} — the plugin tried to restart the Manager for this queued ticket and failed (${reason}); the alert stays up.`);
+    }
+  }
+
+  /** The queued-with-a-free-slot alerts for a project's board and Inbox. */
+  queueAlerts(project: string, now: number = Date.now()): BoardAlert[] {
+    const watch = this.queues.get(project);
+    return watch === undefined ? [] : queuedAlerts(watch, now);
+  }
+
+  /** The user dismissed a ticket's alert: it comes down and the ladder stops for it until the ticket leaves the queue. */
+  dismissQueueAlert(project: string, ticket: string): void {
+    this.queueWatch(project).dismissed.add(ticket);
+    console.log(`[taro] ${project}: the user dismissed the queued alert for ${ticket}`);
+  }
+
+  /** The user sent the Manager a message from Taro: acting on an alert that way stops the restart. */
+  userToldManager(project: string, now: number = Date.now()): void {
+    this.queueWatch(project).userToldManagerAt = now;
   }
 
   /** Statuses this plugin knows; used to sanity-check a ticket a user moved by hand. */
@@ -452,4 +658,8 @@ export class Actions {
   async commit(project: string): Promise<void> {
     await this.trackers.commit(project);
   }
+}
+
+async function recountText(count: Recount): Promise<string> {
+  return message(TEMPLATES.recount, recountFields(count));
 }

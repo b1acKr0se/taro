@@ -273,6 +273,8 @@ export const resolveTrackerSync = defineRpc({
 });
 /** Dismisses the board alert for what the tracker guard restored (TR-051). */
 export const dismissTrackerProtection = defineRpc({ name: "taro.tracker.dismiss-protection", input: ProjectInput, output: Empty });
+/** Dismisses a ticket's queued-with-a-free-slot alert, which also stops the Manager's restart for it (TR-062). */
+export const dismissQueueAlert = defineRpc({ name: "taro.queue.dismiss-alert", input: z.object({ project: ProjectNameSchema, ticket: z.string() }), output: Empty });
 export const requestChanges = defineRpc({
   name: "taro.ticket.request-changes",
   input: z.object({ project: ProjectNameSchema, ticket: z.string(), text: z.string().min(1) }),

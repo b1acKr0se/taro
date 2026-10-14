@@ -75,12 +75,12 @@ export async function resolveManager(paseo: PaseoApi, config: ProjectConfig): Pr
   return { agent: await fetchLiveAgent(paseo, config.managerAgentId) };
 }
 
-async function startManager(paseo: PaseoApi, config: ProjectConfig, restart: boolean): Promise<{ agentId: string; workspaceId: string }> {
+async function startManager(paseo: PaseoApi, config: ProjectConfig, restart: boolean, why: string | null = null): Promise<{ agentId: string; workspaceId: string }> {
   await writeManagerInstructions(config);
   const workspaceId = await ensureManagerWorkspace(paseo, config);
   const values = await projectValues(config);
   const opening = await message(TEMPLATES.managerOpening, values);
-  const prompt = restart ? `${opening}\n\n${await message(TEMPLATES.managerRestart, values)}` : opening;
+  const prompt = [opening, ...(restart ? [await message(TEMPLATES.managerRestart, values)] : []), ...(why === null ? [] : [why])].join("\n\n");
   const modeId = await bypassModeId(paseo, config.manager.model);
   const paths = await projectPaths(config.project);
   const agent = await paseo.workspaces.ref(workspaceId).agents.create({
@@ -108,16 +108,24 @@ export function launchManager(paseo: PaseoApi, project: string): Promise<{ agent
   });
 }
 
-/** Archives the manager and starts a fresh one; refused mid-turn so a dispatch is never cut in half. */
-export function restartManager(paseo: PaseoApi, project: string): Promise<{ agentId: string; workspaceId: string }> {
+/**
+ * Archives the manager and starts a fresh one; refused mid-turn so a dispatch is never cut in half,
+ * unless the caller judged the turn hung (`evenMidTurn`, TR-062). `why` is added to the new one's
+ * first prompt.
+ */
+export function restartManager(
+  paseo: PaseoApi,
+  project: string,
+  options: { why?: string; evenMidTurn?: boolean } = {},
+): Promise<{ agentId: string; workspaceId: string }> {
   return serialized(`manager:${project}`, async () => {
     const config = await requireProjectConfig(project);
     const { agent } = await resolveManager(paseo, config);
     if (agent !== null) {
-      if (isMidTurn(agent)) throw new Error(`The ${project} Manager is in the middle of a turn. Restart it once it is idle.`);
+      if (isMidTurn(agent) && options.evenMidTurn !== true) throw new Error(`The ${project} Manager is in the middle of a turn. Restart it once it is idle.`);
       await paseo.agents.ref(agent.id).archive();
     }
-    return startManager(paseo, config, agent !== null);
+    return startManager(paseo, config, agent !== null, options.why ?? null);
   });
 }
 

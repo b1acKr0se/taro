@@ -8,6 +8,7 @@ import {
   managerCondition,
   markRestarted,
   markWoken,
+  newlyAlerted,
   newlyQueuedStartable,
   queuedAlertTicket,
   queuedAlerts,
@@ -235,6 +236,15 @@ describe("the escalation ladder", () => {
     expect(queuedAlerts(watch, minutes(10))[0]?.text).toContain("the Manager has been busy for 10 minutes and could not be told");
   });
 
+  it("logs an alert once, and again only after the ticket left the ladder and came back", () => {
+    const watch = watched();
+    expect(newlyAlerted(watch, minutes(10))).toEqual(["TR-5"]);
+    expect(newlyAlerted(watch, minutes(11))).toEqual([]);
+    trackQueue(watch, count({ startable: [] }), minutes(12));
+    trackQueue(watch, count(), minutes(13));
+    expect(newlyAlerted(watch, minutes(23))).toEqual(["TR-5"]);
+  });
+
   it("takes a dismissed alert down", () => {
     const watch = watched();
     watch.dismissed.add("TR-5");
@@ -291,13 +301,21 @@ describe("the escalation ladder", () => {
 
     it("happens at most once an hour per project, and the alert then says so", () => {
       const watch = woken();
-      markRestarted(watch, ["TR-5"], minutes(20));
+      markRestarted(watch, ["TR-5"], minutes(20), true);
       expect(watch.wokenAt.get("TR-5")).toBe(minutes(20));
       expect(watch.wokenFor).toBeNull();
       expect(restartDue(watch, count(), "idle", minutes(79))).toEqual([]);
       expect(restartLimited(watch, minutes(79))).toBe(true);
       expect(queuedAlerts(watch, minutes(79))[0]?.text).toContain("already restarted the Manager within the hour, so it leaves this to you");
       expect(restartDue(watch, count(), "idle", minutes(80))).toEqual(["TR-5"]);
+    });
+
+    it("counts a failed restart for the hourly limit and leaves the alert up", () => {
+      const watch = woken();
+      markRestarted(watch, ["TR-5"], minutes(20), false);
+      expect(watch.wokenAt.get("TR-5")).toBe(start);
+      expect(queuedAlerts(watch, minutes(21))).toHaveLength(1);
+      expect(restartDue(watch, count(), "idle", minutes(21))).toEqual([]);
     });
   });
 });

@@ -13,7 +13,7 @@ import { latestMilestone, type Milestone } from "../shared/milestones";
 import { deliveredLine, permissionAsk, type PermissionAsk } from "../shared/needs-you";
 import { pastTicketAgents } from "../shared/past-agents";
 import { isSubagentRole, roleFromLabel, TARO_LABELS } from "../shared/project";
-import { boardAlerts } from "../shared/recovery";
+import { boardAlerts, type BoardAlert } from "../shared/recovery";
 import { decisionsOfLiveAgents, type StoredDecision } from "../shared/state";
 import { protectionAlert } from "../shared/tracker-guard";
 import { currentSuggestions, parseSuggestions, suggestionKey, withoutFixedActions } from "../shared/suggestions";
@@ -93,13 +93,15 @@ function cachedArchivedAgents(paseo: PaseoApi, project: string): Promise<PaseoAg
 const BOARD_CACHE_MS = 2_000;
 const boardCache = new Map<string, { at: number; board: Promise<Board> }>();
 
-export function loadBoard(paseo: PaseoApi, state: PluginState, project: string): Promise<Board> {
+export function loadBoard(paseo: PaseoApi, state: PluginState, project: string, queueAlerts: readonly BoardAlert[] = []): Promise<Board> {
   const cached = boardCache.get(project);
-  if (cached !== undefined && Date.now() - cached.at < BOARD_CACHE_MS) return cached.board;
+  // The queue check's alerts (TR-062) live in memory and are added fresh on every read.
+  const withQueue = (board: Board): Board => (queueAlerts.length === 0 ? board : { ...board, alerts: [...board.alerts, ...queueAlerts] });
+  if (cached !== undefined && Date.now() - cached.at < BOARD_CACHE_MS) return cached.board.then(withQueue);
   const board = readBoard(paseo, state, project);
   boardCache.set(project, { at: Date.now(), board });
   board.catch(() => boardCache.delete(project));
-  return board;
+  return board.then(withQueue);
 }
 
 /** Forgets cached boards after an action, so the next read shows its effect. */

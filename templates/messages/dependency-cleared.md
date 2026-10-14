@@ -1,2 +1,6 @@
-<!-- Sent to the manager when a ticket is Done or stops holding an owner slot (TR-029). Dependents are listed for both; they can start only once the ticket is Done (TR-043). Placeholders: ticket, status, dependents, queued, counting, cap, countingTickets. -->
-{{ticket}} is now {{status}}. Tickets that depend on it: {{dependents}}; they can start only once {{ticket}} is Done. Tickets still waiting in Backlog: {{queued}}. Owners counting towards the cap when it changed: {{counting}} of {{cap}} ({{countingTickets}}), so recount before dispatching if this message waited for threads; owners of tickets in Awaiting acceptance, Done or Cancelled, and children, do not count, even while they are alive. Dispatch what the cap on owners and the dependencies now allow, oldest first.
+<!-- Sent to the manager when a ticket is Done or stops holding an owner slot (TR-029). Dependents are listed for both; they can start only once the ticket is Done (TR-043). Placeholders: ticket, status, dependents, recount (templates/messages/recount.md). -->
+{{ticket}} is now {{status}}. Tickets that depend on it: {{dependents}}; they can start only once {{ticket}} is Done.
+
+{{recount}}
+
+Dispatch what the cap and the dependencies now allow, oldest first. To keep a startable ticket queued on purpose, append a HOLD record with the reason (`HOLD <time> — <reason>`); the plugin then leaves it alone until a RELEASE record.

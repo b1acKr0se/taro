@@ -61,7 +61,7 @@ export function unmetDependencies(dependencies: readonly string[], tickets: read
 }
 
 /** The top-level Backlog tickets, oldest first as the tracker lists them. */
-export function queuedTickets(tickets: readonly CapTicket[]): CapTicket[] {
+export function queuedTickets<T extends CapTicket>(tickets: readonly T[]): T[] {
   return tickets.filter((ticket) => ticket.status === "Backlog" && ticket.parentTaskId === null);
 }
 
@@ -131,13 +131,15 @@ export interface QueueWatch {
   /** The situation the Manager was last woken for (situationKey). */
   wokenFor: string | null;
   dismissed: Set<string>;
+  /** Tickets whose alert went up and was logged; logged again only after the ticket left the ladder. */
+  alerted: Set<string>;
   /** When the user last sent the Manager a message from Taro; acting on an alert that way stops the restart. */
   userToldManagerAt: number | null;
   restarts: number[];
 }
 
 export function emptyQueueWatch(): QueueWatch {
-  return { queuedAt: new Map(), wokenAt: new Map(), wokenFor: null, dismissed: new Set(), userToldManagerAt: null, restarts: [] };
+  return { queuedAt: new Map(), wokenAt: new Map(), wokenFor: null, dismissed: new Set(), alerted: new Set(), userToldManagerAt: null, restarts: [] };
 }
 
 /**
@@ -152,6 +154,7 @@ export function trackQueue(watch: QueueWatch, count: Recount, now: number): void
     watch.queuedAt.delete(id);
     watch.wokenAt.delete(id);
     watch.dismissed.delete(id);
+    watch.alerted.delete(id);
   }
   for (const id of on) if (!watch.queuedAt.has(id)) watch.queuedAt.set(id, now);
 }
@@ -179,6 +182,13 @@ export function alertedTickets(watch: QueueWatch, now: number): string[] {
     const start = ladderStart(watch, id);
     return start !== null && now - start >= QUEUED_ALERT_AFTER_MS && !watch.dismissed.has(id);
   });
+}
+
+/** The tickets whose alert is up but not logged yet; marks them logged. */
+export function newlyAlerted(watch: QueueWatch, now: number): string[] {
+  const fresh = alertedTickets(watch, now).filter((id) => !watch.alerted.has(id));
+  for (const id of fresh) watch.alerted.add(id);
+  return fresh;
 }
 
 /** One board and Inbox alert per ticket queued with a free slot ten minutes after the Manager was told. */
@@ -244,10 +254,18 @@ export function restartLimited(watch: QueueWatch, now: number): boolean {
   return watch.restarts.some((at) => now - at < RESTART_WINDOW_MS);
 }
 
-/** After a ladder restart: counted for the hourly limit; the new Manager is told, so the tickets' wake-ups start again. */
-export function markRestarted(watch: QueueWatch, tickets: readonly string[], now: number): void {
+/**
+ * A ladder restart, counted for the hourly limit whether or not it worked, so a failing one is not
+ * retried every minute. A Manager actually replaced was told about the tickets, so their ladder
+ * starts again from now; after a failure the alert stays up.
+ */
+export function markRestarted(watch: QueueWatch, tickets: readonly string[], now: number, replaced: boolean): void {
   watch.restarts = [...watch.restarts.filter((at) => now - at < RESTART_WINDOW_MS), now];
-  for (const id of tickets) watch.wokenAt.set(id, now);
+  if (!replaced) return;
+  for (const id of tickets) {
+    watch.wokenAt.set(id, now);
+    watch.alerted.delete(id);
+  }
   watch.wokenFor = null;
 }
 

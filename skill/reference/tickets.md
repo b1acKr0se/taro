@@ -55,6 +55,11 @@ never rewrite history.
 - **MILESTONE**: what happened, decisions, commit or uncommitted state, checks run with results,
   next step. Before a long command: its log path and expected duration.
 - **HANDOFF**: before compaction or stopping (template: `templates/handoff.md`).
+- **HOLD** (manager): a Backlog ticket kept queued on purpose while a slot is free, with the reason
+  (`HOLD 2026-01-05T10:00Z — exclusive rewrite SH-010 first`). The plugin does not wake anyone for it.
+- **RELEASE** (manager): the hold's reason is gone; the ticket is queued like any other again.
+- **QUEUE-WAKE**, **QUEUE-ALERT**, **QUEUE-RESTART**: written by the plugin as it wakes the manager
+  for a queued ticket, alerts the user, and restarts the manager.
 - **REVIEW**: reviewer, revision, verdict, every finding answered (fixed, or rejected with the
   reason).
 - **EVIDENCE**: what the user sees before Accept; the newest record counts. One fact per line,

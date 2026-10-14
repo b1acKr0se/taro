@@ -9,6 +9,7 @@ import {
   compactAgent,
   dismissSuggestion as dismissSuggestionRpc,
   dismissTrackerProtection,
+  dismissQueueAlert,
   findAgentTicket,
   listOpenDecisions,
   loadBoard as loadBoardRpc,
@@ -116,6 +117,12 @@ export default function contribute(server: PluginServerContext) {
     void trackers
       .backstop()
       .catch((error: unknown) => console.error("[taro] tracker backstop failed:", error))
+      // The queue check (TR-062) rides the same minute: queued tickets with a free slot and an idle Manager.
+      .then(() => (kept === null ? false : actions.checkQueues(kept)))
+      .then((changed) => {
+        if (changed) invalidateBoards();
+      })
+      .catch((error: unknown) => console.error("[taro] queue check failed:", error))
       .finally(() => {
         backstopping = false;
       });
@@ -174,7 +181,7 @@ export default function contribute(server: PluginServerContext) {
       configs.map(async (config) => {
         const manager = await fetchLiveAgent(paseo, config.managerAgentId);
         void trackers.pullIfDue(config.project);
-        const board = await loadBoard(paseo, state, config.project).catch(() => null);
+        const board = await loadBoard(paseo, state, config.project, actions.queueAlerts(config.project)).catch(() => null);
         const trackerSyncProblem = config.trackerSync === "remote" ? trackers.syncProblem(config.project) : null;
         const needsYou =
           (board === null ? 0 : board.cards.filter((card) => card.column === "needs-you" || card.column === "stalled").length + board.managerDecisions.length + board.alerts.length) +
@@ -228,12 +235,16 @@ export default function contribute(server: PluginServerContext) {
   server.handle(launchManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await launchManager(paseo, project)).agentId }));
   server.handle(restartManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await restartManager(paseo, project)).agentId }));
   server.handle(compactManagerRpc, async ({ project }, { paseo }) => ({ agentId: await compactManager(paseo, project) }));
-  server.handle(tellManagerRpc, async ({ project, text, images, files }, { paseo }) => ({ agentId: await tellManager(paseo, project, text, { images, files }) }));
+  server.handle(tellManagerRpc, async ({ project, text, images, files }, { paseo }) => {
+    const agentId = await tellManager(paseo, project, text, { images, files });
+    actions.userToldManager(project);
+    return { agentId };
+  });
   server.handle(catchUp, async ({ project }, { paseo }) => ({ agentId: await tellManager(paseo, project, await catchUpText(project)) }));
 
   server.handle(loadBoardRpc, async ({ project }, { paseo }) => {
     void trackers.pullIfDue(project);
-    return loadBoard(keep(paseo), state, project);
+    return loadBoard(keep(paseo), state, project, actions.queueAlerts(project));
   });
   server.handle(loadTicket, async ({ project, ticket }) => {
     void trackers.pullIfDue(project);
@@ -271,6 +282,11 @@ export default function contribute(server: PluginServerContext) {
   server.handle(resolveTrackerSyncRpc, async ({ project, resolution }) => {
     await requireProjectConfig(project);
     return { problem: await trackers.resolve(project, resolution) };
+  });
+  server.handle(dismissQueueAlert, async ({ project, ticket }) => {
+    actions.dismissQueueAlert(project, ticket);
+    invalidateBoards();
+    return {};
   });
   server.handle(dismissTrackerProtection, async ({ project }) => {
     await state.dismissTrackerProtection(project);
