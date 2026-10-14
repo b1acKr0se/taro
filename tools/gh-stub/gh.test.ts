@@ -43,7 +43,10 @@ beforeEach(() => {
 
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-describe("stub gh", () => {
+// Each test runs several git commands and the stub: about 1 s in a full run, past vitest's 5 s default under heavy load.
+const GIT_TIMEOUT_MS = 30_000;
+
+describe("stub gh", { timeout: GIT_TIMEOUT_MS }, () => {
   it("runs a PR from draft to a merge that matches the head", () => {
     expect(gh("pr", "create", "--draft", "--title", "Add b").code).toBe(1); // not pushed yet
     const head = commit("b.txt", "two\n");

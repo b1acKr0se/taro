@@ -9,6 +9,11 @@ import { parseTicket, serializeTicket, type Ticket } from "../shared/ticket-form
 
 const BIN = resolve(import.meta.dirname, "..", "bin", "taro");
 
+// Each test starts node once per command: up to 2 s in a full run, past vitest's 5 s default under load.
+const CLI_TIMEOUT_MS = 30_000;
+// The tickets.md walk-through runs every documented line, about 4 s in a full run.
+const DOCUMENTED_LINES_TIMEOUT_MS = 60_000;
+
 let tracker: string;
 let scratch: string;
 
@@ -99,7 +104,7 @@ function fullTicket(): void {
   writeTicket({ id: "TR-001.01", title: "Child of one", parent: "TR-001", labels: ["web"], status: "Planning" });
 }
 
-describe("bin/taro", () => {
+describe("bin/taro", { timeout: CLI_TIMEOUT_MS }, () => {
   it("runs under plain node through the shell, also through a symlink", () => {
     fullTicket();
     const direct = taro(["ticket", "list", "--tracker", tracker]);
@@ -131,7 +136,7 @@ describe("bin/taro", () => {
   });
 });
 
-describe("taro ticket list", () => {
+describe("taro ticket list", { timeout: CLI_TIMEOUT_MS }, () => {
   it("says so for an empty tracker, and gives empty JSON", () => {
     expect(ok(["list"]).stdout).toBe("No tickets.\n");
     expect(JSON.parse(ok(["list", "--json"]).stdout)).toEqual({ tickets: [] });
@@ -163,7 +168,7 @@ describe("taro ticket list", () => {
   });
 });
 
-describe("taro ticket view", () => {
+describe("taro ticket view", { timeout: CLI_TIMEOUT_MS }, () => {
   it("prints every section and the revision in plain text", () => {
     fullTicket();
     const text = ok(["view", "TR-001", "--plain"]).stdout;
@@ -233,7 +238,7 @@ describe("taro ticket view", () => {
   });
 });
 
-describe("taro ticket search", () => {
+describe("taro ticket search", { timeout: CLI_TIMEOUT_MS }, () => {
   it("matches case-insensitively over title, description and notes, with -s", () => {
     fullTicket();
     const ids = (args: string[]) => (JSON.parse(ok(["search", ...args, "--json"]).stdout).tickets as { id: string }[]).map((entry) => entry.id);
@@ -253,7 +258,7 @@ describe("taro ticket search", () => {
   });
 });
 
-describe("taro ticket create", () => {
+describe("taro ticket create", { timeout: CLI_TIMEOUT_MS }, () => {
   it("prints Created <ID>, then a child via -p gets <parent>.01", () => {
     expect(ok(["create", "First"]).stdout).toBe("Created TR-001\n");
     expect(ok(["create", "Second", "-p", "TR-001"]).stdout).toBe("Created TR-001.01\n");
@@ -296,7 +301,7 @@ describe("taro ticket create", () => {
   });
 });
 
-describe("taro ticket edit", () => {
+describe("taro ticket edit", { timeout: CLI_TIMEOUT_MS }, () => {
   beforeEach(() => {
     fullTicket();
   });
@@ -421,7 +426,7 @@ describe("taro ticket edit", () => {
   });
 });
 
-describe("usage errors", () => {
+describe("usage errors", { timeout: CLI_TIMEOUT_MS }, () => {
   it("exit 2 with usage on stderr for an unknown flag, verb, command, or missing argument", () => {
     for (const args of [
       ["ticket", "list", "--bogus", "--tracker", tracker],
@@ -448,7 +453,7 @@ describe("usage errors", () => {
   });
 });
 
-describe("taro ticket check", () => {
+describe("taro ticket check", { timeout: CLI_TIMEOUT_MS }, () => {
   it("prints 0 problems and exits 0 for a clean tracker", () => {
     fullTicket();
     writeFileSync(join(tracker, "tracker.json"), '{"schema":1,"prefix":"TR","padding":3,"lastId":2,"lastChild":{}}\n');
@@ -491,8 +496,8 @@ function documentedLines(): string[] {
   return block.split("\n").filter((line) => line.startsWith("taro "));
 }
 
-describe("the command lines in skill/reference/tickets.md", () => {
-  it("run successfully, as written, against a temp tracker", () => {
+describe("the command lines in skill/reference/tickets.md", { timeout: CLI_TIMEOUT_MS }, () => {
+  it("run successfully, as written, against a temp tracker", { timeout: DOCUMENTED_LINES_TIMEOUT_MS }, () => {
     writeTicket({
       id: "TR-010",
       title: "Parent",

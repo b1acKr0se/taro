@@ -70,7 +70,10 @@ function diverge(): void {
   commit(here, OTHER_TICKET, "second, edited here\n");
 }
 
-describe("syncTracker", () => {
+// Each sync runs a series of git fetches, merges and pushes: about 1 s in a full run, past vitest's 5 s default under heavy load.
+const SYNC_TIMEOUT_MS = 30_000;
+
+describe("syncTracker", { timeout: SYNC_TIMEOUT_MS }, () => {
   it("merges edits to different tickets and pushes", async () => {
     commit(there, TICKET, `${withLine(1, "status: Done").join("\n")}\n`);
     git(there, "push", "-q", "origin", TRACKER_BRANCH);
