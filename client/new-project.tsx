@@ -9,7 +9,7 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { checkOnboarding, launchManager, listPaseoProjects, onboardProject } from "../shared/contracts";
 import {
@@ -22,6 +22,7 @@ import {
   type SettingsTemplate,
 } from "../shared/project-candidates";
 import { createBlocker, deliveryWithoutGh, pullRequestsReady, setupProblems, settingsFrom, ticketExample, type SetupDraft, type SetupProblems } from "../shared/setup-form";
+import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { KeyboardScrollView } from "./keyboard";
 import { keptMap, keptObject } from "./kept";

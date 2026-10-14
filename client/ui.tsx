@@ -6,8 +6,9 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useEffect, useMemo, useRef } from "react";
-import { ActivityIndicator, Animated, Easing, Platform, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Animated, Easing, Platform, Text, View } from "react-native";
 import { BUTTON, SEGMENTED } from "./control-size";
+import { Pressable } from "./focus";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 
 /** A fixed-width font on every platform; iOS has no font named "monospace". */

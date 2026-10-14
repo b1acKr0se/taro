@@ -10,10 +10,11 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { loadTicket, type EvidenceView } from "../shared/contracts";
 import { foldList } from "../shared/ticket-summary";
+import { Pressable } from "./focus";
 import { ImageThumbnail } from "./image-view";
 import { MONOSPACE } from "./ui";
 import { SPACE } from "./spacing";

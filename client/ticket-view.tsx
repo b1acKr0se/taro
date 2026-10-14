@@ -10,7 +10,7 @@ import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { answerDecision, listOpenDecisions, loadTicket } from "../shared/contracts";
 import { ticketViewApproval } from "../shared/decision-view";
@@ -23,6 +23,7 @@ import type { StoredDecision } from "../shared/state";
 import { foldList, ticketSections, ticketSummary, type TicketSectionKey, type TicketSummary } from "../shared/ticket-summary";
 import { PhaseBadge } from "./badges";
 import { EvidenceBlock } from "./evidence-view";
+import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { KeyboardScrollView } from "./keyboard";
 import { Markdown, MarkdownInline } from "./markdown";

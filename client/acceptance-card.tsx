@@ -6,16 +6,17 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
-import { Icon, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
+import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { acceptTicket, loadTicket, requestChanges, type Card } from "../shared/contracts";
 import { evidenceSummary } from "../shared/evidence";
 import { finalSummaryBody } from "../shared/execution";
 import { acceptanceReady } from "./card-calls";
 import { EvidenceBlock } from "./evidence-view";
+import { Pressable, TextInput } from "./focus";
 import { errorText, pullRequestLabel } from "./format";
 import { useRevealFocused } from "./keyboard";
 import { Markdown } from "./markdown";

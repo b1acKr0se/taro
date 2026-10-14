@@ -8,10 +8,11 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { dismissSuggestion, tellManager } from "../shared/contracts";
 import { suggestionKey, suggestionPills, type SendState, type Suggestion, type SuggestionPill, type SuggestionSend } from "../shared/suggestions";
+import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";

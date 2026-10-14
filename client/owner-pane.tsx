@@ -12,13 +12,14 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { tellAgent, type Card } from "../shared/contracts";
 import { decisionBlocksAsText, withoutDecisionBlocks } from "../shared/reports";
 import { AgentChat } from "./agent-chat";
 import { AcceptanceCard } from "./acceptance-card";
 import { acceptanceReady } from "./card-calls";
+import { Pressable } from "./focus";
 import { defaultPaneAgent, paneAgents, paneAgentJob, roleIcon } from "./pane-agents";
 import { PaneHeader } from "./pane-header";
 import { paneGutter, SPACE } from "./spacing";

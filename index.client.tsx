@@ -3,6 +3,7 @@ import type { PluginClientContext, PluginWorkspaceCommandContext } from "@getpas
 import { tellManager } from "./shared/contracts";
 import { DECISION_BLOCK_KIND, DECISION_TEXT_KIND, decisionTimelineItems } from "./shared/decision-view";
 import { DecisionBlockItem, DecisionBlockSchema, DecisionTextItem, DecisionTextSchema } from "./client/decision-timeline";
+import { withFocusRing } from "./client/focus";
 import { TARO_SCREEN_ID } from "./client/screen";
 import { TaroScreen } from "./client/taro-screen";
 import { TaroSidebarItem } from "./client/sidebar";
@@ -21,9 +22,9 @@ export default function contribute(client: PluginClientContext) {
   client.addScreen({
     id: TARO_SCREEN_ID,
     title: (params) => (params.project === undefined ? "Taro" : `Taro · ${params.project}`),
-    Component: TaroScreen,
+    Component: withFocusRing(TaroScreen),
   });
-  client.addSidebarHeaderItem({ id: TARO_SCREEN_ID, title: "Taro", Component: TaroSidebarItem });
+  client.addSidebarHeaderItem({ id: TARO_SCREEN_ID, title: "Taro", Component: withFocusRing(TaroSidebarItem) });
 
   client.addWorkspacePanel({
     id: "taro-ticket",
@@ -31,7 +32,7 @@ export default function contribute(client: PluginClientContext) {
     icon: "ClipboardList",
     context: "agent",
     locations: ["workspace", "explorer"],
-    Component: TicketPanel,
+    Component: withFocusRing(TicketPanel),
   });
 
   client.addCommandCenterItem({
@@ -63,8 +64,8 @@ export default function contribute(client: PluginClientContext) {
       return decisionTimelineItems(item.text, phase);
     },
   });
-  client.addTimelineRenderer({ kind: DECISION_TEXT_KIND, version: 1, schema: DecisionTextSchema, Component: DecisionTextItem });
-  client.addTimelineRenderer({ kind: DECISION_BLOCK_KIND, version: 1, schema: DecisionBlockSchema, Component: DecisionBlockItem });
+  client.addTimelineRenderer({ kind: DECISION_TEXT_KIND, version: 1, schema: DecisionTextSchema, Component: withFocusRing(DecisionTextItem) });
+  client.addTimelineRenderer({ kind: DECISION_BLOCK_KIND, version: 1, schema: DecisionBlockSchema, Component: withFocusRing(DecisionBlockItem) });
 
   return () => {};
 }

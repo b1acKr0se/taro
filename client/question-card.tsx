@@ -7,10 +7,11 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMemo } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import type { StoredDecision } from "../shared/state";
 import { questionContext } from "./card-now";
+import { Pressable } from "./focus";
 import { OptionChips } from "./option-chips";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";

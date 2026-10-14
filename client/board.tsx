@@ -8,13 +8,14 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 
 import { COLUMN_IDS, COLUMN_META, COLUMN_TITLES, columnCounts, needsYouExtras, type ColumnId } from "../shared/board";
 import type { Card, ProjectSummary } from "../shared/contracts";
 import { AlertCard } from "./alert-card";
 import { SectionHeading } from "./badges";
 import { useBoard, useRefreshBoard } from "./board-data";
+import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { keptObject } from "./kept";
 import { KeyboardScrollView } from "./keyboard";

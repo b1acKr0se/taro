@@ -13,7 +13,7 @@ import type { PluginScreenProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 
 import { catchUp, compactManager, resumeManager, tellManager, type Card, type ProjectSummary } from "../shared/contracts";
 import { MANAGER_ACTION_LABELS, MANAGER_ACTION_SUCCESS, managerPaneNotice } from "../shared/manager-actions";
@@ -23,6 +23,7 @@ import type { Suggestion } from "../shared/suggestions";
 import { AgentChat } from "./agent-chat";
 import { useBoard, useRefreshBoard } from "./board-data";
 import { ProjectBoard } from "./board";
+import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { Inbox } from "./inbox";
 import { keptObject } from "./kept";

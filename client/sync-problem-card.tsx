@@ -9,9 +9,10 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { resolveTrackerSync, type SyncResolution, type TrackerSyncProblem } from "../shared/contracts";
+import { Pressable } from "./focus";
 import { useRefreshProjects } from "./queries";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";

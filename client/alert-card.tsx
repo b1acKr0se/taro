@@ -9,7 +9,7 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useMemo } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { alertHeading, dismissible } from "../shared/alerts";
 import { dismissQueueAlert, dismissTrackerProtection, resumeManager } from "../shared/contracts";
@@ -17,6 +17,7 @@ import { MANAGER_ACTION_LABELS, MANAGER_ACTION_SUCCESS } from "../shared/manager
 import { QUEUED_ALERT_ID } from "../shared/queue-check";
 import type { BoardAlert } from "../shared/recovery";
 import { useRefreshBoard } from "./board-data";
+import { Pressable } from "./focus";
 import { useRefreshProjects } from "./queries";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";

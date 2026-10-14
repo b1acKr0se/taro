@@ -9,15 +9,16 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
-import { Icon, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
+import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { Pressable, Text, View, type TextInput as NativeTextInput } from "react-native";
+import { Text, View, type TextInput as NativeTextInput } from "react-native";
 
 import { answerDecision, loadTicket } from "../shared/contracts";
 import { CHANGE_PLACEHOLDER, SCOPE_APPROVAL, planCardOptions, planChangeField, type PlanActionsPlace } from "../shared/decision-view";
 import { parsePlan, splitChoice, type ParsedPlan, type PlanSection } from "../shared/plan";
 import type { StoredDecision } from "../shared/state";
+import { Pressable, TextInput } from "./focus";
 import { errorText } from "./format";
 import { useRevealFocused } from "./keyboard";
 import { Markdown, MarkdownInline } from "./markdown";

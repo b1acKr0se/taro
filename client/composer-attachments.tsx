@@ -6,11 +6,12 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useRef, useState } from "react";
-import { Image, Modal, Pressable, SafeAreaView, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { Image, Modal, SafeAreaView, ScrollView, Text, View, useWindowDimensions } from "react-native";
 
 import { base64ByteLength, formatBytes, type DraftAttachment } from "../shared/attachments";
 import { ATTACHMENT_SOURCES, type AttachmentSource } from "./attachment-sources";
 import { COMPOSER_CONTROL_SIZE } from "./composer-height";
+import { Pressable } from "./focus";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE } from "./type-scale";

@@ -8,7 +8,7 @@ import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import {
   launchManager,
@@ -34,6 +34,7 @@ import {
   type SetupProblems,
 } from "../shared/setup-form";
 import { MANAGER_ACTION_LABELS, MANAGER_ACTION_SUCCESS, managerSettingsActions, type ManagerActionKind } from "../shared/manager-actions";
+import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { KeyboardScrollView } from "./keyboard";
 import { PrerequisiteList, usePrerequisites } from "./prerequisite-list";

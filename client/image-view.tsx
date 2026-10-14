@@ -10,11 +10,12 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Image, Modal, PanResponder, Platform, Pressable, SafeAreaView, StatusBar, Text, View, type GestureResponderEvent, type ViewStyle } from "react-native";
+import { Animated, Image, Modal, PanResponder, Platform, SafeAreaView, StatusBar, Text, View, type GestureResponderEvent, type ViewStyle } from "react-native";
 
 import { readImageRpc } from "../shared/contracts";
 import { watchFullScreen } from "./desktop-window";
 import { ErrorBoundary } from "./error-boundary";
+import { Pressable } from "./focus";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";

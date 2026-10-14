@@ -12,13 +12,13 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
-import { TextInput } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { answerDecision } from "../shared/contracts";
 import { answerPlaceholder, askedBy, decisionOptionRows, decisionSubmit } from "../shared/decision-view";
 import type { StoredDecision } from "../shared/state";
+import { Pressable, TextInput } from "./focus";
 import { useRevealFocused } from "./keyboard";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";

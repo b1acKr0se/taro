@@ -5,10 +5,10 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
-import { Icon, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
+import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Keyboard, Platform, Pressable, SafeAreaView, ScrollView, Text, useWindowDimensions, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
+import { Keyboard, Platform, SafeAreaView, ScrollView, Text, useWindowDimensions, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
 
 import { attachmentProblem, outgoingAttachments, refuseOversizedImages, type DraftAttachment, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
 import { listSentImages, type SentImagesMessage } from "../shared/contracts";
@@ -21,6 +21,7 @@ import { ContextMeter } from "./context-meter";
 import { DecisionCard } from "./decision-card";
 import { drafts } from "./draft";
 import { draftAttachments } from "./draft-attachments";
+import { Pressable, TextInput } from "./focus";
 import { useFollowEnd } from "./follow-end";
 import { ImageThumbnail } from "./image-view";
 import { KeyboardRevealProvider, useKeyboardOverlap, useKeyboardScroll, useRevealFocused } from "./keyboard";
@@ -371,8 +372,7 @@ export function AgentChat({
         textAlignVertical: "top" as const,
         // No line height on a phone, as in Paseo: React Native draws one as a span over the text, and
         // an empty last line takes the font's own, so the field jumped when a new line began.
-        // The box shows nothing for focus, and a browser's outline would cut it in two.
-        ...(Platform.OS === "web" ? { lineHeight: COMPOSER_WEB_LINE_HEIGHT, outlineWidth: 0 } : null),
+        ...(Platform.OS === "web" ? { lineHeight: COMPOSER_WEB_LINE_HEIGHT } : null),
       },
       // The row reaches 6 px into the box's padding, so the round buttons sit in its corners.
       controls: {

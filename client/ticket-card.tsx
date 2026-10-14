@@ -11,11 +11,12 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { acceptTicket, compactAgent, nudgeAgent, relaunchOwner, type Card, type StatsSummary } from "../shared/contracts";
 import { PhaseBadge } from "./badges";
 import { cardFooterParts, cardNowLine, offersCompact, type NowLine } from "./card-now";
+import { Pressable } from "./focus";
 import { errorText, formatCost, pullRequestLabel, formatDuration } from "./format";
 import { SPACE } from "./spacing";
 import { OptionChips } from "./option-chips";

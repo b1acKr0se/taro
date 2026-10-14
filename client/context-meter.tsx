@@ -13,8 +13,9 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useMemo, useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
+import { Pressable } from "./focus";
 import { contextPercent, contextTone, formatTokenCount } from "./format";
 import { COMPOSER_CONTROL_SIZE } from "./composer-height";
 import { FONT_SIZE } from "./type-scale";

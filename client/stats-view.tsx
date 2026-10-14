@@ -7,10 +7,11 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 
 import { TICKET_STATUSES } from "../shared/project";
 import { compareTickets, parentOf, projectTotals, type ProjectTotals } from "../shared/stats";
+import { Pressable } from "./focus";
 import { errorText, formatCost, formatDuration } from "./format";
 import { SectionHeading } from "./badges";
 import { useStats } from "./queries";

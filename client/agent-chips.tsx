@@ -5,8 +5,9 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 
+import { Pressable } from "./focus";
 import { paneAgentDetail, paneAgentState, roleIcon, type PaneAgent, type PaneAgentState } from "./pane-agents";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";

@@ -13,10 +13,11 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { usePaseo } from "@getpaseo/plugin/client";
-import { Icon, TextInput } from "@getpaseo/plugin/client/react-native";
+import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
+import { Pressable, TextInput } from "./focus";
 import { useRevealFocused } from "./keyboard";
 import { Markdown } from "./markdown";
 import { permissionHeading, type Asker } from "./permission-heading";

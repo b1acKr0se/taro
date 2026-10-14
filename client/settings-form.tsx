@@ -5,11 +5,12 @@
  * control in a row's trailing slot, which leaves no room for descriptions or choices with text.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
-import { Icon, Modal, TextInput } from "@getpaseo/plugin/client/react-native";
+import { Icon, Modal } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState, type ReactNode } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { addableModelGroups, type PickerOption } from "../shared/model-picker";
+import { Pressable, TextInput } from "./focus";
 import { KeyboardRevealBoundary, useRevealFocused } from "./keyboard";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";

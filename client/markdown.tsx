@@ -20,8 +20,9 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useMemo, useState, type ReactNode } from "react";
-import { Text, View } from "react-native";
+import { Platform, Text, View } from "react-native";
 
+import { focusRingStyle } from "./focus-ring";
 import { ImageThumbnail } from "./image-view";
 import { inlineTokens, type FileLookup } from "./file-links";
 import { blockImages, parseMarkdown, type Block, type ImageReference } from "./markdown-parse";
@@ -82,13 +83,14 @@ function useMarkdownStyles(theme: PluginTheme, fontSize: number): MarkdownStyles
         color: theme.colors.foreground,
         fontSize: fontSize - 1,
       },
-      link: { color: theme.colors.accent, textDecorationLine: "underline" as const },
+      // A link and "more" are pressable text: the keyboard ring takes the accent too (TR-078).
+      link: { color: theme.colors.accent, textDecorationLine: "underline" as const, ...focusRingStyle(theme.colors.accent, Platform.OS === "web") },
       table: { borderWidth: 1, borderColor: theme.colors.border, borderRadius: 6 },
       tableRow: { flexDirection: "row" as const, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
       tableCell: { flex: 1, paddingHorizontal: SPACE.sm, paddingVertical: SPACE.xs },
       tableHeader: { fontWeight: "600" as const },
       images: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "flex-start" as const, gap: SPACE.sm },
-      more: { color: theme.colors.accent, fontSize: fontSize - 1, fontWeight: "600" as const, paddingTop: SPACE.xxs, alignSelf: "flex-start" as const },
+      more: { color: theme.colors.accent, fontSize: fontSize - 1, fontWeight: "600" as const, paddingTop: SPACE.xxs, alignSelf: "flex-start" as const, ...focusRingStyle(theme.colors.accent, Platform.OS === "web") },
     }),
     [theme, fontSize],
   );
