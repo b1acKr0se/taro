@@ -19,8 +19,7 @@ import { contextPercent, contextTone, formatTokenCount } from "./format";
 import { COMPOSER_CONTROL_SIZE } from "./composer-height";
 import { FONT_SIZE } from "./type-scale";
 
-/** Paseo's ring: 14 px with a 2 px stroke unless the composer names a size (TR-039). */
-const RING_SIZE = 14;
+/** Paseo's ring stroke; its size is the composer's (`composerMetrics`, TR-039). */
 const RING_STROKE = 2;
 
 /**
@@ -36,13 +35,13 @@ export function ProgressRing({
   percent,
   color,
   track,
-  size = RING_SIZE,
+  size,
   stroke = RING_STROKE,
 }: {
   percent: number;
   color: string;
   track: string;
-  size?: number;
+  size: number;
   stroke?: number;
 }) {
   const share = Math.min(1, Math.max(0, percent / 100));

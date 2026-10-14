@@ -4,8 +4,11 @@
  * Copyright (c) 2025-present Mohamed Boudra, licensed under the Apache License, Version 2.0
  * (see THIRD_PARTY_NOTICES.md). Changed: the web and native variants are one hook choosing by
  * `Platform.OS` (a plugin's client is not resolved per platform), the DOM is reached through
- * `globalThis` (the client is typed without the DOM library), and the bounds come from
- * `composer-height.ts`.
+ * `globalThis` (the client is typed without the DOM library), a computed style that lacks a
+ * property copies as "", the bounds and the small rules come from `composer-height.ts` (tested
+ * there), and instead of Paseo's `onTextChange` on each edit and `reset()` on send, the field is
+ * measured in a layout effect whenever the draft changes, which also covers a draft restored or
+ * switched from outside the field.
  *
  * On a phone the field grows by itself between its minimum and maximum, which is smooth because
  * nothing else sets its height. A browser's textarea does not grow, so a hidden copy of it takes
@@ -14,7 +17,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Platform } from "react-native";
 
-import { boundedComposerHeight } from "./composer-height";
+import { boundedComposerHeight, composerScrollEnabled, measurableWidth, mirrorValue } from "./composer-height";
 
 /** The parts of a DOM textarea and its computed style the measurement reads. */
 interface DomStyle {
@@ -97,12 +100,11 @@ export function useComposerHeight({
       const source = field.current as DomTextArea | null;
       if (mirror === null || source === null || dom.getComputedStyle === undefined) return;
       const sourceWidth = source.clientWidth;
-      if (!(sourceWidth > 0)) return;
+      if (!measurableWidth(sourceWidth)) return;
       const computedStyle = dom.getComputedStyle(source);
       for (const property of COPIED_STYLES) mirror.style[property] = computedStyle[property] ?? "";
       mirror.style.width = `${sourceWidth}px`;
-      // A trailing new line takes a line in the field, but not in a copy whose value ends there.
-      mirror.value = draft.endsWith("\n") ? `${draft} ` : draft;
+      mirror.value = mirrorValue(draft);
       setBoundedHeight(mirror.scrollHeight);
     },
     [setBoundedHeight, field],
@@ -159,5 +161,5 @@ export function useComposerHeight({
   }, [measure, field, web]);
 
   const style = useMemo(() => (web ? { height, minHeight, maxHeight } : { minHeight, maxHeight }), [web, height, minHeight, maxHeight]);
-  return { style, scrollEnabled: web ? height >= maxHeight : true };
+  return { style, scrollEnabled: web ? composerScrollEnabled(height, maxHeight) : true };
 }

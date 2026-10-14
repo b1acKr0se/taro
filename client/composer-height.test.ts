@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { boundedComposerHeight, COMPOSER_CONTROL_SIZE, COMPOSER_WEB_LINE_HEIGHT, COMPOSER_WIDE_WIDTH, composerMaxHeight, composerMetrics } from "./composer-height";
+import {
+  boundedComposerHeight,
+  COMPOSER_CONTROL_SIZE,
+  COMPOSER_WEB_LINE_HEIGHT,
+  COMPOSER_WIDE_WIDTH,
+  composerMaxHeight,
+  composerMetrics,
+  composerScrollEnabled,
+  measurableWidth,
+  mirrorValue,
+} from "./composer-height";
 
 describe("composerMetrics", () => {
   it("takes Paseo's phone app values in the app on a phone", () => {
@@ -70,5 +80,41 @@ describe("boundedComposerHeight", () => {
   it("stops at the maximum", () => {
     expect(boundedComposerHeight(400, 46, 400)).toBe(400);
     expect(boundedComposerHeight(10_000, 46, 400)).toBe(400);
+  });
+});
+
+describe("mirrorValue", () => {
+  it("copies a draft as it is", () => {
+    expect(mirrorValue("")).toBe("");
+    expect(mirrorValue("one line")).toBe("one line");
+    expect(mirrorValue("two\nlines")).toBe("two\nlines");
+  });
+
+  it("keeps the line a trailing new line opens", () => {
+    expect(mirrorValue("first\n")).toBe("first\n ");
+    expect(mirrorValue("\n")).toBe("\n ");
+    expect(mirrorValue("a\n\n")).toBe("a\n\n ");
+  });
+});
+
+describe("measurableWidth", () => {
+  it("skips a field not laid out yet", () => {
+    expect(measurableWidth(0)).toBe(false);
+    expect(measurableWidth(-1)).toBe(false);
+    expect(measurableWidth(Number.NaN)).toBe(false);
+  });
+
+  it("measures a laid-out field", () => {
+    expect(measurableWidth(0.5)).toBe(true);
+    expect(measurableWidth(332)).toBe(true);
+  });
+});
+
+describe("composerScrollEnabled", () => {
+  it("grows below the maximum and scrolls from it", () => {
+    expect(composerScrollEnabled(46, 450)).toBe(false);
+    expect(composerScrollEnabled(449.5, 450)).toBe(false);
+    expect(composerScrollEnabled(450, 450)).toBe(true);
+    expect(composerScrollEnabled(451, 450)).toBe(true);
   });
 });

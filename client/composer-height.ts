@@ -55,6 +55,21 @@ export function composerMaxHeight(windowHeight: number): number {
   return Math.max(DEFAULT_MAX_INPUT_HEIGHT, Math.floor(windowHeight * MAX_INPUT_VIEWPORT_RATIO));
 }
 
+/** What the hidden copy of the field holds: a trailing new line takes a line in the field, but not in a copy whose value ends there. */
+export function mirrorValue(draft: string): string {
+  return draft.endsWith("\n") ? `${draft} ` : draft;
+}
+
+/** A field not laid out yet (0 px, or no number) is not measured: its copy would wrap every character. */
+export function measurableWidth(width: number): boolean {
+  return width > 0;
+}
+
+/** On the web the field scrolls inside only once it has reached its maximum, as Paseo's does; below, it grows. */
+export function composerScrollEnabled(height: number, maxHeight: number): boolean {
+  return height >= maxHeight;
+}
+
 /** A measured text height held between the field's minimum and maximum. */
 export function boundedComposerHeight(measured: number, minHeight: number, maxHeight: number): number {
   return Math.max(minHeight, Math.min(maxHeight, measured));
