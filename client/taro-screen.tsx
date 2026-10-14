@@ -424,7 +424,8 @@ function ProjectView({
   };
   const shownState = ticketShown({ ticket, boardLoaded: board.data !== undefined, cardFound: openCard !== null });
   useEffect(() => onTicketMissing(shownState === "missing"), [shownState]);
-  useBackStep(openCard !== null, onCloseTicket);
+  // Android's back leaves a plan the way its Back button does: to where View plan was pressed.
+  useBackStep(openCard !== null, planOpen ? onBackFromPlan : onCloseTicket);
 
   const left =
     openCard === null ? (
