@@ -27,6 +27,7 @@ import {
   type TicketStatus,
   type TicketSummary,
 } from "../shared/ticket-format.ts";
+import { futureRecordTime } from "../shared/record-time.ts";
 
 export interface TrackerFile {
   schema: number;
@@ -617,8 +618,18 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
     });
   }
 
+  /** Refuses a record stamped later than the host clock before taking the lock (TR-086). */
+  function assertRecordTimes(changes: TicketChanges): void {
+    const current = now();
+    for (const text of [...(changes.appendNotes ?? []), changes.finalSummary ?? ""]) {
+      const problem = futureRecordTime(text, current);
+      if (problem !== null) throw new Error(problem);
+    }
+  }
+
   async function edit(id: string, changes: TicketChanges, editOptions: { revision?: string } = {}): Promise<Ticket> {
     assertId(id);
+    assertRecordTimes(changes);
     return locked(async () => {
       const { ticket, revision } = await readTicket(id);
       if (editOptions.revision !== undefined && editOptions.revision !== revision) {

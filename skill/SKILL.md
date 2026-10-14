@@ -37,7 +37,9 @@ every role runs commands with nobody there to approve them, cleanup included.
    code worktree. Commands: `reference/tickets.md`.
 3. **A conversation is never the only copy.** Scope, approvals (the user's exact words), decisions,
    milestones and handoffs go into the ticket as you make them. Your context may be compacted at any
-   time; after that, reread your role and the ticket before continuing.
+   time; after that, reread your role and the ticket before continuing. Every record's time is
+   the output of `date -u +%Y-%m-%dT%H:%MZ` run as you write it: never typed, estimated or
+   converted by hand (`taro ticket` refuses a time later than the host clock).
 4. **Agents are Paseo agents**, started with the `paseo` CLI (`reference/paseo.md`), never your
    provider's built-in subagents.
 5. **Use absolute paths** in everything you write for another agent.

@@ -342,6 +342,15 @@ describe("taro ticket edit", () => {
     expect(ticketCommand(["edit", "TR-002", "--priority", "urgent"]).code).toBe(2);
   });
 
+  it("refuses a record stamped later than the host clock: exit 1, the ticket unchanged (TR-086)", () => {
+    const before = readFileSync(fileOf("TR-001"), "utf8");
+    const result = ticketCommand(["edit", "TR-001", "--append-notes", "EVIDENCE 2999-01-01T00:00Z — from the future"]);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toMatch(/^EVIDENCE 2999-01-01T00:00Z is later than the host clock \(now \d{4}-\d\d-\d\dT\d\d:\d\dZ\)\. .*date -u/);
+    expect(readFileSync(fileOf("TR-001"), "utf8")).toBe(before);
+    ok(["edit", "TR-001", "--append-notes", `MILESTONE ${new Date().toISOString().slice(0, 16)}Z — on time`]);
+  });
+
   it("--append-notes appends each record after a blank line", () => {
     ok(["edit", "TR-001", "--append-notes", "second", "--append-notes", "third"]);
     expect(readTicket("TR-001").notes).toBe("MILESTONE one\n\nsecond\n\nthird");

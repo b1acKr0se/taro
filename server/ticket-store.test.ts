@@ -174,6 +174,20 @@ describe("ticket store", () => {
       await expect(store().view("../tracker")).rejects.toThrow(/not a ticket id/);
     });
 
+    it("refuses a note or FINAL stamped later than the clock and writes nothing (TR-086)", async () => {
+      await writeTicketFile({ id: "TR-001", notes: "earlier" });
+      const before = await readFile(ticketPath("TR-001"), "utf8");
+      await expect(store().appendNote("TR-001", "REVIEW 2026-10-14T17:40Z — done")).rejects.toThrow(
+        "REVIEW 2026-10-14T17:40Z is later than the host clock (now 2026-10-14T16:20Z)",
+      );
+      await expect(store().edit("TR-001", { finalSummary: "FINAL 2026-10-14T17:40Z — x", status: "Awaiting acceptance" })).rejects.toThrow(
+        /later than the host clock/,
+      );
+      expect(await readFile(ticketPath("TR-001"), "utf8")).toBe(before);
+      await store().appendNote("TR-001", "MILESTONE 2026-10-14T16:20Z — on time");
+      expect((await store().view("TR-001")).ticket.notes).toBe("earlier\n\nMILESTONE 2026-10-14T16:20Z — on time");
+    });
+
     it("a record ending in many newlines is stored without them", async () => {
       await writeTicketFile({ id: "TR-001", notes: "earlier" });
       await store().appendNote("TR-001", "record\n\n\n\n\n\n");

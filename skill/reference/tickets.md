@@ -52,9 +52,13 @@ and `Cancelled`. Trivial tasks go from Backlog straight to In Progress.
 
 ## Records
 
-Append these to the notes, each starting with its name and the real current time from
-`date -u +%Y-%m-%dT%H:%MZ` (never a guessed time), e.g. `MILESTONE 2026-10-13T14:02Z — …`. Append;
-never rewrite history. Keep each within its limit; cut rather than exceed it.
+Append these to the notes, each starting with its name and the host's current UTC time: run
+`date -u +%Y-%m-%dT%H:%MZ` at the moment you write the record and use its output, e.g.
+`MILESTONE 2026-10-13T14:02Z — …`. Never type, estimate or carry over a time, nor a local time
+labelled Z; the board, Ticket tab and stats sort by these times, and `taro ticket edit` refuses
+a record time (or FINAL time) more than two minutes after the host clock. Append; never rewrite
+history: a wrong record is corrected by a **CORRECTION** record. Keep each within its limit; cut
+rather than exceed it.
 
 - **DISPATCH-INTENT** (manager, before launching): ticket, unique token, intended branch.
 - **EXECUTION**: owner agent id, workspace id, machine (`hostname`), worktree path, branch, base
@@ -108,3 +112,8 @@ never rewrite history. Keep each within its limit; cut rather than exceed it.
   later ticket's owner. What escaped, the fixing ticket, and the check that should have caught it
   (coverage map, alignment, placeholder text, a test, a review area):
   `ESCAPE 2026-01-06T09:00Z — children listed as "Unknown"; fixed by NA-14; missed by: coverage map (no screenshot had children)`.
+- **CORRECTION**: fixes an earlier record without rewriting it: which record, what was wrong, what
+  is right. Quote a wrong record mid-line (`- REVIEW stamped 17:40Z …`), never at a line's start,
+  where it would read as a record of its own:
+  `CORRECTION 2026-01-06T09:30Z — future-dated times; actual times from the tracker commits:`
+  `- REVIEW stamped 2026-01-06T10:40Z, written 09:43Z`.
