@@ -1,5 +1,5 @@
 /**
- * How full the first mate's context window is, drawn inside the composer
+ * How full the agent's context window is, drawn inside the composer
  * beside its send button the way Paseo's composer draws its own: a ring filling clockwise
  * from the top, coloured at the same thresholds, with the share and the
  * token counts in a tooltip.

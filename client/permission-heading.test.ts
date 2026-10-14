@@ -20,12 +20,4 @@ describe("permissionHeading", () => {
     expect(permissionHeading({ kind: "manager" }, "permission")).toBe("The Manager is asking permission");
     expect(permissionHeading({ kind: "manager" }, "plan")).toBe("The Manager has a plan for you to approve");
   });
-
-  it("never uses Taro's internal names", () => {
-    const headings = (["question", "plan", "permission"] as const).flatMap((kind) => [
-      permissionHeading({ kind: "manager" }, kind),
-      permissionHeading({ kind: "ticket", ticket: "NA-1", role: "owner" }, kind),
-    ]);
-    for (const heading of headings) expect(heading).not.toMatch(/first mate|crewmate|captain/i);
-  });
 });

@@ -1,13 +1,13 @@
 /**
  * An agent's timeline, turned into the rows the chat pane draws. From
- * FirstMate's `client/transcript-rows.ts` (MIT); "captain" rows are the user's
- * words and "mate" rows the agent's.
+ * FirstMate's `client/transcript-rows.ts` (MIT); "user" rows are the user's
+ * words and "agent" rows the agent's.
  *
  * The full transcript is one click away — the pane's Open button shows the
- * first mate in Paseo itself, with every tool call and its output. This pane
- * is for the conversation with the captain, so it keeps the words and folds
+ * agent in Paseo itself, with every tool call and its output. This pane
+ * is for the conversation with the user, so it keeps the words and folds
  * the machinery: a tool call is one line, reasoning is left out, and the
- * notes Paseo and the board inject into the first mate's inbox are shown as
+ * notes Paseo and the board inject into the agent's inbox are shown as
  * the one line that says what happened rather than as the raw envelope.
  */
 import type { usePaseo } from "@getpaseo/plugin/client";
@@ -21,22 +21,22 @@ type TimelineItem = TimelineEntry["item"];
 type ToolCallItem = Extract<TimelineItem, { type: "tool_call" }>;
 
 export type TranscriptRow =
-  | { key: string; kind: "captain"; text: string }
-  | { key: string; kind: "mate"; text: string }
+  | { key: string; kind: "user"; text: string }
+  | { key: string; kind: "agent"; text: string }
   | { key: string; kind: "event"; text: string }
   | { key: string; kind: "tool"; text: string; status: ToolCallItem["status"] }
   | { key: string; kind: "error"; text: string };
 
-/** A captain row's text when the message had attachments and no words. */
+/** A user row's text when the message had attachments and no words. */
 export const ATTACHMENTS_ONLY = "(attachments)";
 
-/** Envelopes a message is wrapped in when it did not come from the captain. */
+/** Envelopes a message is wrapped in when it did not come from the user. */
 const ENVELOPES = ["paseo-system", "taro"] as const;
 
 /**
- * The first line inside an injected note — "Agent 3f2a… (Fix login) finished." — or null for the captain's
+ * The first line inside an injected note — "Agent 3f2a… (Fix login) finished." — or null for the user's
  * own words. `clientMessageId` is the timeline item's: only a message the plugin sent as a watch message
- * is folded as one, so the captain's words stay visible even when they look like a watch note.
+ * is folded as one, so the user's words stay visible even when they look like a watch note.
  */
 export function injectedSummary(text: string, clientMessageId?: string): string | null {
   const trimmed = text.trim();
@@ -143,15 +143,15 @@ export function transcriptRows(entries: readonly TimelineEntry[]): TranscriptRow
     switch (item.type) {
       case "user_message": {
         const summary = injectedSummary(item.text, item.clientMessageId);
-        // A message of attachments alone has no words; the row still says the captain sent something.
+        // A message of attachments alone has no words; the row still says the user sent something.
         const text = item.text.trim() === "" ? ATTACHMENTS_ONLY : item.text;
-        rows.push(summary === null ? { key, kind: "captain", text } : { key, kind: "event", text: summary });
+        rows.push(summary === null ? { key, kind: "user", text } : { key, kind: "event", text: summary });
         break;
       }
       case "assistant_message": {
         const last = rows[rows.length - 1];
-        if (last !== undefined && last.kind === "mate") last.text = appendAssistantText(last.text, item.text);
-        else rows.push({ key, kind: "mate", text: appendAssistantText("", item.text) });
+        if (last !== undefined && last.kind === "agent") last.text = appendAssistantText(last.text, item.text);
+        else rows.push({ key, kind: "agent", text: appendAssistantText("", item.text) });
         break;
       }
       case "tool_call":
@@ -170,5 +170,5 @@ export function transcriptRows(entries: readonly TimelineEntry[]): TranscriptRow
         break;
     }
   });
-  return rows.filter((row) => row.kind !== "mate" || row.text.trim() !== "");
+  return rows.filter((row) => row.kind !== "agent" || row.text.trim() !== "");
 }

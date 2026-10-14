@@ -115,9 +115,9 @@ export function AgentChat({
   // The newest entry's position, not the count: the timeline is a tail and stops growing in length.
   const sentImages = useSentImages(agent.id, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0);
   const rowImages = useMemo(() => matchSentImages(rows, sentImages), [rows, sentImages]);
-  const mateRows = useMemo(() => rows.filter((row) => row.kind === "mate"), [rows]);
-  const places = useMemo(() => (asks === undefined || asks.decisions.length === 0 ? null : placeDecisions(mateRows, asks.decisions)), [mateRows, asks?.decisions]);
-  const deliveryKey = useMemo(() => (delivery === undefined ? null : deliveryRowKey(mateRows)), [mateRows, delivery === undefined]);
+  const agentRows = useMemo(() => rows.filter((row) => row.kind === "agent"), [rows]);
+  const places = useMemo(() => (asks === undefined || asks.decisions.length === 0 ? null : placeDecisions(agentRows, asks.decisions)), [agentRows, asks?.decisions]);
+  const deliveryKey = useMemo(() => (delivery === undefined ? null : deliveryRowKey(agentRows)), [agentRows, delivery === undefined]);
   /** The acceptance card's place in the layouts, beside the decisions' keys. */
   const deliveryTarget = `delivery:${agent.id}`;
   /** What is brought into view and jumped to: the first open question, else the acceptance card. */
@@ -468,7 +468,7 @@ export function AgentChat({
     }
     const row = group.row;
     switch (row.kind) {
-      case "captain": {
+      case "user": {
         const images = rowImages.get(row.key);
         return (
           <View key={row.key} style={styles.user}>
@@ -492,7 +492,7 @@ export function AgentChat({
           </View>
         );
       }
-      case "mate": {
+      case "agent": {
         const asked = places?.byRow.get(row.key) ?? [];
         const presented = delivery !== undefined && row.key === deliveryKey;
         const targets = [...asked.map((decision) => decision.key), ...(presented ? [deliveryTarget] : [])];
@@ -658,7 +658,7 @@ export function AgentChat({
   );
 }
 
-/** The images the captain sent this agent, re-read whenever the conversation grows. */
+/** The images the user sent this agent, re-read whenever the conversation grows. */
 function useSentImages(agentId: string, newestEntry: number) {
   const list = useRpc(listSentImages);
   const query = useQuery({

@@ -10,10 +10,10 @@ function tool(key: string, text: string, status: ToolRow["status"] = "completed"
 describe("groupRows", () => {
   it("joins consecutive tool rows into one run and keeps other rows apart", () => {
     const rows: TranscriptRow[] = [
-      { key: "1", kind: "captain", text: "hi" },
+      { key: "1", kind: "user", text: "hi" },
       tool("2", "Read a.ts"),
       tool("3", "$ npm test"),
-      { key: "4", kind: "mate", text: "done" },
+      { key: "4", kind: "agent", text: "done" },
       tool("5", "Edit b.ts"),
     ];
     const groups = groupRows(rows);

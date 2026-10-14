@@ -1,5 +1,5 @@
 /**
- * The block half of `./markdown`: a first mate's reply as headings, lists,
+ * The block half of `./markdown`: an agent's reply as headings, lists,
  * code, quotes, rules, tables, images and paragraphs. Pure, so `./file-links` walks
  * exactly the text the renderer draws inline — never a fenced code block.
  */

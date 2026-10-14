@@ -1,5 +1,5 @@
 /**
- * Half-typed messages to the first mate, one per first mate.
+ * Half-typed messages to an agent, one per agent.
  *
  * Module scope is not enough to keep them. The app drops a plugin whenever
  * its host's connection drops — the phone going to the background, the Mac
@@ -23,7 +23,7 @@ export interface DraftStore {
 }
 
 /** A registered symbol, so each evaluation of the bundle names the same slot. */
-const SLOT = Symbol.for("paseo.firstmate.drafts");
+const SLOT = Symbol.for("paseo.taro.drafts");
 
 /** The drafts kept on `root`; every store built on the same root shares them. */
 export function createDraftStore(root: object): DraftStore {

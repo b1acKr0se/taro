@@ -1,11 +1,11 @@
 /**
- * What an agent is waiting on — the first mate in the chat, a crewmate in the
- * Watch view — answered in the panel. The heading names the agent as the user
+ * What an agent is waiting on — the Manager, an owner or a subagent — answered
+ * in its chat. The heading names the agent as the user
  * knows it (`permission-heading.ts`).
  *
- * An agent that asks the captain something — Claude's AskUserQuestion — or
+ * An agent that asks the user something — Claude's AskUserQuestion — or
  * wants a permission is stopped on a pending permission request, and until
- * this existed the panel said only that it was waiting, so the captain had to
+ * this existed the panel said only that it was waiting, so the user had to
  * open the agent to see what for. A question is drawn as a form, the way the
  * agent's own tab draws it (`questions.ts` holds the rules, ported from
  * Paseo); anything else — a tool to run, a plan to approve — as a card with

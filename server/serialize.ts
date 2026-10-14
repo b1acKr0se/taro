@@ -1,7 +1,7 @@
 /**
  * Runs read-check-write sequences one at a time per key, so two RPCs landing
  * together cannot both read the same state and then both write over it. It
- * orders this daemon process only — the first mate writing a file itself is
+ * orders this daemon process only — an agent writing a file itself is
  * not in the queue, which is what the editor's version check is for.
  */
 const tails = new Map<string, Promise<unknown>>();

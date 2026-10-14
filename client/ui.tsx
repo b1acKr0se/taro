@@ -1,5 +1,5 @@
 /**
- * The few pieces every FirstMate screen draws with. The host kit has settings
+ * The few pieces every Taro screen draws with. The host kit has settings
  * rows and a modal but no button, so these are built from `Pressable`, with
  * every colour taken from the theme.
  */
@@ -66,7 +66,7 @@ export function IconButton({
         borderColor: tone === "accent" ? colors.accent : colors.border,
         backgroundColor: tone === "accent" ? colors.accent : colors.surface1,
         opacity: faded ? 0.5 : 1,
-        // A long label — a card action the first mate named — wraps inside a narrow card instead of overflowing it.
+        // A long label — a card action the agent named — wraps inside a narrow card instead of overflowing it.
         maxWidth: "100%" as const,
       },
       label: { color, fontSize: BUTTON.fontSize, fontWeight: "500" as const, flexShrink: 1 },

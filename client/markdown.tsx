@@ -3,7 +3,7 @@
  *
  * A client bundle may import only the modules the host provides, so no
  * Markdown library is reachable, and the host has no renderer of its own to
- * lend. This covers what a first mate's reply actually uses — headings,
+ * lend. This covers what an agent's reply actually uses — headings,
  * lists, fenced code, quotes, rules, pipe tables, a line of images (an
  * image the agent read, `./image-view`), and bold, code and links inline,
  * with the home's files it names linked (`./file-links`) — and renders

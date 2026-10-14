@@ -2,7 +2,7 @@
  * A transcript that follows its end while the reader is there, and stays put
  * once they scroll up to read something.
  *
- * Shared by the first mate's chat and the Watch view, which both stream: a
+ * Shared by every agent chat, which streams: a
  * reply growing at the end is followed, and a question or permission request
  * arriving at the end is brought into view whole.
  */
