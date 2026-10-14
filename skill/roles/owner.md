@@ -53,11 +53,13 @@ too, test-daemon and scratch-repository cleanup most of all. Then follow the flo
 6. **Review** (below), then deliver (below).
 
 **Bugs:** reproduce first (end to end; separate trigger from symptom; compare with a path that
-works). The reproduction becomes the regression test and must fail before the fix. When the defect
-shipped with an earlier ticket, append an **ESCAPE** record to that ticket naming the check that
-should have caught it (`reference/tickets.md`), so the review's misses can be counted. Clear cause and
+works). The reproduction becomes the regression test and must fail before the fix. Clear cause and
 one correct fix that changes nothing else → trivial; otherwise low, with a cause / fix /
 alternatives proposal.
+
+**Escapes:** whenever your ticket (of any kind) fixes a defect an earlier ticket shipped, append an
+**ESCAPE** record to that ticket naming the check that should have caught it
+(`reference/tickets.md`), so the review's misses can be counted.
 
 **Investigations** (`investigation` label): no code changes and no PR. Write findings into the
 ticket (what you did, evidence with commands and `file:line`, recommendation), move to Awaiting

@@ -4,7 +4,7 @@ import { evidenceSummary, judgeEvidence, parseEvidence } from "./evidence";
 
 const record = (...lines: string[]) => ["EXECUTION 2026-10-13T10:00Z — owner o", "", "EVIDENCE 2026-10-13T11:00Z — before FINAL", ...lines].join("\n");
 const change = (files: string[] = []) => ({ investigation: false, existingFiles: new Set(files) });
-const judge = (notes: string | null, options = change()) => judgeEvidence(parseEvidence(notes), options);
+const judge = (notes: string | null, options: Parameters<typeof judgeEvidence>[1] = change()) => judgeEvidence(parseEvidence(notes), options);
 
 describe("parseEvidence and judgeEvidence", () => {
   it("asks for an EVIDENCE record when there are no notes or none of that kind", () => {
