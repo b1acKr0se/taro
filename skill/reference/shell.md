@@ -13,7 +13,9 @@ Write removals so they pass instead:
 
 - **Make scratch space with `mktemp -d`** and print its path. Remove it later by that literal
   absolute path, `rm -rf -- /tmp/x-scratch.Ab12Cd`, or in the same command with the variable quoted
-  and guarded: `S=$(mktemp -d /tmp/x-scratch.XXXXXX); …; rm -rf -- "${S:?}"`.
+  and guarded: `S=$(mktemp -d /tmp/x-scratch.XXXXXX); …; rm -rf -- "${S:?}"`. Let the `mktemp -d`
+  directory be the thing itself (a scratch repository: `R=$(mktemp -d /tmp/notes-app.XXXXXX); git
+  -C "$R" init`), never a folder inside it that you later climb out of with `dirname`.
 - **Remove absolute paths**, never relative paths after a `cd`. Prefer `git -C <path>` and
   absolute paths to `cd`.
 - **Guard any variable you remove under**: `"${NAME:?}/sub"`, never `$NAME/` or `$NAME/*`.

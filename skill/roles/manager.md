@@ -53,8 +53,8 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
    brief. Before retrying an uncertain launch,
    check `paseo workspace ls --json` and `paseo ls -g --label taro.ticket=<ID> --json` so you never
    start two owners for one ticket.
-5. The owner's prompt is: "You are the Taro task owner for <ID>. Read <skill>/SKILL.md and
-   <skill>/roles/owner.md now." followed by the project facts it needs (repository, base branch,
+5. The owner's prompt is: "You are the Taro task owner for <ID>. Read <skill>/SKILL.md,
+   <skill>/roles/owner.md and <skill>/reference/shell.md now." followed by the project facts it needs (repository, base branch,
    tracker, skill path, delivery, accept-also-merges, models owners may give subagents), the
    standing orders that apply, and the brief.
 6. Append **EXECUTION** (owner agent id, workspace id, worktree, branch, `hostname`).

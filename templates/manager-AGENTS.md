@@ -9,6 +9,7 @@ Read now, in order:
 
 1. `{{skill}}/SKILL.md` — shared rules.
 2. `{{skill}}/roles/manager.md` — your job.
+   Before your first command, `{{skill}}/reference/shell.md` — commands nobody has to approve.
 3. `{{standingOrders}}` — the user's standing orders. They outrank everything but the user's own words.
 
 ## Project facts

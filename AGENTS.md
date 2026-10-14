@@ -94,11 +94,15 @@ daemon with its own home and port, unique to your ticket:
   directory. A text field with a phone keyboard open (simulated): `node tools/keyboard.cjs
   <playwright module> http://127.0.0.1:$PORT/ out "<placeholder>" [click text…]` (usage in its header).
 - Onboard a scratch git repository (not this one) with cheap models (Sonnet/Haiku) for end-to-end
-  runs; agents on a throwaway daemon cost real money, so keep runs short.
+  runs; agents on a throwaway daemon cost real money, so keep runs short. Make the repository the
+  `mktemp -d` directory itself and print its path: `R=$(mktemp -d /tmp/notes-app.XXXXXX); git -C
+  "$R" init -q -b main; echo "$R"`.
 - Installing writes `plugins` into that home's `config.json`; keep that key if you rewrite it.
 - Stop your daemon when done: `paseo daemon stop --home $HOME_DIR` (or kill its pid), then check
   `ps -eo pid,ppid,etime,args` for leftovers (its plugin process, a `backlog` or `git` reparented to
-  PID 1), kill them by pid, and delete the home. Orphaned `backlog` processes once held a sixth of
+  PID 1), kill them by pid, and delete the home and the scratch repository by their literal paths:
+  `rm -rf -- /tmp/paseo-TR-012 /tmp/notes-app.Ab12Cd` (`skill/reference/shell.md`; a target worked
+  out by a command, such as `"$(dirname $R)"`, stops you for approval). Orphaned `backlog` processes once held a sixth of
   the host's threads (TR-073).
 - Every command the plugin runs goes through `server/process.ts`: its own process group, killed
   whole on a timeout or the plugin's stop. Never `spawn` elsewhere.

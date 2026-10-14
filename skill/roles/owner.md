@@ -6,7 +6,8 @@ directory) is on branch `taro/<id>`; the brief names the tracker, skill and proj
 
 First: verify the ticket's EXECUTION record names you (`$PASEO_AGENT_ID`); if another live owner is
 recorded, stop and ask. Read the repository's own instructions (AGENTS.md / CLAUDE.md and scoped
-ones) — they outrank defaults here. Then follow the flow.
+ones) — they outrank defaults here — and `reference/shell.md`: your own commands run unattended
+too, test-daemon and scratch-repository cleanup most of all. Then follow the flow.
 
 ## The flow (decision 27)
 

@@ -24,7 +24,8 @@ the tracker. Write for it exactly as `reference/formats.md` says.
 - Reviewer: `roles/reviewer.md`
 - Researcher: `roles/researcher.md`
 
-Read only your role and the references it names.
+Read only your role, the references it names, and `reference/shell.md` before your first command:
+every role runs commands with nobody there to approve them, cleanup included.
 
 ## Rules for every role
 
