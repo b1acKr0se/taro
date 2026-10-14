@@ -4,6 +4,7 @@
  * became of it. Pure, so the in-tab renderer stays a thin view.
  */
 import { decisionMessageSegments, sameQuestion, type OptionImage, type ParsedDecision } from "./reports";
+import type { ParsedPlan } from "./plan";
 import type { StoredDecision } from "./state";
 
 export type DecisionBlockView =
@@ -186,4 +187,13 @@ export function askedBy(decision: Pick<StoredDecision, "project" | "ticket" | "a
   const project = title.startsWith(`${decision.project} ·`) ? "" : `${decision.project} · `;
   if (decision.ticket === null || title.startsWith(decision.ticket)) return `${project}${title}`;
   return `${project}${decision.ticket} · ${title}`;
+}
+
+/**
+ * Whether the ticket panel leaves a decision's own card out (TR-061): a scope approval on the
+ * panel's ticket, with a plan that parses and something for Approve to send, is answered from the
+ * row at the end of the Ticket view's Plan, so a card above it would be a second place to answer.
+ */
+export function answeredInPlan(decision: Pick<StoredDecision, "id" | "ticket" | "options" | "recommended">, ticket: string | null, plan: ParsedPlan | null): boolean {
+  return ticket !== null && decision.ticket === ticket && decision.id === SCOPE_APPROVAL && plan !== null && planCardOptions(decision) !== null;
 }

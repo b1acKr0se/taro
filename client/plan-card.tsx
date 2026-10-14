@@ -30,6 +30,8 @@ import { useActions } from "./use-actions";
 /** Below this width the box's labels sit above their text instead of in a column beside it. */
 const STACK_BELOW_WIDTH = 460;
 const LABEL_COLUMN = 84;
+/** On the board the card stays short (a 240 px column): Goal, each choice and Size clamp to these lines, and View plan has the rest. */
+const BRIEF_LINES = { goal: 3, choice: 2, size: 1 } as const;
 /** The narrowest a button of the action row gets before the row wraps; in a narrow row (a board column) without icons. */
 const BUTTON_MIN_WIDTH = 120;
 const NARROW_BUTTON_MIN_WIDTH = 80;
@@ -61,6 +63,7 @@ export function PlanDecision({
   compact,
   head = null,
   onOpenHead = null,
+  brief = false,
   answeredFrom = "screen",
   onAnswered,
   children,
@@ -68,6 +71,8 @@ export function PlanDecision({
   decision: StoredDecision;
   theme: PluginTheme;
   compact: boolean;
+  /** The board's card: Goal, choices and Size clamped, each choice without its why. */
+  brief?: boolean;
   /** The line above the question: who asked, or the ticket on the board. */
   head?: string | null;
   /** Opens what the head names (the ticket, on the board); the head is plain text without it. */
@@ -80,7 +85,7 @@ export function PlanDecision({
   const eligible = decision.id === SCOPE_APPROVAL && decision.ticket !== null && options !== null;
   const plan = useTicketPlan(decision.project, decision.ticket, eligible);
   if (!eligible || options === null || plan === null) return <>{children}</>;
-  return <PlanCard decision={decision} plan={plan} options={options} theme={theme} compact={compact} head={head} onOpenHead={onOpenHead} answeredFrom={answeredFrom} onAnswered={onAnswered} />;
+  return <PlanCard decision={decision} plan={plan} options={options} theme={theme} compact={compact} head={head} onOpenHead={onOpenHead} brief={brief} answeredFrom={answeredFrom} onAnswered={onAnswered} />;
 }
 
 function PlanCard({
@@ -91,6 +96,7 @@ function PlanCard({
   compact,
   head,
   onOpenHead,
+  brief,
   answeredFrom,
   onAnswered,
 }: {
@@ -101,6 +107,7 @@ function PlanCard({
   compact: boolean;
   head: string | null;
   onOpenHead: (() => void) | null;
+  brief: boolean;
   answeredFrom: "screen" | "tab";
   onAnswered: () => void;
 }) {
@@ -146,7 +153,7 @@ function PlanCard({
         {decision.blocking ? <Text style={styles.waiting}>WAITING FOR YOU</Text> : null}
         <Text style={styles.question}>{decision.question}</Text>
       </View>
-      {unfolded ? <PlanBody plan={plan} theme={theme} /> : <PlanSummary plan={plan} theme={theme} compact={compact} />}
+      {unfolded ? <PlanBody plan={plan} theme={theme} /> : <PlanSummary plan={plan} theme={theme} compact={compact} brief={brief} />}
       <PlanActions
         decision={decision}
         options={options}
@@ -160,7 +167,7 @@ function PlanCard({
 }
 
 /** Goal, the choices and Size as labelled rows in a tinted box; labels above their text where the box is narrow. */
-function PlanSummary({ plan, theme, compact }: { plan: ParsedPlan; theme: PluginTheme; compact: boolean }) {
+function PlanSummary({ plan, theme, compact, brief }: { plan: ParsedPlan; theme: PluginTheme; compact: boolean; brief: boolean }) {
   const [width, setWidth] = useState<number | null>(null);
   const stacked = width === null ? compact : width < STACK_BELOW_WIDTH;
   const openLink = useOpenLink();
@@ -196,7 +203,7 @@ function PlanSummary({ plan, theme, compact }: { plan: ParsedPlan; theme: Plugin
   rows.push({
     label: "GOAL",
     content: (
-      <Text style={styles.goal}>
+      <Text style={styles.goal} numberOfLines={brief ? BRIEF_LINES.goal : undefined}>
         <MarkdownInline text={plan.goal} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
       </Text>
     ),
@@ -209,9 +216,9 @@ function PlanSummary({ plan, theme, compact }: { plan: ParsedPlan; theme: Plugin
           {shownChoices.map((choice, index) => (
             <View key={`${index}:${choice.choice}`} style={styles.bullet}>
               <Text style={styles.marker}>•</Text>
-              <Text style={[styles.text, styles.bulletText]}>
+              <Text style={[styles.text, styles.bulletText]} numberOfLines={brief ? BRIEF_LINES.choice : undefined}>
                 <MarkdownInline text={choice.choice} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
-                {choice.why === "" ? null : (
+                {brief || choice.why === "" ? null : (
                   <Text style={styles.muted}>
                     {" — "}
                     <MarkdownInline text={choice.why} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
@@ -229,7 +236,7 @@ function PlanSummary({ plan, theme, compact }: { plan: ParsedPlan; theme: Plugin
     rows.push({
       label: "SIZE",
       content: (
-        <Text style={[styles.text, styles.muted]}>
+        <Text style={[styles.text, styles.muted]} numberOfLines={brief ? BRIEF_LINES.size : undefined}>
           <MarkdownInline text={plan.size} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
         </Text>
       ),

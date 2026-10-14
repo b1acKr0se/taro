@@ -98,7 +98,7 @@ export class Actions {
     const typed = text.trim();
     const prompt = option?.prompt.trim() ?? "";
     const lead = prompt.replace(/\u2026$/, "").trim();
-    // Typed text goes with a chosen option (a "Change…" option asks for it): the prompt, then the text.
+    // Typed text goes with a chosen option (an option whose prompt ends with "…" asks for it): the prompt, then the text.
     // Text that already starts with the prompt (the card prefills it; older cards send the prompt alone) is not repeated.
     const words = option === null ? typed : typed === "" ? prompt : typed.startsWith(lead) ? typed : `${lead}: ${typed}`;
     if (words === "") throw new Error("Type an answer or press an option.");

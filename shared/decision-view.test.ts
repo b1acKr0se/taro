@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ANSWER_PLACEHOLDER,
+  answeredInPlan,
   CHANGE_PLACEHOLDER,
   READ_ONLY_NOTES,
   answerPlaceholder,
@@ -17,6 +18,7 @@ import {
   untrackedDecision,
   type DecisionLookup,
 } from "./decision-view";
+import { parsePlan } from "./plan";
 import { decisionMessageSegments, parseDecisionBody, type ParsedDecision } from "./reports";
 import type { StoredDecision } from "./state";
 
@@ -310,5 +312,28 @@ describe("askedBy", () => {
   });
   it("falls back to the role without a title", () => {
     expect(askedBy(base)).toBe("notes · manager");
+  });
+});
+
+describe("answeredInPlan", () => {
+  const option = (label: string) => ({ label, prompt: label, consequence: "", images: [] });
+  const approval = { id: "scope-approval", ticket: "NA-001", options: [option("Approve"), option("Split into children")], recommended: "Approve" };
+  const plan = parsePlan("## Goal\nShip it.\n## Size\nLow");
+
+  it("leaves out a scope approval on the panel's ticket whose plan parses", () => {
+    expect(answeredInPlan(approval, "NA-001", plan)).toBe(true);
+  });
+
+  it("keeps the card while the plan loads or when it does not parse", () => {
+    expect(answeredInPlan(approval, "NA-001", null)).toBe(false);
+    expect(answeredInPlan(approval, "NA-001", parsePlan("1. Do it\n2. Test it"))).toBe(false);
+  });
+
+  it("keeps other decisions, another ticket's approval, and one with nothing for Approve to send", () => {
+    expect(answeredInPlan({ ...approval, id: "zip-name" }, "NA-001", plan)).toBe(false);
+    expect(answeredInPlan(approval, "NA-002", plan)).toBe(false);
+    expect(answeredInPlan(approval, null, plan)).toBe(false);
+    expect(answeredInPlan({ ...approval, ticket: null }, "NA-001", plan)).toBe(false);
+    expect(answeredInPlan({ ...approval, options: [option("Go"), option("Wait")], recommended: "" }, "NA-001", plan)).toBe(false);
   });
 });
