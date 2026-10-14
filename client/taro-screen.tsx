@@ -34,7 +34,7 @@ import { ProjectSetup } from "./project-setup";
 import { useProjects, useRefreshProjects } from "./queries";
 import { paneGutter, SPACE } from "./spacing";
 import { StatsView } from "./stats-view";
-import { SuggestionRow } from "./suggestion-row";
+import { SuggestionPills } from "./suggestion-pills";
 import { TicketView } from "./ticket-view";
 import { FONT_SIZE } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
@@ -506,7 +506,7 @@ function ManagerPane({
         placeholder="Tell the Manager what you need…"
         transformText={withoutDecisionBlocks}
         asks={{ decisions, onAnswered: onChanged }}
-        suggestions={<SuggestionRow project={project} suggestions={suggestions} theme={theme} compact={compact} onChanged={onChanged} />}
+        suggestions={<SuggestionPills project={project} suggestions={suggestions} theme={theme} onChanged={onChanged} />}
         onSend={async (text, attachments) => {
           await tell({ project, text, ...attachments });
         }}

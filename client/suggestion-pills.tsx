@@ -1,18 +1,17 @@
 /**
- * The Manager's suggestions, above its composer where the user talks to it (TR-045): the rest of the
- * line after the Catch up and Compact buttons (TR-047), scrolling sideways and never wrapping, fading
- * at the edge while more lie past it (TR-032).
+ * The Manager's suggestions, above its composer where the user talks to it (TR-045): pills after the
+ * Catch up and Compact buttons, scrolling sideways with them in one row (`ActionRow`, TR-057).
  * Each pill sends itself to the Manager when tapped and shows sending, sent or not sent inside it;
  * its × dismisses it.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
-import { useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { useMemo, useState } from "react";
+import { Pressable, Text, View } from "react-native";
 
 import { dismissSuggestion, tellManager } from "../shared/contracts";
-import { moreToTheRight, suggestionKey, suggestionPills, type SendState, type Suggestion, type SuggestionPill, type SuggestionSend } from "../shared/suggestions";
+import { suggestionKey, suggestionPills, type SendState, type Suggestion, type SuggestionPill, type SuggestionSend } from "../shared/suggestions";
 import { errorText } from "./format";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
@@ -21,21 +20,16 @@ import { Spinner } from "./ui";
 
 /** How long a sent suggestion shows "Sent to the Manager" before it leaves the row. */
 const SENT_VISIBLE_MS = 2500;
-/** The fade at the row's right edge while more pills lie past it: strips growing opaque towards a chevron. */
-const FADE_STRIPS = [0.15, 0.3, 0.45, 0.6, 0.75, 0.9];
-const FADE_STRIP_WIDTH = 5;
 
-export function SuggestionRow({
+export function SuggestionPills({
   project,
   suggestions: current,
   theme,
-  compact,
   onChanged,
 }: {
   project: string;
   suggestions: readonly Suggestion[];
   theme: PluginTheme;
-  compact: boolean;
   /** Reloads the board, which carries the suggestions. */
   onChanged: () => void;
 }) {
@@ -43,18 +37,9 @@ export function SuggestionRow({
   const tell = useRpc(tellManager);
   const dismiss = useRpc(dismissSuggestion);
   const [sends, setSends] = useState<SuggestionSend[]>([]);
-  /** The row's scroll offset and sizes; only whether more lies past its edge is state, so scrolling re-renders nothing. */
-  const row = useRef({ offset: 0, viewport: 0, content: 0 });
-  const [more, setMore] = useState(false);
   const { colors } = theme;
   const styles = useMemo(
     () => ({
-      frame: { flex: 1, minWidth: 0, flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.xs },
-      bulb: { paddingRight: SPACE.xxs },
-      fade: { position: "absolute" as const, top: 0, bottom: 0, right: 0, flexDirection: "row" as const },
-      // The composer's own background, so the pills fade into it.
-      fadeEnd: { justifyContent: "center" as const, paddingRight: SPACE.xxs, backgroundColor: withAlpha(colors.surface0, 0.95) },
-      suggestions: { flexDirection: "row" as const, gap: SPACE.xs + 2, paddingVertical: SPACE.xxs },
       suggestion: {
         flexDirection: "row" as const,
         alignItems: "center" as const,
@@ -72,11 +57,6 @@ export function SuggestionRow({
   );
   const suggestions = suggestionPills(current, sends);
   if (suggestions.length === 0) return null;
-
-  function measureRow(change: Partial<{ offset: number; viewport: number; content: number }>): void {
-    row.current = { ...row.current, ...change };
-    setMore(moreToTheRight(row.current.offset, row.current.viewport, row.current.content));
-  }
 
   /** Records one suggestion's send state; `null` forgets it. */
   function setSend(suggestion: Suggestion, index: number, state: SendState | null, reason?: string): void {
@@ -161,34 +141,5 @@ export function SuggestionRow({
     );
   }
 
-  return (
-    <View style={styles.frame}>
-      <View style={styles.bulb} accessibilityLabel="Suggested next">
-        <Icon name="Lightbulb" size={13} color={colors.foregroundMuted} />
-      </View>
-      {/* Measured by plain layouts: the web's ScrollView does not report its sizes. */}
-      <View style={{ flex: 1, minWidth: 0 }} onLayout={(event) => measureRow({ viewport: event.nativeEvent.layout.width })}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={!compact}
-          scrollEventThrottle={32}
-          onScroll={(event) => measureRow({ offset: event.nativeEvent.contentOffset.x })}
-        >
-          <View style={styles.suggestions} onLayout={(event) => measureRow({ content: event.nativeEvent.layout.width })}>
-            {suggestions.map(suggestionPill)}
-          </View>
-        </ScrollView>
-        {more ? (
-          <View pointerEvents="none" style={styles.fade}>
-            {FADE_STRIPS.map((alpha) => (
-              <View key={alpha} style={{ width: FADE_STRIP_WIDTH, backgroundColor: withAlpha(colors.surface0, alpha) }} />
-            ))}
-            <View style={styles.fadeEnd}>
-              <Icon name="ChevronRight" size={14} color={colors.foregroundMuted} />
-            </View>
-          </View>
-        ) : null}
-      </View>
-    </View>
-  );
+  return <>{suggestions.map(suggestionPill)}</>;
 }

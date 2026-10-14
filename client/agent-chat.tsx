@@ -12,6 +12,7 @@ import { Keyboard, Platform, Pressable, SafeAreaView, ScrollView, Text, useWindo
 
 import { attachmentProblem, outgoingAttachments, refuseOversizedImages, type DraftAttachment, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
 import { listSentImages, type SentImagesMessage } from "../shared/contracts";
+import { ActionRow } from "./action-row";
 import { imagesFromPaste, pickAttachments } from "./attachment-pickers";
 import { availableSources, type AttachmentSource } from "./attachment-sources";
 import { AttachButton, AttachmentPreviews } from "./composer-attachments";
@@ -50,7 +51,7 @@ type ChatComposer =
       placeholder: string;
       /** Sends the user's words and attachments (the words may be empty when there are some); rejects with a sentence on failure. */
       onSend: (text: string, attachments: { images: OutgoingImage[]; files: OutgoingFile[] }) => Promise<void>;
-      /** Buttons above the composer (Catch up, Compact, …), at the left of one line with the suggestions. */
+      /** Buttons above the composer (Catch up, Compact, …), first in one sideways-scrolling line with the suggestions. */
       actions?: ReactNode;
       /** The agent's context window, drawn as a ring inside the composer beside the send button. */
       context?: { used: number | null | undefined; max: number | null | undefined };
@@ -99,7 +100,7 @@ export function AgentChat({
    * as a jump link at the composer while it is off screen. `ready`: Accept is offered.
    */
   delivery?: { card: ReactNode; label: string; ready: boolean } | undefined;
-  /** Things to send (the Manager's suggestions, TR-045), in the buttons' line after them; it fills the rest of the line. */
+  /** Things to send (the Manager's suggestions, TR-045), after the buttons in their sideways-scrolling line. */
   suggestions?: ReactNode;
 } & ChatComposer) {
   const toast = useToast();
@@ -338,9 +339,6 @@ export function AgentChat({
         gap: SPACE.sm,
       },
       quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
-      // The buttons stay whole at the left; the suggestions take the rest of the one line and scroll (TR-047).
-      actionRow: { flexDirection: "row" as const, gap: SPACE.sm, alignItems: "center" as const },
-      fixedActions: { flexDirection: "row" as const, gap: SPACE.sm, alignItems: "center" as const, flexShrink: 0 },
       // Paseo's composer box (TR-039): attachments, then the text across the full width, then a row
       // of controls: the + at the left, the context ring and the send button at the right. Its border
       // stays plain while typing, as Paseo's does.
@@ -600,10 +598,10 @@ export function AgentChat({
               // An owner's chat: its one action is a full-width link.
               actions === undefined ? null : <View style={styles.quick}>{actions}</View>
             ) : (
-              <View style={styles.actionRow}>
-                {actions === undefined ? null : <View style={styles.fixedActions}>{actions}</View>}
+              <ActionRow theme={theme}>
+                {actions}
                 {suggestions}
-              </View>
+              </ActionRow>
             )}
             <View style={styles.inputBox}>
               <AttachmentPreviews theme={theme} attachments={attachments} onRemove={(id) => setAttachments(attachments.filter((attachment) => attachment.id !== id))} />
