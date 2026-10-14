@@ -38,7 +38,7 @@ import { paneGutter, SPACE } from "./spacing";
 import { StatsView } from "./stats-view";
 import { SuggestionPills } from "./suggestion-pills";
 import { TicketView } from "./ticket-view";
-import { FONT_SIZE } from "./type-scale";
+import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
 import { useActions } from "./use-actions";
 import { useBackStep, useScreenBack } from "./use-back";
@@ -576,8 +576,20 @@ function ManagerPane({
     <View style={{ flex: 1 }}>
       {header}
       {notice === null ? null : (
-        <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: SPACE.sm, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm }}>
-          <Text style={{ color: theme.colors.statusWarning, flexGrow: 1, flexBasis: 200 }}>{notice}</Text>
+        <View
+          style={{
+            flexShrink: 0,
+            flexDirection: "row",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: SPACE.sm,
+            paddingHorizontal: SPACE.md,
+            paddingVertical: SPACE.sm,
+            borderBottomWidth: 1,
+            borderBottomColor: theme.colors.border,
+          }}
+        >
+          <Text style={{ color: theme.colors.statusWarning, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small), flexGrow: 1, flexBasis: 200 }}>{notice}</Text>
           <IconButton
             icon="RotateCcw"
             label={MANAGER_ACTION_LABELS.resume}

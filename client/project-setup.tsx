@@ -437,6 +437,8 @@ export function ProjectSetup({
                 icon={MANAGER_ICONS[kind]}
                 label={MANAGER_ACTION_LABELS[kind]}
                 showLabel
+                // On a narrow page the pair wraps into equal full-width rows.
+                grow={!wide}
                 disabled={busy}
                 state={presses.stateOf(kind)}
                 onPress={() => managerAction(kind)}
