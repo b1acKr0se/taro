@@ -358,3 +358,28 @@ describe("a change made while the plugin was down or stopping still wakes the ma
     expect(stored.get("demo")?.get("DM-1")).toBe("Done");
   });
 });
+
+// TR-050: TR-043's run 2 created a ticket, started it and set it Awaiting acceptance 5 s apart; the
+// commit debounce is 5 s, so the pass after the In Progress commit already read Awaiting acceptance
+// and took the ticket for a new one.
+describe("a ticket first seen past its owner", () => {
+  it("wakes the manager for one first seen in Awaiting acceptance after an onboarded empty tracker", async () => {
+    dependencies = { "DM-2": ["DM-1"] };
+    await move([], [ticket("DM-1", "Awaiting acceptance"), ticket("DM-2", "Backlog")]);
+    expect(told.map((entry) => [entry.ticket, entry.status, entry.dependents, entry.queued])).toEqual([["DM-1", "Awaiting acceptance", "DM-2", "DM-2"]]);
+  });
+
+  it("wakes it for one created and delivered while the plugin was down, compared with the stored statuses", async () => {
+    await move([ticket("DM-1", "In Progress")], [ticket("DM-1", "In Progress")]);
+    actions = start();
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "In Progress"), ticket("DM-2", "Awaiting acceptance"), ticket("DM-3", "Backlog")]);
+    await actions.catchUpAfterStart(paseo);
+    expect(told.map((entry) => [entry.ticket, entry.status, entry.queued])).toEqual([["DM-2", "Awaiting acceptance", "DM-3"]]);
+  });
+
+  it("does not wake it on the first pass over an adopted tracker, with nothing stored and no priming yet", async () => {
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Awaiting acceptance"), ticket("DM-2", "Backlog")]);
+    await actions.onTrackerChanged(paseo, "demo");
+    expect(told).toEqual([]);
+  });
+});

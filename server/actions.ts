@@ -242,7 +242,9 @@ export class Actions {
     const paths = await projectPaths(project);
     const tickets = await listTickets(paths.tracker);
     // A pass may come before the start's priming: the stored statuses are what it compares with then.
-    const previous = this.lastStatuses.get(project) ?? (await this.state.ticketStatuses(project).catch(() => null)) ?? new Map<string, string>();
+    // Neither (the first pass over an adopted tracker): no last look, so unknown tickets free nothing.
+    const lastLook = this.lastStatuses.get(project) ?? (await this.state.ticketStatuses(project).catch(() => null));
+    const previous = lastLook ?? new Map<string, string>();
     const current = new Map(tickets.map((ticket) => [ticket.id, ticket.status]));
     this.lastStatuses.set(project, current);
     const at = new Date().toISOString();
@@ -257,7 +259,7 @@ export class Actions {
     await this.releaseDoneTickets(paseo, project, done.map((ticket) => ticket.id)).catch((error: unknown) => {
       failure = error;
     });
-    for (const change of statusChanges(previous, tickets)) {
+    for (const change of statusChanges(lastLook, tickets)) {
       const before = previous.get(change.ticket);
       try {
         await this.wakeManager(paseo, project, change, tickets, () => this.markUndelivered(project, change.ticket, before));

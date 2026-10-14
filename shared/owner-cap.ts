@@ -52,14 +52,18 @@ export interface StatusChange {
 
 /**
  * The changes since the last look that may concern the manager: every ticket newly Done (its
- * dependents may be clear) and every top-level ticket that stopped holding a slot. A ticket the
- * last look did not know (just created) frees nothing.
+ * dependents may be clear) and every top-level ticket that stopped holding a slot. A ticket the last
+ * look did not know but already in a slot-free status went through its owner between two looks
+ * (TR-050: created and delivered within one commit debounce, or while the plugin was not watching),
+ * so it freed a slot. With no last look at all (`null`, the first pass over an adopted tracker), an
+ * unknown ticket frees nothing.
  */
-export function statusChanges(previous: ReadonlyMap<string, string>, tickets: readonly CapTicket[]): StatusChange[] {
+export function statusChanges(previous: ReadonlyMap<string, string> | null, tickets: readonly CapTicket[]): StatusChange[] {
   return tickets.flatMap((ticket) => {
-    const before = previous.get(ticket.id);
+    const before = previous?.get(ticket.id);
     if (before === ticket.status) return [];
-    const freesSlot = ticket.parentTaskId === null && before !== undefined && holdsSlot(before) && !holdsSlot(ticket.status);
+    const freed = before === undefined ? previous !== null && SLOT_FREE_STATUSES.has(ticket.status) : holdsSlot(before) && !holdsSlot(ticket.status);
+    const freesSlot = ticket.parentTaskId === null && freed;
     return freesSlot || ticket.status === "Done" ? [{ ticket: ticket.id, status: ticket.status, freesSlot }] : [];
   });
 }

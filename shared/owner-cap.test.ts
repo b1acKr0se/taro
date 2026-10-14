@@ -97,8 +97,28 @@ describe("statusChanges", () => {
     expect(statusChanges(previous, [ticket("DM-5", "In Progress"), ticket("DM-1", "Blocked"), ticket("DM-6", "In Progress")])).toEqual([]);
   });
 
-  it("frees nothing for a ticket the last look did not know, but reports it Done", () => {
-    expect(statusChanges(previous, [ticket("DM-8", "Awaiting acceptance"), ticket("DM-9", "Done")])).toEqual([{ ticket: "DM-9", status: "Done", freesSlot: false }]);
+  it("frees a slot for a ticket the last look did not know that is already past its owner (TR-050)", () => {
+    // Created, started and delivered between two looks: the commit debounce, or the plugin not watching.
+    expect(statusChanges(previous, [ticket("DM-8", "Awaiting acceptance"), ticket("DM-9", "Done"), ticket("DM-10", "Cancelled")])).toEqual([
+      { ticket: "DM-8", status: "Awaiting acceptance", freesSlot: true },
+      { ticket: "DM-9", status: "Done", freesSlot: true },
+      { ticket: "DM-10", status: "Cancelled", freesSlot: true },
+    ]);
+  });
+
+  it("frees nothing for an unknown ticket that is new, working, or a child", () => {
+    expect(statusChanges(previous, [ticket("DM-11", "Backlog"), ticket("DM-12", "In Progress"), ticket("DM-13.1", "Awaiting acceptance", "DM-13")])).toEqual([]);
+    expect(statusChanges(previous, [ticket("DM-13.2", "Done", "DM-13")])).toEqual([{ ticket: "DM-13.2", status: "Done", freesSlot: false }]);
+  });
+
+  it("knows a last look with no tickets in it, as after onboarding an empty tracker", () => {
+    expect(statusChanges(new Map(), [ticket("DM-1", "Awaiting acceptance")])).toEqual([{ ticket: "DM-1", status: "Awaiting acceptance", freesSlot: true }]);
+  });
+
+  it("frees nothing for unknown tickets when there was no last look, but reports Done", () => {
+    expect(statusChanges(null, [ticket("DM-8", "Awaiting acceptance"), ticket("DM-9", "Done"), ticket("DM-10", "Cancelled")])).toEqual([
+      { ticket: "DM-9", status: "Done", freesSlot: false },
+    ]);
   });
 });
 
