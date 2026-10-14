@@ -43,10 +43,14 @@ export function revealOffset(field: Span, visible: Span, offset: number, margin 
   return Math.max(0, Math.round(offset + shift));
 }
 
-/** Whether a field lies in a scroll area at all: a page can hold several, and only the field's own scrolls. */
+/**
+ * Whether a field lies in a scroll area: across, it sits within the area's
+ * width (a page can hold side-by-side areas); down, anywhere, since focus can
+ * land on a field scrolled out of sight. An area with no height (a hidden tab)
+ * holds nothing.
+ */
 export function holds(area: Span & { left: number; right: number }, field: Span & { left: number; right: number }): boolean {
   if (area.bottom <= area.top) return false;
   const middleX = (field.left + field.right) / 2;
-  const middleY = (field.top + field.bottom) / 2;
-  return middleX >= area.left && middleX <= area.right && middleY >= area.top && middleY <= area.bottom;
+  return middleX >= area.left && middleX <= area.right;
 }

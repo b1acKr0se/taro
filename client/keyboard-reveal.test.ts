@@ -85,9 +85,12 @@ describe("holds", () => {
     expect(holds(box, { left: 20, right: 380, top: 600, bottom: 640 })).toBe(true);
   });
 
-  it("leaves a field elsewhere on the page to its own area", () => {
-    // The composer under the transcript, and a field in a side pane.
-    expect(holds(box, { left: 20, right: 380, top: 820, bottom: 860 })).toBe(false);
+  it("claims a field scrolled out of sight above or below", () => {
+    expect(holds(box, { left: 20, right: 380, top: 1800, bottom: 1840 })).toBe(true);
+    expect(holds(box, { left: 20, right: 380, top: -400, bottom: -360 })).toBe(true);
+  });
+
+  it("leaves a field in a side-by-side area to that area", () => {
     expect(holds(box, { left: 420, right: 800, top: 300, bottom: 340 })).toBe(false);
   });
 
