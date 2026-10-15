@@ -371,6 +371,7 @@ export const StatsSummarySchema = z.object({
   turns: z.number(),
   agents: z.number(),
   costUsd: z.number().nullable(),
+  agentsWithoutCost: z.number(),
   nudges: z.number(),
   decisions: z.number(),
   recoveries: z.number(),

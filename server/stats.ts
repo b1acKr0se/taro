@@ -1,22 +1,53 @@
 /** Stats on disk (`state/stats.json`), written as tickets move and agents work. */
 import { z } from "zod";
 
-import { parentOf, ProjectStatsSchema, TicketStatsSchema, type ProjectStats, type TicketStats } from "../shared/stats";
+import { parentOf, ProjectStatsSchema, TicketStatsSchema, type AgentStats, type ProjectStats, type TicketStats } from "../shared/stats";
 import { isMidTurn } from "./agents";
 import { statePath } from "./data-dir";
-import { readJsonIfPresent, writeJsonAtomically } from "./files";
+import { readJsonIfPresent, readTextIfPresent, writeJsonAtomically, writeTextIfMissing } from "./files";
 import { serialized } from "./serialize";
 
+/** The one-time fill of costs recorded before every turn end recorded one (TR-097): when, and how many. */
+const CostBackfillSchema = z.object({ at: z.string(), filled: z.number().int(), missing: z.number().int() });
+export type CostBackfill = z.infer<typeof CostBackfillSchema>;
+
 // Turn starts are kept on disk so a turn that spans a plugin reload or daemon restart keeps its duration.
+// `costBackfill` is null until the backfill has run once; files without it load as not yet backfilled.
 const StatsFileSchema = z.object({
   tickets: z.record(z.string(), TicketStatsSchema).default({}),
   projects: z.record(z.string(), ProjectStatsSchema).default({}),
   turnStarts: z.record(z.string(), z.string()).default({}),
+  costBackfill: CostBackfillSchema.nullable().default(null),
 });
 type StatsFile = z.infer<typeof StatsFileSchema>;
 
 function keyFor(project: string, ticket: string): string {
   return `${project}:${ticket}`;
+}
+
+/** The ticket and, for a child, its parent: a child's agents count on both. */
+function ticketAndParent(ticket: string): string[] {
+  const parent = parentOf(ticket);
+  return parent === null ? [ticket] : [ticket, parent];
+}
+
+/** An agent's usage as Paseo last reported it; either may be missing (after a daemon restart, both are). */
+export interface AgentUsageReading {
+  costUsd: number | null;
+  contextTokens: number | null;
+}
+
+export function usageReading(usage: { totalCostUsd?: number; contextWindowUsedTokens?: number } | null | undefined): AgentUsageReading {
+  return { costUsd: usage?.totalCostUsd ?? null, contextTokens: usage?.contextWindowUsedTokens ?? null };
+}
+
+/**
+ * Paseo's cost is the agent's running total, so it only grows: the highest reading is kept, and a
+ * missing one (a daemon restart forgets usage) never erases what was recorded.
+ */
+function applyUsage(record: AgentStats, usage: AgentUsageReading): void {
+  if (usage.costUsd !== null) record.costUsd = Math.max(record.costUsd ?? 0, usage.costUsd);
+  if (usage.contextTokens !== null) record.contextTokens = usage.contextTokens;
 }
 
 /**
@@ -37,7 +68,7 @@ export class Stats {
   private async load(): Promise<StatsFile> {
     if (this.file === null) {
       const parsed = StatsFileSchema.safeParse((await readJsonIfPresent(statePath("stats.json")).catch(() => null)) ?? {});
-      this.file = parsed.success ? parsed.data : { tickets: {}, projects: {}, turnStarts: {} };
+      this.file = parsed.success ? parsed.data : { tickets: {}, projects: {}, turnStarts: {}, costBackfill: null };
     }
     return this.file;
   }
@@ -121,31 +152,80 @@ export class Stats {
   }
 
   /**
-   * `activeMs` is what `takeTurnDuration` returned when the turn ended. A child ticket's agents and
-   * turns count toward its parent as well as itself (`projectTotals` relies on it).
+   * `activeMs` is what `takeTurnDuration` returned when the turn ended; `usage` is Paseo's reading at
+   * the turn end, so an agent's cost is recorded however it is archived later (TR-097). A child
+   * ticket's agents and turns count toward its parent as well as itself (`projectTotals` relies on it).
    */
-  async turnEnded(project: string, ticket: string | null, agent: { id: string; role: string; model: string | null; title: string | null }, activeMs: number | undefined): Promise<void> {
+  async turnEnded(project: string, ticket: string | null, agent: { id: string; role: string; model: string | null; title: string | null }, activeMs: number | undefined, usage: AgentUsageReading = { costUsd: null, contextTokens: null }): Promise<void> {
     if (ticket === null) return;
-    const tickets = [ticket];
-    const parent = parentOf(ticket);
-    if (parent !== null) tickets.push(parent);
-    for (const target of tickets) {
+    for (const target of ticketAndParent(ticket)) {
       await this.update(project, target, (stats) => {
         const record = stats.agents[agent.id] ?? { agentId: agent.id, role: agent.role, model: agent.model, title: agent.title, turns: 0, activeMs: 0, costUsd: null, contextTokens: null };
         record.turns += 1;
         if (activeMs !== undefined) record.activeMs += activeMs;
+        applyUsage(record, usage);
         stats.agents[agent.id] = record;
       });
     }
   }
 
-  agentFinal(project: string, ticket: string, agentId: string, costUsd: number | null, contextTokens: number | null): Promise<void> {
-    return this.update(project, ticket, (stats) => {
-      const record = stats.agents[agentId];
-      if (record === undefined) return;
-      record.costUsd = costUsd;
-      record.contextTokens = contextTokens;
+  /** A later reading of an agent already recorded on `ticket` (at its archive or its ticket's release), on the parent too. */
+  agentUsage(project: string, ticket: string, agentId: string, usage: AgentUsageReading): Promise<void> {
+    return this.modify((file) => {
+      let changed = false;
+      for (const target of ticketAndParent(ticket)) {
+        const record = file.tickets[keyFor(project, target)]?.agents[agentId];
+        if (record === undefined) continue;
+        applyUsage(record, usage);
+        changed = true;
+      }
+      return changed;
     });
+  }
+
+  /**
+   * Fills the cost of every recorded agent that has none, once (TR-097): `costOf` answers from
+   * wherever the cost survives (the agent's transcript), null when it is gone. Before its write the
+   * file as it was is copied to `stats.json.pre-backfill`, so a bad fill can be undone by copying it
+   * back. Only missing costs are filled and `costBackfill` marks it done, so running it again changes
+   * nothing. Returns the marker, or null when it had already run.
+   */
+  async backfillCosts(costOf: (agentId: string) => Promise<number | null>): Promise<CostBackfill | null> {
+    const missing = await serialized("state:stats", async () => {
+      const file = await this.load();
+      if (file.costBackfill !== null) return null;
+      return [...new Set(Object.values(file.tickets).flatMap((stats) => Object.values(stats.agents).filter((agent) => agent.costUsd === null).map((agent) => agent.agentId)))];
+    });
+    if (missing === null) return null;
+    const found = new Map<string, number>();
+    for (const agentId of missing) {
+      const cost = await costOf(agentId).catch(() => null);
+      if (cost !== null) found.set(agentId, cost);
+    }
+    let marker: CostBackfill | null = null;
+    await serialized("state:stats", async () => {
+      const file = await this.load();
+      if (file.costBackfill !== null) return;
+      const original = await readTextIfPresent(statePath("stats.json"));
+      if (original !== null) await writeTextIfMissing(statePath("stats.json.pre-backfill"), original);
+      const filled = new Set<string>();
+      const stillMissing = new Set<string>();
+      for (const stats of Object.values(file.tickets)) {
+        for (const agent of Object.values(stats.agents)) {
+          if (agent.costUsd !== null) continue;
+          const cost = found.get(agent.agentId);
+          if (cost === undefined) stillMissing.add(agent.agentId);
+          else {
+            agent.costUsd = cost;
+            filled.add(agent.agentId);
+          }
+        }
+      }
+      marker = { at: new Date().toISOString(), filled: filled.size, missing: stillMissing.size };
+      file.costBackfill = marker;
+      await writeJsonAtomically(statePath("stats.json"), file);
+    });
+    return marker;
   }
 
   count(project: string, ticket: string, field: "nudges" | "decisions" | "recoveries" | "idleCompactions"): Promise<void> {

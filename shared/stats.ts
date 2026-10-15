@@ -1,7 +1,7 @@
 /**
  * What the plugin measures per ticket, so the workflow can be judged and sped
  * up: status transitions with times, every agent turn's duration, and each
- * agent's cost when the ticket finishes. Pure summary logic lives here too.
+ * agent's cost as of its latest turn end (TR-097). Pure summary logic lives here too.
  */
 import { z } from "zod";
 
@@ -57,6 +57,8 @@ export interface TicketSummary {
   turns: number;
   agents: number;
   costUsd: number | null;
+  /** Agents whose cost is unknown: their session ended without saving one, so `costUsd` is short of theirs. */
+  agentsWithoutCost: number;
   nudges: number;
   decisions: number;
   recoveries: number;
@@ -91,6 +93,7 @@ export function summarize(stats: TicketStats, now: number = Date.now()): TicketS
     turns: agents.reduce((total, agent) => total + agent.turns, 0),
     agents: agents.length,
     costUsd: costs.length === 0 ? null : costs.reduce((total, cost) => total + cost, 0),
+    agentsWithoutCost: agents.length - costs.length,
     nudges: stats.nudges,
     decisions: stats.decisions,
     recoveries: stats.recoveries,
@@ -106,6 +109,7 @@ export interface ProjectTotals {
   turns: number;
   agents: number;
   costUsd: number | null;
+  agentsWithoutCost: number;
   nudges: number;
   decisions: number;
   recoveries: number;
@@ -135,6 +139,7 @@ export function projectTotals(summaries: readonly TicketSummary[], managerIdleCo
     turns: sum(topLevel, (summary) => summary.turns),
     agents: sum(topLevel, (summary) => summary.agents),
     costUsd: costs.length === 0 ? null : costs.reduce((total, cost) => total + cost, 0),
+    agentsWithoutCost: sum(topLevel, (summary) => summary.agentsWithoutCost),
     nudges: sum(summaries, (summary) => summary.nudges),
     decisions: sum(summaries, (summary) => summary.decisions),
     recoveries: sum(summaries, (summary) => summary.recoveries),

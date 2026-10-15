@@ -66,7 +66,7 @@ import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import { identityFromLabels, lastHumanMessageAt, managerHandoffPath, type Supervisor } from "./supervision";
 import { appendTicketNote, listTickets, viewTicket, type TicketSummary } from "./tickets";
-import type { Stats } from "./stats";
+import { usageReading, type Stats } from "./stats";
 import { isStopping, reportFailure } from "./stopping";
 import type { TrackerWatch } from "./tracker-watch";
 
@@ -574,10 +574,9 @@ export class Actions {
 
     let archivedAgents = 0;
     for (const { agent, ticket } of plan.archive) {
-      const usage = agent.lastUsage;
       const statsTicket = agent.labels[TARO_LABELS.ticket] ?? ticket;
       for (const target of new Set([statsTicket, ticket])) {
-        await this.stats.agentFinal(project, target, agent.id, usage?.totalCostUsd ?? null, usage?.contextWindowUsedTokens ?? null).catch(() => undefined);
+        await this.stats.agentUsage(project, target, agent.id, usageReading(agent.lastUsage)).catch(() => undefined);
       }
       if (!(await paseo.agents.ref(agent.id).archive().then(() => true, () => false))) continue;
       archivedAgents += 1;

@@ -42,6 +42,7 @@ import {
 import { inboxCount } from "./shared/board";
 import { ProjectSettingsSchema } from "./shared/project";
 import { Actions } from "./server/actions";
+import { backfillCosts, recordArchivedUsage } from "./server/cost-recording";
 import { fetchLiveAgent, isAgentLive } from "./server/agents";
 import { dismissSuggestion, invalidateBoards, liveOpenDecisions, loadBoard, loadTicketDetail } from "./server/board";
 import type { PaseoApi } from "./server/host-types";
@@ -92,6 +93,13 @@ export default function contribute(server: PluginServerContext) {
       // Changes made while the plugin was down (TR-043: the merge at an accept reloads it as the ticket
       // goes Done), and Done tickets whose agents were left open (an owner mid-turn at a reload).
       void actions.catchUpAfterStart(paseo).catch((error: unknown) => reportFailure("[taro] catching up after start failed:", error));
+      // Once: costs of agents archived before every turn end recorded one (TR-097).
+      void listProjectConfigs()
+        .then((configs) => backfillCosts(paseo, stats, configs.map((config) => config.project)))
+        .then((backfill) => {
+          if (backfill !== null) console.log(`[taro] backfilled ${backfill.filled} agents' cost from their transcripts; ${backfill.missing} could not be recovered`);
+        })
+        .catch((error: unknown) => reportFailure("[taro] backfilling costs failed:", error));
       void stats
         .dropFinishedTurns(async (agentId) => turnMayStillEnd(await fetchLiveAgent(paseo, agentId), startedAt))
         .catch((error: unknown) => reportFailure("[taro] dropping finished turn starts failed:", error));
@@ -356,7 +364,8 @@ export default function contribute(server: PluginServerContext) {
   });
 
   // An archived agent's questions are withdrawn, whoever archived it (decisions of dead agents message no one).
-  const removeArchiveHook = server.on("agent.archived", async ({ agent }) => {
+  const removeArchiveHook = server.on("agent.archived", async ({ agent }, { paseo }) => {
+    await recordArchivedUsage(paseo, stats, agent.id).catch((error: unknown) => reportFailure(`[taro] recording ${agent.id}'s cost at archive:`, error));
     const withdrawn = await supervisor.withdrawDecisionsOf(agent.id).catch((error: unknown) => {
       reportFailure(`[taro] withdrawing ${agent.id}'s decisions:`, error);
       return 0;

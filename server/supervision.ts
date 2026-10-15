@@ -20,7 +20,7 @@ import { viewTicket } from "./tickets";
 import { isPluginMessageId, sendCommand, sendFromPlugin } from "./send";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
-import type { Stats } from "./stats";
+import { usageReading, type Stats } from "./stats";
 
 export interface TaroIdentity {
   project: string;
@@ -142,7 +142,7 @@ export class Supervisor {
     const identity = identityFromLabels(live.labels, live.title ?? null);
     if (identity === null) return;
     const model = live.model === null || live.model === undefined ? live.provider : `${live.provider}/${live.model}`;
-    await this.stats.turnEnded(identity.project, identity.ticket, { id: live.id, role: identity.role, model, title: identity.title }, activeMs).catch(() => undefined);
+    await this.stats.turnEnded(identity.project, identity.ticket, { id: live.id, role: identity.role, model, title: identity.title }, activeMs, usageReading(live.lastUsage)).catch(() => undefined);
     const now = new Date().toISOString();
     // The hook passes the agent's whole stored timeline: earlier turns' blocks would reopen answered
     // decisions, their user words would close new ones, and a turn without text would reuse their reply.

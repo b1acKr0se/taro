@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Stats, turnMayStillEnd } from "./stats";
+import { projectTotals, summarize } from "../shared/stats";
+import { Stats, turnMayStillEnd, usageReading } from "./stats";
 
 const agent = { id: "agent-1", role: "owner", model: "claude/claude-sonnet-5-5", title: "TR-1 owner" };
 const start = Date.parse("2026-10-13T10:00:00Z");
@@ -130,6 +131,117 @@ describe("stats file", () => {
     vi.setSystemTime(start + 2_000);
     await endTurn(stats, "TR-1");
     expect((await statsFile()).tickets["taro:TR-1"]?.agents[agent.id]).toMatchObject({ turns: 4, activeMs: 3_000 });
+  });
+});
+
+describe("agents' cost (TR-097)", () => {
+  const subagent = { id: "sub-1", role: "implementer", model: "claude/claude-sonnet-5-5", title: "TR-1.2 implementer" };
+  const statsDirectory = () => join(home, "plugin-data", "taro", "state");
+
+  it("is recorded at each turn end, so an agent archived by its owner before the ticket is Done keeps it", async () => {
+    const stats = new Stats();
+    await stats.turnEnded("taro", "TR-1", subagent, 1_000, { costUsd: 0.4, contextTokens: 20_000 });
+    await stats.turnEnded("taro", "TR-1", subagent, 1_000, { costUsd: 1.25, contextTokens: 30_000 });
+    // Archived by its owner: Paseo's reading at the archive may be gone (a daemon restart).
+    await stats.agentUsage("taro", "TR-1", subagent.id, usageReading(undefined));
+    // The ticket's release at Done reads nothing either.
+    await stats.agentUsage("taro", "TR-1", subagent.id, { costUsd: null, contextTokens: null });
+    expect((await statsFile()).tickets["taro:TR-1"]?.agents[subagent.id]).toMatchObject({ turns: 2, costUsd: 1.25, contextTokens: 30_000 });
+  });
+
+  it("keeps the highest reading: Paseo's cost is a running total, and a lower one is stale", async () => {
+    const stats = new Stats();
+    await stats.turnEnded("taro", "TR-1", subagent, 1_000, { costUsd: 2, contextTokens: null });
+    await stats.turnEnded("taro", "TR-1", subagent, 1_000, { costUsd: 0.5, contextTokens: null });
+    await stats.agentUsage("taro", "TR-1", subagent.id, { costUsd: 2.5, contextTokens: null });
+    expect((await stats.all("taro"))[0]?.agents[subagent.id]?.costUsd).toBe(2.5);
+  });
+
+  it("is recorded from Paseo's usage when present", () => {
+    expect(usageReading({ totalCostUsd: 3.5, contextWindowUsedTokens: 9 })).toEqual({ costUsd: 3.5, contextTokens: 9 });
+    expect(usageReading({ contextWindowUsedTokens: 9 })).toEqual({ costUsd: null, contextTokens: 9 });
+    expect(usageReading(null)).toEqual({ costUsd: null, contextTokens: null });
+  });
+
+  it("of a child's agent counts on the child and on its parent, and once in the project totals", async () => {
+    const stats = new Stats();
+    await stats.turnEnded("taro", "TR-1", agent, 1_000, { costUsd: 5, contextTokens: null });
+    await stats.turnEnded("taro", "TR-1.2", subagent, 1_000, { costUsd: 0.75, contextTokens: null });
+    await stats.agentUsage("taro", "TR-1.2", subagent.id, { costUsd: 1, contextTokens: null });
+    const summaries = (await stats.all("taro")).map((ticket) => summarize(ticket));
+    expect(summaries.find((summary) => summary.ticket === "TR-1.2")).toMatchObject({ agents: 1, costUsd: 1 });
+    expect(summaries.find((summary) => summary.ticket === "TR-1")).toMatchObject({ agents: 2, costUsd: 6 });
+    expect(projectTotals(summaries)).toMatchObject({ agents: 2, costUsd: 6, agentsWithoutCost: 0 });
+  });
+
+  it("is not recorded for an agent the ticket never counted", async () => {
+    const stats = new Stats();
+    await stats.agentUsage("taro", "TR-1", "stranger", { costUsd: 1, contextTokens: null });
+    expect(await stats.all("taro")).toEqual([]);
+  });
+
+  describe("backfill", () => {
+    async function seed(): Promise<string> {
+      const stats = new Stats();
+      await stats.turnEnded("taro", "TR-1", agent, 1_000, { costUsd: 4, contextTokens: null });
+      await stats.turnEnded("taro", "TR-1.2", subagent, 1_000);
+      await stats.turnEnded("taro", "TR-1", { ...subagent, id: "lost" }, 1_000);
+      return readFile(join(statsDirectory(), "stats.json"), "utf8");
+    }
+
+    it("fills missing costs from where they survive, on child and parent, and leaves recorded ones", async () => {
+      await seed();
+      const asked: string[] = [];
+      const stats = new Stats();
+      const backfill = await stats.backfillCosts(async (agentId) => {
+        asked.push(agentId);
+        return agentId === subagent.id ? 0.9 : null;
+      });
+      expect(asked.sort()).toEqual(["lost", subagent.id]);
+      expect(backfill).toMatchObject({ filled: 1, missing: 1 });
+      const file = await statsFile();
+      expect(file.tickets["taro:TR-1.2"]?.agents[subagent.id]).toMatchObject({ costUsd: 0.9 });
+      expect(file.tickets["taro:TR-1"]?.agents[subagent.id]).toMatchObject({ costUsd: 0.9 });
+      expect(file.tickets["taro:TR-1"]?.agents[agent.id]).toMatchObject({ costUsd: 4 });
+      expect(file.tickets["taro:TR-1"]?.agents.lost).toMatchObject({ costUsd: null });
+      const totals = projectTotals((await stats.all("taro")).map((ticket) => summarize(ticket)));
+      expect(totals).toMatchObject({ agents: 3, costUsd: 4.9, agentsWithoutCost: 1 });
+    });
+
+    it("saves the file as it was to stats.json.pre-backfill before writing", async () => {
+      const original = await seed();
+      await new Stats().backfillCosts(async () => 1);
+      expect(await readFile(join(statsDirectory(), "stats.json.pre-backfill"), "utf8")).toBe(original);
+      expect(await readFile(join(statsDirectory(), "stats.json"), "utf8")).not.toBe(original);
+    });
+
+    it("runs once: a second run, even after a reload, asks nothing and changes nothing", async () => {
+      const original = await seed();
+      await new Stats().backfillCosts(async () => 2);
+      const after = await readFile(join(statsDirectory(), "stats.json"), "utf8");
+      const lookup = vi.fn(async () => 3);
+      expect(await new Stats().backfillCosts(lookup)).toBeNull();
+      expect(lookup).not.toHaveBeenCalled();
+      expect(await readFile(join(statsDirectory(), "stats.json"), "utf8")).toBe(after);
+      expect(await readFile(join(statsDirectory(), "stats.json.pre-backfill"), "utf8")).toBe(original);
+    });
+
+    it("never overwrites a cost a turn end recorded while it looked costs up", async () => {
+      await seed();
+      const stats = new Stats();
+      await stats.backfillCosts(async (agentId) => {
+        if (agentId === subagent.id) await stats.turnEnded("taro", "TR-1.2", subagent, 1_000, { costUsd: 1.5, contextTokens: null });
+        return 0.2;
+      });
+      expect((await statsFile()).tickets["taro:TR-1.2"]?.agents[subagent.id]).toMatchObject({ costUsd: 1.5 });
+    });
+
+    it("on a file with no costs missing, still marks itself done", async () => {
+      const stats = new Stats();
+      await stats.turnEnded("taro", "TR-1", agent, 1_000, { costUsd: 1, contextTokens: null });
+      expect(await stats.backfillCosts(async () => null)).toMatchObject({ filled: 0, missing: 0 });
+      expect(await stats.backfillCosts(async () => null)).toBeNull();
+    });
   });
 });
 

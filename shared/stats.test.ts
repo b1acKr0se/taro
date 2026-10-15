@@ -33,6 +33,23 @@ describe("summarize", () => {
     expect(summary.status).toBe("Done");
     expect(summary.recoveries).toBe(1);
     expect(summary.idleCompactions).toBe(2);
+    expect(summary.agentsWithoutCost).toBe(0);
+  });
+
+  it("counts agents whose cost is unknown, adding up only the known costs", () => {
+    const agent = { role: "implementer", model: "m", title: null, turns: 1, activeMs: 0, contextTokens: null };
+    const summary = summarize({
+      project: "app",
+      ticket: "AP-2",
+      title: "x",
+      transitions: [],
+      agents: { a: { ...agent, agentId: "a", costUsd: 2 }, b: { ...agent, agentId: "b", costUsd: null }, c: { ...agent, agentId: "c", costUsd: 0 } },
+      nudges: 0,
+      decisions: 0,
+      recoveries: 0,
+      idleCompactions: 0,
+    });
+    expect(summary).toMatchObject({ agents: 3, costUsd: 2, agentsWithoutCost: 1 });
   });
 });
 
@@ -49,6 +66,7 @@ function row(ticket: string, values: Partial<TicketSummary> = {}): TicketSummary
     turns: 0,
     agents: 0,
     costUsd: null,
+    agentsWithoutCost: 0,
     nudges: 0,
     decisions: 0,
     recoveries: 0,
@@ -59,7 +77,7 @@ function row(ticket: string, values: Partial<TicketSummary> = {}): TicketSummary
 
 describe("projectTotals", () => {
   it("is all zeros and no cost for no tickets", () => {
-    expect(projectTotals([])).toEqual({ tickets: 0, wallMs: 0, waitingOnUserMs: 0, agentActiveMs: 0, turns: 0, agents: 0, costUsd: null, nudges: 0, decisions: 0, recoveries: 0, idleCompactions: 0 });
+    expect(projectTotals([])).toEqual({ tickets: 0, wallMs: 0, waitingOnUserMs: 0, agentActiveMs: 0, turns: 0, agents: 0, costUsd: null, agentsWithoutCost: 0, nudges: 0, decisions: 0, recoveries: 0, idleCompactions: 0 });
   });
 
   it("adds top-level tickets and skips a cost nobody reported", () => {
@@ -68,7 +86,7 @@ describe("projectTotals", () => {
       row("AP-2", { wallMs: 2_000, waitingOnUserMs: 0, agentActiveMs: 700, turns: 4, agents: 2, costUsd: null }),
       row("AP-3", { costUsd: 0 }),
     ]);
-    expect(totals).toEqual({ tickets: 3, wallMs: 3_000, waitingOnUserMs: 100, agentActiveMs: 1_200, turns: 7, agents: 3, costUsd: 1.25, nudges: 1, decisions: 2, recoveries: 1, idleCompactions: 0 });
+    expect(totals).toEqual({ tickets: 3, wallMs: 3_000, waitingOnUserMs: 100, agentActiveMs: 1_200, turns: 7, agents: 3, costUsd: 1.25, agentsWithoutCost: 0, nudges: 1, decisions: 2, recoveries: 1, idleCompactions: 0 });
   });
 
   it("does not count a child's agents, turns, cost or time twice, but adds its nudges, decisions and recoveries", () => {
@@ -77,6 +95,11 @@ describe("projectTotals", () => {
       row("AP-9.1", { wallMs: 4_000, agentActiveMs: 400, turns: 4, agents: 1, costUsd: 1, nudges: 2, decisions: 1, recoveries: 2 }),
     ]);
     expect(totals).toMatchObject({ tickets: 2, wallMs: 10_000, agentActiveMs: 900, turns: 9, agents: 3, costUsd: 3, nudges: 3, decisions: 1, recoveries: 3 });
+  });
+
+  it("counts agents without a cost once, on top-level tickets only, as their agents are", () => {
+    const totals = projectTotals([row("AP-9", { agents: 3, costUsd: 3, agentsWithoutCost: 1 }), row("AP-9.1", { agents: 1, costUsd: null, agentsWithoutCost: 1 }), row("AP-8", { agents: 2, costUsd: 1, agentsWithoutCost: 2 })]);
+    expect(totals).toMatchObject({ agents: 5, costUsd: 4, agentsWithoutCost: 3 });
   });
 
   it("adds every ticket's idle compactions, children's too, and the manager's", () => {

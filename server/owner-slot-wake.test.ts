@@ -101,7 +101,7 @@ function start(): Actions {
     ticketStatuses: async (project: string) => stored.get(project) ?? null,
     saveTicketStatuses: async (project: string, statuses: ReadonlyMap<string, string>) => void stored.set(project, new Map(statuses)),
   } as unknown as PluginState;
-  const stats = { transition: async () => undefined, agentFinal: async () => undefined } as unknown as Stats;
+  const stats = { transition: async () => undefined, agentUsage: async () => undefined } as unknown as Stats;
   const recovery = {
     tellManagerWhenHeadroom: async (_paseo: PaseoApi, _project: string, _manager: string, text: string, onSent?: () => void) => {
       if ((await tell(text)) === "held") {

@@ -1,7 +1,8 @@
 /**
  * A project's Stats tab: a totals row, then a row per ticket with its wall
  * time, agent time, time waiting on the user, turns, agents, cost, nudges,
- * decisions, crash recoveries and idle compactions (the totals add the manager's). Tapping a ticket shows its time per status. The table scrolls
+ * decisions, crash recoveries and idle compactions (the totals add the manager's). A cost missing some
+ * agents' share is marked, and explained under the table. Tapping a ticket shows its time per status. The table scrolls
  * sideways when the screen is narrower than it; on a phone the status sits
  * under the title so the first numbers fit.
  */
@@ -28,12 +29,22 @@ const NUMBER_COLUMNS: ReadonlyArray<{ key: string; label: string; width: number;
   { key: "waiting", label: "Waiting on you", width: 124, value: (counted) => formatDuration(counted.waitingOnUserMs) },
   { key: "turns", label: "Turns", width: 52, value: (counted) => String(counted.turns) },
   { key: "agents", label: "Agents", width: 56, value: (counted) => String(counted.agents) },
-  { key: "cost", label: "Cost", width: 68, value: (counted) => formatCost(counted.costUsd) },
+  { key: "cost", label: "Cost", width: 84, value: (counted) => costText(counted) },
   { key: "nudges", label: "Nudges", width: 60, value: (counted) => String(counted.nudges) },
   { key: "decisions", label: "Decisions", width: 72, value: (counted) => String(counted.decisions) },
   { key: "recoveries", label: "Recoveries", width: 80, value: (counted) => String(counted.recoveries) },
   { key: "idle-compactions", label: "Idle compactions", width: 132, value: (counted) => String(counted.idleCompactions) },
 ];
+
+/** A cost that leaves out agents whose cost could not be recovered carries a mark; none at all reads "—". */
+function costText(counted: Counted): string {
+  const cost = formatCost(counted.costUsd);
+  return counted.costUsd !== null && counted.agentsWithoutCost > 0 ? `${cost} *` : cost;
+}
+
+function unknownCostText(agentsWithoutCost: number, agents: number): string {
+  return `Cost unknown for ${agentsWithoutCost} of ${agents} agent${agents === 1 ? "" : "s"}`;
+}
 
 const NUMBERS_WIDTH = NUMBER_COLUMNS.reduce((total, column) => total + column.width, 0);
 
@@ -129,10 +140,19 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
                   )}
                   {numbers(summary, styles.cell)}
                 </Pressable>
-                {expanded ? <Text style={styles.detail}>{byStatus === "" ? "No time recorded per status." : byStatus}</Text> : null}
+                {expanded ? (
+                  <Text style={styles.detail}>
+                    {[byStatus === "" ? "No time recorded per status." : byStatus, summary.agentsWithoutCost > 0 ? unknownCostText(summary.agentsWithoutCost, summary.agents) : null].filter((part) => part !== null).join(" · ")}
+                  </Text>
+                ) : null}
               </View>
             );
           })}
+          {totals.agentsWithoutCost > 0 ? (
+            <Text style={styles.note}>
+              * {totals.agentsWithoutCost} agent{totals.agentsWithoutCost === 1 ? "'s" : "s'"} cost could not be recovered: the session ended without saving it (a crash or a forced stop), so a marked cost leaves theirs out.
+            </Text>
+          ) : null}
           <Text style={styles.note}>A child ticket's agents, turns, cost and time also count on its parent, so the totals add those up once. Idle compactions in the total include the Manager's.</Text>
         </View>
       </ScrollView>
