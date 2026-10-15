@@ -29,11 +29,29 @@ export function scrollEdges({ offset, viewport, content }: { offset: number; vie
 }
 
 /**
- * Where a page step goes: by the width the numbers show beside the pinned column, less an overlap,
- * kept within the scroll's range.
+ * Blank width to add after the last column so the scroll's end is a column start too: without it the
+ * end shows a sliver of the column under the pinned edge. Nothing when the table fits.
  */
-export function pageOffset({ offset, viewport, content, pinned, direction }: { offset: number; viewport: number; content: number; pinned: number; direction: -1 | 1 }): number {
+export function trailingSpace({ viewport, content, columnStarts }: { viewport: number; content: number; columnStarts: readonly number[] }): number {
+  const end = content - viewport;
+  if (end <= 0) return 0;
+  const next = columnStarts.find((start) => start >= end - EDGE_SLACK);
+  return next === undefined ? 0 : Math.max(next - end, 0);
+}
+
+/**
+ * Where a page step goes: by about the width the numbers show beside the pinned column, less an
+ * overlap, landing on a column's start (`columnStarts`: each scrolling column's offset from the first,
+ * which is the scroll offset that shows it whole beside the pinned column), so no column is left
+ * sliced at the pinned edge; kept within the scroll's range.
+ */
+export function pageOffset({ offset, viewport, content, pinned, direction, columnStarts }: { offset: number; viewport: number; content: number; pinned: number; direction: -1 | 1; columnStarts: readonly number[] }): number {
   const step = Math.max(viewport - pinned - PAGE_OVERLAP, PAGE_OVERLAP);
   const end = Math.max(content - viewport, 0);
-  return Math.min(Math.max(offset + direction * step, 0), end);
+  const target = offset + direction * step;
+  const ahead = columnStarts.filter((start) => (direction === 1 ? start > offset + EDGE_SLACK : start < offset - EDGE_SLACK));
+  // The farthest start within a step, or the nearest one when even that is beyond a step.
+  const within = ahead.filter((start) => (direction === 1 ? start <= target : start >= target));
+  const pick = within.length > 0 ? within[direction === 1 ? within.length - 1 : 0] : ahead[direction === 1 ? 0 : ahead.length - 1];
+  return Math.min(Math.max(pick ?? (direction === 1 ? end : 0), 0), end);
 }

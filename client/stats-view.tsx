@@ -18,7 +18,7 @@ import { errorText, formatCost, formatDuration } from "./format";
 import { SectionHeading } from "./badges";
 import { useStats } from "./queries";
 import { SPACE } from "./spacing";
-import { pageOffset, scrollEdges, tableFit, type ScrollEdges } from "./stats-table";
+import { pageOffset, scrollEdges, tableFit, trailingSpace, type ScrollEdges } from "./stats-table";
 import { withAlpha } from "./tint";
 import { FONT_SIZE } from "./type-scale";
 import { IconButton } from "./ui";
@@ -37,7 +37,7 @@ const NUMBER_COLUMNS: ReadonlyArray<{ key: string; label: string; width: number;
   { key: "cost", label: "Cost", width: 84, value: (counted) => costText(counted) },
   { key: "nudges", label: "Nudges", width: 60, value: (counted) => String(counted.nudges) },
   { key: "decisions", label: "Decisions", width: 72, value: (counted) => String(counted.decisions) },
-  { key: "recoveries", label: "Recoveries", width: 80, value: (counted) => String(counted.recoveries) },
+  { key: "recoveries", label: "Recoveries", width: 88, value: (counted) => String(counted.recoveries) },
   { key: "idle-compactions", label: "Idle\ncompactions", width: 100, value: (counted) => String(counted.idleCompactions) },
 ];
 
@@ -57,23 +57,38 @@ const NUMBERS_WIDTH = NUMBER_COLUMNS.reduce((total, column) => total + column.wi
 const SIDE = SPACE.lg;
 const NATIVE_DRIVER = Platform.OS !== "web";
 /** The fade over the right edge while columns lie beyond it: its width and steps (core React Native draws no gradient). */
-const FADE_WIDTH = 40;
-const FADE_STEPS = 10;
+const FADE_WIDTH = 56;
+const FADE_STEPS = 14;
 /** The pinned column's shadow once the numbers slide under it, and how far they slide before it shows in full. */
 const SHADOW_WIDTH = 6;
 const SHADOW_STEPS = 3;
 const SHADOW_IN = 8;
 
+/**
+ * Where each scrolling column (the status first, on a desktop) starts, as the scroll offset that shows
+ * it beside the pinned column with a gap: pages land on these, so no column is sliced at the pinned edge.
+ */
+function columnStartsFor(statusWidth: number): number[] {
+  const widths = [statusWidth, ...NUMBER_COLUMNS.map((column) => column.width)].filter((width) => width > 0);
+  return widths.map((_, index) => Math.max(widths.slice(0, index).reduce((total, width) => total + width, 0) - SPACE.sm, 0));
+}
+
+/** How the table meets a pane `viewport` wide, and its full width, blank space after the last column included. */
+function tableLayout(viewport: number, compact: boolean) {
+  const statusWidth = compact ? 0 : 120;
+  const fit = tableFit({ viewport, side: SIDE, ticketMinWidth: compact ? 150 : 230, rest: statusWidth + NUMBERS_WIDTH });
+  const columns = fit.ticketWidth + statusWidth + NUMBERS_WIDTH + 2 * SIDE;
+  const columnStarts = columnStartsFor(statusWidth);
+  return { fit, statusWidth, columnStarts, content: columns + trailingSpace({ viewport, content: columns, columnStarts }) };
+}
+
 export function StatsView({ project, theme, compact }: { project: string; theme: PluginTheme; compact: boolean }) {
   const stats = useStats(project);
   const [open, setOpen] = useState<string | null>(null);
   const { colors } = theme;
-  const statusWidth = compact ? 0 : 120;
-  const ticketMinWidth = compact ? 150 : 230;
   const [viewport, setViewport] = useState(0);
-  const fit = tableFit({ viewport, side: SIDE, ticketMinWidth, rest: statusWidth + NUMBERS_WIDTH });
+  const { fit, statusWidth, columnStarts, content } = tableLayout(viewport, compact);
   const ticketWidth = fit.ticketWidth;
-  const content = ticketWidth + statusWidth + NUMBERS_WIDTH + 2 * SIDE;
   const scroll = useRef<ScrollView>(null);
   const offset = useRef(0);
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -119,11 +134,10 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
     const width = event.nativeEvent.layout.width;
     setViewport(width);
     // The table's width follows the pane's, so the edges are worked out from the width it is about to take.
-    const next = tableFit({ viewport: width, side: SIDE, ticketMinWidth, rest: statusWidth + NUMBERS_WIDTH });
-    showEdges(scrollEdges({ offset: offset.current, viewport: width, content: next.ticketWidth + statusWidth + NUMBERS_WIDTH + 2 * SIDE }));
+    showEdges(scrollEdges({ offset: offset.current, viewport: width, content: tableLayout(width, compact).content }));
   }
   function page(direction: -1 | 1) {
-    scroll.current?.scrollTo({ x: pageOffset({ offset: offset.current, viewport, content, pinned: SIDE + ticketWidth, direction }), animated: true });
+    scroll.current?.scrollTo({ x: pageOffset({ offset: offset.current, viewport, content, pinned: SIDE + ticketWidth, direction, columnStarts }), animated: true });
   }
   // The pinned column rides along with the scroll, so it stays at the pane's left edge, and not past it when a scroll bounces.
   const pinnedShift = useMemo(() => scrollX.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolateLeft: "clamp" }), [scrollX]);
@@ -258,7 +272,7 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
         {edges.moreRight ? (
           <View pointerEvents="none" style={{ position: "absolute", top: 0, bottom: 0, right: 0, width: FADE_WIDTH, flexDirection: "row" }}>
             {Array.from({ length: FADE_STEPS }, (_, step) => (
-              <View key={step} style={{ flex: 1, backgroundColor: withAlpha(colors.surface0, ((step + 1) / FADE_STEPS) ** 1.5) }} />
+              <View key={step} style={{ flex: 1, backgroundColor: withAlpha(colors.surface0, (step + 1) / FADE_STEPS) }} />
             ))}
           </View>
         ) : null}
