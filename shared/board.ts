@@ -64,7 +64,10 @@ export function boardColumn(card: CardInputs): ColumnId {
   if (card.ownerElsewhere) return recordedColumn(card.status, accepted);
 
   if (agent !== null && agent.pendingPermissions > 0) return "needs-you";
-  if (agent !== null && (agent.status === "running" || agent.status === "initializing")) return "working";
+  const running = agent !== null && (agent.status === "running" || agent.status === "initializing");
+  // An open question stays the user's move while its owner replies to other messages (TR-134).
+  if (running && card.openBlockingDecisions > 0) return "needs-you";
+  if (running) return "working";
   if (card.paused === true) return "queued";
   if (card.crashedOut === true) return "stalled";
 

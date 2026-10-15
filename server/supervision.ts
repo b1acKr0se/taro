@@ -58,7 +58,7 @@ export function humanMessages(timeline: readonly TimelineItem[]): string[] {
 
 /**
  * What the user typed in the agent's own tab this turn: their words, less those sent from a Taro chat
- * (`chat-` ids). Words in the tab answer the agent's open decisions; a chat message does not (TR-102):
+ * (`chat-` ids). Words in the manager's tab answer its open decisions; a chat message does not (TR-102):
  * the chat shows each decision as a card with its own answer box, and a message sent beside it, while it
  * is pending, closed the card and was recorded as its answer.
  */
@@ -217,7 +217,9 @@ export class Supervisor {
 
     const status = parseStatusLine(closing);
     const decisions = parseDecisionBlocks(allAssistantText(turn));
-    const userWords = tabMessages(turn);
+    // Only the manager's tab: an owner's also takes the manager's `paseo send`, which Paseo records just
+    // like words the user typed, and it closed the owner's open cards (TR-134).
+    const userWords = identity.role === "manager" ? tabMessages(turn) : [];
     if (userWords.length > 0) await this.closeAnsweredInTab(live.id, userWords, decisions, now);
     if (decisions.length > 0) await this.storeDecisions(paseo, live, identity, decisions, turnIdentity(turn), now);
 
@@ -379,7 +381,7 @@ export class Supervisor {
     });
   }
 
-  /** The user wrote to the agent directly: its open decisions (not asked again this turn) count as answered. */
+  /** The user wrote to the manager directly: its open decisions (not asked again this turn) count as answered. */
   private async closeAnsweredInTab(agentId: string, userWords: readonly string[], askedNow: readonly ParsedDecision[], now: string): Promise<void> {
     const reasked = new Set(askedNow.map((decision) => decision.id));
     await this.state.updateDecisions((stored) => {

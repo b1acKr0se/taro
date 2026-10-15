@@ -196,6 +196,9 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     status: "idle",
     labels: { "taro.project": "taro", "taro.role": "owner", "taro.ticket": "TR-9" },
   };
+  const manager = { ...owner, id: "manager-1", title: "Taro manager", labels: { "taro.project": "taro", "taro.role": "manager" } };
+  // Words typed in a tab answer only the manager's decisions (TR-134).
+  const asManager = () => vi.mocked(fetchLiveAgent).mockResolvedValue(manager as unknown as PaseoAgent);
   const hookAgent = { id: owner.id, parentAgentId: null } as unknown as HookAgent;
   const completed = { kind: "completed" } as unknown as TurnOutcome;
 
@@ -348,6 +351,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
   });
 
   it("does not let an earlier turn's user words close a decision asked later", async () => {
+    asManager();
     const { state, decisions } = fakeState();
     const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
     const first = [human("hi"), reply];
@@ -372,6 +376,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
   });
 
   it("closes an earlier turn's decision when the user answers in the tab, though the block is in the timeline", async () => {
+    asManager();
     const { state, decisions } = fakeState();
     const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
     const first = [plugin("start"), ask("merge", "Merge now?")];
@@ -381,6 +386,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
   });
 
   it("keeps a decision open when the user sends a message from a Taro chat beside its card (TR-102, seen end to end)", async () => {
+    asManager();
     const { state, decisions } = fakeState();
     const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
     const first = [plugin("start"), ask("indent-style", "Tabs or spaces?")];
@@ -388,9 +394,37 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     const fromChat = { type: "user_message", text: "a message sent while the decision is open", clientMessageId: "chat-mv8xqzqs-1kpppuif" };
     await run(taro, ...first, fromChat, reply);
     expect(decisions.map((decision) => [decision.status, decision.answer])).toEqual([["open", null]]);
-    // Words typed in the agent's own tab still answer it.
+    // Words typed in the manager's own tab still answer it.
     await run(taro, ...first, fromChat, reply, human("spaces"), reply);
     expect(decisions.map((decision) => [decision.status, decision.answer?.text])).toEqual([["answered", "spaces"]]);
+  });
+
+  // TR-134: the manager's `paseo send` reaches an owner as a plain user message, like words typed in its tab.
+  it("keeps an owner's open decision through later turns opened by messages, until it is withdrawn", async () => {
+    const { state, decisions } = fakeState();
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+    const first = [plugin("start"), ask("scope-approval", "Approve the plan for TR-9?")];
+    await run(taro, ...first);
+    const fromManager = human("Changes requested on TR-9: also cover the phone");
+    const replied = { type: "assistant_message", text: "Noted; I will fold it into the plan.\n\nwaiting: approval of the plan" };
+    await run(taro, ...first, fromManager, replied);
+    expect(decisions.map((decision) => [decision.status, decision.answer])).toEqual([["open", null]]);
+    await run(taro, ...first, fromManager, replied, human("New standing order from the user: keep commits small"), reply);
+    expect(decisions.map((decision) => [decision.status, decision.answer])).toEqual([["open", null]]);
+
+    const withdrawal = { type: "assistant_message", text: "```decision\nid: scope-approval\nstatus: withdrawn\n```\n\nwaiting: the user" };
+    await run(taro, ...first, fromManager, replied, human("drop it"), withdrawal);
+    expect(decisions.map((decision) => decision.status)).toEqual(["withdrawn"]);
+  });
+
+  it("keeps an implementer's open decision when its owner messages it", async () => {
+    vi.mocked(fetchLiveAgent).mockResolvedValue({ ...owner, id: "implementer-1", labels: { "taro.project": "taro", "taro.role": "implementer", "taro.ticket": "TR-9" } } as unknown as PaseoAgent);
+    const { state, decisions } = fakeState();
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+    const first = [plugin("start"), ask("schema", "Add a column?")];
+    await run(taro, ...first);
+    await run(taro, ...first, human("Use the existing table"), reply);
+    expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
   });
 
   // TR-124: an owner asks the user one thing at a time.
@@ -464,17 +498,24 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       expect(held()).toEqual([]);
     });
 
-    it("shows the next question when the user answers in the tab and the owner asks it in the same reply", async () => {
+    it("holds the next question when the user answers in words, until the owner withdraws the open one (TR-134)", async () => {
       const { state, decisions } = fakeState();
       const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
       const first = [human("start"), ask("naming", "naming?")];
       await run(taro, ...first);
       await run(taro, ...first, human("Call it Notes"), ask("scope-approval", "scope-approval?"));
-      expect(decisions.map((decision) => [decision.id, decision.status, decision.answer?.text ?? null])).toEqual([
-        ["naming", "answered", "Call it Notes"],
-        ["scope-approval", "open", null],
+      expect(decisions.map((decision) => [decision.id, decision.status])).toEqual([
+        ["naming", "open"],
+        ["scope-approval", "withdrawn"],
       ]);
-      expect(held()).toEqual([]);
+      expect(held()).toHaveLength(1);
+
+      const withdrawal = { type: "assistant_message", text: "```decision\nid: naming\nstatus: withdrawn\n```" };
+      await run(taro, ...first, human("Call it Notes"), withdrawal, ask("scope-approval", "scope-approval?"));
+      expect(decisions.map((decision) => [decision.id, decision.status])).toEqual([
+        ["naming", "withdrawn"],
+        ["scope-approval", "open"],
+      ]);
     });
 
     it("counts a held decision and reports its format problems when it is shown, not when it is held", async () => {
@@ -489,6 +530,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       expect(count).toHaveBeenCalledTimes(1);
       expect(corrections()).toHaveLength(0);
 
+      decisions[0]!.status = "answered";
       await run(taro, ...first, human("Call it Notes"), incomplete);
       expect(decisions.map((decision) => decision.status)).toEqual(["answered", "open"]);
       expect(count).toHaveBeenCalledTimes(2);
@@ -506,8 +548,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     });
 
     it("leaves the manager free to ask several at once", async () => {
-      const manager = { ...owner, id: "manager-1", title: "Taro manager", labels: { "taro.project": "taro", "taro.role": "manager" } };
-      vi.mocked(fetchLiveAgent).mockResolvedValue(manager as unknown as PaseoAgent);
+      asManager();
       const { state, decisions } = fakeState();
       const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
       await run(taro, human("start"), both("start-TR-1", "start-TR-2"));
