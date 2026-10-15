@@ -134,11 +134,36 @@ function appendAssistantText(text: string, piece: string): string {
 }
 
 /**
+ * Whether `entry` is a reply of its own rather than the next piece of `previous`. Paseo merges the
+ * pieces of one streamed message by the same rule (next sequence number, same turn, same message
+ * id), so entries still apart are separate replies, which would otherwise run together ("…the userok").
+ */
+function startsNewReply(previous: TimelineEntry | undefined, entry: TimelineEntry): boolean {
+  if (previous === undefined || previous.item.type !== "assistant_message" || entry.item.type !== "assistant_message") {
+    return true;
+  }
+  const messageId = entry.item.messageId;
+  return (
+    previous.seqEnd + 1 !== entry.seqStart ||
+    previous.turnId !== entry.turnId ||
+    (messageId !== undefined && messageId !== previous.item.messageId)
+  );
+}
+
+/** A separate reply in a merged row starts its own paragraph. */
+function appendReply(text: string, piece: string): string {
+  if (text.trim() === "") return appendAssistantText("", piece);
+  return appendAssistantText(`${text.replace(/\s+$/, "")}\n\n`, piece.replace(/^\s+/, ""));
+}
+
+/**
  * Timeline entries to rows. Consecutive assistant messages are one row, since
- * a streamed reply can arrive in several pieces that split anywhere.
+ * a streamed reply can arrive in several pieces that split anywhere; a separate
+ * reply in that row starts a new paragraph.
  */
 export function transcriptRows(entries: readonly TimelineEntry[]): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
+  let previousReply: TimelineEntry | undefined;
   entries.forEach((entry) => {
     const key = rowKey(entry);
     const item = entry.item;
@@ -152,8 +177,10 @@ export function transcriptRows(entries: readonly TimelineEntry[]): TranscriptRow
       }
       case "assistant_message": {
         const last = rows[rows.length - 1];
-        if (last !== undefined && last.kind === "agent") last.text = appendAssistantText(last.text, item.text);
-        else rows.push({ key, kind: "agent", text: appendAssistantText("", item.text) });
+        if (last === undefined || last.kind !== "agent") rows.push({ key, kind: "agent", text: appendAssistantText("", item.text) });
+        else if (startsNewReply(previousReply, entry)) last.text = appendReply(last.text, item.text);
+        else last.text = appendAssistantText(last.text, item.text);
+        previousReply = entry;
         break;
       }
       case "tool_call":

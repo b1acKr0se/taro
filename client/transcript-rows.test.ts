@@ -47,3 +47,37 @@ describe("transcriptRows compactions (TR-102)", () => {
     expect(transcriptRows([compaction(1, "loading"), user(2, "a message")]).map((row) => row.text)).toEqual(["Compacting context…", "a message"]);
   });
 });
+
+function reply(seq: number, text: string, turnId: string, messageId?: string): TimelineEntry {
+  const item = { type: "assistant_message", text, ...(messageId === undefined ? {} : { messageId }) };
+  return { seqStart: seq, seqEnd: seq, turnId, item } as unknown as TimelineEntry;
+}
+
+describe("transcriptRows separate replies", () => {
+  it("starts a reply with another message id on a new paragraph", () => {
+    const rows = transcriptRows([reply(1, "I will ask the user", "t1", "m1"), reply(2, "ok", "t1", "m2")]);
+    expect(rows).toEqual([{ key: "1", kind: "agent", text: "I will ask the user\n\nok" }]);
+  });
+
+  it("starts a reply from another turn on a new paragraph", () => {
+    const rows = transcriptRows([reply(1, "I will ask the user", "t1"), reply(2, "ok", "t2")]);
+    expect(rows).toEqual([{ key: "1", kind: "agent", text: "I will ask the user\n\nok" }]);
+  });
+
+  it("starts a reply after a gap in the timeline (a hidden reasoning entry) on a new paragraph", () => {
+    const thinking = { seqStart: 2, seqEnd: 2, turnId: "t1", item: { type: "reasoning", text: "hm" } } as unknown as TimelineEntry;
+    const rows = transcriptRows([reply(1, "I will ask the user", "t1", "m1"), thinking, reply(3, "ok", "t1", "m1")]);
+    expect(rows).toEqual([{ key: "1", kind: "agent", text: "I will ask the user\n\nok" }]);
+  });
+
+  it("keeps one streamed reply whole, however its pieces split", () => {
+    const pieces = ["Here is the pl", "an:\n\n- one", "\n- two"];
+    const rows = transcriptRows(pieces.map((text, index) => reply(index + 1, text, "t1", "m1")));
+    expect(rows).toEqual([{ key: "1", kind: "agent", text: "Here is the plan:\n\n- one\n- two" }]);
+  });
+
+  it("does not add a second break when the first reply already ends in one", () => {
+    const rows = transcriptRows([reply(1, "Done.\n\n", "t1", "m1"), reply(2, "ok", "t2", "m2")]);
+    expect(rows).toEqual([{ key: "1", kind: "agent", text: "Done.\n\nok" }]);
+  });
+});
