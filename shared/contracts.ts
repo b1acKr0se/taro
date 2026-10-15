@@ -95,6 +95,13 @@ export const checkPrerequisites = defineRpc({
   output: z.object({ checks: z.array(PrerequisiteSchema) }),
 });
 
+/** The merge methods the repository's GitHub settings allow (TR-110); null when gh cannot say (no gh, no GitHub remote). */
+export const readMergeMethods = defineRpc({
+  name: "taro.project.merge-methods",
+  input: z.object({ repoPath: z.string() }),
+  output: z.object({ allowed: z.object({ merge: z.boolean(), rebase: z.boolean(), squash: z.boolean() }).nullable() }),
+});
+
 export const onboardProject = defineRpc({
   name: "taro.project.onboard",
   input: z.object({ project: ProjectNameSchema, settings: ProjectSettingsSchema, startManager: z.boolean().default(true) }),
@@ -218,8 +225,11 @@ export const CardSchema = z.object({
   evidence: EvidenceViewSchema.nullable().default(null),
   /** Set from the ACCEPTED record while the ticket is still Awaiting acceptance: the owner is merging (TR-031). */
   accepted: z.object({ at: z.string(), merging: z.string().nullable() }).nullable().default(null),
-  /** Set from a NOT-MERGED record while the ticket is Awaiting acceptance: why the owner did not merge after Accept (TR-109). */
-  notMerged: z.object({ at: z.string(), reason: z.string() }).nullable().default(null),
+  /**
+   * Set from a NOT-MERGED record while the ticket is Awaiting acceptance: why the owner did not merge after Accept (TR-109);
+   * `merged` when a pull request merged and the local base branch could not follow it (NOT-SYNCED, TR-110).
+   */
+  notMerged: z.object({ at: z.string(), reason: z.string(), merged: z.boolean().default(false) }).nullable().default(null),
   /** What the first pending permission of the ticket's owner or subagents asks, in its own words (TR-045), and who asks (TR-096). */
   permission: AgentAskSchema.nullable().default(null),
   /** The delivery in a line, from the FINAL summary, while the ticket is Awaiting acceptance (TR-045). */

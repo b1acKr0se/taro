@@ -277,12 +277,20 @@ describe("cardNowLine", () => {
   });
 
   it("leads with why an accepted delivery did not merge, keeping the delivery and Accept (TR-109)", () => {
-    const notMerged = { at: "2026-01-01T11:58Z", reason: "the main checkout is on release-2, not main" };
+    const notMerged = { at: "2026-01-01T11:58Z", reason: "the main checkout is on release-2, not main", merged: false };
     expect(cardNowLine(card({ status: "Awaiting acceptance", column: "needs-you", delivered: "Drafts work offline.", notMerged }), NOW)).toMatchObject({
       kind: "call",
       action: "Request changes",
       headline: "Not merged: the main checkout is on release-2, not main",
       detail: "Drafts work offline. · Ready to accept",
+    });
+  });
+
+  it("says a pull request merged when only the local base branch is behind (TR-110)", () => {
+    const notMerged = { at: "2026-01-01T11:58Z", reason: "the main checkout has uncommitted changes in src/app.ts; commit or discard them, then Accept again", merged: true };
+    expect(cardNowLine(card({ status: "Awaiting acceptance", column: "needs-you", delivered: "Drafts work offline.", notMerged }), NOW)).toMatchObject({
+      kind: "call",
+      headline: "Merged; the local base branch was not updated: the main checkout has uncommitted changes in src/app.ts; commit or discard them, then Accept again",
     });
   });
 

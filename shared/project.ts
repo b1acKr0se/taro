@@ -63,6 +63,9 @@ export type ModelChoice = z.infer<typeof ModelChoiceSchema>;
 
 export const DeliverySchema = z.enum(["pull-request", "local-only"]);
 export const TrackerSyncSchema = z.enum(["local", "remote"]);
+/** How Accept merges a pull request (TR-110): `gh pr merge --merge`, `--rebase` or `--squash`. */
+export const MergeMethodSchema = z.enum(["merge", "rebase", "squash"]);
+export type MergeMethod = z.infer<typeof MergeMethodSchema>;
 
 /** What the user chooses when adding a project (and edits later in its settings). */
 export const ProjectSettingsSchema = z.object({
@@ -75,6 +78,7 @@ export const ProjectSettingsSchema = z.object({
   subagentModels: z.array(z.string().min(1)).default([]),
   delivery: DeliverySchema.default("pull-request"),
   acceptAlsoMerges: z.boolean().default(true),
+  mergeMethod: MergeMethodSchema.default("merge"),
   trackerSync: TrackerSyncSchema.default("local"),
   compactThresholdTokens: z.number().int().positive().default(250_000),
   /** An owner or manager idle for about an hour above this is compacted before its prompt cache expires (TR-015). */

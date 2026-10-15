@@ -195,7 +195,7 @@ export class Actions {
     if (investigation) mergeInstruction = "Record ACCEPTANCE with my words and set the ticket Done.";
     else if (!config.acceptAlsoMerges) mergeInstruction = "Do not merge; record ACCEPTANCE with my words and set the ticket Done.";
     else if (config.delivery === "pull-request") {
-      mergeInstruction = pullRequestMergeInstruction(detail.implementationNotes, detail.finalSummary);
+      mergeInstruction = pullRequestMergeInstruction(detail.implementationNotes, detail.finalSummary, { method: config.mergeMethod, baseBranch: config.baseBranch, repoPath: config.repoPath });
       const mergeable = reviewHead(detail.implementationNotes) !== null && pullRequestUrl(detail.implementationNotes, detail.finalSummary) !== null;
       merging = mergeable ? "the pull request" : undefined;
     } else {

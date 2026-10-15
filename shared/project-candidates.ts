@@ -4,7 +4,7 @@
  */
 import { z } from "zod";
 
-import { DeliverySchema, ModelChoiceSchema, ProjectNameSchema, TicketPrefixSchema, TrackerSyncSchema } from "./project";
+import { DeliverySchema, MergeMethodSchema, ModelChoiceSchema, ProjectNameSchema, TicketPrefixSchema, TrackerSyncSchema } from "./project";
 import { draftFrom, type SetupDraft } from "./setup-form";
 
 export const PaseoProjectCandidateSchema = z.object({
@@ -31,6 +31,7 @@ export const SettingsTemplateSchema = z.object({
   subagentModels: z.array(z.string()),
   delivery: DeliverySchema,
   acceptAlsoMerges: z.boolean(),
+  mergeMethod: MergeMethodSchema.default("merge"),
   trackerSync: TrackerSyncSchema,
   compactThresholdTokens: z.number().int().positive(),
   idleCompactThresholdTokens: z.number().int().positive(),
@@ -145,6 +146,7 @@ export function candidateDraft(candidate: PaseoProjectCandidate, template: Setti
     subagentModels: template?.subagentModels ?? blank.subagentModels,
     delivery: hasRemote ? (template?.delivery ?? "pull-request") : "local-only",
     acceptAlsoMerges: template?.acceptAlsoMerges ?? blank.acceptAlsoMerges,
+    mergeMethod: template?.mergeMethod ?? blank.mergeMethod,
     trackerSync: hasRemote ? "remote" : "local",
     compactThresholdTokens: String(template?.compactThresholdTokens ?? blank.compactThresholdTokens),
     idleCompactThresholdTokens: String(template?.idleCompactThresholdTokens ?? blank.idleCompactThresholdTokens),

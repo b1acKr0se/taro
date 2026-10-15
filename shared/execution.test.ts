@@ -117,17 +117,46 @@ describe("pullRequestUrl", () => {
 
 describe("pullRequestMergeInstruction", () => {
   const head = "0123456789abcdef0123456789abcdef01234567";
+  const notes = `EXECUTION x — pr: https://github.com/o/r/pull/9, review-head: ${head}`;
+  const target = { method: "merge", baseBranch: "main", repoPath: "/home/user/notes-app" } as const;
 
-  it("names the PR and the recorded head to merge with", () => {
-    const text = pullRequestMergeInstruction(`EXECUTION x — pr: https://github.com/o/r/pull/9, review-head: ${head}`, null);
-    expect(text).toContain(`gh pr merge https://github.com/o/r/pull/9 --match-head-commit ${head}`);
-    expect(text).toContain("If the head moved, do not merge");
+  it("names the PR, the project's merge method and the recorded head to merge with (TR-110)", () => {
+    expect(pullRequestMergeInstruction(notes, null, target)).toContain(`gh pr merge https://github.com/o/r/pull/9 --merge --match-head-commit ${head}`);
+    expect(pullRequestMergeInstruction(notes, null, { ...target, method: "rebase" })).toContain(`gh pr merge https://github.com/o/r/pull/9 --rebase --match-head-commit ${head}`);
+    expect(pullRequestMergeInstruction(notes, null, { ...target, method: "squash" })).toContain(`gh pr merge https://github.com/o/r/pull/9 --squash --match-head-commit ${head}`);
+    expect(pullRequestMergeInstruction(notes, null, { ...target, method: "squash" })).toContain("with the project's merge method, Squash,");
+    expect(pullRequestMergeInstruction(notes, null, target)).toContain("If the head moved, do not merge");
+  });
+
+  it("never lets the owner fall back to another method GitHub allows, and says why it did not merge", () => {
+    const text = pullRequestMergeInstruction(notes, null, { ...target, method: "rebase" });
+    expect(text).toContain("If GitHub refuses the Rebase method, do not use another: record NOT-MERGED with GitHub's reason.");
+    expect(text).not.toMatch(/squash unless/i);
+  });
+
+  it("brings the local base branch up to origin by fast-forward only, after the merge (TR-110)", () => {
+    const text = pullRequestMergeInstruction(notes, null, { ...target, baseBranch: "develop" });
+    expect(text).toContain(
+      "Then bring develop in the main checkout (/home/user/notes-app) up to origin, only while it is on develop and git -C /home/user/notes-app status --porcelain prints nothing (an untracked file counts)",
+    );
+    expect(text).toContain("git -C /home/user/notes-app fetch origin develop, then git -C /home/user/notes-app merge --ff-only origin/develop");
+    expect(text.indexOf("merge --ff-only")).toBeGreaterThan(text.indexOf("Confirm its state is MERGED"));
+    expect(text.indexOf("record ACCEPTANCE")).toBeGreaterThan(text.indexOf("merge --ff-only"));
+    expect(text).toContain("If develop cannot fast-forward (uncommitted changes, another branch checked out, commits origin lacks, the fetch failed), do not touch it: record NOT-SYNCED with the reason and what I do first (not that it merged: the card says so).");
+  });
+
+  it("has ACCEPTANCE carry the merge field the Done card reads (TR-114)", () => {
+    expect(pullRequestMergeInstruction(notes, null, target)).toContain("Then record ACCEPTANCE ending with its merge field, merge: merged <merge commit>, and set the ticket Done.");
+  });
+
+  it("lets a second Accept after NOT-SYNCED skip the merge GitHub already made", () => {
+    expect(pullRequestMergeInstruction(notes, null, target)).toContain("an earlier Accept may have merged it already: then go on");
   });
 
   it("says not to merge when the head or the PR is unrecorded", () => {
-    expect(pullRequestMergeInstruction("EXECUTION x — pr: https://github.com/o/r/pull/9", null)).toMatch(/^Do not merge: .*no review-head and PR https:\/\/github.com\/o\/r\/pull\/9/);
-    expect(pullRequestMergeInstruction(`EXECUTION x — review-head: ${head}`, null)).toMatch(new RegExp(`^Do not merge: .*review-head ${head} and no PR URL`));
-    expect(pullRequestMergeInstruction(null, null)).toMatch(/^Do not merge/);
+    expect(pullRequestMergeInstruction("EXECUTION x — pr: https://github.com/o/r/pull/9", null, target)).toMatch(/^Do not merge: .*no review-head and PR https:\/\/github.com\/o\/r\/pull\/9/);
+    expect(pullRequestMergeInstruction(`EXECUTION x — review-head: ${head}`, null, target)).toMatch(new RegExp(`^Do not merge: .*review-head ${head} and no PR URL`));
+    expect(pullRequestMergeInstruction(null, null, target)).toMatch(/^Do not merge/);
   });
 });
 
@@ -215,7 +244,7 @@ describe("notMergedRecord (TR-109)", () => {
   });
 
   it("reads the time and the reason, with an em dash, a hyphen, a colon or nothing between them", () => {
-    expect(notMergedRecord(`${accepted}\n${notMerged}`)).toEqual({ at: "2026-01-05T11:04Z", reason: "the main checkout has uncommitted changes in src/app.ts" });
+    expect(notMergedRecord(`${accepted}\n${notMerged}`)).toEqual({ at: "2026-01-05T11:04Z", reason: "the main checkout has uncommitted changes in src/app.ts", merged: false });
     expect(notMergedRecord("NOT-MERGED 2026-01-05T11:04Z - on release-2")?.reason).toBe("on release-2");
     expect(notMergedRecord("NOT-MERGED 2026-01-05T11:04Z: on release-2")?.reason).toBe("on release-2");
     expect(notMergedRecord("NOT-MERGED 2026-01-05T11:04Z on release-2")?.reason).toBe("on release-2");
@@ -309,5 +338,31 @@ describe("pullRequestMerged", () => {
     expect(pullRequestMerged(accepted)).toBe(false);
     expect(pullRequestMerged("")).toBe(false);
     expect(pullRequestMerged(null)).toBe(false);
+  });
+});
+
+describe("NOT-SYNCED (TR-110)", () => {
+  const accepted = acceptedRecordText("2026-01-05T11:00:00.000Z", "the pull request");
+  const notSynced = "NOT-SYNCED 2026-01-05T11:04Z — merged https://github.com/o/r/pull/9; main has 2 commits origin lacks: push or drop them, then Accept again";
+
+  it("reads as a merged pull request whose local base branch is behind, with the reason", () => {
+    expect(notMergedRecord(`${accepted}\n${notSynced}`)).toEqual({
+      at: "2026-01-05T11:04Z",
+      reason: "merged https://github.com/o/r/pull/9; main has 2 commits origin lacks: push or drop them, then Accept again",
+      merged: true,
+    });
+    expect(notMergedRecord("NOT-SYNCED 2026-01-05T11:04Z")).toEqual({ at: "2026-01-05T11:04Z", reason: "the owner gave no reason", merged: true });
+  });
+
+  it("counts as merged on the Done card once the sync's ACCEPTANCE records its merge field (TR-114)", () => {
+    const acceptance = 'ACCEPTANCE 2026-01-05T11:31Z — user: "I accept NA-2." Merge commit, PR https://github.com/o/r/pull/9; local main b4ea851 → db91252; merge: merged db91252';
+    const notes = `${accepted}\n${notSynced}\n${acceptedRecordText("2026-01-05T11:30Z", "the pull request")}\n${acceptance}`;
+    expect(pullRequestMerged(notes)).toBe(true);
+    expect(notMergedRecord(notes)).toBeNull();
+  });
+
+  it("clears the merging state, and is stale once the user accepts again", () => {
+    expect(acceptedRecord(`${accepted}\n${notSynced}`)).toBeNull();
+    expect(notMergedRecord(`${notSynced}\n${acceptedRecordText("2026-01-05T11:30Z", "the pull request")}`)).toBeNull();
   });
 });

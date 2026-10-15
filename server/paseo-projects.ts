@@ -118,6 +118,7 @@ export async function settingsTemplate(configs: readonly ProjectConfig[]): Promi
     subagentModels: newest.subagentModels,
     delivery: newest.delivery,
     acceptAlsoMerges: newest.acceptAlsoMerges,
+    mergeMethod: newest.mergeMethod,
     trackerSync: newest.trackerSync,
     compactThresholdTokens: newest.compactThresholdTokens,
     idleCompactThresholdTokens: newest.idleCompactThresholdTokens,

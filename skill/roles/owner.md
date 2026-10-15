@@ -177,12 +177,28 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
   a new task; read the new screenshots against those words too; return to Awaiting acceptance with a
   new review head.
 - **Accept:** if the message says to merge (accept-also-merges), merge only what the user reviewed.
-  - **Pull request:** merge only when the PR's `headRefOid` still equals the recorded review head:
-    `gh pr merge <url> --match-head-commit <sha>` (squash unless the repository says otherwise),
-    then confirm `state` is `MERGED`. A moved head → present it again. A conflict → update from the
-    base branch and rerun checks; merge only if the resolution is mechanical, otherwise present
-    again. GitHub refusing the merge → say why. Then record ACCEPTANCE with `merge: merged <merge
-    commit>` (its fixed field, `reference/tickets.md`), set **Done**, and end with `done: merged <url>`.
+  - **Pull request** (TR-110), in this order:
+    1. The PR is already `MERGED` (an earlier Accept merged it, then recorded NOT-SYNCED) → go to 3.
+    2. Merge only when the PR's `headRefOid` still equals the recorded review head, with the merge
+       method the message names: `gh pr merge <url> --merge|--rebase|--squash --match-head-commit
+       <sha>`, then confirm `state` is `MERGED`. A moved head → present it again. A conflict →
+       update from the base branch and rerun checks; merge only if the resolution is mechanical,
+       otherwise present again. GitHub refusing the method → never try another: record
+       **NOT-MERGED** with GitHub's reason and what the user does (pick another Merge method in the
+       project's settings, or allow it on GitHub), then Accept again; end with `waiting: <reason>`.
+       Any other refusal → say why.
+    3. Bring the base branch in the main checkout up to GitHub's: only while it is on the base
+       branch and `git -C <repository path> status --porcelain` prints nothing (an untracked file
+       counts), `git -C <repository path> fetch origin <base>`, then `git -C <repository path>
+       merge --ff-only origin/<base>`. Dirty, on
+       another branch, commits origin lacks (the fast-forward fails) or the fetch failed → do not
+       touch it (no stash, checkout, reset or merge): record **NOT-SYNCED** with the reason and what
+       the user does first, in one short line (the card already says it merged); end with
+       `waiting: <reason>`. The card goes back to
+       Needs you, and the next Accept only repeats this step.
+    4. Record ACCEPTANCE with the method and the local base `<old>` → `<new>` in its prose, then its
+       fixed field `merge: merged <merge commit>` (`reference/tickets.md`), set **Done**, and end
+       with `done: merged <url>`.
   - **Local branch** (decision 34, TR-109), in this order:
     1. Your branch head is not the recorded review head → do not merge; present the new head again.
     2. The main checkout (the repository path) has uncommitted or untracked changes, or is not on
@@ -201,7 +217,7 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
   the checks); rerun the checks; record a new EVIDENCE record and `review-head: <sha>` in a new
   EXECUTION record; update FINAL's revision line; back to Awaiting acceptance, saying what changed
   since the user accepted and why it did not merge (in a MILESTONE: NOT-MERGED is only for the
-  main checkout, step 2). Pressing Accept again would hit the same wall, so never leave such a
+  main checkout, local step 2, or a merge method GitHub refuses). Pressing Accept again would hit the same wall, so never leave such a
   ticket waiting for Accept unchanged. The plugin cleans up after Done.
 
 ## Context (decision 35)

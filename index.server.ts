@@ -31,6 +31,7 @@ import {
   onboardProject as onboardProjectRpc,
   pollNotifications,
   readImageRpc,
+  readMergeMethods,
   readProjectConfig as readProjectConfigRpc,
   readStandingOrders,
   restartManager as restartManagerRpc,
@@ -60,6 +61,7 @@ import { onboardProject, onboardingProblems } from "./server/onboard";
 import { listPaseoProjects, settingsTemplate } from "./server/paseo-projects";
 import { readImage } from "./server/images";
 import { Notifier } from "./server/notifications";
+import { allowedMergeMethods } from "./server/merge-methods";
 import { checkPrerequisites } from "./server/prerequisites";
 import { listProjectConfigs, projectPaths, readProjectConfig, requireProjectConfig, taroHome, updateProjectConfig } from "./server/projects";
 import { sentImagesOf } from "./server/sent-images";
@@ -213,6 +215,7 @@ export default function contribute(server: PluginServerContext) {
   });
 
   server.handle(checkPrerequisitesRpc, async (_input, { paseo }) => ({ checks: await checkPrerequisites(paseo) }));
+  server.handle(readMergeMethods, async (input) => ({ allowed: await allowedMergeMethods(input.repoPath) }));
   server.handle(listModels, async (_input, { paseo }) => ({ models: await listModelOptions(paseo) }));
 
   server.handle(onboardProjectRpc, async (input, { paseo }) => {

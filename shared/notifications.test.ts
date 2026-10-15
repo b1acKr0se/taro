@@ -102,9 +102,16 @@ describe("needsYouEntries", () => {
   });
 
   it("announces a delivery the owner did not merge after Accept, with why (TR-109)", () => {
-    const notMerged = { at: "2026-01-01T00:10Z", reason: "the main checkout has uncommitted changes" };
+    const notMerged = { at: "2026-01-01T00:10Z", reason: "the main checkout has uncommitted changes", merged: false };
     expect(entries([card({ status: "Awaiting acceptance", column: "needs-you", delivered: "Drafts work offline.", notMerged })])).toEqual([
       { key: "while-waiting:NA-027:not-merged", title: "NA-027 was not merged", body: "the main checkout has uncommitted changes", agentId: "agent-1", workspaceId: "workspace-1" },
+    ]);
+  });
+
+  it("announces a merged pull request whose local base branch could not follow, with why (TR-110)", () => {
+    const notMerged = { at: "2026-01-01T00:10Z", reason: "the main checkout is on release-2, not main", merged: true };
+    expect(entries([card({ status: "Awaiting acceptance", column: "needs-you", notMerged })])).toEqual([
+      { key: "while-waiting:NA-027:not-merged", title: "NA-027 merged; local base branch not updated", body: "the main checkout is on release-2, not main", agentId: "agent-1", workspaceId: "workspace-1" },
     ]);
   });
 

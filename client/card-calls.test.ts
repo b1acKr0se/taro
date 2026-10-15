@@ -110,8 +110,17 @@ describe("cardCalls", () => {
   });
 
   it("offers acceptance again after a merge the owner could not make, with why (TR-109)", () => {
-    const notMerged = { at: "2026-01-01T00:10Z", reason: "the main checkout has uncommitted changes in src/app.ts" };
-    expect(cardCalls(card({ status: "Awaiting acceptance", notMerged }))).toEqual([{ kind: "acceptance", ready: true, delivered: null, evidence: null, notMerged: notMerged.reason }]);
+    const notMerged = { at: "2026-01-01T00:10Z", reason: "the main checkout has uncommitted changes in src/app.ts", merged: false };
+    expect(cardCalls(card({ status: "Awaiting acceptance", notMerged }))).toEqual([
+      { kind: "acceptance", ready: true, delivered: null, evidence: null, notMerged: { reason: notMerged.reason, merged: false } },
+    ]);
+  });
+
+  it("offers acceptance again after a merged pull request the local base branch could not follow (TR-110)", () => {
+    const notMerged = { at: "2026-01-01T00:10Z", reason: "main has 2 commits origin lacks; push or drop them, then Accept again", merged: true };
+    expect(cardCalls(card({ status: "Awaiting acceptance", notMerged }))).toEqual([
+      { kind: "acceptance", ready: true, delivered: null, evidence: null, notMerged: { reason: notMerged.reason, merged: true } },
+    ]);
   });
 
   it("carries the evidence in one line, and is not ready while it is incomplete", () => {

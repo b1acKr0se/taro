@@ -123,9 +123,9 @@ function callLines(call: CardCall, others: readonly CardCall[], now: number): Li
   return { headline: call.asker === null ? call.title : `${call.asker}: ${call.title}`, detail: joined([call.detail, more, ...also]) };
 }
 
-/** Why an accepted delivery did not merge, as the card's headline (TR-109). */
-export function notMergedText(reason: string): string {
-  return `Not merged: ${reason}`;
+/** Why an accepted delivery did not merge (TR-109), or merged without the local base branch following it (TR-110), as the card's headline. */
+export function notMergedText(notMerged: { reason: string; merged: boolean }): string {
+  return notMerged.merged ? `Merged; the local base branch was not updated: ${notMerged.reason}` : `Not merged: ${notMerged.reason}`;
 }
 
 /** What a question card says under the question: whether it blocks and how long ago it was asked (TR-045). */
