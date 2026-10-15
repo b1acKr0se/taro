@@ -371,9 +371,9 @@ export function TicketCard({
     </Pressable>
   );
   if (asked === null) return whole;
-  // A scope approval with a template plan is the compact plan card, its ticket named on top (TR-061).
+  // A scope approval with a template plan is the compact plan card, its ticket named on top (TR-061), opening the ticket as this card does (TR-126).
   return (
-    <PlanDecision decision={asked} theme={theme} compact={compact} head={`${card.id} · ${card.title}`} onOpenHead={onOpen} brief onAnswered={onChanged}>
+    <PlanDecision decision={asked} theme={theme} compact={compact} head={`${card.id} · ${card.title}`} onOpen={onOpen} brief onAnswered={onChanged}>
       {whole}
     </PlanDecision>
   );
