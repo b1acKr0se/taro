@@ -29,7 +29,7 @@ export async function taroEnvironment(project: string, trackerPath: string, base
   };
 }
 
-function isInside(parent: string, child: string): boolean {
+export function isInside(parent: string, child: string): boolean {
   const path = relative(parent, child);
   return path === "" || (!path.startsWith("..") && !isAbsolute(path));
 }

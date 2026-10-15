@@ -28,6 +28,8 @@ export const TEMPLATES = {
   reload: "messages/reload.md",
   managerHandoffRequest: "messages/manager-handoff-request.md",
   managerReload: "messages/manager-reload.md",
+  managerCompactRequest: "messages/manager-compact-request.md",
+  managerCompactInstructions: "messages/manager-compact-instructions.md",
   relaunchOwner: "messages/relaunch-owner.md",
   pause: "messages/pause.md",
   accept: "messages/accept.md",

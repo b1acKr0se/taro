@@ -54,6 +54,7 @@ import { idleCompactAfterMs } from "./shared/idle-compaction";
 import { Supervisor, identityFromLabels } from "./server/supervision";
 import { sessionEnvironment } from "./server/environment";
 import { readTextIfPresent, writeTextAtomically } from "./server/files";
+import { installCompactHook, removeReloadFile } from "./server/compact-hook";
 import { catchUpText, compactManager, launchManager, restartManager, resumeManager, tellManager, writeManagerInstructions } from "./server/manager";
 import { onboardProject, onboardingProblems } from "./server/onboard";
 import { listPaseoProjects, settingsTemplate } from "./server/paseo-projects";
@@ -246,7 +247,7 @@ export default function contribute(server: PluginServerContext) {
   server.handle(launchManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await launchManager(paseo, project)).agentId }));
   server.handle(restartManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await restartManager(paseo, project)).agentId }));
   server.handle(resumeManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await resumeManager(paseo, project, state)).agentId }));
-  server.handle(compactManagerRpc, async ({ project }, { paseo }) => ({ agentId: await compactManager(paseo, project) }));
+  server.handle(compactManagerRpc, async ({ project }, { paseo }) => ({ agentId: await compactManager(paseo, project, supervisor) }));
   server.handle(tellManagerRpc, async ({ project, text, images, files, messageId }, { paseo }) => {
     const agentId = await tellManager(paseo, project, text, { images, files, messageId });
     actions.userToldManager(project);
@@ -366,6 +367,7 @@ export default function contribute(server: PluginServerContext) {
   // An archived agent's questions are withdrawn, whoever archived it (decisions of dead agents message no one).
   const removeArchiveHook = server.on("agent.archived", async ({ agent }, { paseo }) => {
     await recordArchivedUsage(paseo, stats, agent.id).catch((error: unknown) => reportFailure(`[taro] recording ${agent.id}'s cost at archive:`, error));
+    await removeReloadFile(agent.id).catch((error: unknown) => reportFailure(`[taro] removing ${agent.id}'s reload file:`, error));
     const withdrawn = await supervisor.withdrawDecisionsOf(agent.id).catch((error: unknown) => {
       reportFailure(`[taro] withdrawing ${agent.id}'s decisions:`, error);
       return 0;
@@ -377,7 +379,11 @@ export default function contribute(server: PluginServerContext) {
   });
 
   // Every Taro agent knows where its tracker and skill are, and has `taro` on PATH, on create and on resume (decision 38).
+  // A Claude manager or owner also gets the SessionStart hook that reloads its rules after any compaction (TR-101).
   const removeSessionHook = server.before("agent.session_open", async ({ request }, { paseo }) => {
+    await installCompactHook(paseo, request)
+      .then((done) => (done === null ? undefined : console.log(`[taro] ${request.agentId}: ${done}`)))
+      .catch((error: unknown) => reportFailure(`[taro] compact hook for ${request.agentId}:`, error));
     const environment = await sessionEnvironment(paseo, request.agentId, request.cwd, request.env?.PATH).catch(() => null);
     if (environment === null) return;
     return { ...request, env: { ...request.env, ...environment } };

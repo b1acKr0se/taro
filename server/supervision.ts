@@ -91,6 +91,20 @@ export async function managerHandoffPath(project: string): Promise<string> {
   return join((await projectPaths(project)).home, "manager-handoff.md");
 }
 
+/** Step 3 of compaction, and what the SessionStart hook prints after any compaction (TR-101). */
+export async function reloadText(identity: TaroIdentity): Promise<string> {
+  if (identity.role === "manager") {
+    return message(TEMPLATES.managerReload, { skill: await skillDirectory(), handoff: await managerHandoffPath(identity.project) });
+  }
+  return message(TEMPLATES.reload, { skill: await skillDirectory(), ticket: identity.ticket ?? "your ticket" });
+}
+
+/** Step 2: what /compact keeps. The manager has no ticket or HANDOFF record, so its own list (TR-101). */
+async function compactInstructions(identity: TaroIdentity): Promise<string> {
+  if (identity.role === "manager") return message(TEMPLATES.managerCompactInstructions, { handoff: await managerHandoffPath(identity.project) });
+  return message(TEMPLATES.compactInstructions);
+}
+
 export function freshState(identity: TaroIdentity): AgentState {
   return {
     project: identity.project,
@@ -193,17 +207,17 @@ export class Supervisor {
     // Compaction pipeline (decision 35): handoff → /compact → reload. The manager gets it only when idle (TR-015).
     if (stage === "handoff") {
       await this.setStage(live.id, identity, "compacting");
-      await sendCommand(paseo, live.id, `/compact ${await message(TEMPLATES.compactInstructions)}`);
+      await sendCommand(paseo, live.id, `/compact ${await compactInstructions(identity)}`);
       return;
     }
     if (stage === "compacting") {
       await this.setStage(live.id, identity, "none");
-      await sendFromPlugin(paseo, live.id, await this.reloadText(identity));
+      await sendFromPlugin(paseo, live.id, await reloadText(identity));
       return;
     }
     if (identity.role !== "owner") return;
     if (autoCompactedThisTurn(timeline)) {
-      await sendFromPlugin(paseo, live.id, await this.reloadText(identity));
+      await sendFromPlugin(paseo, live.id, await reloadText(identity));
       return;
     }
 
@@ -310,13 +324,6 @@ export class Supervisor {
       }),
     );
     return true;
-  }
-
-  private async reloadText(identity: TaroIdentity): Promise<string> {
-    if (identity.role === "manager") {
-      return message(TEMPLATES.managerReload, { skill: await skillDirectory(), handoff: await managerHandoffPath(identity.project) });
-    }
-    return message(TEMPLATES.reload, { skill: await skillDirectory(), ticket: identity.ticket ?? "your ticket" });
   }
 
   private async setStage(agentId: string, identity: TaroIdentity, stage: AgentState["compaction"]): Promise<void> {
@@ -488,13 +495,14 @@ export class Supervisor {
     return started;
   }
 
-  /** Step 1 of compaction; also an owner card's Compact button. */
-  async startCompaction(paseo: PaseoApi, agentId: string, identity: TaroIdentity, usedTokens: number | null): Promise<void> {
+  /** Step 1 of compaction; also the Compact button, an owner's and the manager's (`trigger` "button"). */
+  async startCompaction(paseo: PaseoApi, agentId: string, identity: TaroIdentity, usedTokens: number | null, trigger: "automatic" | "button" = "automatic"): Promise<void> {
     await this.setStage(agentId, identity, "handoff");
     const size = usedTokens === null ? "large" : `${Math.round(usedTokens / 1000)}k`;
+    const managerRequest = trigger === "button" ? TEMPLATES.managerCompactRequest : TEMPLATES.managerHandoffRequest;
     const text =
       identity.role === "manager"
-        ? await message(TEMPLATES.managerHandoffRequest, { usedTokens: size, handoff: await managerHandoffPath(identity.project) })
+        ? await message(managerRequest, { usedTokens: size, handoff: await managerHandoffPath(identity.project) })
         : await message(TEMPLATES.handoffRequest, { usedTokens: size, ticket: identity.ticket ?? "your ticket", skill: await skillDirectory() });
     await sendFromPlugin(paseo, agentId, text);
   }

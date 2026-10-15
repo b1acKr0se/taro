@@ -4,9 +4,9 @@ import { AgentStateSchema, type AgentState } from "../shared/state";
 import { fetchLiveAgent } from "./agents";
 import { runPaseoJson } from "./cli";
 import type { PaseoAgent, PaseoApi } from "./host-types";
-import { restartManager, resumeManager } from "./manager";
+import { compactManager, restartManager, resumeManager } from "./manager";
 import { updateProjectConfig } from "./projects";
-import { sendFromPlugin } from "./send";
+import { sendCommand, sendFromPlugin } from "./send";
 import type { PluginState } from "./state";
 
 vi.mock("node:fs/promises", () => ({ writeFile: vi.fn(async () => undefined) }));
@@ -174,5 +174,22 @@ describe("restartManager (Start a fresh Manager)", () => {
     expect(created[0]!.prompt).toContain("restart:");
     expect(reloads()).toEqual([]);
     expect(updateProjectConfig).toHaveBeenCalledWith("notes-app", { managerAgentId: "manager-2" });
+  });
+});
+
+describe("compactManager (the Compact button)", () => {
+  it("starts the handoff → /compact → reload pipeline as the manager, never a bare /compact", async () => {
+    vi.mocked(fetchLiveAgent).mockResolvedValue({ ...manager("idle"), lastUsage: { contextWindowUsedTokens: 180_000 } } as unknown as PaseoAgent);
+    const startCompaction = vi.fn(async () => undefined);
+    expect(await compactManager({} as PaseoApi, "notes-app", { startCompaction })).toBe("manager-1");
+    expect(startCompaction).toHaveBeenCalledWith({}, "manager-1", { project: "notes-app", role: "manager", ticket: null, title: "notes-app · Manager" }, 180_000, "button");
+    expect(sendCommand).not.toHaveBeenCalled();
+  });
+
+  it("refuses a Manager in the middle of a turn, starting nothing", async () => {
+    vi.mocked(fetchLiveAgent).mockResolvedValue(manager("running"));
+    const startCompaction = vi.fn(async () => undefined);
+    await expect(compactManager({} as PaseoApi, "notes-app", { startCompaction })).rejects.toThrow(/middle of a turn/);
+    expect(startCompaction).not.toHaveBeenCalled();
   });
 });

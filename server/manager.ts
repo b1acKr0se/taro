@@ -12,12 +12,13 @@ import type { PaseoAgent, PaseoApi } from "./host-types";
 import { bypassModeId, knownBypassMode } from "./models";
 import { TEMPLATES, fill, message, readTemplate, skillDirectory } from "./package-files";
 import { projectPaths, requireProjectConfig, updateProjectConfig } from "./projects";
-import { sendCommand, sendFromPlugin } from "./send";
+import { sendFromPlugin } from "./send";
 import { hasAttachments, sendWithAttachments, type Attachments } from "./uploads";
 import { serialized } from "./serialize";
 import type { PluginState } from "./state";
 import { ensureTaroProject } from "./taro-project";
 import { taroEnvironment } from "./environment";
+import { identityFromLabels, type Supervisor } from "./supervision";
 
 export function managerTitle(project: string): string {
   return `${project} · Manager`;
@@ -182,10 +183,12 @@ export async function tellManager(paseo: PaseoApi, project: string, text: string
   return agent.id;
 }
 
-export async function compactManager(paseo: PaseoApi, project: string): Promise<string> {
+/** The Compact button: the same handoff → /compact → reload pipeline as an idle compaction (TR-101), never a bare /compact. */
+export async function compactManager(paseo: PaseoApi, project: string, supervisor: Pick<Supervisor, "startCompaction">): Promise<string> {
   const agent = await requireManager(paseo, project);
   if (isMidTurn(agent)) throw new Error(`The ${project} Manager is in the middle of a turn. Compact it once it is idle.`);
-  await sendCommand(paseo, agent.id, "/compact");
+  const identity = identityFromLabels(agent.labels, agent.title ?? null) ?? { project, role: "manager", ticket: null, title: agent.title ?? null };
+  await supervisor.startCompaction(paseo, agent.id, identity, agent.lastUsage?.contextWindowUsedTokens ?? null, "button");
   return agent.id;
 }
 

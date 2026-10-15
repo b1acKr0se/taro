@@ -1,0 +1,2 @@
+<!-- Step 2 of a manager's compaction (TR-101): appended to /compact. -->
+Keep: the project and tracker path, your handoff file ({{handoff}}); each running task owner with its ticket and agent id; the queue in its order and why, and every hold with its reason; constraints and preferences the user gave in chat, in their exact words; open questions to the user and requests in flight; what your last reply already told the user, so you do not say it again. Drop: command output, logs, ticket text the tracker already holds, file contents and exploration.

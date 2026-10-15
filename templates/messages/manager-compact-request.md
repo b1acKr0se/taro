@@ -1,0 +1,2 @@
+<!-- Step 1 of a manager's compaction when the user presses Compact (TR-101). -->
+The user pressed Compact: your context ({{usedTokens}} tokens) is about to be compacted. First write a handoff to {{handoff}} (replace what is there): requests in flight and what you told the user about them, tickets queued for dispatch and why, open questions to the user, and your next step. The tracker already holds the tickets; do not copy them. Then end your turn with `waiting: compaction`.

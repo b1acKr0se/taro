@@ -39,6 +39,11 @@ EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
   again on reconnect. Change a kept field's type and it starts over; version the slot.
 - Text fields on the phone use `KeyboardScrollView` or `useRevealFocused()` (`client/keyboard.tsx`);
   a plugin cannot import `react-native-keyboard-controller`.
+- After any compaction a Claude manager or owner rereads its rules through a SessionStart hook
+  (matcher `compact`) the plugin merges into `.claude/settings.local.json` in its working directory
+  when its session opens (`server/compact-hook.ts`; Paseo lets a plugin change only a session's env).
+  The merge edits the text in place, so a user's own file keeps every other byte, and the hook prints
+  `<plugin data>/reload/$PASEO_AGENT_ID.md` only while the skill folder exists, always exiting 0.
 - Images over Claude's limit (5 MB of base64, about 3.75 MB of file) are shrunk when attached
   (`client/image-shrink.ts`); Paseo's own cap is 10 attachments and 30 MB a message.
 - Code adapted from FirstMate (MIT) or ported from Paseo (Apache-2.0) keeps its header comment and

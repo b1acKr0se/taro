@@ -19,6 +19,8 @@ vi.mock("./package-files", () => ({
     compactInstructions: "keep",
     managerHandoffRequest: "manager-handoff",
     managerReload: "manager-reload",
+    managerCompactRequest: "manager-compact",
+    managerCompactInstructions: "manager-keep",
   },
   skillDirectory: async () => "/skill",
   message: async (path: string, values: Record<string, string> = {}) => `${path}:${values.ticket ?? values.handoff ?? ""}:${values.usedTokens ?? ""}`,
@@ -121,7 +123,7 @@ describe("Supervisor.compactIdleAgents", () => {
     await taro.compactIdleAgents({} as PaseoApi, ["taro"], at(56), 55 * 60_000);
 
     await endTurn(taro, manager); // the handoff turn
-    expect(vi.mocked(sendCommand).mock.calls.map(([, id, text]) => `${id} ${text}`)).toEqual(["manager-1 /compact keep::"]);
+    expect(vi.mocked(sendCommand).mock.calls.map(([, id, text]) => `${id} ${text}`)).toEqual(["manager-1 /compact manager-keep:/taro/projects/taro/manager-handoff.md:"]);
     expect(agents["manager-1"]?.compaction).toBe("compacting");
 
     vi.mocked(sendFromPlugin).mockClear();
@@ -154,5 +156,35 @@ describe("Supervisor.compactIdleAgents", () => {
     expect(sent()).toEqual(["owner-1 reload:TR-5:"]);
     await endTurn(taro, owner);
     expect(agents["owner-1"]?.idleCompaction).toBe("done");
+  });
+
+  it("runs the manager's Compact button through the same pipeline, with the manager's keep list, outside the idle count", async () => {
+    const { taro, agents, stats } = setup();
+    const manager = agent("manager-1", "manager", null, 180_000);
+    await seenIdle(taro, manager);
+    vi.mocked(sendFromPlugin).mockClear();
+
+    await taro.startCompaction({} as PaseoApi, "manager-1", { project: "taro", role: "manager", ticket: null, title: null }, 180_000, "button");
+    expect(sent()).toEqual(["manager-1 manager-compact:/taro/projects/taro/manager-handoff.md:180k"]);
+    expect(agents["manager-1"]?.compaction).toBe("handoff");
+
+    await endTurn(taro, manager); // the handoff turn
+    expect(vi.mocked(sendCommand).mock.calls.map(([, id, text]) => `${id} ${text}`)).toEqual(["manager-1 /compact manager-keep:/taro/projects/taro/manager-handoff.md:"]);
+    vi.mocked(sendFromPlugin).mockClear();
+    await endTurn(taro, manager); // the /compact turn
+    expect(sent()).toEqual(["manager-1 manager-reload:/taro/projects/taro/manager-handoff.md:"]);
+    expect([agents["manager-1"]?.compaction, agents["manager-1"]?.idleCompaction]).toEqual(["none", "none"]);
+    expect(stats.countProject).not.toHaveBeenCalled();
+  });
+
+  it("keeps an owner's ticket keep list, from the button too", async () => {
+    const { taro } = setup();
+    const owner = agent("owner-1", "owner", "TR-5", 180_000);
+    await seenIdle(taro, owner);
+    vi.mocked(sendFromPlugin).mockClear();
+    await taro.startCompaction({} as PaseoApi, "owner-1", { project: "taro", role: "owner", ticket: "TR-5", title: null }, 180_000, "button");
+    expect(sent()).toEqual(["owner-1 handoff:TR-5:180k"]);
+    await endTurn(taro, owner);
+    expect(vi.mocked(sendCommand).mock.calls.map(([, id, text]) => `${id} ${text}`)).toEqual(["owner-1 /compact keep::"]);
   });
 });

@@ -164,7 +164,7 @@ export class Actions {
     if (isMidTurn(agent)) throw new Error("It is in the middle of a turn. Compact it once it is idle.");
     const identity = identityFromLabels(agent.labels, agent.title ?? null);
     if (identity === null) throw new Error("That is not a Taro agent.");
-    await this.supervisor.startCompaction(paseo, agentId, identity, agent.lastUsage?.contextWindowUsedTokens ?? null);
+    await this.supervisor.startCompaction(paseo, agentId, identity, agent.lastUsage?.contextWindowUsedTokens ?? null, "button");
   }
 
   private async owners(paseo: PaseoApi, project: string, ticket: string) {
