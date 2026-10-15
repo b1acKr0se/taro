@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Children, isValidElement, useMemo, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 
+import { isInboxTicket } from "../shared/board";
 import { listOpenDecisions, type Card, type ProjectSummary } from "../shared/contracts";
 import type { StoredDecision } from "../shared/state";
 import { AlertCard } from "./alert-card";
@@ -158,7 +159,7 @@ function InboxProject({
   const board = useBoard(project);
   const refresh = useRefreshBoard(project);
   const cards = board.data?.cards ?? [];
-  const waiting = cards.filter((card) => (card.column === "needs-you" && card.decisions.length === 0) || card.column === "stalled");
+  const waiting = cards.filter(isInboxTicket);
   const syncProblem = summary.trackerSyncProblem;
   const alerts = board.data?.alerts ?? [];
   if (waiting.length === 0 && syncProblem === null && alerts.length === 0) return null;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { boardColumn, columnCounts, complexityOf, inboxCount, needsYouExtras, ticketAgents, type CardInputs, type JoinedAgent } from "./board";
+import { boardColumn, columnCounts, complexityOf, inboxCount, isInboxTicket, needsYouExtras, ticketAgents, type CardInputs, type JoinedAgent } from "./board";
 
 const base: CardInputs = { status: "In Progress", ownerElsewhere: false, agent: { status: "idle", pendingPermissions: 0 }, lastStatus: "waiting", openBlockingDecisions: 0, stalledAfterNudge: false };
 
@@ -235,7 +235,7 @@ describe("columnCounts", () => {
 
 describe("needsYouExtras and inboxCount (TR-064)", () => {
   const alert = { id: "manager-crashed", tickets: [], text: "The manager is stopped." };
-  const cards = [{ column: "needs-you" as const }, { column: "stalled" as const }, { column: "working" as const }, { column: "queued" as const }];
+  const cards = [{ column: "needs-you" as const, decisions: [] }, { column: "stalled" as const, decisions: [] }, { column: "working" as const, decisions: [] }, { column: "queued" as const, decisions: [] }];
 
   it("counts nothing for no board and no paused sync", () => {
     expect(needsYouExtras(null, false)).toBe(0);
@@ -254,14 +254,65 @@ describe("needsYouExtras and inboxCount (TR-064)", () => {
   it("counts a permission the manager's side waits on, once (TR-096)", () => {
     expect(needsYouExtras({ managerDecisions: [], managerPermission: { title: "Allow Bash?" }, alerts: [] }, false)).toBe(1);
     expect(needsYouExtras({ managerDecisions: [{}], managerPermission: null, alerts: [] }, false)).toBe(1);
-    expect(inboxCount({ cards: [{ column: "working" }], managerDecisions: [], managerPermission: { title: "Allow Bash?" }, alerts: [] }, false)).toBe(1);
+    expect(inboxCount({ cards: [{ column: "working", decisions: [] }], managerDecisions: [], managerPermission: { title: "Allow Bash?" }, alerts: [] }, false)).toBe(1);
   });
 
   it("counts an alert alone on an otherwise quiet board", () => {
-    expect(inboxCount({ cards: [{ column: "working" }], managerDecisions: [], alerts: [alert] }, false)).toBe(1);
+    expect(inboxCount({ cards: [{ column: "working", decisions: [] }], managerDecisions: [], alerts: [alert] }, false)).toBe(1);
   });
 
   it("counts Needs you and stalled tickets in the Inbox, not work under way", () => {
     expect(inboxCount({ cards, managerDecisions: [{}], alerts: [alert] }, true)).toBe(5);
+  });
+});
+
+describe("inboxCount counts each card the Inbox lists (TR-123)", () => {
+  const quiet = { managerDecisions: [], alerts: [] };
+  const question = { id: "scope-approval" };
+  // An owner's questions arrive as ticketQuestions; their tickets' cards carry them as decisions.
+  const owner = (column: "needs-you" | "working" | "queued" | "stalled", decisions: readonly unknown[]) => ({ column, decisions });
+
+  it("counts an owner's non-blocking question, whose ticket stays under way", () => {
+    expect(inboxCount({ ...quiet, cards: [owner("working", [question])], ticketQuestions: 1 }, false)).toBe(1);
+  });
+
+  it("counts a blocking question once, not again for its ticket in Needs you", () => {
+    expect(inboxCount({ ...quiet, cards: [owner("needs-you", [question])], ticketQuestions: 1 }, false)).toBe(1);
+  });
+
+  it("counts a blocking question while its owner still runs", () => {
+    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, openBlockingDecisions: 1 })).toBe("working");
+    expect(inboxCount({ ...quiet, cards: [owner("working", [question])], ticketQuestions: 1 }, false)).toBe(1);
+  });
+
+  it("counts each of several questions on one ticket", () => {
+    expect(inboxCount({ ...quiet, cards: [owner("needs-you", [question, question, question])], ticketQuestions: 3 }, false)).toBe(3);
+  });
+
+  it("counts a question on a ticket whose card is off the page", () => {
+    expect(inboxCount({ ...quiet, cards: [], ticketQuestions: 2 }, false)).toBe(2);
+  });
+
+  it("counts a stalled ticket as itself, besides its questions, as the Inbox lists both", () => {
+    expect(inboxCount({ ...quiet, cards: [owner("stalled", [question])], ticketQuestions: 1 }, false)).toBe(2);
+  });
+
+  it("adds the manager's questions, waiting tickets, alerts and a paused sync to the owners' questions", () => {
+    const cards = [owner("needs-you", []), owner("needs-you", [question]), owner("working", [question, question]), owner("queued", [])];
+    const board = { cards, managerDecisions: [question], ticketQuestions: 3, alerts: [{ id: "threads" }] };
+    // 1 manager question + 3 ticket questions + 1 acceptance + 1 alert + 1 paused sync.
+    expect(inboxCount(board, true)).toBe(7);
+  });
+
+  it("is zero when nothing waits, and for a board from before ticketQuestions", () => {
+    expect(inboxCount({ ...quiet, cards: [owner("working", []), owner("queued", [])], ticketQuestions: 0 }, false)).toBe(0);
+    expect(inboxCount({ ...quiet, cards: [owner("working", [])] }, false)).toBe(0);
+  });
+
+  it("lists as itself only a waiting ticket with no question, or a stalled one", () => {
+    expect(isInboxTicket(owner("needs-you", []))).toBe(true);
+    expect(isInboxTicket(owner("needs-you", [question]))).toBe(false);
+    expect(isInboxTicket(owner("stalled", [question]))).toBe(true);
+    expect(isInboxTicket(owner("working", []))).toBe(false);
   });
 });
