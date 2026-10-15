@@ -8,6 +8,7 @@ import { join } from "node:path";
 
 import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compaction";
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
+import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
 import { isCrash } from "../shared/recovery";
 import { hashText, parseDecisionBlocks, parseStatusLine, seenAgain, withImagePaths, type ParsedDecision } from "../shared/reports";
 import { withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDecision } from "../shared/state";
@@ -53,6 +54,22 @@ export function closingText(timeline: readonly TimelineItem[]): string {
 /** What the user said in this turn: user messages the plugin did not send. */
 export function humanMessages(timeline: readonly TimelineItem[]): string[] {
   return timeline.flatMap((item) => (item.type === "user_message" && !isPluginMessageId(item.clientMessageId) && !isPluginMessageId(item.messageId) ? [item.text] : []));
+}
+
+/**
+ * What the user typed in the agent's own tab this turn: their words, less those sent from a Taro chat
+ * (`chat-` ids). Words in the tab answer the agent's open decisions; a chat message does not (TR-102):
+ * the chat shows each decision as a card with its own answer box, and a message sent beside it, while it
+ * is pending, closed the card and was recorded as its answer.
+ */
+export function tabMessages(timeline: readonly TimelineItem[]): string[] {
+  return timeline.flatMap((item) =>
+    item.type === "user_message" && !isPluginMessageId(item.clientMessageId) && !isPluginMessageId(item.messageId) && !isChatMessageId(item.clientMessageId) ? [item.text] : [],
+  );
+}
+
+function isChatMessageId(messageId: string | undefined): boolean {
+  return messageId !== undefined && messageId.startsWith(CHAT_MESSAGE_PREFIX);
 }
 
 /** When the user last typed to the agent themselves (not a message the plugin sent), from timeline entries; null if never. */
@@ -200,7 +217,7 @@ export class Supervisor {
 
     const status = parseStatusLine(closing);
     const decisions = parseDecisionBlocks(allAssistantText(turn));
-    const userWords = humanMessages(turn);
+    const userWords = tabMessages(turn);
     if (userWords.length > 0) await this.closeAnsweredInTab(live.id, userWords, decisions, now);
     if (decisions.length > 0) await this.storeDecisions(paseo, live, identity, decisions, turnIdentity(turn), now);
 
