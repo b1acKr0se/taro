@@ -284,7 +284,7 @@ export function managerCondition(manager: { status: string; updatedAt: string; s
  * something after it went up), the manager idle or unresponsive, and no ladder restart in the past
  * hour. A ticket the manager was never told about is restarted for only when the manager is
  * unresponsive (hung or given up by crash recovery), twenty minutes after it was first seen: a busy
- * Manager that turns idle is woken first. A manager turn ending is no sign the user acted: the
+ * manager that turns idle is woken first. A manager turn ending is no sign the user acted: the
  * plugin's own wake-ups for a changed queue end turns too.
  */
 export function restartDue(watch: QueueWatch, count: Recount, condition: ManagerCondition, now: number): string[] {

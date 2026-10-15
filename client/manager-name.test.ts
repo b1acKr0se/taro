@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
  * or a label opening on it ("Manager asks"). Only a title naming one project's manager keeps the capital
  * ("notes-app · Manager", the Manager tab), and neither reads like this (TR-104).
  */
-const CAPITAL_MANAGER = /\b(?:[Tt]he|[Aa]|[Ii]ts|[Nn]o|project's|fresh|[Ss]tart|[Rr]esume|[Tt]ell|to)(?: \$\{\w+\})? \**Manager\b(?! tab)|["'`]Manager [a-z]/;
+const CAPITAL_MANAGER = /(?:\b[a-z][a-z']*|\})(?: \$\{\w+\})? \**Manager\b(?! tab)|["'`]Manager [a-z]/;
 
 function lines(directory: string, keep: (name: string) => boolean): { where: string; line: string }[] {
   return readdirSync(directory, { recursive: true, encoding: "utf8" })
@@ -36,6 +36,7 @@ describe("the manager's name in what the user and agents read (TR-031, TR-037, T
     expect(CAPITAL_MANAGER.test("Tell the Manager what you need…")).toBe(true);
     expect(CAPITAL_MANAGER.test("`The ${project} Manager is in the middle of a turn.`")).toBe(true);
     expect(CAPITAL_MANAGER.test('"Manager asks"')).toBe(true);
+    expect(CAPITAL_MANAGER.test("restart it from Manager settings")).toBe(true);
     expect(CAPITAL_MANAGER.test("You tell a **Manager** agent what you want")).toBe(true);
     expect(CAPITAL_MANAGER.test("Tell the manager what you need…")).toBe(false);
     expect(CAPITAL_MANAGER.test("then open its Manager tab")).toBe(false);
