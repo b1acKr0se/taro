@@ -39,7 +39,8 @@ export function CrashCard({ theme, compact }: { theme: PluginTheme; compact: boo
         padding: compact ? 10 : 12,
         gap: 6,
         backgroundColor: colors.surface1,
-        marginHorizontal: compact ? SPACE.md : SPACE.lg,
+        // Lined up with the panes' content below it on both layouts.
+        marginHorizontal: SPACE.lg,
         marginTop: SPACE.md,
       },
       heading: { color: colors.statusWarning, fontSize: FONT_SIZE.micro, fontWeight: "700" as const, letterSpacing: 0.5, flex: 1 },

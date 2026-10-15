@@ -109,7 +109,7 @@ export function pressWhat(key: string): string {
 export function trailError(source: TrailError["source"], where: string, error: unknown, at: string): TrailError {
   const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
   const stack = error instanceof Error && typeof error.stack === "string" ? error.stack : "";
-  return { at, source, where: plainWhat(where), message: message.slice(0, MESSAGE_LENGTH), stack: stack.slice(0, STACK_LENGTH) };
+  return { at, source, where: plainWhat(where), message: message.length > MESSAGE_LENGTH ? `${message.slice(0, MESSAGE_LENGTH - 1)}…` : message, stack: stack.slice(0, STACK_LENGTH) };
 }
 
 export function deviceKey(device: Device): string {
@@ -172,8 +172,17 @@ export function lastCrash(file: TrailFile, current: string, device: Device, path
   return null;
 }
 
+/** Dismisses a launch's crash and every earlier one on its device, so an older crash does not take its place. */
 export function dismissLaunch(file: TrailFile, launch: string): TrailFile {
-  return { ...file, launches: file.launches.map((record) => (record.launch === launch ? { ...record, dismissed: true } : record)) };
+  const dismissed = file.launches.find((record) => record.launch === launch);
+  if (dismissed === undefined) return file;
+  const key = deviceKey(dismissed.device);
+  return {
+    ...file,
+    launches: file.launches.map((record) =>
+      record.launch === launch || (deviceKey(record.device) === key && record.startedAt <= dismissed.startedAt) ? { ...record, dismissed: true } : record,
+    ),
+  };
 }
 
 /** The device in one line: "android 14 · Pixel 8 · 412×915". */

@@ -37,6 +37,11 @@ function text(value: unknown): string {
   return typeof value === "string" || typeof value === "number" ? String(value) : "";
 }
 
+function desktopPlatform(): string {
+  const shell: unknown = Reflect.get(globalThis, "paseoDesktop");
+  return typeof shell === "object" && shell !== null ? text((shell as { platform?: unknown }).platform) : "";
+}
+
 export function deviceNow(): Device {
   const constants: Record<string, unknown> = (Platform as { constants?: Record<string, unknown> }).constants ?? {};
   let model = "";
@@ -47,7 +52,8 @@ export function deviceNow(): Device {
   const size = typeof width === "number" && typeof height === "number" ? `${Math.round(width)}×${Math.round(height)}` : "";
   return {
     platform: Platform.OS.slice(0, 20),
-    os: text(Platform.Version).slice(0, 40),
+    // The web reports a placeholder version; the desktop shell names its operating system.
+    os: (Platform.OS === "web" ? desktopPlatform() : text(Platform.Version)).slice(0, 40),
     model: model.slice(0, 60),
     window: size.slice(0, 20),
   };

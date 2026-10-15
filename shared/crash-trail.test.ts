@@ -57,6 +57,8 @@ describe("trailError", () => {
     const recorded = trailError("boundary", "Taro screen", error, time(1));
     expect(recorded.message.startsWith("TypeError: x")).toBe(true);
     expect(recorded.message).toHaveLength(300);
+    expect(recorded.message.endsWith("x…")).toBe(true);
+    expect(trailError("error", "app", new Error("y".repeat(293)), time(1)).message).toBe(`Error: ${"y".repeat(293)}`);
     expect(recorded.stack.length).toBeLessThanOrEqual(4_000);
     expect(recorded).toMatchObject({ source: "boundary", where: "Taro screen", at: time(1) });
   });
@@ -140,8 +142,17 @@ describe("crashCause and lastCrash", () => {
     const file = fileWith([report("launch0001"), time(1)], [report("launch0002"), time(2)]);
     expect(lastCrash(file, "launch0002", phone, "f")?.launch).toBe("launch0001");
     expect(lastCrash(file, "launch0003", { ...phone, platform: "android", model: "Google Pixel 8" }, "f")).toBeNull();
-    expect(lastCrash(dismissLaunch(file, "launch0002"), "launch0003", phone, "f")?.launch).toBe("launch0001");
-    expect(lastCrash(dismissLaunch(dismissLaunch(file, "launch0002"), "launch0001"), "launch0003", phone, "f")).toBeNull();
+    expect(lastCrash(dismissLaunch(file, "launch0001"), "launch0003", phone, "f")?.launch).toBe("launch0002");
+  });
+
+  it("dismissing a crash also dismisses the earlier ones on that device, not another device's or a later one", () => {
+    const android: Device = { ...phone, platform: "android", model: "Google Pixel 8" };
+    const file = fileWith([report("launch0001"), time(1)], [report("launch0009", { device: android }), time(2)], [report("launch0002"), time(3)], [report("launch0003"), time(4)]);
+    const dismissed = dismissLaunch(file, "launch0002");
+    expect(lastCrash(dismissed, "launch0004", phone, "f")?.launch).toBe("launch0003");
+    expect(lastCrash(dismissLaunch(dismissed, "launch0003"), "launch0004", phone, "f")).toBeNull();
+    expect(lastCrash(dismissed, "launch0010", android, "f")?.launch).toBe("launch0009");
+    expect(dismissLaunch(file, "launch-unknown")).toBe(file);
   });
 
   it("reports the newest crash and only its last steps", () => {
