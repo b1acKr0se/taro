@@ -2,7 +2,7 @@
  * The project's board (decision 9): Needs you · Working · Stalled · Queued ·
  * Done, always all five, side by side as equal panels on a wide screen; on a
  * phone one column at a time behind chips. Queued and Done show their newest cards and load more on
- * request (TR-082). The Manager's open questions are cards in Needs you,
+ * request (TR-082). The manager's open questions are cards in Needs you,
  * blocking first, ahead of the tickets, and count there (TR-045); its suggestions sit above its
  * composer, not here. Done cards carry their ticket's key stats.
  */
@@ -57,7 +57,7 @@ export function ProjectBoard({
   onOpenTicket: (card: Pick<Card, "id">) => void;
   /** Shows the manager's chat, where its decisions are answered. */
   onOpenManager: () => void;
-  /** Opens an agent in Paseo: a subagent of the Manager's that asks permission (TR-096); null where the host cannot. */
+  /** Opens an agent in Paseo: a subagent of the manager's that asks permission (TR-096); null where the host cannot. */
   onOpenAgent?: ((agentId: string) => void) | null;
 }) {
   const project = summary.config.project;
@@ -115,10 +115,10 @@ export function ProjectBoard({
     return new Map<ColumnId, ColumnPage>(COLUMN_IDS.map((id) => [id, columnPage(content, id)]));
   }, [board.data?.cards, board.data?.totals, board.data?.offPage]);
 
-  // The Manager's questions lead Needs you, blocking first (TR-045).
+  // The manager's questions lead Needs you, blocking first (TR-045).
   const managerQuestions = useMemo(() => walkOrder(board.data?.managerDecisions ?? []), [board.data]);
   const managerAsk = board.data?.managerPermission ?? null;
-  // The Manager's own requests are answered in its chat; a subagent of its own has a chat only in Paseo.
+  // The manager's own requests are answered in its chat; a subagent of its own has a chat only in Paseo.
   const openManagerAsk = useLatestCallback(() =>
     managerAsk !== null && managerAsk.role !== "manager" && managerAsk.agentId !== null && onOpenAgent !== null ? onOpenAgent(managerAsk.agentId) : onOpenManager(),
   );
@@ -147,7 +147,7 @@ export function ProjectBoard({
     );
   }
 
-  /** A column's cards: in Needs you, the Manager's side first (a permission, which holds it up, then its questions); a paged column ends with Load more while cards are left. */
+  /** A column's cards: in Needs you, the manager's side first (a permission, which holds it up, then its questions); a paged column ends with Load more while cards are left. */
   function columnCards(id: ColumnId, page: ColumnPage | undefined) {
     const group = page?.cards ?? [];
     const questions =
@@ -155,7 +155,7 @@ export function ProjectBoard({
         ? [
             ...(managerAsk === null ? [] : [<PermissionAskCard key="manager-permission" ask={managerAsk} theme={theme} compact={compact} onOpen={openManagerAsk} />]),
             ...managerQuestions.map((decision) => (
-              <QuestionCard key={decision.key} decision={decision} asker="Manager" theme={theme} compact={compact} onOpen={onOpenManager} onAnswered={changed} />
+              <QuestionCard key={decision.key} decision={decision} asker="The manager" theme={theme} compact={compact} onOpen={onOpenManager} onAnswered={changed} />
             )),
           ]
         : [];

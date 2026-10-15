@@ -523,7 +523,7 @@ function FinalBody({ sections, theme, onOpenLink }: { sections: FinalSections; t
   );
 }
 
-/** The user's words first, as Markdown; the Manager's notes folded behind their count. */
+/** The user's words first, as Markdown; the manager's notes folded behind their count. */
 function DescriptionBody({ description, theme, onOpenLink }: { description: string; theme: PluginTheme; onOpenLink: (url: string) => void }) {
   const parts = useMemo(() => descriptionParts(description), [description]);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -540,7 +540,7 @@ function DescriptionBody({ description, theme, onOpenLink }: { description: stri
             style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs, alignSelf: "flex-start" }}
           >
             <Icon name={notesOpen ? "ChevronDown" : "ChevronRight"} size={14} color={colors.foregroundMuted} />
-            <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, fontWeight: "600" }}>Manager notes ({parts.managerNoteCount})</Text>
+            <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, fontWeight: "600" }}>Notes from the manager ({parts.managerNoteCount})</Text>
           </Pressable>
           {notesOpen && parts.managerNotes !== "" ? <Markdown source={parts.managerNotes} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={onOpenLink} foldParagraphs /> : null}
         </View>

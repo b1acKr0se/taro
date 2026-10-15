@@ -211,7 +211,7 @@ export function optionChips(decision: Pick<StoredDecision, "options" | "recommen
 
 /**
  * Who asked, as a card's head says it: "notes · SC-003 · Add validation". The agent's title already
- * starts with its ticket when it has one, and a Manager's with its project ("notes · Manager").
+ * starts with its ticket when it has one, and a manager's with its project ("notes · Manager").
  */
 export function askedBy(decision: Pick<StoredDecision, "project" | "ticket" | "agentTitle" | "agentRole">): string {
   const title = decision.agentTitle ?? decision.agentRole;

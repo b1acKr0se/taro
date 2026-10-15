@@ -16,8 +16,8 @@ describe("permissionHeading", () => {
     expect(askerName({ kind: "ticket", ticket: "NA-012", role: "researcher" })).toBe("NA-012's researcher");
   });
 
-  it("names the Manager", () => {
-    expect(permissionHeading({ kind: "manager" }, "permission")).toBe("The Manager is asking permission");
-    expect(permissionHeading({ kind: "manager" }, "plan")).toBe("The Manager has a plan for you to approve");
+  it("names the manager", () => {
+    expect(permissionHeading({ kind: "manager" }, "permission")).toBe("The manager is asking permission");
+    expect(permissionHeading({ kind: "manager" }, "plan")).toBe("The manager has a plan for you to approve");
   });
 });

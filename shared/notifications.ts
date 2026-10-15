@@ -81,13 +81,13 @@ function cardEntries(card: Card): NeedsYouEntry[] {
 
 /**
  * A pending permission (TR-059), named for who asks when it is not the card's owner (TR-096): a tap
- * opens the agent that asks, where Allow and Deny are. `whose` is the ticket, or null for the Manager's side.
+ * opens the agent that asks, where Allow and Deny are. `whose` is the ticket, or null for the manager's side.
  */
 function permissionEntry(ask: AgentAskView, keyPrefix: string, whose: string | null, fallbackAgentId: string | null, fallbackWorkspaceId: string | null): NeedsYouEntry {
   const text = ask.detail === null ? ask.title : `${ask.title} ${ask.detail}`;
   const agentId = ask.agentId ?? fallbackAgentId;
   const job = ask.role === null || ask.role === "owner" || ask.role === "manager" ? null : ask.role;
-  const who = whose === null ? (job === null ? "The Manager" : `The Manager's ${job}`) : job === null ? whose : `${whose}'s ${job}`;
+  const who = whose === null ? (job === null ? "The manager" : `The manager's ${job}`) : job === null ? whose : `${whose}'s ${job}`;
   return {
     key: `${keyPrefix}permission:${agentId ?? "none"}:${ask.id ?? text}`,
     title: `${who} needs permission`,
@@ -100,7 +100,7 @@ function permissionEntry(ask: AgentAskView, keyPrefix: string, whose: string | n
 /**
  * A board alert (TR-064), announced once while it is up: keyed by its kind alone, so its minutes
  * changing or a ticket joining the queued one does not announce it again, and forgotten when it
- * clears, so its next episode is announced. A tap opens the Manager, which can act on any of them.
+ * clears, so its next episode is announced. A tap opens the manager, which can act on any of them.
  */
 function alertEntry(project: string, alert: BoardAlert, managerAgentId: string | null, managerWorkspaceId: string | null): NeedsYouEntry {
   const key = `${WHILE_WAITING}alert:${alert.id}`;
@@ -130,7 +130,7 @@ export function needsYouEntries(board: Board, managerWorkspaceId: string | null,
   return [
     ...board.alerts.map((alert) => alertEntry(board.project, alert, managerAgentId, managerWorkspaceId)),
     ...board.cards.filter((card) => card.status !== "Done" && card.status !== "Cancelled").flatMap((card) => cardEntries(card)),
-    ...board.managerDecisions.map((decision) => decisionEntry(decision, "Manager asks", managerWorkspaceId)),
+    ...board.managerDecisions.map((decision) => decisionEntry(decision, "The manager asks", managerWorkspaceId)),
     ...(board.managerPermission === null ? [] : [permissionEntry(board.managerPermission, "manager:", null, managerAgentId, managerWorkspaceId)]),
   ];
 }

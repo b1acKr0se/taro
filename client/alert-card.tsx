@@ -2,7 +2,7 @@
  * A Needs you item that belongs to no ticket (TR-012): the host short of threads
  * for a while, a manager the plugin stopped recovering after repeated crashes,
  * a ticket file that cannot be read (TR-081), or a ticket left queued with a
- * free slot after the Manager was told (TR-062), one card for all such tickets
+ * free slot after the manager was told (TR-062), one card for all such tickets
  * (TR-064); the last the user can dismiss. The crashed
  * manager's card resumes it, its conversation kept (TR-072).
  */
@@ -54,7 +54,7 @@ export function AlertCard({ project, alert, theme, compact }: { project: string;
   }
 
   function onResume(): void {
-    // Its failure (a reload Paseo refused) is the error toast, which names Start a fresh Manager.
+    // Its failure (a reload Paseo refused) is the error toast, which names Start a fresh manager.
     presses.press("resume", () => resume({ project }), {
       after: "hold",
       success: MANAGER_ACTION_SUCCESS.resume,

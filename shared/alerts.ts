@@ -7,7 +7,7 @@ import type { TicketProblem } from "./ticket-format";
 
 const HEADINGS: Readonly<Record<string, string>> = {
   headroom: "Threads running low",
-  "manager-crashed": "Manager crashed",
+  "manager-crashed": "The manager crashed",
   [QUEUED_ALERT_ID]: "Queued with a free slot",
 };
 
@@ -30,7 +30,7 @@ export function alertHeading(alertId: string): string {
   return HEADINGS[alertId] ?? "Needs you";
 }
 
-/** The alerts the user may dismiss: those that only report (a queue the Manager left). */
+/** The alerts the user may dismiss: those that only report (a queue the manager left). */
 export function dismissible(alertId: string): boolean {
   return alertId === QUEUED_ALERT_ID;
 }

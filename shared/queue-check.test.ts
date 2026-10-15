@@ -140,15 +140,15 @@ describe("shouldWakeIdleManager", () => {
   const now = 10 * 60 * 60_000;
   const idle = { managerMidTurn: false, lastTurnEndedAt: now - MANAGER_IDLE_BEFORE_WAKE_MS, lastWokenFor: null, now };
 
-  it("wakes an idle Manager when a ticket could start", () => {
+  it("wakes an idle manager when a ticket could start", () => {
     expect(shouldWakeIdleManager({ ...idle, count: count() })).toBe(true);
   });
 
-  it("waits until the Manager has been idle for two minutes", () => {
+  it("waits until the manager has been idle for two minutes", () => {
     expect(shouldWakeIdleManager({ ...idle, lastTurnEndedAt: now - MANAGER_IDLE_BEFORE_WAKE_MS + 1, count: count() })).toBe(false);
   });
 
-  it("leaves a Manager mid-turn, or one with no known turn end", () => {
+  it("leaves a manager mid-turn, or one with no known turn end", () => {
     expect(shouldWakeIdleManager({ ...idle, managerMidTurn: true, count: count() })).toBe(false);
     expect(shouldWakeIdleManager({ ...idle, lastTurnEndedAt: null, count: count() })).toBe(false);
   });
@@ -221,7 +221,7 @@ describe("the escalation ladder", () => {
     expect(watch.queuedAt.size + watch.wokenAt.size + watch.dismissed.size).toBe(0);
   });
 
-  it("drops a ticket that the Manager holds", () => {
+  it("drops a ticket that the manager holds", () => {
     const watch = watched();
     trackQueue(watch, count({ startable: [], held: [{ id: "TR-5", reason: "rewrite first" }] }), minutes(1));
     expect(watch.queuedAt.size).toBe(0);
@@ -243,15 +243,15 @@ describe("the escalation ladder", () => {
       {
         id: "queued-free-slot",
         tickets: ["TR-5"],
-        text: "TR-5 queued with a free slot: the plugin told the Manager 10 minutes ago, and it has not dispatched it. Open the Manager's tab to see why, or ask it to dispatch the ticket. Unless you dismiss this or tell the Manager something, the plugin restarts the Manager 20 minutes after it was told.",
+        text: "TR-5 queued with a free slot: the plugin told the manager 10 minutes ago, and it has not dispatched it. Open the manager's tab to see why, or ask it to dispatch the ticket. Unless you dismiss this or tell the manager something, the plugin restarts the manager 20 minutes after it was told.",
       },
     ]);
   });
 
-  it("raises the alert ten minutes after the first look when the Manager could never be woken", () => {
+  it("raises the alert ten minutes after the first look when the manager could never be woken", () => {
     const watch = watched();
     expect(queuedAlerts(watch, minutes(10), "busy")[0]?.text).toBe(
-      "TR-5 queued with a free slot: the Manager has been busy for 10 minutes, so the plugin could not tell it yet. It tells the Manager once it is idle, and restarts it only if it hangs. Open the Manager's tab to see what it is doing.",
+      "TR-5 queued with a free slot: the manager has been busy for 10 minutes, so the plugin could not tell it yet. It tells the manager once it is idle, and restarts it only if it hangs. Open the manager's tab to see what it is doing.",
     );
   });
 
@@ -278,7 +278,7 @@ describe("the escalation ladder", () => {
         {
           id: "queued-free-slot",
           tickets: ["TR-9", "TR-10", "TR-11"],
-          text: "TR-9, TR-10 and TR-11 queued with a free slot: the plugin told the Manager 14 minutes ago, and it has not dispatched them. Open the Manager's tab to see why, or ask it to dispatch the tickets. Unless you dismiss this or tell the Manager something, the plugin restarts the Manager 20 minutes after it was told.",
+          text: "TR-9, TR-10 and TR-11 queued with a free slot: the plugin told the manager 14 minutes ago, and it has not dispatched them. Open the manager's tab to see why, or ask it to dispatch the tickets. Unless you dismiss this or tell the manager something, the plugin restarts the manager 20 minutes after it was told.",
         },
       ]);
     });
@@ -286,15 +286,15 @@ describe("the escalation ladder", () => {
     it("names two with 'and' and no comma", () => {
       const watch = watched({ startable: ["TR-5", "TR-6"] });
       expect(queuedAlerts(watch, minutes(12), "busy")[0]?.text).toBe(
-        "TR-5 and TR-6 queued with a free slot: the Manager has been busy for 12 minutes, so the plugin could not tell it yet. It tells the Manager once it is idle, and restarts it only if it hangs. Open the Manager's tab to see what it is doing.",
+        "TR-5 and TR-6 queued with a free slot: the manager has been busy for 12 minutes, so the plugin could not tell it yet. It tells the manager once it is idle, and restarts it only if it hangs. Open the manager's tab to see what it is doing.",
       );
     });
 
-    it("says which tickets the Manager was told about and which not yet", () => {
+    it("says which tickets the manager was told about and which not yet", () => {
       const watch = watched({ startable: ["TR-5", "TR-6"] });
       markWoken(watch, count({ startable: ["TR-5"] }), minutes(2));
       expect(queuedAlerts(watch, minutes(13), "busy")[0]?.text).toBe(
-        "TR-5 and TR-6 queued with a free slot: the plugin told the Manager about TR-5 11 minutes ago, and it has not dispatched it; it was too busy to be told about TR-6 yet. Open the Manager's tab to see why, or ask it to dispatch the ticket. Unless you dismiss this or tell the Manager something, the plugin restarts the Manager 20 minutes after it was told.",
+        "TR-5 and TR-6 queued with a free slot: the plugin told the manager about TR-5 11 minutes ago, and it has not dispatched it; it was too busy to be told about TR-6 yet. Open the manager's tab to see why, or ask it to dispatch the ticket. Unless you dismiss this or tell the manager something, the plugin restarts the manager 20 minutes after it was told.",
       );
     });
 
@@ -315,28 +315,28 @@ describe("the escalation ladder", () => {
     });
   });
 
-  describe("the Manager's condition (TR-066)", () => {
-    it("says no Manager is running and where to start one, never that it is busy", () => {
+  describe("the manager's condition (TR-066)", () => {
+    it("says no manager is running and where to start one, never that it is busy", () => {
       const watch = watched();
       expect(queuedAlerts(watch, minutes(10), "missing")).toEqual([
         {
           id: "queued-free-slot",
           tickets: ["TR-5"],
-          text: "TR-5 queued with a free slot, but no Manager is running, so nothing dispatches it. Start one from the project's settings (⚙): a new Manager checks the tracker when it starts.",
+          text: "TR-5 queued with a free slot, but no manager is running, so nothing dispatches it. Start one from the project's settings (⚙): a new manager checks the tracker when it starts.",
         },
       ]);
     });
 
-    it("says the same for tickets a Manager was told about before it stopped, with no restart promised", () => {
+    it("says the same for tickets a manager was told about before it stopped, with no restart promised", () => {
       const watch = watched({ startable: ["TR-5", "TR-6"] });
       markWoken(watch, count({ startable: ["TR-5", "TR-6"] }), minutes(1));
       const text = queuedAlerts(watch, minutes(30), "missing")[0]?.text;
       expect(text).toBe(
-        "TR-5 and TR-6 queued with a free slot, but no Manager is running, so nothing dispatches them. Start one from the project's settings (⚙): a new Manager checks the tracker when it starts.",
+        "TR-5 and TR-6 queued with a free slot, but no manager is running, so nothing dispatches them. Start one from the project's settings (⚙): a new manager checks the tracker when it starts.",
       );
     });
 
-    it("claims a busy Manager only when it is busy", () => {
+    it("claims a busy manager only when it is busy", () => {
       const watch = watched({ startable: ["TR-5", "TR-6"] });
       markWoken(watch, count({ startable: ["TR-5"] }), minutes(2));
       for (const condition of ["idle", "unresponsive", "missing"] as const) {
@@ -346,19 +346,19 @@ describe("the escalation ladder", () => {
       expect(queuedAlerts(watch, minutes(13), "idle")[0]?.text).toContain("it has not been told about TR-6 yet");
     });
 
-    it("asks the user to tell an idle Manager it could not tell", () => {
+    it("asks the user to tell an idle manager it could not tell", () => {
       expect(queuedAlerts(watched(), minutes(12), "idle")[0]?.text).toBe(
-        "TR-5 queued with a free slot: the plugin has not been able to tell the Manager for 12 minutes, though it is idle now. Open the Manager's tab and ask it to dispatch the ticket.",
+        "TR-5 queued with a free slot: the plugin has not been able to tell the manager for 12 minutes, though it is idle now. Open the manager's tab and ask it to dispatch the ticket.",
       );
     });
 
-    it("says an unresponsive Manager it could not tell will be restarted, unless one was restarted within the hour", () => {
+    it("says an unresponsive manager it could not tell will be restarted, unless one was restarted within the hour", () => {
       const watch = watched();
       expect(queuedAlerts(watch, minutes(10), "unresponsive")[0]?.text).toBe(
-        "TR-5 queued with a free slot: the Manager has stopped responding, so the plugin could not tell it for 10 minutes. Open the Manager's tab to see what happened. Unless you dismiss this, the plugin restarts the Manager 20 minutes after the ticket was queued.",
+        "TR-5 queued with a free slot: the manager has stopped responding, so the plugin could not tell it for 10 minutes. Open the manager's tab to see what happened. Unless you dismiss this, the plugin restarts the manager 20 minutes after the ticket was queued.",
       );
       watch.restarts = [minutes(5)];
-      expect(queuedAlerts(watch, minutes(10), "unresponsive")[0]?.text).toContain("already restarted the Manager within the hour, so it leaves this to you");
+      expect(queuedAlerts(watch, minutes(10), "unresponsive")[0]?.text).toContain("already restarted the manager within the hour, so it leaves this to you");
     });
   });
 
@@ -369,21 +369,21 @@ describe("the escalation ladder", () => {
       return watch;
     }
 
-    it("is due twenty minutes after the wake-up for an idle Manager", () => {
+    it("is due twenty minutes after the wake-up for an idle manager", () => {
       expect(restartDue(woken(), count(), "idle", minutes(20) - 1)).toEqual([]);
       expect(restartDue(woken(), count(), "idle", minutes(20))).toEqual(["TR-5"]);
     });
 
-    it("is due for an unresponsive Manager, told or not", () => {
+    it("is due for an unresponsive manager, told or not", () => {
       expect(restartDue(woken(), count(), "unresponsive", minutes(20))).toEqual(["TR-5"]);
       expect(restartDue(watched(), count(), "unresponsive", minutes(20))).toEqual(["TR-5"]);
     });
 
-    it("is never due for an idle Manager that was never told: it is woken first", () => {
+    it("is never due for an idle manager that was never told: it is woken first", () => {
       expect(restartDue(watched(), count(), "idle", minutes(40))).toEqual([]);
     });
 
-    it("never touches a busy or missing Manager", () => {
+    it("never touches a busy or missing manager", () => {
       expect(restartDue(woken(), count(), "busy", minutes(40))).toEqual([]);
       expect(restartDue(woken(), count(), "missing", minutes(40))).toEqual([]);
     });
@@ -406,7 +406,7 @@ describe("the escalation ladder", () => {
       expect(restartDue(watch, count(), "idle", minutes(25))).toEqual([]);
     });
 
-    it("is stopped by the user telling the Manager something after the alert, not before", () => {
+    it("is stopped by the user telling the manager something after the alert, not before", () => {
       const before = woken();
       before.userToldManagerAt = minutes(9);
       expect(restartDue(before, count(), "idle", minutes(25))).toEqual(["TR-5"]);
@@ -421,11 +421,11 @@ describe("the escalation ladder", () => {
       expect(watch.wokenAt.get("TR-5")).toBe(minutes(20));
       expect(restartDue(watch, count(), "idle", minutes(79))).toEqual([]);
       expect(restartLimited(watch, minutes(79))).toBe(true);
-      expect(queuedAlerts(watch, minutes(79), "busy")[0]?.text).toContain("already restarted the Manager within the hour, so it leaves this to you");
+      expect(queuedAlerts(watch, minutes(79), "busy")[0]?.text).toContain("already restarted the manager within the hour, so it leaves this to you");
       expect(restartDue(watch, count(), "idle", minutes(80))).toEqual(["TR-5"]);
     });
 
-    it("does not tell a replaced Manager again what its first prompt said", () => {
+    it("does not tell a replaced manager again what its first prompt said", () => {
       const watch = woken();
       markRestarted(watch, ["TR-5"], count(), minutes(20), true);
       expect(shouldWakeIdleManager({ count: count(), managerMidTurn: false, lastTurnEndedAt: minutes(21), lastWokenFor: watch.wokenFor, now: minutes(30) })).toBe(false);
@@ -470,7 +470,7 @@ describe("managerCondition", () => {
     expect(managerCondition({ status: "initializing", updatedAt: at(5), stalled: false }, now)).toBe("busy");
   });
 
-  it("leaves a crashed Manager to crash recovery until recovery gave up", () => {
+  it("leaves a crashed manager to crash recovery until recovery gave up", () => {
     expect(managerCondition({ status: "error", updatedAt: at(40), stalled: false }, now)).toBe("busy");
     expect(managerCondition({ status: "error", updatedAt: at(40), stalled: true }, now)).toBe("unresponsive");
   });

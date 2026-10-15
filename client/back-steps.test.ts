@@ -105,7 +105,7 @@ describe("ticketBackTarget", () => {
     expect(ticketBackTarget(true, "stats", "project")).toBe("Stats");
   });
 
-  it("names the wide Inbox or the Manager on a wide screen", () => {
+  it("names the wide Inbox or the manager on a wide screen", () => {
     expect(ticketBackTarget(false, "board", "inbox")).toBe("Inbox");
     expect(ticketBackTarget(false, "board", "project")).toBe("Manager");
   });

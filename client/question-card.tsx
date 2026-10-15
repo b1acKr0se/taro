@@ -1,5 +1,5 @@
 /**
- * An open question as a card in a ticket card's language (TR-045): the Manager's in Needs you, every
+ * An open question as a card in a ticket card's language (TR-045): the manager's in Needs you, every
  * agent's in the Inbox. Who asked, then the question in the asker's words (three lines, then cut),
  * whether it blocks and how long ago, its options as chips that answer at once, and Answer, which
  * opens the full card with the reasoning and room to type.
@@ -29,7 +29,7 @@ export function QuestionCard({
   onAnswered,
 }: {
   decision: StoredDecision;
-  /** Who asked, where a ticket card has its id: "Manager", or the project, ticket and agent. */
+  /** Who asked, where a ticket card has its id: "The manager", or the project, ticket and agent. */
   asker: string;
   theme: PluginTheme;
   compact: boolean;

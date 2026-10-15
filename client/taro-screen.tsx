@@ -1,7 +1,7 @@
 /**
  * The Taro screen (decision 8): Inbox, a tab per project, and "＋ project".
  * A project shows a conversation on the left — its manager, or the owner of the
- * card you opened — beside its board. On a phone (decision 12): Manager · Inbox
+ * card you opened — beside its board. On a phone (decision 12): manager · Inbox
  * · Board tabs, and a card opens its owner full screen. The board's pane
  * switches to the project's Stats (a fourth tab on a phone). On a wide screen the board can be
  * hidden; an open ticket then sits in a right-hand panel beside its chat. View plan on a scope
@@ -104,7 +104,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
     params.view === "setup" || params.view === "settings" || params.view === "inbox" ? params.view : remembered.view,
   );
   const [ticket, setTicket] = useState<string | null>(() => remembered.ticket);
-  // The phone's Manager · Inbox · Board · Stats, one for every project as a remount gave it (TR-069).
+  // The phone's manager · Inbox · Board · Stats, one for every project as a remount gave it (TR-069).
   const [phoneTab, setPhoneTabState] = useState<PhoneTab>(remembered.phoneTab);
   const setPhoneTab = (value: PhoneTab) => {
     remembered.phoneTab = value;
@@ -228,7 +228,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   const newProject = <IconButton icon="Plus" label="New Project" showLabel theme={theme} onPress={() => choose(selected, "setup")} />;
 
   const projectTabs = layout.compact ? (
-    // A phone: the project pill row only; Manager · Inbox · Board live inside the project view.
+    // A phone: the project pill row only; manager · Inbox · Board live inside the project view.
     <ScrollView horizontal contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
       {list.map((summary) =>
         tab(summary.config.project, summary.config.project, "FolderKanban", !settingUp && current?.config.project === summary.config.project, () => choose(summary.config.project, "project")),
@@ -383,7 +383,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   );
 }
 
-/** Projects kept mounted, the one showing among them: each holds a long Manager chat. */
+/** Projects kept mounted, the one showing among them: each holds a long manager chat. */
 const KEPT_PROJECTS = 3;
 
 /** The phone's tabs in the order they are built ahead of their first use. */
@@ -425,7 +425,7 @@ function ProjectView({
   onTicket: (ticket: string) => void;
   /** The open ticket's Back (its button and Android's): out of a plan to where View plan was pressed, else to where the ticket was opened from. */
   onTicketBack: () => void;
-  /** Closes the ticket to this project's Manager, where its questions are answered. */
+  /** Closes the ticket to this project's manager, where its questions are answered. */
   onShowManager: () => void;
   /** Whether the board has loaded without the open ticket's card. */
   onTicketMissing: (missing: boolean) => void;
@@ -433,7 +433,7 @@ function ProjectView({
   backTo: (phoneTab: PhoneTab) => string;
   /** The open ticket was opened by View plan: its Ticket tab shows, and Back returns to where it was pressed. */
   planOpen: boolean;
-  /** The user left the plan for the ticket's chat: Back goes to the Manager again. */
+  /** The user left the plan for the ticket's chat: Back goes to the manager again. */
   onLeavePlan: () => void;
   onSettings: () => void;
   onOpenAgent: ((agentId: string) => void) | null;
@@ -485,7 +485,7 @@ function ProjectView({
   // The manager's questions are answered in its chat: on a phone its tab, on a wide screen the left pane.
   const openManager = useLatestCallback(() => (compact ? onPhoneTab("manager") : onShowManager()));
   const openElsewhere = useLatestCallback(onOpenElsewhere);
-  // Stable callbacks, so a tab switch does not redraw the memoised Manager and ticket panes beneath it.
+  // Stable callbacks, so a tab switch does not redraw the memoised manager and ticket panes beneath it.
   const settings = useLatestCallback(onSettings);
   const changed = useLatestCallback(refreshBoard);
   const ticketBackLatest = useLatestCallback(onTicketBack);
@@ -682,7 +682,7 @@ function ManagerPane({
   const actions = useActions();
   const project = summary.config.project;
   const manager = summary.manager;
-  // On a phone the switch row above already says Manager and holds the settings button (TR-031).
+  // On a phone the switch row above already says manager and holds the settings button (TR-031).
   const header = compact ? null : (
     <PaneHeader theme={theme} title={`${project} · Manager`}>
       {manager !== null && onOpenAgent !== null ? <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(manager.id)} /> : null}
@@ -694,7 +694,7 @@ function ManagerPane({
     return (
       <View style={{ flex: 1 }}>
         {header}
-        <Text style={{ color: theme.colors.foregroundMuted, padding: SPACE.lg }}>This project has no Manager running. Start one from the project's settings (⚙).</Text>
+        <Text style={{ color: theme.colors.foregroundMuted, padding: SPACE.lg }}>This project has no manager running. Start one from the project's settings (⚙).</Text>
       </View>
     );
   }
@@ -739,7 +739,7 @@ function ManagerPane({
         asker={{ kind: "manager" }}
         theme={theme}
         compact={compact}
-        placeholder="Tell the Manager what you need…"
+        placeholder="Tell the manager what you need…"
         transformText={withoutDecisionBlocks}
         asks={{ decisions, onAnswered: onChanged }}
         suggestions={<SuggestionPills project={project} suggestions={suggestions} theme={theme} onChanged={onChanged} />}

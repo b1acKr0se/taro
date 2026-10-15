@@ -42,7 +42,7 @@ describe("pausedHold", () => {
     });
   });
 
-  it("ignores the Manager's own holds and a pause lifted by RELEASE", () => {
+  it("ignores the manager's own holds and a pause lifted by RELEASE", () => {
     expect(pausedHold(notes("HOLD 2026-01-05T10:00Z — exclusive rewrite NA-10 first"))).toBeNull();
     expect(pausedHold(notes(pausedHoldText("2026-01-05T10:04Z", "handoff", true), resumedReleaseText("2026-01-05T11:00Z", null)))).toBeNull();
     expect(pausedHold(null)).toBeNull();
@@ -63,7 +63,7 @@ describe("queuedToResume", () => {
     expect(queuedToResume(notes(paused, queued, EXECUTION))).toBe(false);
   });
 
-  it("is not set by a resume that started at once, a Manager's release, or a later pause", () => {
+  it("is not set by a resume that started at once, a manager's release, or a later pause", () => {
     expect(queuedToResume(notes(paused, resumedReleaseText("2026-01-05T11:00Z", null)))).toBe(false);
     expect(queuedToResume(notes("HOLD 2026-01-05T10:00Z — rewrite first", "RELEASE 2026-01-05T11:00Z — rewrite done"))).toBe(false);
     expect(queuedToResume(notes(paused, queued, pausedHoldText("2026-01-05T12:00Z", "owner-gone", false)))).toBe(false);

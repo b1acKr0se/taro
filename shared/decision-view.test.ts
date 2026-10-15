@@ -337,7 +337,7 @@ describe("optionAsksForWords", () => {
 
 describe("askedBy", () => {
   const base = { project: "notes", ticket: null, agentTitle: null, agentRole: "manager" as const };
-  it("names the project once for a Manager whose title already carries it", () => {
+  it("names the project once for a manager whose title already carries it", () => {
     expect(askedBy({ ...base, agentTitle: "notes · Manager" })).toBe("notes · Manager");
   });
   it("adds the project, and the ticket when the title lacks it", () => {

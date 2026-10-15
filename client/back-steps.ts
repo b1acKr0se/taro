@@ -47,7 +47,7 @@ export function screenBackStep(state: { view: ScreenView; hasProject: boolean; c
   return null;
 }
 
-/** Where the ticket's Back button returns, as it names it: the phone tab, or the wide Inbox or Manager. */
+/** Where the ticket's Back button returns, as it names it: the phone tab, or the wide Inbox or manager. */
 export function ticketBackTarget(compact: boolean, phoneTab: PhoneTab, returnView: string): string {
   if (!compact) return returnView === "inbox" ? "Inbox" : "Manager";
   const names = { manager: "Manager", inbox: "Inbox", board: "Board", stats: "Stats" };

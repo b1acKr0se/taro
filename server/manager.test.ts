@@ -93,7 +93,7 @@ describe("resumeManager", () => {
     vi.mocked(runPaseoJson).mockResolvedValue(null);
   });
 
-  it("reloads the same crashed Manager, clears the stall and tells it why", async () => {
+  it("reloads the same crashed manager, clears the stall and tells it why", async () => {
     vi.mocked(fetchLiveAgent).mockResolvedValue(manager("error"));
     const records = { "manager-1": stalledRecord() };
     const { paseo, archived, created } = fakePaseo();
@@ -113,14 +113,14 @@ describe("resumeManager", () => {
     expect(created).toEqual([]);
   });
 
-  it("names the error of a Manager that stopped without the plugin giving up on it", async () => {
+  it("names the error of a manager that stopped without the plugin giving up on it", async () => {
     vi.mocked(fetchLiveAgent).mockResolvedValue(manager("error"));
     const { paseo } = fakePaseo();
     await resumeManager(paseo, "notes-app", fakeState({}));
     expect(JSON.parse(sent()[0]!.text.slice("resumed:".length)).why).toBe(`after you stopped with an error (${crash})`);
   });
 
-  it("says the user asked when the Manager was idle and healthy", async () => {
+  it("says the user asked when the manager was idle and healthy", async () => {
     vi.mocked(fetchLiveAgent).mockResolvedValue(manager("idle"));
     const { paseo } = fakePaseo();
     await resumeManager(paseo, "notes-app", fakeState({}));
@@ -128,7 +128,7 @@ describe("resumeManager", () => {
     expect(JSON.parse(sent()[0]!.text.slice("resumed:".length)).why).toBe("at their request");
   });
 
-  it("refuses a Manager in the middle of a turn, reloading nothing", async () => {
+  it("refuses a manager in the middle of a turn, reloading nothing", async () => {
     vi.mocked(fetchLiveAgent).mockResolvedValue(manager("running"));
     const { paseo } = fakePaseo();
     await expect(resumeManager(paseo, "notes-app", fakeState({}))).rejects.toThrow(/middle of a turn/);
@@ -136,10 +136,10 @@ describe("resumeManager", () => {
     expect(sent()).toEqual([]);
   });
 
-  it("refuses when there is no Manager, pointing to a fresh one", async () => {
+  it("refuses when there is no manager, pointing to a fresh one", async () => {
     vi.mocked(fetchLiveAgent).mockResolvedValue(null);
     const { paseo } = fakePaseo();
-    await expect(resumeManager(paseo, "notes-app", fakeState({}))).rejects.toThrow(/no Manager to resume\. Start a fresh Manager instead/);
+    await expect(resumeManager(paseo, "notes-app", fakeState({}))).rejects.toThrow(/no manager to resume\. Start a fresh manager instead/);
     expect(reloads()).toEqual([]);
   });
 
@@ -150,7 +150,7 @@ describe("resumeManager", () => {
     const { paseo, archived, created } = fakePaseo();
 
     await expect(resumeManager(paseo, "notes-app", fakeState(records))).rejects.toThrow(
-      "The notes-app Manager could not be resumed: agent not found. Use Start a fresh Manager instead; the old conversation is archived, not deleted.",
+      "The notes-app manager could not be resumed: agent not found. Use Start a fresh manager instead; the old conversation is archived, not deleted.",
     );
     expect(archived).toEqual([]);
     expect(created).toEqual([]);
@@ -160,10 +160,10 @@ describe("resumeManager", () => {
   });
 });
 
-describe("restartManager (Start a fresh Manager)", () => {
+describe("restartManager (Start a fresh manager)", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("archives the old Manager and starts a new agent with a new conversation", async () => {
+  it("archives the old manager and starts a new agent with a new conversation", async () => {
     vi.mocked(fetchLiveAgent).mockResolvedValue(manager("error"));
     const { paseo, archived, created } = fakePaseo();
 
@@ -186,7 +186,7 @@ describe("compactManager (the Compact button)", () => {
     expect(sendCommand).not.toHaveBeenCalled();
   });
 
-  it("refuses a Manager in the middle of a turn, starting nothing", async () => {
+  it("refuses a manager in the middle of a turn, starting nothing", async () => {
     vi.mocked(fetchLiveAgent).mockResolvedValue(manager("running"));
     const startCompaction = vi.fn(async () => undefined);
     await expect(compactManager({} as PaseoApi, "notes-app", { startCompaction })).rejects.toThrow(/middle of a turn/);

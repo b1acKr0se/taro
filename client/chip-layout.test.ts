@@ -89,7 +89,7 @@ describe("card actions", () => {
     }
   });
 
-  it("start at a Manager question card's left edge, outside the indented question", () => {
+  it("start at a manager question card's left edge, outside the indented question", () => {
     const card = source("question-card.tsx");
     const text = between(card, "<View style={styles.lineText}>", "</View>");
     expect(card).toContain("<OptionChips");

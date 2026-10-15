@@ -106,7 +106,7 @@ export function launchManager(paseo: PaseoApi, project: string): Promise<{ agent
   return serialized(`manager:${project}`, async () => {
     const config = await requireProjectConfig(project);
     const current = await resolveManager(paseo, config);
-    if (current.agent !== null) throw new Error(`${project} already has a Manager (${current.agent.title ?? current.agent.id}).`);
+    if (current.agent !== null) throw new Error(`${project} already has a manager (${current.agent.title ?? current.agent.id}).`);
     return startManager(paseo, config, false);
   });
 }
@@ -125,7 +125,7 @@ export function restartManager(
     const config = await requireProjectConfig(project);
     const { agent } = await resolveManager(paseo, config);
     if (agent !== null) {
-      if (isMidTurn(agent) && options.evenMidTurn !== true) throw new Error(`The ${project} Manager is in the middle of a turn. Restart it once it is idle.`);
+      if (isMidTurn(agent) && options.evenMidTurn !== true) throw new Error(`The ${project} manager is in the middle of a turn. Restart it once it is idle.`);
       await paseo.agents.ref(agent.id).archive();
     }
     return startManager(paseo, config, agent !== null, options.why ?? null);
@@ -135,23 +135,23 @@ export function restartManager(
 /**
  * Brings the same manager back (TR-072): `paseo agent reload` (a new process, its conversation kept),
  * as crash recovery does, then one message saying it was restarted and why. A failed reload starts
- * nothing: the user chooses a fresh Manager themselves.
+ * nothing: the user chooses a fresh manager themselves.
  */
 export function resumeManager(paseo: PaseoApi, project: string, state: Pick<PluginState, "agent" | "updateAgent">): Promise<{ agentId: string; workspaceId: string }> {
   return serialized(`manager:${project}`, async () => {
     const config = await requireProjectConfig(project);
     const { agent } = await resolveManager(paseo, config);
-    if (agent === null) throw new Error(`${project} has no Manager to resume. Start a fresh Manager instead.`);
-    if (isMidTurn(agent)) throw new Error(`The ${project} Manager is in the middle of a turn, so it is not stopped; there is nothing to resume.`);
+    if (agent === null) throw new Error(`${project} has no manager to resume. Start a fresh manager instead.`);
+    if (isMidTurn(agent)) throw new Error(`The ${project} manager is in the middle of a turn, so it is not stopped; there is nothing to resume.`);
     const known = await state.agent(agent.id);
     const stalled = known?.stalledReason ?? null;
     try {
-      await runPaseoJson(["agent", "reload", agent.id], "the Manager cannot be reloaded");
+      await runPaseoJson(["agent", "reload", agent.id], "the manager cannot be reloaded");
     } catch (error: unknown) {
       const reason = error instanceof Error ? error.message : String(error);
-      throw new Error(`The ${project} Manager could not be resumed: ${reason}. Use Start a fresh Manager instead; the old conversation is archived, not deleted.`);
+      throw new Error(`The ${project} manager could not be resumed: ${reason}. Use Start a fresh manager instead; the old conversation is archived, not deleted.`);
     }
-    // The crashed alert comes down now, not after the Manager's next turn.
+    // The crashed alert comes down now, not after the manager's next turn.
     if (known !== null && known.stalledReason !== null) {
       await state.updateAgent(agent.id, () => known, (record) => {
         record.stalled = false;
@@ -171,13 +171,13 @@ export function resumeManager(paseo: PaseoApi, project: string, state: Pick<Plug
 
 async function requireManager(paseo: PaseoApi, project: string): Promise<PaseoAgent> {
   const { agent } = await resolveManager(paseo, await requireProjectConfig(project));
-  if (agent === null) throw new Error(`${project} has no Manager yet. Start it from the project's settings.`);
+  if (agent === null) throw new Error(`${project} has no manager yet. Start it from the project's settings.`);
   return agent;
 }
 
 export async function tellManager(paseo: PaseoApi, project: string, text: string, attachments: Attachments = {}): Promise<string> {
   const words = text.trim();
-  if (words === "" && !hasAttachments(attachments)) throw new Error("Say something to the Manager.");
+  if (words === "" && !hasAttachments(attachments)) throw new Error("Say something to the manager.");
   const agent = await requireManager(paseo, project);
   await sendWithAttachments(paseo, agent.id, words, attachments);
   return agent.id;
@@ -186,7 +186,7 @@ export async function tellManager(paseo: PaseoApi, project: string, text: string
 /** The Compact button: the same handoff → /compact → reload pipeline as an idle compaction (TR-101), never a bare /compact. */
 export async function compactManager(paseo: PaseoApi, project: string, supervisor: Pick<Supervisor, "startCompaction">): Promise<string> {
   const agent = await requireManager(paseo, project);
-  if (isMidTurn(agent)) throw new Error(`The ${project} Manager is in the middle of a turn. Compact it once it is idle.`);
+  if (isMidTurn(agent)) throw new Error(`The ${project} manager is in the middle of a turn. Compact it once it is idle.`);
   const identity = identityFromLabels(agent.labels, agent.title ?? null) ?? { project, role: "manager", ticket: null, title: agent.title ?? null };
   await supervisor.startCompaction(paseo, agent.id, identity, agent.lastUsage?.contextWindowUsedTokens ?? null, "button");
   return agent.id;

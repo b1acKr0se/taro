@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { MANAGER_ACTION_LABELS, managerPaneNotice, managerSettingsActions } from "./manager-actions";
 
 describe("managerSettingsActions", () => {
-  it("offers only Start Manager when there is none", () => {
+  it("offers only Start manager when there is none", () => {
     expect(managerSettingsActions(null).kinds).toEqual(["launch"]);
   });
 
@@ -14,18 +14,18 @@ describe("managerSettingsActions", () => {
       expect(description).toContain("its conversation kept");
       expect(description).toContain("archived, not deleted");
     }
-    expect(kinds()).toEqual(["Resume Manager", "Start a fresh Manager"]);
+    expect(kinds()).toEqual(["Resume manager", "Start a fresh manager"]);
   });
 
-  it("says a crashed Manager stopped with an error", () => {
-    expect(managerSettingsActions({ status: "error" }).description).toMatch(/^The Manager stopped with an error\. /);
+  it("says a crashed manager stopped with an error", () => {
+    expect(managerSettingsActions({ status: "error" }).description).toMatch(/^The manager stopped with an error\. /);
     expect(managerSettingsActions({ status: "idle" }).description).not.toContain("error");
   });
 });
 
 describe("managerPaneNotice", () => {
-  it("points a crashed Manager to Resume, and says nothing otherwise", () => {
-    expect(managerPaneNotice({ status: "error" })).toContain("Resume Manager");
+  it("points a crashed manager to Resume, and says nothing otherwise", () => {
+    expect(managerPaneNotice({ status: "error" })).toContain("Resume manager");
     expect(managerPaneNotice({ status: "idle" })).toBeNull();
     expect(managerPaneNotice({ status: "running" })).toBeNull();
     expect(managerPaneNotice(null)).toBeNull();

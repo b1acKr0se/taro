@@ -180,7 +180,7 @@ export function complexityOf(labels: readonly string[]): string | null {
   return label === undefined ? null : label.slice("complexity-".length);
 }
 
-/** How many cards each column shows: its tickets, and in Needs you the Manager's open questions too (TR-045). */
+/** How many cards each column shows: its tickets, and in Needs you the manager's open questions too (TR-045). */
 export function columnCounts(cards: readonly { column: ColumnId }[], managerQuestions: number): Record<ColumnId, number> {
   const counts: Record<ColumnId, number> = { "needs-you": managerQuestions, working: 0, stalled: 0, queued: 0, done: 0 };
   for (const card of cards) counts[card.column] += 1;
@@ -188,8 +188,8 @@ export function columnCounts(cards: readonly { column: ColumnId }[], managerQues
 }
 
 /**
- * What waits on the user besides the tickets (TR-064): the Manager's open questions, a permission
- * the Manager's side waits on (TR-096), every board alert and a paused ticket sync. The Needs you column counts them with its tickets.
+ * What waits on the user besides the tickets (TR-064): the manager's open questions, a permission
+ * the manager's side waits on (TR-096), every board alert and a paused ticket sync. The Needs you column counts them with its tickets.
  */
 export function needsYouExtras(board: { managerDecisions: readonly unknown[]; managerPermission?: unknown; alerts: readonly unknown[] } | null, syncPaused: boolean): number {
   const managerAsks = board?.managerPermission === undefined || board.managerPermission === null ? 0 : 1;

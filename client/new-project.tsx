@@ -1,7 +1,7 @@
 /**
  * New project (TR-056): pick one of Paseo's projects, review the few values a user might change,
  * create. "All settings" and "Add manually" open the full form (`project-setup.tsx`). While the
- * tracker and Manager are set up the screen shows `CreationProgress`. The list's order, the
+ * tracker and manager are set up the screen shows `CreationProgress`. The list's order, the
  * suggestions and the defaults are in shared/project-candidates.ts.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
@@ -296,8 +296,8 @@ function ProjectPicker({
         <Text style={{ color: colors.foreground, fontSize: wide ? FONT_SIZE.display : FONT_SIZE.heading, fontWeight: "700" }}>Add a project</Text>
         <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) }}>
           {nothingInPaseo
-            ? "Taro gives a project its own ticket tracker and a Manager."
-            : "Pick one of Paseo's projects. Taro gives it its own ticket tracker and a Manager you talk to."}
+            ? "Taro gives a project its own ticket tracker and a manager."
+            : "Pick one of Paseo's projects. Taro gives it its own ticket tracker and a manager you talk to."}
         </Text>
       </View>
 
@@ -445,7 +445,7 @@ function ProjectReview({
   const createButton = (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Create tracker and start Manager"
+      accessibilityLabel="Create tracker and start manager"
       accessibilityState={{ busy, disabled: busy || !canCreate }}
       disabled={busy || !canCreate}
       onPress={submit}
@@ -461,7 +461,7 @@ function ProjectReview({
       })}
     >
       {busy ? <Spinner size={16} color={colors.accentForeground} /> : <Icon name="Rocket" size={16} color={colors.accentForeground} />}
-      <Text style={{ color: colors.accentForeground, fontSize: FONT_SIZE.body, fontWeight: "700" }}>Create tracker and start Manager</Text>
+      <Text style={{ color: colors.accentForeground, fontSize: FONT_SIZE.body, fontWeight: "700" }}>Create tracker and start manager</Text>
     </Pressable>
   );
   const allSettings = (
@@ -575,7 +575,7 @@ export function useCreation(): { state: CreationState; refresh: () => void } {
   return { state: snapshot, refresh };
 }
 
-/** The new project's page while its tracker and Manager are set up; the screen opens its Manager tab when done. */
+/** The new project's page while its tracker and manager are set up; the screen opens its Manager tab when done. */
 export function CreationProgress({
   theme,
   state,
@@ -623,13 +623,13 @@ export function CreationProgress({
       <View style={{ gap: SPACE.sm }}>
         <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.heading, fontWeight: "700" }}>{failedAt === null ? `Setting up ${project}` : `${project} is not ready`}</Text>
         <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) }}>
-          {failedAt === null ? "Its Manager opens here as soon as it has started; this takes a few seconds." : "Nothing else was changed in the repository."}
+          {failedAt === null ? "Its manager opens here as soon as it has started; this takes a few seconds." : "Nothing else was changed in the repository."}
         </Text>
       </View>
       <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.surface1, padding: SPACE.lg, gap: SPACE.md }}>
         {line("check", "Checked the repository")}
         {line("tracker", "Setting up the ticket tracker")}
-        {line("manager", "Starting the Manager")}
+        {line("manager", "Starting the manager")}
         {state.error === null ? null : (
           <Text selectable style={{ color: colors.statusDanger, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) }}>
             {state.error}
@@ -643,7 +643,7 @@ export function CreationProgress({
       ) : null}
       {failedAt === "manager" ? (
         <View style={{ flexDirection: "row", gap: SPACE.sm, flexWrap: "wrap" }}>
-          <IconButton theme={theme} tone="accent" icon="RotateCcw" label="Start the Manager again" showLabel onPress={() => void retryManager({ launch })} />
+          <IconButton theme={theme} tone="accent" icon="RotateCcw" label="Start the manager again" showLabel onPress={() => void retryManager({ launch })} />
           <IconButton theme={theme} icon="ArrowRight" label={`Open ${project} without it`} showLabel onPress={() => onOpenProject(project)} />
         </View>
       ) : null}

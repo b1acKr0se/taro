@@ -226,7 +226,7 @@ describe("columnCounts", () => {
     expect(columnCounts([], 0)).toEqual({ "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 });
   });
 
-  it("counts the Manager's questions in Needs you with the tickets there (TR-045)", () => {
+  it("counts the manager's questions in Needs you with the tickets there (TR-045)", () => {
     expect(columnCounts([], 3)["needs-you"]).toBe(3);
     const cards = [{ column: "needs-you" as const }, { column: "working" as const }, { column: "working" as const }, { column: "done" as const }];
     expect(columnCounts(cards, 2)).toEqual({ "needs-you": 3, working: 2, stalled: 0, queued: 0, done: 1 });
@@ -234,7 +234,7 @@ describe("columnCounts", () => {
 });
 
 describe("needsYouExtras and inboxCount (TR-064)", () => {
-  const alert = { id: "manager-crashed", tickets: [], text: "The Manager is stopped." };
+  const alert = { id: "manager-crashed", tickets: [], text: "The manager is stopped." };
   const cards = [{ column: "needs-you" as const }, { column: "stalled" as const }, { column: "working" as const }, { column: "queued" as const }];
 
   it("counts nothing for no board and no paused sync", () => {
@@ -246,12 +246,12 @@ describe("needsYouExtras and inboxCount (TR-064)", () => {
     expect(inboxCount(null, true)).toBe(1);
   });
 
-  it("counts every alert and the Manager's questions in Needs you", () => {
+  it("counts every alert and the manager's questions in Needs you", () => {
     expect(needsYouExtras({ managerDecisions: [{}], alerts: [alert, alert] }, true)).toBe(4);
     expect(columnCounts(cards, needsYouExtras({ managerDecisions: [], alerts: [alert] }, false))["needs-you"]).toBe(2);
   });
 
-  it("counts a permission the Manager's side waits on, once (TR-096)", () => {
+  it("counts a permission the manager's side waits on, once (TR-096)", () => {
     expect(needsYouExtras({ managerDecisions: [], managerPermission: { title: "Allow Bash?" }, alerts: [] }, false)).toBe(1);
     expect(needsYouExtras({ managerDecisions: [{}], managerPermission: null, alerts: [] }, false)).toBe(1);
     expect(inboxCount({ cards: [{ column: "working" }], managerDecisions: [], managerPermission: { title: "Allow Bash?" }, alerts: [] }, false)).toBe(1);

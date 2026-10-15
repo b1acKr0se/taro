@@ -1,5 +1,5 @@
 /**
- * What an agent is waiting on — the Manager, an owner or a subagent — answered
+ * What an agent is waiting on — the manager, an owner or a subagent — answered
  * in its chat. The heading names the agent as the user
  * knows it (`permission-heading.ts`).
  *

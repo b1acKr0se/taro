@@ -3,7 +3,7 @@
 <h1 align="center">Taro</h1>
 
 Taro is a [Paseo](https://github.com/getpaseo/paseo) plugin that runs software work through agents.
-Each project gets its own Manager, ticket tracker and board. You tell a **Manager** agent what you want; it files a ticket and starts a
+Each project gets its own manager, ticket tracker and board. You tell a **manager** agent what you want; it files a ticket and starts a
 **task owner** agent, which takes the ticket from proposal to a delivered, reviewed change. You
 answer their questions and accept the result. Tickets are Taro's own
 files, kept in a tracker on the project's `taro/tickets` branch and read and written with the `taro`
@@ -30,8 +30,8 @@ Taro then appears in Paseo's sidebar.
 
 1. **Add a project.** Open Taro and press New project. Pick the repository, the models the agents
    use, and how work is delivered (a pull request or a local branch). Taro sets up the tracker and
-   starts the project's Manager.
-2. **Talk to the Manager.** Describe what you want in plain words. The Manager files a ticket for
+   starts the project's manager.
+2. **Talk to the manager.** Describe what you want in plain words. The manager files a ticket for
    each request and starts a task owner for it.
 3. **Follow the ticket.** Each ticket sits in a board column:
    - **Needs you**: an agent asked you something, waits on a permission, or has finished and waits
@@ -41,7 +41,7 @@ Taro then appears in Paseo's sidebar.
 
 ## How the work flows
 
-- **The Manager triages each request.** It asks you only when it cannot tell what you mean, files
+- **The manager triages each request.** It asks you only when it cannot tell what you mean, files
   a ticket that keeps your words as its intent, and starts a task owner in the ticket's own
   worktree and branch. Owners run up to the project's cap; the rest wait in the queue, and a
   ticket that depends on another waits for it.
@@ -71,10 +71,10 @@ not wasted.
   gets one nudge; if it stops again, its card turns **Stalled** for you to nudge or relaunch
   (Compact is in the ticket view).
 - **Crashes are recovered.** An agent whose process dies is restarted with its conversation intact;
-  when that fails, a task owner or the Manager is started afresh. After two recoveries within an
+  when that fails, a task owner or the manager is started afresh. After two recoveries within an
   hour Taro stops and leaves the card **Stalled**.
 - **Long conversations are compacted.** A task owner whose conversation passes the compaction
-  threshold is compacted after its turn, and an owner or Manager left idle with a large
+  threshold is compacted after its turn, and an owner or manager left idle with a large
   conversation is compacted just before the provider's one-hour prompt cache expires. Both
   thresholds are in the project's settings.
 - **Finished agents are archived** when their ticket is Done.
@@ -84,7 +84,7 @@ not wasted.
 
 ## Screens
 
-- **Manager**: your conversation with the project's Manager.
+- **Manager**: your conversation with the project's manager.
 - **Inbox**: everything waiting on you, across all projects. Walk me through takes you through the
   open questions one at a time.
 - **Board**: the project's tickets by column. A card says what the ticket needs now; opening it
@@ -98,8 +98,8 @@ not wasted.
 Project settings (the gear on a project's screen) is the same page as New project: the
 repository and tracker sync, agent models, delivery (pull request or local branch; merge when
 accepted or merge yourself), limits (owners running at once, when long conversations are
-compacted), standing orders the Manager passes to every task owner, and starting or restarting
-the Manager.
+compacted), standing orders the manager passes to every task owner, and starting or restarting
+the manager.
 
 ## License
 

@@ -1,6 +1,6 @@
 /**
  * Creating a project from the New project pages (TR-056): a quick check whose problems go beside
- * their fields, then the tracker, then the Manager, while the screen shows the new project's
+ * their fields, then the tracker, then the manager, while the screen shows the new project's
  * progress. The progress is kept on `globalThis` (`kept.ts`), so leaving the screen or the bundle
  * being evaluated again does not lose it; the calls already sent finish and write into the same slot.
  */
@@ -19,7 +19,7 @@ export interface CreationCalls {
 export interface CreationState {
   project: string | null;
   step: CreationStep;
-  /** The step that failed, when `step` is "failed": the tracker (nothing to open) or the Manager (the project exists). */
+  /** The step that failed, when `step` is "failed": the tracker (nothing to open) or the manager (the project exists). */
   failedStep: "tracker" | "manager" | null;
   error: string | null;
 }
@@ -40,7 +40,7 @@ function message(caught: unknown): string {
 
 /**
  * Checks the project, then sets it up in the background. Resolves with the problems when the check
- * finds any (nothing is created), else null once the tracker and Manager steps are under way; the
+ * finds any (nothing is created), else null once the tracker and manager steps are under way; the
  * steps then move `state` on to "done" or "failed".
  */
 export async function startCreation(
@@ -82,7 +82,7 @@ export function afterCreation(input: { step: CreationStep; listed: boolean; onSe
   return input.onSetup ? "open-manager" : "reset";
 }
 
-/** Starts the Manager again after it failed to start; the project and its tracker are there already. */
+/** Starts the manager again after it failed to start; the project and its tracker are there already. */
 export async function retryManager(calls: Pick<CreationCalls, "launch">, state: CreationState = creation): Promise<void> {
   const project = state.project;
   // Only from a failed start: a second tap while the first retry runs starts nothing (TR-058).

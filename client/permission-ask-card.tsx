@@ -1,6 +1,6 @@
 /**
- * A permission the Manager or one of its own subagents waits on, as a card at the top of Needs you
- * (TR-096), in a ticket card's language like the Manager's questions (`question-card.tsx`): who asks,
+ * A permission the manager or one of its own subagents waits on, as a card at the top of Needs you
+ * (TR-096), in a ticket card's language like the manager's questions (`question-card.tsx`): who asks,
  * what it asks to do in its own words, how many more wait, and Review, which opens the agent that
  * asks, where Allow and Deny are.
  */
@@ -17,9 +17,9 @@ import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 
-/** Who asks on the Manager's side: the Manager itself, or one of its subagents by its job. */
+/** Who asks on the manager's side: the manager itself, or one of its subagents by its job. */
 export function managerAskerName(ask: Pick<AgentAskView, "role">): string {
-  return ask.role === null || ask.role === "manager" || ask.role === "owner" ? "The Manager" : `The Manager's ${ask.role}`;
+  return ask.role === null || ask.role === "manager" || ask.role === "owner" ? "The manager" : `The manager's ${ask.role}`;
 }
 
 export function PermissionAskCard({ ask, theme, compact, onOpen }: { ask: AgentAskView; theme: PluginTheme; compact: boolean; onOpen: () => void }) {
@@ -58,7 +58,7 @@ export function PermissionAskCard({ ask, theme, compact, onOpen }: { ask: AgentA
     <Pressable accessibilityRole="button" accessibilityLabel={`${asker} is asking permission: ${ask.title}`} onPress={onOpen} style={styles.card}>
       <View style={styles.head}>
         <View style={styles.dot} />
-        {/* The asker alone, as on the Manager's question cards: the key and Allow …? say it is a permission. */}
+        {/* The asker alone, as on the manager's question cards: the key and Allow …? say it is a permission. */}
         <Text style={styles.asker} numberOfLines={2}>
           {asker}
         </Text>

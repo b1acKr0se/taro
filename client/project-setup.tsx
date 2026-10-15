@@ -60,7 +60,7 @@ export function ProjectSetup({
   theme: PluginTheme;
   /** The project being edited, or null to add one. */
   existing: ProjectConfig | null;
-  /** The existing project's Manager, or null when it has none: which Manager actions show (TR-072). */
+  /** The existing project's manager, or null when it has none: which manager actions show (TR-072). */
   manager?: { status: string } | null;
   /** A new project's values filled in from a picked Paseo project (TR-056); null for an empty form. */
   initial?: SetupDraft | null;
@@ -82,7 +82,7 @@ export function ProjectSetup({
   const restart = useRpc(restartManager);
   const resume = useRpc(resumeManager);
   const refreshProjects = useRefreshProjects();
-  // A failed resume is said beside the buttons, where Start a fresh Manager is (TR-072).
+  // A failed resume is said beside the buttons, where Start a fresh manager is (TR-072).
   const [managerFailure, setManagerFailure] = useState<string | null>(null);
 
   const prerequisites = usePrerequisites();
@@ -233,7 +233,7 @@ export function ProjectSetup({
         </Text>
         <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) }}>
           {existing === null
-            ? "Taro gives the project its own ticket tracker and a Manager. You talk to the Manager; it looks into each request, files a ticket and starts a task owner."
+            ? "Taro gives the project its own ticket tracker and a manager. You talk to the manager; it looks into each request, files a ticket and starts a task owner."
             : "Changes apply to agents started from now on. Running agents keep their settings."}
         </Text>
       </View>
@@ -374,7 +374,7 @@ export function ProjectSetup({
       </FormSection>
 
       <FormSection theme={theme} icon="Gauge" title="Limits" description="How much runs at once, and when long conversations are compacted.">
-        <Field theme={theme} wide={wide} label="Owners running at once" hint="The Manager queues the rest; every agent costs host resources and money." error={problem("maxParallelOwners")}>
+        <Field theme={theme} wide={wide} label="Owners running at once" hint="The manager queues the rest; every agent costs host resources and money." error={problem("maxParallelOwners")}>
           <TextField
             theme={theme}
             accessibilityLabel="Owners running at once"
@@ -396,7 +396,7 @@ export function ProjectSetup({
           theme={theme}
           wide={wide}
           label="Compact idle agents above"
-          hint="Tokens of context; an owner or the Manager idle for 55 minutes is compacted before its prompt cache expires."
+          hint="Tokens of context; an owner or the manager idle for 55 minutes is compacted before its prompt cache expires."
           error={problem("idleCompactThresholdTokens")}
         >
           <TextField
@@ -415,7 +415,7 @@ export function ProjectSetup({
           icon="ScrollText"
           title="Standing orders"
           tag="optional"
-          description="Rules for this project on top of the repository's own instructions; the Manager copies the ones that apply into every brief."
+          description="Rules for this project on top of the repository's own instructions; the manager copies the ones that apply into every brief."
         >
           {orders === null ? (
             <Text style={muted}>Loading…</Text>
@@ -459,7 +459,7 @@ export function ProjectSetup({
           theme={theme}
           tone="accent"
           icon={existing === null ? "Rocket" : "Check"}
-          label={existing === null ? "Create tracker and start Manager" : "Save"}
+          label={existing === null ? "Create tracker and start manager" : "Save"}
           showLabel
           disabled={busy || !valid}
           state={presses.stateOf("submit")}

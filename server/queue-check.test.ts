@@ -1,7 +1,7 @@
-// TR-062: a ticket sat Queued while only 1 of 3 owners counted, because the Manager counted from
+// TR-062: a ticket sat Queued while only 1 of 3 owners counted, because the manager counted from
 // memory and nothing woke it. The plugin now owns the count: a ticket filed while a slot is free, or
-// an idle Manager with a startable ticket, wakes it with the plugin's recount; a HOLD record exempts a
-// ticket; and when the Manager still does not dispatch, an alert at ten minutes and a fresh Manager at
+// an idle manager with a startable ticket, wakes it with the plugin's recount; a HOLD record exempts a
+// ticket; and when the manager still does not dispatch, an alert at ten minutes and a fresh manager at
 // twenty, at most once an hour.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -66,7 +66,7 @@ let told: Record<string, string>[];
 let actions: Actions;
 /** The plugin state's stored ladders, kept across the `Actions` of one test as a disk would be. */
 let ladders: Map<string, { restarts: string[]; dismissed: string[] }>;
-/** The Manager's timeline as Paseo returns it; null stands for a fetch that fails. */
+/** The manager's timeline as Paseo returns it; null stands for a fetch that fails. */
 let timeline: { item: { type: string; text: string; messageId?: string }; timestamp: string }[] | null;
 const paseo = {
   agents: {
@@ -84,7 +84,7 @@ function iso(minutes: number): string {
   return new Date(at(minutes)).toISOString();
 }
 
-/** The Manager's turn ended at that minute and it is idle since. */
+/** The manager's turn ended at that minute and it is idle since. */
 function idleSince(minutes: number): void {
   manager = { id: "manager", status: "idle", updatedAt: iso(minutes), labels: {} };
   managerState = { lastTurnEndedAt: iso(minutes), stalled: false };
@@ -151,7 +151,7 @@ async function file(id: string): Promise<void> {
 }
 
 describe("a ticket filed while a slot is free", () => {
-  it("wakes an idle Manager with the plugin's recount (slots freed before the ticket existed)", async () => {
+  it("wakes an idle manager with the plugin's recount (slots freed before the ticket existed)", async () => {
     await file("DM-3");
     expect(told).toHaveLength(1);
     const message = told[0]!;
@@ -161,7 +161,7 @@ describe("a ticket filed while a slot is free", () => {
     expect(notesWritten()).toEqual(["DM-3 QUEUE-WAKE"]);
   });
 
-  it("leaves a Manager mid-turn alone: it is most likely dispatching the ticket it just filed", async () => {
+  it("leaves a manager mid-turn alone: it is most likely dispatching the ticket it just filed", async () => {
     manager = { id: "manager", status: "running", updatedAt: iso(0), labels: {} };
     await file("DM-3");
     expect(told).toEqual([]);
@@ -198,7 +198,7 @@ describe("the minute check", () => {
     tickets = [...tickets, ticket("DM-3", "Queued")];
   });
 
-  it("wakes the Manager once it has been idle for two minutes, and only once for the same situation", async () => {
+  it("wakes the manager once it has been idle for two minutes, and only once for the same situation", async () => {
     idleSince(0);
     await actions.checkQueues(paseo, at(1));
     expect(told).toEqual([]);
@@ -229,7 +229,7 @@ describe("the minute check", () => {
     expect(told_()).toEqual(["messages/queue-idle.md: DM-3"]);
   });
 
-  it("does not wake a Manager mid-turn", async () => {
+  it("does not wake a manager mid-turn", async () => {
     manager = { id: "manager", status: "running", updatedAt: iso(0), labels: {} };
     await actions.checkQueues(paseo, at(5));
     expect(told).toEqual([]);
@@ -249,7 +249,7 @@ describe("the escalation ladder", () => {
     }
   }
 
-  it("raises the alert ten minutes after the wake-up and restarts the Manager at twenty, logging each step", async () => {
+  it("raises the alert ten minutes after the wake-up and restarts the manager at twenty, logging each step", async () => {
     await minutes(0, 9);
     expect(actions.queueAlerts("demo", at(9))).toEqual([]);
     await minutes(10, 10);
@@ -268,13 +268,13 @@ describe("the escalation ladder", () => {
   it("restarts at most once an hour, and leaves the alert up past that", async () => {
     await minutes(0, 79);
     expect(restartManager).toHaveBeenCalledTimes(1);
-    // The fresh Manager was told at 20, so its own alert came up at 30, and it stays up.
-    expect(actions.queueAlerts("demo", at(79))[0]?.text).toContain("already restarted the Manager within the hour");
+    // The fresh manager was told at 20, so its own alert came up at 30, and it stays up.
+    expect(actions.queueAlerts("demo", at(79))[0]?.text).toContain("already restarted the manager within the hour");
     await minutes(80, 80);
     expect(restartManager).toHaveBeenCalledTimes(2);
   });
 
-  it("never restarts a Manager that is actively working", async () => {
+  it("never restarts a manager that is actively working", async () => {
     await minutes(0, 5);
     manager = { id: "manager", status: "running", updatedAt: iso(5), labels: {} };
     for (let minute = 6; minute <= 30; minute += 1) {
@@ -286,7 +286,7 @@ describe("the escalation ladder", () => {
     expect(actions.queueAlerts("demo", at(30))).toHaveLength(1);
   });
 
-  it("restarts a Manager whose turn shows no activity for half an hour, even mid-turn", async () => {
+  it("restarts a manager whose turn shows no activity for half an hour, even mid-turn", async () => {
     await minutes(0, 1);
     manager = { id: "manager", status: "running", updatedAt: iso(1), labels: {} };
     await minutes(2, 30);
@@ -296,7 +296,7 @@ describe("the escalation ladder", () => {
     expect(vi.mocked(restartManager).mock.calls[0]![2]?.evenMidTurn).toBe(true);
   });
 
-  it("restarts a Manager crash recovery gave up on, not one it is still recovering", async () => {
+  it("restarts a manager crash recovery gave up on, not one it is still recovering", async () => {
     await minutes(0, 1);
     manager = { id: "manager", status: "error", updatedAt: iso(1), labels: {} };
     await minutes(2, 25);
@@ -306,7 +306,7 @@ describe("the escalation ladder", () => {
     expect(restartManager).toHaveBeenCalledTimes(1);
   });
 
-  it("never restarts a Manager that was busy until after twenty minutes: it is woken first, and restarted twenty minutes after that", async () => {
+  it("never restarts a manager that was busy until after twenty minutes: it is woken first, and restarted twenty minutes after that", async () => {
     manager = { id: "manager", status: "running", updatedAt: iso(0), labels: {} };
     for (let minute = 0; minute <= 24; minute += 1) {
       vi.setSystemTime(at(minute));
@@ -326,9 +326,9 @@ describe("the escalation ladder", () => {
     expect(restartManager).toHaveBeenCalledTimes(1);
   });
 
-  it("says no Manager is running once it stops, refreshing the board, and promises no restart (TR-066)", async () => {
+  it("says no manager is running once it stops, refreshing the board, and promises no restart (TR-066)", async () => {
     await minutes(0, 10);
-    expect(actions.queueAlerts("demo", at(10))[0]?.text).toContain("the plugin told the Manager");
+    expect(actions.queueAlerts("demo", at(10))[0]?.text).toContain("the plugin told the manager");
     // Only the minutes in the text moved: no board refresh for that.
     vi.setSystemTime(at(11));
     expect(await actions.checkQueues(paseo, at(11))).toBe(false);
@@ -336,7 +336,7 @@ describe("the escalation ladder", () => {
     vi.setSystemTime(at(12));
     expect(await actions.checkQueues(paseo, at(12))).toBe(true);
     const text = actions.queueAlerts("demo", at(12))[0]?.text ?? "";
-    expect(text).toContain("no Manager is running");
+    expect(text).toContain("no manager is running");
     expect(text).toContain("Start one from the project's settings");
     expect(text).not.toMatch(/busy|restarts/);
     await minutes(13, 40);
@@ -352,14 +352,14 @@ describe("the escalation ladder", () => {
     expect(restartManager).not.toHaveBeenCalled();
   });
 
-  it("does not restart once the user told the Manager something after the alert went up", async () => {
+  it("does not restart once the user told the manager something after the alert went up", async () => {
     await minutes(0, 12);
     actions.userToldManager("demo");
     await minutes(13, 40);
     expect(restartManager).not.toHaveBeenCalled();
   });
 
-  it("still restarts a Manager that answered later wake-ups for a changed queue without dispatching", async () => {
+  it("still restarts a manager that answered later wake-ups for a changed queue without dispatching", async () => {
     await minutes(0, 12);
     tickets = [...tickets, ticket("DM-4", "Queued")];
     await minutes(13, 14);
@@ -388,7 +388,7 @@ describe("the escalation ladder", () => {
     expect(ladders.get("demo")?.restarts).toEqual([iso(20)]);
   });
 
-  it("does not restart once the user typed to the Manager in its own tab after the alert, but does for a message before it", async () => {
+  it("does not restart once the user typed to the manager in its own tab after the alert, but does for a message before it", async () => {
     timeline = [{ item: { type: "user_message", text: "hold on, I am checking DM-3", messageId: "user-1" }, timestamp: iso(9) }];
     await minutes(0, 20);
     expect(restartManager).toHaveBeenCalledTimes(1);
@@ -405,7 +405,7 @@ describe("the escalation ladder", () => {
     expect(restartManager).not.toHaveBeenCalled();
   });
 
-  it("does not restart on a guess when the Manager's timeline cannot be read", async () => {
+  it("does not restart on a guess when the manager's timeline cannot be read", async () => {
     timeline = null;
     await minutes(0, 30);
     expect(restartManager).not.toHaveBeenCalled();
@@ -418,10 +418,10 @@ describe("the escalation ladder", () => {
     await minutes(21, 79);
     expect(restartManager).toHaveBeenCalledTimes(1);
     expect(notesWritten().filter((note) => note === "DM-3 QUEUE-RESTART")).toHaveLength(2);
-    expect(vi.mocked(appendTicketNote).mock.calls.at(-1)?.[2]).toContain("already restarted the Manager within the hour");
+    expect(vi.mocked(appendTicketNote).mock.calls.at(-1)?.[2]).toContain("already restarted the manager within the hour");
   });
 
-  it("does not wake a Manager it just replaced for what its first prompt said", async () => {
+  it("does not wake a manager it just replaced for what its first prompt said", async () => {
     await minutes(0, 20);
     expect(restartManager).toHaveBeenCalledTimes(1);
     idleSince(21);
@@ -446,12 +446,12 @@ describe("the escalation ladder", () => {
   });
 
   it("keeps the restart counted when it fails, and logs the failure on the ticket", async () => {
-    vi.mocked(restartManager).mockRejectedValueOnce(new Error("The demo Manager is in the middle of a turn. Restart it once it is idle."));
+    vi.mocked(restartManager).mockRejectedValueOnce(new Error("The demo manager is in the middle of a turn. Restart it once it is idle."));
     await minutes(0, 40);
     expect(restartManager).toHaveBeenCalledTimes(1);
     const restartNotes = vi.mocked(appendTicketNote).mock.calls.map(([, , record]) => record).filter((record) => record.startsWith("QUEUE-RESTART"));
-    expect(restartNotes[0]).toContain("failed (The demo Manager is in the middle of a turn");
-    expect(restartNotes[1]).toContain("already restarted the Manager within the hour");
+    expect(restartNotes[0]).toContain("failed (The demo manager is in the middle of a turn");
+    expect(restartNotes[1]).toContain("already restarted the manager within the hour");
     expect(actions.queueAlerts("demo", at(40))).toHaveLength(1);
   });
 });

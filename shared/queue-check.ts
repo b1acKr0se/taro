@@ -1,9 +1,9 @@
 /**
- * The plugin's own recount of a project's queue (TR-062): the Manager once left a ticket Queued
+ * The plugin's own recount of a project's queue (TR-062): the manager once left a ticket Queued
  * with a free slot because it counted from memory, and nothing woke it. The plugin owns the count:
- * every wake-up carries this recount, and a new ticket or an idle Manager with startable tickets wakes
- * it. When the Manager still does not dispatch, a ladder escalates: an alert ten minutes after the
- * wake-up, a fresh Manager twenty minutes after it. A deliberate hold is a HOLD record on the ticket,
+ * every wake-up carries this recount, and a new ticket or an idle manager with startable tickets wakes
+ * it. When the manager still does not dispatch, a ladder escalates: an alert ten minutes after the
+ * wake-up, a fresh manager twenty minutes after it. A deliberate hold is a HOLD record on the ticket,
  * lifted by a later RELEASE record; a held ticket is never woken for. Pure.
  */
 import { noteRecords } from "./execution";
@@ -11,11 +11,11 @@ import { dependsOn, ticketsCountingTowardsCap, type CapOwner, type CapTicket } f
 import { TARO_LABELS } from "./project";
 import { hasHeadroom, type BoardAlert } from "./recovery";
 
-/** How long the Manager must have been idle before the minute check wakes it. */
+/** How long the manager must have been idle before the minute check wakes it. */
 export const MANAGER_IDLE_BEFORE_WAKE_MS = 2 * 60_000;
 /** How long after the wake-up a ticket still queued with a free slot becomes an alert. */
 export const QUEUED_ALERT_AFTER_MS = 10 * 60_000;
-/** How long after the wake-up the Manager is restarted when the ticket is still queued. */
+/** How long after the wake-up the manager is restarted when the ticket is still queued. */
 export const QUEUED_RESTART_AFTER_MS = 20 * 60_000;
 /** At most one ladder restart per project in this window, as crash recovery limits itself. */
 export const RESTART_WINDOW_MS = 60 * 60_000;
@@ -39,7 +39,7 @@ export interface Recount {
   startable: string[];
   /** Queued tickets with a dependency not yet Done, with those dependencies. */
   waiting: { id: string; on: string[] }[];
-  /** Queued tickets the Manager holds, with the reason from the HOLD record. */
+  /** Queued tickets the manager holds, with the reason from the HOLD record. */
   held: { id: string; reason: string }[];
   /** Queued tickets that already have a live owner (paused back to Queued, or an owner not yet past it): they count, and are not startable. */
   owned: string[];
@@ -104,13 +104,13 @@ export function recount(input: {
   return result;
 }
 
-/** What makes two looks the same situation: the Manager is woken once per situation, not every minute. */
+/** What makes two looks the same situation: the manager is woken once per situation, not every minute. */
 export function situationKey(count: Recount): string {
   return `${count.startable.join(",")}|${count.counting.join(",")}|${count.cap}`;
 }
 
 /**
- * The minute check: wake the Manager when a ticket could start now, the Manager is idle and has been
+ * The minute check: wake the manager when a ticket could start now, the manager is idle and has been
  * for a while (its last turn ended at least two minutes ago), and it was not already woken for this
  * very situation. `lastTurnEndedAt` null means no turn end is known: it is not woken on a guess.
  */
@@ -135,19 +135,19 @@ export function newlyQueuedStartable(previous: ReadonlyMap<string, string> | nul
 /**
  * The escalation ladder per project, kept in memory: when each startable ticket was first seen
  * queued with a free slot and first named in a wake-up, which alerts the user dismissed, when the
- * user last spoke to the Manager, and the ladder's own Manager restarts.
+ * user last spoke to the manager, and the ladder's own manager restarts.
  */
 export interface QueueWatch {
   queuedAt: Map<string, number>;
   wokenAt: Map<string, number>;
-  /** The situation the Manager was last woken for (situationKey). */
+  /** The situation the manager was last woken for (situationKey). */
   wokenFor: string | null;
   dismissed: Set<string>;
   /** Tickets whose alert went up and was logged; logged again only after the ticket left the ladder. */
   alerted: Set<string>;
   /** Tickets whose restart the hourly limit withheld, logged once. */
   withheld: Set<string>;
-  /** When the user last sent the Manager a message from Taro; acting on an alert that way stops the restart. */
+  /** When the user last sent the manager a message from Taro; acting on an alert that way stops the restart. */
   userToldManagerAt: number | null;
   restarts: number[];
 }
@@ -187,7 +187,7 @@ export function markWoken(watch: QueueWatch, count: Recount, now: number): strin
   return first;
 }
 
-/** Where a ticket's ladder starts: its first wake-up, or when it was first seen queued if the Manager could never be woken. */
+/** Where a ticket's ladder starts: its first wake-up, or when it was first seen queued if the manager could never be woken. */
 function ladderStart(watch: QueueWatch, id: string): number | null {
   return watch.wokenAt.get(id) ?? watch.queuedAt.get(id) ?? null;
 }
@@ -209,8 +209,8 @@ export function newlyAlerted(watch: QueueWatch, now: number): string[] {
 
 /**
  * The project's one board and Inbox alert for the tickets queued with a free slot ten minutes after
- * the Manager was told (TR-064: one card naming them all, not one per ticket), or none. The text
- * follows the Manager's condition at the last minute check (TR-066): with none running, nothing will
+ * the manager was told (TR-064: one card naming them all, not one per ticket), or none. The text
+ * follows the manager's condition at the last minute check (TR-066): with none running, nothing will
  * tell or restart it, so the alert says so and where to start one.
  */
 export function queuedAlerts(watch: QueueWatch, now: number, condition: ManagerCondition): BoardAlert[] {
@@ -219,7 +219,7 @@ export function queuedAlerts(watch: QueueWatch, now: number, condition: ManagerC
   const alert = (text: string): BoardAlert[] => [{ id: QUEUED_ALERT_ID, tickets, text }];
   if (condition === "missing") {
     return alert(
-      `${listed(tickets)} queued with a free slot, but no Manager is running, so nothing dispatches ${tickets.length > 1 ? "them" : "it"}. Start one from the project's settings (⚙): a new Manager checks the tracker when it starts.`,
+      `${listed(tickets)} queued with a free slot, but no manager is running, so nothing dispatches ${tickets.length > 1 ? "them" : "it"}. Start one from the project's settings (⚙): a new manager checks the tracker when it starts.`,
     );
   }
   const told = tickets.filter((id) => watch.wokenAt.has(id));
@@ -231,23 +231,23 @@ export function queuedAlerts(watch: QueueWatch, now: number, condition: ManagerC
   if (told.length === 0) {
     if (condition === "unresponsive") {
       const next = limited
-        ? "The plugin already restarted the Manager within the hour, so it leaves this to you."
-        : `Unless you dismiss this, the plugin restarts the Manager ${restartIn} minutes after ${tickets.length > 1 ? "the first ticket" : "the ticket"} was queued.`;
-      return alert(`${listed(tickets)} queued with a free slot: the Manager has stopped responding, so the plugin could not tell it for ${minutes(tickets)} minutes. Open the Manager's tab to see what happened. ${next}`);
+        ? "The plugin already restarted the manager within the hour, so it leaves this to you."
+        : `Unless you dismiss this, the plugin restarts the manager ${restartIn} minutes after ${tickets.length > 1 ? "the first ticket" : "the ticket"} was queued.`;
+      return alert(`${listed(tickets)} queued with a free slot: the manager has stopped responding, so the plugin could not tell it for ${minutes(tickets)} minutes. Open the manager's tab to see what happened. ${next}`);
     }
     if (condition === "idle") {
-      return alert(`${listed(tickets)} queued with a free slot: the plugin has not been able to tell the Manager for ${minutes(tickets)} minutes, though it is idle now. Open the Manager's tab and ask it to dispatch ${tickets.length > 1 ? "the tickets" : "the ticket"}.`);
+      return alert(`${listed(tickets)} queued with a free slot: the plugin has not been able to tell the manager for ${minutes(tickets)} minutes, though it is idle now. Open the manager's tab and ask it to dispatch ${tickets.length > 1 ? "the tickets" : "the ticket"}.`);
     }
-    return alert(`${listed(tickets)} queued with a free slot: the Manager has been busy for ${minutes(tickets)} minutes, so the plugin could not tell it yet. It tells the Manager once it is idle, and restarts it only if it hangs. Open the Manager's tab to see what it is doing.`);
+    return alert(`${listed(tickets)} queued with a free slot: the manager has been busy for ${minutes(tickets)} minutes, so the plugin could not tell it yet. It tells the manager once it is idle, and restarts it only if it hangs. Open the manager's tab to see what it is doing.`);
   }
   const several = told.length > 1;
   const about = untold.length === 0 ? "" : ` about ${listed(told)}`;
   const notYet = untold.length === 0 ? "" : `; ${condition === "busy" ? "it was too busy to be told" : "it has not been told"} about ${listed(untold)} yet`;
   const next = limited
-    ? "The plugin already restarted the Manager within the hour, so it leaves this to you."
-    : `Unless you dismiss this or tell the Manager something, the plugin restarts the Manager ${restartIn} minutes after it was told.`;
+    ? "The plugin already restarted the manager within the hour, so it leaves this to you."
+    : `Unless you dismiss this or tell the manager something, the plugin restarts the manager ${restartIn} minutes after it was told.`;
   return alert(
-    `${listed(tickets)} queued with a free slot: the plugin told the Manager${about} ${minutes(told)} minutes ago, and it has not dispatched ${several ? "them" : "it"}${notYet}. Open the Manager's tab to see why, or ask it to dispatch ${several ? "the tickets" : "the ticket"}. ${next}`,
+    `${listed(tickets)} queued with a free slot: the plugin told the manager${about} ${minutes(told)} minutes ago, and it has not dispatched ${several ? "them" : "it"}${notYet}. Open the manager's tab to see why, or ask it to dispatch ${several ? "the tickets" : "the ticket"}. ${next}`,
   );
 }
 
@@ -259,11 +259,11 @@ function listed(ids: readonly string[]): string {
 /** The id of the queued-with-a-free-slot alert; the tickets it names are in its `tickets`. */
 export const QUEUED_ALERT_ID = "queued-free-slot";
 
-/** How the Manager is, for the ladder: only an idle or unresponsive one may be restarted. */
+/** How the manager is, for the ladder: only an idle or unresponsive one may be restarted. */
 export type ManagerCondition = "idle" | "busy" | "unresponsive" | "missing";
 
 /**
- * A Manager mid-turn is busy unless its turn has shown no activity for half an hour (hung); one in
+ * A manager mid-turn is busy unless its turn has shown no activity for half an hour (hung); one in
  * error is unresponsive only once crash recovery gave up on it (stalled), as recovery owns it before.
  */
 export function managerCondition(manager: { status: string; updatedAt: string; stalled: boolean } | null, now: number): ManagerCondition {
@@ -278,13 +278,13 @@ export function managerCondition(manager: { status: string; updatedAt: string; s
 }
 
 /**
- * The ladder's last step: the tickets that warrant restarting the Manager now, or an empty list.
+ * The ladder's last step: the tickets that warrant restarting the manager now, or an empty list.
  * Twenty minutes after the wake-up, with the ticket still startable, a free slot and threads under
- * the limit (both in `count`), the alert not dismissed or acted on (the user told the Manager
- * something after it went up), the Manager idle or unresponsive, and no ladder restart in the past
- * hour. A ticket the Manager was never told about is restarted for only when the Manager is
+ * the limit (both in `count`), the alert not dismissed or acted on (the user told the manager
+ * something after it went up), the manager idle or unresponsive, and no ladder restart in the past
+ * hour. A ticket the manager was never told about is restarted for only when the manager is
  * unresponsive (hung or given up by crash recovery), twenty minutes after it was first seen: a busy
- * Manager that turns idle is woken first. A Manager turn ending is no sign the user acted: the
+ * Manager that turns idle is woken first. A manager turn ending is no sign the user acted: the
  * plugin's own wake-ups for a changed queue end turns too.
  */
 export function restartDue(watch: QueueWatch, count: Recount, condition: ManagerCondition, now: number): string[] {
@@ -326,7 +326,7 @@ export function alertRaisedAt(watch: QueueWatch, tickets: readonly string[]): nu
 
 /**
  * A ladder restart, counted for the hourly limit whether or not it worked, so a failing one is not
- * retried every minute. A Manager actually replaced was told about the tickets in its first prompt:
+ * retried every minute. A manager actually replaced was told about the tickets in its first prompt:
  * their ladder starts again from now, and the minute check does not tell it the same again.
  */
 export function markRestarted(watch: QueueWatch, tickets: readonly string[], count: Recount, now: number, replaced: boolean): void {

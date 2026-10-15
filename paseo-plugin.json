@@ -1,7 +1,7 @@
 {
   "id": "taro",
   "name": "Taro",
-  "description": "A manager per project files tickets; a task owner agent owns each ticket from proposal to accepted delivery",
+  "description": "Agents work through your whole ticket board on their own: a manager files your requests as tickets, and owner agents take every one to completion, spawning subagents to build, test and review.",
   "requirements": {
     "paseo": ">=0.11.2"
   }

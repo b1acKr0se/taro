@@ -57,7 +57,7 @@ export function firstAsk(askers: readonly AskingAgent[]): AgentAsk | null {
 
 /** Who asks, in the words of an ask line: none for the owner, whose card it is; its job for a subagent ("researcher asks: …"). */
 export function askerPrefix(role: Role | null): string | null {
-  return role === null || role === "owner" ? null : role === "manager" ? "Manager asks" : `${role.charAt(0).toUpperCase()}${role.slice(1)} asks`;
+  return role === null || role === "owner" ? null : role === "manager" ? "The manager asks" : `${role.charAt(0).toUpperCase()}${role.slice(1)} asks`;
 }
 
 /** The longest detail kept; the card shows three lines of it at most. */

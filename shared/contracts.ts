@@ -145,7 +145,7 @@ const ManagerResult = z.object({ agentId: z.string() });
 
 export const launchManager = defineRpc({ name: "taro.manager.launch", input: ProjectInput, output: ManagerResult });
 export const restartManager = defineRpc({ name: "taro.manager.restart", input: ProjectInput, output: ManagerResult });
-/** The same Manager and conversation in a new process (TR-072); `restartManager` starts a fresh one. */
+/** The same manager and conversation in a new process (TR-072); `restartManager` starts a fresh one. */
 export const resumeManager = defineRpc({ name: "taro.manager.resume", input: ProjectInput, output: ManagerResult });
 export const compactManager = defineRpc({ name: "taro.manager.compact", input: ProjectInput, output: ManagerResult });
 export const tellManager = defineRpc({
@@ -231,7 +231,7 @@ export const BoardSchema = z.object({
   project: z.string(),
   cards: z.array(CardSchema),
   managerDecisions: z.array(StoredDecisionSchema),
-  /** The first permission the Manager or one of its own subagents (no ticket) waits on (TR-096). */
+  /** The first permission the manager or one of its own subagents (no ticket) waits on (TR-096). */
   managerPermission: AgentAskSchema.nullable().default(null),
   suggestions: z.array(SuggestionSchema),
   /** The host's thread usage, or null where it publishes no limit (TR-012). */
@@ -338,7 +338,7 @@ export const resolveTrackerSync = defineRpc({
   output: z.object({ problem: TrackerSyncProblemSchema.nullable() }),
 });
 /**
- * Dismisses the queued-with-a-free-slot alert for the tickets it showed, which also stops the Manager's
+ * Dismisses the queued-with-a-free-slot alert for the tickets it showed, which also stops the manager's
  * restart for them (TR-062); a ticket that joined since keeps it up (TR-064).
  */
 export const dismissQueueAlert = defineRpc({

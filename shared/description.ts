@@ -1,12 +1,12 @@
 /**
  * A ticket's description as the Ticket tab shows it (TR-061): the user's words first, the
- * Manager's notes (`## Manager notes`, `## Manager's notes`, any case) apart, folded behind their
+ * manager's notes (`## Manager notes`, `## Manager's notes`, any case) apart, folded behind their
  * bullet count. Pure.
  */
 import { plainText } from "./needs-you";
 
 export interface DescriptionParts {
-  /** Everything but the Manager's notes, as written. */
+  /** Everything but the manager's notes, as written. */
   userWords: string;
   /** The notes under their heading, without it; null when the description has none. */
   managerNotes: string | null;

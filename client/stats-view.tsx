@@ -160,9 +160,9 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
           </Text>
         ) : null}
         <Text style={styles.footnote}>
-          Project total: Wall is the project's elapsed time, from the first ticket filed to the last finished (or now while one is open). Active adds up every agent's working time, so agents working at once can exceed Wall; the Manager's is left out. Waiting on you adds up each ticket's time waiting on you (for acceptance, a decision, a permission, or while Blocked), so tickets waiting at once each count.
+          Project total: Wall is the project's elapsed time, from the first ticket filed to the last finished (or now while one is open). Active adds up every agent's working time, so agents working at once can exceed Wall; the manager's is left out. Waiting on you adds up each ticket's time waiting on you (for acceptance, a decision, a permission, or while Blocked), so tickets waiting at once each count.
         </Text>
-        <Text style={styles.footnote}>A child ticket's agents, turns, cost and waiting also count on its parent, so the totals add those up once. Idle compactions in the total include the Manager's.</Text>
+        <Text style={styles.footnote}>A child ticket's agents, turns, cost and waiting also count on its parent, so the totals add those up once. Idle compactions in the total include the manager's.</Text>
       </View>
     </ScrollView>
   );

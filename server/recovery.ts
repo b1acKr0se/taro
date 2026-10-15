@@ -110,10 +110,10 @@ export class Recovery {
    * a held one is dropped at dispose and `onSent` never runs.
    */
   async tellManagerWhenHeadroom(paseo: PaseoApi, project: string, managerId: string, text: string, onSent?: () => void): Promise<void> {
-    if (this.disposed) throw new Error("the plugin is stopping; the Manager was not told");
+    if (this.disposed) throw new Error("the plugin is stopping; the manager was not told");
     this.paseo = paseo;
     const headroom = await readHeadroom();
-    if (this.disposed) throw new Error("the plugin is stopping; the Manager was not told");
+    if (this.disposed) throw new Error("the plugin is stopping; the manager was not told");
     if (hasHeadroom(headroom) && !this.heldForManager.has(project)) {
       await sendFromPlugin(paseo, managerId, text);
       onSent?.();
@@ -197,9 +197,9 @@ export class Recovery {
       }
       if (identity.role === "manager") {
         const config = await requireProjectConfig(identity.project);
-        if (config.managerAgentId !== agent.id) return "left it: it is no longer the project's Manager";
+        if (config.managerAgentId !== agent.id) return "left it: it is no longer the project's manager";
         const restarted = await restartManager(paseo, identity.project);
-        return `restarted the Manager as ${restarted.agentId}`;
+        return `restarted the manager as ${restarted.agentId}`;
       }
     } catch (error: unknown) {
       const reason = `the fallback failed too (${oneLine(error instanceof Error ? error.message : String(error))})`;

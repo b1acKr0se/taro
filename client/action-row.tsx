@@ -1,5 +1,5 @@
 /**
- * The line above the Manager's composer: the Catch up and Compact buttons, then its suggestions, in one
+ * The line above the manager's composer: the Catch up and Compact buttons, then its suggestions, in one
  * sideways scroll that never wraps (TR-047, TR-057). No scrollbar anywhere; while more lies past the
  * right edge, a fade and a chevron say so (TR-032).
  */

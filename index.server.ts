@@ -139,7 +139,7 @@ export default function contribute(server: PluginServerContext) {
     void trackers
       .backstop()
       .catch((error: unknown) => reportFailure("[taro] tracker backstop failed:", error))
-      // The queue check (TR-062) rides the same minute: queued tickets with a free slot and an idle Manager.
+      // The queue check (TR-062) rides the same minute: queued tickets with a free slot and an idle manager.
       .then(() => (kept === null || isStopping() ? false : actions.checkQueues(kept)))
       .then((changed) => {
         if (changed) invalidateBoards();
@@ -263,7 +263,7 @@ export default function contribute(server: PluginServerContext) {
   });
   server.handle(catchUp, async ({ project }, { paseo }) => {
     const agentId = await tellManager(paseo, project, await catchUpText(project));
-    // Asking the Manager to catch up acts on a queued alert as a message does (TR-062).
+    // Asking the manager to catch up acts on a queued alert as a message does (TR-062).
     actions.userToldManager(project);
     return { agentId };
   });

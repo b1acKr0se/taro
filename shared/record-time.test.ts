@@ -21,7 +21,7 @@ describe("futureRecordTime", () => {
     expect(futureRecordTime("MILESTONE 2026-10-14T16:45Z — x", NOW)).toBeNull();
     expect(futureRecordTime("MILESTONE 2026-10-14T16:47:23Z — x", NOW)).toBeNull();
     expect(futureRecordTime("EVIDENCE 2026-10-13T23:59Z — yesterday", NOW)).toBeNull();
-    expect(futureRecordTime(`QUEUE-WAKE ${NOW.toISOString()} — the plugin told the Manager`, NOW)).toBeNull();
+    expect(futureRecordTime(`QUEUE-WAKE ${NOW.toISOString()} — the plugin told the manager`, NOW)).toBeNull();
   });
 
   it("accepts text without a record time, and future times that are not at a record line's start", () => {

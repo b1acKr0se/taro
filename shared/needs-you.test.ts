@@ -151,10 +151,10 @@ describe("firstAsk (TR-096)", () => {
     expect(ask).toMatchObject({ title: "Allow Edit?", detail: null, agentId: "x", role: null, workspaceId: null, count: 1 });
   });
 
-  it("names a subagent or the Manager, never the owner whose card it is", () => {
+  it("names a subagent or the manager, never the owner whose card it is", () => {
     expect(askerPrefix("researcher")).toBe("Researcher asks");
     expect(askerPrefix("implementer")).toBe("Implementer asks");
-    expect(askerPrefix("manager")).toBe("Manager asks");
+    expect(askerPrefix("manager")).toBe("The manager asks");
     expect(askerPrefix("owner")).toBeNull();
     expect(askerPrefix(null)).toBeNull();
   });

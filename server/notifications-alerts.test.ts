@@ -52,7 +52,7 @@ function notifier(): Notifier {
 }
 
 function queued(tickets: string[], minutes: number): BoardAlert {
-  return { id: "queued-free-slot", tickets, text: `${tickets.join(", ")} queued with a free slot: the plugin told the Manager ${minutes} minutes ago.` };
+  return { id: "queued-free-slot", tickets, text: `${tickets.join(", ")} queued with a free slot: the plugin told the manager ${minutes} minutes ago.` };
 }
 
 beforeEach(async () => {
@@ -73,17 +73,17 @@ afterEach(async () => {
 });
 
 describe("Notifier and board alerts", () => {
-  it("announces a Manager that stopped overnight once, opening the Manager", async () => {
+  it("announces a manager that stopped overnight once, opening the manager", async () => {
     const taro = notifier();
     await taro.check(paseo, state, "notes-app");
-    boardAlerts = [{ id: "manager-crashed", tickets: [], text: "The Manager is stopped. It crashed three times in an hour. Restart it from the project's settings." }];
+    boardAlerts = [{ id: "manager-crashed", tickets: [], text: "The manager is stopped. It crashed three times in an hour. Restart it from the project's settings." }];
     expect(await taro.check(paseo, state, "notes-app")).toBe(1);
     expect(await taro.check(paseo, state, "notes-app")).toBe(0);
     expect(pushed).toEqual([
       {
         to: "ExponentPushToken[a]",
-        title: "Manager crashed in notes-app",
-        body: "The Manager is stopped. It crashed three times in an hour. Restart it from the project's settings.",
+        title: "The manager crashed in notes-app",
+        body: "The manager is stopped. It crashed three times in an hour. Restart it from the project's settings.",
         data: { serverId: "srv_test", agentId: "agent-manager", workspaceId: "workspace-manager" },
         sound: "default",
       },

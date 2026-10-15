@@ -182,9 +182,9 @@ describe("settingsSummary", () => {
 
   it("names the models and how work is delivered", () => {
     const draft = candidateDraft(candidate("shop"), template, []);
-    expect(settingsSummary(draft, label)).toBe("Manager sonnet-5-5 · Owner opus-5-5 · Local branch, you merge");
+    expect(settingsSummary(draft, label)).toBe("sonnet-5-5 for the manager · opus-5-5 for owners · Local branch, you merge");
     expect(settingsSummary({ ...draft, delivery: "pull-request", acceptAlsoMerges: true }, label)).toBe(
-      "Manager sonnet-5-5 · Owner opus-5-5 · Pull request, merged when you accept",
+      "sonnet-5-5 for the manager · opus-5-5 for owners · Pull request, merged when you accept",
     );
   });
 

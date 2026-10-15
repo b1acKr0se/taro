@@ -247,7 +247,7 @@ describe("Resume", () => {
     expect((await actions.resume(paseo, "notes", "NA-3")).message).toBe("NA-3 is queued to resume: no free slot (older queued tickets come first). It starts when one frees.");
     await actions.advancePauses(paseo, "notes", Date.now());
     expect(created).toEqual([]);
-    // The Manager dispatched NA-0: no slot left. NA-1 delivers: the slot is NA-3's.
+    // The manager dispatched NA-0: no slot left. NA-1 delivers: the slot is NA-3's.
     find("NA-0").status = "Planning";
     live.push(agent("owner-0", "NA-0"));
     await actions.advancePauses(paseo, "notes", Date.now());

@@ -152,7 +152,7 @@ export function candidateDraft(candidate: PaseoProjectCandidate, template: Setti
   };
 }
 
-/** "Manager Sonnet 5.5 · Owner Opus 5.5 · Pull request, merged when you accept": the settings the review page does not ask about. */
+/** "Sonnet 5.5 for the manager · Opus 5.5 for owners · Pull request, merged when you accept": the settings the review page does not ask about. */
 export function settingsSummary(draft: SetupDraft, modelLabel: (model: string) => string): string {
   const delivery =
     draft.delivery === "pull-request"
@@ -162,6 +162,6 @@ export function settingsSummary(draft: SetupDraft, modelLabel: (model: string) =
       : draft.acceptAlsoMerges
         ? "Local branch, merged when you accept"
         : "Local branch, you merge";
-  const models = draft.managerModel === "" ? [] : [`Manager ${modelLabel(draft.managerModel)}`, `Owner ${modelLabel(draft.ownerModel)}`];
+  const models = draft.managerModel === "" ? [] : [`${modelLabel(draft.managerModel)} for the manager`, `${modelLabel(draft.ownerModel)} for owners`];
   return [...models, delivery].join(" · ");
 }

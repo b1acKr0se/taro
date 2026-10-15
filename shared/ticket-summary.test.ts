@@ -167,7 +167,7 @@ describe("planSummary", () => {
 });
 
 describe("descriptionParts", () => {
-  it("splits the user's words from the Manager notes and counts their bullets", () => {
+  it("splits the user's words from the manager notes and counts their bullets", () => {
     const parts = descriptionParts(LEGACY_DESCRIPTION);
     expect(parts.userWords.startsWith("## Intent (the user's words)")).toBe(true);
     expect(parts.userWords).not.toContain("Manager notes");
@@ -176,7 +176,7 @@ describe("descriptionParts", () => {
     expect(parts.managerNoteCount).toBe(4);
   });
 
-  it("reads the brief template's Manager's notes heading", () => {
+  it("reads the brief template's manager's notes heading", () => {
     expect(descriptionParts(SHORT_DESCRIPTION)).toMatchObject({ managerNoteCount: 4 });
     expect(descriptionParts("Do it.\n\n### MANAGER’S NOTES\n- a\n  - nested\n- b").managerNoteCount).toBe(2);
   });
@@ -187,7 +187,7 @@ describe("descriptionParts", () => {
     expect(parts.managerNotes).toBe("- a");
   });
 
-  it("gives all of it as the user's words without Manager notes", () => {
+  it("gives all of it as the user's words without manager notes", () => {
     expect(descriptionParts("Just the ask.\n- one\n- two")).toEqual({ userWords: "Just the ask.\n- one\n- two", managerNotes: null, managerNoteCount: 0 });
   });
 

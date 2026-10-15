@@ -234,7 +234,7 @@ describe("loadBoard", () => {
     expect(cleared?.permission).toBeNull();
   });
 
-  it("carries a permission the Manager or its own subagents wait on, the Manager's first", async () => {
+  it("carries a permission the manager or its own subagents wait on, the manager's first", async () => {
     const manager = { ...agent("manager-1", "manager", "", "2026-10-13T14:00:00Z"), labels: { "taro.role": "manager", "taro.project": "taro" } } as unknown as PaseoAgent;
     const researcher = {
       ...agent("researcher-9", "researcher", "", "2026-10-13T14:59:00Z"),

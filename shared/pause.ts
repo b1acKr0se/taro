@@ -16,7 +16,7 @@ import { holdReason } from "./queue-check";
 /** How long Pause waits for the owner's HANDOFF before pausing without one. */
 export const PAUSE_HANDOFF_TIMEOUT_MS = 10 * 60_000;
 
-/** A HOLD whose reason starts with this is a pause; the Manager's own holds never do. */
+/** A HOLD whose reason starts with this is a pause; the manager's own holds never do. */
 export const PAUSED_REASON = "paused by the user";
 const QUEUED_TO_RESUME = "queued to resume";
 
@@ -174,7 +174,7 @@ export function resumeRefusal(ticket: PauseTicket, merging: boolean, ownerAlive:
 /**
  * Whether a ticket queued to resume takes a free slot now: oldest first with the Queued tickets
  * (the tracker's order), so it starts only when the free slots outnumber the startable Queued
- * tickets ahead of it. A slot the Manager is filling for an older ticket stays its own.
+ * tickets ahead of it. A slot the manager is filling for an older ticket stays its own.
  */
 export function resumesNow(input: { ticket: string; order: readonly string[]; startable: readonly string[]; counting: number; cap: number; headroom: boolean }): boolean {
   if (!input.headroom) return false;

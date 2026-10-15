@@ -1,7 +1,7 @@
 /**
- * The Manager's suggestions, above its composer where the user talks to it (TR-045): chips shaped like
+ * The manager's suggestions, above its composer where the user talks to it (TR-045): chips shaped like
  * the Catch up and Compact buttons (TR-070), after them, scrolling sideways with them in one row (`ActionRow`, TR-057).
- * Each pill sends itself to the Manager when tapped and shows sending, sent or not sent inside it;
+ * Each pill sends itself to the manager when tapped and shows sending, sent or not sent inside it;
  * its × dismisses it.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
@@ -21,7 +21,7 @@ import { BUTTON } from "./control-size";
 import { Spinner } from "./ui";
 import { usePressGuards } from "./use-actions";
 
-/** How long a sent suggestion shows "Sent to the Manager" before it leaves the row. */
+/** How long a sent suggestion shows "Sent to the manager" before it leaves the row. */
 const SENT_VISIBLE_MS = 2500;
 
 export function SuggestionPills({
@@ -96,7 +96,7 @@ export function SuggestionPills({
       } else {
         const reason = errorText(outcome.error);
         setSend(suggestion, index, "failed", reason);
-        toast.error(`Not sent to the Manager: ${reason}`);
+        toast.error(`Not sent to the manager: ${reason}`);
       }
     });
   }
@@ -115,12 +115,12 @@ export function SuggestionPills({
     const busy = state === "sending" || state === "sent";
     const label =
       state === "sending"
-        ? `Sending to the Manager: ${suggestion.label}`
+        ? `Sending to the manager: ${suggestion.label}`
         : state === "sent"
-          ? `Sent to the Manager: ${suggestion.label}`
+          ? `Sent to the manager: ${suggestion.label}`
           : state === "failed"
-            ? `Not sent to the Manager${reason === undefined ? "" : ` (${reason})`}, tap to retry: ${suggestion.label}`
-            : `Send to the Manager: ${suggestion.label}`;
+            ? `Not sent to the manager${reason === undefined ? "" : ` (${reason})`}, tap to retry: ${suggestion.label}`
+            : `Send to the manager: ${suggestion.label}`;
     return (
       <View
         key={suggestionKey(suggestion)}
@@ -138,7 +138,7 @@ export function SuggestionPills({
           ) : state === "sent" ? (
             <>
               <Icon name="Check" size={BUTTON.iconSize} color={colors.statusSuccess} />
-              <Text style={[styles.suggestionState, { color: colors.statusSuccess }]}>Sent to the Manager</Text>
+              <Text style={[styles.suggestionState, { color: colors.statusSuccess }]}>Sent to the manager</Text>
             </>
           ) : state === "failed" ? (
             <>

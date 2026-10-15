@@ -120,7 +120,7 @@ export function AgentChat({
    * `ready`: Accept is offered.
    */
   delivery?: { card: ReactNode; label: string; ready: boolean } | undefined;
-  /** Things to send (the Manager's suggestions, TR-045), after the buttons in their sideways-scrolling line. */
+  /** Things to send (the manager's suggestions, TR-045), after the buttons in their sideways-scrolling line. */
   suggestions?: ReactNode;
 } & ChatComposer) {
   const toast = useToast();

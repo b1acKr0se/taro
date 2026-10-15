@@ -138,11 +138,11 @@ describe("needsYouEntries", () => {
     ]);
   });
 
-  it("announces the Manager's and its subagents' permissions, opening who asks", () => {
+  it("announces the manager's and its subagents' permissions, opening who asks", () => {
     const ask = { title: "Allow Bash?", detail: "git status", id: "request-3", agentId: "manager-1", role: "manager" as const, workspaceId: null, count: 1 };
     const announced = (managerPermission: Board["managerPermission"]) => needsYouEntries({ ...board([]), managerPermission }, "workspace-manager", "manager-1");
-    expect(announced(ask)).toEqual([{ key: "manager:permission:manager-1:request-3", title: "The Manager needs permission", body: "Allow Bash? git status", agentId: "manager-1", workspaceId: "workspace-manager" }]);
-    expect(announced({ ...ask, agentId: "researcher-2", role: "researcher", workspaceId: "workspace-2" })[0]).toMatchObject({ title: "The Manager's researcher needs permission", agentId: "researcher-2", workspaceId: "workspace-2" });
+    expect(announced(ask)).toEqual([{ key: "manager:permission:manager-1:request-3", title: "The manager needs permission", body: "Allow Bash? git status", agentId: "manager-1", workspaceId: "workspace-manager" }]);
+    expect(announced({ ...ask, agentId: "researcher-2", role: "researcher", workspaceId: "workspace-2" })[0]).toMatchObject({ title: "The manager's researcher needs permission", agentId: "researcher-2", workspaceId: "workspace-2" });
     expect(announced(null)).toEqual([]);
   });
 
@@ -174,16 +174,16 @@ describe("needsYouEntries", () => {
     expect(entries([card({ column: "stalled", owner: null })])[0]).toMatchObject({ key: "NA-027:stalled:none", agentId: null, workspaceId: null, body: "Sync conflicts" });
   });
 
-  it("announces the Manager's questions, opening the Manager", () => {
+  it("announces the manager's questions, opening the manager", () => {
     expect(entries([], [decision({ ticket: null, agentId: "manager-1", key: "manager-1:next", question: "Start NA-028 next?" })])).toEqual([
-      { key: "decision:manager-1:next:2026-01-01T00:00:00Z", title: "Manager asks", body: "Start NA-028 next?", agentId: "manager-1", workspaceId: "workspace-manager" },
+      { key: "decision:manager-1:next:2026-01-01T00:00:00Z", title: "The manager asks", body: "Start NA-028 next?", agentId: "manager-1", workspaceId: "workspace-manager" },
     ]);
   });
 
-  it("announces every board alert, named for the project and opening the Manager (TR-064)", () => {
+  it("announces every board alert, named for the project and opening the manager (TR-064)", () => {
     const alerts = [
       { id: "headroom", tickets: [], text: "The host is at 1900 of 2048 threads (93%)." },
-      { id: "manager-crashed", tickets: [], text: "The Manager is stopped." },
+      { id: "manager-crashed", tickets: [], text: "The manager is stopped." },
       { id: "ticket-file:tickets/NA-012.md", tickets: [], text: "tickets/NA-012.md line 4: bad JSON value." },
       { id: "queued-free-slot", tickets: ["NA-001", "NA-002"], text: "NA-001 and NA-002 queued with a free slot." },
     ];
@@ -191,7 +191,7 @@ describe("needsYouEntries", () => {
     expect(found.map((entry) => [entry.key, entry.title])).toEqual([
       // The host's alert is on every board and names no project.
       ["while-waiting:alert:headroom", "Threads running low"],
-      ["while-waiting:alert:manager-crashed", "Manager crashed in notes-app"],
+      ["while-waiting:alert:manager-crashed", "The manager crashed in notes-app"],
       ["while-waiting:alert:ticket-file:tickets/NA-012.md", "Ticket file unreadable in notes-app"],
       ["while-waiting:alert:queued-free-slot", "Queued with a free slot in notes-app"],
     ]);

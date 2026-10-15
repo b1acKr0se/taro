@@ -149,7 +149,7 @@ export function invalidateBoards(): void {
   activityCache.clear();
 }
 
-/** The Manager and its own subagents, which carry no ticket, asking permission: the Manager first, then the newest (TR-096). */
+/** The manager and its own subagents, which carry no ticket, asking permission: the manager first, then the newest (TR-096). */
 function managerAskers(agents: readonly PaseoAgent[]): PaseoAgent[] {
   const ofManager = agents.filter((agent) => {
     const role = roleFromLabel(agent.labels[TARO_LABELS.role]);

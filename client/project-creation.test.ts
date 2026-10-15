@@ -25,7 +25,7 @@ describe("startCreation", () => {
     expect(state).toEqual(creationDefaults());
   });
 
-  it("sets up the tracker without the Manager, then starts the Manager, then is done", async () => {
+  it("sets up the tracker without the manager, then starts the manager, then is done", async () => {
     const state = creationDefaults();
     let finishTracker: () => void = () => {};
     let finishManager: () => void = () => {};
@@ -83,7 +83,7 @@ describe("afterCreation", () => {
 });
 
 describe("retryManager", () => {
-  it("starts the Manager again and is done, or fails again", async () => {
+  it("starts the manager again and is done, or fails again", async () => {
     const state = { project: "shop", step: "failed" as const, failedStep: "manager" as const, error: "no threads" };
     const failing = { launch: vi.fn(async () => Promise.reject(new Error("still none"))) };
     await retryManager(failing, state);
@@ -92,7 +92,7 @@ describe("retryManager", () => {
     expect(state).toEqual({ project: "shop", step: "done", failedStep: null, error: null });
   });
 
-  it("starts the Manager once when pressed twice before the first start settles", async () => {
+  it("starts the manager once when pressed twice before the first start settles", async () => {
     const finishers: (() => void)[] = [];
     const launch = vi.fn(() => new Promise<object>((resolve) => finishers.push(() => resolve({}))));
     const state = { project: "shop", step: "failed" as "failed" | "manager" | "done", failedStep: "manager" as "manager" | null, error: "no threads" as string | null };
