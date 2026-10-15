@@ -21,6 +21,10 @@ describe("the local-branch accept path (TR-109)", () => {
     expect([...steps].sort((left, right) => left - right)).toEqual(steps);
   });
 
+  it("keeps a clean rebase out of the records that read as presenting again", () => {
+    expect(owner).toContain("never as a new review-head or EVIDENCE (both read as presenting again)");
+  });
+
   it("presents again on any conflict, and records NOT-MERGED only for the main checkout", () => {
     expect(owner).toContain("Any conflict, even\n       one you resolved, or failing checks → the user has not seen it: present it again.");
     expect(owner).toContain("record **NOT-MERGED** with\n       the reason");

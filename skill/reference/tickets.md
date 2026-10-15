@@ -112,9 +112,9 @@ rather than exceed it.
   The evidence per criterion is the EVIDENCE record; do not repeat it.
 - **ACCEPTANCE**: the user's words, time, accepted revision and PR, merge result.
 - **NOT-MERGED**: after Accept, a local-branch merge you did not make because of the main checkout
-  (dirty, or on another branch), and only then: the reason, in a line the user reads on the card. It
-  ends the "merging" state and puts the card back in Needs you:
-  `NOT-MERGED 2026-01-06T09:00Z — the main checkout /home/user/notes-app has uncommitted changes in src/app.ts`.
+  (dirty, or on another branch), and only then: the reason in one short line the user reads on the
+  card, what they do first. It ends the "merging" state and puts the card back in Needs you:
+  `NOT-MERGED 2026-01-06T09:00Z — commit or discard src/app.ts in the main checkout, then Accept again`.
 - **ANSWER**: written by the plugin when the user answers a decision.
 - **ESCAPE**: on a delivered ticket, when a later ticket fixes a defect it shipped; written by the
   later ticket's owner. What escaped, the fixing ticket, and the check that should have caught it

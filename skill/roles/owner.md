@@ -178,11 +178,11 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
     1. Your branch head is not the recorded review head → do not merge; present the new head again.
     2. The main checkout (the repository path) has uncommitted or untracked changes, or is not on
        the base branch → do not touch it (no stash, checkout or reset): record **NOT-MERGED** with
-       the reason in the user's terms, end with `waiting: <reason>`. The card goes back to Needs you
+       the reason, what the user does first, in one short line; end with `waiting: <reason>`. The card goes back to Needs you
        with Accept offered again once the user has fixed it.
     3. The base branch moved since your branch → rebase your branch onto it in your worktree. It
-       applied with no conflicts at all and the checks pass → go on; name the rebased head in
-       ACCEPTANCE, never as a new review-head (that reads as presenting again). Any conflict, even
+       applied with no conflicts at all and the checks pass → go on; name the rebased head and the
+       checks in ACCEPTANCE, never as a new review-head or EVIDENCE (both read as presenting again). Any conflict, even
        one you resolved, or failing checks → the user has not seen it: present it again.
     4. `git -C <repository path> merge --ff-only <your branch>`, then confirm the base branch's head
        is your branch's. Record ACCEPTANCE (merge: base `<old>` → `<new>`), set **Done**, and end
