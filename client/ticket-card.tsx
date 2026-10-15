@@ -327,8 +327,10 @@ export function TicketCard({
         <View style={styles.footer}>
           {footer.meta === "" ? null : <Text style={[styles.muted, styles.footerText]}>{footer.meta}</Text>}
           {footer.pullRequest === null ? null : (
+            // A button to the web app: it takes Enter and Space only from a button, and a link let them reach the card.
             <Pressable
-              accessibilityRole="link"
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${footer.pullRequest}`}
               onPress={() => void openExternalUrl(card.pullRequest ?? "").catch((caught: unknown) => toast.error(errorText(caught)))}
             >
               <Text style={[styles.link, styles.footerText]}>{footer.pullRequest}</Text>
