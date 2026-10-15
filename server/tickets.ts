@@ -97,6 +97,15 @@ export async function appendTicketNote(trackerPath: string, ticketId: string, re
   await storeFor(trackerPath).appendNote(ticketId, record);
 }
 
+/**
+ * The user sent changes on a delivery (TR-131): the record lands, and a ticket still Awaiting
+ * acceptance goes back to In Progress in the same write, so its acceptance card leaves at once.
+ * Any other status (the owner already moved it, or it was accepted) is left as it is.
+ */
+export async function recordChangesRequested(trackerPath: string, ticketId: string, record: string): Promise<void> {
+  await storeFor(trackerPath).edit(ticketId, { appendNotes: [record], status: "In Progress", statusFrom: "Awaiting acceptance" });
+}
+
 /** The watcher saw `file` (a name under `tickets/`; every file when undefined) change: the next list reads it again. */
 export function forgetTicketFile(trackerPath: string, file: string | undefined): void {
   stores.get(trackerPath)?.forget(file);

@@ -11,12 +11,12 @@ import { sendWithoutInterrupting } from "./send";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
 import type { Supervisor } from "./supervision";
-import { appendTicketNote, viewTicket } from "./tickets";
+import { appendTicketNote, recordChangesRequested, viewTicket } from "./tickets";
 import type { TrackerWatch } from "./tracker-watch";
 
 vi.mock("./agents", async (original) => ({ ...(await original<typeof import("./agents")>()), listTaroAgents: vi.fn() }));
 vi.mock("./projects", () => ({ listProjectConfigs: async () => [], projectPaths: async () => ({ tracker: "/tracker" }), requireProjectConfig: vi.fn() }));
-vi.mock("./tickets", () => ({ listTickets: vi.fn(), viewTicket: vi.fn(), appendTicketNote: vi.fn(async () => undefined) }));
+vi.mock("./tickets", () => ({ listTickets: vi.fn(), viewTicket: vi.fn(), appendTicketNote: vi.fn(async () => undefined), recordChangesRequested: vi.fn(async () => undefined) }));
 vi.mock("./evidence", () => ({ requireCompleteEvidence: async () => undefined }));
 vi.mock("./send", () => ({ sendWithoutInterrupting: vi.fn(async () => undefined), sendFromPlugin: vi.fn(async () => undefined) }));
 vi.mock("./package-files", async (original) => ({ ...(await original<typeof import("./package-files")>()), message: async (_template: string, values: Record<string, string>) => values.mergeInstruction ?? "" }));
@@ -94,5 +94,21 @@ describe("accept", () => {
     ticket("");
     await actions.accept({} as PaseoApi, "demo", "DM-1");
     expect(written().map((text) => text.replace(/^ACCEPTED \S+/, "ACCEPTED"))).toEqual(["ACCEPTED — the user accepted; merging: none", "ACCEPTED — the user accepted; merging: none"]);
+  });
+});
+
+describe("requestChanges (TR-131)", () => {
+  it("tells the owner, then records CHANGES-REQUESTED through the write that ends the delivery", async () => {
+    await actions.requestChanges({} as PaseoApi, "demo", "DM-1", "  Rename the button  ");
+    expect(vi.mocked(sendWithoutInterrupting)).toHaveBeenCalledOnce();
+    expect(vi.mocked(sendWithoutInterrupting).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(recordChangesRequested).mock.invocationCallOrder[0] ?? 0);
+    expect(vi.mocked(recordChangesRequested)).toHaveBeenCalledWith("/tracker", "DM-1", expect.stringMatching(/^CHANGES-REQUESTED \S+ — the user: "Rename the button"$/));
+    expect(written()).toEqual([]);
+  });
+
+  it("ends nothing when the owner could not be told", async () => {
+    vi.mocked(sendWithoutInterrupting).mockRejectedValueOnce(new Error("gone"));
+    await expect(actions.requestChanges({} as PaseoApi, "demo", "DM-1", "Rename it")).rejects.toThrow("gone");
+    expect(vi.mocked(recordChangesRequested)).not.toHaveBeenCalled();
   });
 });

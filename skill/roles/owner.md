@@ -180,9 +180,12 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
   (`--final-summary`) following `templates/final.md` (What changed ≤5 bullets, How it was verified
   ≤3, Limitations ≤3, then the revision line) and move to **Awaiting acceptance**. The user accepts or requests changes
   from the card.
-- **Request changes:** the user's words arrive as a message. Back to In Progress; size the fix like
-  a new task; read the new screenshots against those words too; return to Awaiting acceptance with a
-  new review head.
+- **Request changes:** the user's words arrive as a message, and the plugin has already moved the
+  ticket back to In Progress (sending them ends the delivery: the acceptance card leaves the chat).
+  Size the fix like a new task; read the new screenshots against those words too; return to Awaiting
+  acceptance with a new review head. Words that only ask a question or for confirmation: answer them,
+  and when nothing needs to change, deliver again as it was (Awaiting acceptance, the same review
+  head), which brings the card back.
 - **Accept:** if the message says to merge (accept-also-merges), merge only what the user reviewed.
   - **Pull request** (TR-110), in this order:
     1. The PR is already `MERGED` (an earlier Accept merged it, then recorded NOT-SYNCED) → go to 3.

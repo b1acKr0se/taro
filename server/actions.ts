@@ -69,7 +69,7 @@ import { hasAttachments, sendWithAttachments, type Attachments } from "./uploads
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import { identityFromLabels, lastHumanMessageAt, managerHandoffPath, type Supervisor } from "./supervision";
-import { appendTicketNote, listTickets, viewTicket, type TicketSummary } from "./tickets";
+import { appendTicketNote, listTickets, recordChangesRequested, viewTicket, type TicketSummary } from "./tickets";
 import { usageReading, type Stats } from "./stats";
 import { isStopping, reportFailure } from "./stopping";
 import type { TrackerWatch } from "./tracker-watch";
@@ -216,7 +216,8 @@ export class Actions {
     const owner = await this.requireOwner(paseo, project, ticket);
     await sendWithoutInterrupting(paseo, owner.id, await message(TEMPLATES.requestChanges, { ticket, text: text.trim() }));
     const paths = await projectPaths(project);
-    await appendTicketNote(paths.tracker, ticket, `CHANGES-REQUESTED ${new Date().toISOString()} — the user: "${text.trim()}"`).catch(() => undefined);
+    // Sending ends the delivery (TR-131): back to In Progress at once, so the card and its Accept row leave the chat.
+    await recordChangesRequested(paths.tracker, ticket, `CHANGES-REQUESTED ${new Date().toISOString()} — the user: "${text.trim()}"`).catch(() => undefined);
   }
 
   /** Change spec… (TR-129): only while the ticket waits in Queued with no owner; an owner takes changes in its own chat. */

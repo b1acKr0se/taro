@@ -7,7 +7,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Keyboard, Platform, SafeAreaView, ScrollView, Text, useWindowDimensions, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
 
 import { attachmentProblem, refuseOversizedImages, type DraftAttachment } from "../shared/attachments";
@@ -33,7 +33,7 @@ import { PermissionCard, usePendingRequests } from "./permission-card";
 import { ReplyBox } from "./reply-box";
 import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
-import { cardFits, cardOnScreen, offsetShowingCard, placeDecisions } from "./inline-decisions";
+import { cardFits, cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
 import { groupRows, toolRunSummary, type Group } from "./tool-runs";
 import { ATTACHMENTS_ONLY, transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
@@ -119,11 +119,12 @@ export function AgentChat({
   asks?: { decisions: readonly StoredDecision[]; onAnswered: () => void };
   /**
    * A delivered ticket's acceptance card (TR-026), handled like a question: brought into view on
-   * opening when nothing is asked, and `label` as a jump link at the composer while it is off screen.
-   * Drawn at the transcript's end (TR-091), so what is said after the delivery never buries it.
-   * `ready`: Accept is offered.
+   * opening when nothing is asked, and `label` as a row at the composer while it is off screen, with
+   * `accept` (its Accept button, while `ready`) beside Show. Drawn under the message that delivered,
+   * like any other part of the chat, so what is said after it scrolls it away (TR-131); at the end
+   * when that message is older than the timeline.
    */
-  delivery?: { card: ReactNode; label: string; ready: boolean } | undefined;
+  delivery?: { card: ReactNode; label: string; ready: boolean; accept: ReactNode } | undefined;
   /** Things to send (the manager's suggestions, TR-045), after the buttons in their sideways-scrolling line. */
   suggestions?: ReactNode;
 } & ChatComposer) {
@@ -169,6 +170,10 @@ export function AgentChat({
   const places = useMemo(() => (asks === undefined || asks.decisions.length === 0 ? null : placeDecisions(agentRows, asks.decisions)), [agentRows, asks?.decisions]);
   /** The acceptance card's place in the layouts, beside the decisions' keys. */
   const deliveryTarget = `delivery:${agent.id}`;
+  /** The message the acceptance card is drawn under; null draws it at the end. */
+  const deliveryRow = useMemo(() => (delivery === undefined ? null : deliveryRowKey(agentRows)), [delivery === undefined, agentRows]);
+  /** Nothing is drawn after the card but what arrives later: it is shown by following the end, as before TR-131. */
+  const deliveryLast = deliveryRow === null || groups[groups.length - 1]?.key === deliveryRow;
   /** What is brought into view and jumped to: the first open question, else the acceptance card. */
   const firstKey = places?.first?.key ?? (delivery === undefined ? null : deliveryTarget);
   /** Where each card lies in the transcript, by decision key (or the acceptance card's). */
@@ -193,8 +198,8 @@ export function AgentChat({
     if (firstKey === null || layout === undefined) return;
     if (openingCard.current?.agentId !== agent.id) openingCard.current = { agentId: agent.id, key: firstKey };
     if (openingCard.current.key === firstKey) {
-      // The acceptance card is the transcript's end: one that fits is shown by following the end, as new messages arrive above it.
-      if (firstKey === deliveryTarget && cardFits(layout.height, follow.viewport.current)) follow.reveal(firstKey, layout);
+      // An acceptance card with nothing said after it is the transcript's end: one that fits is shown by following the end.
+      if (firstKey === deliveryTarget && deliveryLast && cardFits(layout.height, follow.viewport.current)) follow.reveal(firstKey, layout);
       else follow.revealRow(firstKey, layout, offsetShowingCard);
     }
     setFirstOnScreen(cardOnScreen(layout.y, layout.height, follow.offset.current, follow.viewport.current));
@@ -220,7 +225,7 @@ export function AgentChat({
     const scroll = () => {
       const layout = firstKey === null ? undefined : cardLayouts.current.get(firstKey);
       if (layout === undefined) return;
-      if (firstKey === deliveryTarget && cardFits(layout.height, follow.viewport.current)) follow.jumpToEnd();
+      if (firstKey === deliveryTarget && deliveryLast && cardFits(layout.height, follow.viewport.current)) follow.jumpToEnd();
       else follow.scrollTo(offsetShowingCard(layout.y, layout.height, follow.viewport.current));
     };
     if (firstKey === deliveryTarget) measureDelivery(scroll);
@@ -406,6 +411,12 @@ export function AgentChat({
     () => chatStyles(theme, compact),
     [theme, compact],
   );
+  const deliveryCard =
+    delivery === undefined ? null : (
+      <View ref={deliveryView} style={styles.agentRow} onLayout={(event) => noteLayout([deliveryTarget], event.nativeEvent.layout)}>
+        {delivery.card}
+      </View>
+    );
 
   return (
     <View ref={pane} style={[styles.pane, { paddingBottom: keyboard }]}>
@@ -441,6 +452,7 @@ export function AgentChat({
               groups.map((group) => {
                 const row = "row" in group ? group.row : null;
                 return (
+                  <Fragment key={group.key}>
                   <TranscriptGroup
                     key={group.key}
                     group={group}
@@ -458,6 +470,9 @@ export function AgentChat({
                     onOpenLink={openLinkLatest}
                     renderCards={decisionCardsLatest}
                   />
+                  {/* Beside the message, not inside it: a direct child of the transcript, measured on screen like before (TR-091). */}
+                  {row?.key === deliveryRow ? deliveryCard : null}
+                  </Fragment>
                 );
               })
             )}
@@ -479,12 +494,8 @@ export function AgentChat({
                 {decisionCards(places.unplaced)}
               </View>
             )}
-            {/* Under everything said since the delivery; a permission request, which holds the agent up, stays last. */}
-            {delivery === undefined ? null : (
-              <View ref={deliveryView} style={styles.agentRow} onLayout={(event) => noteLayout([deliveryTarget], event.nativeEvent.layout)}>
-                {delivery.card}
-              </View>
-            )}
+            {/* The delivering message is older than the timeline: at the end, before a permission request, which holds the agent up. */}
+            {deliveryRow === null ? deliveryCard : null}
             {pending.map((request) => (
               <View key={request.id} onLayout={(event) => follow.reveal(request.id, event.nativeEvent.layout)}>
                 <PermissionCard request={request} asker={asker} theme={theme} compact={compact} onRespond={(response) => respond(request.id, response)} onOpenLink={openLink} />
@@ -506,15 +517,17 @@ export function AgentChat({
         ) : (
           <View style={styles.composer}>
             {firstOnScreen || places !== null || delivery === undefined ? null : (
-              <Pressable accessibilityRole="button" accessibilityLabel={`Show: ${delivery.label}`} style={styles.quick} onPress={jumpToFirst}>
+              // Accept at hand while the card is scrolled away (TR-131); Show brings the card back.
+              <View style={styles.quick}>
                 <Icon name={delivery.ready ? "PackageCheck" : "PackageX"} size={13} color={delivery.ready ? theme.colors.accent : theme.colors.statusWarning} />
                 <Text style={[styles.lineText, { color: theme.colors.foreground }]} numberOfLines={1}>
                   {delivery.label}
                 </Text>
-                <View style={styles.show}>
+                {delivery.ready ? delivery.accept : null}
+                <Pressable accessibilityRole="button" accessibilityLabel={`Show: ${delivery.label}`} style={styles.show} onPress={jumpToFirst}>
                   <Text style={styles.showText}>Show</Text>
-                </View>
-              </Pressable>
+                </Pressable>
+              </View>
             )}
             {places?.first === null || places === null || firstOnScreen ? null : (
               <Pressable accessibilityRole="button" accessibilityLabel={`Show the question: ${places.first.question}`} style={styles.quick} onPress={jumpToFirst}>
