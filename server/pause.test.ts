@@ -98,7 +98,7 @@ const paseo = {
 } as unknown as PaseoApi;
 
 const withdrawn: string[] = [];
-const state = { forgetAgent: async () => undefined, agent: async () => null } as unknown as PluginState;
+const state = { forgetAgent: async () => undefined, agent: async () => null, updateDecisions: async <T>(change: (stored: []) => T) => change([]) } as unknown as PluginState;
 const supervisor = { withdrawDecisionsOf: async (id: string) => withdrawn.push(id) } as unknown as Supervisor;
 let actions: Actions;
 

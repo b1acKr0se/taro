@@ -25,6 +25,10 @@ export const StoredDecisionSchema = ParsedDecisionSchema.extend({
   turn: z.string().nullable().default(null),
   status: z.enum(["open", "answered", "withdrawn"]),
   answer: DecisionAnswerSchema.nullable().default(null),
+  /** Withdrawn because the agent that asked went away, not by the agent itself (TR-136). */
+  withdrawnWithAgent: z.boolean().optional(),
+  /** The owner a withdrawn question was carried to in its first message (TR-136). */
+  carriedTo: z.string().optional(),
 });
 export type StoredDecision = z.infer<typeof StoredDecisionSchema>;
 
@@ -73,12 +77,16 @@ export function decisionsOfLiveAgents<T extends Pick<StoredDecision, "agentId" |
   return decisions.filter((decision) => decision.status === "open" && liveAgentIds.has(decision.agentId));
 }
 
-/** Marks the open decisions `matches` picks as withdrawn; returns how many it withdrew. */
-export function withdrawOpenDecisions(decisions: StoredDecision[], matches: (decision: StoredDecision) => boolean): number {
+/**
+ * Marks the open decisions `matches` picks as withdrawn; returns how many it withdrew. `withAgent`:
+ * their agent went away, so a ticket's next owner is handed them (TR-136).
+ */
+export function withdrawOpenDecisions(decisions: StoredDecision[], matches: (decision: StoredDecision) => boolean, withAgent = false): number {
   let withdrawn = 0;
   for (const decision of decisions) {
     if (decision.status !== "open" || !matches(decision)) continue;
     decision.status = "withdrawn";
+    if (withAgent) decision.withdrawnWithAgent = true;
     withdrawn += 1;
   }
   return withdrawn;
@@ -91,4 +99,31 @@ export function withdrawOpenDecisions(decisions: StoredDecision[], matches: (dec
  */
 export function openQuestionHolding<T extends Pick<StoredDecision, "agentId" | "key" | "status">>(decisions: readonly T[], agentId: string, key: string): T | undefined {
   return decisions.find((decision) => decision.agentId === agentId && decision.status === "open" && decision.key !== key);
+}
+
+/**
+ * The questions a ticket's new owner is handed (TR-136): owners' questions withdrawn because their
+ * owner went away, oldest first, the newest per decision id. One handed to an owner that never asked
+ * it again is handed on again, so two quick replacements lose nothing.
+ */
+export function questionsToCarry<T extends Pick<StoredDecision, "id" | "key" | "project" | "ticket" | "agentRole" | "status" | "askedAt" | "withdrawnWithAgent" | "carriedTo">>(
+  decisions: readonly T[],
+  project: string,
+  ticket: string,
+): T[] {
+  const keys = new Set(decisions.map((decision) => decision.key));
+  const newest = new Map<string, T>();
+  for (const decision of decisions) {
+    if (decision.project !== project || decision.ticket?.toUpperCase() !== ticket.toUpperCase() || decision.agentRole !== "owner") continue;
+    if (decision.status !== "withdrawn" || decision.withdrawnWithAgent !== true) continue;
+    if (decision.carriedTo !== undefined && keys.has(`${decision.carriedTo}:${decision.id}`)) continue;
+    const kept = newest.get(decision.id);
+    if (kept === undefined || kept.askedAt < decision.askedAt) newest.set(decision.id, decision);
+  }
+  return [...newest.values()].sort((left, right) => left.askedAt.localeCompare(right.askedAt));
+}
+
+/** One line per carried question for the new owner's first message: its id, then its question on one line. */
+export function carriedQuestionLines(questions: readonly Pick<StoredDecision, "id" | "question">[]): string {
+  return questions.map((question) => `- \`${question.id}\`: ${question.question.replace(/\s+/g, " ").trim()}`).join("\n");
 }

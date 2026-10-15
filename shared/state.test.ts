@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decisionsOfLiveAgents, openQuestionHolding, StoredDecisionSchema, withdrawOpenDecisions, type StoredDecision } from "./state";
+import { carriedQuestionLines, decisionsOfLiveAgents, openQuestionHolding, questionsToCarry, StoredDecisionSchema, withdrawOpenDecisions, type StoredDecision } from "./state";
 
 function decision(agentId: string, id: string, status: StoredDecision["status"] = "open", project = "taro"): StoredDecision {
   return {
@@ -74,6 +74,60 @@ describe("withdrawOpenDecisions", () => {
     const decisions = [decision("a", "x")];
     expect(withdrawOpenDecisions(decisions, () => false)).toBe(0);
     expect(decisions[0]?.status).toBe("open");
+  });
+
+  it("marks only withdrawals made because the agent went away (TR-136)", () => {
+    const decisions = [decision("old-owner", "scope-approval"), decision("other-owner", "naming")];
+    withdrawOpenDecisions(decisions, (candidate) => candidate.agentId === "old-owner", true);
+    withdrawOpenDecisions(decisions, (candidate) => candidate.agentId === "other-owner");
+    expect(decisions.map((candidate) => candidate.withdrawnWithAgent)).toEqual([true, undefined]);
+  });
+});
+
+describe("questionsToCarry (TR-136)", () => {
+  const gone = (agentId: string, id: string, parts: Partial<StoredDecision> = {}): StoredDecision => ({ ...decision(agentId, id, "withdrawn"), withdrawnWithAgent: true, ...parts });
+
+  it("hands on owners' questions withdrawn with their owner, for this project and ticket only, oldest first", () => {
+    const decisions = [
+      gone("old-owner", "storage", { askedAt: "2026-10-13T12:30:00.000Z" }),
+      gone("old-owner", "naming", { askedAt: "2026-10-13T12:10:00.000Z" }),
+      decision("old-owner", "size", "withdrawn"),
+      decision("old-owner", "merge", "answered"),
+      decision("live-owner", "open-one"),
+      gone("reviewer", "nit", { agentRole: "reviewer" }),
+      gone("old-owner", "elsewhere", { ticket: "TR-6" }),
+      gone("old-owner", "no-ticket", { ticket: null }),
+      gone("old-owner", "other-project", { project: "shop" }),
+    ];
+    expect(questionsToCarry(decisions, "taro", "TR-5").map((each) => each.id)).toEqual(["naming", "storage"]);
+    // Ticket ids compare without case, as owners' labels do.
+    expect(questionsToCarry(decisions, "taro", "tr-5").map((each) => each.id)).toEqual(["naming", "storage"]);
+  });
+
+  it("hands on one carried to an owner that never asked it again, not one it did", () => {
+    expect(questionsToCarry([gone("first", "storage", { carriedTo: "second" })], "taro", "TR-5")).toHaveLength(1);
+    const askedAgain = [gone("first", "storage", { carriedTo: "second" }), decision("second", "storage", "answered")];
+    expect(questionsToCarry(askedAgain, "taro", "TR-5")).toEqual([]);
+  });
+
+  it("keeps the newest copy of a question two owners left open", () => {
+    const decisions = [gone("first", "storage", { carriedTo: "third" }), gone("second", "storage", { askedAt: "2026-10-13T13:00:00.000Z", question: "Reworded?" })];
+    expect(questionsToCarry(decisions, "taro", "TR-5").map((each) => each.question)).toEqual(["Reworded?"]);
+  });
+
+  it("hands on nothing from nothing", () => {
+    expect(questionsToCarry([], "taro", "TR-5")).toEqual([]);
+  });
+});
+
+describe("carriedQuestionLines (TR-136)", () => {
+  it("puts each question's id and text on one line", () => {
+    const questions = [
+      { id: "naming", question: "Call it Notes\n  or Memos?" },
+      { id: "storage", question: "  Store notes locally?  " },
+    ];
+    expect(carriedQuestionLines(questions)).toBe("- `naming`: Call it Notes or Memos?\n- `storage`: Store notes locally?");
+    expect(carriedQuestionLines([])).toBe("");
   });
 });
 

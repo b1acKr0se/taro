@@ -1,2 +1,4 @@
-<!-- The first message of a relaunched owner (decision 30). -->
+<!-- The first message of a relaunched owner (decision 30). {{carriedQuestions}}: the previous owners' unanswered questions (TR-136), or nothing. -->
 You are the new task owner of {{ticket}} in project {{project}}; the previous owner stopped. Your worktree keeps its work. Read {{skill}}/SKILL.md, {{skill}}/roles/owner.md and {{skill}}/reference/shell.md, then ticket {{ticket}} (tracker {{tracker}}) — its latest HANDOFF or MILESTONE says where things stand — and check the worktree's git state. Append a new EXECUTION record naming your agent id ({{agentId}}), workspace {{workspaceId}}, the machine (`hostname`), the worktree path and the branch — a later relaunch reads it — then continue. The previous owner's transcript is readable with `paseo logs {{previousAgentId}}` if the ticket lacks a detail.
+
+{{carriedQuestions}}
