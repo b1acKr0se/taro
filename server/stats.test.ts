@@ -388,7 +388,7 @@ describe("waiting on the user (TR-100)", () => {
     await stats.waitingSeen("taro", ["TR-1"], start + 30_000);
     // Answered, then waiting again ten minutes later (or the plugin was down).
     await stats.waitingSeen("taro", ["TR-1"], start + 10 * 60_000);
-    expect(await waiting("TR-1")).toEqual([
+    expect((await stats.all("taro"))[0]?.waiting).toEqual([
       { start: iso(0), end: iso(30_000) },
       { start: iso(10 * 60_000), end: iso(10 * 60_000) },
     ]);
@@ -397,9 +397,48 @@ describe("waiting on the user (TR-100)", () => {
   it("counts a child's waiting on its parent once, when both wait", async () => {
     const stats = new Stats();
     await stats.waitingSeen("taro", ["TR-1.2", "TR-1"], start);
-    await stats.waitingSeen("taro", ["TR-1.2"], start + 15_000);
-    expect(await waiting("TR-1.2")).toEqual([{ start: iso(0), end: iso(15_000) }]);
-    expect(await waiting("TR-1")).toEqual([{ start: iso(0), end: iso(15_000) }]);
+    await stats.waitingSeen("taro", ["TR-1.2"], start + 60_000);
+    expect(await waiting("TR-1.2")).toEqual([{ start: iso(0), end: iso(60_000) }]);
+    expect(await waiting("TR-1")).toEqual([{ start: iso(0), end: iso(60_000) }]);
+  });
+
+  it("starts a new stretch, keeping the old one, when the clock moved back", async () => {
+    const stats = new Stats();
+    await stats.waitingSeen("taro", ["TR-1"], start + 60_000);
+    await stats.waitingSeen("taro", ["TR-1"], start + 30_000);
+    expect(await waiting("TR-1")).toEqual([
+      { start: iso(60_000), end: iso(60_000) },
+      { start: iso(30_000), end: iso(30_000) },
+    ]);
+  });
+
+  it("writes a continued stretch at most once a minute, and keeps the latest end in memory", async () => {
+    const stats = new Stats();
+    await stats.waitingSeen("taro", ["TR-1"], start);
+    await stats.waitingSeen("taro", ["TR-1"], start + 15_000);
+    expect(await waiting("TR-1")).toEqual([{ start: iso(0), end: iso(0) }]);
+    expect((await stats.all("taro"))[0]?.waiting).toEqual([{ start: iso(0), end: iso(15_000) }]);
+    for (let offset = 30_000; offset <= 60_000; offset += 15_000) await stats.waitingSeen("taro", ["TR-1"], start + offset);
+    expect(await waiting("TR-1")).toEqual([{ start: iso(0), end: iso(60_000) }]);
+  });
+
+  it("loses nothing when waiting, a transition and the repair run at once", async () => {
+    const stats = new Stats();
+    await stats.transition("taro", "TR-1", "One", null, "Planning", iso(0));
+    await Promise.all([
+      stats.waitingSeen("taro", ["TR-1", "TR-2"], start + 1_000),
+      stats.transition("taro", "TR-1", "One", "Planning", "Planning", iso(500)),
+      stats.repairRepeats(),
+      stats.transition("taro", "TR-2", "Two", null, "Blocked", iso(800)),
+      stats.turnEnded("taro", "TR-1", agent, 2_000),
+    ]);
+    const file = (await statsFile()) as unknown as { tickets: Record<string, { transitions: { to: string }[]; waiting: unknown[]; agents: Record<string, unknown> }>; repeatRepair: { removed: number } };
+    expect(file.tickets["taro:TR-1"]?.transitions.map((transition) => transition.to)).toEqual(["Planning"]);
+    expect(file.tickets["taro:TR-1"]?.waiting).toHaveLength(1);
+    expect(file.tickets["taro:TR-1"]?.agents[agent.id]).toMatchObject({ turns: 1, activeMs: 2_000 });
+    expect(file.tickets["taro:TR-2"]?.transitions.map((transition) => transition.to)).toEqual(["Blocked"]);
+    expect(file.tickets["taro:TR-2"]?.waiting).toHaveLength(1);
+    expect(file.repeatRepair.removed).toBe(0);
   });
 
   it("writes nothing when no card waits", async () => {

@@ -17,6 +17,8 @@ export type RepeatRepair = z.infer<typeof RepeatRepairSchema>;
 
 /** A Needs-you check finding a ticket again within this long continues its stretch; a longer gap (the plugin was down) starts a new one. */
 export const WAITING_GAP_MS = 90_000;
+/** How often a continued stretch's end is written to disk. */
+export const WAITING_WRITE_EVERY_MS = 60_000;
 
 // Turn starts are kept on disk so a turn that spans a plugin reload or daemon restart keeps its duration.
 // `costBackfill` and `repeatRepair` are null until each has run once; files without them load as not yet run.
@@ -72,6 +74,8 @@ export function turnMayStillEnd(agent: { status: string; updatedAt: string } | n
 
 export class Stats {
   private file: StatsFile | null = null;
+  /** When each ticket's waiting was last written (see `waitingSeen`). */
+  private readonly waitingWrittenAt = new Map<string, number>();
 
   private async load(): Promise<StatsFile> {
     if (this.file === null) {
@@ -134,15 +138,26 @@ export class Stats {
     if (tickets.length === 0) return Promise.resolve();
     const at = new Date(now).toISOString();
     return this.modify((file) => {
+      // A continued stretch is written at most once a minute: the end moves in memory every check, and
+      // a reload loses at most that minute.
+      let write = false;
       for (const target of new Set(tickets.flatMap(ticketAndParent))) {
         const key = keyFor(project, target);
         const stats = file.tickets[key] ?? TicketStatsSchema.parse({ project, ticket: target });
         const last = stats.waiting[stats.waiting.length - 1];
-        if (last !== undefined && now - Date.parse(last.end) <= WAITING_GAP_MS && now >= Date.parse(last.end)) last.end = at;
-        else stats.waiting.push({ start: at, end: at });
+        const sinceEnd = last === undefined ? Number.NaN : now - Date.parse(last.end);
+        // A clock moved back must not put an end before its start: a new stretch starts instead.
+        if (last !== undefined && sinceEnd >= 0 && sinceEnd <= WAITING_GAP_MS) {
+          last.end = at;
+          if (now - (this.waitingWrittenAt.get(key) ?? 0) >= WAITING_WRITE_EVERY_MS) write = true;
+        } else {
+          stats.waiting.push({ start: at, end: at });
+          write = true;
+        }
         file.tickets[key] = stats;
       }
-      return true;
+      if (write) for (const target of new Set(tickets.flatMap(ticketAndParent))) this.waitingWrittenAt.set(keyFor(project, target), now);
+      return write;
     });
   }
 
