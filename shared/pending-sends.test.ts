@@ -4,8 +4,10 @@ import {
   ChatMessageIdSchema,
   handBack,
   heldToRelease,
+  failureReason,
   isWorking,
   newChatMessageId,
+  nextToSend,
   replacingProviders,
   STOPPED_GRACE_MS,
   steersMidTurn,
@@ -118,7 +120,69 @@ describe("viewSends", () => {
   });
 
   it("has nothing to show with nothing sent", () => {
-    expect(viewSends([], [], WORKING, T0)).toEqual({ views: [], read: [] });
+    expect(viewSends([], [], WORKING, T0)).toEqual({ views: [], read: [], landed: [] });
+  });
+
+  it("shows a message on its way as sending, and a failed one with those after it waiting behind it (TR-102)", () => {
+    const sends = [sent("chat-a", T0, "sending"), sent("chat-b", T0, "failed"), sent("chat-c", T0, "sending"), sent("chat-d", T0, "held")];
+    const { views, read, landed } = viewSends(sends, [entry("assistant_message")], WORKING, T0);
+    expect(views.map((view) => [view.send.id, view.mark, view.rowKey])).toEqual([
+      ["chat-a", "sending", null],
+      ["chat-b", "failed", null],
+      ["chat-c", "behind", null],
+      ["chat-d", "held", null],
+    ]);
+    expect(read).toEqual([]);
+    expect(landed).toEqual([]);
+  });
+
+  it("takes a sending or failed message found in the timeline as sent: Paseo has it, only the answer was slow or lost", () => {
+    const mine = entry("user_message", T0, "chat-a");
+    const theirs = entry("user_message", T0, "chat-b");
+    const { views, landed } = viewSends([sent("chat-a", T0, "failed"), sent("chat-b", T0, "sending"), sent("chat-c", T0, "sending")], [mine, theirs], WORKING, T0);
+    expect(views.map((view) => [view.send.id, view.mark])).toEqual([
+      ["chat-a", "waiting"],
+      ["chat-b", "waiting"],
+      ["chat-c", "sending"],
+    ]);
+    expect(landed).toEqual(["chat-a", "chat-b"]);
+  });
+
+  it("never says a message on its way was not read, however long the agent has been stopped", () => {
+    const { views } = viewSends([sent("chat-a", T0, "sending")], [], { stoppedAt: T0 - 100_000, hasOlder: false }, T0 + 100_000);
+    expect(views[0]?.mark).toBe("sending");
+  });
+});
+
+describe("nextToSend (TR-102)", () => {
+  it("is the first message sending, past those sent and held", () => {
+    expect(nextToSend([sent("chat-a"), sent("chat-b", T0, "held"), sent("chat-c", T0, "sending"), sent("chat-d", T0, "sending")])?.id).toBe("chat-c");
+  });
+
+  it("is none while a failed message comes first, so nothing overtakes it", () => {
+    expect(nextToSend([sent("chat-a", T0, "failed"), sent("chat-b", T0, "sending")])).toBeNull();
+  });
+
+  it("is the one before a failed message, which went first", () => {
+    expect(nextToSend([sent("chat-a", T0, "sending"), sent("chat-b", T0, "failed")])?.id).toBe("chat-a");
+  });
+
+  it("is none with nothing to send", () => {
+    expect(nextToSend([])).toBeNull();
+    expect(nextToSend([sent("chat-a"), sent("chat-b", T0, "held")])).toBeNull();
+  });
+});
+
+describe("failureReason", () => {
+  it("is the error's message, trimmed", () => {
+    expect(failureReason(new Error("  That agent is no longer running. "))).toBe("That agent is no longer running.");
+    expect(failureReason("Not connected")).toBe("Not connected");
+  });
+
+  it("says Paseo did not take it when the error says nothing", () => {
+    expect(failureReason(new Error(""))).toBe("Paseo did not take it.");
+    expect(failureReason(undefined)).toBe("Paseo did not take it.");
+    expect(failureReason({ code: 1 })).toBe("Paseo did not take it.");
   });
 });
 

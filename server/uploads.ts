@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { attachmentProblem, safeFileName, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
 import { paseoHome } from "./data-dir";
 import type { PaseoApi } from "./host-types";
-import { sendWithoutInterrupting } from "./send";
+import { sendChatMessageOnce, sendWithoutInterrupting } from "./send";
 
 /** What the composer sends with the words: attachments, and the chat's own id for the message (TR-084). */
 export interface Attachments {
@@ -31,6 +31,11 @@ export function hasAttachments(attachments: Attachments): boolean {
  * send failing removes every file this call wrote, so a retry leaves no orphan copy behind.
  */
 export async function sendWithAttachments(paseo: PaseoApi, agentId: string, words: string, attachments: Attachments, home = paseoHome()): Promise<void> {
+  // A chat message sent again under its own id (a retry, a reconnect) goes once (TR-102).
+  await sendChatMessageOnce(paseo, agentId, attachments.messageId, () => sendWithUploads(paseo, agentId, words, attachments, home));
+}
+
+async function sendWithUploads(paseo: PaseoApi, agentId: string, words: string, attachments: Attachments, home: string): Promise<void> {
   const images = attachments.images ?? [];
   const files = attachments.files ?? [];
   const problem = attachmentProblem([...images.map((image) => ({ ...image, kind: "image" as const })), ...files]);

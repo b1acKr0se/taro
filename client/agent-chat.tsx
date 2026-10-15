@@ -38,7 +38,6 @@ import { groupRows, toolRunSummary, type Group } from "./tool-runs";
 import { ATTACHMENTS_ONLY, transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
-import { usePressGuards } from "./use-actions";
 import { usePendingSends, type ChatSend } from "./use-pending-sends";
 import { handBack, steersMidTurn, type PendingSend, type SendMark, type SendView } from "../shared/pending-sends";
 import { composerMetrics } from "./composer-height";
@@ -145,10 +144,6 @@ export function AgentChat({
     entries: timeline.entries,
     hasOlder: timeline.hasOlder,
     onSend,
-    onFailed: (failed, error) => {
-      toast.error(errorText(error));
-      putBack(failed);
-    },
   });
   const marksByRow = useMemo(() => new Map(sends.views.flatMap((view) => (view.rowKey === null ? [] : [[view.rowKey, view] as const]))), [sends.views]);
   const echoes = sends.views.filter((view) => view.rowKey === null);
@@ -248,11 +243,7 @@ export function AgentChat({
   const field = useRef<NativeTextInput>(null);
   // A hidden pane stays mounted: its field lets go of the keyboard, as it did when the pane unmounted.
   useOnPaneHidden(() => field.current?.blur());
-  const [sending, setSending] = useState(false);
-  const sendingNow = useRef(false);
-  sendingNow.current = sending;
   const [dropping, setDropping] = useState(false);
-  const guardFor = usePressGuards();
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set());
   const pane = useRef<View>(null);
   const keyboard = useKeyboardOverlap(pane);
@@ -289,12 +280,12 @@ export function AgentChat({
     node.addEventListener("paste", onPaste);
     return () => node.removeEventListener?.("paste", onPaste);
   }, [agent.id, readOnly === undefined]);
-  // Files dragged onto the pane are attached as Paseo's agent pane takes them (TR-099); none while a send runs, as there.
+  // Files dragged onto the pane are attached as Paseo's agent pane takes them (TR-099). The box is free while a send runs (TR-102).
   useEffect(() => {
     if (Platform.OS !== "web" || readOnly !== undefined) return;
     return watchFileDrops(pane.current, {
       onDragging: setDropping,
-      disabled: () => sendingNow.current,
+      disabled: () => false,
       onDrop: (files) => {
         droppedFilesAsAttachments(globalThis, files)
           .then(addAttachments)
@@ -308,7 +299,7 @@ export function AgentChat({
 
   const windowSize = useWindowDimensions();
   const metrics = composerMetrics(Platform.OS === "web", windowSize.width);
-  const nothingToSend = sending || (draft.trim() === "" && attachments.length === 0);
+  const nothingToSend = draft.trim() === "" && attachments.length === 0;
 
   function setDraft(text: string): void {
     drafts.set(agent.id, text);
@@ -337,19 +328,19 @@ export function AgentChat({
       .catch((caught: unknown) => toast.error(errorText(caught)));
   }
 
+  /**
+   * Clears the box at once and hands the message to the store, which shows it as a row and sends it
+   * after those before it (TR-102). Read from the kept draft, not this render's: a second Enter or tap
+   * in the same frame finds the box already empty.
+   */
   function sendDraft(): void {
-    const text = draft.trim();
-    const sent = attachments;
+    const text = drafts.get(agent.id).trim();
+    const sent = draftAttachments.get(agent.id);
     if (onSend === undefined || (text === "" && sent.length === 0)) return;
-    // The guard, not `sending`, stops a second Enter or tap in the same frame; a held message sends nothing yet.
-    const running = guardFor("send").run("send", () => sends.send(text, sent) ?? Promise.resolve());
-    if (running === null) return;
-    setSending(true);
-    follow.pin();
     setDraft("");
     setAttachments([]);
-    // A failure was reported, and the words handed back, by `onFailed`.
-    void running.then(() => setSending(false));
+    sends.send(text, sent);
+    follow.pin();
   }
 
   const attachButton = (
@@ -357,7 +348,7 @@ export function AgentChat({
       theme={theme}
       compact={compact}
       iconSize={metrics.iconSize}
-      disabled={sending}
+      disabled={false}
       sources={() => availableSources(globalThis, Platform.OS)}
       onBeforeOpen={compact ? Keyboard.dismiss : undefined}
       onPick={pick}
@@ -382,11 +373,11 @@ export function AgentChat({
   const markActionLatest = useLatestCallback((id: string, action: MarkAction) => {
     if (action === "send-now") sends.sendNow(id);
     else if (action === "resend") sends.resend(id);
+    else if (action === "retry") sends.retry(id);
     else {
-      const held = sends.views.find((view) => view.send.id === id);
-      sends.forget(id);
-      // A cancelled message goes back into the composer, to change or send later.
-      if (action === "cancel" && held !== undefined) putBack(held.send);
+      const gone = sends.forget(id);
+      // A cancelled or taken-back message goes into the composer, to change or send later.
+      if ((action === "cancel" || action === "edit") && gone !== null) putBack(gone);
     }
   });
 
@@ -540,7 +531,6 @@ export function AgentChat({
               enterHint
               onSend={sendDraft}
               canSend={!nothingToSend}
-              sendState={sending ? "busy" : undefined}
               sendLabel={sends.holds ? "Hold until its step ends" : "Send"}
               above={<AttachmentPreviews theme={theme} attachments={attachments} onRemove={(id) => setAttachments(attachments.filter((attachment) => attachment.id !== id))} />}
               leading={attachButton}
@@ -576,7 +566,7 @@ interface TranscriptGroupProps {
 }
 
 /** What a pending message's mark offers (TR-084). */
-type MarkAction = "send-now" | "cancel" | "resend" | "dismiss";
+type MarkAction = "send-now" | "cancel" | "resend" | "dismiss" | "retry" | "edit";
 
 /** The user's words, with the mark of a message the agent has not taken up yet under them. */
 function UserMessage({
@@ -630,12 +620,21 @@ const USER_BUBBLE_PADDING = SPACE.md;
 const USER_BUBBLE_BORDER = 1;
 
 const MARK_TEXT: Record<SendMark, string> = {
+  sending: "Sending…",
+  behind: "Waits for the message above to be sent",
+  failed: "Not sent",
   waiting: "Waiting for the agent's next step",
   held: "Held until its current step ends",
   unread: "Not read: the agent stopped first",
 };
 
 const MARK_ACTIONS: Record<SendMark, readonly { action: MarkAction; label: string; icon: string }[]> = {
+  sending: [],
+  behind: [],
+  failed: [
+    { action: "retry", label: "Retry", icon: "RotateCcw" },
+    { action: "edit", label: "Edit", icon: "Pencil" },
+  ],
   waiting: [],
   held: [
     { action: "send-now", label: "Send now and stop it", icon: "Send" },
@@ -647,17 +646,26 @@ const MARK_ACTIONS: Record<SendMark, readonly { action: MarkAction; label: strin
   ],
 };
 
+/** A failed message's mark says why (TR-102). */
+function markText(view: SendView): string {
+  return view.mark === "failed" ? `Not sent: ${view.send.error ?? "Paseo did not take it."}` : MARK_TEXT[view.mark];
+}
+
 function SendMarkLine({ view, theme, styles, onAction }: { view: SendView; theme: PluginTheme; styles: ChatStyles; onAction: (id: string, action: MarkAction) => void }) {
   const { colors } = theme;
   return (
     <View style={styles.mark}>
       <View style={styles.markLine}>
-        {view.mark === "waiting" ? (
+        {view.mark === "waiting" || view.mark === "sending" ? (
           <Spinner size={11} color={colors.foregroundMuted} />
         ) : (
-          <Icon name={view.mark === "held" ? "Timer" : "AlertTriangle"} size={12} color={view.mark === "held" ? colors.foregroundMuted : colors.statusWarning} />
+          <Icon
+            name={view.mark === "held" || view.mark === "behind" ? "Timer" : "AlertTriangle"}
+            size={12}
+            color={view.mark === "held" || view.mark === "behind" ? colors.foregroundMuted : view.mark === "failed" ? colors.statusDanger : colors.statusWarning}
+          />
         )}
-        <Text style={styles.markText}>{MARK_TEXT[view.mark]}</Text>
+        <Text style={[styles.markText, view.mark === "failed" ? { color: colors.statusDanger } : null]}>{markText(view)}</Text>
       </View>
       {/* The shared button (Catch up's style), in a row of their own under the words, right-aligned with the bubble. */}
       {MARK_ACTIONS[view.mark].length === 0 ? null : (

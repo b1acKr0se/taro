@@ -79,11 +79,18 @@ export interface PendingSend {
   attachments: readonly DraftAttachment[];
   /** When it was sent, or held (ms). */
   at: number;
-  /** "held": not sent, waiting for the turn to end; "sent": Paseo has it. */
-  state: "held" | "sent";
+  /**
+   * "held": not sent, waiting for the turn to end; "sending": on its way, or waiting for the messages
+   * before it to go; "sent": Paseo has it; "failed": Paseo did not take it, and nothing after it goes
+   * until it is retried or taken back.
+   */
+  state: "held" | "sending" | "sent" | "failed";
+  /** Why it was not sent, for a failed one. */
+  error?: string | undefined;
 }
 
-export type SendMark = "held" | "waiting" | "unread";
+/** "behind": sending, but waiting for a failed message before it. */
+export type SendMark = "held" | "sending" | "behind" | "failed" | "waiting" | "unread";
 
 export interface SendView {
   send: PendingSend;
@@ -112,7 +119,8 @@ export function isAgentStep(item: SendTimelineEntry["item"]): boolean {
 }
 
 /**
- * Each pending message's mark, in the order sent, and the ids the agent has taken up (to forget).
+ * Each pending message's mark, in the order sent, the ids the agent has taken up (to forget), and the
+ * ids found in the timeline while still marked sending or failed (to mark sent).
  * `stoppedAt`: since when the agent has been seen stopped, null while it works.
  */
 export function viewSends(
@@ -120,16 +128,27 @@ export function viewSends(
   entries: readonly SendTimelineEntry[],
   agent: { stoppedAt: number | null; hasOlder: boolean },
   now: number,
-): { views: SendView[]; read: string[] } {
+): { views: SendView[]; read: string[]; landed: string[] } {
   const views: SendView[] = [];
   const read: string[] = [];
+  const landed: string[] = [];
   const oldest = entries[0] === undefined ? null : Date.parse(entries[0].timestamp);
+  let failedBefore = false;
   sends.forEach((send) => {
     if (send.state === "held") {
       views.push({ send, mark: "held", rowKey: null });
       return;
     }
     const index = entries.findIndex((entry) => entry.item.type === "user_message" && entry.item.clientMessageId === send.id);
+    // In the timeline, Paseo has it, whatever the send's own answer said or has yet to say (an answer lost to a dropped connection).
+    if (index === -1 && send.state !== "sent") {
+      if (send.state === "failed") {
+        views.push({ send, mark: "failed", rowKey: null });
+        failedBefore = true;
+      } else views.push({ send, mark: failedBefore ? "behind" : "sending", rowKey: null });
+      return;
+    }
+    if (index !== -1 && send.state !== "sent") landed.push(send.id);
     if (index === -1) {
       // Older than the timeline's tail: the agent has said a page of things since.
       if (agent.hasOlder && oldest !== null && oldest > send.at) {
@@ -144,7 +163,7 @@ export function viewSends(
     const stoppedFor = agent.stoppedAt === null ? 0 : now - Math.max(agent.stoppedAt, send.at);
     views.push({ send, mark: stoppedFor >= STOPPED_GRACE_MS ? "unread" : "waiting", rowKey });
   });
-  return { views, read };
+  return { views, read, landed };
 }
 
 /**
@@ -160,6 +179,24 @@ export function handBack(
     text: composer.text.trim() === "" && send.text !== "" ? send.text : null,
     attachments: composer.attachments.length === 0 && send.attachments.length > 0 ? send.attachments : null,
   };
+}
+
+/**
+ * The message to send next: the first one sending, once everything before it has gone. Null while a
+ * failed one is before it, so a message never overtakes one sent earlier.
+ */
+export function nextToSend(sends: readonly PendingSend[]): PendingSend | null {
+  for (const send of sends) {
+    if (send.state === "failed") return null;
+    if (send.state === "sending") return send;
+  }
+  return null;
+}
+
+/** What a failed send's row says after "Not sent: ". */
+export function failureReason(error: unknown): string {
+  const text = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  return text.trim() === "" ? "Paseo did not take it." : text.trim();
 }
 
 /** The held messages to send now that the agent stopped, oldest first. */
