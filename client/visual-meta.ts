@@ -68,6 +68,7 @@ const RECORD_KINDS: Readonly<Record<string, Look>> = {
   ANSWER: { icon: "MessageSquare", tone: "muted" },
   HANDOFF: { icon: "ArrowRightLeft", tone: "muted" },
   "DISPATCH-INTENT": { icon: "Send", tone: "muted" },
+  "SCOPE-CHANGE": { icon: "Pencil", tone: "accent" },
 };
 
 /** A record's row on the milestone timeline; a kind nobody planned for is a muted dot. */

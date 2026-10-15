@@ -18,6 +18,7 @@ import {
   relaunchOwner,
   resumeTicket,
   requestChanges,
+  changeQueuedSpec,
   resolveTrackerSync as resolveTrackerSyncRpc,
   tellAgent,
   checkOnboarding,
@@ -333,6 +334,10 @@ export default function contribute(server: PluginServerContext) {
   });
   server.handle(requestChanges, async ({ project, ticket, text }, { paseo }) => {
     await actions.requestChanges(keep(paseo), project, ticket, text);
+    return {};
+  });
+  server.handle(changeQueuedSpec, async ({ project, ticket, text }, { paseo }) => {
+    await actions.changeQueuedSpec(keep(paseo), project, ticket, text);
     return {};
   });
   server.handle(dismissSuggestionRpc, async ({ project, label, prompt }) => {

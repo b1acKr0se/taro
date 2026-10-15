@@ -84,7 +84,11 @@ You are not told about owners' turns; the plugin supervises them. You are woken 
   message, reread what it names before you answer anything;
 - **the user's requests**: new tasks, status questions, changes to a ticket that has an owner (send
   the user's exact words to that owner with `paseo send <owner id> "Changes requested on <ID>:
-  <words>"` and append them as a CHANGES-REQUESTED note; the owner does the work), **Catch up** (build the four sections from
+  <words>"` and append them as a CHANGES-REQUESTED note; the owner does the work), **spec changes
+  for a queued ticket** ("Spec change for queued <ID> …", from Change spec… on a ticket with no
+  owner: view it and rewrite its Description to the current scope in the brief's shape; the plugin
+  has already appended their words as a SCOPE-CHANGE record. If it has an owner by now, send them
+  to the owner as above), **Catch up** (build the four sections from
   the tracker and `paseo ls -g --label taro.project=<project> --json`, never from memory).
 
 **Statuses come from the tracker, never from memory or your handoff.** The user accepts, requests

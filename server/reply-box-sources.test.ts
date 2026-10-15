@@ -25,9 +25,9 @@ describe("reply box sources", () => {
     expect(users.sort()).toEqual(["client/agent-chat.tsx", "client/change-box.tsx", "client/decision-card.tsx", "client/permission-card.tsx"]);
   });
 
-  it("asks for changes alike on the acceptance and plan cards: one change box behind Request changes… (TR-112)", () => {
+  it("asks for changes alike on the acceptance and plan cards and Change spec…: one change box behind Request changes… (TR-112, TR-129)", () => {
     const users = clientFiles.filter((file) => /<ChangeBox\b/.test(file.source)).map((file) => file.name);
-    expect(users.sort()).toEqual(["client/acceptance-card.tsx", "client/plan-card.tsx"]);
+    expect(users.sort()).toEqual(["client/acceptance-card.tsx", "client/plan-card.tsx", "client/spec-change-box.tsx"]);
     const plan = clientFiles.find((file) => file.name === "client/plan-card.tsx")?.source ?? "";
     expect(plan).toMatch(/label="Request changes…"/);
   });

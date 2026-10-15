@@ -30,6 +30,7 @@ import { errorText } from "./format";
 import { KeyboardScrollView } from "./keyboard";
 import { Markdown, MarkdownInline } from "./markdown";
 import { PlanActions, PlanBody, type PlanCardOptions } from "./plan-card";
+import { SpecChangeBox } from "./spec-change-box";
 import { withAlpha } from "./tint";
 import { recentMilestoneRows } from "./milestone-rows";
 import { paneGutter, SPACE } from "./spacing";
@@ -73,6 +74,8 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
   // A row the user opened or folded stays so; the others follow the ticket (Plan while it waits for approval).
   const [toggled, setToggled] = useState<Partial<Record<TicketSectionKey, boolean>>>({});
   const [width, setWidth] = useState<number | null>(null);
+  // Change spec…'s box, opened from the summary row's button (TR-129).
+  const [specOpen, setSpecOpen] = useState(false);
   const planSource = detail.data?.plan ?? null;
   const plan = useMemo(() => parsePlan(planSource), [planSource]);
   const allDecisions = decisions.data?.decisions;
@@ -221,12 +224,14 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
                 busy: pausePresses.busy,
               }
         }
+        specChange={data.specChangeable && !specOpen ? () => setSpecOpen(true) : null}
         summary={summary}
         approve={approving === null ? null : { ...approving, presses: approvePresses }}
         answeredFrom={answeredFrom}
         onAnswered={() => void decisions.refetch()}
         onOpenLink={openLink}
       />
+      {data.specChangeable ? <SpecChangeBox project={project} ticket={ticket} theme={theme} open={specOpen} onOpenChange={setSpecOpen} onSent={() => void detail.refetch()} /> : null}
       {sections.length === 0 ? null : (
         <View onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
           {sections.map((section, index) => {
@@ -261,6 +266,7 @@ function SummaryBlock({
   pause,
   pauseAction,
   compactAction,
+  specChange,
   summary,
   approve,
   answeredFrom,
@@ -275,6 +281,8 @@ function SummaryBlock({
   pauseAction: { kind: "pause" | "resume"; run: () => void; state: "busy" | "done" | undefined; busy: boolean } | null;
   /** Compact beside Pause, for an idle owner with a large context (TR-095). */
   compactAction: { run: () => void; state: "busy" | "done" | undefined; busy: boolean } | null;
+  /** Opens Change spec…'s box under the block, on a Queued ticket with no owner (TR-129). */
+  specChange: (() => void) | null;
   summary: TicketSummary;
   approve: { decision: StoredDecision; options: PlanCardOptions; presses: Actions } | null;
   answeredFrom: "screen" | "tab";
@@ -307,7 +315,7 @@ function SummaryBlock({
         {labels.map((each) => (
           <Chip key={each} theme={theme} icon="Tag" text={each} color={colors.foregroundMuted} />
         ))}
-        {pauseAction === null && compactAction === null ? null : (
+        {pauseAction === null && compactAction === null && specChange === null ? null : (
           <View style={{ marginLeft: "auto", flexDirection: "row", flexWrap: "wrap", gap: SPACE.sm }}>
             {pauseAction === null ? null : (
               <IconButton
@@ -320,6 +328,7 @@ function SummaryBlock({
                 onPress={pauseAction.run}
               />
             )}
+            {specChange === null ? null : <IconButton icon="Pencil" label="Change spec…" showLabel theme={theme} onPress={specChange} />}
             {compactAction === null ? null : (
               <IconButton
                 icon="Minimize2"
