@@ -33,6 +33,7 @@ const template: SettingsTemplate = {
   subagentModels: ["claude/claude-haiku-5-5"],
   delivery: "local-only",
   acceptAlsoMerges: false,
+  mergeMethod: "squash",
   trackerSync: "local",
   compactThresholdTokens: 300_000,
   idleCompactThresholdTokens: 150_000,
@@ -158,6 +159,7 @@ describe("candidateDraft", () => {
       subagentModels: ["claude/claude-haiku-5-5"],
       delivery: "local-only",
       acceptAlsoMerges: false,
+      mergeMethod: "squash",
       trackerSync: "remote",
       compactThresholdTokens: "300000",
       idleCompactThresholdTokens: "150000",
@@ -168,7 +170,7 @@ describe("candidateDraft", () => {
 
   it("uses the form's defaults before the first project, with pull requests when there is a remote", () => {
     const draft = candidateDraft(candidate("shop"), null, []);
-    expect(draft).toMatchObject({ managerModel: "", ownerModel: "", delivery: "pull-request", trackerSync: "remote", acceptAlsoMerges: true, maxParallelOwners: "3" });
+    expect(draft).toMatchObject({ managerModel: "", ownerModel: "", delivery: "pull-request", trackerSync: "remote", acceptAlsoMerges: true, mergeMethod: "merge", maxParallelOwners: "3" });
   });
 
   it("keeps tickets and delivery local when the repository has no remote", () => {

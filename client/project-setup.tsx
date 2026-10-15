@@ -13,12 +13,14 @@ import { Text, View } from "react-native";
 import {
   launchManager,
   listModels,
+  readMergeMethods,
   readStandingOrders,
   restartManager,
   resumeManager,
   writeProjectSettings,
   writeStandingOrders,
 } from "../shared/contracts";
+import { MERGE_METHOD_TITLES, MERGE_METHODS, mergeMethodDescription, mergeMethodHint, mergeMethodNote } from "../shared/merge-method";
 import { modelOptions as modelPickerOptions, thinkingAfterModelChange, thinkingOptions, toggleSubagentModel } from "../shared/model-picker";
 import type { ProjectConfig } from "../shared/project";
 import {
@@ -94,6 +96,17 @@ export function ProjectSetup({
     [modelOptions],
   );
   const [draft, setDraft] = useState<SetupDraft>(() => initial ?? draftFrom(existing));
+  const mergeMethodsRpc = useRpc(readMergeMethods);
+  const repoPath = draft.repoPath.trim();
+  const asksMergeMethod = draft.delivery === "pull-request" && draft.acceptAlsoMerges;
+  // Which methods the repository's GitHub settings allow (TR-110); unknown leaves every method open.
+  const mergeMethods = useQuery({
+    queryKey: ["taro", "merge-methods", repoPath],
+    queryFn: () => mergeMethodsRpc({ repoPath }),
+    enabled: asksMergeMethod && repoPath !== "",
+    staleTime: 60_000,
+  });
+  const allowedMergeMethods = mergeMethods.data?.allowed ?? null;
   const [serverProblems, setServerProblems] = useState<SetupProblems>({});
   const [failure, setFailure] = useState<string | null>(error);
   const [orders, setOrders] = useState<string | null>(null);
@@ -357,6 +370,21 @@ export function ProjectSetup({
             ]}
           />
         </Field>
+        {asksMergeMethod ? (
+          <Field theme={theme} wide={wide} label="Merge method" hint={mergeMethodHint(branch)}>
+            <ChoiceCards
+              theme={theme}
+              value={draft.mergeMethod}
+              onChange={(value) => update("mergeMethod", value)}
+              options={MERGE_METHODS.map((method) => ({
+                value: method,
+                title: MERGE_METHOD_TITLES[method],
+                description: mergeMethodDescription(method, branch),
+                unavailable: mergeMethodNote(method, allowedMergeMethods, draft.mergeMethod === method),
+              }))}
+            />
+          </Field>
+        ) : null}
       </FormSection>
 
       <FormSection theme={theme} icon="Bell" title="Notifications" description="When a ticket enters Needs you: ready to accept, a question, a permission, blocked or stalled.">

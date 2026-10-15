@@ -5,6 +5,9 @@
  * owner's record may leave out what an earlier one said.
  */
 
+import { MERGE_METHOD_TITLES, mergeFlag } from "./merge-method";
+import type { MergeMethod } from "./project";
+
 /** The notes split into records; each record starts a line with its upper-case name. */
 export function noteRecords(notes: string | null): string[] {
   if (notes === null) return [];
@@ -81,14 +84,34 @@ export function finalSummaryBody(finalSummary: string): string {
   return finalSummary.replace(/^\s*\**FINAL\**(?:\s+\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?)?\s*(?:[\u2014\u2013:-]+\s*)?/, "").trim();
 }
 
-/** What Accept tells the owner of a pull-request ticket: the PR and head to merge, or not to merge at all. */
-export function pullRequestMergeInstruction(notes: string | null, finalSummary: string | null): string {
+/** Where a pull request merges and how (TR-110): the project's merge method, and the main checkout whose base branch follows. */
+export interface PullRequestMergeTarget {
+  method: MergeMethod;
+  baseBranch: string;
+  repoPath: string;
+}
+
+/**
+ * What Accept tells the owner of a pull-request ticket: the PR and head to merge with the project's
+ * method, then the base branch in the main checkout to fast-forward from origin (TR-110), or not to merge at all.
+ */
+export function pullRequestMergeInstruction(notes: string | null, finalSummary: string | null, target: PullRequestMergeTarget): string {
   const head = reviewHead(notes);
   const url = pullRequestUrl(notes, finalSummary);
   // Without both, "the head I reviewed" is unknowable, so merging anything would merge unreviewed code.
   if (head === null || url === null)
     return `Do not merge: the ticket records ${head === null ? "no review-head" : `review-head ${head}`} and ${url === null ? "no PR URL" : `PR ${url}`}. Record both in EXECUTION and present it again.`;
-  return `Merge ${url} now as roles/owner.md says, only if its headRefOid is still the recorded review head ${head} (gh pr merge ${url} --match-head-commit ${head}); confirm it merged, then record ACCEPTANCE and set the ticket Done. If the head moved, do not merge; present it again.`;
+  const { method, baseBranch, repoPath } = target;
+  const title = MERGE_METHOD_TITLES[method];
+  return (
+    `Merge ${url} now as roles/owner.md says (Accept, pull request), with the project's merge method, ${title}, only if its headRefOid is still the recorded review head ${head}: ` +
+    `gh pr merge ${url} ${mergeFlag(method)} --match-head-commit ${head}. Confirm its state is MERGED (an earlier Accept may have merged it already: then go on). ` +
+    `Then bring ${baseBranch} in the main checkout (${repoPath}) up to origin, only while it is clean and on ${baseBranch}: git -C ${repoPath} fetch origin ${baseBranch}, then git -C ${repoPath} merge --ff-only origin/${baseBranch}. ` +
+    "Then record ACCEPTANCE and set the ticket Done. " +
+    "If the head moved, do not merge; present it again. " +
+    `If GitHub refuses the ${title} method, do not use another: record NOT-MERGED with GitHub's reason. ` +
+    `If ${baseBranch} cannot fast-forward (uncommitted changes, another branch checked out, commits origin lacks, the fetch failed), do not touch it: record NOT-SYNCED with the reason.`
+  );
 }
 
 /**
@@ -119,7 +142,8 @@ export function acceptedRecordText(at: string, merging: string | null): string {
 }
 
 /**
- * The newest ACCEPTED record, unless since then the owner did not merge (NOT-MERGED, TR-109),
+ * The newest ACCEPTED record, unless since then the owner did not merge (NOT-MERGED, TR-109) or
+ * merged a pull request but could not bring the local base branch up to it (NOT-SYNCED, TR-110),
  * presented again (a later EVIDENCE record, or an EXECUTION record with a new review head: the head
  * moved, so nothing merged) or the user asked for changes (CHANGES-REQUESTED). Until the owner sets Done, the card says it merges.
  */
@@ -127,7 +151,7 @@ export function acceptedRecord(notes: string | null): AcceptedRecord | null {
   const records = noteRecords(notes);
   for (let index = records.length - 1; index >= 0; index--) {
     const record = records[index] ?? "";
-    if (/^(?:EVIDENCE|CHANGES-REQUESTED|NOT-MERGED)\b/.test(record)) return null;
+    if (/^(?:EVIDENCE|CHANGES-REQUESTED|NOT-MERGED|NOT-SYNCED)\b/.test(record)) return null;
     if (/^EXECUTION\b/.test(record) && REVIEW_HEAD.test(record)) return null;
     const match = /^ACCEPTED\s+(\S+)[^\n]*?merging:\s*([^\n]+)/.exec(record);
     if (match !== null) {
@@ -138,14 +162,19 @@ export function acceptedRecord(notes: string | null): AcceptedRecord | null {
   return null;
 }
 
-/** Why the owner did not merge after Accept (TR-109): a problem on the user's side, such as a dirty main checkout. */
+/**
+ * Why the owner did not finish after Accept: a problem on the user's side, such as a dirty main checkout.
+ * Either nothing merged (NOT-MERGED, TR-109), or the pull request merged and the local base branch
+ * could not fast-forward to it (NOT-SYNCED, TR-110); Accept again then only brings the base branch up.
+ */
 export interface NotMergedRecord {
   at: string;
   reason: string;
+  merged: boolean;
 }
 
 /**
- * The newest NOT-MERGED record, until the user presses Accept again or asks for changes, or the
+ * The newest NOT-MERGED or NOT-SYNCED record, until the user presses Accept again or asks for changes, or the
  * owner presents again (EVIDENCE, or a new review head): each makes the reason stale.
  */
 export function notMergedRecord(notes: string | null): NotMergedRecord | null {
@@ -154,10 +183,10 @@ export function notMergedRecord(notes: string | null): NotMergedRecord | null {
     const record = records[index] ?? "";
     if (/^(?:EVIDENCE|CHANGES-REQUESTED|ACCEPTED)\b/.test(record)) return null;
     if (/^EXECUTION\b/.test(record) && REVIEW_HEAD.test(record)) return null;
-    const match = /^NOT-MERGED\s+(\S+)[ \t]*(?:[\u2014\u2013:-]+[ \t]*)?([^\n]*)/.exec(record);
+    const match = /^NOT-(MERGED|SYNCED)\s+(\S+)[ \t]*(?:[\u2014\u2013:-]+[ \t]*)?([^\n]*)/.exec(record);
     if (match !== null) {
-      const reason = (match[2] ?? "").trim();
-      return { at: match[1] ?? "", reason: reason === "" ? "the owner gave no reason" : reason };
+      const reason = (match[3] ?? "").trim();
+      return { at: match[2] ?? "", reason: reason === "" ? "the owner gave no reason" : reason, merged: match[1] === "SYNCED" };
     }
   }
   return null;

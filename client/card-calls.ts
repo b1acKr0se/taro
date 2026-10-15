@@ -9,11 +9,17 @@ import { askerPrefix } from "../shared/needs-you";
 import type { StoredDecision } from "../shared/state";
 import { walkOrder } from "./walk-order";
 
+/** Why Accept did not finish (TR-109); `merged` when only the local base branch is behind (TR-110). */
+export interface NotMerged {
+  reason: string;
+  merged: boolean;
+}
+
 export type CardCall =
   /** The first open decision in Walk me through order; `more` counts the rest. */
   | { kind: "decision"; decision: StoredDecision; more: number }
   /** Delivered and waiting for Accept / Request changes: the delivery in a line and the evidence in one (TR-021); why an earlier Accept did not merge (TR-109). */
-  | { kind: "acceptance"; ready: boolean; delivered: string | null; evidence: string | null; notMerged: string | null }
+  | { kind: "acceptance"; ready: boolean; delivered: string | null; evidence: string | null; notMerged: NotMerged | null }
   /** The owner or a subagent stopped on Paseo permission requests: who asks first (null for the owner), what, and how many wait (TR-096). */
   | { kind: "permission"; asker: string | null; title: string | null; detail: string | null; count: number };
 
@@ -24,7 +30,7 @@ export function cardCalls(card: Card): CardCall[] {
   if (first !== undefined) calls.push({ kind: "decision", decision: first, more: open.length - 1 });
   // Accepting messages the owner, so without one there is nothing to press; once accepted, nothing is left to press.
   if (card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null) {
-    calls.push({ kind: "acceptance", ready: acceptanceReady(card), delivered: card.delivered, evidence: card.evidence === null ? null : evidenceSummary(card.evidence), notMerged: card.notMerged?.reason ?? null });
+    calls.push({ kind: "acceptance", ready: acceptanceReady(card), delivered: card.delivered, evidence: card.evidence === null ? null : evidenceSummary(card.evidence), notMerged: card.notMerged === null ? null : { reason: card.notMerged.reason, merged: card.notMerged.merged } });
   }
   const ask = card.permission;
   if (ask !== null) calls.push({ kind: "permission", asker: askerPrefix(ask.role), title: ask.title, detail: ask.detail, count: Math.max(ask.count, 1) });

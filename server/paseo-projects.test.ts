@@ -52,6 +52,7 @@ function config(project: string, repoPath: string, overrides: Partial<ProjectCon
     subagentModels: [],
     delivery: "pull-request",
     acceptAlsoMerges: true,
+    mergeMethod: "merge",
     trackerSync: "local",
     compactThresholdTokens: 250_000,
     idleCompactThresholdTokens: 200_000,

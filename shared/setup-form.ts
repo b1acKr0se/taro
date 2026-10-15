@@ -2,7 +2,7 @@
  * The add-project and project-settings form's state, apart from the page that draws it: the draft
  * the fields edit, the settings it saves, and the checks shown under each field (TR-019).
  */
-import { ProjectNameSchema, TicketPrefixSchema, type ProjectConfig, type ProjectSettings } from "./project";
+import { ProjectNameSchema, TicketPrefixSchema, type MergeMethod, type ProjectConfig, type ProjectSettings } from "./project";
 
 export interface SetupDraft {
   project: string;
@@ -16,6 +16,7 @@ export interface SetupDraft {
   subagentModels: string[];
   delivery: "pull-request" | "local-only";
   acceptAlsoMerges: boolean;
+  mergeMethod: MergeMethod;
   trackerSync: "local" | "remote";
   compactThresholdTokens: string;
   idleCompactThresholdTokens: string;
@@ -42,6 +43,7 @@ export function draftFrom(config: ProjectConfig | null): SetupDraft {
     subagentModels: config?.subagentModels ?? [],
     delivery: config?.delivery ?? "pull-request",
     acceptAlsoMerges: config?.acceptAlsoMerges ?? true,
+    mergeMethod: config?.mergeMethod ?? "merge",
     trackerSync: config?.trackerSync ?? "local",
     compactThresholdTokens: String(config?.compactThresholdTokens ?? DEFAULT_COMPACT_TOKENS),
     idleCompactThresholdTokens: String(config?.idleCompactThresholdTokens ?? DEFAULT_IDLE_COMPACT_TOKENS),
@@ -68,6 +70,7 @@ export function settingsFrom(draft: SetupDraft, defaultModel: string): ProjectSe
     subagentModels: draft.subagentModels,
     delivery: draft.delivery,
     acceptAlsoMerges: draft.acceptAlsoMerges,
+    mergeMethod: draft.mergeMethod,
     trackerSync: draft.trackerSync,
     compactThresholdTokens: parseCount(draft.compactThresholdTokens) ?? DEFAULT_COMPACT_TOKENS,
     idleCompactThresholdTokens: parseCount(draft.idleCompactThresholdTokens) ?? DEFAULT_IDLE_COMPACT_TOKENS,

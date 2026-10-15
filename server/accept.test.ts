@@ -63,10 +63,19 @@ describe("accept", () => {
   });
 
   it("records the pull request when its head and URL are recorded", async () => {
-    config({ delivery: "pull-request" });
+    config({ delivery: "pull-request", mergeMethod: "merge" });
     ticket(`EXECUTION 2026-01-01T00:00Z — pr: https://example.test/o/r/pull/7, review-head: ${head}`);
     await actions.accept({} as PaseoApi, "demo", "DM-1");
     expect(written()[0]).toMatch(/merging: the pull request$/);
+  });
+
+  it("tells the owner the project's merge method and the main checkout to bring up to origin (TR-110)", async () => {
+    config({ delivery: "pull-request", mergeMethod: "squash", baseBranch: "develop", repoPath: "/home/user/notes-app" });
+    ticket(`EXECUTION 2026-01-01T00:00Z — pr: https://example.test/o/r/pull/7, review-head: ${head}`);
+    await actions.accept({} as PaseoApi, "demo", "DM-1");
+    const sent = vi.mocked(sendWithoutInterrupting).mock.calls[0]?.[2];
+    expect(sent).toContain(`gh pr merge https://example.test/o/r/pull/7 --squash --match-head-commit ${head}`);
+    expect(sent).toContain("git -C /home/user/notes-app merge --ff-only origin/develop");
   });
 
   it("records nothing when the owner is told not to merge and to present again", async () => {

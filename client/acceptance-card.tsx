@@ -77,7 +77,7 @@ export function AcceptanceCard({ card, project, theme, compact, onChanged }: { c
         // Accepted once and not merged (TR-109): why, before the delivery, as it is what to fix before accepting again.
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm }}>
           <Icon name="GitMerge" size={14} color={colors.statusWarning} />
-          <Text style={[styles.muted, { flex: 1, color: colors.foreground }]}>{notMergedText(card.notMerged.reason)}</Text>
+          <Text style={[styles.muted, { flex: 1, color: colors.foreground }]}>{notMergedText(card.notMerged)}</Text>
         </View>
       )}
       {summary === null || summary === "" ? (

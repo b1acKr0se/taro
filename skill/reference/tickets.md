@@ -116,9 +116,15 @@ rather than exceed it.
   such as an investigation). Write it exactly so, once, after the prose:
   `ACCEPTANCE 2026-01-06T09:00Z — user: "I accept SH-012." Accepted 3f2a…, PR https://github.com/o/r/pull/42; merge: merged 9c1d…`.
 - **NOT-MERGED**: after Accept, a local-branch merge you did not make because of the main checkout
-  (dirty, or on another branch), and only then: the reason in one short line the user reads on the
-  card, what they do first. It ends the "merging" state and puts the card back in Needs you:
+  (dirty, or on another branch), or a pull request GitHub would not merge with the project's merge
+  method, and only then: the reason in one short line the user reads on the card, what they do
+  first. It ends the "merging" state and puts the card back in Needs you:
   `NOT-MERGED 2026-01-06T09:00Z — commit or discard src/app.ts in the main checkout, then Accept again`.
+- **NOT-SYNCED**: after Accept, a pull request that merged while the base branch in the main
+  checkout could not fast-forward to origin's (dirty, on another branch, commits origin lacks, the
+  fetch failed): the reason and what the user does first, in one short line. Like NOT-MERGED, it
+  puts the card back in Needs you; the next Accept only brings the base branch up:
+  `NOT-SYNCED 2026-01-06T09:00Z — main has 2 commits origin lacks; push or drop them, then Accept again`.
 - **ANSWER**: written by the plugin when the user answers a decision.
 - **ESCAPE**: on a delivered ticket, when a later ticket fixes a defect it shipped; written by the
   later ticket's owner. What escaped, the fixing ticket, and the check that should have caught it
