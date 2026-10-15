@@ -26,7 +26,7 @@ describe("the acceptance card's place", () => {
   });
 
   it("is at the end only when no loaded message delivered, after the unplaced questions and before permission requests", () => {
-    const atEnd = transcript.indexOf("{deliveryRow === null ? deliveryCard : null}");
+    const atEnd = transcript.indexOf("{deliveryRow === null && (groups.length > 0 || !timeline.loading) ? deliveryCard : null}");
     expect(atEnd).toBeGreaterThan(transcript.indexOf("places.unplaced"));
     expect(atEnd).toBeGreaterThan(transcript.indexOf("echoes.map("));
     expect(transcript.indexOf("pending.map(")).toBeGreaterThan(atEnd);

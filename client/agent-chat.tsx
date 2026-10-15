@@ -238,7 +238,9 @@ export function AgentChat({
   /**
    * The acceptance card's place, measured afresh (TR-091): messages arriving above it move it
    * without resizing it, and a web browser's onLayout reports only a resize, so its last layout goes
-   * stale. Both are measured on screen at once, so the scroll offset (reported late) plays no part.
+   * stale. Both are measured on screen at once, so the scroll offset (reported late) plays no part:
+   * asked together, as one asked in the other's answer is read a tick later, after a scroll the
+   * opening queued has moved the card (TR-131).
    */
   function measureDelivery(then?: () => void): void {
     const card = deliveryView.current;
@@ -247,12 +249,21 @@ export function AgentChat({
       then?.();
       return;
     }
-    anchor.measureInWindow((anchorLeft, anchorTop) => {
-      card.measureInWindow((left, top, width, height) => {
-        // A hidden pane measures nothing.
-        if (width > 0 && height > 0) noteLayout([deliveryTarget], { x: left - anchorLeft, y: top - anchorTop, width, height });
-        then?.();
-      });
+    let anchorAt: { left: number; top: number } | null = null;
+    let cardAt: LayoutRectangle | null = null;
+    const both = () => {
+      if (anchorAt === null || cardAt === null) return;
+      // A hidden pane measures nothing.
+      if (cardAt.width > 0 && cardAt.height > 0) noteLayout([deliveryTarget], { x: cardAt.x - anchorAt.left, y: cardAt.y - anchorAt.top, width: cardAt.width, height: cardAt.height });
+      then?.();
+    };
+    anchor.measureInWindow((left, top) => {
+      anchorAt = { left, top };
+      both();
+    });
+    card.measureInWindow((x, y, width, height) => {
+      cardAt = { x, y, width, height };
+      both();
     });
   }
 
@@ -495,7 +506,8 @@ export function AgentChat({
               </View>
             )}
             {/* The delivering message is older than the timeline: at the end, before a permission request, which holds the agent up. */}
-            {deliveryRow === null ? deliveryCard : null}
+            {/* Not while the first read is under way: drawn here first, it would move under its message as the rows arrive and the opening scroll would go to where it was. */}
+            {deliveryRow === null && (groups.length > 0 || !timeline.loading) ? deliveryCard : null}
             {pending.map((request) => (
               <View key={request.id} onLayout={(event) => follow.reveal(request.id, event.nativeEvent.layout)}>
                 <PermissionCard request={request} asker={asker} theme={theme} compact={compact} onRespond={(response) => respond(request.id, response)} onOpenLink={openLink} />
