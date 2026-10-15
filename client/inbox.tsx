@@ -1,5 +1,6 @@
 /**
- * The Inbox (decision 8): everything waiting on you across projects — open
+ * The Inbox (decision 8): everything waiting on you in the projects given (all on desktop, the
+ * open one on a phone, TR-137) — open
  * decisions as question cards (TR-045), acceptances, stalled tickets — and Walk me through,
  * which steps through the open decisions one at a time, blocking first
  * (decision 28), from the start or from the line tapped (decision 47).
@@ -17,6 +18,7 @@ import { AlertCard } from "./alert-card";
 import { SectionHeading } from "./badges";
 import { useBoard, useRefreshBoard } from "./board-data";
 import { walkOrder } from "./walk-order";
+import { decisionsOfProjects } from "./inbox-scope";
 import { askedBy, SCOPE_APPROVAL } from "../shared/decision-view";
 import { gridCardWidth, gridColumns, gridRows } from "./card-grid";
 import { DecisionCard } from "./decision-card";
@@ -64,7 +66,7 @@ export function Inbox({
     walk.step = value;
     setStepState(value);
   };
-  const ordered = useMemo(() => walkOrder(decisions.data?.decisions ?? []), [decisions.data]);
+  const ordered = useMemo(() => walkOrder(decisionsOfProjects(decisions.data?.decisions ?? [], projects)), [decisions.data, projects]);
   const { colors } = theme;
   const refetch = () => void decisions.refetch();
 

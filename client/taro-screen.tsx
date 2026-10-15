@@ -348,7 +348,6 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
             <KeptPane key={project} shown={active} live>
               <ProjectView
                 summary={summary}
-                all={list}
                 theme={theme}
                 compact={layout.compact}
                 active={active}
@@ -402,7 +401,6 @@ const WARM_STEP_MS = 700;
 
 function ProjectView({
   summary,
-  all,
   theme,
   compact,
   active,
@@ -421,7 +419,6 @@ function ProjectView({
   onOpenElsewhere,
 }: {
   summary: ProjectSummary;
-  all: readonly ProjectSummary[];
   theme: PluginTheme;
   compact: boolean;
   /** This project is the one showing; the others stay mounted, hidden (TR-069). */
@@ -451,6 +448,8 @@ function ProjectView({
   const board = useBoard(project);
   const refreshBoard = useRefreshBoard(project);
   useReleaseHeld(project, board.data?.cards, summary.manager);
+  // The phone's Inbox lists this project alone (TR-137); one array per summary keeps the memoised Inbox still.
+  const inboxProjects = useMemo(() => [summary], [summary]);
   const [rightPane, setRightPane] = useState<RightPane>(remembered.rightPane);
   const [boardHidden, setBoardHiddenState] = useState(remembered.boardHidden);
   const openCard = ticket === null ? null : (board.data?.cards ?? []).find((card) => card.id === ticket) ?? null;
@@ -559,8 +558,8 @@ function ProjectView({
                 // Words without icons, dense: all four, the Inbox's badge and the settings button fit one row of a phone.
                 options={[
                   { value: "manager", label: "Manager" },
-                  // The Inbox lists every project, so its tab counts them all, as the sidebar does (TR-064, TR-123).
-                  { value: "inbox", label: "Inbox", count: needsYouTotal(all) },
+                  // The phone's Inbox sits inside a project and lists only its items, so it counts only them (TR-137).
+                  { value: "inbox", label: "Inbox", count: summary.needsYou },
                   { value: "board", label: "Board" },
                   { value: "stats", label: "Stats" },
                 ]}
@@ -576,7 +575,7 @@ function ProjectView({
             {kept("manager") ? <KeptPane shown={phoneTab === "manager"}>{managerPane}</KeptPane> : null}
             {kept("inbox") ? (
               <KeptPane shown={phoneTab === "inbox"}>
-                <MemoInbox projects={all} theme={theme} compact onOpenTicket={openElsewhere} />
+                <MemoInbox projects={inboxProjects} theme={theme} compact onOpenTicket={openElsewhere} />
               </KeptPane>
             ) : null}
             {kept("stats") ? (

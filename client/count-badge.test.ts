@@ -54,11 +54,20 @@ describe("the count badge's places", () => {
     expect(source("ui.tsx")).toContain("accessibilityLabel={countBadgeLabel(option.label, option.count ?? 0)}");
   });
 
-  it("counts every project's waiting items on the wide Inbox tab and the phone's Inbox segment", () => {
+  it("counts every project's waiting items on the wide Inbox tab, which lists them all", () => {
     const screen = source("taro-screen.tsx");
     expect(screen).toMatch(/tab\("inbox", "Inbox", "Inbox", showing === "inbox", \(\) => choose\(selected, "inbox"\), needsYouTotal\(list\)\)/);
-    expect(screen).toContain('{ value: "inbox", label: "Inbox", count: needsYouTotal(all) }');
+    expect(screen).toMatch(/<MemoInbox projects=\{list\}/);
     expect(screen).not.toContain("`Inbox ${");
+  });
+
+  it("counts and lists only the open project's items on the phone's Inbox segment (TR-137)", () => {
+    const screen = source("taro-screen.tsx");
+    const phone = between(screen, "if (compact) {", "if (!layout.board)");
+    expect(phone).toContain('{ value: "inbox", label: "Inbox", count: summary.needsYou }');
+    expect(phone).toContain("<MemoInbox projects={inboxProjects}");
+    expect(screen).toContain("const inboxProjects = useMemo(() => [summary], [summary]);");
+    expect(phone).not.toContain("needsYouTotal");
   });
 
   it("draws the phone's switch dense, so a 99+ badge and the settings button fit a 360-point phone", () => {
