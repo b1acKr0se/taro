@@ -440,9 +440,9 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       const { state, decisions } = fakeState();
       const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
       await run(taro, human("start"), both("naming", "scope-approval"));
-      expect(decisions.map((decision) => [decision.id, decision.status])).toEqual([
-        ["naming", "open"],
-        ["scope-approval", "withdrawn"],
+      expect(decisions.map((decision) => [decision.id, decision.status, decision.held])).toEqual([
+        ["naming", "open", undefined],
+        ["scope-approval", "withdrawn", true],
       ]);
       expect(held()).toEqual(["decision-held:`scope-approval`:naming"]);
     });
@@ -463,11 +463,26 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
 
       decisions[0]!.status = "answered";
       await run(taro, ...first, ...second, plugin("Call it Notes"), ask("scope-approval", "scope-approval?"));
-      expect(decisions.map((decision) => [decision.id, decision.status])).toEqual([
-        ["naming", "answered"],
-        ["scope-approval", "open"],
+      // Shown now, so no longer held (TR-136).
+      expect(decisions.map((decision) => [decision.id, decision.status, decision.held])).toEqual([
+        ["naming", "answered", undefined],
+        ["scope-approval", "open", undefined],
       ]);
       expect(held()).toHaveLength(1);
+    });
+
+    it("clears the hold when the owner withdraws a held-back question itself, so no new owner is handed it (TR-136)", async () => {
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      const first = [human("start"), both("naming", "scope-approval")];
+      await run(taro, ...first);
+      expect(decisions[1]?.held).toBe(true);
+      const withdrawal = { type: "assistant_message", text: "```decision\nid: scope-approval\nstatus: withdrawn\n```" };
+      await run(taro, ...first, plugin("carry on"), withdrawal);
+      expect(decisions.map((decision) => [decision.id, decision.status, decision.held])).toEqual([
+        ["naming", "open", undefined],
+        ["scope-approval", "withdrawn", false],
+      ]);
     });
 
     it("lets the owner withdraw the open decision and ask the next in the same message", async () => {
@@ -586,6 +601,8 @@ describe("Supervisor withdraws decisions of agents that are no longer live", () 
     const decisions = [stored("old-owner"), stored("new-owner")];
     expect(await supervisorOver(decisions).withdrawDecisionsOf("old-owner")).toBe(1);
     expect(decisions.map((decision) => decision.status)).toEqual(["withdrawn", "open"]);
+    // Marked as gone with its agent, so a new owner is handed it (TR-136).
+    expect(decisions.map((decision) => decision.withdrawnWithAgent)).toEqual([true, undefined]);
   });
 
   it("at start, withdraws the project's decisions of agents Paseo no longer lists, keeping closed ones", async () => {
@@ -594,6 +611,7 @@ describe("Supervisor withdraws decisions of agents that are no longer live", () 
     const decisions = [stored("archived-owner"), stored("closed-owner"), stored("archived-elsewhere", "other")];
     await supervisorOver(decisions).reconcile({} as PaseoApi, ["taro"]);
     expect(decisions.map((decision) => decision.status)).toEqual(["withdrawn", "open", "open"]);
+    expect(decisions.map((decision) => decision.withdrawnWithAgent)).toEqual([true, undefined, undefined]);
   });
 });
 

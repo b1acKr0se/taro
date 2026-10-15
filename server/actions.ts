@@ -51,6 +51,7 @@ import {
 } from "../shared/queue-check";
 import { hasHeadroom, type BoardAlert } from "../shared/recovery";
 import { specChangeRefusal } from "../shared/spec-change";
+import { carriedQuestionLines, questionsToCarry } from "../shared/state";
 import { TARO_LABELS, TICKET_STATUSES } from "../shared/project";
 import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
 import { taroEnvironment } from "./environment";
@@ -249,6 +250,12 @@ export class Actions {
 
     const detail = await viewTicket(paths.tracker, ticket);
     const agentId = randomUUID();
+    // The user's unanswered questions to earlier owners go into the new owner's first message (TR-136).
+    const carried = await this.state.updateDecisions((stored) => {
+      const questions = questionsToCarry(stored, project, ticket);
+      for (const { decision } of questions) decision.carriedTo = agentId;
+      return carriedQuestionLines(questions);
+    });
     const modeId = await bypassModeId(paseo, config.owner.model);
     await paseo.workspaces.ref(workspaceId).agents.create({
       agentId,
@@ -260,15 +267,18 @@ export class Actions {
       title: `${ticket} · ${detail.title}`,
       labels: { [TARO_LABELS.project]: project, [TARO_LABELS.role]: "owner", [TARO_LABELS.ticket]: ticket },
       env: await taroEnvironment(project, paths.tracker),
-      prompt: await message(TEMPLATES.relaunchOwner, {
-        ticket,
-        project,
-        skill: await skillDirectory(),
-        tracker: paths.tracker,
-        agentId,
-        workspaceId,
-        previousAgentId: previous?.id ?? "(none)",
-      }),
+      prompt: (
+        await message(TEMPLATES.relaunchOwner, {
+          ticket,
+          project,
+          skill: await skillDirectory(),
+          tracker: paths.tracker,
+          agentId,
+          workspaceId,
+          previousAgentId: previous?.id ?? "(none)",
+          carriedQuestions: carried === "" ? "" : await message(TEMPLATES.carriedQuestions, { questions: carried }),
+        })
+      ).trim(),
     });
     if (previous !== null) await this.state.forgetAgent(previous.id);
     return agentId;

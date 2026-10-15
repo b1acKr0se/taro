@@ -32,6 +32,7 @@ export const TEMPLATES = {
   managerCompactRequest: "messages/manager-compact-request.md",
   managerCompactInstructions: "messages/manager-compact-instructions.md",
   relaunchOwner: "messages/relaunch-owner.md",
+  carriedQuestions: "messages/carried-questions.md",
   pause: "messages/pause.md",
   accept: "messages/accept.md",
   requestChanges: "messages/request-changes.md",

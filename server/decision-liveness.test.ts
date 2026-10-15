@@ -24,7 +24,7 @@ vi.mock("./agents", async (original) => ({
   isMidTurn: () => false,
 }));
 vi.mock("./send", () => ({ sendFromPlugin: vi.fn(async () => undefined), sendWithoutInterrupting: vi.fn(async () => undefined), sendCommand: vi.fn() }));
-vi.mock("./package-files", () => ({ TEMPLATES: { answer: "answer" }, skillDirectory: async () => "/skill", message: async (path: string) => path }));
+vi.mock("./package-files", () => ({ TEMPLATES: { answer: "answer", relaunchOwner: "relaunch", carriedQuestions: "carried" }, skillDirectory: async () => "/skill", message: async (path: string) => path }));
 vi.mock("./projects", () => ({
   projectPaths: async () => ({ tracker: "/tracker", suggestions: "/nonexistent/taro-suggestions.md" }),
   readProjectConfig: async () => null,

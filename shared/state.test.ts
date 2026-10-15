@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decisionsOfLiveAgents, openQuestionHolding, StoredDecisionSchema, withdrawOpenDecisions, type StoredDecision } from "./state";
+import { carriedQuestionLines, decisionsOfLiveAgents, openQuestionHolding, questionsToCarry, StoredDecisionSchema, withdrawOpenDecisions, type StoredDecision } from "./state";
 
 function decision(agentId: string, id: string, status: StoredDecision["status"] = "open", project = "taro"): StoredDecision {
   return {
@@ -74,6 +74,82 @@ describe("withdrawOpenDecisions", () => {
     const decisions = [decision("a", "x")];
     expect(withdrawOpenDecisions(decisions, () => false)).toBe(0);
     expect(decisions[0]?.status).toBe("open");
+  });
+
+  it("marks only withdrawals made because the agent went away (TR-136)", () => {
+    const decisions = [decision("old-owner", "scope-approval"), decision("other-owner", "naming")];
+    withdrawOpenDecisions(decisions, (candidate) => candidate.agentId === "old-owner", true);
+    withdrawOpenDecisions(decisions, (candidate) => candidate.agentId === "other-owner");
+    expect(decisions.map((candidate) => candidate.withdrawnWithAgent)).toEqual([true, undefined]);
+  });
+});
+
+describe("questionsToCarry (TR-136)", () => {
+  const gone = (agentId: string, id: string, parts: Partial<StoredDecision> = {}): StoredDecision => ({ ...decision(agentId, id, "withdrawn"), withdrawnWithAgent: true, ...parts });
+
+  it("hands on owners' questions withdrawn with their owner, for this project and ticket only, oldest first", () => {
+    const decisions = [
+      gone("old-owner", "storage", { askedAt: "2026-10-13T12:30:00.000Z" }),
+      gone("old-owner", "naming", { askedAt: "2026-10-13T12:10:00.000Z" }),
+      decision("old-owner", "size", "withdrawn"),
+      decision("old-owner", "merge", "answered"),
+      decision("live-owner", "open-one"),
+      gone("reviewer", "nit", { agentRole: "reviewer" }),
+      gone("old-owner", "elsewhere", { ticket: "TR-6" }),
+      gone("old-owner", "no-ticket", { ticket: null }),
+      gone("old-owner", "other-project", { project: "shop" }),
+    ];
+    expect(questionsToCarry(decisions, "taro", "TR-5").map((each) => each.decision.id)).toEqual(["naming", "storage"]);
+    // Ticket ids compare without case, as owners' labels do.
+    expect(questionsToCarry(decisions, "taro", "tr-5").map((each) => each.decision.id)).toEqual(["naming", "storage"]);
+  });
+
+  it("hands on one carried to an owner that never asked it again, not one it did", () => {
+    expect(questionsToCarry([gone("first", "storage", { carriedTo: "second" })], "taro", "TR-5")).toHaveLength(1);
+    const askedAgain = [gone("first", "storage", { carriedTo: "second" }), decision("second", "storage", "answered")];
+    expect(questionsToCarry(askedAgain, "taro", "TR-5")).toEqual([]);
+  });
+
+  it("keeps the newest copy of a question two owners left open", () => {
+    const decisions = [gone("first", "storage", { carriedTo: "third" }), gone("second", "storage", { askedAt: "2026-10-13T13:00:00.000Z", question: "Reworded?" })];
+    expect(questionsToCarry(decisions, "taro", "TR-5").map((each) => each.decision.question)).toEqual(["Reworded?"]);
+  });
+
+  it("hands on a question its owner held back to ask next, as never shown, but not one it then withdrew itself", () => {
+    const decisions = [gone("old-owner", "storage"), { ...decision("old-owner", "naming", "withdrawn"), held: true }, { ...decision("old-owner", "size", "withdrawn"), held: false }];
+    expect(questionsToCarry(decisions, "taro", "TR-5").map((each) => [each.decision.id, each.shown])).toEqual([
+      ["storage", true],
+      ["naming", false],
+    ]);
+  });
+
+  it("keeps a handed-on question the next owner held back, still counted as shown (TR-124 with TR-136)", () => {
+    // A left both open; B asked storage, and naming was held back behind it; then B was replaced.
+    const decisions = [
+      gone("first", "storage", { carriedTo: "second" }),
+      gone("first", "naming", { carriedTo: "second" }),
+      gone("second", "storage", { askedAt: "2026-10-13T13:00:00.000Z" }),
+      { ...decision("second", "naming", "withdrawn"), held: true, askedAt: "2026-10-13T13:00:00.000Z" },
+    ];
+    expect(questionsToCarry(decisions, "taro", "TR-5").map((each) => [each.decision.key, each.shown])).toEqual([
+      ["second:storage", true],
+      ["second:naming", true],
+    ]);
+  });
+
+  it("hands on nothing from nothing", () => {
+    expect(questionsToCarry([], "taro", "TR-5")).toEqual([]);
+  });
+});
+
+describe("carriedQuestionLines (TR-136)", () => {
+  it("puts each question's id, asker and text on one line", () => {
+    const questions = [
+      { decision: { id: "naming", question: "Call it Notes\n  or Memos?", agentId: "owner-1" }, shown: true },
+      { decision: { id: "storage", question: "  Store notes locally?  ", agentId: "owner-2" }, shown: false },
+    ];
+    expect(carriedQuestionLines(questions)).toBe("- `naming` (asked by owner-1): Call it Notes or Memos?\n- `storage` (held back, never shown to the user, by owner-2): Store notes locally?");
+    expect(carriedQuestionLines([])).toBe("");
   });
 });
 

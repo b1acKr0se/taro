@@ -307,7 +307,7 @@ export class Supervisor {
       const agents = await listTaroAgents(paseo, { [TARO_LABELS.project]: project });
       // Agents archived (or removed) while the plugin was down: their questions can no longer be answered.
       const live = new Set(agents.map((agent) => agent.id));
-      await this.state.updateDecisions((stored) => withdrawOpenDecisions(stored, (decision) => decision.project === project && !live.has(decision.agentId)));
+      await this.state.updateDecisions((stored) => withdrawOpenDecisions(stored, (decision) => decision.project === project && !live.has(decision.agentId), true));
       repaired += await this.recovery.recoverLeftovers(paseo, agents);
       for (const agent of agents) {
         if (isMidTurn(agent) || agent.status === "closed") continue;
@@ -339,7 +339,7 @@ export class Supervisor {
 
   /** An archived agent never reads an answer, whoever archived it: the plugin, the user, the CLI. */
   async withdrawDecisionsOf(agentId: string): Promise<number> {
-    return this.state.updateDecisions((stored) => withdrawOpenDecisions(stored, (decision) => decision.agentId === agentId));
+    return this.state.updateDecisions((stored) => withdrawOpenDecisions(stored, (decision) => decision.agentId === agentId, true));
   }
 
   /**
@@ -405,7 +405,11 @@ export class Supervisor {
         const index = stored.findIndex((existing) => existing.key === key);
         if (decision.withdrawn) {
           const existing = stored[index];
-          if (existing !== undefined) existing.status = "withdrawn";
+          if (existing !== undefined) {
+            existing.status = "withdrawn";
+            // Withdrawn by its owner: nothing to hand on (TR-136).
+            existing.held = false;
+          }
           continue;
         }
         const next: StoredDecision = {
@@ -431,7 +435,7 @@ export class Supervisor {
         // for the open one's answer. Stored withdrawn, so its turn seen again stays quiet and the tab says so.
         const holding = identity.role === "owner" ? openQuestionHolding(stored, agent.id, key) : undefined;
         if (holding !== undefined) {
-          const withheld = { ...next, status: "withdrawn" as const };
+          const withheld = { ...next, status: "withdrawn" as const, held: true };
           if (existing === undefined) stored.push(withheld);
           else stored[index] = withheld;
           held.push({ id: decision.id, open: holding.id });
