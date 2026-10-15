@@ -40,7 +40,7 @@ import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
 import { composerNotice, heldMarkText } from "./composer-notice";
 import { usePendingSends, type ChatSend } from "./use-pending-sends";
-import { handBack, steersMidTurn, type HoldReason, type PendingSend, type SendMark, type SendView } from "../shared/pending-sends";
+import { handBack, steersMidTurn, takeBack, type HoldReason, type PendingSend, type SendMark, type SendView } from "../shared/pending-sends";
 import { composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
@@ -133,6 +133,20 @@ export function AgentChat({
   const agentRows = useMemo(() => rows.filter((row) => row.kind === "agent"), [rows]);
   // The timeline's read of the agent when it is newer than the board's: it follows the stream.
   const live = timeline.agent !== null && timeline.agent.updatedAt >= agent.updatedAt ? timeline.agent : null;
+  /** Edit on a message not sent: its words and attachments go back ahead of what the box holds, or it stays when they would not fit. */
+  function takeBackFailed(id: string): void {
+    const failed = sends.views.find((view) => view.send.id === id)?.send;
+    if (failed === undefined) return;
+    const back = takeBack({ text: drafts.get(agent.id), attachments: draftAttachments.get(agent.id) }, failed);
+    const problem = attachmentProblem(back.attachments);
+    if (problem !== null) {
+      toast.error(`${problem} Remove some from the box first.`);
+      return;
+    }
+    sends.forget(id);
+    drafts.set(agent.id, back.text);
+    draftAttachments.set(agent.id, back.attachments);
+  }
   function putBack(send: PendingSend): void {
     const back = handBack({ text: drafts.get(agent.id), attachments: draftAttachments.get(agent.id) }, send);
     if (back.text !== null) drafts.set(agent.id, back.text);
@@ -376,10 +390,11 @@ export function AgentChat({
     if (action === "send-now") sends.sendNow(id);
     else if (action === "resend") sends.resend(id);
     else if (action === "retry") sends.retry(id);
+    else if (action === "edit") takeBackFailed(id);
     else {
       const gone = sends.forget(id);
-      // A cancelled or taken-back message goes into the composer, to change or send later.
-      if ((action === "cancel" || action === "edit") && gone !== null) putBack(gone);
+      // A cancelled message goes back into the composer, to change or send later.
+      if (action === "cancel" && gone !== null) putBack(gone);
     }
   });
 

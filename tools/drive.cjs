@@ -3,7 +3,8 @@
 // {"fill": "placeholder start", "text": "…"} (types into the field; "paste": true inserts it at once, as a paste does),
 // {"press": "Enter", "times": 2} (into the focused element), {"wait": ms}, {"shot": "out.png"},
 // {"offline": true|false} (drops or restores the network), {"run": "shell command"} (on the host, awaited),
-// {"spawn": "shell command"} (on the host, not awaited), {"reload": true}, {"waitText": "text", "timeout": ms}.
+// {"spawn": "shell command"} (on the host, not awaited), {"reload": true}, {"waitText": "text", "timeout": ms},
+// {"tap": [x, y]} (a press at that point, such as the phone layout's menu at [24, 36]), {"dropFile": {"name": "notes.txt", "text": "…", "x": 540, "y": 400}} (a text file dropped at that point).
 // WIDTH/HEIGHT set the viewport; PHONE=1 draws a phone (390×844, touch).
 const { execSync, spawn } = require("node:child_process");
 const [, , playwrightPath, url, stepsPath] = process.argv;
@@ -55,6 +56,16 @@ const steps = JSON.parse(require("node:fs").readFileSync(stepsPath, "utf8"));
         spawn("sh", ["-c", step.spawn], { stdio: "ignore", detached: true }).unref();
       } else if (step.reload === true) {
         await page.reload({ waitUntil: "networkidle" }).catch(() => {});
+      } else if (step.tap !== undefined) {
+        await page.mouse.click(step.tap[0], step.tap[1]);
+      } else if (step.dropFile !== undefined) {
+        // A file dropped at a point of the page, as a browser delivers a drag from the desktop (TR-099's file drop).
+        await page.evaluate(({ name, text, x, y }) => {
+          const target = document.elementFromPoint(x, y);
+          const transfer = new DataTransfer();
+          transfer.items.add(new File([text], name, { type: "text/plain" }));
+          ["dragenter", "dragover", "drop"].forEach((type) => target.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer })));
+        }, step.dropFile);
       } else if (step.waitText !== undefined) {
         await page.getByText(step.waitText).filter({ visible: true }).first().waitFor({ timeout: step.timeout ?? 30000 });
       }

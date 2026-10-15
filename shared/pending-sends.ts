@@ -253,6 +253,21 @@ export function isPassingFailure(error: unknown): boolean {
 /** The waits before each new try of a send that failed in passing: about 10 s in all, a plugin reload's length. */
 export const SEND_RETRY_DELAYS_MS: readonly number[] = [1_000, 3_000, 6_000];
 
+/**
+ * What the composer holds after Edit on a message not sent (TR-102): its words and attachments back,
+ * ahead of anything written or attached since, so neither is lost.
+ */
+export function takeBack(
+  composer: { text: string; attachments: readonly DraftAttachment[] },
+  send: PendingSend,
+): { text: string; attachments: readonly DraftAttachment[] } {
+  const typed = composer.text.trim();
+  return {
+    text: typed === "" ? send.text : send.text === "" ? composer.text : `${send.text}\n\n${composer.text}`,
+    attachments: [...send.attachments, ...composer.attachments],
+  };
+}
+
 /** The held messages to send now that nothing holds them (the agent stopped, or its compaction ended), oldest first. */
 export function heldToRelease(sends: readonly PendingSend[], holding: HoldReason | null): PendingSend[] {
   return holding !== null ? [] : sends.filter((send) => send.state === "held");

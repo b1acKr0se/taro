@@ -16,6 +16,7 @@ import {
   replacingProviders,
   STOPPED_GRACE_MS,
   steersMidTurn,
+  takeBack,
   viewSends,
   type PendingSend,
   type SendTimelineEntry,
@@ -331,6 +332,26 @@ describe("handBack", () => {
 
   it("puts nothing back for what the message did not have", () => {
     expect(handBack({ text: "", attachments: [] }, { ...failed, text: "", attachments: [] })).toEqual({ text: null, attachments: null });
+  });
+});
+
+describe("takeBack (TR-102)", () => {
+  const image = { id: "a1", kind: "image" as const, mimeType: "image/png", data: "AAAA", fileName: "shot.png" };
+  const file = { id: "a2", kind: "file" as const, mimeType: "text/plain", data: "BBBB", fileName: "notes.txt" };
+
+  it("puts the words and attachments of a message not sent into an empty box", () => {
+    expect(takeBack({ text: "  ", attachments: [] }, { ...sent("chat-a"), text: "hello", attachments: [image] })).toEqual({ text: "hello", attachments: [image] });
+  });
+
+  it("puts them ahead of what was written or attached since, losing neither (seen end to end: a half-typed reply)", () => {
+    expect(takeBack({ text: "half-typed reply ", attachments: [file] }, { ...sent("chat-a"), text: "first", attachments: [image] })).toEqual({
+      text: "first\n\nhalf-typed reply ",
+      attachments: [image, file],
+    });
+  });
+
+  it("keeps the box as it is for a message of attachments alone", () => {
+    expect(takeBack({ text: "typed", attachments: [] }, { ...sent("chat-a"), text: "", attachments: [image] })).toEqual({ text: "typed", attachments: [image] });
   });
 });
 
