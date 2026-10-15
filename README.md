@@ -9,6 +9,23 @@ answer their questions and accept the result. Tickets are Taro's own
 files, kept in a tracker on the project's `taro/tickets` branch and read and written with the `taro`
 command.
 
+## Why should you use Taro?
+
+- **It works on desktop and on your phone.** The manager chat, Inbox, Board, Stats and ticket view
+  are the same screens in Paseo's desktop and mobile apps, so you can answer a question or accept a
+  change wherever you are.
+- **One place for tickets and agents.** You describe the work to the manager in plain words and talk
+  to each task owner in its ticket. Questions arrive as cards with options and a recommendation, and
+  you answer with a button. Inbox gathers them across projects.
+- **You see progress at a glance.** The Board sorts tickets into **Needs you**, **Working**,
+  **Stalled**, **Queued** and **Done**, and each card says what the ticket needs now. Stats shows
+  time, turns, agents and cost per ticket.
+- **Every ticket has the same layout.** A plan with its goal, choices and how it will be proved,
+  then milestones, delivery, evidence and a short summary, so you know where to look in the
+  ticket view.
+- **Work goes on while you are away.** Taro nudges stalled agents, restarts crashed ones and
+  compacts long conversations (see Unattended work and cost, below).
+
 ## Requirements
 
 On the machine that runs the Paseo daemon:
@@ -81,17 +98,6 @@ not wasted.
 - **Starting agents is limited.** No more task owners run than the project's cap, and new owners
   and crash recoveries wait while the host is above 85% of its thread limit. A ticket in **Awaiting
   acceptance** no longer counts towards the cap, so the next queued ticket can start.
-
-## Screens
-
-- **Manager**: your conversation with the project's manager.
-- **Inbox**: everything waiting on you, across all projects. Walk me through takes you through the
-  open questions one at a time.
-- **Board**: the project's tickets by column. A card says what the ticket needs now; opening it
-  shows the task owner's conversation.
-- **Stats**: time, turns, agents and cost per ticket.
-- **Ticket view**: the conversation with the task owner (Chat) and the ticket itself (Ticket):
-  status, acceptance criteria, milestones, delivery and evidence.
 
 ## Settings
 
