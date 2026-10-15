@@ -61,7 +61,7 @@ export function SpecChangeBox({
         value={typed}
         onChangeText={setTyped}
         onFocus={reveal}
-        placeholder={`What should change in ${ticket}? The manager updates the ticket before an owner starts.`}
+        placeholder={`What should change in ${ticket}?`}
         sendLabel="Send to manager"
         canSend={typed.trim() !== ""}
         busy={presses.busy}
