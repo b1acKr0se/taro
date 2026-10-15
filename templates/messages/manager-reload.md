@@ -1,2 +1,2 @@
-<!-- Step 3 of an idle manager's compaction (TR-015). -->
-Your context was compacted. Reread {{skill}}/SKILL.md, {{skill}}/roles/manager.md, the AGENTS.md in your working directory, your handoff in {{handoff}} and the tracker's ticket list before you continue. Then end the turn with a status line.
+<!-- Step 3 of a manager's compaction (TR-015), and what its SessionStart hook prints after any compaction, mid-turn ones included (TR-101). -->
+Your context was compacted. Reread {{skill}}/SKILL.md, {{skill}}/roles/manager.md, the AGENTS.md in your working directory, your handoff in {{handoff}} and the tracker's ticket list before you continue. Then carry on with what you were doing, ending the turn with a status line.

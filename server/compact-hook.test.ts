@@ -86,6 +86,19 @@ describe("installCompactHook", () => {
     expect(git(main, "status", "--porcelain")).toBe("");
   });
 
+  it("leaves a settings file the repository tracks alone, so the worktree stays clean", async () => {
+    const worktree = repository();
+    mkdirSync(join(worktree, ".claude"));
+    const tracked = '{\n  "permissions": {"allow": []}\n}\n';
+    writeFileSync(join(worktree, ".claude", "settings.local.json"), tracked);
+    git(worktree, "add", ".claude/settings.local.json");
+    git(worktree, "-c", "user.name=Alex", "-c", "user.email=alex@example.com", "commit", "-q", "-m", "settings");
+    liveAgent(owner);
+    expect(await installCompactHook(paseo, { agentId: "agent-11", cwd: worktree, provider: "claude" })).toMatch(/alone: the repository tracks it/);
+    expect(readFileSync(join(worktree, ".claude", "settings.local.json"), "utf8")).toBe(tracked);
+    expect(git(worktree, "status", "--porcelain")).toBe("");
+  });
+
   it("finds a manager by its home under the projects folder when it has no labels yet", async () => {
     const home = join(projects, "notes-app");
     mkdirSync(home, { recursive: true });

@@ -67,6 +67,9 @@ export async function installCompactHook(paseo: PaseoApi, request: { agentId: st
   if (identity === null) return null;
   const reloadFile = reloadFilePath(request.agentId);
   await writeTextAtomically(reloadFile, `${await reloadText(identity)}\n`);
+  // A file the repository tracks would show the hook, with this machine's paths, as a change to commit.
+  const tracked = await runCommand("git", ["-C", request.cwd, "ls-files", "--error-unmatch", SETTINGS_FILE], { timeoutMs: GIT_TIMEOUT_MS });
+  if (tracked.code === 0) return `left ${join(request.cwd, SETTINGS_FILE)} alone: the repository tracks it`;
   const settingsPath = join(request.cwd, SETTINGS_FILE);
   const current = await readTextIfPresent(settingsPath);
   const merged = withTaroHook(current, reloadHookCommand(dataPath(RELOAD_FOLDER), await skillDirectory()));
