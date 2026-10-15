@@ -9,6 +9,21 @@ answer their questions and accept the result. Tickets are Taro's own
 files, kept in a tracker on the project's `taro/tickets` branch and read and written with the `taro`
 command.
 
+<p align="center">
+  <img src="assets/screenshots/board.png" width="100%" alt="Taro's board beside a task owner's chat"><br>
+  <em>The board beside a task owner's chat.</em>
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/ticket-view.png" width="100%" alt="A task owner's chat with its subagents beside the ticket's summary and evidence"><br>
+  <em>An owner's chat with its subagents, beside the ticket's summary and evidence.</em>
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/walk-me-through.png" width="100%" alt="The Inbox stepping through an open decision"><br>
+  <em>Walk me through: the Inbox stepping through an open decision.</em>
+</p>
+
 ## Why should you use Taro?
 
 - **It works on desktop and on your phone.** The manager chat, Inbox, Board, Stats and ticket view
