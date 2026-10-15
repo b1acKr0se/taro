@@ -72,6 +72,7 @@ function card(parts: Partial<Card>): Card {
     activity: null,
     evidence: null,
     accepted: null,
+    notMerged: null,
     permission: null,
     delivered: null,
     pause: null,
@@ -97,6 +98,13 @@ describe("needsYouEntries", () => {
 
   it("falls back to the ticket title for a delivery without a summary", () => {
     expect(entries([card({ status: "Awaiting acceptance", column: "needs-you" })])[0]?.body).toBe("Sync conflicts");
+  });
+
+  it("announces a delivery the owner did not merge after Accept, with why (TR-109)", () => {
+    const notMerged = { at: "2026-01-01T00:10Z", reason: "the main checkout has uncommitted changes" };
+    expect(entries([card({ status: "Awaiting acceptance", column: "needs-you", delivered: "Drafts work offline.", notMerged })])).toEqual([
+      { key: "while-waiting:NA-027:not-merged", title: "NA-027 was not merged", body: "the main checkout has uncommitted changes", agentId: "agent-1", workspaceId: "workspace-1" },
+    ]);
   });
 
   it("says nothing for an accepted ticket the owner is merging", () => {

@@ -167,12 +167,32 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
 - **Request changes:** the user's words arrive as a message. Back to In Progress; size the fix like
   a new task; read the new screenshots against those words too; return to Awaiting acceptance with a
   new review head.
-- **Accept:** if the message says to merge (accept-also-merges), merge only when the PR's
-  `headRefOid` still equals the recorded review head: `gh pr merge <url> --match-head-commit <sha>`
-  (squash unless the repository says otherwise), then confirm `state` is `MERGED`. A moved head →
-  present it again. A conflict → update from the base branch and rerun checks; merge only if the
-  resolution is mechanical, otherwise present again. GitHub refusing the merge → say why. Then
-  record ACCEPTANCE, set **Done**, and end with `done: merged <url>`. The plugin cleans up.
+- **Accept:** if the message says to merge (accept-also-merges), merge only what the user reviewed.
+  - **Pull request:** merge only when the PR's `headRefOid` still equals the recorded review head:
+    `gh pr merge <url> --match-head-commit <sha>` (squash unless the repository says otherwise),
+    then confirm `state` is `MERGED`. A moved head → present it again. A conflict → update from the
+    base branch and rerun checks; merge only if the resolution is mechanical, otherwise present
+    again. GitHub refusing the merge → say why. Then record ACCEPTANCE, set **Done**, and end with
+    `done: merged <url>`.
+  - **Local branch** (decision 34, TR-109), in this order:
+    1. Your branch head is not the recorded review head → do not merge; present the new head again.
+    2. The main checkout (the repository path) has uncommitted or untracked changes, or is not on
+       the base branch → do not touch it (no stash, checkout or reset): record **NOT-MERGED** with
+       the reason in the user's terms, end with `waiting: <reason>`. The card goes back to Needs you
+       with Accept offered again once the user has fixed it.
+    3. The base branch moved since your branch → rebase your branch onto it in your worktree. It
+       applied with no conflicts at all and the checks pass → go on; name the rebased head in
+       ACCEPTANCE, never as a new review-head (that reads as presenting again). Any conflict, even
+       one you resolved, or failing checks → the user has not seen it: present it again.
+    4. `git -C <repository path> merge --ff-only <your branch>`, then confirm the base branch's head
+       is your branch's. Record ACCEPTANCE (merge: base `<old>` → `<new>`), set **Done**, and end
+       with `done: merged into <base>`.
+
+  **Present it again** means: back to In Progress; fix it on your branch (resolve the conflict, fix
+  the checks); rerun the checks; record a new EVIDENCE record and `review-head: <sha>` in a new
+  EXECUTION record; update FINAL's revision line; back to Awaiting acceptance, saying what changed
+  since the user accepted and why it did not merge. Pressing Accept again would hit the same wall,
+  so never leave such a ticket waiting for Accept unchanged. The plugin cleans up after Done.
 
 ## Context (decision 35)
 

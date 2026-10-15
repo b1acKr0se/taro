@@ -193,6 +193,7 @@ export function TicketCard({
         const call = line.call;
         if (call.kind === "decision") return { icon: "Hand", color: call.decision.blocking ? colors.statusWarning : colors.foregroundMuted, headline: styles.strong };
         if (call.kind === "permission") return { icon: "KeyRound", color: colors.statusWarning, headline: styles.strong };
+        if (call.notMerged !== null) return { icon: "GitMerge", color: colors.statusWarning, headline: styles.strong };
         return call.ready ? { icon: "PackageCheck", color: colors.accent, headline: styles.strong } : { icon: "PackageX", color: colors.statusWarning, headline: styles.strong };
       }
       case "stalled":

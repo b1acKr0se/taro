@@ -113,12 +113,19 @@ function callLines(call: CardCall, others: readonly CardCall[], now: number): Li
   }
   if (call.kind === "acceptance") {
     const readiness = readinessText(call.ready);
+    // Accepted once and not merged (TR-109): why is what the user must act on before accepting again.
+    if (call.notMerged !== null) return { headline: notMergedText(call.notMerged), detail: joined([call.delivered, readiness, call.evidence, ...also]) };
     // Incomplete evidence names what is missing, which is what holds Accept back.
     return call.delivered === null ? { headline: readiness, detail: joined([call.evidence, ...also]) } : { headline: call.delivered, detail: joined([readiness, call.evidence, ...also]) };
   }
   const more = call.count > 1 ? `${call.count - 1} more permission${call.count === 2 ? "" : "s"}` : null;
   if (call.title === null) return { headline: waitingOnPermissions(call.count), detail: joined(also) };
   return { headline: call.asker === null ? call.title : `${call.asker}: ${call.title}`, detail: joined([call.detail, more, ...also]) };
+}
+
+/** Why an accepted delivery did not merge, as the card's headline (TR-109). */
+export function notMergedText(reason: string): string {
+  return `Not merged: ${reason}`;
 }
 
 /** What a question card says under the question: whether it blocks and how long ago it was asked (TR-045). */

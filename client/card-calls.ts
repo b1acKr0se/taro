@@ -12,8 +12,8 @@ import { walkOrder } from "./walk-order";
 export type CardCall =
   /** The first open decision in Walk me through order; `more` counts the rest. */
   | { kind: "decision"; decision: StoredDecision; more: number }
-  /** Delivered and waiting for Accept / Request changes: the delivery in a line and the evidence in one (TR-021). */
-  | { kind: "acceptance"; ready: boolean; delivered: string | null; evidence: string | null }
+  /** Delivered and waiting for Accept / Request changes: the delivery in a line and the evidence in one (TR-021); why an earlier Accept did not merge (TR-109). */
+  | { kind: "acceptance"; ready: boolean; delivered: string | null; evidence: string | null; notMerged: string | null }
   /** The owner or a subagent stopped on Paseo permission requests: who asks first (null for the owner), what, and how many wait (TR-096). */
   | { kind: "permission"; asker: string | null; title: string | null; detail: string | null; count: number };
 
@@ -24,7 +24,7 @@ export function cardCalls(card: Card): CardCall[] {
   if (first !== undefined) calls.push({ kind: "decision", decision: first, more: open.length - 1 });
   // Accepting messages the owner, so without one there is nothing to press; once accepted, nothing is left to press.
   if (card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null) {
-    calls.push({ kind: "acceptance", ready: acceptanceReady(card), delivered: card.delivered, evidence: card.evidence === null ? null : evidenceSummary(card.evidence) });
+    calls.push({ kind: "acceptance", ready: acceptanceReady(card), delivered: card.delivered, evidence: card.evidence === null ? null : evidenceSummary(card.evidence), notMerged: card.notMerged?.reason ?? null });
   }
   const ask = card.permission;
   if (ask !== null) calls.push({ kind: "permission", asker: askerPrefix(ask.role), title: ask.title, detail: ask.detail, count: Math.max(ask.count, 1) });

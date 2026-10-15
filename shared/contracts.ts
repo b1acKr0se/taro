@@ -216,6 +216,8 @@ export const CardSchema = z.object({
   evidence: EvidenceViewSchema.nullable().default(null),
   /** Set from the ACCEPTED record while the ticket is still Awaiting acceptance: the owner is merging (TR-031). */
   accepted: z.object({ at: z.string(), merging: z.string().nullable() }).nullable().default(null),
+  /** Set from a NOT-MERGED record while the ticket is Awaiting acceptance: why the owner did not merge after Accept (TR-109). */
+  notMerged: z.object({ at: z.string(), reason: z.string() }).nullable().default(null),
   /** What the first pending permission of the ticket's owner or subagents asks, in its own words (TR-045), and who asks (TR-096). */
   permission: AgentAskSchema.nullable().default(null),
   /** The delivery in a line, from the FINAL summary, while the ticket is Awaiting acceptance (TR-045). */
