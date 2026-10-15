@@ -309,3 +309,114 @@ describe("turnMayStillEnd", () => {
     expect(turnMayStillEnd({ status: "idle", updatedAt: "" }, pluginStartedAt)).toBe(false);
   });
 });
+
+describe("repeated statuses (TR-100)", () => {
+  const directory = () => join(home, "plugin-data", "taro", "state");
+  const transitions = async (ticket: string) => ((await statsFile()) as unknown as { tickets: Record<string, { transitions: { to: string; at: string }[] }> }).tickets[`taro:${ticket}`]?.transitions ?? [];
+
+  it("ignores a transition into the status the ticket already has", async () => {
+    const stats = new Stats();
+    await stats.transition("taro", "TR-1", "One", null, "In Progress", "2026-10-13T10:00:00Z");
+    await stats.transition("taro", "TR-1", "One", "In Progress", "Done", "2026-10-13T10:12:00Z");
+    await stats.transition("taro", "TR-1", "One", null, "Done", "2026-10-14T17:55:46Z");
+    expect((await transitions("TR-1")).map((transition) => transition.at)).toEqual(["2026-10-13T10:00:00Z", "2026-10-13T10:12:00Z"]);
+    expect(summarize((await stats.all("taro"))[0]!).wallMs).toBe(12 * 60_000);
+  });
+
+  it("gives each recorded ticket's last status, and null for a project with none", async () => {
+    const stats = new Stats();
+    await stats.transition("taro", "TR-1", "One", null, "Done", "2026-10-13T10:00:00Z");
+    await stats.transition("taro", "TR-2", "Two", null, "Queued", "2026-10-13T10:00:00Z");
+    expect(await stats.recordedStatuses("taro")).toEqual(new Map([["TR-1", "Done"], ["TR-2", "Queued"]]));
+    expect(await stats.recordedStatuses("other")).toBeNull();
+  });
+
+  async function seedRepeats(): Promise<string> {
+    const at = (minutes: number) => new Date(start + minutes * 60_000).toISOString();
+    const entry = (from: string | null, to: string, minutes: number) => ({ from, to, at: at(minutes) });
+    const file = {
+      tickets: {
+        "taro:TR-1": { project: "taro", ticket: "TR-1", transitions: [entry(null, "Queued", 0), entry("Queued", "Done", 12), entry(null, "Done", 1_800)] },
+        "taro:TR-2": { project: "taro", ticket: "TR-2", transitions: [entry(null, "Queued", 0), entry(null, "Queued", 5), entry("Queued", "Awaiting acceptance", 10), entry("Awaiting acceptance", "Done", 20), entry("Awaiting acceptance", "Done", 30)] },
+        "taro:TR-3": { project: "taro", ticket: "TR-3", transitions: [entry(null, "Queued", 0), entry("Queued", "Done", 3)] },
+      },
+      costBackfill: { at: at(0), filled: 0, missing: 0 },
+    };
+    await mkdir(directory(), { recursive: true });
+    const text = JSON.stringify(file);
+    await writeFile(join(directory(), "stats.json"), text);
+    return text;
+  }
+
+  it("repairs the file once: drops every repeat, keeps a backup, and reports the count", async () => {
+    const original = await seedRepeats();
+    const repair = await new Stats().repairRepeats();
+    expect(repair).toEqual({ at: new Date(start).toISOString(), removed: 3 });
+    expect((await transitions("TR-1")).map((transition) => transition.to)).toEqual(["Queued", "Done"]);
+    expect((await transitions("TR-2")).map((transition) => transition.to)).toEqual(["Queued", "Awaiting acceptance", "Done"]);
+    expect(await transitions("TR-3")).toHaveLength(2);
+    expect(await readFile(join(directory(), "stats.json.pre-repair"), "utf8")).toBe(original);
+    // What TR-097 recorded stays.
+    expect((await statsFile()) as unknown).toMatchObject({ costBackfill: { filled: 0, missing: 0 }, repeatRepair: { removed: 3 } });
+    const summaries = (await new Stats().all("taro")).map((ticket) => summarize(ticket));
+    expect(summaries.find((summary) => summary.ticket === "TR-1")?.wallMs).toBe(12 * 60_000);
+  });
+
+  it("is idempotent: a second run, even after a reload, changes nothing and keeps the first backup", async () => {
+    const original = await seedRepeats();
+    await new Stats().repairRepeats();
+    const after = await readFile(join(directory(), "stats.json"), "utf8");
+    expect(await new Stats().repairRepeats()).toBeNull();
+    expect(await readFile(join(directory(), "stats.json"), "utf8")).toBe(after);
+    expect(await readFile(join(directory(), "stats.json.pre-repair"), "utf8")).toBe(original);
+  });
+
+  it("on a file without repeats, or with none at all, removes 0 and marks itself done", async () => {
+    expect(await new Stats().repairRepeats()).toMatchObject({ removed: 0 });
+    expect(await new Stats().repairRepeats()).toBeNull();
+  });
+});
+
+describe("waiting on the user (TR-100)", () => {
+  const waiting = async (ticket: string) => ((await statsFile()) as unknown as { tickets: Record<string, { waiting: { start: string; end: string }[] }> }).tickets[`taro:${ticket}`]?.waiting;
+  const iso = (offset: number) => new Date(start + offset).toISOString();
+
+  it("continues a stretch while the checks keep finding the card, and starts another after a gap", async () => {
+    const stats = new Stats();
+    await stats.waitingSeen("taro", ["TR-1"], start);
+    await stats.waitingSeen("taro", ["TR-1"], start + 15_000);
+    await stats.waitingSeen("taro", ["TR-1"], start + 30_000);
+    // Answered, then waiting again ten minutes later (or the plugin was down).
+    await stats.waitingSeen("taro", ["TR-1"], start + 10 * 60_000);
+    expect(await waiting("TR-1")).toEqual([
+      { start: iso(0), end: iso(30_000) },
+      { start: iso(10 * 60_000), end: iso(10 * 60_000) },
+    ]);
+  });
+
+  it("counts a child's waiting on its parent once, when both wait", async () => {
+    const stats = new Stats();
+    await stats.waitingSeen("taro", ["TR-1.2", "TR-1"], start);
+    await stats.waitingSeen("taro", ["TR-1.2"], start + 15_000);
+    expect(await waiting("TR-1.2")).toEqual([{ start: iso(0), end: iso(15_000) }]);
+    expect(await waiting("TR-1")).toEqual([{ start: iso(0), end: iso(15_000) }]);
+  });
+
+  it("writes nothing when no card waits", async () => {
+    await new Stats().waitingSeen("taro", [], start);
+    await expect(statsFile()).rejects.toThrow();
+  });
+
+  it("shows in Waiting on you, merged with Awaiting acceptance", async () => {
+    const stats = new Stats();
+    await stats.transition("taro", "TR-1", "One", null, "Planning", iso(0));
+    // A scope approval waits from minute 1 to minute 3, seen by the 15-second checks.
+    for (let offset = 60_000; offset <= 3 * 60_000; offset += 15_000) await stats.waitingSeen("taro", ["TR-1"], start + offset);
+    await stats.transition("taro", "TR-1", "One", "Planning", "Awaiting acceptance", iso(10 * 60_000));
+    for (let offset = 10 * 60_000; offset <= 20 * 60_000; offset += 15_000) await stats.waitingSeen("taro", ["TR-1"], start + offset);
+    await stats.transition("taro", "TR-1", "One", "Awaiting acceptance", "Done", iso(20 * 60_000));
+    const [summary] = (await stats.all("taro")).map((ticket) => summarize(ticket));
+    // 2 minutes on the approval plus 10 in Awaiting acceptance, which the checks also saw: counted once.
+    expect(summary?.waitingOnUserMs).toBe(12 * 60_000);
+  });
+});

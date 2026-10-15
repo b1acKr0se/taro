@@ -12,7 +12,7 @@
  */
 import { join } from "node:path";
 
-import type { FeedNotification } from "../shared/contracts";
+import type { Board, FeedNotification } from "../shared/contracts";
 import { freshEntries, HOST_SEEN, isHostEntry, needsYouEntries, SeenEntriesSchema, someonePresent, type NeedsYouEntry, type SeenEntries } from "../shared/notifications";
 import { loadBoard } from "./board";
 import { paseoHome, statePath } from "./data-dir";
@@ -72,6 +72,8 @@ export interface NotifierOptions {
   now?: () => number;
   pushUrl?: string;
   home?: string;
+  /** Called with each board the check looked at, e.g. to record which cards wait on the user (TR-100). */
+  onBoard?: (project: string, board: Board) => Promise<void>;
 }
 
 function seenPath(): string {
@@ -83,6 +85,7 @@ export class Notifier {
   private readonly now: () => number;
   private readonly pushUrl: string;
   private readonly home: string | null;
+  private readonly onBoard: ((project: string, board: Board) => Promise<void>) | null;
   private readonly activeAt = new Map<string, number>();
   private feed: FeedNotification[] = [];
   private seq = 0;
@@ -93,6 +96,7 @@ export class Notifier {
     this.now = options.now ?? Date.now;
     this.pushUrl = options.pushUrl ?? process.env.TARO_EXPO_PUSH_URL ?? EXPO_PUSH_URL;
     this.home = options.home ?? null;
+    this.onBoard = options.onBoard ?? null;
   }
 
   /** A window reports in; `active` when it can show a notification and was used in the last three minutes. */
@@ -114,6 +118,7 @@ export class Notifier {
       const config = await readProjectConfig(project);
       if (config === null) return 0;
       const board = await loadBoard(paseo, state, project, queueAlerts);
+      await this.onBoard?.(project, board).catch((error: unknown) => console.error(`[taro] recording ${project}'s board:`, error));
       const entries = needsYouEntries(
         board,
         config.managerWorkspaceId === "" ? null : config.managerWorkspaceId,

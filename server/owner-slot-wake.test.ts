@@ -59,6 +59,8 @@ let actions: Actions;
 let stored: Map<string, ReadonlyMap<string, string>>;
 /** Tells the manager; resolving to "held" stands for a wake-up held while threads are short. */
 let tell: (text: string) => Promise<void | "held">;
+/** The statuses the stats recorded last (TR-100), kept across the `Actions` of one test as a disk would be. */
+let recorded: Map<string, string>;
 /** Sends the held wake-ups go out with, once threads allow. */
 let held: (() => void)[];
 const paseo = { agents: { ref: () => ({ archive: async () => undefined }) }, workspaces: { archive: async () => undefined } } as unknown as PaseoApi;
@@ -75,6 +77,7 @@ beforeEach(() => {
   told = [];
   dependencies = {};
   stored = new Map();
+  recorded = new Map();
   held = [];
   tell = async (text) => void told.push(flatten(text));
   vi.mocked(projectAgents).mockClear().mockImplementation(async () => [...live]);
@@ -101,7 +104,12 @@ function start(): Actions {
     ticketStatuses: async (project: string) => stored.get(project) ?? null,
     saveTicketStatuses: async (project: string, statuses: ReadonlyMap<string, string>) => void stored.set(project, new Map(statuses)),
   } as unknown as PluginState;
-  const stats = { transition: async () => undefined, agentUsage: async () => undefined } as unknown as Stats;
+  // Like the real stats: a transition into the status already recorded is ignored.
+  const stats = {
+    transition: async (_project: string, id: string, _title: string, _from: string | null, to: string) => void recorded.set(id, to),
+    agentUsage: async () => undefined,
+    recordedStatuses: async () => (recorded.size === 0 ? null : new Map(recorded)),
+  } as unknown as Stats;
   const recovery = {
     tellManagerWhenHeadroom: async (_paseo: PaseoApi, _project: string, _manager: string, text: string, onSent?: () => void) => {
       if ((await tell(text)) === "held") {
@@ -421,5 +429,47 @@ describe("a ticket first seen past its owner", () => {
     vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Awaiting acceptance"), ticket("DM-2", "Queued")]);
     await actions.onTrackerChanged(paseo, "demo");
     expect(told).toEqual([]);
+  });
+});
+
+// TR-100: the tracker conversion onboarded Taro's own tracker again, the plugin had no last look at its
+// tickets, and every Done ticket was announced (and recorded) as newly Done.
+describe("a tracker onboarded again", () => {
+  it("does not announce a ticket again whose status the stats already hold", async () => {
+    dependencies = { "DM-2": ["DM-1"] };
+    recorded = new Map([["DM-1", "Done"], ["DM-2", "Queued"], ["DM-3", "Done"]]);
+    await move([], [ticket("DM-1", "Done"), ticket("DM-2", "Queued"), ticket("DM-3", "Done")]);
+    expect(told).toEqual([]);
+    expect(stored.get("demo")?.get("DM-1")).toBe("Done");
+  });
+
+  it("does so with nothing stored at all", async () => {
+    dependencies = { "DM-2": ["DM-1"] };
+    recorded = new Map([["DM-1", "Done"], ["DM-2", "Queued"]]);
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Done"), ticket("DM-2", "Queued")]);
+    await actions.onTrackerChanged(paseo, "demo");
+    expect(told).toEqual([]);
+  });
+
+  it("still announces a change the stats do not hold yet", async () => {
+    dependencies = { "DM-2": ["DM-1"] };
+    recorded = new Map([["DM-1", "Awaiting acceptance"], ["DM-2", "Queued"]]);
+    await move([], [ticket("DM-1", "Done"), ticket("DM-2", "Queued")]);
+    expect(told.map((entry) => [entry.ticket, entry.status])).toEqual([["DM-1", "Done"]]);
+  });
+
+  it("retries a first-seen ticket's failed wake-up although its status was recorded in the failed pass", async () => {
+    dependencies = { "DM-2": ["DM-1"] };
+    tell = async () => {
+      throw new Error("daemon busy");
+    };
+    vi.mocked(listTickets).mockResolvedValue([]);
+    await actions.primeStatuses();
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Awaiting acceptance"), ticket("DM-2", "Queued")]);
+    await expect(actions.onTrackerChanged(paseo, "demo")).rejects.toThrow("daemon busy");
+    expect(recorded.get("DM-1")).toBe("Awaiting acceptance");
+    tell = async (text) => void told.push(flatten(text));
+    await actions.onTrackerChanged(paseo, "demo");
+    expect(told.map((entry) => [entry.ticket, entry.status])).toEqual([["DM-1", "Awaiting acceptance"]]);
   });
 });

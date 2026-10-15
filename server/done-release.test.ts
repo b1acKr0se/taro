@@ -59,7 +59,7 @@ beforeEach(() => {
     workspaces: { archive: async (id: string) => void archivedWorkspaces.push(id) },
   } as unknown as PaseoApi;
   const state = { forgetAgent: async () => undefined, updateDecisions: async () => undefined, ticketStatuses: async () => null, saveTicketStatuses: async () => undefined } as unknown as PluginState;
-  const stats = { transition: async () => undefined, agentUsage: async () => undefined } as unknown as Stats;
+  const stats = { transition: async () => undefined, agentUsage: async () => undefined, recordedStatuses: async () => null } as unknown as Stats;
   actions = new Actions(state, {} as Supervisor, {} as TrackerWatch, stats, { tellManagerWhenHeadroom: async () => undefined } as unknown as Recovery);
 });
 

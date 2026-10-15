@@ -1,5 +1,5 @@
 /**
- * A project's Stats tab: a totals row, then a row per ticket with its wall
+ * A project's Stats tab: a totals row (its Wall the project's span, TR-100), then a row per ticket with its wall
  * time, agent time, time waiting on the user, turns, agents, cost, nudges,
  * decisions, crash recoveries and idle compactions (the totals add the manager's). A cost missing some
  * agents' share is marked, and explained under the table. Tapping a ticket shows its time per status. The table scrolls
@@ -159,7 +159,10 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
             * {totals.agentsWithoutCost} agent{totals.agentsWithoutCost === 1 ? " has" : "s have"} no recorded cost: one still at work gets it at its next turn end; one whose session ended without saving it (a crash or a forced stop) never will. A marked cost leaves theirs out.
           </Text>
         ) : null}
-        <Text style={styles.footnote}>A child ticket's agents, turns, cost and time also count on its parent, so the totals add those up once. Idle compactions in the total include the Manager's.</Text>
+        <Text style={styles.footnote}>
+          Project total: Wall is the project's elapsed time, from the first ticket filed to the last finished (or now while one is open). Active adds up every agent's working time, so agents working at once can exceed Wall; the Manager's is left out. Waiting on you adds up each ticket's time waiting on you (for acceptance, a decision or a permission), so tickets waiting at once each count.
+        </Text>
+        <Text style={styles.footnote}>A child ticket's agents, turns, cost and waiting also count on its parent, so the totals add those up once. Idle compactions in the total include the Manager's.</Text>
       </View>
     </ScrollView>
   );

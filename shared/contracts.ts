@@ -365,6 +365,8 @@ export const StatsSummarySchema = z.object({
   title: z.string(),
   status: z.string(),
   wallMs: z.number(),
+  startedAt: z.number().nullable().default(null),
+  finishedAt: z.number().nullable().default(null),
   byStatus: z.record(z.string(), z.number()),
   waitingOnUserMs: z.number(),
   agentActiveMs: z.number(),

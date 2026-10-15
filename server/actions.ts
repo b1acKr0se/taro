@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 
 import { doneTicketOf, planRelease } from "../shared/done-release";
 import { acceptedRecord, acceptedRecordText, executionWorkspace, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
-import { dependsOn, holdsSlot, shouldWakeManager, statusChanges, type StatusChange } from "../shared/owner-cap";
+import { dependsOn, holdsSlot, shouldWakeManager, statusChanges, withRecordedStatuses, type StatusChange } from "../shared/owner-cap";
 import {
   handoffSincePauseRequest,
   PAUSE_HANDOFF_TIMEOUT_MS,
@@ -78,6 +78,8 @@ export class Actions {
    * before: stored in place of the new one until the wake-up went out, so a reload repeats it.
    */
   private readonly undelivered = new Map<string, Map<string, string | undefined>>();
+  /** Per project, tickets first seen in a pass whose wake-up failed: the next pass must see them as new, whatever the stats hold. */
+  private readonly firstSeenRetrying = new Map<string, Set<string>>();
   /** The release running per project, so two never archive the same agents at once. */
   private readonly releasing = new Map<string, Promise<void>>();
   /** Agents already archived here: Paseo may still list one for a moment after archiving it. */
@@ -456,7 +458,14 @@ export class Actions {
     const tickets = await listTickets(paths.tracker);
     // A pass may come before the start's priming: the stored statuses are what it compares with then.
     // Neither (the first pass over an adopted tracker): no last look, so unknown tickets free nothing.
-    const lastLook = this.lastStatuses.get(project) ?? (await this.state.ticketStatuses(project).catch(() => null));
+    // A ticket missing from the last look (a tracker onboarded again) takes its status from the stats,
+    // so a Done ticket is not announced again (TR-100).
+    const recorded = await this.stats.recordedStatuses(project).catch(() => null);
+    const retrying = this.firstSeenRetrying.get(project) ?? new Set<string>();
+    this.firstSeenRetrying.set(project, retrying);
+    for (const [ticket, before] of this.undelivered.get(project) ?? []) if (before === undefined) retrying.add(ticket);
+    for (const ticket of retrying) recorded?.delete(ticket);
+    const lastLook = withRecordedStatuses(this.lastStatuses.get(project) ?? (await this.state.ticketStatuses(project).catch(() => null)), recorded);
     const previous = lastLook ?? new Map<string, string>();
     const current = new Map(tickets.map((ticket) => [ticket.id, ticket.status]));
     this.lastStatuses.set(project, current);
@@ -476,10 +485,13 @@ export class Actions {
       const before = previous.get(change.ticket);
       try {
         await this.wakeManager(paseo, project, change, tickets, () => this.markUndelivered(project, change.ticket, before));
+        if (!this.undelivered.get(project)?.has(change.ticket)) retrying.delete(change.ticket);
       } catch (error: unknown) {
         failure ??= error;
-        if (before === undefined) current.delete(change.ticket);
-        else current.set(change.ticket, before);
+        if (before === undefined) {
+          current.delete(change.ticket);
+          retrying.add(change.ticket);
+        } else current.set(change.ticket, before);
       }
     }
     await this.storeStatuses(project);

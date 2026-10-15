@@ -133,7 +133,7 @@ function start(): Actions {
     queueLadder: async (project: string) => ladders.get(project) ?? null,
     saveQueueLadder: async (project: string, ladder: { restarts: string[]; dismissed: string[] }) => void ladders.set(project, structuredClone(ladder)),
   } as unknown as PluginState;
-  const stats = { transition: async () => undefined, agentUsage: async () => undefined } as unknown as Stats;
+  const stats = { transition: async () => undefined, agentUsage: async () => undefined, recordedStatuses: async () => null } as unknown as Stats;
   const recovery = {
     tellManagerWhenHeadroom: async (_paseo: PaseoApi, _project: string, _manager: string, text: string, onSent?: () => void) => {
       told.push(JSON.parse(text) as Record<string, string>);

@@ -49,7 +49,7 @@ import type { PaseoApi } from "./server/host-types";
 import { Recovery } from "./server/recovery";
 import { PluginState } from "./server/state";
 import { Stats, turnMayStillEnd } from "./server/stats";
-import { summarize } from "./shared/stats";
+import { summarize, waitingTickets } from "./shared/stats";
 import { idleCompactAfterMs } from "./shared/idle-compaction";
 import { Supervisor, identityFromLabels } from "./server/supervision";
 import { sessionEnvironment } from "./server/environment";
@@ -78,7 +78,8 @@ export default function contribute(server: PluginServerContext) {
   const supervisor = new Supervisor(state, stats, recovery);
   const actions = new Actions(state, supervisor, trackers, stats, recovery);
   recovery.setRelaunchOwner((paseo, project, ticket) => actions.relaunchOwner(paseo, project, ticket));
-  const notifier = new Notifier();
+  // Each Needs-you check also records which cards wait on the user, for Stats' Waiting on you (TR-100).
+  const notifier = new Notifier({ onBoard: (project, board) => stats.waitingSeen(project, waitingTickets(board.cards)) });
   // The server half is given Paseo only inside handlers and hooks; keep the first one for timers.
   let kept: PaseoApi | null = null;
   const keep = (paseo: PaseoApi): PaseoApi => {
@@ -94,6 +95,13 @@ export default function contribute(server: PluginServerContext) {
       // Changes made while the plugin was down (TR-043: the merge at an accept reloads it as the ticket
       // goes Done), and Done tickets whose agents were left open (an owner mid-turn at a reload).
       void actions.catchUpAfterStart(paseo).catch((error: unknown) => reportFailure("[taro] catching up after start failed:", error));
+      // Once: entries into the status a ticket already had, which stretched wall times (TR-100).
+      void stats
+        .repairRepeats()
+        .then((repair) => {
+          if (repair !== null) console.log(`[taro] stats repair: removed ${repair.removed} repeated status entries (the file as it was is in stats.json.pre-repair)`);
+        })
+        .catch((error: unknown) => reportFailure("[taro] repairing stats failed:", error));
       // Once: costs of agents archived before every turn end recorded one (TR-097).
       void listProjectConfigs()
         .then((configs) => backfillCosts(paseo, stats, configs.map((config) => config.project)))

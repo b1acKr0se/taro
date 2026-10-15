@@ -130,3 +130,28 @@ describe("Notifier and board alerts", () => {
     expect(await taro.check(paseo, state, "shop")).toBe(1);
   });
 });
+
+describe("Notifier's board hook (TR-100)", () => {
+  it("hands each board it looked at to the hook, per project", async () => {
+    const seen: string[] = [];
+    const taro = new Notifier({ now: () => NOW, pushUrl: "http://127.0.0.1:1/push", onBoard: async (project, board) => void seen.push(`${project}:${board.project}`) });
+    await taro.check(paseo, state, "notes-app");
+    await taro.check(paseo, state, "shop");
+    expect(seen).toEqual(["notes-app:notes-app", "shop:shop"]);
+  });
+
+  it("still announces when the hook fails", async () => {
+    const fetchStub = async () => new Response(JSON.stringify({ data: [] }), { status: 200 });
+    const failing = async () => {
+      throw new Error("disk full");
+    };
+    const taro = new Notifier({ fetch: fetchStub as unknown as typeof fetch, now: () => NOW, pushUrl: "http://127.0.0.1:1/push", onBoard: failing });
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    // A project's first look only takes what is there as seen.
+    await taro.check(paseo, state, "notes-app");
+    boardAlerts = [{ id: "headroom", tickets: [], text: "The host is at 1900 of 2048 threads (93%)." }];
+    expect(await taro.check(paseo, state, "notes-app")).toBe(1);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+});

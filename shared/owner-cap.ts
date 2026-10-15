@@ -68,6 +68,16 @@ export function statusChanges(previous: ReadonlyMap<string, string> | null, tick
   });
 }
 
+/**
+ * The last look at a project's statuses, with a ticket it does not know taking its last recorded
+ * (stats) status. Only a ticket first seen in a status that frees a slot, or Done, is announced as
+ * a change, and one the stats already hold in that status is not new.
+ */
+export function withRecordedStatuses(lastLook: ReadonlyMap<string, string> | null, recorded: ReadonlyMap<string, string> | null): ReadonlyMap<string, string> | null {
+  if (recorded === null) return lastLook;
+  return new Map([...recorded, ...(lastLook ?? [])]);
+}
+
 /** Wake the manager when tickets were waiting on this one, or when a freed slot lets a queued ticket start. */
 export function shouldWakeManager(input: { dependents: number; queued: number; freesSlot: boolean; counting: number; cap: number }): boolean {
   if (input.dependents > 0) return true;

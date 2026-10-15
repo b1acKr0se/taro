@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { compareTickets, projectTotals, summarize, type TicketSummary } from "./stats";
+import { compareTickets, projectSpanMs, projectTotals, summarize, unionMs, waitingTickets, withoutRepeats, type TicketStats, type TicketSummary } from "./stats";
 
 describe("summarize", () => {
   it("adds time per status, wall time to Done, agent time and cost", () => {
@@ -15,6 +15,7 @@ describe("summarize", () => {
         { from: "In Progress", to: "Awaiting acceptance", at: "2026-01-01T00:15:00Z" },
         { from: "Awaiting acceptance", to: "Done", at: "2026-01-01T00:45:00Z" },
       ],
+      waiting: [],
       agents: {
         owner: { agentId: "owner", role: "owner", model: "m", title: null, turns: 3, activeMs: 600_000, costUsd: 1.5, contextTokens: 90_000 },
         implementer: { agentId: "implementer", role: "implementer", model: "h", title: null, turns: 1, activeMs: 120_000, costUsd: 0.25, contextTokens: null },
@@ -43,6 +44,7 @@ describe("summarize", () => {
       ticket: "AP-2",
       title: "x",
       transitions: [],
+      waiting: [],
       agents: { a: { ...agent, agentId: "a", costUsd: 2 }, b: { ...agent, agentId: "b", costUsd: null }, c: { ...agent, agentId: "c", costUsd: 0 } },
       nudges: 0,
       decisions: 0,
@@ -60,6 +62,8 @@ function row(ticket: string, values: Partial<TicketSummary> = {}): TicketSummary
     title: ticket,
     status: "Done",
     wallMs: 0,
+    startedAt: null,
+    finishedAt: null,
     byStatus: {},
     waitingOnUserMs: 0,
     agentActiveMs: 0,
@@ -82,8 +86,8 @@ describe("projectTotals", () => {
 
   it("adds top-level tickets and skips a cost nobody reported", () => {
     const totals = projectTotals([
-      row("AP-1", { wallMs: 1_000, waitingOnUserMs: 100, agentActiveMs: 500, turns: 3, agents: 1, costUsd: 1.25, nudges: 1, decisions: 2, recoveries: 1 }),
-      row("AP-2", { wallMs: 2_000, waitingOnUserMs: 0, agentActiveMs: 700, turns: 4, agents: 2, costUsd: null }),
+      row("AP-1", { wallMs: 1_000, startedAt: 0, finishedAt: 1_000, waitingOnUserMs: 100, agentActiveMs: 500, turns: 3, agents: 1, costUsd: 1.25, nudges: 1, decisions: 2, recoveries: 1 }),
+      row("AP-2", { wallMs: 2_000, startedAt: 1_000, finishedAt: 3_000, waitingOnUserMs: 0, agentActiveMs: 700, turns: 4, agents: 2, costUsd: null }),
       row("AP-3", { costUsd: 0 }),
     ]);
     expect(totals).toEqual({ tickets: 3, wallMs: 3_000, waitingOnUserMs: 100, agentActiveMs: 1_200, turns: 7, agents: 3, costUsd: 1.25, agentsWithoutCost: 0, nudges: 1, decisions: 2, recoveries: 1, idleCompactions: 0 });
@@ -91,8 +95,8 @@ describe("projectTotals", () => {
 
   it("does not count a child's agents, turns, cost or time twice, but adds its nudges, decisions and recoveries", () => {
     const totals = projectTotals([
-      row("AP-9", { wallMs: 10_000, agentActiveMs: 900, turns: 9, agents: 3, costUsd: 3, nudges: 1, recoveries: 1 }),
-      row("AP-9.1", { wallMs: 4_000, agentActiveMs: 400, turns: 4, agents: 1, costUsd: 1, nudges: 2, decisions: 1, recoveries: 2 }),
+      row("AP-9", { wallMs: 10_000, startedAt: 0, finishedAt: 10_000, agentActiveMs: 900, turns: 9, agents: 3, costUsd: 3, nudges: 1, recoveries: 1 }),
+      row("AP-9.1", { wallMs: 4_000, startedAt: 2_000, finishedAt: 6_000, agentActiveMs: 400, turns: 4, agents: 1, costUsd: 1, nudges: 2, decisions: 1, recoveries: 2 }),
     ]);
     expect(totals).toMatchObject({ tickets: 2, wallMs: 10_000, agentActiveMs: 900, turns: 9, agents: 3, costUsd: 3, nudges: 3, decisions: 1, recoveries: 3 });
   });
@@ -107,6 +111,86 @@ describe("projectTotals", () => {
     expect(projectTotals(tickets).idleCompactions).toBe(3);
     expect(projectTotals(tickets, 4).idleCompactions).toBe(7);
     expect(projectTotals([], 1).idleCompactions).toBe(1);
+  });
+});
+
+function ticket(transitions: ReadonlyArray<[string, string]>, waiting: TicketStats["waiting"] = []): TicketStats {
+  return { project: "app", ticket: "AP-1", title: "x", transitions: transitions.map(([to, at], index) => ({ from: index === 0 ? null : (transitions[index - 1]?.[0] ?? null), to, at })), waiting, agents: {}, nudges: 0, decisions: 0, recoveries: 0, idleCompactions: 0 };
+}
+
+describe("repeated statuses (TR-100)", () => {
+  const worked: Array<[string, string]> = [
+    ["Queued", "2026-01-01T00:00:00Z"],
+    ["In Progress", "2026-01-01T00:02:00Z"],
+    ["Awaiting acceptance", "2026-01-01T00:10:00Z"],
+    ["Done", "2026-01-01T00:12:00Z"],
+  ];
+
+  it("a Done announced again a day later changes neither wall time nor time per status", () => {
+    const clean = summarize(ticket(worked), Date.parse("2026-01-03T00:00:00Z"));
+    const repeated = summarize(ticket([...worked, ["Done", "2026-01-02T06:00:00Z"]]), Date.parse("2026-01-03T00:00:00Z"));
+    expect(clean.wallMs).toBe(12 * 60_000);
+    expect(repeated.wallMs).toBe(clean.wallMs);
+    expect(repeated.byStatus).toEqual(clean.byStatus);
+    expect(repeated.finishedAt).toBe(Date.parse("2026-01-01T00:12:00Z"));
+  });
+
+  it("a status repeated mid-way keeps the time from its first entry", () => {
+    const summary = summarize(ticket([["Queued", "2026-01-01T00:00:00Z"], ["Queued", "2026-01-01T00:05:00Z"], ["Done", "2026-01-01T00:08:00Z"]]));
+    expect(summary.byStatus).toEqual({ Queued: 8 * 60_000, Done: 0 });
+  });
+
+  it("withoutRepeats keeps changes, drops only repeats, and is empty for nothing", () => {
+    const transitions = ticket([["Queued", "a"], ["Queued", "b"], ["Done", "c"], ["Done", "d"], ["In Progress", "e"], ["Done", "f"]]).transitions;
+    expect(withoutRepeats(transitions).map((transition) => transition.at)).toEqual(["a", "c", "e", "f"]);
+    expect(withoutRepeats([])).toEqual([]);
+  });
+});
+
+describe("waiting on the user (TR-100)", () => {
+  const minute = 60_000;
+
+  it("adds Needs-you stretches to Awaiting acceptance, counting an overlap once", () => {
+    const summary = summarize(
+      ticket(
+        [["Planning", "2026-01-01T00:00:00Z"], ["In Progress", "2026-01-01T00:20:00Z"], ["Awaiting acceptance", "2026-01-01T01:00:00Z"], ["Done", "2026-01-01T01:30:00Z"]],
+        [
+          { start: "2026-01-01T00:05:00Z", end: "2026-01-01T00:15:00Z" },
+          { start: "2026-01-01T01:00:00Z", end: "2026-01-01T01:30:00Z" },
+          { start: "2026-01-01T00:40:00Z", end: "2026-01-01T00:42:00Z" },
+        ],
+      ),
+    );
+    expect(summary.waitingOnUserMs).toBe((10 + 30 + 2) * minute);
+  });
+
+  it("is the Awaiting acceptance time alone for a ticket recorded before stretches were", () => {
+    const summary = summarize(ticket([["In Progress", "2026-01-01T00:00:00Z"], ["Awaiting acceptance", "2026-01-01T00:10:00Z"], ["Done", "2026-01-01T00:25:00Z"]]));
+    expect(summary.waitingOnUserMs).toBe(15 * minute);
+  });
+
+  it("takes the waiting tickets from the board's Needs you column only", () => {
+    expect(waitingTickets([{ id: "AP-1", column: "needs-you" }, { id: "AP-2", column: "working" }, { id: "AP-3", column: "stalled" }, { id: "AP-3.1", column: "needs-you" }])).toEqual(["AP-1", "AP-3.1"]);
+    expect(waitingTickets([])).toEqual([]);
+  });
+
+  it("unionMs merges overlapping, nested and touching intervals and ignores empty ones", () => {
+    expect(unionMs([])).toBe(0);
+    expect(unionMs([[0, 10], [5, 15], [20, 30], [22, 25], [30, 31], [40, 40], [50, 45]])).toBe(26);
+  });
+});
+
+describe("projectSpanMs (TR-100)", () => {
+  it("is the span of overlapping tickets, not their sum", () => {
+    const tickets = [row("AP-1", { wallMs: 10, startedAt: 0, finishedAt: 10 }), row("AP-2", { wallMs: 10, startedAt: 5, finishedAt: 15 }), row("AP-3", { wallMs: 2, startedAt: 6, finishedAt: 8 })];
+    expect(projectSpanMs(tickets)).toBe(15);
+    expect(projectTotals(tickets).wallMs).toBe(15);
+  });
+
+  it("runs to now while a ticket is open, and is 0 with none seen", () => {
+    expect(projectSpanMs([row("AP-1", { startedAt: 0, finishedAt: 10 }), row("AP-2", { status: "In Progress", startedAt: 4, finishedAt: null })], 100)).toBe(100);
+    expect(projectSpanMs([], 100)).toBe(0);
+    expect(projectSpanMs([row("AP-1")], 100)).toBe(0);
   });
 });
 

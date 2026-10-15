@@ -1,7 +1,7 @@
 /** Stats on disk (`state/stats.json`), written as tickets move and agents work. */
 import { z } from "zod";
 
-import { parentOf, ProjectStatsSchema, TicketStatsSchema, type AgentStats, type ProjectStats, type TicketStats } from "../shared/stats";
+import { parentOf, ProjectStatsSchema, TicketStatsSchema, withoutRepeats, type AgentStats, type ProjectStats, type TicketStats } from "../shared/stats";
 import { isMidTurn } from "./agents";
 import { statePath } from "./data-dir";
 import { readJsonIfPresent, readTextIfPresent, writeJsonAtomically, writeTextIfMissing } from "./files";
@@ -11,13 +11,21 @@ import { serialized } from "./serialize";
 const CostBackfillSchema = z.object({ at: z.string(), filled: z.number().int(), missing: z.number().int() });
 export type CostBackfill = z.infer<typeof CostBackfillSchema>;
 
+/** The one-time removal of entries into the status a ticket already had (TR-100): when, and how many. */
+const RepeatRepairSchema = z.object({ at: z.string(), removed: z.number().int() });
+export type RepeatRepair = z.infer<typeof RepeatRepairSchema>;
+
+/** A Needs-you check finding a ticket again within this long continues its stretch; a longer gap (the plugin was down) starts a new one. */
+export const WAITING_GAP_MS = 90_000;
+
 // Turn starts are kept on disk so a turn that spans a plugin reload or daemon restart keeps its duration.
-// `costBackfill` is null until the backfill has run once; files without it load as not yet backfilled.
+// `costBackfill` and `repeatRepair` are null until each has run once; files without them load as not yet run.
 const StatsFileSchema = z.object({
   tickets: z.record(z.string(), TicketStatsSchema).default({}),
   projects: z.record(z.string(), ProjectStatsSchema).default({}),
   turnStarts: z.record(z.string(), z.string()).default({}),
   costBackfill: CostBackfillSchema.nullable().default(null),
+  repeatRepair: RepeatRepairSchema.nullable().default(null),
 });
 type StatsFile = z.infer<typeof StatsFileSchema>;
 
@@ -68,7 +76,7 @@ export class Stats {
   private async load(): Promise<StatsFile> {
     if (this.file === null) {
       const parsed = StatsFileSchema.safeParse((await readJsonIfPresent(statePath("stats.json")).catch(() => null)) ?? {});
-      this.file = parsed.success ? parsed.data : { tickets: {}, projects: {}, turnStarts: {}, costBackfill: null };
+      this.file = parsed.success ? parsed.data : { tickets: {}, projects: {}, turnStarts: {}, costBackfill: null, repeatRepair: null };
     }
     return this.file;
   }
@@ -95,11 +103,72 @@ export class Stats {
     return Object.values((await this.load()).tickets).filter((stats) => project === null || stats.project === project);
   }
 
+  /** Records a status change; one into the status the ticket already has is ignored (TR-100). */
   transition(project: string, ticket: string, title: string, from: string | null, to: string, at: string): Promise<void> {
-    return this.update(project, ticket, (stats) => {
+    return this.modify((file) => {
+      const key = keyFor(project, ticket);
+      const stats = file.tickets[key] ?? TicketStatsSchema.parse({ project, ticket });
+      if (stats.transitions[stats.transitions.length - 1]?.to === to) return false;
       stats.title = title;
       stats.transitions.push({ from, to, at });
+      file.tickets[key] = stats;
+      return true;
     });
+  }
+
+  /** Each recorded ticket's last status, or null when none of the project's tickets was recorded. */
+  async recordedStatuses(project: string): Promise<Map<string, string> | null> {
+    const recorded = new Map<string, string>();
+    for (const stats of await this.all(project)) {
+      const last = stats.transitions[stats.transitions.length - 1];
+      if (last !== undefined) recorded.set(stats.ticket, last.to);
+    }
+    return recorded.size === 0 ? null : recorded;
+  }
+
+  /**
+   * The Needs-you check found these tickets' cards waiting on the user at `now` (TR-100): each
+   * continues its stretch, or starts one after a gap. A child's waiting counts on its parent too.
+   */
+  waitingSeen(project: string, tickets: readonly string[], now: number = Date.now()): Promise<void> {
+    if (tickets.length === 0) return Promise.resolve();
+    const at = new Date(now).toISOString();
+    return this.modify((file) => {
+      for (const target of new Set(tickets.flatMap(ticketAndParent))) {
+        const key = keyFor(project, target);
+        const stats = file.tickets[key] ?? TicketStatsSchema.parse({ project, ticket: target });
+        const last = stats.waiting[stats.waiting.length - 1];
+        if (last !== undefined && now - Date.parse(last.end) <= WAITING_GAP_MS && now >= Date.parse(last.end)) last.end = at;
+        else stats.waiting.push({ start: at, end: at });
+        file.tickets[key] = stats;
+      }
+      return true;
+    });
+  }
+
+  /**
+   * Drops, once, every recorded entry into the status its ticket already had (TR-100: the tracker
+   * conversion announced every Done ticket again, stretching their wall time to it). Before its write
+   * the file as it was is copied to `stats.json.pre-repair`. `repeatRepair` marks it done, and the
+   * repair finds nothing on a second pass anyway. Returns the marker, or null when it had already run.
+   */
+  repairRepeats(): Promise<RepeatRepair | null> {
+    let marker: RepeatRepair | null = null;
+    return serialized("state:stats", async () => {
+      const file = await this.load();
+      if (file.repeatRepair !== null) return;
+      const original = await readTextIfPresent(statePath("stats.json"));
+      if (original !== null) await writeTextIfMissing(statePath("stats.json.pre-repair"), original);
+      let removed = 0;
+      for (const stats of Object.values(file.tickets)) {
+        const kept = withoutRepeats(stats.transitions);
+        removed += stats.transitions.length - kept.length;
+        stats.transitions = kept;
+      }
+      marker = { at: new Date().toISOString(), removed };
+      file.repeatRepair = marker;
+      await writeJsonAtomically(statePath("stats.json"), file);
+    }).then(() => marker);
   }
 
   turnStarted(agentId: string): Promise<void> {
