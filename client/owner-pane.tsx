@@ -180,7 +180,7 @@ export function OwnerPane({
                       <Text style={{ flex: 1, color: theme.colors.foreground, fontSize: FONT_SIZE.caption }} numberOfLines={1}>
                         {elsewhere.text}
                       </Text>
-                      <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Open {elsewhere.agent.label}</Text>
+                      <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Open {paneAgentJob(elsewhere.agent.role)}</Text>
                     </Pressable>
                   )
                 }

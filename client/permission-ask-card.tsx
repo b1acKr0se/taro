@@ -58,8 +58,9 @@ export function PermissionAskCard({ ask, theme, compact, onOpen }: { ask: AgentA
     <Pressable accessibilityRole="button" accessibilityLabel={`${asker} is asking permission: ${ask.title}`} onPress={onOpen} style={styles.card}>
       <View style={styles.head}>
         <View style={styles.dot} />
-        <Text style={styles.asker} numberOfLines={1}>
-          {asker} is asking permission
+        {/* The asker alone, as on the Manager's question cards: the key and Allow …? say it is a permission. */}
+        <Text style={styles.asker} numberOfLines={2}>
+          {asker}
         </Text>
       </View>
       <View style={styles.line}>
