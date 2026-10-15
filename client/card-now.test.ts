@@ -86,6 +86,7 @@ function card(parts: Partial<Card>): Card {
     delivered: null,
     pause: null,
     pausable: false,
+    queuedWait: null,
     ...parts,
   };
 }
@@ -395,5 +396,41 @@ describe("questionContext", () => {
   it("is empty for a non-blocking question asked at an unknown time", () => {
     expect(questionContext({ blocking: false, askedAt: "" }, NOW)).toBeNull();
     expect(questionContext({ blocking: true, askedAt: "" }, NOW)).toBe("Blocking");
+  });
+});
+
+describe("queued wait lines (TR-138)", () => {
+  const queued = (queuedWait: Card["queuedWait"], parts: Partial<Card> = {}) => cardNowLine(card({ column: "queued", status: "Queued", owner: null, queuedWait, ...parts }), NOW);
+
+  it("names the dependency and its status, and says it is one", () => {
+    expect(queued({ on: [{ id: "NA-031", status: "Planning" }], dependencies: ["NA-031"], hold: null })).toEqual({
+      kind: "queued",
+      headline: "Waits on NA-031 (Planning)",
+      detail: "Depends on NA-031",
+    });
+  });
+
+  it("names the ticket a hold names, with the hold's reason under it", () => {
+    const reason = "overlaps NA-031, which now owns the acceptance card; start once NA-031 is Done";
+    expect(queued({ on: [{ id: "NA-031", status: "Planning" }], dependencies: [], hold: reason })).toEqual({ kind: "queued", headline: "Waits on NA-031 (Planning)", detail: `Held: ${reason}` });
+  });
+
+  it("says a hold naming no ticket is the manager's", () => {
+    expect(queued({ on: [], dependencies: [], hold: "one exclusive rewrite at a time" })).toEqual({ kind: "queued", headline: "Held by the manager", detail: "One exclusive rewrite at a time" });
+  });
+
+  it("lists several tickets, a ticket the tracker lacks by id alone, and both reasons", () => {
+    const line = queued({ on: [{ id: "NA-024", status: "In Progress" }, { id: "NA-099", status: null }, { id: "NA-031", status: "Done" }], dependencies: ["NA-024"], hold: "after NA-099 and NA-031" });
+    expect(line?.headline).toBe("Waits on NA-024 (In Progress), NA-099, NA-031 (Done)");
+    expect(line?.detail).toBe("Depends on NA-024 · Held: after NA-099 and NA-031");
+  });
+
+  it("says nothing for a queued ticket that waits on nothing, and a pause wins over a wait", () => {
+    expect(queued(null)).toBeNull();
+    expect(queued({ on: [{ id: "NA-031", status: "Planning" }], dependencies: ["NA-031"], hold: null }, { pause: { state: "paused", since: null, withoutHandoff: false } })?.kind).toBe("pause");
+  });
+
+  it("is a queued child's own line, though its parent owner's status is not", () => {
+    expect(queued({ on: [{ id: "NA-027.01", status: "Ready" }], dependencies: ["NA-027.01"], hold: null }, { parent: "NA-027", lastStatus: status })?.headline).toBe("Waits on NA-027.01 (Ready)");
   });
 });

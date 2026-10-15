@@ -224,6 +224,8 @@ export function TicketCard({
         return { icon: "CircleAlert", color: colors.statusDanger, headline: styles.danger };
       case "pause":
         return { icon: line.state === "queued-to-resume" ? "Clock" : "Pause", color: colors.foregroundMuted, headline: styles.strong };
+      case "queued":
+        return { icon: "Clock", color: colors.foregroundMuted, headline: styles.strong };
       case "accepted":
         return { icon: "GitMerge", color: colors.statusSuccess, headline: styles.strong };
       case "subagent":

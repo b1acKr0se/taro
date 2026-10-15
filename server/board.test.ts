@@ -19,6 +19,7 @@ const ticket = (id: string, status: string, updatedAt: string | null = "2026-10-
   status,
   labels: [],
   parentTaskId: null,
+  dependencies: [] as string[],
   acceptanceCriteriaCompleted: 0,
   acceptanceCriteriaCount: 0,
   updatedAt,
@@ -164,6 +165,34 @@ describe("loadBoard", () => {
       "TR-4": ["queued", "paused", false],
       // Not paused and with no owner: still Stalled, and Pause is offered.
       "TR-5": ["stalled", null, true],
+    });
+  });
+
+  it("says what a Queued card waits on: unfinished dependencies and the tickets a manager's HOLD names, not a pause (TR-138)", async () => {
+    const hold = "HOLD 2026-10-13T14:59Z — overlaps TR-1, which reworks the same card; start TR-3 once TR-1 is Done.";
+    const recordsOf: Record<string, string> = {
+      "TR-3": `${notes}\n\n${hold}`,
+      "TR-6": `${notes}\n\nHOLD 2026-10-13T14:59Z — paused by the user`,
+    };
+    vi.mocked(listTickets).mockResolvedValue([
+      ticket("TR-1", "Planning"),
+      ticket("TR-2", "Done"),
+      { ...ticket("TR-3", "Queued"), dependencies: ["TR-2"] },
+      { ...ticket("TR-4", "Queued"), dependencies: ["TR-1", "TR-2"] },
+      ticket("TR-5", "Queued"),
+      { ...ticket("TR-6", "Ready"), dependencies: ["TR-1"] },
+    ] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    vi.mocked(viewTicket).mockImplementation(async (_tracker: string, id: string) => ({ implementationNotes: recordsOf[id] ?? null, finalSummary: "" }) as unknown as Awaited<ReturnType<typeof viewTicket>>);
+    const board = await loadBoard({} as PaseoApi, state([]), "taro");
+    const waits = Object.fromEntries(board.cards.map((card) => [card.id, card.queuedWait]));
+    expect(waits).toEqual({
+      "TR-1": null,
+      "TR-2": null,
+      "TR-3": { on: [{ id: "TR-1", status: "Planning" }], dependencies: [], hold: "overlaps TR-1, which reworks the same card; start TR-3 once TR-1 is Done." },
+      "TR-4": { on: [{ id: "TR-1", status: "Planning" }], dependencies: ["TR-1"], hold: null },
+      "TR-5": null,
+      // Paused, so the card says the pause; its dependency still shows once it is resumed.
+      "TR-6": { on: [{ id: "TR-1", status: "Planning" }], dependencies: ["TR-1"], hold: null },
     });
   });
 

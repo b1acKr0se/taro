@@ -11,6 +11,7 @@ import { ChatMessageIdSchema } from "./pending-sends";
 import { ColumnIdSchema } from "./board";
 import { MilestoneSchema } from "./milestones";
 import { PauseViewSchema } from "./pause";
+import { QueuedWaitSchema } from "./queued-wait";
 import { PaseoProjectCandidateSchema, SettingsTemplateSchema } from "./project-candidates";
 import { ProjectConfigSchema, ProjectNameSchema, ProjectSettingsSchema, ROLES, SUBAGENT_ROLES } from "./project";
 import { CrashReportSchema, DeviceSchema, LaunchIdSchema, TrailReportSchema } from "./crash-trail";
@@ -241,6 +242,8 @@ export const CardSchema = z.object({
   pause: PauseViewSchema.nullable().default(null),
   /** Pause is offered: a top-level ticket under way, not pausing or paused already. */
   pausable: z.boolean().default(false),
+  /** What a Queued ticket waits on: dependencies not yet Done, the manager's HOLD (TR-138), else null. */
+  queuedWait: QueuedWaitSchema.nullable().default(null),
 });
 export type Card = z.infer<typeof CardSchema>;
 
