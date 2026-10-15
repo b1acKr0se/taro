@@ -181,8 +181,8 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
     `gh pr merge <url> --match-head-commit <sha>` (squash unless the repository says otherwise),
     then confirm `state` is `MERGED`. A moved head → present it again. A conflict → update from the
     base branch and rerun checks; merge only if the resolution is mechanical, otherwise present
-    again. GitHub refusing the merge → say why. Then record ACCEPTANCE, set **Done**, and end with
-    `done: merged <url>`.
+    again. GitHub refusing the merge → say why. Then record ACCEPTANCE with `merge: merged <merge
+    commit>` (its fixed field, `reference/tickets.md`), set **Done**, and end with `done: merged <url>`.
   - **Local branch** (decision 34, TR-109), in this order:
     1. Your branch head is not the recorded review head → do not merge; present the new head again.
     2. The main checkout (the repository path) has uncommitted or untracked changes, or is not on
@@ -194,7 +194,7 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
        checks in ACCEPTANCE, never as a new review-head or EVIDENCE (both read as presenting again). Any conflict, even
        one you resolved, or failing checks → the user has not seen it: present it again.
     4. `git -C <repository path> merge --ff-only <your branch>`, then confirm the base branch's head
-       is your branch's. Record ACCEPTANCE (merge: base `<old>` → `<new>`), set **Done**, and end
+       is your branch's. Record ACCEPTANCE (`merge: merged <old> → <new>`), set **Done**, and end
        with `done: merged into <base>`.
 
   **Present it again** means: back to In Progress; fix it on your branch (resolve the conflict, fix

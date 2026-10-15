@@ -6,8 +6,8 @@
  * that need the user now; Pause and Compact are in the ticket view's summary (TR-095). An ask is in
  * the asker's words (TR-045): a question with its options as chips that answer at once, what a
  * permission asks to do, a delivery's summary with Accept and Request changes as one pair; a scope
- * approval with a template plan is the compact plan card instead (TR-061). Once finished: what it was
- * and what it cost.
+ * approval with a template plan is the compact plan card instead (TR-061). Once finished: what it was,
+ * what it cost and its PR, merged or not (TR-114).
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
@@ -21,7 +21,8 @@ import { cardFooterLine, cardNowLine, type NowLine } from "./card-now";
 import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
-import { cardStatsText, errorText, formatCost } from "./format";
+import { cardStatsText, errorText, formatCost, pullRequestLabel } from "./format";
+import { mergedPurple } from "./github-colors";
 import { SPACE } from "./spacing";
 import { OptionChips } from "./option-chips";
 import { PlanDecision } from "./plan-card";
@@ -143,8 +144,25 @@ export function TicketCard({
       <PhaseBadge theme={theme} status={card.status} />
     </View>
   );
+  // A Done card's PR sits on its stats line, GitHub's purple merged icon when it merged (TR-114).
+  const donePullRequest =
+    card.column !== "done" || card.pullRequest === null ? null : (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${pullRequestLabel(card.pullRequest)}${card.pullRequestMerged ? ", merged" : ""}`}
+        onPress={() => void openExternalUrl(card.pullRequest ?? "").catch((caught: unknown) => toast.error(errorText(caught)))}
+        style={styles.stat}
+      >
+        <View style={styles.statIcon}>
+          <Icon name={card.pullRequestMerged ? "GitMerge" : "GitPullRequest"} size={12} color={card.pullRequestMerged ? mergedPurple(colors) : colors.foregroundMuted} />
+        </View>
+        <Text style={[styles.link, styles.statText]}>{pullRequestLabel(card.pullRequest)}</Text>
+      </Pressable>
+    );
   const statsLine =
-    stats === null ? null : (
+    stats === null ? (
+      donePullRequest === null ? null : <View style={styles.row}>{donePullRequest}</View>
+    ) : (
       <View style={styles.row}>
         {/* Each icon stays beside its text: a narrow card wraps the text beside the icon, not under it (TR-103). */}
         <View style={styles.stat}>
@@ -164,6 +182,7 @@ export function TicketCard({
             <Text style={[styles.muted, styles.statText]}>{formatCost(stats.costUsd)}</Text>
           </View>
         )}
+        {donePullRequest}
       </View>
     );
 

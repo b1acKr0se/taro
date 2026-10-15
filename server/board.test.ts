@@ -270,21 +270,40 @@ describe("loadBoard", () => {
     const board = await loadBoard({} as PaseoApi, state([]), "taro");
     expect(board.cards[0]?.latestMilestone).toEqual({ kind: "MILESTONE", time: "2026-10-13T14:30Z", text: "tests green" });
     expect(board.cards[1]?.latestMilestone).toBeNull();
-    expect(vi.mocked(viewTicket).mock.calls.map((call) => call[1])).toEqual(["TR-1"]);
+    // The Done card is read for its PR (TR-114), not its milestone.
+    expect(vi.mocked(viewTicket).mock.calls.map((call) => call[1])).toEqual(["TR-1", "TR-2"]);
+  });
+
+  it("gives a Done card its PR and whether it merged, and a Done ticket without one nothing (TR-114)", async () => {
+    const recordsOf: Record<string, string> = {
+      "TR-2": "EXECUTION 2026-10-15T02:52Z — pr: https://github.com/example/notes-app/pull/6\n\nACCEPTANCE 2026-10-15T03:18Z — user: \"I accept TR-2.\"; merge: merged ab26974",
+      "TR-3": "EXECUTION 2026-10-15T02:52Z — pr: https://github.com/example/notes-app/pull/7\n\nACCEPTANCE 2026-10-15T03:18Z — merge: not merged — GitHub refused",
+      "TR-4": "ACCEPTANCE 2026-10-14T10:23Z — merge: merged bee2749 → aac6288",
+    };
+    vi.mocked(viewTicket).mockImplementation(async (_tracker, id) => ({ implementationNotes: recordsOf[id] ?? notes, finalSummary: "" }) as unknown as Awaited<ReturnType<typeof viewTicket>>);
+    vi.mocked(listTickets).mockResolvedValue([ticket("TR-2", "Done"), ticket("TR-3", "Done"), ticket("TR-4", "Done")] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    const board = await loadBoard({} as PaseoApi, state([]), "taro");
+    const facts = Object.fromEntries(board.cards.map((card) => [card.id, [card.pullRequest, card.pullRequestMerged]]));
+    expect(facts).toEqual({
+      "TR-2": ["https://github.com/example/notes-app/pull/6", true],
+      "TR-3": ["https://github.com/example/notes-app/pull/7", false],
+      "TR-4": [null, true],
+    });
   });
 
   it("reads a ticket's records again only when the ticket changed or a minute passed", async () => {
+    const reads = (id: string) => vi.mocked(viewTicket).mock.calls.filter((call) => call[1] === id).length;
     await loadBoard({} as PaseoApi, state([]), "taro");
     now += 3_000;
     await loadBoard({} as PaseoApi, state([]), "taro");
-    expect(viewTicket).toHaveBeenCalledTimes(1);
+    expect([reads("TR-1"), reads("TR-2")]).toEqual([1, 1]);
     vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "In Progress", "2026-10-13 15:01")] as unknown as Awaited<ReturnType<typeof listTickets>>);
     now += 3_000;
     await loadBoard({} as PaseoApi, state([]), "taro");
-    expect(viewTicket).toHaveBeenCalledTimes(2);
+    expect(reads("TR-1")).toBe(2);
     now += 61_000;
     await loadBoard({} as PaseoApi, state([]), "taro");
-    expect(viewTicket).toHaveBeenCalledTimes(3);
+    expect(reads("TR-1")).toBe(3);
   });
 
   it("lists archived agents at most every half minute, and still draws live owners when that list fails", async () => {
@@ -332,6 +351,13 @@ describe("loadBoard pages Queued and Done (TR-082)", () => {
     const next = await board();
     expect(next.cards.filter((card) => card.column === "done").map((card) => card.id)[0]).toBe("TR-1");
     expect(next.totals.done).toBe(41);
+  });
+
+  it("reads the records of the Done cards on the page only (TR-114)", async () => {
+    vi.mocked(viewTicket).mockClear();
+    await board();
+    const read = vi.mocked(viewTicket).mock.calls.map((call) => call[1]).filter((id) => id.startsWith("DO-"));
+    expect(read).toHaveLength(5);
   });
 
   it("sends a ticket asked for by id past its page, marked off the page", async () => {

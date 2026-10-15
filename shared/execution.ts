@@ -162,3 +162,30 @@ export function notMergedRecord(notes: string | null): NotMergedRecord | null {
   }
   return null;
 }
+
+/** The fixed merge field of an ACCEPTANCE record (TR-114): `merge: merged <sha>`, `merge: not merged — <reason>`, `merge: none`. */
+const MERGE_FIELD = /(?:^|[\s;,(—])merge:[ \t]*(merged|not merged|none)\b/gi;
+
+/**
+ * Whether the ticket's pull request merged, as its owner recorded at Accept. The newest ACCEPTANCE
+ * record's merge field decides. Records written before the field existed are prose ("state MERGED",
+ * "squash-merged as <sha>", "Merge: squash …"), so for those only the plugin's own ACCEPTED note
+ * saying it merges the pull request, followed by an ACCEPTANCE record naming a PR and "MERGED" or a
+ * merge commit, counts as merged.
+ */
+export function pullRequestMerged(notes: string | null): boolean {
+  const records = noteRecords(notes);
+  for (let index = records.length - 1; index >= 0; index--) {
+    const record = records[index] ?? "";
+    if (!/^ACCEPTANCE\b/.test(record)) continue;
+    const fields = [...record.matchAll(MERGE_FIELD)];
+    const field = fields[fields.length - 1]?.[1];
+    if (field !== undefined) return field.toLowerCase() === "merged";
+    if (!PULL_REQUEST_URL_ONCE.test(record) || !(/(?<!NOT[ -])\bMERGED\b/.test(record) || /\bmerge commit\b/i.test(record))) return false;
+    // The prose alone may describe a merge the plugin never asked for; its ACCEPTED note says it did.
+    return records.slice(0, index).some((earlier) => /^ACCEPTED\b[^\n]*merging:\s*the pull request/i.test(earlier));
+  }
+  return false;
+}
+
+const PULL_REQUEST_URL_ONCE = new RegExp(PULL_REQUEST_URL.source);
