@@ -19,6 +19,7 @@ import { restartManager } from "./manager";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { projectPaths, requireProjectConfig } from "./projects";
 import { sendFromPlugin } from "./send";
+import { serialized } from "./serialize";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
 import { isSubagentRole } from "../shared/project";
@@ -241,16 +242,26 @@ export class Recovery {
   private async releaseHeld(paseo: PaseoApi, current: string, max: string): Promise<void> {
     for (const [project, held] of [...this.heldForManager]) {
       this.heldForManager.delete(project);
+      // Kept for the next tick (ahead of anything held since), not dropped.
+      const keep = () => this.heldForManager.set(project, [...held, ...(this.heldForManager.get(project) ?? [])]);
       const config = await requireProjectConfig(project).catch(() => null);
-      const manager = config === null ? null : await fetchLiveAgent(paseo, config.managerAgentId);
-      if (manager === null) continue;
-      const opening = await message(TEMPLATES.headroomRecovered, { current, max });
-      try {
+      // A removed project's wake-ups go with it.
+      if (config === null) continue;
+      // Under the restart's lock (TR-128): sent to the manager a replacement started, never the one it archived.
+      const sent = await serialized(`manager:${project}`, async () => {
+        const manager = await fetchLiveAgent(paseo, (await requireProjectConfig(project)).managerAgentId);
+        if (manager === null) return false;
+        const opening = await message(TEMPLATES.headroomRecovered, { current, max });
         await sendFromPlugin(paseo, manager.id, [opening, ...held.map((entry) => entry.text)].join("\n\n---\n\n"));
-      } catch (error: unknown) {
-        // Kept for the next tick (ahead of anything held since), not dropped.
-        this.heldForManager.set(project, [...held, ...(this.heldForManager.get(project) ?? [])]);
+        return true;
+      }).catch((error: unknown) => {
+        keep();
         throw error;
+      });
+      // No manager live (a replacement that failed to start, or none started): kept until one is.
+      if (!sent) {
+        keep();
+        continue;
       }
       for (const entry of held) entry.onSent?.();
     }
