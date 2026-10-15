@@ -4,7 +4,7 @@
 // {"press": "Enter", "times": 2} (into the focused element), {"wait": ms}, {"shot": "out.png"},
 // {"offline": true|false} (drops or restores the network), {"run": "shell command"} (on the host, awaited),
 // {"spawn": "shell command"} (on the host, not awaited), {"reload": true}, {"waitText": "text", "timeout": ms},
-// {"tap": [x, y]} (a press at that point, such as the phone layout's menu at [24, 36]), {"dropFile": {"name": "notes.txt", "text": "…", "x": 540, "y": 400}} (a text file dropped at that point).
+// {"tap": [x, y]} (a press at that point, such as the phone layout's menu at [24, 36]), {"scroll": [x, y, dy]} (the wheel over that point; dy < 0 scrolls up), {"dropFile": {"name": "notes.txt", "text": "…", "x": 540, "y": 400}} (a text file dropped at that point).
 // WIDTH/HEIGHT set the viewport; PHONE=1 draws a phone (390×844, touch).
 const { execSync, spawn } = require("node:child_process");
 const [, , playwrightPath, url, stepsPath] = process.argv;
@@ -58,6 +58,9 @@ const steps = JSON.parse(require("node:fs").readFileSync(stepsPath, "utf8"));
         await page.reload({ waitUntil: "networkidle" }).catch(() => {});
       } else if (step.tap !== undefined) {
         await page.mouse.click(step.tap[0], step.tap[1]);
+      } else if (step.scroll !== undefined) {
+        await page.mouse.move(step.scroll[0], step.scroll[1]);
+        await page.mouse.wheel(0, step.scroll[2]);
       } else if (step.dropFile !== undefined) {
         // A file dropped at a point of the page, as a browser delivers a drag from the desktop (TR-099's file drop).
         await page.evaluate(({ name, text, x, y }) => {
