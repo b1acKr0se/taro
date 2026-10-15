@@ -6,13 +6,14 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
-import { useEffect, useMemo, useRef, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Platform, useWindowDimensions, View, type TextInput as NativeTextInput } from "react-native";
 
 import { COMPOSER_CONTROL_SIZE, COMPOSER_FONT_SIZE, COMPOSER_WEB_LINE_HEIGHT, composerMaxHeight, composerMetrics, sendsOnEnter } from "./composer-height";
 import { useComposerHeight } from "./composer-input-height";
 import { Pressable, TextInput } from "./focus";
 import { enterKeyAction, type WebKeyPressEvent } from "./keys";
+import { createNativeFieldSync } from "./native-field-sync";
 import { SPACE } from "./spacing";
 import { Spinner } from "./ui";
 
@@ -84,6 +85,7 @@ export function ReplyBox({
     field.current?.focus();
   }, [greyed, field]);
   const web = Platform.OS === "web";
+  const nativeText = useNativeText(!web, value, onChangeText, field);
   const windowSize = useWindowDimensions();
   const metrics = composerMetrics(web, windowSize.width);
   const height = useComposerHeight({ text: value, field, minHeight: metrics.minHeight, maxHeight: composerMaxHeight(windowSize.height) });
@@ -146,14 +148,14 @@ export function ReplyBox({
       {above}
       <TextInput
         ref={field}
-        value={value}
-        onChangeText={onChangeText}
+        key={web ? undefined : nativeText.revision}
+        {...(web ? { value, onChangeText } : { defaultValue: nativeText.text, onChangeText: nativeText.onChangeText })}
         onFocus={onFocus}
         placeholder={submitOnEnter && enterHint ? `${placeholder} (Enter sends, Shift+Enter for a new line)` : placeholder}
         placeholderTextColor={colors.foregroundMuted}
         accessibilityLabel={accessibilityLabel}
         editable={editable && !greyed}
-        autoFocus={autoFocus}
+        autoFocus={nativeText.revision === 0 ? autoFocus : nativeText.refocus}
         multiline
         scrollEnabled={height.scrollEnabled}
         onKeyPress={
@@ -210,4 +212,27 @@ export function ReplyBox({
       {box}
     </Pressable>
   );
+}
+
+/**
+ * The phone's field keeps its own text (TR-125), as Paseo's composer does: JavaScript never writes it
+ * back while the reader types, so a pane slow to render long text cannot race the keyboard, the race
+ * that crashed the app. A draft set from outside (cleared on send, put back, another agent's) replaces
+ * the field, which also resets its grown height, keeping the focus it had.
+ */
+function useNativeText(enabled: boolean, value: string, onChangeText: (text: string) => void, field: RefObject<NativeTextInput | null>) {
+  const [sync] = useState(() => createNativeFieldSync(value));
+  const [shown, setShown] = useState({ revision: 0, text: value, refocus: false });
+  useLayoutEffect(() => {
+    if (!enabled || !sync.outside(value)) return;
+    const refocus = field.current?.isFocused() ?? false;
+    setShown((current) => ({ revision: current.revision + 1, text: value, refocus }));
+  }, [enabled, value, sync, field]);
+  return {
+    ...shown,
+    onChangeText: (text: string) => {
+      sync.typed(text);
+      onChangeText(text);
+    },
+  };
 }
