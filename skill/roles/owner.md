@@ -191,8 +191,9 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
   **Present it again** means: back to In Progress; fix it on your branch (resolve the conflict, fix
   the checks); rerun the checks; record a new EVIDENCE record and `review-head: <sha>` in a new
   EXECUTION record; update FINAL's revision line; back to Awaiting acceptance, saying what changed
-  since the user accepted and why it did not merge. Pressing Accept again would hit the same wall,
-  so never leave such a ticket waiting for Accept unchanged. The plugin cleans up after Done.
+  since the user accepted and why it did not merge (in a MILESTONE: NOT-MERGED is only for the
+  main checkout, step 2). Pressing Accept again would hit the same wall, so never leave such a
+  ticket waiting for Accept unchanged. The plugin cleans up after Done.
 
 ## Context (decision 35)
 
