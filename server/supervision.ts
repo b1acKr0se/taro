@@ -90,6 +90,25 @@ export function turnIdentity(turn: readonly TimelineItem[]): string | null {
 }
 
 /**
+ * The end of an agent's projected timeline, reaching back to the message that opened its latest turn:
+ * without it the turn has no identity, and a re-ask in a long turn would be taken for a replay (TR-108).
+ * Bounded, as the very first turn may have no such message at all.
+ */
+async function latestTurnItems(paseo: PaseoApi, agentId: string): Promise<TimelineItem[] | null> {
+  const timeline = paseo.agents.ref(agentId).timeline;
+  let page = await timeline.refetch({ direction: "tail", limit: 40, projection: "projected" }).catch(() => null);
+  if (page === null) return null;
+  let items = page.entries.map((entry) => entry.item);
+  for (let older = 0; older < 10 && !items.some((item) => item.type === "user_message"); older++) {
+    if (!page.hasOlder || page.startCursor === null) break;
+    page = await timeline.refetch({ direction: "before", cursor: page.startCursor, limit: 40, projection: "projected" }).catch(() => null);
+    if (page === null) break;
+    items = [...page.entries.map((entry) => entry.item), ...items];
+  }
+  return items;
+}
+
+/**
  * Whether the provider compacted this turn on its own. The hook passes the whole stored timeline,
  * so only the current turn counts, or every later turn (the reload included) would reload again.
  * Claude marks it `trigger: "auto"`; Codex sets only "manual", so its automatic ones carry none.
@@ -279,9 +298,8 @@ export class Supervisor {
         // Seen by the hook already (its clock and Paseo's differ by moments, hence the minute's slack).
         const seenAt = known?.lastTurnEndedAt === null || known?.lastTurnEndedAt === undefined ? Number.NaN : Date.parse(known.lastTurnEndedAt);
         if (!Number.isNaN(seenAt) && seenAt >= Date.parse(agent.updatedAt) - 60_000) continue;
-        const page = await paseo.agents.ref(agent.id).timeline.refetch({ direction: "tail", limit: 40, projection: "projected" }).catch(() => null);
-        if (page === null) continue;
-        const items = page.entries.map((entry) => entry.item);
+        const items = await latestTurnItems(paseo, agent.id);
+        if (items === null) continue;
         const turn = currentTurn(items);
         const closing = closingText(turn);
         const status = parseStatusLine(closing);

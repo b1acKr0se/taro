@@ -316,6 +316,31 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     expect(decisions.map((decision) => decision.status)).toEqual(["answered"]);
   });
 
+  it("reopens a re-ask the reconcile finds at the end of a turn longer than one page, paging back to its opening", async () => {
+    const { state, decisions, agents } = fakeState();
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+    await run(taro, human("start"), ask("scope-approval", "Approve the plan for TR-9?"));
+    decisions[0]!.status = "answered";
+    delete agents[owner.id];
+    // The revision turn: its opening and some tool calls on an older page, the re-ask on the tail page.
+    const tools = (from: number) => Array.from({ length: 40 }, (_, index) => ({ type: "tool_call", callId: `c${from + index}`, name: "shell", status: "completed" }));
+    const tail = [...tools(40).slice(1), ask("scope-approval", "Approve the plan for TR-9?")];
+    const older = [human("also remove the Screens section"), ...tools(0).slice(1)];
+    const requests: unknown[] = [];
+    const refetch = async (options: { direction: string }) => {
+      requests.push(options);
+      const page = options.direction === "tail" ? { items: tail, hasOlder: true } : { items: older, hasOlder: false };
+      return { entries: page.items.map((item) => ({ item })), hasOlder: page.hasOlder, startCursor: { epoch: "e", seq: options.direction === "tail" ? 41 : 1 } };
+    };
+    vi.mocked(listTaroAgents).mockResolvedValueOnce([{ ...owner, updatedAt: new Date().toISOString() } as unknown as PaseoAgent]);
+    await taro.reconcile({ agents: { ref: () => ({ timeline: { refetch } }) } } as unknown as PaseoApi, ["taro"]);
+    expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
+    expect(requests).toEqual([
+      { direction: "tail", limit: 40, projection: "projected" },
+      { direction: "before", cursor: { epoch: "e", seq: 41 }, limit: 40, projection: "projected" },
+    ]);
+  });
+
   it("does not let an earlier turn's user words close a decision asked later", async () => {
     const { state, decisions } = fakeState();
     const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
