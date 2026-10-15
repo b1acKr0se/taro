@@ -22,6 +22,7 @@ function decision(id: string, parts: Partial<StoredDecision> = {}): StoredDecisi
     agentRole: "owner",
     agentTitle: null,
     askedAt: "2026-01-01T00:00:00Z",
+    turn: null,
     status: "open",
     answer: null,
     ...parts,

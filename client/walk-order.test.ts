@@ -22,6 +22,7 @@ function decision(id: string, blocking: boolean, askedAt: string): StoredDecisio
     agentRole: "owner",
     agentTitle: null,
     askedAt,
+    turn: null,
     status: "open",
     answer: null,
   };

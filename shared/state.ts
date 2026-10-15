@@ -21,6 +21,8 @@ export const StoredDecisionSchema = ParsedDecisionSchema.extend({
   agentRole: RoleSchema,
   agentTitle: z.string().nullable(),
   askedAt: z.string(),
+  /** The turn that asked it (`turnIdentity`): the same block in another turn is asked again (TR-108). Null before it was recorded. */
+  turn: z.string().nullable().default(null),
   status: z.enum(["open", "answered", "withdrawn"]),
   answer: DecisionAnswerSchema.nullable().default(null),
 });

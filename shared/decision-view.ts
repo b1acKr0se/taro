@@ -72,7 +72,7 @@ export function decisionTimelineItems(text: string, phase: "streaming" | "comple
 
 /** A block Taro does not hold, shaped for the card so it can be shown read-only. */
 export function untrackedDecision(block: ParsedDecision, agentId: string): StoredDecision {
-  return { ...block, key: "", project: "", ticket: null, agentId, agentRole: "owner", agentTitle: null, askedAt: "", status: "open", answer: null };
+  return { ...block, key: "", project: "", ticket: null, agentId, agentRole: "owner", agentTitle: null, askedAt: "", turn: null, status: "open", answer: null };
 }
 
 /** One option as the card draws it: a full-width row, the recommended one carrying the reason (TR-030). */

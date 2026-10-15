@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decisionsOfLiveAgents, withdrawOpenDecisions, type StoredDecision } from "./state";
+import { decisionsOfLiveAgents, StoredDecisionSchema, withdrawOpenDecisions, type StoredDecision } from "./state";
 
 function decision(agentId: string, id: string, status: StoredDecision["status"] = "open", project = "taro"): StoredDecision {
   return {
@@ -21,6 +21,7 @@ function decision(agentId: string, id: string, status: StoredDecision["status"] 
     agentRole: "owner",
     agentTitle: null,
     askedAt: "2026-10-13T12:00:00.000Z",
+    turn: null,
     status,
     answer: null,
   };
@@ -56,5 +57,13 @@ describe("withdrawOpenDecisions", () => {
     const decisions = [decision("a", "x")];
     expect(withdrawOpenDecisions(decisions, () => false)).toBe(0);
     expect(decisions[0]?.status).toBe("open");
+  });
+});
+
+describe("StoredDecisionSchema", () => {
+  it("reads a decision stored before its turn was recorded (TR-108) with no turn", () => {
+    const { turn: _turn, ...stored } = decision("owner-1", "scope-approval", "answered");
+    expect(StoredDecisionSchema.parse(stored).turn).toBeNull();
+    expect(StoredDecisionSchema.parse({ ...stored, turn: "abc" }).turn).toBe("abc");
   });
 });

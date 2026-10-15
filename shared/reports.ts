@@ -376,6 +376,16 @@ export function sameQuestion(left: Pick<ParsedDecision, "question" | "options" |
   );
 }
 
+/**
+ * Whether a block is an answered decision seen again (a repeated hook, the reconcile after a restart)
+ * rather than asked again (TR-108). A plan approval reads the same every round, so the turn decides
+ * when both are known; a decision stored before turns were recorded falls back to the question.
+ */
+export function seenAgain(stored: Pick<ParsedDecision, "question" | "options" | "blocking"> & { turn: string | null }, block: Pick<ParsedDecision, "question" | "options" | "blocking">, turn: string | null): boolean {
+  if (stored.turn !== null && turn !== null) return stored.turn === turn;
+  return sameQuestion(stored, block);
+}
+
 /** A short stable hash, for ids of blocks that forgot theirs. */
 export function hashText(text: string): string {
   let hash = 5381;

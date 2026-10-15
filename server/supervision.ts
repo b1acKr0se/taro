@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compaction";
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { isCrash } from "../shared/recovery";
-import { hashText, parseDecisionBlocks, parseStatusLine, sameQuestion, withImagePaths, type ParsedDecision } from "../shared/reports";
+import { hashText, parseDecisionBlocks, parseStatusLine, seenAgain, withImagePaths, type ParsedDecision } from "../shared/reports";
 import { withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDecision } from "../shared/state";
 import { fetchLiveAgent, isMidTurn, listTaroAgents } from "./agents";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
@@ -75,6 +75,18 @@ export function allAssistantText(timeline: readonly TimelineItem[]): string {
 export function currentTurn(timeline: readonly TimelineItem[]): readonly TimelineItem[] {
   const lastUser = timeline.map((item) => item.type).lastIndexOf("user_message");
   return timeline.slice(lastUser === -1 ? 0 : lastUser);
+}
+
+/**
+ * Which turn this is, from the message that opened it and everything the agent wrote in it, so a block
+ * seen again is told from the same block asked again in a later turn (TR-108). Message ids are left
+ * out, as the hook's timeline and Paseo's projected page may not both carry them. Null when the turn's
+ * opening is not there (a page that starts mid-turn).
+ */
+export function turnIdentity(turn: readonly TimelineItem[]): string | null {
+  const opening = turn[0];
+  if (opening === undefined || opening.type !== "user_message") return null;
+  return hashText(JSON.stringify([opening.text, allAssistantText(turn)]));
 }
 
 /**
@@ -171,7 +183,7 @@ export class Supervisor {
     const decisions = parseDecisionBlocks(allAssistantText(turn));
     const userWords = humanMessages(turn);
     if (userWords.length > 0) await this.closeAnsweredInTab(live.id, userWords, decisions, now);
-    if (decisions.length > 0) await this.storeDecisions(paseo, live, identity, decisions, now);
+    if (decisions.length > 0) await this.storeDecisions(paseo, live, identity, decisions, turnIdentity(turn), now);
 
     const openBlocking = (await this.state.allDecisions()).some(
       (decision) => decision.agentId === live.id && decision.status === "open" && decision.blocking,
@@ -278,7 +290,7 @@ export class Supervisor {
           if (status !== null) record.lastStatus = { ...status, at: agent.updatedAt };
         });
         const decisions = parseDecisionBlocks(allAssistantText(turn));
-        if (decisions.length > 0) await this.storeDecisions(paseo, agent, identity, decisions, agent.updatedAt);
+        if (decisions.length > 0) await this.storeDecisions(paseo, agent, identity, decisions, turnIdentity(turn), agent.updatedAt);
         if (isSubagentRole(identity.role)) {
           await this.deliverReport(paseo, agent, identity, closing, hashText(closing), agent.labels["paseo.parent-agent-id"] ?? null);
         }
@@ -344,7 +356,7 @@ export class Supervisor {
     });
   }
 
-  private async storeDecisions(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, decisions: readonly ParsedDecision[], now: string): Promise<void> {
+  private async storeDecisions(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, decisions: readonly ParsedDecision[], turn: string | null, now: string): Promise<void> {
     const newlyAsked: string[] = [];
     const corrections = await this.state.updateDecisions((stored) => {
       const problems: string[] = [];
@@ -366,6 +378,7 @@ export class Supervisor {
           agentRole: identity.role,
           agentTitle: identity.title,
           askedAt: now,
+          turn,
           status: "open",
           answer: null,
         };
@@ -374,8 +387,8 @@ export class Supervisor {
           stored.push(next);
           if (identity.ticket !== null) newlyAsked.push(identity.ticket);
           if (decision.problems.length > 0) problems.push(...decision.problems);
-        } else if (existing.status !== "open" && sameQuestion(existing, decision)) {
-          // The same block seen again (a repeated message, a replayed turn) does not reopen an answered decision.
+        } else if (existing.status !== "open" && seenAgain(existing, decision, turn)) {
+          // The same block seen again (a repeated hook, a replayed turn) does not reopen an answered decision; asked in a later turn, it does.
           continue;
         } else {
           stored[index] = next;

@@ -146,7 +146,7 @@ describe("pluginPathIn", () => {
   });
 });
 
-import { sameQuestion } from "../shared/reports";
+import { sameQuestion, seenAgain } from "../shared/reports";
 
 describe("sameQuestion", () => {
   const asked = { question: "Approve?", blocking: true, options: [{ label: "Approve", prompt: "Approve it", consequence: "", images: [] }] };
@@ -154,5 +154,19 @@ describe("sameQuestion", () => {
     expect(sameQuestion(asked, { ...asked, options: [{ label: "Approve", prompt: "Approve it", consequence: "different note", images: [] }] })).toBe(true);
     expect(sameQuestion(asked, { ...asked, question: "Approve the new scope?" })).toBe(false);
     expect(sameQuestion(asked, { ...asked, blocking: false })).toBe(false);
+  });
+});
+
+describe("seenAgain (TR-108)", () => {
+  const asked = { question: "Approve the plan for TR-9?", blocking: true, options: [{ label: "Approve", prompt: "Approve the plan for TR-9", consequence: "", images: [] }] };
+  it("is the same turn when both turns are known, whatever the question", () => {
+    expect(seenAgain({ ...asked, turn: "t1" }, asked, "t1")).toBe(true);
+    expect(seenAgain({ ...asked, turn: "t1" }, asked, "t2")).toBe(false);
+    expect(seenAgain({ ...asked, turn: "t1" }, { ...asked, question: "Approve the new plan?" }, "t1")).toBe(true);
+  });
+  it("falls back to the question when either turn is unknown", () => {
+    expect(seenAgain({ ...asked, turn: null }, asked, "t2")).toBe(true);
+    expect(seenAgain({ ...asked, turn: "t1" }, asked, null)).toBe(true);
+    expect(seenAgain({ ...asked, turn: null }, { ...asked, question: "Approve the new plan?" }, null)).toBe(false);
   });
 });

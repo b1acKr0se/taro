@@ -242,6 +242,80 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     expect(decisions.map((decision) => [decision.question, decision.status])).toEqual([["Approve v2?", "answered"]]);
   });
 
+  // TR-108: a plan approval reads the same every round, so a re-ask is told from a replay by its turn.
+  it("reopens an answered decision the agent asks again in a later turn, every round", async () => {
+    const { state, decisions } = fakeState();
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+    const first = [human("start"), ask("scope-approval", "Approve the plan for TR-9?")];
+    await run(taro, ...first);
+    decisions[0]!.status = "answered";
+    const second = [human("also remove the Screens section"), { type: "assistant_message", text: "Plan updated." }, ask("scope-approval", "Approve the plan for TR-9?")];
+    await run(taro, ...first, ...second);
+    expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
+    expect(decisions[0]?.answer).toBeNull();
+
+    decisions[0]!.status = "withdrawn";
+    const third = [plugin("one more change"), ask("scope-approval", "Approve the plan for TR-9?")];
+    await run(taro, ...first, ...second, ...third);
+    expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
+  });
+
+  it("reopens a re-ask whose turn opens with the same words, as its text differs", async () => {
+    const { state, decisions } = fakeState();
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+    const first = [human("go on"), ask("naming", "Which name?")];
+    await run(taro, ...first);
+    decisions[0]!.status = "answered";
+    await run(taro, ...first, human("go on"), { type: "assistant_message", text: "Tried both names." }, ask("naming", "Which name?"));
+    expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
+  });
+
+  it("keeps an answered decision answered when the same turn is seen again", async () => {
+    const { state, decisions } = fakeState();
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+    const first = [human("start"), ask("scope-approval", "Approve the plan for TR-9?")];
+    await run(taro, ...first);
+    decisions[0]!.status = "answered";
+    await run(taro, ...first);
+    await run(taro, human("earlier"), reply, ...first);
+    expect(decisions.map((decision) => decision.status)).toEqual(["answered"]);
+  });
+
+  it("keeps the question comparison for a decision stored before turns were recorded", async () => {
+    const { state, decisions } = fakeState();
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+    await run(taro, human("start"), ask("scope-approval", "Approve the plan for TR-9?"));
+    // Loading the state file fills a missing turn with null.
+    decisions[0]!.turn = null;
+    decisions[0]!.status = "answered";
+    await run(taro, human("reload"), ask("scope-approval", "Approve the plan for TR-9?"));
+    expect(decisions.map((decision) => decision.status)).toEqual(["answered"]);
+    await run(taro, human("change"), ask("scope-approval", "Approve the new plan for TR-9?"));
+    expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
+  });
+
+  it("keeps an answered decision answered when the reconcile after a restart reads its turn again", async () => {
+    const { state, decisions, agents } = fakeState();
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+    const first = [human("start"), ask("scope-approval", "Approve the plan for TR-9?")];
+    await run(taro, ...first);
+    decisions[0]!.status = "answered";
+    delete agents[owner.id];
+    // Paseo's projected page coalesces streamed chunks; a page without the turn's opening falls back to the question.
+    const assistant = ask("scope-approval", "Approve the plan for TR-9?") as { text: string };
+    const pages = [
+      [human("start"), { type: "assistant_message", text: assistant.text.slice(0, 20) }, { type: "assistant_message", text: assistant.text.slice(20) }],
+      [assistant],
+    ];
+    for (const page of pages) {
+      vi.mocked(listTaroAgents).mockResolvedValueOnce([{ ...owner, updatedAt: new Date().toISOString() } as unknown as PaseoAgent]);
+      const paseo = { agents: { ref: () => ({ timeline: { refetch: async () => ({ entries: page.map((item) => ({ item })) }) } }) } } as unknown as PaseoApi;
+      await taro.reconcile(paseo, ["taro"]);
+      delete agents[owner.id];
+    }
+    expect(decisions.map((decision) => decision.status)).toEqual(["answered"]);
+  });
+
   it("does not let an earlier turn's user words close a decision asked later", async () => {
     const { state, decisions } = fakeState();
     const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
