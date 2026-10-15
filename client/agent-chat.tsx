@@ -13,14 +13,15 @@ import { Keyboard, Platform, SafeAreaView, ScrollView, Text, useWindowDimensions
 import { attachmentProblem, refuseOversizedImages, type DraftAttachment } from "../shared/attachments";
 import { listSentImages, type SentImagesMessage } from "../shared/contracts";
 import { ActionRow } from "./action-row";
-import { imagesFromPaste, pickAttachments } from "./attachment-pickers";
+import { droppedFilesAsAttachments, imagesFromPaste, pickAttachments } from "./attachment-pickers";
 import { availableSources, type AttachmentSource } from "./attachment-sources";
-import { AttachButton, AttachmentPreviews } from "./composer-attachments";
+import { AttachButton, AttachmentPreviews, DropBackdrop } from "./composer-attachments";
 import type { StoredDecision } from "../shared/state";
 import { ContextMeter } from "./context-meter";
 import { useOnPaneHidden } from "./pane-visibility";
 import { DecisionCard } from "./decision-card";
 import { drafts } from "./draft";
+import { watchFileDrops } from "./file-drop";
 import { draftAttachments } from "./draft-attachments";
 import { rowButtonStyle } from "./control-colors";
 import { Pressable } from "./focus";
@@ -248,6 +249,9 @@ export function AgentChat({
   // A hidden pane stays mounted: its field lets go of the keyboard, as it did when the pane unmounted.
   useOnPaneHidden(() => field.current?.blur());
   const [sending, setSending] = useState(false);
+  const sendingNow = useRef(false);
+  sendingNow.current = sending;
+  const [dropping, setDropping] = useState(false);
   const guardFor = usePressGuards();
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set());
   const pane = useRef<View>(null);
@@ -284,6 +288,19 @@ export function AgentChat({
     };
     node.addEventListener("paste", onPaste);
     return () => node.removeEventListener?.("paste", onPaste);
+  }, [agent.id, readOnly === undefined]);
+  // Files dragged onto the pane are attached as Paseo's agent pane takes them (TR-099); none while a send runs, as there.
+  useEffect(() => {
+    if (Platform.OS !== "web" || readOnly !== undefined) return;
+    return watchFileDrops(pane.current, {
+      onDragging: setDropping,
+      disabled: () => sendingNow.current,
+      onDrop: (files) => {
+        droppedFilesAsAttachments(globalThis, files)
+          .then(addAttachments)
+          .catch((caught: unknown) => toast.error(errorText(caught)));
+      },
+    });
   }, [agent.id, readOnly === undefined]);
   useEffect(() => {
     if (keyboard > 0) follow.keepAtEnd();
@@ -380,6 +397,7 @@ export function AgentChat({
 
   return (
     <View ref={pane} style={[styles.pane, { paddingBottom: keyboard }]}>
+      {readOnly === undefined && Platform.OS === "web" ? <DropBackdrop theme={theme} active={dropping} /> : null}
       {/* Re-reading behind the conversation already drawn (cached, or the last agent's read). */}
       <LoadingBar theme={theme} active={timeline.loading && groups.length > 0} />
       <View style={styles.transcript}>

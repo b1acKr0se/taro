@@ -7,6 +7,7 @@
  */
 import { imageFileName, parseDataUrl, type DraftAttachment } from "../shared/attachments";
 import { expoModule, type AttachmentSource } from "./attachment-sources";
+import { droppedImageType } from "./file-drop";
 import { fitImage } from "./image-shrink";
 
 type Loose = Record<string, unknown>;
@@ -94,6 +95,22 @@ async function pasteWebImage(root: Loose): Promise<DraftAttachment[]> {
 export async function imagesFromPaste(root: object, clipboardData: unknown): Promise<DraftAttachment[]> {
   const files = Array.from(((clipboardData as Loose | null)?.files as ArrayLike<unknown> | undefined) ?? []).filter((file) => String((file as Loose).type).startsWith("image/"));
   return webFilesAsAttachments(root as Loose, files, "image");
+}
+
+/**
+ * Files dropped on a chat (TR-099), read: raster images as images, shrunk as picked ones are; any
+ * other file as a file, as Paseo's composer splits a drop.
+ */
+export async function droppedFilesAsAttachments(root: object, files: readonly unknown[]): Promise<DraftAttachment[]> {
+  return Promise.all(
+    files.map(async (file, index) => {
+      const { mimeType, data } = await readBlob(root as Loose, file);
+      const imageType = droppedImageType(file as Loose);
+      const name = text((file as Loose).name);
+      if (imageType === null) return { id: attachmentId(), kind: "file" as const, fileName: name ?? "file", mimeType: text((file as Loose).type) ?? mimeType, data };
+      return fitImage(root as Loose, "web", { id: attachmentId(), kind: "image", fileName: name ?? imageFileName(imageType, index), mimeType: imageType, data });
+    }),
+  );
 }
 
 // ---------------------------------------------------------------- phone

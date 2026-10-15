@@ -253,3 +253,37 @@ export function AttachmentPreviews({ theme, attachments, onRemove }: { theme: Pl
     </ScrollView>
   );
 }
+
+/**
+ * What a chat pane shows while files are dragged over it (TR-099), as Paseo's `FileDropBackdrop`:
+ * the pane dimmed, an upload icon and "Drop files here" in its middle, fading in and out. It takes no
+ * presses, so the drag events reach the pane under it.
+ */
+export function DropBackdrop({ theme, active }: { theme: PluginTheme; active: boolean }) {
+  const { colors } = theme;
+  return (
+    <View
+      pointerEvents="none"
+      accessibilityElementsHidden={!active}
+      style={{
+        position: "absolute",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+        opacity: active ? 1 : 0,
+        // React Native Web's CSS transition; drops happen only there.
+        ...({ transitionProperty: "opacity", transitionDuration: "150ms" } as object),
+      }}
+    >
+      <View style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: colors.surface0, opacity: 0.7 }} />
+      <View style={{ alignItems: "center", gap: SPACE.sm }}>
+        <Icon name="Upload" size={32} color={colors.accent} />
+        <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.content, fontWeight: "500" }}>Drop files here</Text>
+      </View>
+    </View>
+  );
+}

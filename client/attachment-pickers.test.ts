@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { MAX_IMAGE_BASE64_LENGTH } from "../shared/attachments";
-import { imagesFromPaste, pickAttachments } from "./attachment-pickers";
+import { droppedFilesAsAttachments, imagesFromPaste, pickAttachments } from "./attachment-pickers";
 
 /** A stand-in for the `FileReader` of a browser or React Native: a "blob" here is `{ type, content }`. */
 function FakeReader(this: { result: unknown; onload: (() => void) | null; onerror: (() => void) | null; readAsDataURL(blob: unknown): void }) {
@@ -202,5 +202,49 @@ describe("imagesFromPaste", () => {
   it("is empty for a paste of words", async () => {
     expect(await imagesFromPaste({ FileReader: FakeReader }, { files: [] })).toEqual([]);
     expect(await imagesFromPaste({ FileReader: FakeReader }, null)).toEqual([]);
+  });
+});
+
+describe("droppedFilesAsAttachments", () => {
+  it("attaches dropped raster images as images and everything else as files, in the order dropped", async () => {
+    const dropped = await droppedFilesAsAttachments({ FileReader: FakeReader }, [
+      { name: "screenshot.png", type: "image/png", content: "png" },
+      { name: "report.pdf", type: "application/pdf", content: "pdf" },
+      { name: "logo.svg", type: "image/svg+xml", content: "<svg/>" },
+      { name: "photo.jpg", type: "image/jpg", content: "jpg" },
+    ]);
+    expect(dropped.map(({ kind, fileName, mimeType, data }) => ({ kind, fileName, mimeType, data }))).toEqual([
+      { kind: "image", fileName: "screenshot.png", mimeType: "image/png", data: b64("png") },
+      { kind: "file", fileName: "report.pdf", mimeType: "application/pdf", data: b64("pdf") },
+      { kind: "file", fileName: "logo.svg", mimeType: "image/svg+xml", data: b64("<svg/>") },
+      { kind: "image", fileName: "photo.jpg", mimeType: "image/jpeg", data: b64("jpg") },
+    ]);
+    expect(new Set(dropped.map((item) => item.id)).size).toBe(4);
+  });
+
+  it("judges a file the system gave no type by its name, and sends any other untyped file as bytes", async () => {
+    const dropped = await droppedFilesAsAttachments({ FileReader: FakeReader }, [
+      { name: "IMG_0042.HEIC", type: "", content: "heic" },
+      { name: "build.log", type: "", content: "log" },
+    ]);
+    expect(dropped.map(({ kind, fileName, mimeType }) => ({ kind, fileName, mimeType }))).toEqual([
+      { kind: "image", fileName: "IMG_0042.HEIC", mimeType: "image/heic" },
+      { kind: "file", fileName: "build.log", mimeType: "application/octet-stream" },
+    ]);
+  });
+
+  it("shrinks a dropped image over the agent's limit as a picked one is, and never a file", async () => {
+    const big = "x".repeat(Math.ceil((MAX_IMAGE_BASE64_LENGTH * 3) / 4) + 8);
+    // No canvas here, so the image cannot be shrunk: it comes back as it was, for the composer to refuse with its message.
+    const [image, file] = await droppedFilesAsAttachments({ FileReader: FakeReader }, [
+      { name: "huge.png", type: "image/png", content: big },
+      { name: "huge.zip", type: "application/zip", content: big },
+    ]);
+    expect(image).toMatchObject({ kind: "image", fileName: "huge.png", data: b64(big) });
+    expect(file).toMatchObject({ kind: "file", fileName: "huge.zip", data: b64(big) });
+  });
+
+  it("is empty for a drop of nothing", async () => {
+    expect(await droppedFilesAsAttachments({ FileReader: FakeReader }, [])).toEqual([]);
   });
 });
