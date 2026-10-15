@@ -315,6 +315,9 @@ const BoardCard = memo(function BoardCard({ card, onOpenCard, ...rest }: Omit<Pa
   return <TicketCard card={card} onOpen={() => onOpenCard(card)} {...rest} />;
 });
 
+/** The narrowest Load more or Show less keeps its label on one line beside the other. */
+const SHARE_MIN_WIDTH = 116;
+
 /**
  * The end of a paged column (TR-082): how many are shown of how many, Load more while cards are left,
  * and Show less once it shows more than its first page (TR-117). One call at a time.
@@ -343,35 +346,42 @@ function ColumnEnd({
     setBusy(which);
     void call(column).finally(() => setBusy(null));
   };
+  // Load more and Show less take equal halves, whatever their labels' widths; in a narrow column they stack.
+  const equalShare = { flexGrow: 1, flexShrink: 1, flexBasis: SHARE_MIN_WIDTH, flexDirection: "row" as const };
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.md }}>
-      <View style={{ flexGrow: 1, flexShrink: 1, flexDirection: "row", gap: SPACE.sm }}>
+      <View style={{ flexGrow: 1, flexShrink: 1, flexDirection: "row", flexWrap: "wrap", gap: SPACE.sm }}>
         {canLoadMore ? (
-          <IconButton
-            icon="ChevronsDown"
-            label="Load more"
-            showLabel
-            grow
-            theme={theme}
-            disabled={busy !== null}
-            state={busy === "more" ? "busy" : undefined}
-            onPress={() => run("more", onLoadMore)}
-          />
+          <View style={equalShare}>
+            <IconButton
+              icon="ChevronsDown"
+              label="Load more"
+              showLabel
+              grow
+              theme={theme}
+              disabled={busy !== null}
+              state={busy === "more" ? "busy" : undefined}
+              onPress={() => run("more", onLoadMore)}
+            />
+          </View>
         ) : null}
         {canShowLess ? (
-          <IconButton
-            icon="ChevronsUp"
-            label="Show less"
-            showLabel
-            grow
-            theme={theme}
-            disabled={busy !== null}
-            state={busy === "less" ? "busy" : undefined}
-            onPress={() => run("less", onShowLess)}
-          />
+          <View style={equalShare}>
+            <IconButton
+              icon="ChevronsUp"
+              label="Show less"
+              showLabel
+              grow
+              theme={theme}
+              disabled={busy !== null}
+              state={busy === "less" ? "busy" : undefined}
+              onPress={() => run("less", onShowLess)}
+            />
+          </View>
         ) : null}
       </View>
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small }}>
+      {/* The count keeps its one line; the buttons stack instead. */}
+      <Text style={{ flexShrink: 0, color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small }}>
         {shown} of {total}
       </Text>
     </View>
