@@ -315,8 +315,9 @@ export function PlanActions({
   const styles = useMemo(
     () => ({
       buttons: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm },
-      // Equal shares of the row, each button filling its share, so siblings match in size.
-      slot: { flexGrow: 1, flexBasis: 0, minWidth: narrow ? NARROW_BUTTON_MIN_WIDTH : BUTTON_MIN_WIDTH },
+      // Each button as wide as its label, sharing the spare width, so a label stays on one line: an equal
+      // share broke Request changes… over two lines beside Approve (TR-112). Siblings keep one height.
+      slot: { flexGrow: 1, flexBasis: "auto" as const, minWidth: narrow ? NARROW_BUTTON_MIN_WIDTH : BUTTON_MIN_WIDTH },
     }),
     [narrow],
   );
