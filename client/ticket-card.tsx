@@ -13,7 +13,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
-import { Text, View } from "react-native";
+import { Platform, Text, View } from "react-native";
 
 import { acceptTicket, nudgeAgent, relaunchOwner, resumeTicket, type Card, type StatsSummary } from "../shared/contracts";
 import { PhaseBadge } from "./badges";
@@ -21,6 +21,7 @@ import { cardFooterParts, cardNowLine, type NowLine } from "./card-now";
 import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
+import { focusRingStyle } from "./focus-ring";
 import { errorText, formatCost, pullRequestLabel, formatDuration } from "./format";
 import { SPACE } from "./spacing";
 import { OptionChips } from "./option-chips";
@@ -31,6 +32,9 @@ import { AcceptancePair, IconButton } from "./ui";
 import { useActions } from "./use-actions";
 import { useNow } from "./use-now";
 import { phaseLook, statusStateLook, toneColor } from "./visual-meta";
+
+/** A no-break space before the dot: a wrapped meta line never starts with "·". */
+const FOOTER_SEPARATOR = "\u00a0· ";
 
 export function TicketCard({
   card,
@@ -101,11 +105,12 @@ export function TicketCard({
       dot: { width: 8, height: 8, borderRadius: 4 },
       row: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
       muted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
-      link: { color: colors.accent, fontSize: FONT_SIZE.caption },
+      // Pressable text: the keyboard ring takes the accent too (TR-078).
+      link: { color: colors.accent, fontSize: FONT_SIZE.caption, ...focusRingStyle(colors.accent, Platform.OS === "web") },
       track: { width: 44, height: 3, borderRadius: 2, backgroundColor: colors.surface2, overflow: "hidden" as const },
       childRow: { flexDirection: "row" as const, alignItems: "flex-start" as const, gap: SPACE.sm },
       childIcon: { width: 14, paddingTop: (lineHeightFor(FONT_SIZE.caption) - 13) / 2 },
-      footer: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "center" as const, gap: SPACE.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: SPACE.sm },
+      footer: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: SPACE.sm },
       actionText: { color: colors.accent, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
     }),
     [colors, compact, selected],
@@ -321,20 +326,23 @@ export function TicketCard({
         </View>
       )}
       {hasFooter ? (
-        // Never cut off: a narrow column or a phone wraps the meta line, and the PR link follows it (TR-095).
+        // One text, so a narrow column or a phone wraps it at a word instead of cutting it off (TR-095).
         <View style={styles.footer}>
-          {footer.length === 0 ? null : <Text style={[styles.muted, { flexShrink: 1 }]}>{footer.join(" · ")}</Text>}
-          {card.pullRequest === null ? null : (
-            <Pressable
-              accessibilityRole="link"
-              onPress={() => void openExternalUrl(card.pullRequest ?? "").catch((caught: unknown) => toast.error(errorText(caught)))}
-            >
-              <Text style={styles.link}>
-                {footer.length === 0 ? "" : "· "}
-                {pullRequestLabel(card.pullRequest)}
-              </Text>
-            </Pressable>
-          )}
+          <Text style={styles.muted}>
+            {footer.join(FOOTER_SEPARATOR)}
+            {card.pullRequest === null ? null : (
+              <>
+                {footer.length === 0 ? "" : FOOTER_SEPARATOR}
+                <Text
+                  accessibilityRole="link"
+                  style={styles.link}
+                  onPress={() => void openExternalUrl(card.pullRequest ?? "").catch((caught: unknown) => toast.error(errorText(caught)))}
+                >
+                  {pullRequestLabel(card.pullRequest)}
+                </Text>
+              </>
+            )}
+          </Text>
         </View>
       ) : null}
     </Pressable>
