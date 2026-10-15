@@ -61,6 +61,19 @@ export function layoutShown(chatHidden: boolean, layout: { height: number }): bo
 const OFFSET_SLACK = 2;
 
 /**
+ * What a scroll event says about the reader. `stale` while a reveal is asked for and not yet made
+ * (TR-131): the event reports a scroll from before it, such as the opening's follow of the end, and
+ * read as the reader's it would pin the end again and refuse the reveals that follow. `asked` when it
+ * lands where a reveal scrolled (a reveal past the end lands clamped to it), `reader` otherwise once
+ * something was revealed, and `free` before anything was.
+ */
+export function scrollEventKind(offsetY: number, furthest: number, revealOffsets: readonly number[], pendingReveals: number): "stale" | "asked" | "reader" | "free" {
+  if (pendingReveals > 0) return "stale";
+  if (revealOffsets.length === 0) return "free";
+  return revealOffsets.some((y) => Math.abs(offsetY - Math.min(y, furthest)) <= OFFSET_SLACK) ? "asked" : "reader";
+}
+
+/**
  * `onScrolled` hears every scroll and viewport change (the offset and the visible height), for
  * anything that depends on what is on screen.
  */
@@ -76,6 +89,8 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
    * report an earlier reveal's offset after a later one was asked for.
    */
   const revealOffsets = useRef<number[]>([]);
+  /** Reveals asked for whose scroll has not run yet: scroll events until then are older than them. */
+  const pendingReveals = useRef(0);
   /** Whether the reader has scrolled since a row was revealed: the transcript is theirs again. */
   const readerScrolled = useRef(false);
   /** Cards already brought into view, so one is scrolled to once, not on every re-layout. */
@@ -147,7 +162,11 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
     pinnedToEnd.current = false;
     const y = showing(layout.y, layout.height, viewport.current);
     revealOffsets.current.push(y);
-    setTimeout(() => scroller.current?.scrollTo({ y, animated: false }), 0);
+    pendingReveals.current += 1;
+    setTimeout(() => {
+      pendingReveals.current -= 1;
+      scroller.current?.scrollTo({ y, animated: false });
+    }, 0);
   }
 
   /** Scrolls to an offset the reader asked for (a jump link), leaving the end unfollowed. */
@@ -164,12 +183,9 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
       // A hidden pane's scroll view reports nothing about where the reader was.
       if (hidden.current || layoutMeasurement.height === 0) return;
-      if (revealOffsets.current.length > 0) {
-        // A reveal past the end lands clamped to it.
-        const furthest = Math.max(0, contentSize.height - layoutMeasurement.height);
-        const asked = revealOffsets.current.some((y) => Math.abs(contentOffset.y - Math.min(y, furthest)) <= OFFSET_SLACK);
-        if (!asked) readerScrolled.current = true;
-      }
+      const kind = scrollEventKind(contentOffset.y, Math.max(0, contentSize.height - layoutMeasurement.height), revealOffsets.current, pendingReveals.current);
+      if (kind === "stale") return;
+      if (kind === "reader") readerScrolled.current = true;
       pinnedToEnd.current = isAtEnd(contentOffset.y, layoutMeasurement.height, contentSize.height, knownHeight.current);
       setAway(!pinnedToEnd.current);
       offset.current = contentOffset.y;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { layoutShown, revealsAgain, viewportChange } from "./follow-end";
+import { layoutShown, revealsAgain, scrollEventKind, viewportChange } from "./follow-end";
 
 describe("revealsAgain", () => {
   it("scrolls to a revealed row again while the transcript settles", () => {
@@ -53,5 +53,31 @@ describe("layoutShown", () => {
 
   it("is true for a card the reader sees", () => {
     expect(layoutShown(false, { height: 240 })).toBe(true);
+  });
+});
+
+describe("scrollEventKind (TR-131)", () => {
+  it("is stale while a reveal is asked for and not made yet, wherever it lands", () => {
+    // The opening's follow of the end reported after the card's reveal was asked for: not the reader.
+    expect(scrollEventKind(2986, 3017, [2278], 1)).toBe("stale");
+    expect(scrollEventKind(0, 3017, [], 1)).toBe("stale");
+    expect(scrollEventKind(2278, 3017, [2278], 2)).toBe("stale");
+  });
+
+  it("is asked where a reveal scrolled, within the slack, or at the end a reveal past it was clamped to", () => {
+    expect(scrollEventKind(2278, 3017, [2278], 0)).toBe("asked");
+    expect(scrollEventKind(2280, 3017, [2278], 0)).toBe("asked");
+    expect(scrollEventKind(3017, 3017, [4000], 0)).toBe("asked");
+    expect(scrollEventKind(500, 3017, [2278, 500], 0)).toBe("asked");
+  });
+
+  it("is the reader's anywhere else once something was revealed", () => {
+    expect(scrollEventKind(2281, 3017, [2278], 0)).toBe("reader");
+    expect(scrollEventKind(2986, 3017, [2278], 0)).toBe("reader");
+  });
+
+  it("is free before anything was revealed", () => {
+    expect(scrollEventKind(0, 0, [], 0)).toBe("free");
+    expect(scrollEventKind(1200, 3017, [], 0)).toBe("free");
   });
 });
