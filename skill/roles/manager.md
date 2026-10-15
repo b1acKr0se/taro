@@ -87,8 +87,11 @@ You are not told about owners' turns; the plugin supervises them. You are woken 
   <words>"` and append them as a CHANGES-REQUESTED note; the owner does the work), **Catch up** (build the four sections from
   the tracker and `paseo ls -g --label taro.project=<project> --json`, never from memory).
 
-For status, read the ticket's latest records; report timestamps honestly (an old In Progress does
-not prove work is running).
+**Statuses come from the tracker, never from memory or your handoff.** The user accepts, requests
+changes and pauses without telling you, so read each ticket's status (`taro ticket list` or
+`view`) before you state, plan or ask anything about it. Your handoff tells a fresh you what to
+check, not what the statuses are. For status, read the ticket's latest records; report timestamps
+honestly (an old In Progress does not prove work is running).
 
 ## Suggestions
 
