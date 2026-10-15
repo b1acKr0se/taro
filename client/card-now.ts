@@ -10,7 +10,7 @@ import { PAUSE_HANDOFF_TIMEOUT_MS, type PauseView } from "../shared/pause";
 import type { StatusState } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import { callAction, cardCalls, readinessText, waitingOnPermissions, type CardCall } from "./card-calls";
-import { formatTokenCount, pullRequestLabel, relativeTime } from "./format";
+import { formatTokenCount, pullRequestNumberLabel, relativeTime } from "./format";
 import { waitingOn } from "./pane-agents";
 
 interface Lines {
@@ -198,12 +198,12 @@ function lowercased(text: string): string {
 export const FOOTER_SEPARATOR = "\u00a0· ";
 
 /**
- * The footer: the meta parts joined, ending with the dot before the PR link when there is one (so a link
- * wrapped onto its own line does not start with it), then the link's label (null without a PR).
+ * The footer: the meta parts joined, ending with the dot before the PR mark when there is one (so a mark
+ * wrapped onto its own line does not start with it), then the PR mark's "PR #N" (null without a PR).
  */
 export function cardFooterLine(card: Card): { meta: string; pullRequest: string | null } {
   const parts = cardFooterParts(card);
-  const pullRequest = card.pullRequest === null ? null : pullRequestLabel(card.pullRequest);
+  const pullRequest = card.pullRequest === null ? null : pullRequestNumberLabel(card.pullRequest);
   return { meta: parts.join(FOOTER_SEPARATOR) + (parts.length > 0 && pullRequest !== null ? FOOTER_SEPARATOR.trimEnd() : ""), pullRequest };
 }
 

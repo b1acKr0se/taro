@@ -374,14 +374,15 @@ describe("cardFooterLine", () => {
   it("joins the parts and ends with the dot before the PR, a no-break space before every dot", () => {
     const line = cardFooterLine(card({ ...long, pullRequest: "https://github.com/example/notes-app/pull/12" }));
     expect(line.meta).toBe("medium\u00a0· investigation\u00a0· context 166k\u00a0· 2 subagents\u00a0·");
-    expect(line.pullRequest).toBe("PR\u00a0#12\u00a0· example/notes\u2011app");
+    // Plain "PR #12" as on a Done card, without the repository (TR-127).
+    expect(line.pullRequest).toBe("PR\u00a0#12");
     // A plain space before a dot would let a wrapped line start with it (TR-095).
     expect(`${line.meta}${line.pullRequest}`).not.toMatch(/ ·/);
   });
 
   it("has no trailing separator without a PR, and no leading one with only a PR", () => {
     expect(cardFooterLine(card(long))).toEqual({ meta: "medium\u00a0· investigation\u00a0· context 166k\u00a0· 2 subagents", pullRequest: null });
-    expect(cardFooterLine(card({ pullRequest: "https://github.com/example/notes-app/pull/14" }))).toEqual({ meta: "", pullRequest: "PR\u00a0#14\u00a0· example/notes\u2011app" });
+    expect(cardFooterLine(card({ pullRequest: "https://github.com/example/notes-app/pull/14" }))).toEqual({ meta: "", pullRequest: "PR\u00a0#14" });
     expect(cardFooterLine(card({}))).toEqual({ meta: "", pullRequest: null });
   });
 });

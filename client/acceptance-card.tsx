@@ -19,7 +19,8 @@ import { notMergedText } from "./card-now";
 import { ChangeBox } from "./change-box";
 import { EvidenceBlock } from "./evidence-view";
 import { Pressable } from "./focus";
-import { errorText, pullRequestLabel } from "./format";
+import { errorText, pullRequestLabel, pullRequestNumberLabel } from "./format";
+import { mergedPurple } from "./github-colors";
 import { useRevealFocused } from "./keyboard";
 import { Markdown } from "./markdown";
 import { SPACE } from "./spacing";
@@ -67,9 +68,15 @@ export function AcceptanceCard({ card, project, theme, compact, onChanged }: { c
         <Icon name={ready ? "PackageCheck" : "PackageX"} size={14} color={ready ? colors.accent : colors.statusWarning} />
         <Text style={styles.state}>{ready ? `${card.id} IS READY TO ACCEPT` : `${card.id} IS NOT READY TO ACCEPT`}</Text>
         {card.pullRequest === null ? null : (
-          <Pressable accessibilityRole="link" onPress={() => openLink(card.pullRequest ?? "")} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs }}>
-            <Icon name="GitPullRequest" size={12} color={colors.accent} />
-            <Text style={{ color: colors.accent, fontSize: FONT_SIZE.caption }}>{pullRequestLabel(card.pullRequest)}</Text>
+          // The board's PR mark (TR-119, TR-127): a grey icon, purple once merged, and plain "PR #42" without the repository.
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel={`Open ${pullRequestLabel(card.pullRequest)}${card.pullRequestMerged ? ", merged" : ""}`}
+            onPress={() => openLink(card.pullRequest ?? "")}
+            style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs }}
+          >
+            <Icon name={card.pullRequestMerged ? "GitMerge" : "GitPullRequest"} size={12} color={card.pullRequestMerged ? mergedPurple(colors) : colors.foregroundMuted} />
+            <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption }}>{pullRequestNumberLabel(card.pullRequest)}</Text>
           </Pressable>
         )}
       </View>
