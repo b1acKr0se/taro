@@ -281,7 +281,8 @@ export function DropBackdrop({ theme, active }: { theme: PluginTheme; active: bo
     >
       <View style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: colors.surface0, opacity: 0.7 }} />
       <View style={{ alignItems: "center", gap: SPACE.sm }}>
-        <Icon name="Upload" size={32} color={colors.accent} />
+        {/* Paseo draws it in its `primary`, which the plugin theme gives as the foreground. */}
+        <Icon name="Upload" size={32} color={colors.foreground} />
         <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.content, fontWeight: "500" }}>Drop files here</Text>
       </View>
     </View>
