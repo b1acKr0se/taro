@@ -5,6 +5,7 @@ import {
   handBack,
   heldToRelease,
   failureReason,
+  isPassingFailure,
   isWorking,
   newChatMessageId,
   nextToSend,
@@ -173,10 +174,35 @@ describe("nextToSend (TR-102)", () => {
   });
 });
 
+describe("isPassingFailure", () => {
+  it("is a dropped connection or a plugin restarting", () => {
+    expect(isPassingFailure(new Error("Transport closed (code 1006)"))).toBe(true);
+    expect(isPassingFailure(new Error("Request failed: Plugin is not available: taro"))).toBe(true);
+    expect(isPassingFailure(new Error("Request timed out"))).toBe(true);
+  });
+
+  it("is not a refusal or a missing agent, which another try would not change", () => {
+    expect(isPassingFailure(new Error("That agent is no longer running."))).toBe(false);
+    expect(isPassingFailure(new Error("Say something to the Manager."))).toBe(false);
+    expect(isPassingFailure(undefined)).toBe(false);
+  });
+});
+
 describe("failureReason", () => {
   it("is the error's message, trimmed", () => {
     expect(failureReason(new Error("  That agent is no longer running. "))).toBe("That agent is no longer running.");
-    expect(failureReason("Not connected")).toBe("Not connected");
+    expect(failureReason("Say something to the Manager.")).toBe("Say something to the Manager.");
+  });
+
+  it("says the connection dropped, in words, for the app's transport errors (seen end to end: code 1006)", () => {
+    expect(failureReason(new Error("Transport closed (code 1006)"))).toBe("the connection to Paseo dropped.");
+    expect(failureReason(new Error("Not connected"))).toBe("the connection to Paseo dropped.");
+    expect(failureReason(new Error("Request timed out after 30000ms"))).toBe("the connection to Paseo dropped.");
+    expect(failureReason(new Error("Timeout waiting for response"))).toBe("the connection to Paseo dropped.");
+  });
+
+  it("says Taro was restarting for a call made while the plugin reloaded (seen end to end)", () => {
+    expect(failureReason(new Error("Request failed: Plugin is not available: taro requestType=plugin.rpc.invoke.request code=handler_error"))).toBe("Taro was restarting.");
   });
 
   it("says Paseo did not take it when the error says nothing", () => {

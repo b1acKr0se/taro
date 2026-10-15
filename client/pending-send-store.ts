@@ -9,7 +9,7 @@
  * evaluated again (a reconnect, a plugin reload) goes again, under its own id, once a chat or the
  * screen gives the agent a transport, and the plugin skips one Paseo already has (`server/send.ts`).
  */
-import { failureReason, isWorking, nextToSend, type PendingSend } from "../shared/pending-sends";
+import { failureReason, isPassingFailure, isWorking, nextToSend, SEND_RETRY_DELAYS_MS, type PendingSend } from "../shared/pending-sends";
 import { keptMap } from "./kept";
 
 /** Hands a message to Paseo; resolves once Paseo has it. */
@@ -39,7 +39,11 @@ export interface PendingSendStore {
 
 const NONE: readonly PendingSend[] = [];
 
-export function createPendingSendStore(root: object, now: () => number = Date.now): PendingSendStore {
+export function createPendingSendStore(
+  root: object,
+  now: () => number = Date.now,
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+): PendingSendStore {
   const sends = keptMap<string, readonly PendingSend[]>(root, "pending-sends.v2");
   const listeners = new Set<() => void>();
   // Not kept: a fresh bundle starts with no transport and no send under way.
@@ -71,7 +75,7 @@ export function createPendingSendStore(root: object, now: () => number = Date.no
         const next = nextToSend(sends.get(agentId) ?? NONE);
         if (transport === undefined || next === null) return;
         try {
-          await transport(next);
+          await sendWithRetries(agentId, next);
           update(agentId, next.id, (send) => (send.state === "sending" ? { state: "sent", at: now() } : null));
         } catch (error) {
           // Seen in the timeline meanwhile, it was marked sent: the answer, not the message, was lost.
@@ -82,6 +86,22 @@ export function createPendingSendStore(root: object, now: () => number = Date.no
       }
     } finally {
       draining.delete(agentId);
+    }
+  }
+  /** Sends one message, trying again after a failure that passes, with the latest transport, while it is still to send. */
+  async function sendWithRetries(agentId: string, pending: PendingSend): Promise<void> {
+    for (let attempt = 0; ; attempt += 1) {
+      const transport = transports.get(agentId);
+      if (transport === undefined) throw new Error("Not connected");
+      try {
+        return await transport(pending);
+      } catch (error) {
+        const delay = SEND_RETRY_DELAYS_MS[attempt];
+        if (delay === undefined || !isPassingFailure(error)) throw error;
+        await wait(delay);
+        const still = (sends.get(agentId) ?? NONE).find((send) => send.id === pending.id);
+        if (still?.state !== "sending") return;
+      }
     }
   }
   function startSending(agentId: string): void {

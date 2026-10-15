@@ -193,11 +193,34 @@ export function nextToSend(sends: readonly PendingSend[]): PendingSend | null {
   return null;
 }
 
+/** How Paseo's app says the link to the daemon went (0.11.2: "Transport closed (code 1006)", "Not connected", a timeout). */
+const CONNECTION_LOST = /transport closed|not connected|disconnected|connection (?:closed|lost|reset)|websocket|timed? ?out/i;
+/** How Paseo says the plugin is restarting (a reload: "Plugin is not available: taro … code=handler_error"). */
+const PLUGIN_RESTARTING = /plugin is not available/i;
+
+function errorMessage(error: unknown): string {
+  return (error instanceof Error ? error.message : typeof error === "string" ? error : "").trim();
+}
+
 /** What a failed send's row says after "Not sent: ". */
 export function failureReason(error: unknown): string {
-  const text = error instanceof Error ? error.message : typeof error === "string" ? error : "";
-  return text.trim() === "" ? "Paseo did not take it." : text.trim();
+  const text = errorMessage(error);
+  if (text === "") return "Paseo did not take it.";
+  if (CONNECTION_LOST.test(text)) return "the connection to Paseo dropped.";
+  return PLUGIN_RESTARTING.test(text) ? "Taro was restarting." : text;
 }
+
+/**
+ * A failure that passes by itself (the connection dropped, the plugin restarting), so the send is tried
+ * again before the row says Not sent. Safe: the plugin skips a message Paseo already holds.
+ */
+export function isPassingFailure(error: unknown): boolean {
+  const text = errorMessage(error);
+  return CONNECTION_LOST.test(text) || PLUGIN_RESTARTING.test(text);
+}
+
+/** The waits before each new try of a send that failed in passing: about 10 s in all, a plugin reload's length. */
+export const SEND_RETRY_DELAYS_MS: readonly number[] = [1_000, 3_000, 6_000];
 
 /** The held messages to send now that the agent stopped, oldest first. */
 export function heldToRelease(sends: readonly PendingSend[], working: boolean): PendingSend[] {

@@ -124,10 +124,10 @@ describe("sending (TR-102)", () => {
     store.add("agent-1", send("chat-a", "sending"));
     store.add("agent-1", send("chat-b", "sending"));
     await settled();
-    wire.calls[0]?.settle(new Error("Not connected"));
+    wire.calls[0]?.settle(new Error("That agent is no longer running."));
     await settled();
     expect(wire.ids()).toEqual(["chat-a"]);
-    expect(store.get("agent-1")[0]).toMatchObject({ id: "chat-a", state: "failed", error: "Not connected" });
+    expect(store.get("agent-1")[0]).toMatchObject({ id: "chat-a", state: "failed", error: "That agent is no longer running." });
     // A message sent while one failed waits behind it too.
     store.add("agent-1", send("chat-c", "sending"));
     await settled();
@@ -142,7 +142,7 @@ describe("sending (TR-102)", () => {
     store.add("agent-1", send("chat-a", "sending"));
     store.add("agent-1", send("chat-b", "sending"));
     await settled();
-    wire.calls[0]?.settle(new Error("Not connected"));
+    wire.calls[0]?.settle(new Error("Say something to the Manager."));
     await settled();
     store.retry("agent-1", "chat-a");
     await settled();
@@ -176,7 +176,7 @@ describe("sending (TR-102)", () => {
     store.add("agent-1", send("chat-a", "sending"));
     store.add("agent-1", send("chat-b", "sending"));
     await settled();
-    wire.calls[0]?.settle(new Error("Request timed out"));
+    wire.calls[0]?.settle(new Error("Unknown agent"));
     await settled();
     store.update("agent-1", "chat-a", { state: "sent", error: undefined });
     await settled();
@@ -191,7 +191,7 @@ describe("sending (TR-102)", () => {
     store.add("agent-1", send("chat-b", "sending"));
     await settled();
     store.update("agent-1", "chat-a", { state: "sent" });
-    wire.calls[0]?.settle(new Error("Connection lost"));
+    wire.calls[0]?.settle(new Error("Unknown agent"));
     await settled();
     expect(states(store)).toEqual(["chat-a:sent", "chat-b:sending"]);
     expect(wire.ids()).toEqual(["chat-a", "chat-b"]);
@@ -225,6 +225,73 @@ describe("sending (TR-102)", () => {
     await settled();
     expect(chat.ids()).toEqual(["chat-a"]);
     expect(screen.ids()).toEqual(["chat-b"]);
+  });
+
+  it("tries again after a failure that passes (a dropped connection, a plugin reload), then sends the next", async () => {
+    const waits: number[] = [];
+    const store = createPendingSendStore({}, () => 50, async (ms) => {
+      waits.push(ms);
+    });
+    const wire = manualTransport();
+    store.setTransport("agent-1", wire.transport);
+    store.add("agent-1", send("chat-a", "sending"));
+    store.add("agent-1", send("chat-b", "sending"));
+    await settled();
+    wire.calls[0]?.settle(new Error("Transport closed (code 1006)"));
+    await settled();
+    wire.calls[1]?.settle(new Error("Request failed: Plugin is not available: taro requestType=plugin.rpc.invoke.request code=handler_error"));
+    await settled();
+    // Still sending meanwhile: nothing says Not sent while it is tried again.
+    expect(states(store)).toEqual(["chat-a:sending", "chat-b:sending"]);
+    wire.calls[2]?.settle();
+    await settled();
+    expect(wire.ids()).toEqual(["chat-a", "chat-a", "chat-a", "chat-b"]);
+    expect(waits).toEqual([1_000, 3_000]);
+  });
+
+  it("says Not sent, in words, once the tries run out", async () => {
+    const store = createPendingSendStore({}, () => 50, async () => {});
+    const wire = manualTransport();
+    store.setTransport("agent-1", wire.transport);
+    store.add("agent-1", send("chat-a", "sending"));
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await settled();
+      wire.calls[attempt]?.settle(new Error("Transport closed (code 1006)"));
+    }
+    await settled();
+    expect(wire.ids()).toHaveLength(4);
+    expect(store.get("agent-1")[0]).toMatchObject({ state: "failed", error: "the connection to Paseo dropped." });
+  });
+
+  it("stops trying a message taken back or found in the timeline while it waited to try again", async () => {
+    let release = () => {};
+    const store = createPendingSendStore({}, () => 50, () => new Promise<void>((resolve) => (release = resolve)));
+    const wire = manualTransport();
+    store.setTransport("agent-1", wire.transport);
+    store.add("agent-1", send("chat-a", "sending"));
+    store.add("agent-1", send("chat-b", "sending"));
+    await settled();
+    wire.calls[0]?.settle(new Error("Not connected"));
+    await settled();
+    store.update("agent-1", "chat-a", { state: "sent" });
+    release();
+    await settled();
+    expect(wire.ids()).toEqual(["chat-a", "chat-b"]);
+  });
+
+  it("does not try again after a failure that stays (the agent is gone, a refusal)", async () => {
+    const waits: number[] = [];
+    const store = createPendingSendStore({}, () => 50, async (ms) => {
+      waits.push(ms);
+    });
+    const wire = manualTransport();
+    store.setTransport("agent-1", wire.transport);
+    store.add("agent-1", send("chat-a", "sending"));
+    await settled();
+    wire.calls[0]?.settle(new Error("That agent is no longer running."));
+    await settled();
+    expect(wire.ids()).toEqual(["chat-a"]);
+    expect(waits).toEqual([]);
   });
 
   it("does not send held or already sent messages", async () => {
