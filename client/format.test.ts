@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatClock, formatCost, formatDay, formatDuration, pullRequestLabel } from "./format";
+import { cardStatsText, formatClock, formatCost, formatDay, formatDuration, pullRequestLabel } from "./format";
 
 describe("formatDuration", () => {
   it("writes nothing as a dash", () => {
@@ -18,6 +18,22 @@ describe("formatDuration", () => {
     expect(formatDuration(125 * 60_000)).toBe("2h 05m");
     expect(formatDuration(24 * 3_600_000)).toBe("1d 0h");
     expect(formatDuration((3 * 24 + 4) * 3_600_000 + 20 * 60_000)).toBe("3d 4h");
+  });
+});
+
+describe("cardStatsText", () => {
+  const minute = 60_000;
+
+  it("keeps each figure with its word, so a narrow card wraps only after a separator", () => {
+    expect(cardStatsText({ wallMs: 26 * minute, agentActiveMs: 25 * minute, turns: 5 })).toBe("26m\u00a0wall · 25m\u00a0active · 5\u00a0turns");
+    expect(cardStatsText({ wallMs: (12 * 60 + 5) * minute, agentActiveMs: (3 * 60 + 41) * minute, turns: 47 })).toBe(
+      "12h\u00a005m\u00a0wall · 3h\u00a041m\u00a0active · 47\u00a0turns",
+    );
+  });
+
+  it("writes one turn in the singular and nothing measured as dashes", () => {
+    expect(cardStatsText({ wallMs: 0, agentActiveMs: 0, turns: 1 })).toBe("—\u00a0wall · —\u00a0active · 1\u00a0turn");
+    expect(cardStatsText({ wallMs: 40_000, agentActiveMs: 0, turns: 0 })).toBe("40s\u00a0wall · —\u00a0active · 0\u00a0turns");
   });
 });
 

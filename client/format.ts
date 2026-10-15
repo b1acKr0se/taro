@@ -74,6 +74,21 @@ export function formatDuration(ms: number): string {
   return `${Math.floor(hours / 24)}d ${hours % 24}h`;
 }
 
+/**
+ * A Done card's "26m wall · 25m active · 5 turns". No-break spaces keep each figure with its word, so a
+ * narrow card wraps only after a "·" (TR-103).
+ */
+export function cardStatsText(stats: { wallMs: number; agentActiveMs: number; turns: number }): string {
+  const together = (text: string) => text.replace(/ /g, "\u00a0");
+  return [
+    `${formatDuration(stats.wallMs)} wall`,
+    `${formatDuration(stats.agentActiveMs)} active`,
+    `${stats.turns} turn${stats.turns === 1 ? "" : "s"}`,
+  ]
+    .map(together)
+    .join(" · ");
+}
+
 /** Dollars to the cent, below a cent as "<$0.01"; "—" when no agent reported a cost. */
 export function formatCost(usd: number | null): string {
   if (usd === null) return "—";

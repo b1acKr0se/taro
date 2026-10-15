@@ -21,7 +21,7 @@ import { cardFooterLine, cardNowLine, type NowLine } from "./card-now";
 import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
-import { errorText, formatCost, formatDuration } from "./format";
+import { cardStatsText, errorText, formatCost } from "./format";
 import { SPACE } from "./spacing";
 import { OptionChips } from "./option-chips";
 import { PlanDecision } from "./plan-card";
@@ -148,7 +148,7 @@ export function TicketCard({
             <Icon name="Timer" size={12} color={colors.foregroundMuted} />
           </View>
           <Text style={[styles.muted, styles.statText]}>
-            {formatDuration(stats.wallMs)} wall · {formatDuration(stats.agentActiveMs)} active · {stats.turns} turn{stats.turns === 1 ? "" : "s"}
+            {cardStatsText(stats)}
           </Text>
         </View>
         {/* No recorded cost says nothing worth a line of its own. */}
