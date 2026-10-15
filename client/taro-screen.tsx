@@ -680,6 +680,7 @@ function ManagerPane({
   // The project list holds the manager: refreshed at once, so the old one's chat and its offer go now, not at the next poll.
   const refreshProjects = useRefreshProjects();
   const actions = useActions();
+  const [tipOpen, setTipOpen] = useState(false);
   // The offer appears as the cache hour passes, not only at the next poll that changes something.
   const now = useNow(60_000);
   const project = summary.config.project;
@@ -702,34 +703,8 @@ function ManagerPane({
   }
   const running = manager.status === "running" || manager.status === "initializing";
   const notice = managerPaneNotice(manager);
-  const replaceOffer =
-    !offersReplaceManager(manager, summary.managerLastTurnEndedAt, now) || manager.contextUsedTokens === null ? null : (
-      <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: SPACE.sm }}>
-        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm, flexGrow: 1, flexShrink: 1, flexBasis: 240 }}>
-          <View style={{ height: lineHeightFor(FONT_SIZE.small), justifyContent: "center" }}>
-            <Icon name="Clock" size={13} color={theme.colors.statusWarning} />
-          </View>
-          <Text style={{ flex: 1, color: theme.colors.foreground, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) }}>
-            {replaceManagerNotice(formatTokenCount(manager.contextUsedTokens))}
-          </Text>
-        </View>
-        <IconButton
-          icon="RefreshCw"
-          label={REPLACE_MANAGER_LABEL}
-          showLabel
-          theme={theme}
-          disabled={actions.busy}
-          state={actions.stateOf("replace")}
-          onPress={() => actions.press("replace", () => replace({ project }), {
-              success: MANAGER_ACTION_SUCCESS.fresh,
-              onSuccess: () => {
-                refreshProjects();
-                onChanged();
-              },
-            })}
-        />
-      </View>
-    );
+  const replaceTip =
+    manager.contextUsedTokens !== null && offersReplaceManager(manager, summary.managerLastTurnEndedAt, now) ? replaceManagerNotice(formatTokenCount(manager.contextUsedTokens)) : null;
   return (
     <View style={{ flex: 1 }}>
       {header}
@@ -787,6 +762,27 @@ function ManagerPane({
               state={actions.stateOf("catch-up")}
               onPress={() => actions.press("catch-up", () => askCatchUp({ project }))}
             />
+            {replaceTip === null ? null : (
+              <IconButton
+                icon="RefreshCw"
+                label={REPLACE_MANAGER_LABEL}
+                showLabel
+                theme={theme}
+                disabled={actions.busy}
+                state={actions.stateOf("replace")}
+                tip={{ text: replaceTip, onShow: setTipOpen }}
+                onPress={() =>
+                  actions.press("replace", () => replace({ project }), {
+                    success: MANAGER_ACTION_SUCCESS.fresh,
+                    onSuccess: () => {
+                      setTipOpen(false);
+                      refreshProjects();
+                      onChanged();
+                    },
+                  })
+                }
+              />
+            )}
             <IconButton
               icon="Minimize2"
               label="Compact"
@@ -799,7 +795,7 @@ function ManagerPane({
           </>
         }
         context={{ used: manager.contextUsedTokens, max: manager.contextMaxTokens }}
-        composerNote={replaceOffer}
+        actionsTip={replaceTip !== null && tipOpen ? replaceTip : null}
       />
     </View>
   );
