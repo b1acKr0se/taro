@@ -91,6 +91,22 @@ export function pullRequestMergeInstruction(notes: string | null, finalSummary: 
   return `Merge ${url} now as roles/owner.md says, only if its headRefOid is still the recorded review head ${head} (gh pr merge ${url} --match-head-commit ${head}); confirm it merged, then record ACCEPTANCE and set the ticket Done. If the head moved, do not merge; present it again.`;
 }
 
+/**
+ * What Accept tells the owner of a local-branch ticket (TR-109): fast-forward the base branch in the
+ * main checkout to the reviewed head, or not at all. roles/owner.md holds what to do when a check fails.
+ */
+export function localMergeInstruction(notes: string | null, baseBranch: string, repoPath: string): string {
+  const head = reviewHead(notes);
+  // As for a pull request: without the head the user reviewed, a fast-forward could land unreviewed code.
+  if (head === null) return "Do not merge: the ticket records no review-head. Record it in EXECUTION and present it again.";
+  return (
+    `Fast-forward ${baseBranch} to your branch in the main checkout (${repoPath}) as roles/owner.md says (Accept, local branch), only while your branch head is still the recorded review head ${head} and the main checkout is clean and on ${baseBranch}. ` +
+    `If ${baseBranch} moved, rebase first, and fast-forward only if the rebase applied with no conflicts and the checks pass. Then record ACCEPTANCE and set the ticket Done. ` +
+    "A moved head, a conflict or failing checks: do not merge; fix it on your branch and present it again. " +
+    `A dirty main checkout or one on another branch: do not touch it; record NOT-MERGED with the reason.`
+  );
+}
+
 /** What the plugin records when the user presses Accept (TR-031): when, and what the owner merges, if anything. */
 export interface AcceptedRecord {
   at: string;
@@ -103,20 +119,45 @@ export function acceptedRecordText(at: string, merging: string | null): string {
 }
 
 /**
- * The newest ACCEPTED record, unless since then the owner presented again (a later EVIDENCE record,
- * or an EXECUTION record with a new review head: the head moved, so nothing merged) or the user
- * asked for changes (CHANGES-REQUESTED). Until the owner sets Done, the card says it merges.
+ * The newest ACCEPTED record, unless since then the owner did not merge (NOT-MERGED, TR-109),
+ * presented again (a later EVIDENCE record, or an EXECUTION record with a new review head: the head
+ * moved, so nothing merged) or the user asked for changes (CHANGES-REQUESTED). Until the owner sets Done, the card says it merges.
  */
 export function acceptedRecord(notes: string | null): AcceptedRecord | null {
   const records = noteRecords(notes);
   for (let index = records.length - 1; index >= 0; index--) {
     const record = records[index] ?? "";
-    if (/^(?:EVIDENCE|CHANGES-REQUESTED)\b/.test(record)) return null;
+    if (/^(?:EVIDENCE|CHANGES-REQUESTED|NOT-MERGED)\b/.test(record)) return null;
     if (/^EXECUTION\b/.test(record) && REVIEW_HEAD.test(record)) return null;
     const match = /^ACCEPTED\s+(\S+)[^\n]*?merging:\s*([^\n]+)/.exec(record);
     if (match !== null) {
       const merging = (match[2] ?? "").trim();
       return { at: match[1] ?? "", merging: merging === "none" || merging === "" ? null : merging };
+    }
+  }
+  return null;
+}
+
+/** Why the owner did not merge after Accept (TR-109): a problem on the user's side, such as a dirty main checkout. */
+export interface NotMergedRecord {
+  at: string;
+  reason: string;
+}
+
+/**
+ * The newest NOT-MERGED record, until the user presses Accept again or asks for changes, or the
+ * owner presents again (EVIDENCE, or a new review head): each makes the reason stale.
+ */
+export function notMergedRecord(notes: string | null): NotMergedRecord | null {
+  const records = noteRecords(notes);
+  for (let index = records.length - 1; index >= 0; index--) {
+    const record = records[index] ?? "";
+    if (/^(?:EVIDENCE|CHANGES-REQUESTED|ACCEPTED)\b/.test(record)) return null;
+    if (/^EXECUTION\b/.test(record) && REVIEW_HEAD.test(record)) return null;
+    const match = /^NOT-MERGED\s+(\S+)[ \t]*(?:[\u2014\u2013:-]+[ \t]*)?([^\n]*)/.exec(record);
+    if (match !== null) {
+      const reason = (match[2] ?? "").trim();
+      return { at: match[1] ?? "", reason: reason === "" ? "the owner gave no reason" : reason };
     }
   }
   return null;

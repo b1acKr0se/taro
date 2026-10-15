@@ -9,7 +9,7 @@
 import { randomUUID } from "node:crypto";
 
 import { doneTicketOf, planRelease } from "../shared/done-release";
-import { acceptedRecord, acceptedRecordText, executionWorkspace, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
+import { acceptedRecord, acceptedRecordText, executionWorkspace, localMergeInstruction, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
 import { dependsOn, holdsSlot, shouldWakeManager, statusChanges, withRecordedStatuses, type StatusChange } from "../shared/owner-cap";
 import {
   handoffSincePauseRequest,
@@ -198,8 +198,8 @@ export class Actions {
       const mergeable = reviewHead(detail.implementationNotes) !== null && pullRequestUrl(detail.implementationNotes, detail.finalSummary) !== null;
       merging = mergeable ? "the pull request" : undefined;
     } else {
-      mergeInstruction = `Fast-forward ${config.baseBranch} to your branch in the main checkout (${config.repoPath}), only if it fast-forwards cleanly; then record ACCEPTANCE and set the ticket Done.`;
-      merging = `into ${config.baseBranch}`;
+      mergeInstruction = localMergeInstruction(detail.implementationNotes, config.baseBranch, config.repoPath);
+      merging = reviewHead(detail.implementationNotes) !== null ? `into ${config.baseBranch}` : undefined;
     }
     await sendWithoutInterrupting(paseo, owner.id, await message(TEMPLATES.accept, { ticket, mergeInstruction }));
     if (merging !== undefined) await appendTicketNote(paths.tracker, ticket, acceptedRecordText(new Date().toISOString(), merging)).catch(() => undefined);

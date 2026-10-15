@@ -59,6 +59,8 @@ function cardEntries(card: Card): NeedsYouEntry[] {
   const waiting = (kind: string, title: string, body: string): NeedsYouEntry => ({ ...entry(kind, title, body), key: `${WHILE_WAITING}${card.id}:${kind}` });
   const episode = (): NeedsYouEntry[] => {
     if (card.status === "Awaiting acceptance" && card.accepted === null) {
+      // Accepted and not merged (TR-109): the reason is what to act on before accepting again.
+      if (card.notMerged !== null) return [waiting("not-merged", `${card.id} was not merged`, card.notMerged.reason)];
       return [waiting("accept", `${card.id} is ready to accept`, card.delivered ?? card.title)];
     }
     if (card.status === "Blocked" || card.lastStatus?.state === "blocked") {

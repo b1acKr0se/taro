@@ -15,6 +15,7 @@ import { acceptTicket, loadTicket, requestChanges, type Card } from "../shared/c
 import { evidenceSummary } from "../shared/evidence";
 import { finalSummaryBody } from "../shared/execution";
 import { acceptanceReady } from "./card-calls";
+import { notMergedText } from "./card-now";
 import { EvidenceBlock } from "./evidence-view";
 import { Pressable } from "./focus";
 import { errorText, pullRequestLabel } from "./format";
@@ -72,6 +73,13 @@ export function AcceptanceCard({ card, project, theme, compact, onChanged }: { c
           </Pressable>
         )}
       </View>
+      {card.notMerged === null ? null : (
+        // Accepted once and not merged (TR-109): why, before the delivery, as it is what to fix before accepting again.
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm }}>
+          <Icon name="GitMerge" size={14} color={colors.statusWarning} />
+          <Text style={[styles.muted, { flex: 1, color: colors.foreground }]}>{notMergedText(card.notMerged.reason)}</Text>
+        </View>
+      )}
       {summary === null || summary === "" ? (
         <Text style={styles.muted}>{detail.isLoading ? "Loading the delivery…" : "No delivery summary recorded."}</Text>
       ) : (

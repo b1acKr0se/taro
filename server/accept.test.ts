@@ -46,11 +46,20 @@ beforeEach(() => {
 describe("accept", () => {
   it("records ACCEPTED merging into the base branch for local-only delivery, after telling the owner", async () => {
     config({});
-    ticket("");
+    ticket(`EXECUTION 2026-01-01T00:00Z — review-head: ${head}`);
     await actions.accept({} as PaseoApi, "demo", "DM-1");
     expect(vi.mocked(sendWithoutInterrupting)).toHaveBeenCalledOnce();
+    expect(vi.mocked(sendWithoutInterrupting).mock.calls[0]?.[2]).toContain(`still the recorded review head ${head}`);
     expect(written()).toHaveLength(1);
     expect(written()[0]).toMatch(/^ACCEPTED \S+ — the user accepted; merging: into main$/);
+  });
+
+  it("records nothing for local-only delivery without a review head, telling the owner to present again (TR-109)", async () => {
+    config({});
+    ticket("");
+    await actions.accept({} as PaseoApi, "demo", "DM-1");
+    expect(vi.mocked(sendWithoutInterrupting).mock.calls[0]?.[2]).toMatch(/Do not merge: the ticket records no review-head/);
+    expect(written()).toEqual([]);
   });
 
   it("records the pull request when its head and URL are recorded", async () => {

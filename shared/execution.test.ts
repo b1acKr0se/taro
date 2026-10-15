@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { acceptedRecord, acceptedRecordText, executionMachine, executionWorkspace, finalSummaryBody, noteRecords, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "./execution";
+import { boardColumn } from "./board";
+import { acceptedRecord, acceptedRecordText, executionMachine, executionWorkspace, finalSummaryBody, localMergeInstruction, noteRecords, notMergedRecord, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "./execution";
 
 const managerRecord = "EXECUTION 2026-10-13T11:22Z — owner agent d86f, workspace wks_67ddffd9312aa95a, machine devbox, worktree /w/tr-001";
 // As a Haiku owner wrote it on the throwaway daemon: the relaunch could not find its workspace (TR-001).
@@ -176,5 +177,69 @@ describe("acceptedRecord", () => {
     // An abbreviated head in a milestone while merging is not a new presentation.
     expect(acceptedRecord(`${accepted}\nMILESTONE 2026-01-05T11:05Z — merging review-head aaaaaaa`)).not.toBeNull();
     expect(acceptedRecord(`${accepted}\nEXECUTION 2026-01-05T11:05Z — subagent reviewer started`)).not.toBeNull();
+  });
+});
+
+describe("localMergeInstruction (TR-109)", () => {
+  const head = "0123456789abcdef0123456789abcdef01234567";
+  const text = localMergeInstruction(`EXECUTION x — review-head: ${head}`, "main", "/home/user/notes-app");
+
+  it("names the main checkout, the base branch and the review head to fast-forward to", () => {
+    expect(text).toContain("Fast-forward main to your branch in the main checkout (/home/user/notes-app)");
+    expect(text).toContain(`still the recorded review head ${head}`);
+    expect(text).toContain("the main checkout is clean and on main");
+  });
+
+  it("rebases a moved base, merging only a rebase with no conflicts and passing checks", () => {
+    expect(text).toContain("If main moved, rebase first, and fast-forward only if the rebase applied with no conflicts and the checks pass");
+  });
+
+  it("presents again on a moved head, a conflict or failing checks, and records NOT-MERGED only for the main checkout", () => {
+    expect(text).toContain("A moved head, a conflict or failing checks: do not merge; fix it on your branch and present it again.");
+    expect(text).toContain("A dirty main checkout or one on another branch: do not touch it; record NOT-MERGED with the reason.");
+  });
+
+  it("refuses to merge without a recorded review head, or with only an abbreviated one", () => {
+    expect(localMergeInstruction(null, "main", "/home/user/notes-app")).toBe("Do not merge: the ticket records no review-head. Record it in EXECUTION and present it again.");
+    expect(localMergeInstruction("MILESTONE x — review-head 0123456", "main", "/home/user/notes-app")).toMatch(/^Do not merge/);
+  });
+});
+
+describe("notMergedRecord (TR-109)", () => {
+  const accepted = acceptedRecordText("2026-01-05T11:00:00.000Z", "into main");
+  const notMerged = "NOT-MERGED 2026-01-05T11:04Z — the main checkout has uncommitted changes in src/app.ts";
+
+  it("is null without one", () => {
+    expect(notMergedRecord(null)).toBeNull();
+    expect(notMergedRecord(accepted)).toBeNull();
+  });
+
+  it("reads the time and the reason, with an em dash, a hyphen, a colon or nothing between them", () => {
+    expect(notMergedRecord(`${accepted}\n${notMerged}`)).toEqual({ at: "2026-01-05T11:04Z", reason: "the main checkout has uncommitted changes in src/app.ts" });
+    expect(notMergedRecord("NOT-MERGED 2026-01-05T11:04Z - on release-2")?.reason).toBe("on release-2");
+    expect(notMergedRecord("NOT-MERGED 2026-01-05T11:04Z: on release-2")?.reason).toBe("on release-2");
+    expect(notMergedRecord("NOT-MERGED 2026-01-05T11:04Z on release-2")?.reason).toBe("on release-2");
+    expect(notMergedRecord("NOT-MERGED 2026-01-05T11:04Z")?.reason).toBe("the owner gave no reason");
+  });
+
+  it("clears the merging state, so the card goes back to Needs you", () => {
+    const notes = `${accepted}\n${notMerged}\nMILESTONE 2026-01-05T11:05Z — waiting for the user`;
+    expect(acceptedRecord(notes)).toBeNull();
+    expect(notMergedRecord(notes)?.at).toBe("2026-01-05T11:04Z");
+    const column = boardColumn({ status: "Awaiting acceptance", ownerElsewhere: false, agent: { status: "idle", pendingPermissions: 0 }, lastStatus: "waiting", openBlockingDecisions: 0, stalledAfterNudge: false, crashedOut: false, accepted: acceptedRecord(notes) !== null });
+    expect(column).toBe("needs-you");
+  });
+
+  it("is stale once the user accepts again or asks for changes, or the owner presents again", () => {
+    const head = "a".repeat(40);
+    expect(notMergedRecord(`${notMerged}\n${acceptedRecordText("2026-01-05T11:30Z", "into main")}`)).toBeNull();
+    expect(notMergedRecord(`${notMerged}\nCHANGES-REQUESTED 2026-01-05T11:30Z — the user: "rename it"`)).toBeNull();
+    expect(notMergedRecord(`${notMerged}\nEVIDENCE 2026-01-05T11:30Z — again\ncheck: npm test — 40 passed`)).toBeNull();
+    expect(notMergedRecord(`${notMerged}\nEXECUTION 2026-01-05T11:30Z — review-head: ${head}`)).toBeNull();
+  });
+
+  it("does not read the record's name mentioned inside another record", () => {
+    expect(notMergedRecord(`${accepted}\nMILESTONE 2026-01-05T11:05Z — no NOT-MERGED needed, merging`)).toBeNull();
+    expect(acceptedRecord(`${accepted}\nMILESTONE 2026-01-05T11:05Z — no NOT-MERGED needed, merging`)).not.toBeNull();
   });
 });

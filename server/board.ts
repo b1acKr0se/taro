@@ -10,7 +10,7 @@ import { ticketFileAlerts } from "../shared/alerts";
 import { boardColumn, complexityOf, FIRST_PAGE, hasStarted, newestOwner, PAGED_COLUMNS, pageColumns, ticketAgents } from "../shared/board";
 import { offersCompact } from "../shared/compact";
 import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
-import { acceptedRecord, executionMachine, pullRequestUrl, type AcceptedRecord } from "../shared/execution";
+import { acceptedRecord, executionMachine, notMergedRecord, pullRequestUrl, type AcceptedRecord, type NotMergedRecord } from "../shared/execution";
 import type { Board, BoardPaging, Card, TicketDetailView } from "../shared/contracts";
 import { latestMilestone, type Milestone } from "../shared/milestones";
 import { deliveredLine, firstAsk } from "../shared/needs-you";
@@ -46,6 +46,7 @@ async function recordedFacts(
   latestMilestone: Milestone | null;
   evidenceRecord: ParsedEvidence | null;
   accepted: AcceptedRecord | null;
+  notMerged: NotMergedRecord | null;
   finalSummary: string | null;
   notes: string | null;
 }> {
@@ -58,11 +59,12 @@ async function recordedFacts(
       latestMilestone: latestMilestone(detail.implementationNotes),
       evidenceRecord: parseEvidence(detail.implementationNotes),
       accepted: acceptedRecord(detail.implementationNotes),
+      notMerged: notMergedRecord(detail.implementationNotes),
       finalSummary: detail.finalSummary ?? null,
       notes: detail.implementationNotes,
     };
   } catch {
-    return { hostElsewhere: null, pullRequest: null, latestMilestone: null, evidenceRecord: null, accepted: null, finalSummary: null, notes: null };
+    return { hostElsewhere: null, pullRequest: null, latestMilestone: null, evidenceRecord: null, accepted: null, notMerged: null, finalSummary: null, notes: null };
   }
 }
 
@@ -270,6 +272,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         activity: UNDER_WAY.has(ticket.status) ? await cachedActivity(paseo, owner) : null,
         evidence,
         accepted,
+        notMerged: ticket.status === "Awaiting acceptance" ? facts?.notMerged ?? null : null,
         // A finished ticket waits on nobody, whatever its agents still ask.
         permission: column === "done" ? null : firstAsk(askers),
         delivered: ticket.status === "Awaiting acceptance" ? deliveredLine(facts?.finalSummary ?? null) : null,

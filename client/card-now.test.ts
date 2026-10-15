@@ -80,6 +80,7 @@ function card(parts: Partial<Card>): Card {
     activity: null,
     evidence: null,
     accepted: null,
+    notMerged: null,
     permission: null,
     delivered: null,
     pause: null,
@@ -272,6 +273,16 @@ describe("cardNowLine", () => {
     const accepted = card({ status: "Awaiting acceptance", accepted: { at: "2026-01-01T11:58:00Z", merging: "into main" }, lastStatus: status });
     expect(cardNowLine(accepted, NOW)).toEqual({ kind: "accepted", headline: "Accepted · merging into main", detail: "2m ago" });
     expect(cardNowLine({ ...accepted, accepted: { at: "2026-01-01T11:58:00Z", merging: null } }, NOW)?.headline).toBe("Accepted · closing the ticket");
+  });
+
+  it("leads with why an accepted delivery did not merge, keeping the delivery and Accept (TR-109)", () => {
+    const notMerged = { at: "2026-01-01T11:58Z", reason: "the main checkout is on release-2, not main" };
+    expect(cardNowLine(card({ status: "Awaiting acceptance", column: "needs-you", delivered: "Drafts work offline.", notMerged }), NOW)).toMatchObject({
+      kind: "call",
+      action: "Request changes",
+      headline: "Not merged: the main checkout is on release-2, not main",
+      detail: "Drafts work offline. · Ready to accept",
+    });
   });
 
   it("still puts a question raised while merging first", () => {
