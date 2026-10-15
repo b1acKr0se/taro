@@ -99,9 +99,9 @@ describe("questionsToCarry (TR-136)", () => {
       gone("old-owner", "no-ticket", { ticket: null }),
       gone("old-owner", "other-project", { project: "shop" }),
     ];
-    expect(questionsToCarry(decisions, "taro", "TR-5").map((each) => each.id)).toEqual(["naming", "storage"]);
+    expect(questionsToCarry(decisions, "taro", "TR-5").map((each) => each.decision.id)).toEqual(["naming", "storage"]);
     // Ticket ids compare without case, as owners' labels do.
-    expect(questionsToCarry(decisions, "taro", "tr-5").map((each) => each.id)).toEqual(["naming", "storage"]);
+    expect(questionsToCarry(decisions, "taro", "tr-5").map((each) => each.decision.id)).toEqual(["naming", "storage"]);
   });
 
   it("hands on one carried to an owner that never asked it again, not one it did", () => {
@@ -112,7 +112,29 @@ describe("questionsToCarry (TR-136)", () => {
 
   it("keeps the newest copy of a question two owners left open", () => {
     const decisions = [gone("first", "storage", { carriedTo: "third" }), gone("second", "storage", { askedAt: "2026-10-13T13:00:00.000Z", question: "Reworded?" })];
-    expect(questionsToCarry(decisions, "taro", "TR-5").map((each) => each.question)).toEqual(["Reworded?"]);
+    expect(questionsToCarry(decisions, "taro", "TR-5").map((each) => each.decision.question)).toEqual(["Reworded?"]);
+  });
+
+  it("hands on a question its owner held back to ask next, as never shown, but not one it then withdrew itself", () => {
+    const decisions = [gone("old-owner", "storage"), { ...decision("old-owner", "naming", "withdrawn"), held: true }, { ...decision("old-owner", "size", "withdrawn"), held: false }];
+    expect(questionsToCarry(decisions, "taro", "TR-5").map((each) => [each.decision.id, each.shown])).toEqual([
+      ["storage", true],
+      ["naming", false],
+    ]);
+  });
+
+  it("keeps a handed-on question the next owner held back, still counted as shown (TR-124 with TR-136)", () => {
+    // A left both open; B asked storage, and naming was held back behind it; then B was replaced.
+    const decisions = [
+      gone("first", "storage", { carriedTo: "second" }),
+      gone("first", "naming", { carriedTo: "second" }),
+      gone("second", "storage", { askedAt: "2026-10-13T13:00:00.000Z" }),
+      { ...decision("second", "naming", "withdrawn"), held: true, askedAt: "2026-10-13T13:00:00.000Z" },
+    ];
+    expect(questionsToCarry(decisions, "taro", "TR-5").map((each) => [each.decision.key, each.shown])).toEqual([
+      ["second:storage", true],
+      ["second:naming", true],
+    ]);
   });
 
   it("hands on nothing from nothing", () => {
@@ -121,12 +143,12 @@ describe("questionsToCarry (TR-136)", () => {
 });
 
 describe("carriedQuestionLines (TR-136)", () => {
-  it("puts each question's id and text on one line", () => {
+  it("puts each question's id, asker and text on one line", () => {
     const questions = [
-      { id: "naming", question: "Call it Notes\n  or Memos?" },
-      { id: "storage", question: "  Store notes locally?  " },
+      { decision: { id: "naming", question: "Call it Notes\n  or Memos?", agentId: "owner-1" }, shown: true },
+      { decision: { id: "storage", question: "  Store notes locally?  ", agentId: "owner-2" }, shown: false },
     ];
-    expect(carriedQuestionLines(questions)).toBe("- `naming`: Call it Notes or Memos?\n- `storage`: Store notes locally?");
+    expect(carriedQuestionLines(questions)).toBe("- `naming` (asked by owner-1): Call it Notes or Memos?\n- `storage` (held back, never shown to the user, by owner-2): Store notes locally?");
     expect(carriedQuestionLines([])).toBe("");
   });
 });

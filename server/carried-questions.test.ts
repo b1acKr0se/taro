@@ -105,12 +105,12 @@ beforeEach(() => {
 const lastPrompt = () => prompts.at(-1)!.prompt;
 
 describe("an owner replaced hands its unanswered questions to the new owner (TR-136)", () => {
-  it("on Relaunch: the open question, with its id and text, and nothing the user answered or never saw", async () => {
+  it("on Relaunch: the open questions and the held-back one, with id, asker and text, and nothing the user answered or the owner withdrew", async () => {
     decisions = [
       decision("owner-1", "storage", "Store notes\n  locally or in the cloud?", "open", { askedAt: "2026-01-05T09:20:00.000Z" }),
       decision("owner-1", "naming", "Call it Notes or Memos?", "withdrawn", { withdrawnWithAgent: true, askedAt: "2026-01-05T09:05:00.000Z" }),
       decision("owner-1", "size", "Withdrawn by the owner itself?", "withdrawn"),
-      decision("owner-1", "colour", "Held back while another was open?", "withdrawn"),
+      decision("owner-1", "colour", "Held back while another was open?", "withdrawn", { held: true, askedAt: "2026-01-05T09:15:00.000Z" }),
       decision("owner-1", "merge", "Answered already?", "answered"),
       decision("reviewer-1", "nit", "A reviewer's question?", "open", { agentRole: "reviewer" }),
       decision("owner-9", "other", "Another ticket's question?", "open", { ticket: "NA-2" }),
@@ -119,11 +119,13 @@ describe("an owner replaced hands its unanswered questions to the new owner (TR-
     const agentId = await actions.relaunchOwner(paseo, "notes", "NA-1");
     const prompt = lastPrompt();
     // Oldest first, each on one line.
-    expect(prompt).toContain("still open; they were withdrawn from the board");
-    expect(prompt).toContain("- `naming`: Call it Notes or Memos?\n- `storage`: Store notes locally or in the cloud?\n");
+    expect(prompt).toContain("questions to the user unanswered; they are no longer on the board");
+    expect(prompt).toContain(
+      "- `naming` (asked by owner-1): Call it Notes or Memos?\n- `colour` (held back, never shown to the user, by owner-1): Held back while another was open?\n- `storage` (asked by owner-1): Store notes locally or in the cloud?\n",
+    );
     expect(prompt).toContain("one at a time");
-    for (const left of ["size", "colour", "merge", "nit", "other", "elsewhere"]) expect(prompt).not.toContain(`\`${left}\``);
-    expect(decisions.filter((each) => each.carriedTo === agentId).map((each) => each.id)).toEqual(["storage", "naming"]);
+    for (const left of ["size", "merge", "nit", "other", "elsewhere"]) expect(prompt).not.toContain(`\`${left}\``);
+    expect(decisions.filter((each) => each.carriedTo === agentId).map((each) => each.id)).toEqual(["storage", "naming", "colour"]);
   });
 
   it("on Resume after Pause: the question withdrawn when the pause archived the owner", async () => {
@@ -135,7 +137,7 @@ describe("an owner replaced hands its unanswered questions to the new owner (TR-
     expect(decisions[0]).toMatchObject({ status: "withdrawn", withdrawnWithAgent: true });
     const result = await actions.resume(paseo, "notes", "NA-1");
     expect(result.agentId).not.toBeNull();
-    expect(lastPrompt()).toContain("- `storage`: Store notes locally or in the cloud?");
+    expect(lastPrompt()).toContain("- `storage` (asked by owner-1): Store notes locally or in the cloud?");
   });
 
   it("when the owner was archived by hand: the archive hook's withdrawal is handed on", async () => {
@@ -143,7 +145,7 @@ describe("an owner replaced hands its unanswered questions to the new owner (TR-
     await paseo.agents.ref("owner-1").archive();
     await supervisor.withdrawDecisionsOf("owner-1");
     await actions.relaunchOwner(paseo, "notes", "NA-1");
-    expect(lastPrompt()).toContain("- `storage`: Store notes locally or in the cloud?");
+    expect(lastPrompt()).toContain("- `storage` (asked by owner-1): Store notes locally or in the cloud?");
   });
 
   it("hands a question on again until an owner asks it again, then only that owner's copy", async () => {
@@ -152,11 +154,11 @@ describe("an owner replaced hands its unanswered questions to the new owner (TR-
     // The second owner is replaced before asking it.
     const third = await actions.relaunchOwner(paseo, "notes", "NA-1");
     expect(third).not.toBe(second);
-    expect(lastPrompt()).toContain("- `storage`: Store notes locally or in the cloud?");
+    expect(lastPrompt()).toContain("- `storage` (asked by owner-1): Store notes locally or in the cloud?");
     // The third asks it again, reworded, and is replaced while it is open: the new wording, once.
     decisions.push(decision(third, "storage", "Store notes on the device or in the cloud?", "open", { askedAt: "2026-01-05T11:00:00.000Z" }));
     await actions.relaunchOwner(paseo, "notes", "NA-1");
-    expect(lastPrompt()).toContain("- `storage`: Store notes on the device or in the cloud?");
+    expect(lastPrompt()).toContain(`- \`storage\` (asked by ${third}): Store notes on the device or in the cloud?`);
     expect(lastPrompt().match(/`storage`/g)).toHaveLength(1);
   });
 
@@ -171,7 +173,7 @@ describe("an owner replaced hands its unanswered questions to the new owner (TR-
   it("leaves the first message as it was when nothing was open", async () => {
     decisions = [decision("owner-1", "merge", "Answered already?", "answered")];
     await actions.relaunchOwner(paseo, "notes", "NA-1");
-    expect(lastPrompt()).not.toContain("still open");
+    expect(lastPrompt()).not.toContain("unanswered");
     expect(lastPrompt()).toMatch(/`paseo logs owner-1` if the ticket lacks a detail\.$/);
   });
 });

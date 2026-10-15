@@ -253,7 +253,7 @@ export class Actions {
     // The user's unanswered questions to earlier owners go into the new owner's first message (TR-136).
     const carried = await this.state.updateDecisions((stored) => {
       const questions = questionsToCarry(stored, project, ticket);
-      for (const question of questions) question.carriedTo = agentId;
+      for (const { decision } of questions) decision.carriedTo = agentId;
       return carriedQuestionLines(questions);
     });
     const modeId = await bypassModeId(paseo, config.owner.model);

@@ -403,7 +403,11 @@ export class Supervisor {
         const index = stored.findIndex((existing) => existing.key === key);
         if (decision.withdrawn) {
           const existing = stored[index];
-          if (existing !== undefined) existing.status = "withdrawn";
+          if (existing !== undefined) {
+            existing.status = "withdrawn";
+            // Withdrawn by its owner: nothing to hand on (TR-136).
+            existing.held = false;
+          }
           continue;
         }
         const next: StoredDecision = {
@@ -429,7 +433,7 @@ export class Supervisor {
         // for the open one's answer. Stored withdrawn, so its turn seen again stays quiet and the tab says so.
         const holding = identity.role === "owner" ? openQuestionHolding(stored, agent.id, key) : undefined;
         if (holding !== undefined) {
-          const withheld = { ...next, status: "withdrawn" as const };
+          const withheld = { ...next, status: "withdrawn" as const, held: true };
           if (existing === undefined) stored.push(withheld);
           else stored[index] = withheld;
           held.push({ id: decision.id, open: holding.id });
