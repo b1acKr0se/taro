@@ -4,6 +4,12 @@
  * so dragging over the pane's children does not flicker the target, and only drags that carry files.
  * Paseo's desktop shell stops Electron opening a file dropped on its window and leaves the drop to
  * these same events. Pure, apart from the element it is given.
+ *
+ * Ported from Paseo (`packages/app/src/components/file-drop/use-drop-listeners.ts` and the image
+ * types of `src/attachments/file-types.ts` at v0.11.2), Copyright (c) 2025-present Mohamed Boudra,
+ * licensed under the Apache License, Version 2.0 (see THIRD_PARTY_NOTICES.md). Changed: Paseo's
+ * shared values, drop sinks, workspace-file drags and dormant desktop listener are left out; the
+ * listeners are one pure function taking the element, so they are tested.
  */
 
 /** The part of a browser's drag event this reads. */

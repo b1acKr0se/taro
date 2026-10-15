@@ -45,7 +45,10 @@ Parts of the composer are ported from **Paseo** (`github.com/getpaseo/paseo`, `p
 `v0.11.2`), Copyright (c) 2025-present Mohamed Boudra, used under the Apache License, Version 2.0.
 Ported files say so in their header comment, with what was changed: `client/composer-input-height.ts`
 (from `src/composer/input/height.web.ts` and `height.native.ts`) and `client/composer-height.ts`
-(the composer's measurements and maximum height from `src/composer/input/input.tsx`). Paseo ships
+(the composer's measurements and maximum height from `src/composer/input/input.tsx`), `client/file-drop.ts`
+(the chat's file drops from `src/components/file-drop/use-drop-listeners.ts` and the image types of
+`src/attachments/file-types.ts`) and `DropBackdrop` in `client/composer-attachments.tsx` (the drop
+target's look from `src/components/file-drop/file-drop-backdrop.tsx`). Paseo ships
 no NOTICE file. Its license, with the Apache License 2.0 in full:
 
 ```

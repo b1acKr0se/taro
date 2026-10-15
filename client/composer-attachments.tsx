@@ -257,7 +257,10 @@ export function AttachmentPreviews({ theme, attachments, onRemove }: { theme: Pl
 /**
  * What a chat pane shows while files are dragged over it (TR-099), as Paseo's `FileDropBackdrop`:
  * the pane dimmed, an upload icon and "Drop files here" in its middle, fading in and out. It takes no
- * presses, so the drag events reach the pane under it.
+ * presses, so the drag events reach the pane under it. Its look is ported from Paseo
+ * (`packages/app/src/components/file-drop/file-drop-backdrop.tsx` at v0.11.2), Copyright (c)
+ * 2025-present Mohamed Boudra, Apache License 2.0 (see THIRD_PARTY_NOTICES.md). Changed: a CSS
+ * transition instead of Reanimated, and the plugin theme's colours for Paseo's.
  */
 export function DropBackdrop({ theme, active }: { theme: PluginTheme; active: boolean }) {
   const { colors } = theme;
