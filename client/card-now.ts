@@ -118,7 +118,7 @@ function callLines(call: CardCall, others: readonly CardCall[], now: number): Li
   }
   const more = call.count > 1 ? `${call.count - 1} more permission${call.count === 2 ? "" : "s"}` : null;
   if (call.title === null) return { headline: waitingOnPermissions(call.count), detail: joined(also) };
-  return { headline: call.title, detail: joined([call.detail, more, ...also]) };
+  return { headline: call.asker === null ? call.title : `${call.asker}: ${call.title}`, detail: joined([call.detail, more, ...also]) };
 }
 
 /** What a question card says under the question: whether it blocks and how long ago it was asked (TR-045). */
@@ -164,7 +164,7 @@ function stalledLines(card: Card, now: number): Lines {
   return { headline: "Still idle after a nudge", detail: last === null ? null : joined([`Last said: ${last.text}`, when]) };
 }
 
-function joined(parts: readonly (string | null)[]): string | null {
+export function joined(parts: readonly (string | null)[]): string | null {
   const kept = parts.filter((part): part is string => part !== null && part !== "");
   return kept.length === 0 ? null : kept.join(" · ");
 }

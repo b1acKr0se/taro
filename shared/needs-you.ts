@@ -4,6 +4,7 @@
  */
 import { finalSummaryBody } from "./execution";
 import { finalSections } from "./final-summary";
+import { roleFromLabel, TARO_LABELS, type Role } from "./project";
 
 /** A Paseo permission request, only the parts read here (Paseo's `AgentPermissionRequest`). */
 export interface PermissionRequestParts {
@@ -19,6 +20,44 @@ export interface PermissionAsk {
   title: string;
   /** The command, file or address it acts on, or the request's description; one line. */
   detail: string | null;
+}
+
+/** A live agent waiting on permission requests, only the parts read here. */
+export interface AskingAgent {
+  id: string;
+  labels: Readonly<Record<string, string>>;
+  workspaceId?: string | null | undefined;
+  pendingPermissions: readonly (Omit<PermissionRequestParts, "input"> & { id: string; input?: Record<string, unknown> | null })[];
+}
+
+/** What the first of several asking agents asks, who asks it, and how many requests wait in all (TR-096). */
+export interface AgentAsk extends PermissionAsk {
+  /** The request's id: a second ask is told from the first for its notification (TR-059). */
+  id: string;
+  agentId: string;
+  role: Role | null;
+  workspaceId: string | null;
+  count: number;
+}
+
+/** The ask the card shows, from the agents waiting on a permission in the order they are shown; null when none waits. */
+export function firstAsk(askers: readonly AskingAgent[]): AgentAsk | null {
+  const agent = askers.find((candidate) => candidate.pendingPermissions.length > 0);
+  const request = agent?.pendingPermissions[0];
+  if (agent === undefined || request === undefined) return null;
+  return {
+    ...permissionAsk({ ...request, input: request.input ?? undefined }),
+    id: request.id,
+    agentId: agent.id,
+    role: roleFromLabel(agent.labels[TARO_LABELS.role]),
+    workspaceId: agent.workspaceId ?? null,
+    count: askers.reduce((sum, candidate) => sum + candidate.pendingPermissions.length, 0),
+  };
+}
+
+/** Who asks, in the words of an ask line: none for the owner, whose card it is; its job for a subagent ("researcher asks: …"). */
+export function askerPrefix(role: Role | null): string | null {
+  return role === null || role === "owner" ? null : role === "manager" ? "Manager asks" : `${role.charAt(0).toUpperCase()}${role.slice(1)} asks`;
 }
 
 /** The longest detail kept; the card shows three lines of it at most. */

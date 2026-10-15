@@ -527,7 +527,7 @@ function ProjectView({
       <KeptPane shown={ownerPane === null}>{managerPane}</KeptPane>
     </>
   );
-  const boardView = <MemoBoard summary={summary} theme={theme} compact={compact} selectedTicket={ticket} onOpenTicket={openTicket} onOpenManager={openManager} />;
+  const boardView = <MemoBoard summary={summary} theme={theme} compact={compact} selectedTicket={ticket} onOpenTicket={openTicket} onOpenManager={openManager} onOpenAgent={openAgent} />;
 
   if (compact) {
     // The Inbox lists every project, so its tab counts them all, as the sidebar does (TR-064).

@@ -19,6 +19,7 @@ vi.mock("./board", () => ({
       project,
       cards: [],
       managerDecisions: [],
+      managerPermission: null,
       suggestions: [],
       headroom: null,
       alerts: [...boardAlerts, ...queueAlerts],

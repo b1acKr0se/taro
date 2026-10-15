@@ -28,6 +28,7 @@ import { useStats } from "./queries";
 import { paneGutter, SPACE } from "./spacing";
 import { SyncProblemCard } from "./sync-problem-card";
 import { IconButton } from "./ui";
+import { PermissionAskCard } from "./permission-ask-card";
 import { TicketCard } from "./ticket-card";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, labelLineHeightFor } from "./type-scale";
@@ -45,6 +46,7 @@ export function ProjectBoard({
   selectedTicket,
   onOpenTicket,
   onOpenManager,
+  onOpenAgent = null,
 }: {
   summary: ProjectSummary;
   theme: PluginTheme;
@@ -54,6 +56,8 @@ export function ProjectBoard({
   onOpenTicket: (card: Pick<Card, "id">) => void;
   /** Shows the manager's chat, where its decisions are answered. */
   onOpenManager: () => void;
+  /** Opens an agent in Paseo: a subagent of the Manager's that asks permission (TR-096); null where the host cannot. */
+  onOpenAgent?: ((agentId: string) => void) | null;
 }) {
   const project = summary.config.project;
   const board = useBoard(project);
@@ -111,11 +115,16 @@ export function ProjectBoard({
 
   // The Manager's questions lead Needs you, blocking first (TR-045).
   const managerQuestions = useMemo(() => walkOrder(board.data?.managerDecisions ?? []), [board.data]);
+  const managerAsk = board.data?.managerPermission ?? null;
+  // The Manager's own requests are answered in its chat; a subagent of its own has a chat only in Paseo.
+  const openManagerAsk = useLatestCallback(() =>
+    managerAsk !== null && managerAsk.role !== "manager" && managerAsk.agentId !== null && onOpenAgent !== null ? onOpenAgent(managerAsk.agentId) : onOpenManager(),
+  );
   const syncProblem = summary.trackerSyncProblem;
   const alerts = board.data?.alerts ?? [];
   // Alerts and a paused sync wait on the user too, above the columns (TR-064).
   // True totals: a paged column carries only its loaded cards (TR-082).
-  const counts = boardCounts(board.data?.totals ?? { "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 }, needsYouExtras({ managerDecisions: managerQuestions, alerts }, syncProblem !== null));
+  const counts = boardCounts(board.data?.totals ?? { "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 }, needsYouExtras({ managerDecisions: managerQuestions, managerPermission: managerAsk, alerts }, syncProblem !== null));
   const waitingAbove = alerts.length > 0 || syncProblem !== null;
 
   const statsByTicket = useMemo(() => new Map((stats.data?.tickets ?? []).map((summary) => [summary.ticket, summary])), [stats.data]);
@@ -136,14 +145,17 @@ export function ProjectBoard({
     );
   }
 
-  /** A column's cards: in Needs you, the Manager's questions first; a paged column ends with Load more while cards are left. */
+  /** A column's cards: in Needs you, the Manager's side first (a permission, which holds it up, then its questions); a paged column ends with Load more while cards are left. */
   function columnCards(id: ColumnId, page: ColumnPage | undefined) {
     const group = page?.cards ?? [];
     const questions =
       id === "needs-you"
-        ? managerQuestions.map((decision) => (
-            <QuestionCard key={decision.key} decision={decision} asker="Manager" theme={theme} compact={compact} onOpen={onOpenManager} onAnswered={changed} />
-          ))
+        ? [
+            ...(managerAsk === null ? [] : [<PermissionAskCard key="manager-permission" ask={managerAsk} theme={theme} compact={compact} onOpen={openManagerAsk} />]),
+            ...managerQuestions.map((decision) => (
+              <QuestionCard key={decision.key} decision={decision} asker="Manager" theme={theme} compact={compact} onOpen={onOpenManager} onAnswered={changed} />
+            )),
+          ]
         : [];
     if (questions.length === 0 && group.length === 0) return empty(id, id === "needs-you" && waitingAbove ? "See above" : "Nothing here");
     const more =

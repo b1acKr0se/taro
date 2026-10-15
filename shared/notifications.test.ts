@@ -80,7 +80,7 @@ function card(parts: Partial<Card>): Card {
 }
 
 function board(cards: Card[], managerDecisions: StoredDecision[] = []): Board {
-  return { project: "notes-app", cards, managerDecisions, suggestions: [], headroom: null, alerts: [], loadedAt: "2026-01-01T00:00:00Z", totals: { "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 }, offPage: [] };
+  return { project: "notes-app", cards, managerDecisions, managerPermission: null, suggestions: [], headroom: null, alerts: [], loadedAt: "2026-01-01T00:00:00Z", totals: { "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 }, offPage: [] };
 }
 
 function entries(cards: Card[], managerDecisions: StoredDecision[] = []): NeedsYouEntry[] {
@@ -120,14 +120,30 @@ describe("needsYouEntries", () => {
   });
 
   it("announces a permission request by what it asks, keyed by its request id", () => {
-    const asked = entries([card({ column: "needs-you", permission: { title: "Run a command", detail: "npm test", id: "request-7" } })]);
+    const asked = entries([card({ column: "needs-you", permission: { title: "Run a command", detail: "npm test", id: "request-7", agentId: "agent-1", role: "owner", workspaceId: "workspace-1", count: 1 } })]);
     expect(asked).toEqual([
       { key: "NA-027:permission:agent-1:request-7", title: "NA-027 needs permission", body: "Run a command npm test", agentId: "agent-1", workspaceId: "workspace-1" },
     ]);
   });
 
   it("keys a permission without an id by what it asks", () => {
-    expect(entries([card({ column: "needs-you", permission: { title: "Edit", detail: null, id: null } })])[0]?.key).toBe("NA-027:permission:agent-1:Edit");
+    expect(entries([card({ column: "needs-you", permission: { title: "Edit", detail: null, id: null, agentId: null, role: null, workspaceId: null, count: 1 } })])[0]?.key).toBe("NA-027:permission:agent-1:Edit");
+  });
+
+  // TR-096: a researcher's request was never announced.
+  it("announces a subagent's permission by its job, opening that subagent", () => {
+    const permission = { title: "Allow Bash?", detail: "npm test", id: "request-9", agentId: "researcher-1", role: "researcher" as const, workspaceId: "workspace-1", count: 1 };
+    expect(entries([card({ column: "needs-you", permission })])).toEqual([
+      { key: "NA-027:permission:researcher-1:request-9", title: "NA-027's researcher needs permission", body: "Allow Bash? npm test", agentId: "researcher-1", workspaceId: "workspace-1" },
+    ]);
+  });
+
+  it("announces the Manager's and its subagents' permissions, opening who asks", () => {
+    const ask = { title: "Allow Bash?", detail: "git status", id: "request-3", agentId: "manager-1", role: "manager" as const, workspaceId: null, count: 1 };
+    const announced = (managerPermission: Board["managerPermission"]) => needsYouEntries({ ...board([]), managerPermission }, "workspace-manager", "manager-1");
+    expect(announced(ask)).toEqual([{ key: "manager:permission:manager-1:request-3", title: "The Manager needs permission", body: "Allow Bash? git status", agentId: "manager-1", workspaceId: "workspace-manager" }]);
+    expect(announced({ ...ask, agentId: "researcher-2", role: "researcher", workspaceId: "workspace-2" })[0]).toMatchObject({ title: "The Manager's researcher needs permission", agentId: "researcher-2", workspaceId: "workspace-2" });
+    expect(announced(null)).toEqual([]);
   });
 
   it("announces a Blocked ticket, and an owner whose status line says blocked, with its words", () => {

@@ -206,9 +206,53 @@ describe("loadBoard", () => {
     vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "In Progress"), ticket("TR-2", "Done"), ticket("TR-3", "In Progress")] as unknown as Awaited<ReturnType<typeof listTickets>>);
     vi.mocked(projectAgents).mockResolvedValue([owner, quiet]);
     const board = await loadBoard({} as PaseoApi, state([]), "taro");
-    expect(board.cards.find((card) => card.id === "TR-1")?.permission).toEqual({ title: "Allow Bash?", detail: "npm install", id: "p1" });
-    expect(board.cards.find((card) => card.id === "TR-3")?.permission).toEqual({ title: "Allow Custom?", detail: null, id: "p3" });
+    expect(board.cards.find((card) => card.id === "TR-1")?.permission).toEqual({ title: "Allow Bash?", detail: "npm install", id: "p1", agentId: "owner-live", role: "owner", workspaceId: null, count: 2 });
+    expect(board.cards.find((card) => card.id === "TR-3")?.permission).toMatchObject({ title: "Allow Custom?", detail: null, id: "p3" });
     expect(board.cards.find((card) => card.id === "TR-2")?.permission).toBeNull();
+  });
+
+  // TR-096: a researcher sat on a permission while its ticket stayed in Working, unannounced.
+  it("puts a ticket whose subagent asks permission under Needs you, with what it asks and who asks", async () => {
+    // An idle owner waiting on its researcher: the ticket was Working only through its status line.
+    const owner = agent("owner-1", "owner", "TR-1", "2026-10-13T14:50:00Z");
+    const researcher = {
+      ...agent("researcher-1", "researcher", "TR-1", "2026-10-13T14:51:00Z"),
+      status: "running",
+      workspaceId: "workspace-1",
+      pendingPermissions: [{ id: "p7", name: "Bash", kind: "tool", input: { command: "ls -la" } }],
+    } as unknown as PaseoAgent;
+    vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "In Progress")] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    vi.mocked(projectAgents).mockResolvedValue([owner, researcher]);
+    const asked = (await loadBoard({} as PaseoApi, state([]), "taro")).cards[0];
+    expect(asked?.column).toBe("needs-you");
+    expect(asked?.permission).toEqual({ title: "Allow Bash?", detail: "ls -la", id: "p7", agentId: "researcher-1", role: "researcher", workspaceId: "workspace-1", count: 1 });
+
+    invalidateBoards();
+    vi.mocked(projectAgents).mockResolvedValue([owner, { ...researcher, pendingPermissions: [] } as unknown as PaseoAgent]);
+    const cleared = (await loadBoard({} as PaseoApi, state([]), "taro")).cards[0];
+    expect(cleared?.column).toBe("working");
+    expect(cleared?.permission).toBeNull();
+  });
+
+  it("carries a permission the Manager or its own subagents wait on, the Manager's first", async () => {
+    const manager = { ...agent("manager-1", "manager", "", "2026-10-13T14:00:00Z"), labels: { "taro.role": "manager", "taro.project": "taro" } } as unknown as PaseoAgent;
+    const researcher = {
+      ...agent("researcher-9", "researcher", "", "2026-10-13T14:59:00Z"),
+      labels: { "taro.role": "researcher", "taro.project": "taro" },
+      pendingPermissions: [{ id: "p9", name: "Bash", kind: "tool", input: { command: "git log" } }],
+    } as unknown as PaseoAgent;
+    vi.mocked(listTickets).mockResolvedValue([] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    vi.mocked(projectAgents).mockResolvedValue([manager, researcher]);
+    expect((await loadBoard({} as PaseoApi, state([]), "taro")).managerPermission).toMatchObject({ title: "Allow Bash?", detail: "git log", agentId: "researcher-9", role: "researcher", count: 1 });
+
+    invalidateBoards();
+    const askingManager = { ...manager, pendingPermissions: [{ id: "p1", name: "Edit", kind: "tool", input: { file_path: "/home/user/project/a.ts" } }] } as unknown as PaseoAgent;
+    vi.mocked(projectAgents).mockResolvedValue([askingManager, researcher]);
+    expect((await loadBoard({} as PaseoApi, state([]), "taro")).managerPermission).toMatchObject({ agentId: "manager-1", role: "manager", count: 2 });
+
+    invalidateBoards();
+    vi.mocked(projectAgents).mockResolvedValue([manager]);
+    expect((await loadBoard({} as PaseoApi, state([]), "taro")).managerPermission).toBeNull();
   });
 
   it("fills the delivered line for Awaiting acceptance cards only", async () => {

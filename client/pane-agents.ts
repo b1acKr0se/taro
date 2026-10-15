@@ -90,6 +90,28 @@ export function defaultPaneAgent(list: readonly PaneAgent[]): PaneAgent | null {
   return list.find((agent) => agent.role === "owner" && agent.live) ?? list.find((agent) => agent.role === "owner") ?? null;
 }
 
+/** The agent a ticket's pane opens on: the one asking permission, where Allow and Deny are (TR-096), else the owner. */
+export function openingPaneAgent(list: readonly PaneAgent[], askerId: string | null): PaneAgent | null {
+  return list.find((agent) => agent.live && agent.id === askerId) ?? defaultPaneAgent(list);
+}
+
+/**
+ * What another of the ticket's agents asks while one is shown, to open it from the chat: its
+ * permission first, which holds it up (TR-096), else its question.
+ */
+export function askedElsewhere(
+  card: Pick<Card, "permission" | "decisions">,
+  shownId: string | null,
+  list: readonly PaneAgent[],
+): { agent: PaneAgent; text: string; permission: boolean; blocking: boolean } | null {
+  const permission = card.permission;
+  const asking = permission === null ? undefined : list.find((agent) => agent.live && agent.id === permission.agentId && agent.id !== shownId);
+  if (permission !== null && asking !== undefined) return { agent: asking, text: permission.title, permission: true, blocking: true };
+  const decision = card.decisions.find((candidate) => candidate.agentId !== shownId && list.some((agent) => agent.id === candidate.agentId));
+  const by = decision === undefined ? undefined : list.find((agent) => agent.id === decision.agentId);
+  return decision === undefined || by === undefined ? null : { agent: by, text: decision.question, permission: false, blocking: decision.blocking };
+}
+
 export type PaneAgentState = "running" | "idle" | "error" | "done";
 
 /**

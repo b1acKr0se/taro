@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deliveredLine, permissionAsk, plainText } from "./needs-you";
+import { askerPrefix, deliveredLine, firstAsk, permissionAsk, plainText } from "./needs-you";
 
 describe("permissionAsk", () => {
   it("names a tool by its title and the command it runs", () => {
@@ -124,5 +124,38 @@ describe("plainText", () => {
   it("is empty for empty input", () => {
     expect(plainText("")).toBe("");
     expect(plainText("   ")).toBe("");
+  });
+});
+
+describe("firstAsk (TR-096)", () => {
+  const request = (id: string, command: string) => ({ id, name: "Bash", kind: "tool", input: { command } });
+  const asking = (id: string, role: string, requests: ReturnType<typeof request>[], workspaceId?: string) => ({
+    id,
+    labels: { "taro.project": "notes-app", "taro.role": role, "taro.ticket": "NA-1" },
+    workspaceId,
+    pendingPermissions: requests,
+  });
+
+  it("is null when nobody asks", () => {
+    expect(firstAsk([])).toBeNull();
+    expect(firstAsk([asking("owner-1", "owner", [])])).toBeNull();
+  });
+
+  it("gives the first asker's first request, who asks, and every request counted", () => {
+    const ask = firstAsk([asking("researcher-1", "researcher", [request("p1", "npm test"), request("p2", "ls")], "workspace-1"), asking("reviewer-1", "reviewer", [request("p3", "git log")])]);
+    expect(ask).toEqual({ title: "Allow Bash?", detail: "npm test", id: "p1", agentId: "researcher-1", role: "researcher", workspaceId: "workspace-1", count: 3 });
+  });
+
+  it("skips an agent whose requests cleared, and reads a missing role or input", () => {
+    const ask = firstAsk([asking("owner-1", "owner", []), { id: "x", labels: {}, pendingPermissions: [{ id: "p9", name: "Edit", kind: "tool", input: null }] }]);
+    expect(ask).toMatchObject({ title: "Allow Edit?", detail: null, agentId: "x", role: null, workspaceId: null, count: 1 });
+  });
+
+  it("names a subagent or the Manager, never the owner whose card it is", () => {
+    expect(askerPrefix("researcher")).toBe("Researcher asks");
+    expect(askerPrefix("implementer")).toBe("Implementer asks");
+    expect(askerPrefix("manager")).toBe("Manager asks");
+    expect(askerPrefix("owner")).toBeNull();
+    expect(askerPrefix(null)).toBeNull();
   });
 });

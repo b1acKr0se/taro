@@ -6,7 +6,7 @@
 import { z } from "zod";
 
 import { alertHeading } from "./alerts";
-import type { Board, Card } from "./contracts";
+import type { AgentAskView, Board, Card } from "./contracts";
 import type { BoardAlert } from "./recovery";
 import type { StoredDecision } from "./state";
 
@@ -72,14 +72,29 @@ function cardEntries(card: Card): NeedsYouEntry[] {
     return [entry(`stalled:${agentId ?? "none"}`, `${card.id} stalled`, card.stalledReason ?? card.lastStatus?.text ?? card.title), ...episode()];
   }
   const entries: NeedsYouEntry[] = [];
-  if (card.permission !== null) {
-    const ask = card.permission.detail === null ? card.permission.title : `${card.permission.title} ${card.permission.detail}`;
-    entries.push(entry(`permission:${agentId ?? "none"}:${card.permission.id ?? ask}`, `${card.id} needs permission`, ask));
-  }
+  if (card.permission !== null) entries.push(permissionEntry(card.permission, `${card.id}:`, card.id, agentId, workspaceId));
   for (const decision of card.decisions) {
     if (decision.blocking) entries.push(decisionEntry(decision, `${card.id} asks`, decision.agentId === agentId ? workspaceId : null));
   }
   return card.column === "needs-you" ? [...entries, ...episode()] : entries;
+}
+
+/**
+ * A pending permission (TR-059), named for who asks when it is not the card's owner (TR-096): a tap
+ * opens the agent that asks, where Allow and Deny are. `whose` is the ticket, or null for the Manager's side.
+ */
+function permissionEntry(ask: AgentAskView, keyPrefix: string, whose: string | null, fallbackAgentId: string | null, fallbackWorkspaceId: string | null): NeedsYouEntry {
+  const text = ask.detail === null ? ask.title : `${ask.title} ${ask.detail}`;
+  const agentId = ask.agentId ?? fallbackAgentId;
+  const job = ask.role === null || ask.role === "owner" || ask.role === "manager" ? null : ask.role;
+  const who = whose === null ? (job === null ? "The Manager" : `The Manager's ${job}`) : job === null ? whose : `${whose}'s ${job}`;
+  return {
+    key: `${keyPrefix}permission:${agentId ?? "none"}:${ask.id ?? text}`,
+    title: `${who} needs permission`,
+    body: clip(text),
+    agentId,
+    workspaceId: ask.workspaceId ?? fallbackWorkspaceId,
+  };
 }
 
 /**
@@ -116,6 +131,7 @@ export function needsYouEntries(board: Board, managerWorkspaceId: string | null,
     ...board.alerts.map((alert) => alertEntry(board.project, alert, managerAgentId, managerWorkspaceId)),
     ...board.cards.filter((card) => card.status !== "Done" && card.status !== "Cancelled").flatMap((card) => cardEntries(card)),
     ...board.managerDecisions.map((decision) => decisionEntry(decision, "Manager asks", managerWorkspaceId)),
+    ...(board.managerPermission === null ? [] : [permissionEntry(board.managerPermission, "manager:", null, managerAgentId, managerWorkspaceId)]),
   ];
 }
 

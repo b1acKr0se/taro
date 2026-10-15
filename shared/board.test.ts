@@ -162,10 +162,45 @@ describe("ticketAgents", () => {
     const childOwner = agent("child-owner", "owner", "DEMO-1.01", "idle", "DEMO-1.01 · Child work");
     expect(ticketAgents("DEMO-1.01", "DEMO-1", grouped([parentOwner, childOwner])).owner?.id).toBe("child-owner");
     const implementer = agent("builder", "implementer", "DEMO-1", "running", "DEMO-1 · implementer: x", undefined, [{}]);
-    const joined = ticketAgents("DEMO-1", null, grouped([parentOwner, implementer]));
+    const joined = ticketAgents("DEMO-1", null, grouped([parentOwner, agent("builder", "implementer", "DEMO-1", "running", "DEMO-1 · implementer: x")]));
     expect(joined.owner?.id).toBe("owner");
     expect(joined.columnAgent?.id).toBe("owner");
     expect(joined.subagents.map((entry) => entry.id)).toEqual(["builder"]);
+  });
+
+  // TR-096: a researcher of a ticket sat on a permission while its card stayed in Working.
+  it("puts a ticket whose subagent, not its owner, asks permission under Needs you, and back once it clears", () => {
+    const placed = (agents: (JoinedAgent & { id: string })[]) => {
+      const joined = ticketAgents("DEMO-1", null, grouped(agents), "In Progress");
+      const placing = joined.columnAgent;
+      const column = boardColumn({ ...base, status: "In Progress", lastStatus: null, agent: placing === null ? null : { status: placing.status, pendingPermissions: placing.pendingPermissions.length } });
+      return { column, askers: joined.askers.map((entry) => entry.id) };
+    };
+    const owner = agent("owner", "owner", "DEMO-1", "running", "DEMO-1 · Work");
+    const researcher = agent("researcher", "researcher", "DEMO-1", "running", "DEMO-1 · researcher: x", undefined, [{}]);
+    expect(placed([owner, researcher])).toEqual({ column: "needs-you", askers: ["researcher"] });
+    expect(placed([owner, { ...researcher, pendingPermissions: [] }])).toEqual({ column: "working", askers: [] });
+    expect(placed([parentOwner, researcher]).column).toBe("needs-you");
+  });
+
+  it("lists the owner's ask first, then its subagents' newest first", () => {
+    const owner = agent("owner", "owner", "DEMO-1", "running", "DEMO-1 · Work", "2026-10-13T09:00:00Z", [{}]);
+    const older = agent("older", "reviewer", "DEMO-1", "running", "DEMO-1 · reviewer: x", "2026-10-13T10:00:00Z", [{}]);
+    const newer = agent("newer", "implementer", "DEMO-1", "running", "DEMO-1 · implementer: y", "2026-10-13T11:00:00Z", [{}, {}]);
+    const joined = ticketAgents("DEMO-1", null, grouped([older, owner, newer]));
+    expect(joined.askers.map((entry) => entry.id)).toEqual(["owner", "newer", "older"]);
+    expect(joined.columnAgent?.id).toBe("owner");
+    expect(ticketAgents("DEMO-1", null, grouped([older, newer])).columnAgent?.id).toBe("newer");
+    expect(ticketAgents("DEMO-1", null, grouped([])).askers).toEqual([]);
+  });
+
+  it("lists a child's asking subagents, and the parent's owner only when it places the child", () => {
+    const asking = agent("owner", "owner", "DEMO-1", "idle", "DEMO-1 · Parent work", undefined, [{}]);
+    const builder = agent("builder", "implementer", "DEMO-1.01", "running", "DEMO-1.01 · implementer: x");
+    expect(ticketAgents("DEMO-1.01", "DEMO-1", grouped([asking])).askers.map((entry) => entry.id)).toEqual(["owner"]);
+    expect(ticketAgents("DEMO-1.01", "DEMO-1", grouped([asking, builder])).askers).toEqual([]);
+    expect(ticketAgents("DEMO-1.01", "DEMO-1", grouped([asking, { ...builder, pendingPermissions: [{}] }])).askers.map((entry) => entry.id)).toEqual(["builder"]);
+    expect(ticketAgents("DEMO-1.01", "DEMO-1", grouped([asking]), "Queued").askers).toEqual([]);
   });
 
   it("picks the newest live owner", () => {
@@ -204,6 +239,12 @@ describe("needsYouExtras and inboxCount (TR-064)", () => {
   it("counts every alert and the Manager's questions in Needs you", () => {
     expect(needsYouExtras({ managerDecisions: [{}], alerts: [alert, alert] }, true)).toBe(4);
     expect(columnCounts(cards, needsYouExtras({ managerDecisions: [], alerts: [alert] }, false))["needs-you"]).toBe(2);
+  });
+
+  it("counts a permission the Manager's side waits on, once (TR-096)", () => {
+    expect(needsYouExtras({ managerDecisions: [], managerPermission: { title: "Allow Bash?" }, alerts: [] }, false)).toBe(1);
+    expect(needsYouExtras({ managerDecisions: [{}], managerPermission: null, alerts: [] }, false)).toBe(1);
+    expect(inboxCount({ cards: [{ column: "working" }], managerDecisions: [], managerPermission: { title: "Allow Bash?" }, alerts: [] }, false)).toBe(1);
   });
 
   it("counts an alert alone on an otherwise quiet board", () => {

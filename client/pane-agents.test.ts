@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { AgentBrief, Card } from "../shared/contracts";
 import type { SubagentRole } from "../shared/project";
-import { defaultPaneAgent, paneAgentDetail, paneAgentState, paneAgents, roleIcon, taskOfTitle, waitingOn } from "./pane-agents";
+import { askedElsewhere, defaultPaneAgent, openingPaneAgent, paneAgentDetail, paneAgentState, paneAgents, roleIcon, taskOfTitle, waitingOn } from "./pane-agents";
 
 function brief(id: string, title: string | null = null): AgentBrief {
   return {
@@ -165,5 +165,31 @@ describe("waitingOn", () => {
       more: 0,
     });
     expect(waitingOn({ subagents: [{ ...sub("x"), status: "running" }] }, NOW)).toEqual({ text: "Implementer", running: null, more: 0 });
+  });
+});
+
+// TR-096: a researcher's permission waited unseen; its Allow and Deny are in its own chat.
+describe("openingPaneAgent and askedElsewhere", () => {
+  const owner = brief("owner-1");
+  const listed = paneAgents(card({ owner, subagents: [sub("researcher-1", "NA-1 · researcher: read the logs", "researcher")], pastAgents: [past("old-1", "reviewer")] }));
+  const ask = { title: "Allow Bash?", detail: "ls", id: "p1", agentId: "researcher-1", role: "researcher" as const, workspaceId: null, count: 1 };
+  const question = { key: "owner-1:naming", id: "naming", agentId: "owner-1", question: "Call it drafts?", blocking: false } as unknown as Card["decisions"][number];
+
+  it("opens on the live agent asking permission, else the owner", () => {
+    expect(openingPaneAgent(listed, "researcher-1")?.id).toBe("researcher-1");
+    expect(openingPaneAgent(listed, "owner-1")?.id).toBe("owner-1");
+    expect(openingPaneAgent(listed, null)?.id).toBe("owner-1");
+    expect(openingPaneAgent(listed, "old-1")?.id).toBe("owner-1");
+    expect(openingPaneAgent([], "researcher-1")).toBeNull();
+  });
+
+  it("points the owner's chat at a subagent's permission before any question", () => {
+    expect(askedElsewhere({ permission: ask, decisions: [] }, "owner-1", listed)).toMatchObject({ agent: { id: "researcher-1" }, text: "Allow Bash?", permission: true, blocking: true });
+    expect(askedElsewhere({ permission: null, decisions: [] }, "owner-1", listed)).toBeNull();
+  });
+
+  it("says nothing of the permission in the asker's own chat, and points it at another agent's question", () => {
+    expect(askedElsewhere({ permission: ask, decisions: [] }, "researcher-1", listed)).toBeNull();
+    expect(askedElsewhere({ permission: ask, decisions: [question] }, "researcher-1", listed)).toMatchObject({ agent: { id: "owner-1" }, text: "Call it drafts?", permission: false, blocking: false });
   });
 });

@@ -168,7 +168,7 @@ describe("cardNowLine", () => {
     });
 
     it("still says what it waits for when a permission is pending", () => {
-      const permission = { title: "Allow Bash?", detail: "npm install", id: "p1" };
+      const permission = { title: "Allow Bash?", detail: "npm install", id: "p1", agentId: null, role: null, workspaceId: null, count: 1 };
       const asking = { ...running, pendingPermissions: 1 };
       expect(cardNowLine(card({ owner: asking, lastStatus: approval, permission, activity: { text: "running tests", at: "2026-01-01T11:59:00Z" } }), NOW)).toMatchObject({
         kind: "call",
@@ -205,6 +205,7 @@ describe("cardNowLine", () => {
         status: "Awaiting acceptance",
         subagents: [implementer({})],
         owner: { ...owner, pendingPermissions: 2 },
+        permission: { title: "Edit", detail: null, id: null, agentId: null, role: null, workspaceId: null, count: 2 },
         decisions: [decision({}), decision({ id: "scope-approval", key: "agent-1:scope-approval", question: "Approve the plan?", blocking: true })],
       }),
       NOW,
@@ -226,14 +227,16 @@ describe("cardNowLine", () => {
   });
 
   it("says what a permission asks, the rest counted", () => {
-    const permission = { title: "Run a command", detail: "npm install", id: null };
+    const permission = { title: "Run a command", detail: "npm install", id: null, agentId: "agent-1", role: "owner" as const, workspaceId: null, count: 1 };
     expect(cardNowLine(card({ owner: { ...owner, pendingPermissions: 1 }, permission }), NOW)).toMatchObject({ headline: "Run a command", detail: "npm install", action: "Review" });
-    expect(cardNowLine(card({ owner: { ...owner, pendingPermissions: 3 }, permission }), NOW)).toMatchObject({ detail: "npm install · 2 more permissions" });
-    expect(cardNowLine(card({ owner: { ...owner, pendingPermissions: 2 }, permission: { title: "Edit", detail: null, id: null } }), NOW)).toMatchObject({ detail: "1 more permission" });
+    expect(cardNowLine(card({ owner: { ...owner, pendingPermissions: 3 }, permission: { ...permission, count: 3 } }), NOW)).toMatchObject({ detail: "npm install · 2 more permissions" });
+    expect(cardNowLine(card({ owner: { ...owner, pendingPermissions: 2 }, permission: { ...permission, title: "Edit", detail: null, count: 2 } }), NOW)).toMatchObject({ detail: "1 more permission" });
   });
 
-  it("falls back to a count when the permission's words are unknown", () => {
-    expect(cardNowLine(card({ owner: { ...owner, pendingPermissions: 1 } }), NOW)).toMatchObject({ headline: "Waiting on a permission", detail: null, action: "Review" });
+  // TR-096: who asks leads the line when it is not the owner, whatever the owner is doing.
+  it("names the subagent that asks, ahead of what it asks", () => {
+    const permission = { title: "Allow Bash?", detail: "npm test", id: "p1", agentId: "researcher-1", role: "researcher" as const, workspaceId: null, count: 2 };
+    expect(cardNowLine(card({ owner: { ...owner, status: "running" }, permission }), NOW)).toMatchObject({ kind: "call", headline: "Researcher asks: Allow Bash?", detail: "npm test · 1 more permission", action: "Review" });
   });
 
   it("leads a delivery with its summary, readiness and evidence under it", () => {

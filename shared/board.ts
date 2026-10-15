@@ -105,6 +105,8 @@ export interface TicketAgents<Agent> {
   subagents: Agent[];
   /** Whose live state places the card. */
   columnAgent: Agent | null;
+  /** The agents waiting on a permission for this ticket, the one the card shows first leading (TR-096). */
+  askers: Agent[];
 }
 
 /**
@@ -113,7 +115,8 @@ export interface TicketAgents<Agent> {
  * labelled with the parent and titled with the child's id ("TR-1.01 · implementer: …"), and a busy
  * one of those places the card, so the child is Stalled only when none of them is alive. A child
  * not started yet (`status` Queued or Ready) is placed only by its own subagents, never by the
- * parent's owner busy with other work.
+ * parent's owner busy with other work. Any of a ticket's agents asking permission places it (TR-096):
+ * the owner's ask comes first, then its subagents', newest first.
  */
 export function ticketAgents<Agent extends JoinedAgent>(
   ticketId: string,
@@ -129,12 +132,21 @@ export function ticketAgents<Agent extends JoinedAgent>(
     return role !== null && isSubagentRole(role);
   });
   const owner = newestOwner(own) ?? newestOwner(parents);
-  if (parentId === null) return { owner, subagents, columnAgent: owner };
-  const asking = newest(subagents.filter((agent) => agent.pendingPermissions.length > 0));
+  const asking = byNewest(subagents.filter(asks));
+  if (parentId === null) {
+    const askers = owner !== null && asks(owner) ? [owner, ...asking] : asking;
+    return { owner, subagents, columnAgent: askers[0] ?? owner, askers };
+  }
   const running = newest(subagents.filter((agent) => agent.status === "running" || agent.status === "initializing"));
   // A child not started yet is not what the parent's owner works on (TR-080): only its own subagents place it.
   const placing = status === undefined || hasStarted(status) ? owner : null;
-  return { owner, subagents, columnAgent: asking ?? running ?? placing };
+  const columnAgent = asking[0] ?? running ?? placing;
+  // The parent's owner asks about the child only while nothing else of the child's is under way.
+  return { owner, subagents, columnAgent, askers: columnAgent !== null && columnAgent === placing && asks(placing) ? [placing] : asking };
+}
+
+function asks(agent: JoinedAgent): boolean {
+  return agent.pendingPermissions.length > 0;
 }
 
 /** A ticket some agent has taken up: under way, delivered, blocked or finished; Queued and Ready are not. */
@@ -147,7 +159,11 @@ function newestOwner<Agent extends JoinedAgent>(agents: readonly Agent[]): Agent
 }
 
 function newest<Agent extends JoinedAgent>(agents: readonly Agent[]): Agent | null {
-  return [...agents].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
+  return byNewest(agents)[0] ?? null;
+}
+
+function byNewest<Agent extends JoinedAgent>(agents: readonly Agent[]): Agent[] {
+  return [...agents].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
 /** The complexity label the owner set (`complexity-low` → `low`), or null. */
@@ -164,16 +180,17 @@ export function columnCounts(cards: readonly { column: ColumnId }[], managerQues
 }
 
 /**
- * What waits on the user besides the tickets (TR-064): the Manager's open questions, every board
- * alert and a paused ticket sync. The Needs you column counts them with its tickets.
+ * What waits on the user besides the tickets (TR-064): the Manager's open questions, a permission
+ * the Manager's side waits on (TR-096), every board alert and a paused ticket sync. The Needs you column counts them with its tickets.
  */
-export function needsYouExtras(board: { managerDecisions: readonly unknown[]; alerts: readonly unknown[] } | null, syncPaused: boolean): number {
-  return (board?.managerDecisions.length ?? 0) + (board?.alerts.length ?? 0) + (syncPaused ? 1 : 0);
+export function needsYouExtras(board: { managerDecisions: readonly unknown[]; managerPermission?: unknown; alerts: readonly unknown[] } | null, syncPaused: boolean): number {
+  const managerAsks = board?.managerPermission === undefined || board.managerPermission === null ? 0 : 1;
+  return (board?.managerDecisions.length ?? 0) + managerAsks + (board?.alerts.length ?? 0) + (syncPaused ? 1 : 0);
 }
 
 /** A project's Inbox count, on the sidebar and the phone's Inbox tab: its Needs you, and its stalled tickets, which the Inbox lists too. */
 export function inboxCount(
-  board: { cards: readonly { column: ColumnId }[]; managerDecisions: readonly unknown[]; alerts: readonly unknown[] } | null,
+  board: { cards: readonly { column: ColumnId }[]; managerDecisions: readonly unknown[]; managerPermission?: unknown; alerts: readonly unknown[] } | null,
   syncPaused: boolean,
 ): number {
   const counts = columnCounts(board?.cards ?? [], needsYouExtras(board, syncPaused));

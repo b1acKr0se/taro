@@ -12,12 +12,24 @@ import { ColumnIdSchema } from "./board";
 import { MilestoneSchema } from "./milestones";
 import { PauseViewSchema } from "./pause";
 import { PaseoProjectCandidateSchema, SettingsTemplateSchema } from "./project-candidates";
-import { ProjectConfigSchema, ProjectNameSchema, ProjectSettingsSchema, SUBAGENT_ROLES } from "./project";
+import { ProjectConfigSchema, ProjectNameSchema, ProjectSettingsSchema, ROLES, SUBAGENT_ROLES } from "./project";
 import { BoardAlertSchema, HeadroomSchema } from "./recovery";
 import { LastStatusSchema, StoredDecisionSchema } from "./state";
 
 const Empty = z.object({});
 const ProjectInput = z.object({ project: ProjectNameSchema });
+
+/** A pending permission request in its own words (TR-045), who asks it and how many wait with it (TR-096). */
+export const AgentAskSchema = z.object({
+  title: z.string(),
+  detail: z.string().nullable(),
+  id: z.string().nullable().default(null),
+  agentId: z.string().nullable().default(null),
+  role: z.enum(ROLES).nullable().default(null),
+  workspaceId: z.string().nullable().default(null),
+  count: z.number().int().default(1),
+});
+export type AgentAskView = z.infer<typeof AgentAskSchema>;
 
 export const AgentBriefSchema = z.object({
   id: z.string(),
@@ -204,8 +216,8 @@ export const CardSchema = z.object({
   evidence: EvidenceViewSchema.nullable().default(null),
   /** Set from the ACCEPTED record while the ticket is still Awaiting acceptance: the owner is merging (TR-031). */
   accepted: z.object({ at: z.string(), merging: z.string().nullable() }).nullable().default(null),
-  /** What the owner's first pending permission asks, in its own words (TR-045). */
-  permission: z.object({ title: z.string(), detail: z.string().nullable(), id: z.string().nullable().default(null) }).nullable().default(null),
+  /** What the first pending permission of the ticket's owner or subagents asks, in its own words (TR-045), and who asks (TR-096). */
+  permission: AgentAskSchema.nullable().default(null),
   /** The delivery in a line, from the FINAL summary, while the ticket is Awaiting acceptance (TR-045). */
   delivered: z.string().nullable().default(null),
   /** Pausing, paused or queued to resume (TR-088), else null. */
@@ -219,6 +231,8 @@ export const BoardSchema = z.object({
   project: z.string(),
   cards: z.array(CardSchema),
   managerDecisions: z.array(StoredDecisionSchema),
+  /** The first permission the Manager or one of its own subagents (no ticket) waits on (TR-096). */
+  managerPermission: AgentAskSchema.nullable().default(null),
   suggestions: z.array(SuggestionSchema),
   /** The host's thread usage, or null where it publishes no limit (TR-012). */
   headroom: HeadroomSchema.nullable(),

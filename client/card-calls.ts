@@ -5,6 +5,7 @@
  */
 import type { Card } from "../shared/contracts";
 import { evidenceSummary } from "../shared/evidence";
+import { askerPrefix } from "../shared/needs-you";
 import type { StoredDecision } from "../shared/state";
 import { walkOrder } from "./walk-order";
 
@@ -13,8 +14,8 @@ export type CardCall =
   | { kind: "decision"; decision: StoredDecision; more: number }
   /** Delivered and waiting for Accept / Request changes: the delivery in a line and the evidence in one (TR-021). */
   | { kind: "acceptance"; ready: boolean; delivered: string | null; evidence: string | null }
-  /** The owner stopped on Paseo permission requests: what the first asks, and how many wait. */
-  | { kind: "permission"; title: string | null; detail: string | null; count: number };
+  /** The owner or a subagent stopped on Paseo permission requests: who asks first (null for the owner), what, and how many wait (TR-096). */
+  | { kind: "permission"; asker: string | null; title: string | null; detail: string | null; count: number };
 
 export function cardCalls(card: Card): CardCall[] {
   const calls: CardCall[] = [];
@@ -25,8 +26,8 @@ export function cardCalls(card: Card): CardCall[] {
   if (card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null) {
     calls.push({ kind: "acceptance", ready: acceptanceReady(card), delivered: card.delivered, evidence: card.evidence === null ? null : evidenceSummary(card.evidence) });
   }
-  const permissions = card.owner?.pendingPermissions ?? 0;
-  if (permissions > 0) calls.push({ kind: "permission", title: card.permission?.title ?? null, detail: card.permission?.detail ?? null, count: permissions });
+  const ask = card.permission;
+  if (ask !== null) calls.push({ kind: "permission", asker: askerPrefix(ask.role), title: ask.title, detail: ask.detail, count: Math.max(ask.count, 1) });
   return calls;
 }
 

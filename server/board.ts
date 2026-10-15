@@ -12,7 +12,7 @@ import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
 import { acceptedRecord, executionMachine, pullRequestUrl, type AcceptedRecord } from "../shared/execution";
 import type { Board, BoardPaging, Card, TicketDetailView } from "../shared/contracts";
 import { latestMilestone, type Milestone } from "../shared/milestones";
-import { deliveredLine, permissionAsk, type PermissionAsk } from "../shared/needs-you";
+import { deliveredLine, firstAsk } from "../shared/needs-you";
 import { dependsOn } from "../shared/owner-cap";
 import { pastTicketAgents } from "../shared/past-agents";
 import { pauseRefusal, pauseView, type PauseView } from "../shared/pause";
@@ -148,11 +148,14 @@ export function invalidateBoards(): void {
   activityCache.clear();
 }
 
-/** What the owner's first pending permission asks, for its card. */
-function firstPermission(owner: PaseoAgent | null): (PermissionAsk & { id: string }) | null {
-  const request = owner?.pendingPermissions[0];
-  // The request's id tells a second ask from the first, for its notification (TR-059).
-  return request === undefined ? null : { ...permissionAsk({ ...request, input: request.input ?? undefined }), id: request.id };
+/** The Manager and its own subagents, which carry no ticket, asking permission: the Manager first, then the newest (TR-096). */
+function managerAskers(agents: readonly PaseoAgent[]): PaseoAgent[] {
+  const ofManager = agents.filter((agent) => {
+    const role = roleFromLabel(agent.labels[TARO_LABELS.role]);
+    return agent.pendingPermissions.length > 0 && (role === "manager" || (role !== null && isSubagentRole(role) && agent.labels[TARO_LABELS.ticket] === undefined));
+  });
+  const rank = (agent: PaseoAgent) => (agent.labels[TARO_LABELS.role] === "manager" ? 0 : 1);
+  return ofManager.sort((left, right) => rank(left) - rank(right) || right.updatedAt.localeCompare(left.updatedAt));
 }
 
 function groupByTicket(agents: readonly PaseoAgent[]): Map<string, PaseoAgent[]> {
@@ -189,7 +192,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
   // Placing a ticket needs only the list, live agents and under-way records; a full card is built only for the page (TR-082).
   const placed = await Promise.all(
     tickets.map(async (ticket) => {
-      const { owner, subagents: liveSubagents, columnAgent } = ticketAgents(ticket.id, ticket.parentTaskId, byTicket, ticket.status);
+      const { owner, subagents: liveSubagents, columnAgent, askers } = ticketAgents(ticket.id, ticket.parentTaskId, byTicket, ticket.status);
       // A child not started has no status of its own: its parent owner's line is about other work (TR-080).
       const ownLine = ticket.parentTaskId === null || hasStarted(ticket.status);
       const ownerState = owner === null ? null : agentStates[owner.id] ?? null;
@@ -214,7 +217,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         accepted: accepted !== null,
         paused: pausing.pause !== null && pausing.pause.state !== "pausing",
       });
-      return { id: ticket.id, updatedAt: ticket.updatedAt, column, ticket, owner, liveSubagents, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere, pausing };
+      return { id: ticket.id, updatedAt: ticket.updatedAt, column, ticket, owner, liveSubagents, askers, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere, pausing };
     }),
   );
   const page = pageColumns(placed, paging.limits, paging.include);
@@ -225,7 +228,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
   }
 
   const cards: Card[] = await Promise.all(
-    page.kept.map(async ({ ticket, column, owner, liveSubagents, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere, pausing }) => {
+    page.kept.map(async ({ ticket, column, owner, liveSubagents, askers, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere, pausing }) => {
       const subagents = liveSubagents.flatMap((agent) => {
         const role = roleFromLabel(agent.labels[TARO_LABELS.role]);
         return role !== null && isSubagentRole(role) ? [{ ...agentBrief(agent, replacing), role }] : [];
@@ -266,7 +269,8 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         activity: UNDER_WAY.has(ticket.status) ? await cachedActivity(paseo, owner) : null,
         evidence,
         accepted,
-        permission: firstPermission(owner),
+        // A finished ticket waits on nobody, whatever its agents still ask.
+        permission: column === "done" ? null : firstAsk(askers),
         delivered: ticket.status === "Awaiting acceptance" ? deliveredLine(facts?.finalSummary ?? null) : null,
         pause: pausing.pause,
         pausable: pausing.pausable,
@@ -281,6 +285,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
     project,
     cards,
     managerDecisions: openDecisions.filter((decision) => decision.ticket === null),
+    managerPermission: firstAsk(managerAskers(agents)),
     suggestions: await readSuggestions(project, tickets),
     headroom,
     alerts: [...boardAlerts(headroom, managerState?.stalledReason ?? null, now), ...ticketFileAlerts(problems)],

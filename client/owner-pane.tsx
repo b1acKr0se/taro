@@ -20,7 +20,7 @@ import { AgentChat } from "./agent-chat";
 import { AcceptanceCard } from "./acceptance-card";
 import { acceptanceReady } from "./card-calls";
 import { Pressable } from "./focus";
-import { defaultPaneAgent, paneAgents, paneAgentJob, roleIcon } from "./pane-agents";
+import { askedElsewhere, openingPaneAgent, paneAgents, paneAgentJob, roleIcon } from "./pane-agents";
 import { PaneHeader } from "./pane-header";
 import { paneGutter, SPACE } from "./spacing";
 import { TicketView } from "./ticket-view";
@@ -77,14 +77,18 @@ export function OwnerPane({
   const agents = useMemo(() => paneAgents(card), [card.owner, card.subagents, card.pastAgents]);
   const now = useNow();
   const chosenId = chosen?.card === card.id ? chosen.agent : null;
-  const shown = agents.find((agent) => agent.id === chosenId) ?? defaultPaneAgent(agents) ?? agents[0] ?? null;
+  // Who asked permission as the ticket opened is kept with it, so answering does not move the chat to the owner (TR-096).
+  const askerId = card.permission?.agentId ?? null;
+  const [openedOn, setOpenedOn] = useState<{ card: string; asker: string | null }>({ card: card.id, asker: askerId });
+  if (openedOn.card !== card.id) setOpenedOn({ card: card.id, asker: askerId });
+  const openedAsker = openedOn.card === card.id ? openedOn.asker : askerId;
+  const shown = agents.find((agent) => agent.id === chosenId) ?? openingPaneAgent(agents, openedAsker) ?? agents[0] ?? null;
   const inset = paneGutter(compact);
   // Once accepted the owner is merging: nothing is left to accept (TR-031).
   const accepting = card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null;
   const shownAsks = useMemo(() => card.decisions.filter((decision) => decision.agentId === shown?.id), [card.decisions, shown?.id]);
-  // A question another of the ticket's agents asked is answered in that agent's chat.
-  const askedElsewhere = card.decisions.find((decision) => decision.agentId !== shown?.id && agents.some((agent) => agent.id === decision.agentId));
-  const askedElsewhereBy = askedElsewhere === undefined ? undefined : agents.find((agent) => agent.id === askedElsewhere.agentId);
+  // A permission or question another of the ticket's agents asked is answered in that agent's chat.
+  const elsewhere = askedElsewhere(card, shown?.id ?? null, agents);
   const tabSwitch = (iconsOnly: boolean) => (
     <Segmented
       theme={theme}
@@ -166,17 +170,17 @@ export function OwnerPane({
                 }
                 context={{ used: shown.brief.contextUsedTokens, max: shown.brief.contextMaxTokens }}
                 actions={
-                  askedElsewhere === undefined || askedElsewhereBy === undefined ? undefined : (
+                  elsewhere === null ? undefined : (
                     <Pressable
                       accessibilityRole="button"
-                      onPress={() => setChosen({ card: card.id, agent: askedElsewhereBy.id })}
+                      onPress={() => setChosen({ card: card.id, agent: elsewhere.agent.id })}
                       style={{ width: "100%", flexDirection: "row", alignItems: "center", gap: SPACE.sm }}
                     >
-                      <Icon name="Hand" size={13} color={askedElsewhere.blocking ? theme.colors.statusWarning : theme.colors.foregroundMuted} />
+                      <Icon name={elsewhere.permission ? "KeyRound" : "Hand"} size={13} color={elsewhere.blocking ? theme.colors.statusWarning : theme.colors.foregroundMuted} />
                       <Text style={{ flex: 1, color: theme.colors.foreground, fontSize: FONT_SIZE.caption }} numberOfLines={1}>
-                        {askedElsewhere.question}
+                        {elsewhere.text}
                       </Text>
-                      <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Open {askedElsewhereBy.label}</Text>
+                      <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>Open {elsewhere.agent.label}</Text>
                     </Pressable>
                   )
                 }

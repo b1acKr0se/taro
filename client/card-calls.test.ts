@@ -118,13 +118,20 @@ describe("cardCalls", () => {
   });
 
   it("carries what the first permission asks and how many wait", () => {
-    expect(cardCalls(card({ owner: { ...owner, pendingPermissions: 1 } }))).toEqual([{ kind: "permission", title: null, detail: null, count: 1 }]);
-    const permission = { title: "Run a command", detail: "npm test", id: null };
-    expect(cardCalls(card({ owner: { ...owner, pendingPermissions: 3 }, permission }))).toEqual([{ kind: "permission", title: "Run a command", detail: "npm test", count: 3 }]);
+    expect(cardCalls(card({ owner: { ...owner, pendingPermissions: 1 } }))).toEqual([]);
+    const permission = { title: "Run a command", detail: "npm test", id: null, agentId: "agent-1", role: "owner" as const, workspaceId: null, count: 3 };
+    expect(cardCalls(card({ owner: { ...owner, pendingPermissions: 3 }, permission }))).toEqual([{ kind: "permission", asker: null, title: "Run a command", detail: "npm test", count: 3 }]);
+  });
+
+  // TR-096: a researcher's request left its card in Working, saying nothing.
+  it("carries a subagent's permission, naming its job, while the owner asks nothing", () => {
+    const permission = { title: "Allow Bash?", detail: "npm test", id: "p1", agentId: "researcher-1", role: "researcher" as const, workspaceId: null, count: 1 };
+    expect(cardCalls(card({ owner, permission }))).toEqual([{ kind: "permission", asker: "Researcher asks", title: "Allow Bash?", detail: "npm test", count: 1 }]);
   });
 
   it("lists every kind at once in a fixed order: decision, acceptance, permission", () => {
-    const calls = cardCalls(card({ status: "Awaiting acceptance", decisions: [decision({})], owner: { ...owner, pendingPermissions: 1 } }));
+    const permission = { title: "Edit", detail: null, id: null, agentId: "agent-1", role: "owner" as const, workspaceId: null, count: 1 };
+    const calls = cardCalls(card({ status: "Awaiting acceptance", decisions: [decision({})], owner: { ...owner, pendingPermissions: 1 }, permission }));
     expect(calls.map((call) => call.kind)).toEqual(["decision", "acceptance", "permission"]);
     expect(calls.map(callAction)).toEqual(["Answer", "Request changes", "Review"]);
   });
