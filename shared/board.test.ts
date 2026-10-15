@@ -284,6 +284,8 @@ describe("inboxCount counts each card the Inbox lists (TR-123)", () => {
     expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, openBlockingDecisions: 1 })).toBe("needs-you");
     expect(boardColumn({ ...base, agent: { status: "initializing", pendingPermissions: 0 }, openBlockingDecisions: 1 })).toBe("needs-you");
     expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, openBlockingDecisions: 0 })).toBe("working");
+    // Pausing: the owner writes its handoff while its question is still open, until it is archived.
+    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, paused: true, openBlockingDecisions: 1 })).toBe("needs-you");
     expect(inboxCount({ ...quiet, cards: [owner("needs-you", [question])], ticketQuestions: 1 }, false)).toBe(1);
   });
 
