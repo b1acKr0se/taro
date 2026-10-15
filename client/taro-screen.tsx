@@ -677,6 +677,8 @@ function ManagerPane({
   const compactRpc = useRpc(compactManager);
   const resume = useRpc(resumeManager);
   const replace = useRpc(restartManager);
+  // The project list holds the manager: refreshed at once, so the old one's chat and its offer go now, not at the next poll.
+  const refreshProjects = useRefreshProjects();
   const actions = useActions();
   // The offer appears as the cache hour passes, not only at the next poll that changes something.
   const now = useNow(60_000);
@@ -718,7 +720,13 @@ function ManagerPane({
           theme={theme}
           disabled={actions.busy}
           state={actions.stateOf("replace")}
-          onPress={() => actions.press("replace", () => replace({ project }), { success: MANAGER_ACTION_SUCCESS.fresh, onSuccess: onChanged })}
+          onPress={() => actions.press("replace", () => replace({ project }), {
+              success: MANAGER_ACTION_SUCCESS.fresh,
+              onSuccess: () => {
+                refreshProjects();
+                onChanged();
+              },
+            })}
         />
       </View>
     );
