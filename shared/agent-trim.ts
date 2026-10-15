@@ -82,9 +82,16 @@ export interface ToolMiss {
   reason: string;
 }
 
+/** An error as text: Claude's tool_result content or a message when there is one, else its JSON. */
 function textOf(value: unknown): string {
   if (typeof value === "string") return value;
   if (value === null || value === undefined) return "";
+  if (isRecord(value)) {
+    for (const key of ["content", "message"]) {
+      const text = value[key];
+      if (typeof text === "string") return text;
+    }
+  }
   try {
     return JSON.stringify(value);
   } catch {
@@ -92,10 +99,11 @@ function textOf(value: unknown): string {
   }
 }
 
-/** The skill a Skill call names, wherever Paseo's tool-call detail carries the input. */
+/** The skill a Skill call names: Paseo shows it as a plain-text detail labelled with the skill. */
 function skillNamed(detail: unknown): string | null {
   if (!isRecord(detail)) return null;
-  for (const holder of [detail.input, detail, detail.metadata]) {
+  if (detail.type === "plain_text" && typeof detail.label === "string") return detail.label;
+  for (const holder of [detail.input, detail]) {
     if (isRecord(holder) && typeof holder.skill === "string") return holder.skill;
   }
   return null;
@@ -130,7 +138,7 @@ export function toolMisses(items: readonly unknown[]): ToolMiss[] {
     }
     if (item.status !== "failed") continue;
     const error = textOf(item.error);
-    if (MISSING_ERROR.test(error)) add({ tool: name, reason: `refused: ${oneLine(error)}` });
+    if (MISSING_ERROR.test(error)) add({ tool: name, reason: `refused: ${oneLine(error.replace(/<\/?tool_use_error>/g, ""))}` });
   }
   return [...misses.values()];
 }

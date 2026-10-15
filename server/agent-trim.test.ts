@@ -72,7 +72,8 @@ describe("trimAgentLaunch", () => {
     writeFileSync(settingsOf(cwd), "{}\n");
     git(cwd, "add", "-f", ".claude/settings.local.json");
     git(cwd, "-c", "user.name=Alex", "-c", "user.email=alex@example.com", "commit", "-q", "-m", "settings");
-    const trimmed = await trimAgentLaunch({ config: { provider: "claude", cwd }, env: taroEnv });
+    const request: { config: { provider: string; cwd: string; providerOptions?: Record<string, unknown> }; env: Record<string, string> } = { config: { provider: "claude", cwd }, env: taroEnv };
+    const trimmed = await trimAgentLaunch(request);
     expect(trimmed?.config.providerOptions?.disallowedTools).toEqual([...TRIMMED_TOOLS]);
     expect(readFileSync(settingsOf(cwd), "utf8")).toBe("{}\n");
   });

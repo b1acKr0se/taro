@@ -97,14 +97,13 @@ describe("toolMisses", () => {
     ]);
   });
 
-  it("flags a hidden skill, and a tool or skill Claude Code refused as missing", () => {
-    expect(toolMisses([call("Skill", "failed", "Unknown skill: paseo", { type: "unknown", input: { skill: "paseo" }, output: null })])).toEqual([{ tool: "Skill(paseo)", reason: "a hidden skill" }]);
-    expect(toolMisses([call("Skill", "failed", { message: "Unknown skill: deploy" }, { type: "unknown", input: { skill: "deploy" }, output: null })])).toEqual([
-      { tool: "Skill", reason: 'refused: {"message":"Unknown skill: deploy"}' },
-    ]);
-    expect(toolMisses([call("NewTool", "failed", "<tool_use_error>No such tool available: NewTool</tool_use_error>")])).toEqual([
-      { tool: "NewTool", reason: "refused: <tool_use_error>No such tool available: NewTool</tool_use_error>" },
-    ]);
+  it("flags a hidden skill as Paseo shows a Skill call, and a tool or skill Claude Code refused as missing", () => {
+    // The shapes a real turn carried on a throwaway daemon (TR-139 EVIDENCE).
+    const refusal = { type: "tool_result", content: "<tool_use_error>Skill paseo is disabled for model invocation in skillOverrides settings</tool_use_error>", is_error: true };
+    expect(toolMisses([call("Skill", "failed", refusal, { type: "plain_text", label: "paseo", icon: "sparkles" })])).toEqual([{ tool: "Skill(paseo)", reason: "a hidden skill" }]);
+    expect(toolMisses([call("Skill", "failed", { message: "Unknown skill: deploy" }, { type: "plain_text", label: "deploy", icon: "sparkles" })])).toEqual([{ tool: "Skill", reason: "refused: Unknown skill: deploy" }]);
+    expect(toolMisses([call("NewTool", "failed", "<tool_use_error>No such tool available: NewTool</tool_use_error>")])).toEqual([{ tool: "NewTool", reason: "refused: No such tool available: NewTool" }]);
+    expect(toolMisses([call("Skill", "completed", null, { type: "plain_text", label: "lean-spec", icon: "sparkles" })])).toEqual([]);
   });
 
   it("lists a repeated miss once", () => {
