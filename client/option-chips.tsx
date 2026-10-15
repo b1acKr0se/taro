@@ -60,7 +60,7 @@ export function OptionChips({
         borderColor: control.border,
         backgroundColor: control.fill,
       },
-      recommended: { borderColor: colors.accent, backgroundColor: withAlpha(colors.accent, 0.1) },
+      recommended: { borderColor: control.accentBorder, backgroundColor: withAlpha(colors.accent, 0.1) },
       label: { flexShrink: 1, color: colors.foreground, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption) },
     }),
     [colors, control],

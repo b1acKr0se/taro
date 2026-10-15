@@ -67,7 +67,7 @@ export function AgentChips({
                 paddingVertical: SPACE.xxs + 1,
                 borderRadius: 999,
                 borderWidth: 1,
-                borderColor: selected ? colors.accent : control.border,
+                borderColor: selected ? control.accentBorder : control.border,
                 backgroundColor: selected ? withAlpha(colors.accent, 0.12) : control.fill,
               }}
             >
@@ -92,7 +92,7 @@ export function AgentChips({
               paddingVertical: SPACE.xs + SPACE.xxs,
               borderRadius: 10,
               borderWidth: 1,
-              borderColor: selected ? colors.accent : control.border,
+              borderColor: selected ? control.accentBorder : control.border,
               backgroundColor: selected ? withAlpha(colors.accent, 0.12) : control.fill,
             }}
           >

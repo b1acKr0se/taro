@@ -12,6 +12,7 @@ import { Text, View } from "react-native";
 import type { StoredDecision } from "../shared/state";
 import { questionContext } from "./card-now";
 import { CentredLabel } from "./centred-label";
+import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
 import { OptionChips } from "./option-chips";
 import { SPACE } from "./spacing";
@@ -58,8 +59,8 @@ export function QuestionCard({
         paddingVertical: SPACE.xxs,
         borderRadius: 6,
         borderWidth: 1,
-        // The accent at full strength: at 45% it fell to about 1.5:1 on the card in dark themes (TR-093).
-        borderColor: colors.accent,
+        // At 45% the accent fell to about 1.5:1 on the card in dark themes (TR-093).
+        borderColor: controlColors(colors).accentBorder,
         backgroundColor: withAlpha(colors.accent, 0.1),
       },
       actionText: { color: colors.accent, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },

@@ -17,6 +17,7 @@ import { acceptTicket, compactAgent, nudgeAgent, pauseTicket, relaunchOwner, res
 import { PhaseBadge } from "./badges";
 import { cardFooterParts, cardNowLine, offersCompact, type NowLine } from "./card-now";
 import { CentredLabel } from "./centred-label";
+import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
 import { errorText, formatCost, pullRequestLabel, formatDuration } from "./format";
 import { SPACE } from "./spacing";
@@ -93,8 +94,8 @@ export function TicketCard({
         paddingVertical: SPACE.xxs,
         borderRadius: 6,
         borderWidth: 1,
-        // The accent at full strength: at 45% it fell to about 1.5:1 on the card in dark themes (TR-093).
-        borderColor: colors.accent,
+        // At 45% the accent fell to about 1.5:1 on the card in dark themes (TR-093).
+        borderColor: controlColors(colors).accentBorder,
         backgroundColor: withAlpha(colors.accent, 0.1),
       },
       dot: { width: 8, height: 8, borderRadius: 4 },

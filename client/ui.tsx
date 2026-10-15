@@ -164,7 +164,7 @@ export function Segmented<Value extends string>({
         padding: SEGMENTED.padding,
         gap: SEGMENTED.gap,
         borderRadius: BUTTON.borderRadius,
-        borderWidth: BUTTON.borderWidth,
+        borderWidth: SEGMENTED.trackBorderWidth,
         borderColor: control.border,
         backgroundColor: control.fill,
       },

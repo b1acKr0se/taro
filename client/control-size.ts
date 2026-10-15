@@ -20,5 +20,8 @@ export const BUTTON = {
   lineHeight: 16,
 } as const;
 
-/** `Segmented`'s track: its padding around the segments, and the segments' own corner radius. */
-export const SEGMENTED = { padding: 2, gap: 2, segmentRadius: 6 } as const;
+/**
+ * `Segmented`'s track: its outline and padding around the segments, and the segments' own corner
+ * radius. The outline (TR-093) took a point of the padding, so the segments kept their size.
+ */
+export const SEGMENTED = { trackBorderWidth: 1, padding: 1, gap: 2, segmentRadius: 6 } as const;

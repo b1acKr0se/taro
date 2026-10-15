@@ -18,7 +18,9 @@ describe("header controls", () => {
     expect(BUTTON.iconSize + frame).toBeLessThanOrEqual(BUTTON.height);
     expect(BUTTON.lineHeight + frame).toBe(BUTTON.height);
     // A segment inside the switch's track holds the same icon and label.
-    const segment = BUTTON.height - 2 * SEGMENTED.padding - 2 * BUTTON.borderWidth;
+    const segment = BUTTON.height - 2 * (SEGMENTED.trackBorderWidth + SEGMENTED.padding) - 2 * BUTTON.borderWidth;
+    // The track's outline (TR-093) came out of its padding: segments stay 26 tall, the track as wide.
+    expect(SEGMENTED.trackBorderWidth + SEGMENTED.padding).toBe(2);
     expect(segment).toBeGreaterThanOrEqual(BUTTON.lineHeight);
     expect(segment).toBeGreaterThanOrEqual(BUTTON.iconSize);
   });

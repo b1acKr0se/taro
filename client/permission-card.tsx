@@ -114,7 +114,7 @@ function useCardStyles(theme: PluginTheme, compact: boolean) {
         borderColor: control.border,
         backgroundColor: control.fill,
       },
-      tabActive: { borderColor: colors.foreground },
+      tabActive: { borderColor: colors.foreground, backgroundColor: control.selectedFill },
       tabText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: labelLineHeightFor(FONT_SIZE.small) },
       tabTextActive: { color: colors.foreground },
       question: { color: colors.foreground, fontSize: FONT_SIZE.content, fontWeight: "600" as const, lineHeight: lineHeightFor(FONT_SIZE.content) },
