@@ -25,6 +25,8 @@ import { useBoard, useOpenTicketCard, useRefreshBoard } from "./board-data";
 import { isOpenTicketAsked } from "./board-paging";
 import { ProjectBoard } from "./board";
 import { CentredLabel } from "./centred-label";
+import { CountBadge } from "./count-badge";
+import { needsYouTotal } from "./count-badge-text";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { Inbox } from "./inbox";
@@ -201,8 +203,6 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
       tabActive: { borderBottomColor: colors.accent },
       tabText: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body), fontWeight: "600" as const },
       tabMuted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body), fontWeight: "500" as const },
-      badge: { minWidth: 18, alignItems: "center" as const, paddingHorizontal: SPACE.xs + 1, borderRadius: 9, backgroundColor: colors.statusWarning },
-      badgeText: { color: colors.surface0, fontSize: FONT_SIZE.micro, lineHeight: labelLineHeightFor(FONT_SIZE.micro), fontWeight: "700" as const },
       body: { flex: 1, minHeight: 0 },
       error: { color: colors.statusDanger, padding: SPACE.lg },
     }),
@@ -214,11 +214,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
       <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: active }} accessibilityLabel={label} style={[styles.tab, active ? styles.tabActive : null]} onPress={onPress}>
         <Icon name={icon} size={15} color={active ? colors.foreground : colors.foregroundMuted} />
         <CentredLabel style={active ? styles.tabText : styles.tabMuted}>{label}</CentredLabel>
-        {count > 0 ? (
-          <View style={styles.badge}>
-            <CentredLabel style={styles.badgeText}>{count}</CentredLabel>
-          </View>
-        ) : null}
+        <CountBadge theme={theme} count={count} />
       </Pressable>
     );
   }
@@ -237,7 +233,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
     </ScrollView>
   ) : (
     <ScrollView horizontal contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
-      {list.length === 0 ? null : tab("inbox", "Inbox", "Inbox", showing === "inbox", () => choose(selected, "inbox"))}
+      {list.length === 0 ? null : tab("inbox", "Inbox", "Inbox", showing === "inbox", () => choose(selected, "inbox"), needsYouTotal(list))}
       {list.map((summary) =>
         tab(
           summary.config.project,
@@ -536,8 +532,6 @@ function ProjectView({
   const boardView = <MemoBoard summary={summary} theme={theme} compact={compact} selectedTicket={ticket} onOpenTicket={openTicket} onOpenManager={openManager} onOpenAgent={openAgent} />;
 
   if (compact) {
-    // The Inbox lists every project, so its tab counts them all, as the sidebar does (TR-064).
-    const needsYou = all.reduce((total, project) => total + project.needsYou, 0);
     const kept = (tab: PhoneTab) => tabsVisited.has(tab) || PHONE_TABS.indexOf(tab) < warmed;
     return (
       <>
@@ -552,7 +546,8 @@ function ProjectView({
                 // Words without icons: all four and the settings button fit one row of a phone.
                 options={[
                   { value: "manager", label: "Manager" },
-                  { value: "inbox", label: needsYou > 0 ? `Inbox ${needsYou}` : "Inbox" },
+                  // The Inbox lists every project, so its tab counts them all, as the sidebar does (TR-064, TR-123).
+                  { value: "inbox", label: "Inbox", count: needsYouTotal(all) },
                   { value: "board", label: "Board" },
                   { value: "stats", label: "Stats" },
                 ]}

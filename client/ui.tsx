@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { ActivityIndicator, Animated, Easing, Platform, Text, View } from "react-native";
 import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
+import { CountBadge } from "./count-badge";
 import { BUTTON, SEGMENTED } from "./control-size";
 import { Pressable } from "./focus";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
@@ -145,8 +146,8 @@ export function Segmented<Value extends string>({
 }: {
   theme: PluginTheme;
   value: Value;
-  /** `icon` is a Lucide name drawn before the label. */
-  options: ReadonlyArray<{ value: Value; label: string; icon?: string }>;
+  /** `icon` is a Lucide name drawn before the label; `count`, a badge after it (TR-123), none at zero. */
+  options: ReadonlyArray<{ value: Value; label: string; icon?: string; count?: number }>;
   onChange: (value: Value) => void;
   /** Icons only, the labels kept for screen readers: a phone's header has no room for words (TR-031). */
   iconsOnly?: boolean;
@@ -200,6 +201,7 @@ export function Segmented<Value extends string>({
             >
               {option.icon === undefined ? null : <Icon name={option.icon} size={BUTTON.iconSize} color={selected ? colors.foreground : colors.foregroundMuted} />}
               {iconsOnly && option.icon !== undefined ? null : <Text style={[styles.label, selected ? styles.labelSelected : null]}>{option.label}</Text>}
+              <CountBadge theme={theme} count={option.count ?? 0} />
             </Pressable>
           );
         })}

@@ -32,8 +32,7 @@ describe("chip labels", () => {
     ["permission-card.tsx", "tabText:"],
     ["taro-screen.tsx", "tabText:"],
     ["taro-screen.tsx", "tabMuted:"],
-    ["taro-screen.tsx", "badgeText:"],
-    ["sidebar.tsx", "{ color: theme.colors.surface0, fontSize: FONT_SIZE.micro"],
+    ["count-badge.tsx", "{ color: theme.colors.surface0, fontSize: FONT_SIZE.micro"],
     ["agent-chat.tsx", "toolTitle:"],
     ["agent-chips.tsx", "fontSize: FONT_SIZE.caption"],
   ];
@@ -58,8 +57,7 @@ describe("chip labels", () => {
     ["question-card.tsx", "styles.actionText"],
     ["permission-card.tsx", "styles.tabText"],
     ["taro-screen.tsx", "active ? styles.tabText : styles.tabMuted"],
-    ["taro-screen.tsx", "styles.badgeText"],
-    ["sidebar.tsx", "{ color: theme.colors.surface0, fontSize: FONT_SIZE.micro"],
+    ["count-badge.tsx", "{ color: theme.colors.surface0, fontSize: FONT_SIZE.micro"],
     ["agent-chips.tsx", "fontSize: FONT_SIZE.caption"],
     ["agent-chips.tsx", "fontSize: FONT_SIZE.small"],
   ];
