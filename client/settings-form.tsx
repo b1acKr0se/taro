@@ -10,10 +10,10 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 
 import { addableModelGroups, type PickerOption } from "../shared/model-picker";
+import { choiceContentOpacity, choiceListStyle, choiceRowStyle, chosenChipColors, radioStyle } from "./choice-style";
 import { Pressable, TextInput } from "./focus";
 import { KeyboardRevealBoundary, useRevealFocused } from "./keyboard";
 import { SPACE } from "./spacing";
-import { withAlpha } from "./tint";
 import { IconButton, MONOSPACE } from "./ui";
 import { useBackStep } from "./use-back";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
@@ -204,7 +204,7 @@ export interface Choice<Value extends string> {
   unavailable?: string | null;
 }
 
-/** A radio group drawn as cards, each choice with a sentence on what it means. */
+/** A radio group drawn as one box of rows, each choice with a sentence on what it means. */
 export function ChoiceCards<Value extends string>({
   theme,
   value,
@@ -218,10 +218,11 @@ export function ChoiceCards<Value extends string>({
 }) {
   const colors = theme.colors;
   return (
-    <View accessibilityRole="radiogroup" style={{ gap: SPACE.sm }}>
-      {options.map((option) => {
+    <View accessibilityRole="radiogroup" style={choiceListStyle(colors)}>
+      {options.map((option, index) => {
         const selected = option.value === value;
         const unavailable = option.unavailable ?? null;
+        const faded = unavailable !== null && !selected;
         return (
           <Pressable
             key={option.value}
@@ -229,33 +230,12 @@ export function ChoiceCards<Value extends string>({
             accessibilityState={{ checked: selected, disabled: unavailable !== null }}
             disabled={unavailable !== null}
             onPress={() => onChange(option.value)}
-            style={{
-              flexDirection: "row",
-              alignItems: "flex-start",
-              gap: SPACE.md,
-              padding: SPACE.md,
-              borderWidth: 1,
-              borderRadius: 10,
-              borderColor: selected ? colors.accent : colors.border,
-              backgroundColor: selected ? withAlpha(colors.accent, 0.1) : colors.surface0,
-              opacity: unavailable !== null && !selected ? 0.6 : 1,
-            }}
+            style={choiceRowStyle(colors, index === 0)}
           >
-            <View
-              style={{
-                marginTop: 2,
-                width: 16,
-                height: 16,
-                borderRadius: 8,
-                borderWidth: 1.5,
-                borderColor: selected ? colors.accent : colors.foregroundMuted,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
+            <View style={[radioStyle(colors, selected), { opacity: choiceContentOpacity(faded) }]}>
               {selected ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent }} /> : null}
             </View>
-            <View style={{ flex: 1, gap: SPACE.xxs }}>
+            <View style={{ flex: 1, gap: SPACE.xxs, opacity: choiceContentOpacity(faded) }}>
               <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" }}>{option.title}</Text>
               <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) }}>{option.description}</Text>
               {unavailable === null ? null : (
@@ -338,7 +318,8 @@ export function Dropdown<Value extends string>({
                   paddingHorizontal: SPACE.md,
                   paddingVertical: SPACE.md,
                   borderRadius: 8,
-                  backgroundColor: selected ? colors.surface2 : "transparent",
+                  // The check marks the chosen row (TR-121); a fill on it read as one more highlight.
+                  backgroundColor: "transparent",
                 }}
               >
                 <Text style={{ flex: 1, color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: selected ? "600" : "400" }}>{option.label}</Text>
@@ -418,8 +399,7 @@ export function ModelChooser({
               paddingRight: SPACE.xs,
               borderRadius: 8,
               borderWidth: 1,
-              borderColor: colors.accent,
-              backgroundColor: withAlpha(colors.accent, 0.1),
+              ...chosenChipColors(colors),
             }}
           >
             <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "500" }}>{labelOf(value)}</Text>
