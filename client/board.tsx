@@ -80,6 +80,9 @@ export function ProjectBoard({
       hint: { flex: 1, textAlign: "right" as const, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
       empty: { alignItems: "center" as const, gap: SPACE.sm, paddingVertical: SPACE.xl },
       emptyText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small },
+      // A ScrollView shrinks by default, by its share of the overflow: under a long column (Done) the cards'
+      // scroller starts at its whole content height and squeezed the chips shorter, labels off centre (TR-094).
+      chipRow: { flexGrow: 0, flexShrink: 0 },
       chips: { flexDirection: "row" as const, gap: SPACE.sm, paddingHorizontal: SPACE.md, paddingTop: SPACE.md },
       chip: {
         flexDirection: "row" as const,
@@ -189,7 +192,7 @@ export function ProjectBoard({
     const shown = byColumn.get(column);
     return (
       <View style={styles.root}>
-        <ScrollView horizontal style={{ flexGrow: 0 }} contentContainerStyle={styles.chips} showsHorizontalScrollIndicator={false}>
+        <ScrollView horizontal style={styles.chipRow} contentContainerStyle={styles.chips} showsHorizontalScrollIndicator={false}>
           {COLUMN_IDS.map((id) => {
             const active = id === column;
             const color = toneColor(theme, COLUMN_META[id].tone);

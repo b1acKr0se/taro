@@ -97,3 +97,13 @@ describe("card actions", () => {
     expect(text).not.toContain("styles.action");
   });
 });
+
+describe("the phone board's chip row", () => {
+  // A ScrollView shrinks by default. Under a long column (Done) the cards' scroller starts at its whole
+  // content height, so the row gave up height and every chip drew shorter, labels off centre (TR-094).
+  it("keeps its height whatever the column below holds", () => {
+    const board = source("board.tsx");
+    expect(board).toMatch(/<ScrollView horizontal style=\{styles\.chipRow\}/);
+    expect(between(board, "chipRow:", "\n")).toContain("flexShrink: 0");
+  });
+});
