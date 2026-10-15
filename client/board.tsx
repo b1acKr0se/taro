@@ -1,22 +1,22 @@
 /**
  * The project's board (decision 9): Needs you · Working · Stalled · Queued ·
  * Done, always all five, side by side as equal panels on a wide screen; on a
- * phone one column at a time behind chips. Queued and Done show their newest cards and load more on
- * request (TR-082). The manager's open questions are cards in Needs you,
+ * phone one column at a time behind chips. Queued and Done show their newest cards, load more on
+ * request (TR-082) and fold back to their newest with Show less (TR-117). The manager's open questions are cards in Needs you,
  * blocking first, ahead of the tickets, and count there (TR-045); its suggestions sit above its
  * composer, not here. Done cards carry their ticket's key stats.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
-import { memo, useMemo, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { memo, useMemo, useRef, useState } from "react";
+import { ScrollView, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 
 import { boardCounts, COLUMN_IDS, COLUMN_META, COLUMN_TITLES, isPagedColumn, needsYouExtras, type ColumnId, type PagedColumn } from "../shared/board";
 import type { Card, ProjectSummary } from "../shared/contracts";
 import { AlertCard } from "./alert-card";
 import { SectionHeading } from "./badges";
-import { useBoard, useLoadMore, useRefreshBoard } from "./board-data";
-import { columnPage, type ColumnPage } from "./board-paging";
+import { useBoard, useLoadMore, useRefreshBoard, useShowLess } from "./board-data";
+import { columnPage, foldScrollTarget, type ColumnPage } from "./board-paging";
 import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
@@ -65,6 +65,20 @@ export function ProjectBoard({
   const stats = useStats(project);
   const refresh = useRefreshBoard(project);
   const loadMore = useLoadMore(project);
+  const showLess = useShowLess(project);
+  // The board's scroller, how far it is scrolled and where the columns start in it, for Show less (TR-117).
+  const scroller = useRef<ScrollView>(null);
+  const scrollY = useRef(0);
+  const columnsTop = useRef(0);
+  const trackScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollY.current = event.nativeEvent.contentOffset.y;
+  };
+  // Folding a long column leaves the reader below it: back up to the column's top, when that went above the view.
+  const fold = useLatestCallback(async (id: PagedColumn) => {
+    const target = foldScrollTarget(scrollY.current, compact && top === null ? 0 : columnsTop.current);
+    await showLess(id);
+    if (target !== null) scroller.current?.scrollTo({ y: target, animated: true });
+  });
   // Stable, so a card whose ticket did not change is not drawn again on each refresh (TR-069).
   const changed = useLatestCallback(refresh);
   const openCard = useLatestCallback(onOpenTicket);
@@ -147,7 +161,7 @@ export function ProjectBoard({
     );
   }
 
-  /** A column's cards: in Needs you, the manager's side first (a permission, which holds it up, then its questions); a paged column ends with Load more while cards are left. */
+  /** A column's cards: in Needs you, the manager's side first (a permission, which holds it up, then its questions); a paged column ends with Load more while cards are left and Show less past its first page. */
   function columnCards(id: ColumnId, page: ColumnPage | undefined) {
     const group = page?.cards ?? [];
     const questions =
@@ -160,11 +174,21 @@ export function ProjectBoard({
           ]
         : [];
     if (questions.length === 0 && group.length === 0) return empty(id, id === "needs-you" && waitingAbove ? "See above" : "Nothing here");
-    const more =
-      page !== undefined && page.remaining > 0 && isPagedColumn(id) ? (
-        <LoadMore key="load-more" column={id} shown={group.length} total={page.total} theme={theme} onLoadMore={loadMore} />
+    const end =
+      page !== undefined && (page.remaining > 0 || page.foldable) && isPagedColumn(id) ? (
+        <ColumnEnd
+          key="column-end"
+          column={id}
+          shown={group.length}
+          total={page.total}
+          canLoadMore={page.remaining > 0}
+          canShowLess={page.foldable}
+          theme={theme}
+          onLoadMore={loadMore}
+          onShowLess={fold}
+        />
       ) : null;
-    return [...questions, ...group.map(renderCard), more];
+    return [...questions, ...group.map(renderCard), end];
   }
 
   function empty(id: ColumnId, text: string) {
@@ -178,7 +202,11 @@ export function ProjectBoard({
 
   const top =
     syncProblem === null && alerts.length === 0 ? null : (
-      <View style={styles.top}>
+      <View
+        style={styles.top}
+        // On a phone the column starts under the alerts.
+        onLayout={compact ? (event) => (columnsTop.current = event.nativeEvent.layout.y + event.nativeEvent.layout.height) : undefined}
+      >
         {syncProblem === null ? null : (
           <SyncProblemCard
             startFolded
@@ -230,7 +258,7 @@ export function ProjectBoard({
             );
           })}
         </ScrollView>
-        <KeyboardScrollView contentContainerStyle={{ padding: SPACE.md, gap: SPACE.md }}>
+        <KeyboardScrollView scrollerRef={scroller} onScroll={trackScroll} contentContainerStyle={{ padding: SPACE.md, gap: SPACE.md }}>
           {top}
           {columnCards(column, shown)}
         </KeyboardScrollView>
@@ -244,9 +272,15 @@ export function ProjectBoard({
   );
 
   return (
-    <ScrollView style={styles.root} onLayout={(event) => setPaneWidth(event.nativeEvent.layout.width)}>
+    <ScrollView
+      ref={scroller}
+      style={styles.root}
+      scrollEventThrottle={100}
+      onScroll={trackScroll}
+      onLayout={(event) => setPaneWidth(event.nativeEvent.layout.width)}
+    >
       {top}
-      <ScrollView horizontal contentContainerStyle={styles.columns}>
+      <ScrollView horizontal contentContainerStyle={styles.columns} onLayout={(event) => (columnsTop.current = event.nativeEvent.layout.y)}>
         {COLUMN_IDS.map((id, index) => {
           const group = byColumn.get(id);
           const columnWidth = widths[index] ?? MIN_COLUMN_WIDTH;
@@ -281,38 +315,73 @@ const BoardCard = memo(function BoardCard({ card, onOpenCard, ...rest }: Omit<Pa
   return <TicketCard card={card} onOpen={() => onOpenCard(card)} {...rest} />;
 });
 
-/** The end of a paged column while cards are left (TR-082): how many are shown of how many, and the button for the next page. */
-function LoadMore({
+/** The narrowest Load more or Show less keeps its label on one line beside the other. */
+const SHARE_MIN_WIDTH = 116;
+
+/**
+ * The end of a paged column (TR-082): how many are shown of how many, Load more while cards are left,
+ * and Show less once it shows more than its first page (TR-117). One call at a time.
+ */
+function ColumnEnd({
   column,
   shown,
   total,
+  canLoadMore,
+  canShowLess,
   theme,
   onLoadMore,
+  onShowLess,
 }: {
   column: PagedColumn;
   shown: number;
   total: number;
+  canLoadMore: boolean;
+  canShowLess: boolean;
   theme: PluginTheme;
   onLoadMore: (column: PagedColumn) => Promise<void>;
+  onShowLess: (column: PagedColumn) => Promise<void>;
 }) {
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"more" | "less" | null>(null);
+  const run = (which: "more" | "less", call: (column: PagedColumn) => Promise<void>) => {
+    setBusy(which);
+    void call(column).finally(() => setBusy(null));
+  };
+  // Load more and Show less take equal halves, whatever their labels' widths; in a narrow column they stack.
+  const equalShare = { flexGrow: 1, flexShrink: 1, flexBasis: SHARE_MIN_WIDTH, flexDirection: "row" as const };
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.md }}>
-      <View style={{ flexGrow: 1, flexDirection: "row" }}>
-        <IconButton
-          icon="ChevronsDown"
-          label="Load more"
-          showLabel
-          grow
-          theme={theme}
-          state={busy ? "busy" : undefined}
-          onPress={() => {
-            setBusy(true);
-            void onLoadMore(column).finally(() => setBusy(false));
-          }}
-        />
+      <View style={{ flexGrow: 1, flexShrink: 1, flexDirection: "row", flexWrap: "wrap", gap: SPACE.sm }}>
+        {canLoadMore ? (
+          <View style={equalShare}>
+            <IconButton
+              icon="ChevronsDown"
+              label="Load more"
+              showLabel
+              grow
+              theme={theme}
+              disabled={busy !== null}
+              state={busy === "more" ? "busy" : undefined}
+              onPress={() => run("more", onLoadMore)}
+            />
+          </View>
+        ) : null}
+        {canShowLess ? (
+          <View style={equalShare}>
+            <IconButton
+              icon="ChevronsUp"
+              label="Show less"
+              showLabel
+              grow
+              theme={theme}
+              disabled={busy !== null}
+              state={busy === "less" ? "busy" : undefined}
+              onPress={() => run("less", onShowLess)}
+            />
+          </View>
+        ) : null}
       </View>
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small }}>
+      {/* The count keeps its one line; the buttons stack instead. */}
+      <Text style={{ flexShrink: 0, color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small }}>
         {shown} of {total}
       </Text>
     </View>

@@ -336,9 +336,15 @@ export function KeyboardScrollView({
   onScroll,
   onLayout,
   onContentSizeChange,
+  scrollerRef,
   ...props
-}: ScrollViewProps & { children?: ReactNode }) {
-  const scroller = useRef<NativeScrollView>(null);
+}: ScrollViewProps & {
+  children?: ReactNode;
+  /** Lets the owner scroll it too (the board after Show less, TR-117). */
+  scrollerRef?: RefObject<NativeScrollView | null>;
+}) {
+  const ownScroller = useRef<NativeScrollView>(null);
+  const scroller = scrollerRef ?? ownScroller;
   const keyboard = useKeyboardScroll(scroller);
   return (
     <ScrollView

@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PagedColumn } from "../shared/board";
 import { loadBoard } from "../shared/contracts";
 import { boardContent } from "./board-content";
-import { addPage, boardPaging, setOpenTicket } from "./board-paging";
+import { addPage, boardPaging, firstPage, setOpenTicket } from "./board-paging";
 import { polled } from "./polling";
 
 export function boardKey(project: string) {
@@ -30,6 +30,15 @@ export function useLoadMore(project: string): (column: PagedColumn) => Promise<v
   const client = useQueryClient();
   return async (column) => {
     addPage(project, column);
+    await client.refetchQueries({ queryKey: boardKey(project), exact: true });
+  };
+}
+
+/** Folds a paged column back to its first page (Show less, TR-117); resolves once the board holds it. */
+export function useShowLess(project: string): (column: PagedColumn) => Promise<void> {
+  const client = useQueryClient();
+  return async (column) => {
+    firstPage(project, column);
     await client.refetchQueries({ queryKey: boardKey(project), exact: true });
   };
 }
