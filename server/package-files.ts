@@ -22,6 +22,7 @@ export const TEMPLATES = {
   catchUp: "messages/catch-up.md",
   nudge: "messages/nudge.md",
   decisionCorrection: "messages/decision-correction.md",
+  decisionHeld: "messages/decision-held.md",
   subagentReport: "messages/subagent-report.md",
   handoffRequest: "messages/handoff-request.md",
   compactInstructions: "messages/compact-instructions.md",

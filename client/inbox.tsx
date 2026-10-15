@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Children, isValidElement, useMemo, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 
+import { isInboxTicket } from "../shared/board";
 import { listOpenDecisions, type Card, type ProjectSummary } from "../shared/contracts";
 import type { StoredDecision } from "../shared/state";
 import { AlertCard } from "./alert-card";
@@ -115,7 +116,18 @@ export function Inbox({
       {[ordered.filter(isPlanApproval), ordered.filter((decision) => !isPlanApproval(decision))].map((group, kind) => (
         <CardGrid key={kind} width={listWidth}>
           {group.map((decision) => (
-            <PlanDecision key={decision.key} decision={decision} theme={theme} compact={compact} head={askedBy(decision)} brief={gridColumns(listWidth, GRID_GAP) > 1} fill onAnswered={refetch}>
+            <PlanDecision
+              key={decision.key}
+              decision={decision}
+              theme={theme}
+              compact={compact}
+              head={askedBy(decision)}
+              brief={gridColumns(listWidth, GRID_GAP) > 1}
+              fill
+              // A plan card opens its ticket's chat, at the plan's message, as on the board (TR-126).
+              onOpen={decision.ticket === null ? null : () => onOpenTicket(decision.project, { id: decision.ticket ?? "" })}
+              onAnswered={refetch}
+            >
               <QuestionCard
                 decision={decision}
                 asker={askedBy(decision)}
@@ -158,7 +170,7 @@ function InboxProject({
   const board = useBoard(project);
   const refresh = useRefreshBoard(project);
   const cards = board.data?.cards ?? [];
-  const waiting = cards.filter((card) => (card.column === "needs-you" && card.decisions.length === 0) || card.column === "stalled");
+  const waiting = cards.filter(isInboxTicket);
   const syncProblem = summary.trackerSyncProblem;
   const alerts = board.data?.alerts ?? [];
   if (waiting.length === 0 && syncProblem === null && alerts.length === 0) return null;

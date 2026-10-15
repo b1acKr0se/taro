@@ -196,13 +196,30 @@ export function needsYouExtras(board: { managerDecisions: readonly unknown[]; ma
   return (board?.managerDecisions.length ?? 0) + managerAsks + (board?.alerts.length ?? 0) + (syncPaused ? 1 : 0);
 }
 
-/** A project's Inbox count, on the sidebar and the phone's Inbox tab: its Needs you, and its stalled tickets, which the Inbox lists too. */
+/** A ticket the Inbox lists as itself: one waiting on you with no question, which is drawn as that question instead, or a stalled one. */
+export function isInboxTicket(card: { column: ColumnId; decisions: readonly unknown[] }): boolean {
+  return (card.column === "needs-you" && card.decisions.length === 0) || card.column === "stalled";
+}
+
+/**
+ * A project's Inbox count, on the sidebar, the project tabs and the Inbox tab (TR-064, TR-123): one for
+ * each card the Inbox lists. Every open question counts, the manager's and those on tickets, blocking or
+ * not, several on one ticket each; a ticket waiting on you with no question (acceptance, Blocked, a
+ * permission) and a stalled ticket count once; so do each alert, the manager's waiting permission and a
+ * paused sync.
+ */
 export function inboxCount(
-  board: { cards: readonly { column: ColumnId }[]; managerDecisions: readonly unknown[]; managerPermission?: unknown; alerts: readonly unknown[] } | null,
+  board: {
+    cards: readonly { column: ColumnId; decisions: readonly unknown[] }[];
+    managerDecisions: readonly unknown[];
+    ticketQuestions?: number;
+    managerPermission?: unknown;
+    alerts: readonly unknown[];
+  } | null,
   syncPaused: boolean,
 ): number {
-  const counts = columnCounts(board?.cards ?? [], needsYouExtras(board, syncPaused));
-  return counts["needs-you"] + counts.stalled;
+  const waiting = (board?.cards ?? []).filter(isInboxTicket).length;
+  return needsYouExtras(board, syncPaused) + (board?.ticketQuestions ?? 0) + waiting;
 }
 
 /**

@@ -3,8 +3,12 @@
  * further presses until the call settles; then it shows a check for a moment, or, where success makes
  * the button leave (Accept, a decision's Submit), stays busy until it does; on failure it is usable
  * again. The lock is a plain variable rather than React state, so two taps inside one frame cannot both
- * get through. One guard serves a group of buttons (a card's actions): while one runs, all wait. Pure.
+ * get through. One guard serves a group of buttons (a card's actions): while one runs, all wait. Pure,
+ * apart from the crash trail's step for each press (TR-132).
  */
+
+import { pressWhat } from "../shared/crash-trail";
+import { crashRecorder } from "./crash-recorder";
 
 /** How long the check stays after a call succeeds. */
 export const DONE_MS = 1_500;
@@ -117,6 +121,12 @@ export interface PressHandlers<Value> {
 export function press<Value>(guard: PressGuard, key: string, action: () => Promise<Value>, handlers: PressHandlers<Value>): boolean {
   const running = guard.run(key, action, handlers.after);
   if (running === null) return false;
+  try {
+    // The crash trail's step (TR-132): the button's key, never an option's text.
+    crashRecorder().step("press", pressWhat(key));
+  } catch {
+    // Tracing never adds a failure of its own.
+  }
   void running.then((outcome) => {
     if (outcome.ok) handlers.onSuccess?.(outcome.value);
     else handlers.onError(outcome.error);

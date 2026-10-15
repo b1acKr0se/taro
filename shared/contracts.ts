@@ -13,6 +13,7 @@ import { MilestoneSchema } from "./milestones";
 import { PauseViewSchema } from "./pause";
 import { PaseoProjectCandidateSchema, SettingsTemplateSchema } from "./project-candidates";
 import { ProjectConfigSchema, ProjectNameSchema, ProjectSettingsSchema, ROLES, SUBAGENT_ROLES } from "./project";
+import { CrashReportSchema, DeviceSchema, LaunchIdSchema, TrailReportSchema } from "./crash-trail";
 import { BoardAlertSchema, HeadroomSchema } from "./recovery";
 import { LastStatusSchema, StoredDecisionSchema } from "./state";
 
@@ -245,6 +246,8 @@ export const BoardSchema = z.object({
   project: z.string(),
   cards: z.array(CardSchema),
   managerDecisions: z.array(StoredDecisionSchema),
+  /** Open questions live agents ask on tickets, every ticket's whether or not its card is on a page: the Inbox lists each (TR-123). */
+  ticketQuestions: z.number().int().default(0),
   /** The first permission the manager or one of its own subagents (no ticket) waits on (TR-096). */
   managerPermission: AgentAskSchema.nullable().default(null),
   suggestions: z.array(SuggestionSchema),
@@ -445,3 +448,12 @@ export const pollNotifications = defineRpc({
   input: z.object({ clientId: z.string().min(1), active: z.boolean(), after: z.number().int() }),
   output: z.object({ seq: z.number().int(), notifications: z.array(FeedNotificationSchema) }),
 });
+
+/** Crash tracing (TR-132): a launch's new steps and errors, the last crash of an earlier launch on this device, and its dismissal. */
+export const reportTrail = defineRpc({ name: "taro.crash.report", input: TrailReportSchema, output: Empty });
+export const loadLastCrash = defineRpc({
+  name: "taro.crash.last",
+  input: z.object({ launch: LaunchIdSchema, device: DeviceSchema }),
+  output: z.object({ crash: CrashReportSchema.nullable() }),
+});
+export const dismissCrash = defineRpc({ name: "taro.crash.dismiss", input: z.object({ launch: LaunchIdSchema }), output: Empty });

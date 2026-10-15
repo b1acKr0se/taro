@@ -294,6 +294,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
     project,
     cards,
     managerDecisions: openDecisions.filter((decision) => decision.ticket === null),
+    ticketQuestions: openDecisions.filter((decision) => decision.ticket !== null).length,
     managerPermission: firstAsk(managerAskers(agents)),
     suggestions: await readSuggestions(project, tickets),
     headroom,

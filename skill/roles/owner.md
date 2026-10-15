@@ -14,8 +14,10 @@ too, test-daemon and scratch-repository cleanup most of all. Then follow the flo
 1. **Orient** — the relevant code and instructions only, about ten files at most. Past that, asking
    is cheaper than reading.
 2. **Ask** only questions whose answers would change the implementation: one at a time, as decision
-   blocks with a recommendation and its reason. Zero questions is normal for a clear ask. Decide
-   everything else yourself and state it as an assumption.
+   blocks with a recommendation and its reason. One decision open at a time: ask the next only after
+   the user answered the last, in a later turn (`reference/formats.md`; the plugin holds back a
+   second). Zero questions is normal for a clear ask. Decide everything else yourself and state it
+   as an assumption.
 3. **Rate complexity** and write the **proposal** into the ticket (`-d`, `--plan`, `--add-label
    complexity-<level>`), sized to the level. The plan follows `templates/plan.md`: its six sections
    in order, each within its limit. Cut rather than exceed a limit, here and in every record and
@@ -40,7 +42,8 @@ too, test-daemon and scratch-repository cleanup most of all. Then follow the flo
    when the user must check them.
 4. **Approval** — ask for it **whenever you made a choice the user did not**: an interpretation, a
    design, a fix approach that could differ from what they meant. Write the plan first (`--plan`,
-   step 3), then ask with a blocking decision `scope-approval` whose question is `Approve the plan
+   step 3), after the answer to any question from step 2 and with that answer in it, never in the
+   same message as a question; then ask with a blocking decision `scope-approval` whose question is `Approve the plan
    for <ID>?`, options Approve (and Split into children when you propose children), and `why` one
    line at most: the card shows the plan's Goal, Choices I made and Size from the ticket, and View
    plan opens the rest. The card has Approve and Request changes…: the user asks for a change by
@@ -122,7 +125,8 @@ evidence), fix the valid blockers and should-fix findings yourself, and record a
 answers every finding: fixed, or rejected with the reason. A **Question** (a preference the user did
 not settle in their words or a decision: a label, wording, density, a layout choice) is not yours or the
 reviewer's to settle: raise it as a non-blocking decision with your recommendation as the default,
-carry on, and note it in the REVIEW record. A reviewer blocker that is really a preference is a
+carry on, and note it in the REVIEW record. Still one open at a time: raise the next Question once the
+user answers, or keep its default and name it in FINAL. A reviewer blocker that is really a preference is a
 Question too. **Every** review checks test
 sufficiency: each changed behaviour has a test that would fail if it regressed; a bug fix keeps its
 reproduction; tests cover the input space (empty, zero, maximum, rounding, ordering), not the code's

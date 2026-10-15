@@ -25,6 +25,8 @@ import { useBoard, useOpenTicketCard, useRefreshBoard } from "./board-data";
 import { isOpenTicketAsked } from "./board-paging";
 import { ProjectBoard } from "./board";
 import { CentredLabel } from "./centred-label";
+import { CountBadge } from "./count-badge";
+import { countBadgeLabel, needsYouTotal } from "./count-badge-text";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { Inbox } from "./inbox";
@@ -41,6 +43,8 @@ import { ProjectSetup } from "./project-setup";
 import { useProjects, useRefreshProjects } from "./queries";
 import { paneGutter, SPACE } from "./spacing";
 import { StatsView } from "./stats-view";
+import { CrashCard } from "./crash-card";
+import { crashStep } from "./crash-trail";
 import { SuggestionPills } from "./suggestion-pills";
 import { TicketView } from "./ticket-view";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
@@ -176,6 +180,14 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
     return true;
   });
 
+  // The crash trail's step (TR-132): names and ids only.
+  const shownProject = current?.config.project ?? "";
+  const shownTicket = ticketOpen ? ticket : null;
+  useEffect(() => {
+    const where = [showing, shownProject, layout.compact ? phoneTab : "", shownTicket ?? "", plan !== null && shownTicket !== null ? "plan" : ""];
+    crashStep("screen", where.filter((part) => part !== "").join(" "));
+  }, [showing, shownProject, shownTicket, phoneTab, plan, layout.compact]);
+
   function viewPlan(project: string, planFor: string): void {
     go(viewPlanMove(now(), plan, project, planFor));
   }
@@ -201,8 +213,6 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
       tabActive: { borderBottomColor: colors.accent },
       tabText: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body), fontWeight: "600" as const },
       tabMuted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body), fontWeight: "500" as const },
-      badge: { minWidth: 18, alignItems: "center" as const, paddingHorizontal: SPACE.xs + 1, borderRadius: 9, backgroundColor: colors.statusWarning },
-      badgeText: { color: colors.surface0, fontSize: FONT_SIZE.micro, lineHeight: labelLineHeightFor(FONT_SIZE.micro), fontWeight: "700" as const },
       body: { flex: 1, minHeight: 0 },
       error: { color: colors.statusDanger, padding: SPACE.lg },
     }),
@@ -211,14 +221,10 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
 
   function tab(key: string, label: string, icon: string, active: boolean, onPress: () => void, count = 0) {
     return (
-      <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: active }} accessibilityLabel={label} style={[styles.tab, active ? styles.tabActive : null]} onPress={onPress}>
+      <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: active }} accessibilityLabel={countBadgeLabel(label, count)} style={[styles.tab, active ? styles.tabActive : null]} onPress={onPress}>
         <Icon name={icon} size={15} color={active ? colors.foreground : colors.foregroundMuted} />
         <CentredLabel style={active ? styles.tabText : styles.tabMuted}>{label}</CentredLabel>
-        {count > 0 ? (
-          <View style={styles.badge}>
-            <CentredLabel style={styles.badgeText}>{count}</CentredLabel>
-          </View>
-        ) : null}
+        <CountBadge theme={theme} count={count} />
       </Pressable>
     );
   }
@@ -237,7 +243,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
     </ScrollView>
   ) : (
     <ScrollView horizontal contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
-      {list.length === 0 ? null : tab("inbox", "Inbox", "Inbox", showing === "inbox", () => choose(selected, "inbox"))}
+      {list.length === 0 ? null : tab("inbox", "Inbox", "Inbox", showing === "inbox", () => choose(selected, "inbox"), needsYouTotal(list))}
       {list.map((summary) =>
         tab(
           summary.config.project,
@@ -373,6 +379,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
       <View style={styles.root}>
         {/* Inside a ticket on a phone the conversation gets the height; Back returns to the tabs (TR-031). */}
         {layout.compact && showing === "project" && ticketOpen ? null : tabs}
+        <CrashCard theme={theme} compact={layout.compact} />
         <View style={styles.body}>
           {projects.error !== null && projects.data === undefined ? <Text style={styles.error}>{errorText(projects.error)}</Text> : null}
           {body}
@@ -536,8 +543,6 @@ function ProjectView({
   const boardView = <MemoBoard summary={summary} theme={theme} compact={compact} selectedTicket={ticket} onOpenTicket={openTicket} onOpenManager={openManager} onOpenAgent={openAgent} />;
 
   if (compact) {
-    // The Inbox lists every project, so its tab counts them all, as the sidebar does (TR-064).
-    const needsYou = all.reduce((total, project) => total + project.needsYou, 0);
     const kept = (tab: PhoneTab) => tabsVisited.has(tab) || PHONE_TABS.indexOf(tab) < warmed;
     return (
       <>
@@ -549,10 +554,12 @@ function ProjectView({
               <Segmented
                 theme={theme}
                 value={phoneTab}
-                // Words without icons: all four and the settings button fit one row of a phone.
+                dense
+                // Words without icons, dense: all four, the Inbox's badge and the settings button fit one row of a phone.
                 options={[
                   { value: "manager", label: "Manager" },
-                  { value: "inbox", label: needsYou > 0 ? `Inbox ${needsYou}` : "Inbox" },
+                  // The Inbox lists every project, so its tab counts them all, as the sidebar does (TR-064, TR-123).
+                  { value: "inbox", label: "Inbox", count: needsYouTotal(all) },
                   { value: "board", label: "Board" },
                   { value: "stats", label: "Stats" },
                 ]}

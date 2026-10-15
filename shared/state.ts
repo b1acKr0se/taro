@@ -83,3 +83,12 @@ export function withdrawOpenDecisions(decisions: StoredDecision[], matches: (dec
   }
   return withdrawn;
 }
+
+/**
+ * The open decision that holds back another one an agent asks (TR-124): an owner asks the user one
+ * thing at a time, so its next question waits until this one is answered or withdrawn. Re-asking
+ * the open decision itself (the same key) is never held.
+ */
+export function openQuestionHolding<T extends Pick<StoredDecision, "agentId" | "key" | "status">>(decisions: readonly T[], agentId: string, key: string): T | undefined {
+  return decisions.find((decision) => decision.agentId === agentId && decision.status === "open" && decision.key !== key);
+}

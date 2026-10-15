@@ -110,7 +110,6 @@ export function TicketCard({
       // One pixel above the line's middle: a 12px icon centred in the line sat low beside the text's capitals (TR-119).
       statIcon: { paddingTop: (lineHeightFor(FONT_SIZE.caption) - 12) / 2 - 1 },
       statText: { flexShrink: 1, lineHeight: lineHeightFor(FONT_SIZE.caption) },
-      link: { color: colors.accent, fontSize: FONT_SIZE.caption },
       footerText: { flexShrink: 1, lineHeight: lineHeightFor(FONT_SIZE.caption) },
       track: { width: 44, height: 3, borderRadius: 2, backgroundColor: colors.surface2, overflow: "hidden" as const },
       childRow: { flexDirection: "row" as const, alignItems: "flex-start" as const, gap: SPACE.sm },
@@ -145,10 +144,12 @@ export function TicketCard({
       <PhaseBadge theme={theme} status={card.status} />
     </View>
   );
-  // A Done card's PR sits on its stats line, GitHub's purple merged icon when it merged (TR-114); "PR #128"
-  // is plain like the time and cost beside it, on one line, as an accent-coloured link clashed with the purple (TR-119).
-  const donePullRequest =
-    card.column !== "done" || card.pullRequest === null ? null : (
+  // One PR mark on every card: a Done card's sits on its stats line, GitHub's purple merged icon when it merged
+  // (TR-114), any other card's ends its footer. "PR #128" is plain like the text beside it, without the repository,
+  // as an accent-coloured link clashed with the purple (TR-119, TR-127).
+  const pullRequestMark =
+    card.pullRequest === null ? null : (
+      // A button to the web app: it takes Enter and Space only from a button, and a link let them reach the card.
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Open ${pullRequestLabel(card.pullRequest)}${card.pullRequestMerged ? ", merged" : ""}`}
@@ -165,7 +166,7 @@ export function TicketCard({
     );
   const statsLine =
     stats === null ? (
-      donePullRequest === null ? null : <View style={styles.row}>{donePullRequest}</View>
+      pullRequestMark === null ? null : <View style={styles.row}>{pullRequestMark}</View>
     ) : (
       <View style={styles.row}>
         {/* Each icon stays beside its text: a narrow card wraps the text beside the icon, not under it (TR-103). */}
@@ -186,7 +187,7 @@ export function TicketCard({
             <Text style={[styles.muted, styles.statText]}>{formatCost(stats.costUsd)}</Text>
           </View>
         )}
-        {donePullRequest}
+        {pullRequestMark}
       </View>
     );
 
@@ -360,28 +361,19 @@ export function TicketCard({
         </View>
       )}
       {hasFooter ? (
-        // Wraps at a word instead of cutting off; the PR link, a pressable of its own for the keyboard, follows
+        // Wraps at a word instead of cutting off; the PR mark, a pressable of its own for the keyboard, follows
         // the meta line's last dot or wraps under it (TR-095).
         <View style={styles.footer}>
           {footer.meta === "" ? null : <Text style={[styles.muted, styles.footerText]}>{footer.meta}</Text>}
-          {footer.pullRequest === null ? null : (
-            // A button to the web app: it takes Enter and Space only from a button, and a link let them reach the card.
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${footer.pullRequest}`}
-              onPress={() => void openExternalUrl(card.pullRequest ?? "").catch((caught: unknown) => toast.error(errorText(caught)))}
-            >
-              <Text style={[styles.link, styles.footerText]}>{footer.pullRequest}</Text>
-            </Pressable>
-          )}
+          {footer.pullRequest === null ? null : pullRequestMark}
         </View>
       ) : null}
     </Pressable>
   );
   if (asked === null) return whole;
-  // A scope approval with a template plan is the compact plan card, its ticket named on top (TR-061).
+  // A scope approval with a template plan is the compact plan card, its ticket named on top (TR-061), opening the ticket as this card does (TR-126).
   return (
-    <PlanDecision decision={asked} theme={theme} compact={compact} head={`${card.id} · ${card.title}`} onOpenHead={onOpen} brief onAnswered={onChanged}>
+    <PlanDecision decision={asked} theme={theme} compact={compact} head={`${card.id} · ${card.title}`} onOpen={onOpen} brief onAnswered={onChanged}>
       {whole}
     </PlanDecision>
   );

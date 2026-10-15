@@ -22,7 +22,14 @@ A question to the user is a decision block plus `waiting: <what you asked>`.
 
 Every question to the user is one fenced `decision` block (YAML) in your message, with a
 recommendation and its reason. The plugin shows it as a card with buttons; a button sends its
-`prompt` back to you as the user's words. Several blocks in one message are fine.
+`prompt` back to you as the user's words.
+
+**One open question at a time** (owners, TR-124): ask one decision per message, and the next only
+after the user has answered the last one, in a later turn, with that answer folded in (a plan
+approval comes after the clarifying question's answer, and the plan includes it). While one of your
+decisions is open the plugin does not show another: it tells you which it held back. Re-asking the
+open decision (same `id`) is fine; to ask something else instead, withdraw the open one in the same
+message. The manager may ask about several tickets at once.
 
 ````
 ```decision
