@@ -1,6 +1,7 @@
 import { Component, createElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
+import { createCrashRecorder } from "./crash-recorder";
 import { ErrorBoundary, type ErrorBoundaryProps } from "./error-boundary";
 
 const fallback = createElement("fallback");
@@ -28,8 +29,9 @@ describe("ErrorBoundary", () => {
   });
 
   it("draws the fallback once a failure is caught", () => {
-    const failed = ErrorBoundary.getDerivedStateFromError?.(new TypeError("window.onResized(...).then is not a function"));
-    expect(failed).toEqual({ failed: true });
+    const error = new TypeError("window.onResized(...).then is not a function");
+    const failed = ErrorBoundary.getDerivedStateFromError?.(error);
+    expect(failed).toEqual({ failed: true, error });
     const instance = boundary();
     instance.state = { ...instance.state, ...failed };
     expect(instance.render()).toBe(fallback);
@@ -43,4 +45,27 @@ describe("ErrorBoundary", () => {
     warn.mockRestore();
   });
 
+  it("without a fallback, passes the failure on to the boundary above", () => {
+    const error = new Error("render failed");
+    const instance = boundary({ fallback: undefined });
+    instance.state = { failed: true, error };
+    const passed = instance.render() as { type: (props: { error: unknown }) => unknown; props: { error: unknown } };
+    expect(passed.props.error).toBe(error);
+    expect(() => passed.type(passed.props)).toThrow(error);
+  });
+
+  it("records every failure it catches in the crash trail, quietly when it passes it on", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    boundary({ label: "Taro screen", fallback: undefined }).componentDidCatch?.(new Error("render failed"), { componentStack: "" });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+    // The recorder's slot is on globalThis: a second recorder there sees what the boundary recorded.
+    const sent: unknown[] = [];
+    createCrashRecorder().setSender(async (report) => {
+      sent.push(report);
+    });
+    await Promise.resolve();
+    expect(JSON.stringify(sent)).toContain("render failed");
+    expect(JSON.stringify(sent)).toContain("Taro screen");
+  });
 });

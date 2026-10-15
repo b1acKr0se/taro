@@ -13,6 +13,7 @@ import { MilestoneSchema } from "./milestones";
 import { PauseViewSchema } from "./pause";
 import { PaseoProjectCandidateSchema, SettingsTemplateSchema } from "./project-candidates";
 import { ProjectConfigSchema, ProjectNameSchema, ProjectSettingsSchema, ROLES, SUBAGENT_ROLES } from "./project";
+import { CrashReportSchema, DeviceSchema, LaunchIdSchema, TrailReportSchema } from "./crash-trail";
 import { BoardAlertSchema, HeadroomSchema } from "./recovery";
 import { LastStatusSchema, StoredDecisionSchema } from "./state";
 
@@ -447,3 +448,12 @@ export const pollNotifications = defineRpc({
   input: z.object({ clientId: z.string().min(1), active: z.boolean(), after: z.number().int() }),
   output: z.object({ seq: z.number().int(), notifications: z.array(FeedNotificationSchema) }),
 });
+
+/** Crash tracing (TR-132): a launch's new steps and errors, the last crash of an earlier launch on this device, and its dismissal. */
+export const reportTrail = defineRpc({ name: "taro.crash.report", input: TrailReportSchema, output: Empty });
+export const loadLastCrash = defineRpc({
+  name: "taro.crash.last",
+  input: z.object({ launch: LaunchIdSchema, device: DeviceSchema }),
+  output: z.object({ crash: CrashReportSchema.nullable() }),
+});
+export const dismissCrash = defineRpc({ name: "taro.crash.dismiss", input: z.object({ launch: LaunchIdSchema }), output: Empty });

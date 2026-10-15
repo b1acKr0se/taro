@@ -3,6 +3,7 @@ import type { PluginClientContext, PluginWorkspaceCommandContext } from "@getpas
 import { tellManager } from "./shared/contracts";
 import { DECISION_BLOCK_KIND, DECISION_TEXT_KIND, decisionTimelineItems } from "./shared/decision-view";
 import { DecisionBlockItem, DecisionBlockSchema, DecisionTextItem, DecisionTextSchema } from "./client/decision-timeline";
+import { startCrashTrail, withCrashTrail } from "./client/crash-trail";
 import { withFocusRing } from "./client/focus";
 import { TARO_SCREEN_ID } from "./client/screen";
 import { TaroScreen } from "./client/taro-screen";
@@ -19,12 +20,13 @@ async function tellProjectManager(rpc: CommandRpc, args: string): Promise<void> 
 }
 
 export default function contribute(client: PluginClientContext) {
+  const stopCrashTrail = startCrashTrail();
   client.addScreen({
     id: TARO_SCREEN_ID,
     title: (params) => (params.project === undefined ? "Taro" : `Taro · ${params.project}`),
-    Component: withFocusRing(TaroScreen),
+    Component: withCrashTrail("Taro screen", withFocusRing(TaroScreen)),
   });
-  client.addSidebarHeaderItem({ id: TARO_SCREEN_ID, title: "Taro", Component: withFocusRing(TaroSidebarItem) });
+  client.addSidebarHeaderItem({ id: TARO_SCREEN_ID, title: "Taro", Component: withCrashTrail("Taro sidebar item", withFocusRing(TaroSidebarItem)) });
 
   client.addWorkspacePanel({
     id: "taro-ticket",
@@ -32,7 +34,7 @@ export default function contribute(client: PluginClientContext) {
     icon: "ClipboardList",
     context: "agent",
     locations: ["workspace", "explorer"],
-    Component: withFocusRing(TicketPanel),
+    Component: withCrashTrail("ticket panel", withFocusRing(TicketPanel)),
   });
 
   client.addCommandCenterItem({
@@ -64,8 +66,8 @@ export default function contribute(client: PluginClientContext) {
       return decisionTimelineItems(item.text, phase);
     },
   });
-  client.addTimelineRenderer({ kind: DECISION_TEXT_KIND, version: 1, schema: DecisionTextSchema, Component: withFocusRing(DecisionTextItem) });
-  client.addTimelineRenderer({ kind: DECISION_BLOCK_KIND, version: 1, schema: DecisionBlockSchema, Component: withFocusRing(DecisionBlockItem) });
+  client.addTimelineRenderer({ kind: DECISION_TEXT_KIND, version: 1, schema: DecisionTextSchema, Component: withCrashTrail("decision text", withFocusRing(DecisionTextItem)) });
+  client.addTimelineRenderer({ kind: DECISION_BLOCK_KIND, version: 1, schema: DecisionBlockSchema, Component: withCrashTrail("decision card", withFocusRing(DecisionBlockItem)) });
 
-  return () => {};
+  return stopCrashTrail;
 }
