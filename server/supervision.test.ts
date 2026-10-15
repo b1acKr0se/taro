@@ -488,3 +488,38 @@ describe("Supervisor.onTurnEnded reminds about missing evidence", () => {
     expect(reminders()).toEqual([]);
   });
 });
+
+describe("Supervisor.onTurnEnded records the agent's cost (TR-097)", () => {
+  const subagent = {
+    id: "implementer-1",
+    provider: "claude",
+    model: "sonnet",
+    title: "TR-9.1 · implementer: x",
+    status: "idle",
+    labels: { "taro.project": "taro", "taro.role": "implementer", "taro.ticket": "TR-9.1" },
+  };
+
+  async function endTurn(live: object): Promise<unknown[]> {
+    vi.mocked(fetchLiveAgent).mockResolvedValue(live as unknown as PaseoAgent);
+    const state = {
+      allDecisions: async () => [],
+      updateDecisions: async <T>(change: (decisions: never[]) => T) => change([]),
+      agent: async () => null,
+      updateAgent: async <T>(_agentId: string, initial: () => AgentState, change: (record: AgentState) => T) => change(initial()),
+    } as unknown as PluginState;
+    const turnEnded = vi.fn(async () => undefined);
+    const taro = new Supervisor(state, { turnEnded, count: async () => undefined } as unknown as Stats, recovery);
+    await taro.onTurnEnded({} as PaseoApi, { id: subagent.id, parentAgentId: null } as unknown as HookAgent, { kind: "completed" } as unknown as TurnOutcome, items(userTurn, reply), null, 4_000);
+    return turnEnded.mock.calls[0] ?? [];
+  }
+
+  it("passes Paseo's usage at the turn end, so a subagent archived before Done keeps its cost", async () => {
+    const call = await endTurn({ ...subagent, lastUsage: { totalCostUsd: 1.2, contextWindowUsedTokens: 9 } });
+    expect(call).toEqual(["taro", "TR-9.1", { id: subagent.id, role: "implementer", model: "claude/sonnet", title: subagent.title }, 4_000, { costUsd: 1.2, contextTokens: 9 }]);
+  });
+
+  it("passes an empty reading when Paseo has no usage (after a daemon restart)", async () => {
+    const call = await endTurn(subagent);
+    expect(call[4]).toEqual({ costUsd: null, contextTokens: null });
+  });
+});
