@@ -39,10 +39,14 @@ import {
   tellManager as tellManagerRpc,
   writeProjectSettings,
   writeStandingOrders,
+  reportTrail,
+  loadLastCrash,
+  dismissCrash,
 } from "./shared/contracts";
 import { inboxCount } from "./shared/board";
 import { ProjectSettingsSchema } from "./shared/project";
 import { Actions } from "./server/actions";
+import { createCrashTrail } from "./server/crash-trail";
 import { backfillCosts, recordArchivedUsage } from "./server/cost-recording";
 import { fetchLiveAgent, isAgentLive } from "./server/agents";
 import { dismissSuggestion, invalidateBoards, liveOpenDecisions, loadBoard, loadTicketDetail } from "./server/board";
@@ -81,6 +85,7 @@ export default function contribute(server: PluginServerContext) {
   const actions = new Actions(state, supervisor, trackers, stats, recovery);
   recovery.setRelaunchOwner((paseo, project, ticket) => actions.relaunchOwner(paseo, project, ticket));
   // Each Needs-you check also records which cards wait on the user, for Stats' Waiting on you (TR-100).
+  const crashTrail = createCrashTrail();
   const notifier = new Notifier({ onBoard: (project, board) => stats.waitingSeen(project, waitingTickets(board.cards)) });
   // The server half is given Paseo only inside handlers and hooks; keep the first one for timers.
   let kept: PaseoApi | null = null;
@@ -344,6 +349,16 @@ export default function contribute(server: PluginServerContext) {
   server.handle(pollNotifications, async ({ clientId, active, after }, { paseo }) => {
     keep(paseo);
     return notifier.poll(clientId, active, after);
+  });
+
+  server.handle(reportTrail, async (input) => {
+    await crashTrail.report(input);
+    return {};
+  });
+  server.handle(loadLastCrash, async ({ launch, device }) => ({ crash: await crashTrail.last(launch, device) }));
+  server.handle(dismissCrash, async ({ launch }) => {
+    await crashTrail.dismiss(launch);
+    return {};
   });
 
   server.handle(readImageRpc, async ({ path }) => ({ image: await readImage(path) }));

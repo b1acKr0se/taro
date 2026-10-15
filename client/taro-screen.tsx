@@ -43,6 +43,8 @@ import { ProjectSetup } from "./project-setup";
 import { useProjects, useRefreshProjects } from "./queries";
 import { paneGutter, SPACE } from "./spacing";
 import { StatsView } from "./stats-view";
+import { CrashCard } from "./crash-card";
+import { crashStep } from "./crash-trail";
 import { SuggestionPills } from "./suggestion-pills";
 import { TicketView } from "./ticket-view";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
@@ -177,6 +179,14 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
     choose(current.config.project, "project");
     return true;
   });
+
+  // The crash trail's step (TR-132): names and ids only.
+  const shownProject = current?.config.project ?? "";
+  const shownTicket = ticketOpen ? ticket : null;
+  useEffect(() => {
+    const where = [showing, shownProject, layout.compact ? phoneTab : "", shownTicket ?? "", plan !== null && shownTicket !== null ? "plan" : ""];
+    crashStep("screen", where.filter((part) => part !== "").join(" "));
+  }, [showing, shownProject, shownTicket, phoneTab, plan, layout.compact]);
 
   function viewPlan(project: string, planFor: string): void {
     go(viewPlanMove(now(), plan, project, planFor));
@@ -369,6 +379,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
       <View style={styles.root}>
         {/* Inside a ticket on a phone the conversation gets the height; Back returns to the tabs (TR-031). */}
         {layout.compact && showing === "project" && ticketOpen ? null : tabs}
+        <CrashCard theme={theme} compact={layout.compact} />
         <View style={styles.body}>
           {projects.error !== null && projects.data === undefined ? <Text style={styles.error}>{errorText(projects.error)}</Text> : null}
           {body}

@@ -56,8 +56,11 @@ describe("focus sources", () => {
   });
 
   it("gives every surface registered with Paseo the theme's ring colour", () => {
-    const components = [...entry.source.matchAll(/Component: ([^,}\n]+)/g)].map((match) => (match[1] ?? "").trim());
+    // Each may sit inside the crash trail's boundary (TR-132), which draws nothing of its own.
+    const components = [...entry.source.matchAll(/Component: (?:withCrashTrail\("[^"]+", )?([^,}\n]+)/g)].map((match) => (match[1] ?? "").trim());
     expect(components.length).toBe(5);
     expect(components.filter((component) => !component.startsWith("withFocusRing("))).toEqual([]);
+    // Every surface's failures reach the crash trail.
+    expect([...entry.source.matchAll(/Component: withCrashTrail\(/g)]).toHaveLength(5);
   });
 });
