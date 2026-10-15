@@ -682,7 +682,7 @@ function ManagerPane({
   const actions = useActions();
   const project = summary.config.project;
   const manager = summary.manager;
-  // On a phone the switch row above already says manager and holds the settings button (TR-031).
+  // On a phone the switch row above already says Manager and holds the settings button (TR-031).
   const header = compact ? null : (
     <PaneHeader theme={theme} title={`${project} · Manager`}>
       {manager !== null && onOpenAgent !== null ? <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(manager.id)} /> : null}
