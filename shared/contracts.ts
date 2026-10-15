@@ -245,6 +245,8 @@ export const BoardSchema = z.object({
   project: z.string(),
   cards: z.array(CardSchema),
   managerDecisions: z.array(StoredDecisionSchema),
+  /** Open questions live agents ask on tickets, every ticket's whether or not its card is on a page: the Inbox lists each (TR-123). */
+  ticketQuestions: z.number().int().default(0),
   /** The first permission the manager or one of its own subagents (no ticket) waits on (TR-096). */
   managerPermission: AgentAskSchema.nullable().default(null),
   suggestions: z.array(SuggestionSchema),

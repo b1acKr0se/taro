@@ -83,7 +83,7 @@ function card(parts: Partial<Card>): Card {
 }
 
 function board(cards: Card[], managerDecisions: StoredDecision[] = []): Board {
-  return { project: "notes-app", cards, managerDecisions, managerPermission: null, suggestions: [], headroom: null, alerts: [], loadedAt: "2026-01-01T00:00:00Z", totals: { "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 }, offPage: [] };
+  return { project: "notes-app", cards, managerDecisions, ticketQuestions: 0, managerPermission: null, suggestions: [], headroom: null, alerts: [], loadedAt: "2026-01-01T00:00:00Z", totals: { "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 }, offPage: [] };
 }
 
 function entries(cards: Card[], managerDecisions: StoredDecision[] = []): NeedsYouEntry[] {

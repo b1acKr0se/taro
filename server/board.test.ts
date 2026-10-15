@@ -87,6 +87,24 @@ describe("loadBoard", () => {
     ]);
   });
 
+  it("counts every open question live agents ask on tickets, the off-page tickets' too, and none of archived agents (TR-123)", async () => {
+    const question = (agentId: string, ticketId: string, id: string, blocking: boolean) => ({ ...stored(agentId, ticketId), key: `${agentId}:${id}`, id, blocking });
+    const board = await loadBoard(
+      {} as PaseoApi,
+      state([
+        question("owner-live", "TR-1", "scope-approval", true),
+        question("owner-live", "TR-1", "label-wording", false),
+        question("researcher-live", "TR-1", "source", false),
+        question("owner-old", "TR-1", "stale", true),
+        { ...stored("owner-live", "TR-1"), key: "owner-live:answered", id: "answered", status: "answered" } as StoredDecision,
+      ]),
+      "taro",
+      [],
+      { limits: { done: 0 } },
+    );
+    expect(board.ticketQuestions).toBe(3);
+  });
+
   it("draws a child under way from the parent owner's implementer titled with the child (TR-025)", async () => {
     vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "In Progress"), { ...ticket("TR-1.01", "In Progress"), parentTaskId: "TR-1" }] as unknown as Awaited<ReturnType<typeof listTickets>>);
     const implementer = { ...agent("builder", "implementer", "TR-1", "2026-10-13T14:58:00Z"), title: "TR-1.01 · implementer: building the list", status: "running" } as PaseoAgent;

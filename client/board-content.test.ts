@@ -11,7 +11,7 @@ afterEach(() => clients.splice(0).forEach((client) => client.clear()));
 /** A board as the daemon answers it; only the cards' identity matters here. */
 function board(titles: string[], loadedAt: string, threads: number): Board {
   const cards = titles.map((title, index) => ({ id: `NA-00${index + 1}`, title }) as unknown as Card);
-  return { project: "notes-app", cards, managerDecisions: [], managerPermission: null, suggestions: [], headroom: { current: threads, max: 2048, high: false, highSince: null }, alerts: [], loadedAt, totals: { "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 }, offPage: [] } as Board;
+  return { project: "notes-app", cards, managerDecisions: [], ticketQuestions: 0, managerPermission: null, suggestions: [], headroom: { current: threads, max: 2048, high: false, highSince: null }, alerts: [], loadedAt, totals: { "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 }, offPage: [] } as Board;
 }
 
 /** Watches the board as a pane's `useQuery` does, counting how often it would be drawn again. */

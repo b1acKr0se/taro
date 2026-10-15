@@ -10,6 +10,8 @@ import { ActivityIndicator, Animated, Easing, Platform, Text, View } from "react
 import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
 import { BUTTON, SEGMENTED } from "./control-size";
+import { CountBadge } from "./count-badge";
+import { countBadgeLabel } from "./count-badge-text";
 import { Pressable } from "./focus";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 
@@ -142,14 +144,17 @@ export function Segmented<Value extends string>({
   options,
   onChange,
   iconsOnly = false,
+  dense = false,
 }: {
   theme: PluginTheme;
   value: Value;
-  /** `icon` is a Lucide name drawn before the label. */
-  options: ReadonlyArray<{ value: Value; label: string; icon?: string }>;
+  /** `icon` is a Lucide name drawn before the label; `count`, a badge after it (TR-123), none at zero. */
+  options: ReadonlyArray<{ value: Value; label: string; icon?: string; count?: number }>;
   onChange: (value: Value) => void;
   /** Icons only, the labels kept for screen readers: a phone's header has no room for words (TR-031). */
   iconsOnly?: boolean;
+  /** Narrower segments, for a phone's row that must hold every tab and a badge (TR-123). */
+  dense?: boolean;
 }) {
   const colors = theme.colors;
   const control = useMemo(() => controlColors(colors), [colors]);
@@ -193,13 +198,18 @@ export function Segmented<Value extends string>({
             <Pressable
               key={option.value}
               accessibilityRole="tab"
-              accessibilityLabel={option.label}
+              accessibilityLabel={countBadgeLabel(option.label, option.count ?? 0)}
               accessibilityState={{ selected }}
-              style={[styles.segment, selected ? styles.selected : null, iconsOnly ? { paddingHorizontal: BUTTON.iconOnlyPaddingHorizontal } : null]}
+              style={[
+                styles.segment,
+                selected ? styles.selected : null,
+                iconsOnly ? { paddingHorizontal: BUTTON.iconOnlyPaddingHorizontal } : dense ? { paddingHorizontal: SEGMENTED.densePaddingHorizontal } : null,
+              ]}
               onPress={() => onChange(option.value)}
             >
               {option.icon === undefined ? null : <Icon name={option.icon} size={BUTTON.iconSize} color={selected ? colors.foreground : colors.foregroundMuted} />}
               {iconsOnly && option.icon !== undefined ? null : <Text style={[styles.label, selected ? styles.labelSelected : null]}>{option.label}</Text>}
+              <CountBadge theme={theme} count={option.count ?? 0} />
             </Pressable>
           );
         })}

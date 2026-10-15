@@ -1,31 +1,24 @@
 /** The sidebar row: Taro, with a badge counting what waits on the user across projects. */
 import type { PluginSidebarItemProps } from "@getpaseo/plugin/client";
 import { SidebarRow } from "@getpaseo/plugin/client/ui";
-import { View } from "react-native";
 
-import { CentredLabel } from "./centred-label";
+import { CountBadge } from "./count-badge";
+import { needsYouTotal } from "./count-badge-text";
 import { useProjects } from "./queries";
 import { TARO_SCREEN_ID } from "./screen";
 import { useNeedsYouNotifications } from "./use-notifications";
-import { FONT_SIZE, labelLineHeightFor } from "./type-scale";
 
 export function TaroSidebarItem({ currentScreen, openScreen, theme }: PluginSidebarItemProps) {
   const projects = useProjects();
   // The sidebar row is drawn on every screen of the desktop app, so it is where a window listens.
   useNeedsYouNotifications();
-  const waiting = (projects.data?.projects ?? []).reduce((total, summary) => total + summary.needsYou, 0);
+  const waiting = needsYouTotal(projects.data?.projects ?? []);
   return (
     <SidebarRow
       icon="ClipboardList"
       active={currentScreen?.screenId === TARO_SCREEN_ID}
       onPress={() => openScreen({ screenId: TARO_SCREEN_ID })}
-      trailing={
-        waiting === 0 ? undefined : (
-          <View style={{ minWidth: 18, paddingHorizontal: 5, borderRadius: 9, backgroundColor: theme.colors.statusWarning, alignItems: "center" }}>
-            <CentredLabel style={{ color: theme.colors.surface0, fontSize: FONT_SIZE.micro, lineHeight: labelLineHeightFor(FONT_SIZE.micro), fontWeight: "700" }}>{waiting}</CentredLabel>
-          </View>
-        )
-      }
+      trailing={waiting === 0 ? undefined : <CountBadge theme={theme} count={waiting} />}
     />
   );
 }
