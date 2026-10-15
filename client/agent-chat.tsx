@@ -44,6 +44,7 @@ import { composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
 import { useLatestCallback } from "./latest-callback";
+import { bubbleImageRoom, USER_BUBBLE_SHARE } from "./thumbnail-size";
 import { sameGroup, sameItems } from "./transcript-memo";
 import type { SentImage } from "./sent-images";
 
@@ -575,31 +576,40 @@ function UserMessage({
   styles: ChatStyles;
   onMarkAction: (id: string, action: MarkAction) => void;
 }) {
+  // The bubble is as wide as what it holds, so its images are sized to the room the chat gives it (TR-098), measured on a row as wide as the chat (always: the images arrive after the row's first layout); until then they wait, rather than push the bubble off the pane.
+  const [chatWidth, setChatWidth] = useState<number | null>(null);
+  const room = chatWidth === null ? null : bubbleImageRoom(chatWidth, USER_BUBBLE_PADDING, USER_BUBBLE_BORDER);
   return (
-    <View style={styles.userColumn}>
-      <View style={styles.user}>
-        <Text selectable style={styles.userText}>
-          {text}
-        </Text>
-        {images === undefined ? null : (
-          <View style={styles.userImages}>
-            {images.map((image, index) => (
-              <ImageThumbnail
-                key={index}
-                source={image.path}
-                alt="Sent image"
-                theme={theme}
-                set={images.map((each) => ({ source: each.path, alt: "Sent image" }))}
-                index={index}
-              />
-            ))}
-          </View>
-        )}
+    <View style={styles.userRow} onLayout={(event) => setChatWidth(event.nativeEvent.layout.width)}>
+      <View style={styles.userColumn}>
+        <View style={styles.user}>
+          <Text selectable style={styles.userText}>
+            {text}
+          </Text>
+          {images === undefined || room === null ? null : (
+            <View style={styles.userImages}>
+              {images.map((image, index) => (
+                <ImageThumbnail
+                  key={index}
+                  source={image.path}
+                  alt="Sent image"
+                  theme={theme}
+                  room={room}
+                  set={images.map((each) => ({ source: each.path, alt: "Sent image" }))}
+                  index={index}
+                />
+              ))}
+            </View>
+          )}
+        </View>
+        {mark === undefined ? null : <SendMarkLine view={mark} theme={theme} styles={styles} onAction={onMarkAction} />}
       </View>
-      {mark === undefined ? null : <SendMarkLine view={mark} theme={theme} styles={styles} onAction={onMarkAction} />}
     </View>
   );
 }
+
+const USER_BUBBLE_PADDING = SPACE.md;
+const USER_BUBBLE_BORDER = 1;
 
 const MARK_TEXT: Record<SendMark, string> = {
   waiting: "Waiting for the agent's next step",
@@ -768,13 +778,14 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
       gap: compact ? SPACE.md : SPACE.lg,
     },
     // The user's bubble at the right, and a pending message's mark under it (TR-084).
-    userColumn: { alignSelf: "flex-end" as const, maxWidth: "88%" as const, alignItems: "flex-end" as const, gap: SPACE.xs },
+    userRow: { alignSelf: "stretch" as const },
+    userColumn: { alignSelf: "flex-end" as const, maxWidth: `${USER_BUBBLE_SHARE * 100}%` as const, alignItems: "flex-end" as const, gap: SPACE.xs },
     user: {
       backgroundColor: colors.surface2,
-      borderWidth: 1,
+      borderWidth: USER_BUBBLE_BORDER,
       borderColor: colors.border,
       borderRadius: 12,
-      paddingHorizontal: SPACE.md,
+      paddingHorizontal: USER_BUBBLE_PADDING,
       paddingVertical: SPACE.sm + 2,
     },
     userImages: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, marginTop: SPACE.sm },

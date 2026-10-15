@@ -17,6 +17,7 @@ import { watchFullScreen } from "./desktop-window";
 import { ErrorBoundary } from "./error-boundary";
 import { Pressable } from "./focus";
 import { SPACE } from "./spacing";
+import { thumbnailFrame } from "./thumbnail-size";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { captionOf, viewerBarText } from "./viewer-bar";
@@ -110,6 +111,7 @@ export function ImageThumbnail({
   set,
   index = 0,
   captioned = false,
+  room,
 }: {
   source: string;
   alt: string;
@@ -118,6 +120,8 @@ export function ImageThumbnail({
   captioned?: boolean;
   /** The thumbnail's height; its width follows the image. */
   height?: number;
+  /** The widest the thumbnail may be: wider images shrink to it whole, in their own shape (TR-098). */
+  room?: number;
   /** The images the full-size view moves through (those of one message or evidence record), this one at `index`; alone without. */
   set?: readonly GalleryImage[];
   index?: number;
@@ -128,9 +132,10 @@ export function ImageThumbnail({
   const [open, setOpen] = useState(false);
   const { colors } = theme;
   const label = labelOf(alt);
+  const fitted = thumbnailFrame(size, height, room);
   const frame = {
-    height,
-    width: height * (size === null ? 4 / 3 : size.width / size.height),
+    height: fitted.height,
+    width: fitted.width,
     maxWidth: "100%" as const,
     borderRadius: 8,
     borderWidth: 1,
@@ -154,7 +159,7 @@ export function ImageThumbnail({
     ) : (
       <>
         <Pressable accessibilityRole="imagebutton" accessibilityLabel={`${label}, open full size`} style={frame} onPress={() => setOpen(true)}>
-          <Image source={{ uri }} accessibilityLabel={label} resizeMode="cover" style={{ width: "100%", height: "100%" }} />
+          <Image source={{ uri }} accessibilityLabel={label} resizeMode={room === undefined ? "cover" : "contain"} style={{ width: "100%", height: "100%" }} />
         </Pressable>
         <ImageGallery images={images} start={open ? Math.min(Math.max(0, index), images.length - 1) : null} onClose={() => setOpen(false)} />
       </>
