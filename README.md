@@ -10,17 +10,23 @@ In Paseo you usually open a new workspace for each task: you discuss and plan wi
 builds. That is fine for one task. With many at once it breaks down. You cannot easily manage that
 many workspaces, and the only way to see how each task is going is to open it and read the chat.
 
-Taro fixes this by giving you one point of contact. You describe what you want to the **manager**,
-which classifies each request, files a ticket and starts a **task owner** for it. Every ticket
-appears on a **Board** you can scan at a glance. Agents' questions arrive as **decision cards**, so
-you can see which task needs you right now and answer with a button.
+Taro fixes this by giving you one point of contact, and makes the progress of every task visible
+in one place:
 
-- **Every ticket looks the same.** A plan with its goal, choices and how it will be proved, then
-  milestones, delivery, evidence and a short summary, so you always know where to look.
+- **One place to ask.** You describe what you want to the **manager** in plain words. It classifies
+  each request, files a ticket and starts a **task owner** for it, so you never open or keep track
+  of a workspace per task.
+- **The whole picture on a Board.** Every ticket sits in a column that says what it needs now, so
+  you see how all your tasks stand without reading any of their chats.
+- **Questions that find you.** An agent that needs an answer asks with a **decision card**: options
+  and a recommendation, answered with a button. You can see which task needs you right now, and
+  Inbox gathers the cards across projects.
+- **Tickets you can skim.** Each has the same layout: a plan with its goal, choices and how it will
+  be proved, then milestones, delivery, evidence and a short summary.
 - **Work goes on while you are away.** Stalled and crashed agents are handled for you (see
   Unattended work and cost).
-- **It works on desktop and on your phone.** The manager chat, Inbox, Board, Stats and ticket view
-  are the same screens in Paseo's desktop and mobile apps.
+- **Desktop and phone.** The manager chat, Inbox, Board, Stats and ticket view are the same screens
+  in Paseo's desktop and mobile apps, so you can answer or accept a change wherever you are.
 
 <p align="center">
   <img src="assets/screenshots/board.png" width="100%" alt="Taro's board beside a task owner's chat">
@@ -81,9 +87,6 @@ Taro then appears in Paseo's sidebar.
 5. **You decide.** Read the summary and evidence, then press **Accept** (Taro can also merge it, if
    the project is set to) or **Request changes…** with what to change, which sends the ticket back
    to its owner.
-
-Whenever an agent needs an answer, it asks with a decision card: options and a recommendation, and
-you answer with a button. Inbox gathers the cards across projects.
 
 ## Unattended work and cost
 
