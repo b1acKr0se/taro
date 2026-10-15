@@ -66,6 +66,8 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
       under: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
       detail: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, paddingVertical: SPACE.sm, paddingLeft: SPACE.md, borderBottomWidth: 1, borderBottomColor: colors.border },
       note: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, padding: SPACE.lg },
+      notes: { paddingHorizontal: SPACE.lg, paddingBottom: SPACE.lg, gap: SPACE.sm },
+      footnote: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
       error: { color: colors.statusDanger, padding: SPACE.lg },
     }),
     [colors, ticketWidth, statusWidth],
@@ -148,14 +150,17 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
               </View>
             );
           })}
-          {totals.agentsWithoutCost > 0 ? (
-            <Text style={styles.note}>
-              * {totals.agentsWithoutCost} agent{totals.agentsWithoutCost === 1 ? "'s" : "s'"} cost could not be recovered: the session ended without saving it (a crash or a forced stop), so a marked cost leaves theirs out.
-            </Text>
-          ) : null}
-          <Text style={styles.note}>A child ticket's agents, turns, cost and time also count on its parent, so the totals add those up once. Idle compactions in the total include the Manager's.</Text>
         </View>
       </ScrollView>
+      {/* Under the table, not in its sideways scroll, so the notes wrap to the screen. */}
+      <View style={styles.notes}>
+        {totals.agentsWithoutCost > 0 ? (
+          <Text style={styles.footnote}>
+            * {totals.agentsWithoutCost} agent{totals.agentsWithoutCost === 1 ? " has" : "s have"} no recorded cost: one still at work gets it at its next turn end; one whose session ended without saving it (a crash or a forced stop) never will. A marked cost leaves theirs out.
+          </Text>
+        ) : null}
+        <Text style={styles.footnote}>A child ticket's agents, turns, cost and time also count on its parent, so the totals add those up once. Idle compactions in the total include the Manager's.</Text>
+      </View>
     </ScrollView>
   );
 }

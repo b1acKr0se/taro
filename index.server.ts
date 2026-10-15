@@ -97,7 +97,7 @@ export default function contribute(server: PluginServerContext) {
       void listProjectConfigs()
         .then((configs) => backfillCosts(paseo, stats, configs.map((config) => config.project)))
         .then((backfill) => {
-          if (backfill !== null) console.log(`[taro] backfilled ${backfill.filled} agents' cost from their transcripts; ${backfill.missing} could not be recovered`);
+          if (backfill !== null) console.log(`[taro] cost backfill from transcripts: ${backfill.filled} filled, ${backfill.missing} not recoverable`);
         })
         .catch((error: unknown) => reportFailure("[taro] backfilling costs failed:", error));
       void stats
