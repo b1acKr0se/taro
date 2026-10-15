@@ -150,3 +150,34 @@ export function withTaroHook(text: string | null, command: string): string | nul
   }
   return result.slice(0, first.start) + render(entry, unit, lineIndent(text, first.start)) + result.slice(first.end);
 }
+
+/**
+ * The settings text with `skillOverrides[name]` set to "off" for each name it does not mention yet
+ * (TR-139), or null when it cannot be merged without rewriting what is there (not JSON, or
+ * `skillOverrides` not an object). A value the user set for a name, "on" included, is theirs and stays.
+ */
+export function withSkillsOff(text: string | null, names: readonly string[]): string | null {
+  const off = Object.fromEntries(names.map((name) => [name, "off"]));
+  if (text === null || text.trim() === "") return `${JSON.stringify({ skillOverrides: off }, null, 2)}\n`;
+  try {
+    JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const root = scan(text);
+  if (root.kind !== "object") return null;
+  const unit = indentUnit(text);
+  const overrides = root.members.find((member) => member.key === "skillOverrides")?.node;
+  if (overrides === undefined) {
+    if (names.length === 0) return text;
+    return appendItem(text, root, `"skillOverrides": ${render(off, unit, lineIndent(text, root.start) + unit)}`, unit);
+  }
+  if (overrides.kind !== "object") return null;
+  let result = text;
+  for (const name of names) {
+    const container = scan(result).members.find((member) => member.key === "skillOverrides")?.node;
+    if (container === undefined || container.members.some((member) => member.key === name)) continue;
+    result = appendItem(result, container, `${JSON.stringify(name)}: "off"`, unit);
+  }
+  return result;
+}

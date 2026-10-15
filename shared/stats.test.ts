@@ -17,8 +17,8 @@ describe("summarize", () => {
       ],
       waiting: [],
       agents: {
-        owner: { agentId: "owner", role: "owner", model: "m", title: null, turns: 3, activeMs: 600_000, costUsd: 1.5, contextTokens: 90_000 },
-        implementer: { agentId: "implementer", role: "implementer", model: "h", title: null, turns: 1, activeMs: 120_000, costUsd: 0.25, contextTokens: null },
+        owner: { agentId: "owner", role: "owner", model: "m", title: null, turns: 3, activeMs: 600_000, costUsd: 1.5, contextTokens: 90_000, startingContextTokens: null },
+        implementer: { agentId: "implementer", role: "implementer", model: "h", title: null, turns: 1, activeMs: 120_000, costUsd: 0.25, contextTokens: null, startingContextTokens: null },
       },
       nudges: 1,
       decisions: 2,
@@ -38,7 +38,7 @@ describe("summarize", () => {
   });
 
   it("counts agents whose cost is unknown, adding up only the known costs", () => {
-    const agent = { role: "implementer", model: "m", title: null, turns: 1, activeMs: 0, contextTokens: null };
+    const agent = { role: "implementer", model: "m", title: null, turns: 1, activeMs: 0, contextTokens: null, startingContextTokens: null };
     const summary = summarize({
       project: "app",
       ticket: "AP-2",

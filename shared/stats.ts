@@ -24,6 +24,8 @@ export const AgentStatsSchema = z.object({
   activeMs: z.number().default(0),
   costUsd: z.number().nullable().default(null),
   contextTokens: z.number().nullable().default(null),
+  /** A trimmed agent's first request, from its transcript (TR-139): what it started with. */
+  startingContextTokens: z.number().nullable().default(null),
 });
 export type AgentStats = z.infer<typeof AgentStatsSchema>;
 

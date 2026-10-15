@@ -45,6 +45,13 @@ EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
   when its session opens (`server/compact-hook.ts`; Paseo lets a plugin change only a session's env).
   The merge edits the text in place, so a user's own file keeps every other byte, and the hook prints
   `<plugin data>/reload/$PASEO_AGENT_ID.md` only while the skill folder exists, always exiting 0.
+- Claude owners and subagents start trimmed (TR-139): the `before("agent.create")` hook adds
+  `disallowedTools` (Paseo's MCP server and the built-in tools no role uses) for an agent carrying
+  `TARO_PROJECT` outside a manager's home, and turns Paseo's agent skills and `loop` off through
+  `skillOverrides` in the same settings file; the manager is untouched. The lists are in
+  `shared/agent-trim.ts`, with the evidence rule for changing them. A later turn that reaches for
+  one adds a TOOL-MISS note to its ticket; a start above 30k tokens adds a CONTEXT note. If a role
+  needs a new tool (a skill or template tells agents to use one), check it is not on those lists.
 - Images over Claude's limit (5 MB of base64, about 3.75 MB of file) are shrunk when attached
   (`client/image-shrink.ts`); Paseo's own cap is 10 attachments and 30 MB a message.
 - Code adapted from FirstMate (MIT) or ported from Paseo (Apache-2.0) keeps its header comment and

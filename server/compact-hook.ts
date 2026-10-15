@@ -3,7 +3,8 @@
  * and resume), its reload text goes to a file in the plugin's data folder and a SessionStart hook
  * (matcher "compact") that prints it goes into `.claude/settings.local.json` in its working
  * directory: Paseo lets a plugin change only a session's env, and Claude reads hooks only from
- * settings files. A new owner gets it at its first turn start (`ensureCompactHook`). The worktree stays clean: the file is excluded from git when nothing ignores it.
+ * settings files. A new owner gets it at its first turn start (`ensureCompactHook`). The merge and
+ * the file's place outside git are `local-settings.ts`'s.
  */
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -12,16 +13,12 @@ import { reloadHookCommand, withTaroHook } from "../shared/claude-settings";
 import { fetchLiveAgent } from "./agents";
 import { dataPath } from "./data-dir";
 import { isInside } from "./environment";
-import { readTextIfPresent, writeTextAtomically } from "./files";
+import { writeTextAtomically } from "./files";
 import type { PaseoApi } from "./host-types";
+import { mergeLocalSettings } from "./local-settings";
 import { skillDirectory } from "./package-files";
-import { runCommand } from "./process";
 import { projectsDirectory } from "./projects";
 import { identityFromLabels, reloadText, type TaroIdentity } from "./supervision";
-
-const SETTINGS_FILE = join(".claude", "settings.local.json");
-const EXCLUDE_PATTERN = "**/.claude/settings.local.json";
-const GIT_TIMEOUT_MS = 10_000;
 
 const RELOAD_FOLDER = "reload";
 
@@ -48,18 +45,6 @@ async function sessionIdentity(paseo: PaseoApi, agentId: string, cwd: string): P
   return project === undefined ? null : { project, role: "manager", ticket: null, title: null };
 }
 
-/** Adds the pattern to the repository's own `info/exclude` unless git already ignores the file; outside a repository, nothing. */
-async function excludeFromGit(cwd: string): Promise<void> {
-  const ignored = await runCommand("git", ["-C", cwd, "check-ignore", "-q", SETTINGS_FILE], { timeoutMs: GIT_TIMEOUT_MS });
-  if (ignored.code !== 1) return; // 0: ignored already; 128: not a repository
-  const located = await runCommand("git", ["-C", cwd, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"], { timeoutMs: GIT_TIMEOUT_MS });
-  const exclude = located.stdout.trim();
-  if (located.code !== 0 || exclude === "") return;
-  const current = (await readTextIfPresent(exclude)) ?? "";
-  if (current.split("\n").includes(EXCLUDE_PATTERN)) return;
-  await writeTextAtomically(exclude, `${current}${current === "" || current.endsWith("\n") ? "" : "\n"}${EXCLUDE_PATTERN}\n`);
-}
-
 /** Returns what it changed in the working directory, for the log, or null when nothing there changed. */
 export async function installCompactHook(paseo: PaseoApi, request: { agentId: string; cwd: string; provider: string }): Promise<string | null> {
   if (request.provider !== "claude") return null;
@@ -67,17 +52,8 @@ export async function installCompactHook(paseo: PaseoApi, request: { agentId: st
   if (identity === null) return null;
   const reloadFile = reloadFilePath(request.agentId);
   await writeTextAtomically(reloadFile, `${await reloadText(identity)}\n`);
-  // A file the repository tracks would show the hook, with this machine's paths, as a change to commit.
-  const tracked = await runCommand("git", ["-C", request.cwd, "ls-files", "--error-unmatch", SETTINGS_FILE], { timeoutMs: GIT_TIMEOUT_MS });
-  if (tracked.code === 0) return `left ${join(request.cwd, SETTINGS_FILE)} alone: the repository tracks it`;
-  const settingsPath = join(request.cwd, SETTINGS_FILE);
-  const current = await readTextIfPresent(settingsPath);
-  const merged = withTaroHook(current, reloadHookCommand(dataPath(RELOAD_FOLDER), await skillDirectory()));
-  if (merged === null) return `left ${settingsPath} alone: it is not a settings object Taro can add to`;
-  await excludeFromGit(request.cwd);
-  if (merged === current) return null;
-  await writeTextAtomically(settingsPath, merged);
-  return `hook written to ${settingsPath}`;
+  const command = reloadHookCommand(dataPath(RELOAD_FOLDER), await skillDirectory());
+  return mergeLocalSettings(request.cwd, "hook", (current) => withTaroHook(current, command));
 }
 
 /** At a turn start: installs once for an agent whose labels its session open could not read. */
