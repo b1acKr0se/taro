@@ -151,7 +151,7 @@ export function toolMissRecord(at: string, agent: { id: string; role: string }, 
 
 /** The CONTEXT record for a ticket's notes. */
 export function contextRecord(at: string, agent: { id: string; role: string }, tokens: number): string {
-  return `CONTEXT ${at} — ${agent.role} ${agent.id} started with ${tokens.toLocaleString("en-US")} tokens, above Taro's ${STARTING_CONTEXT_LIMIT.toLocaleString("en-US")} for a trimmed agent (TR-139): new tools, MCP servers, skills or instructions grew its first request.`;
+  return `CONTEXT ${at} — ${agent.role} ${agent.id} started with ${tokens.toLocaleString("en-US")} tokens; a trimmed owner or subagent starts under ${STARTING_CONTEXT_LIMIT.toLocaleString("en-US")} (TR-139). It was launched without the Taro environment, or new tools, MCP servers, skills or instructions grew its first request.`;
 }
 
 /** The first request's whole input (fresh, cache written and cache read) from a transcript line, or null. */
