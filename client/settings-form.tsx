@@ -10,7 +10,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 
 import { addableModelGroups, type PickerOption } from "../shared/model-picker";
-import { choiceListStyle, choiceRowStyle, chosenChipColors, radioStyle } from "./choice-style";
+import { choiceContentOpacity, choiceListStyle, choiceRowStyle, chosenChipColors, radioStyle } from "./choice-style";
 import { Pressable, TextInput } from "./focus";
 import { KeyboardRevealBoundary, useRevealFocused } from "./keyboard";
 import { SPACE } from "./spacing";
@@ -222,6 +222,7 @@ export function ChoiceCards<Value extends string>({
       {options.map((option, index) => {
         const selected = option.value === value;
         const unavailable = option.unavailable ?? null;
+        const faded = unavailable !== null && !selected;
         return (
           <Pressable
             key={option.value}
@@ -229,12 +230,12 @@ export function ChoiceCards<Value extends string>({
             accessibilityState={{ checked: selected, disabled: unavailable !== null }}
             disabled={unavailable !== null}
             onPress={() => onChange(option.value)}
-            style={choiceRowStyle(colors, { first: index === 0, faded: unavailable !== null && !selected })}
+            style={choiceRowStyle(colors, index === 0)}
           >
-            <View style={radioStyle(colors, selected)}>
+            <View style={[radioStyle(colors, selected), { opacity: choiceContentOpacity(faded) }]}>
               {selected ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent }} /> : null}
             </View>
-            <View style={{ flex: 1, gap: SPACE.xxs }}>
+            <View style={{ flex: 1, gap: SPACE.xxs, opacity: choiceContentOpacity(faded) }}>
               <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" }}>{option.title}</Text>
               <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) }}>{option.description}</Text>
               {unavailable === null ? null : (

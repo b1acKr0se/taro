@@ -22,7 +22,7 @@ export function choiceListStyle(colors: ThemeColors) {
 }
 
 /** One option in the box: the same whether chosen or not, with a divider above all but the first. */
-export function choiceRowStyle(colors: ThemeColors, { first, faded }: { first: boolean; faded: boolean }) {
+export function choiceRowStyle(colors: ThemeColors, first: boolean) {
   return {
     flexDirection: "row" as const,
     alignItems: "flex-start" as const,
@@ -30,8 +30,12 @@ export function choiceRowStyle(colors: ThemeColors, { first, faded }: { first: b
     padding: SPACE.md,
     borderTopWidth: first ? 0 : 1,
     borderTopColor: colors.border,
-    opacity: faded ? 0.6 : 1,
   };
+}
+
+/** An option that cannot be picked fades its radio and text, never the divider shared with its neighbours. */
+export function choiceContentOpacity(faded: boolean): number {
+  return faded ? 0.6 : 1;
 }
 
 /** The radio ring; the accent shows only on the chosen one's ring and dot. */
