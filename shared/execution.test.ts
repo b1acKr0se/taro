@@ -136,7 +136,9 @@ describe("pullRequestMergeInstruction", () => {
 
   it("brings the local base branch up to origin by fast-forward only, after the merge (TR-110)", () => {
     const text = pullRequestMergeInstruction(notes, null, { ...target, baseBranch: "develop" });
-    expect(text).toContain("Then bring develop in the main checkout (/home/user/notes-app) up to origin, only while it is clean and on develop");
+    expect(text).toContain(
+      "Then bring develop in the main checkout (/home/user/notes-app) up to origin, only while it is on develop and git -C /home/user/notes-app status --porcelain prints nothing (an untracked file counts)",
+    );
     expect(text).toContain("git -C /home/user/notes-app fetch origin develop, then git -C /home/user/notes-app merge --ff-only origin/develop");
     expect(text.indexOf("merge --ff-only")).toBeGreaterThan(text.indexOf("Confirm its state is MERGED"));
     expect(text.indexOf("record ACCEPTANCE")).toBeGreaterThan(text.indexOf("merge --ff-only"));

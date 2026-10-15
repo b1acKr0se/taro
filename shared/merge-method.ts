@@ -55,6 +55,6 @@ export function mergeMethodDescription(method: MergeMethod, branch: string): str
 export function mergeMethodHint(branch: string): string {
   return (
     'Merge commit and Squash make a new commit with your GitHub account\'s commit email (your personal address unless "Keep my email addresses private" is on); Rebase keeps each commit\'s author. ' +
-    `After merging, the owner fast-forwards your local ${branch} to GitHub's, unless it has uncommitted changes or commits of its own.`
+    `After merging, the owner fast-forwards your local ${branch} to GitHub's while it is checked out with no changes or commits of its own.`
   );
 }

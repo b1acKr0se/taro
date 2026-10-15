@@ -106,7 +106,8 @@ export function pullRequestMergeInstruction(notes: string | null, finalSummary: 
   return (
     `Merge ${url} now as roles/owner.md says (Accept, pull request), with the project's merge method, ${title}, only if its headRefOid is still the recorded review head ${head}: ` +
     `gh pr merge ${url} ${mergeFlag(method)} --match-head-commit ${head}. Confirm its state is MERGED (an earlier Accept may have merged it already: then go on). ` +
-    `Then bring ${baseBranch} in the main checkout (${repoPath}) up to origin, only while it is clean and on ${baseBranch}: git -C ${repoPath} fetch origin ${baseBranch}, then git -C ${repoPath} merge --ff-only origin/${baseBranch}. ` +
+    `Then bring ${baseBranch} in the main checkout (${repoPath}) up to origin, only while it is on ${baseBranch} and git -C ${repoPath} status --porcelain prints nothing (an untracked file counts): ` +
+    `git -C ${repoPath} fetch origin ${baseBranch}, then git -C ${repoPath} merge --ff-only origin/${baseBranch}. ` +
     "Then record ACCEPTANCE and set the ticket Done. " +
     "If the head moved, do not merge; present it again. " +
     `If GitHub refuses the ${title} method, do not use another: record NOT-MERGED with GitHub's reason. ` +

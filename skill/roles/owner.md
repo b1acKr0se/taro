@@ -187,12 +187,14 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
        **NOT-MERGED** with GitHub's reason and what the user does (pick another Merge method in the
        project's settings, or allow it on GitHub), then Accept again; end with `waiting: <reason>`.
        Any other refusal → say why.
-    3. Bring the base branch in the main checkout up to GitHub's: only while it is clean (no
-       uncommitted or untracked changes) and on the base branch, `git -C <repository path> fetch
-       origin <base>`, then `git -C <repository path> merge --ff-only origin/<base>`. Dirty, on
+    3. Bring the base branch in the main checkout up to GitHub's: only while it is on the base
+       branch and `git -C <repository path> status --porcelain` prints nothing (an untracked file
+       counts), `git -C <repository path> fetch origin <base>`, then `git -C <repository path>
+       merge --ff-only origin/<base>`. Dirty, on
        another branch, commits origin lacks (the fast-forward fails) or the fetch failed → do not
        touch it (no stash, checkout, reset or merge): record **NOT-SYNCED** with the reason and what
-       the user does first, in one short line; end with `waiting: <reason>`. The card goes back to
+       the user does first, in one short line (the card already says it merged); end with
+       `waiting: <reason>`. The card goes back to
        Needs you, and the next Accept only repeats this step.
     4. Record ACCEPTANCE with the method and the local base `<old>` → `<new>` in its prose, then its
        fixed field `merge: merged <merge commit>` (`reference/tickets.md`), set **Done**, and end

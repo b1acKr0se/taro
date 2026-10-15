@@ -40,7 +40,7 @@ describe("merge method (TR-110)", () => {
     expect(hint).toContain("Merge commit and Squash make a new commit with your GitHub account's commit email");
     expect(hint).toContain('"Keep my email addresses private"');
     expect(hint).toContain("Rebase keeps each commit's author");
-    expect(hint).toContain("fast-forwards your local develop to GitHub's");
+    expect(hint).toContain("fast-forwards your local develop to GitHub's while it is checked out with no changes or commits of its own");
     expect(mergeMethodDescription("squash", "develop")).toContain("one new commit on develop");
   });
 });
