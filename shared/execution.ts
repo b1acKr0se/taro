@@ -181,7 +181,9 @@ export function pullRequestMerged(notes: string | null): boolean {
     const fields = [...record.matchAll(MERGE_FIELD)];
     const field = fields[fields.length - 1]?.[1];
     if (field !== undefined) return field.toLowerCase() === "merged";
-    if (!PULL_REQUEST_URL_ONCE.test(record) || !(/(?<!NOT[ -])\bMERGED\b/.test(record) || /\bmerge commit\b/i.test(record))) return false;
+    // No lookbehind for "NOT MERGED": the client bundle runs on the phone's Hermes.
+    const merged = /\bMERGED\b/.test(record.replace(/\bNOT[ -]MERGED\b/g, "")) || /\bmerge commit\b/i.test(record);
+    if (!PULL_REQUEST_URL_ONCE.test(record) || !merged) return false;
     // The prose alone may describe a merge the plugin never asked for; its ACCEPTED note says it did.
     return records.slice(0, index).some((earlier) => /^ACCEPTED\b[^\n]*merging:\s*the pull request/i.test(earlier));
   }
