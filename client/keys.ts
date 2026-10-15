@@ -29,6 +29,16 @@ export function isSendKey(event: WebKeyPressEvent["nativeEvent"]): boolean {
 }
 
 /**
+ * What a key does in a box where Enter sends: "send" it, do "nothing" (Enter with nothing to send, such
+ * as a second Enter just after a send cleared the box, which would otherwise start the next message
+ * with a blank line, TR-102), or null to let the key type as usual.
+ */
+export function enterKeyAction(event: WebKeyPressEvent["nativeEvent"], sendable: boolean): "send" | "nothing" | null {
+  if (!isSendKey(event)) return null;
+  return sendable ? "send" : "nothing";
+}
+
+/**
  * Cmd+S on a Mac, Ctrl+S elsewhere — the save every editor has. On the web
  * renderer only; the key press carries the modifier state from the DOM event.
  */
