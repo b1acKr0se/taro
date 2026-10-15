@@ -259,7 +259,8 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
                   {/* Held to the visible width and riding along with the scroll, so it reads without scrolling. */}
                   {expanded ? (
                     <Animated.View style={{ width: fit.fits ? undefined : Math.max(viewport - 2 * SIDE, 0), transform: [{ translateX: pinnedShift }] }}>
-                      <Text style={styles.detail}>
+                      {/* Clear of the right-edge fade, which would otherwise wash out its last words. */}
+                      <Text style={[styles.detail, fit.fits ? null : { paddingRight: FADE_WIDTH - SIDE }]}>
                         {[byStatus === "" ? "No time recorded per status." : byStatus, summary.agentsWithoutCost > 0 ? unknownCostText(summary.agentsWithoutCost, summary.agents) : null].filter((part) => part !== null).join(" · ")}
                       </Text>
                     </Animated.View>
