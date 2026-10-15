@@ -152,23 +152,18 @@ export function planCardOptions(
   };
 }
 
-/**
- * The plan's filled button (TR-083): Approve while the change box is empty, sending the approve option;
- * Send change once words are typed, sending them alone.
- */
-export function planPrimaryButton(approveLabel: string, approve: string, typed: string): { label: string; icon: string; option: string | null } {
-  return typed.trim() === "" ? { label: approveLabel, icon: "Check", option: approve } : { label: "Send change", icon: "Send", option: null };
-}
-
 /** Where a scope approval's buttons are drawn: the compact card, the card with the plan unfolded in place, or the Ticket tab's Plan. */
 export type PlanActionsPlace = "card" | "unfolded card" | "ticket plan";
 
 /**
- * Whether the plan's buttons come with the field to describe a change (TR-075): only under the full
- * plan, so a change is written after reading it. The compact card has none; View plan leads to it.
+ * The plan's change box (TR-112), opened as on the acceptance card: by Request changes… (`option`
+ * null), sending the typed words alone, or by an option that asks for words, sending both. Send
+ * waits for words.
  */
-export function planChangeField(place: PlanActionsPlace): boolean {
-  return place !== "card";
+export function planChangeBox(option: string | null, typed: string): { sendLabel: string; placeholder: string; enabled: boolean; label: string | null; text: string } {
+  const text = typed.trim();
+  if (option === null) return { sendLabel: "Send changes", placeholder: CHANGE_PLACEHOLDER, enabled: text !== "", label: null, text };
+  return { sendLabel: "Send", placeholder: `Say how for “${option.trim().replace(/…$/, "")}”…`, enabled: text !== "", label: option, text };
 }
 
 /** What is picked on a decision card: one of its option rows, the Other row under them, or nothing. */

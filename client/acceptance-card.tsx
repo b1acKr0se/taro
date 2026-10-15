@@ -16,15 +16,15 @@ import { evidenceSummary } from "../shared/evidence";
 import { finalSummaryBody } from "../shared/execution";
 import { acceptanceReady } from "./card-calls";
 import { notMergedText } from "./card-now";
+import { ChangeBox } from "./change-box";
 import { EvidenceBlock } from "./evidence-view";
 import { Pressable } from "./focus";
 import { errorText, pullRequestLabel } from "./format";
 import { useRevealFocused } from "./keyboard";
 import { Markdown } from "./markdown";
-import { ReplyBox } from "./reply-box";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
-import { AcceptancePair, IconButton } from "./ui";
+import { AcceptancePair } from "./ui";
 import { useActions } from "./use-actions";
 import { polled } from "./polling";
 
@@ -97,42 +97,30 @@ export function AcceptanceCard({ card, project, theme, compact, onChanged }: { c
       <View style={styles.rule} />
       <View ref={foot} collapsable={false} style={writing ? styles.writing : styles.foot}>
         {writing ? (
-          <>
-            <ReplyBox
+          <ChangeBox
               theme={theme}
               compact={compact}
               value={typed}
               onChangeText={setTyped}
               onFocus={reveal}
               placeholder="What should change?"
-              autoFocus
-              editable={!busy}
+              canSend={typed.trim() !== ""}
+              busy={busy}
+              sendState={actions.stateOf("request-changes")}
+              // Success closes the box, and the toast says it went.
+              onSend={() =>
+                actions.press("request-changes", () => changes({ project, ticket: card.id, text: typed.trim() }), {
+                  success: "Sent to the owner.",
+                  onSuccess: () => {
+                    setTyped("");
+                    setWriting(false);
+                    onChanged();
+                  },
+                })
+              }
+              onCancel={() => setWriting(false)}
               background={colors.surface0}
             />
-            <View style={styles.foot}>
-              <IconButton
-                icon="Send"
-                label="Send changes"
-                showLabel
-                tone="accent"
-                theme={theme}
-                disabled={busy || typed.trim() === ""}
-                state={actions.stateOf("request-changes")}
-                // Success closes the box, and the toast says it went.
-                onPress={() =>
-                  actions.press("request-changes", () => changes({ project, ticket: card.id, text: typed.trim() }), {
-                    success: "Sent to the owner.",
-                    onSuccess: () => {
-                      setTyped("");
-                      setWriting(false);
-                      onChanged();
-                    },
-                  })
-                }
-              />
-              <IconButton icon="X" label="Cancel" showLabel theme={theme} disabled={busy} onPress={() => setWriting(false)} />
-            </View>
-          </>
         ) : (
           <AcceptancePair
             theme={theme}

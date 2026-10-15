@@ -43,8 +43,8 @@ too, test-daemon and scratch-repository cleanup most of all. Then follow the flo
    step 3), then ask with a blocking decision `scope-approval` whose question is `Approve the plan
    for <ID>?`, options Approve (and Split into children when you propose children), and `why` one
    line at most: the card shows the plan's Goal, Choices I made and Size from the ticket, and View
-   plan opens the rest. The card has no text field: the user asks for a change in the field under
-   the full plan, after reading it. Trivial work needs none — your one clarifying question's answer,
+   plan opens the rest. The card has Approve and Request changes…: the user asks for a change by
+   typing in the box Request changes… opens, and their words arrive alone. Trivial work needs none — your one clarifying question's answer,
    if any, is the approval. Record **APPROVAL** with the user's exact words. No code before approval
    except a throwaway check when feasibility is unknown. Changed scope needs a new approval; details
    inside the scope do not.

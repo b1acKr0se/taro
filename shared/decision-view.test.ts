@@ -15,8 +15,7 @@ import {
   optionAsksForWords,
   optionChips,
   planCardOptions,
-  planChangeField,
-  planPrimaryButton,
+  planChangeBox,
   ticketViewApproval,
   untrackedDecision,
   type DecisionLookup,
@@ -242,14 +241,6 @@ describe("answerPlaceholder", () => {
   });
 });
 
-describe("planChangeField", () => {
-  it("leaves the change field off the compact card and keeps it under the full plan", () => {
-    expect(planChangeField("card")).toBe(false);
-    expect(planChangeField("unfolded card")).toBe(true);
-    expect(planChangeField("ticket plan")).toBe(true);
-  });
-});
-
 describe("planCardOptions", () => {
   const option = (label: string, prompt = label) => ({ label, prompt, consequence: "", images: [] });
 
@@ -382,13 +373,15 @@ describe("answeredInPlan", () => {
   });
 });
 
-describe("planPrimaryButton", () => {
-  it("approves while the change box is empty or blank", () => {
-    expect(planPrimaryButton("Approve", "Approve", "")).toEqual({ label: "Approve", icon: "Check", option: "Approve" });
-    expect(planPrimaryButton("Approve the split", "Approve the split", "  \n")).toEqual({ label: "Approve the split", icon: "Check", option: "Approve the split" });
+describe("planChangeBox", () => {
+  it("sends the typed change alone from Request changes…, once there are words", () => {
+    expect(planChangeBox(null, "")).toEqual({ sendLabel: "Send changes", placeholder: "Describe a change…", enabled: false, label: null, text: "" });
+    expect(planChangeBox(null, "  \n ").enabled).toBe(false);
+    expect(planChangeBox(null, "  drop the second chart\n")).toEqual({ sendLabel: "Send changes", placeholder: CHANGE_PLACEHOLDER, enabled: true, label: null, text: "drop the second chart" });
   });
 
-  it("sends the typed change alone once there are words", () => {
-    expect(planPrimaryButton("Approve", "Approve", "drop the second chart")).toEqual({ label: "Send change", icon: "Send", option: null });
+  it("sends an option that asks for words with them", () => {
+    expect(planChangeBox("Rename…", "")).toEqual({ sendLabel: "Send", placeholder: "Say how for “Rename”…", enabled: false, label: "Rename…", text: "" });
+    expect(planChangeBox("Rename…", "call it notes")).toMatchObject({ enabled: true, label: "Rename…", text: "call it notes" });
   });
 });

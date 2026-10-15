@@ -1,8 +1,8 @@
 /**
  * A scope approval as a compact plan card (TR-061, design B): the question, a tinted box of
- * labelled rows (Goal, the choices the user must check, Size) read from the ticket's plan, Approve
- * and View plan side by side, the other real options beside them. No field to describe a change
- * (TR-075): that is written under the full plan, where View plan leads. The plan comes from the
+ * labelled rows (Goal, the choices the user must check, Size) read from the ticket's plan, then
+ * Approve, Request changes… and View plan side by side, the other real options beside them; Request
+ * changes… opens the change box in place of the buttons, as on the acceptance card (TR-112). The plan comes from the
  * ticket (`loadTicket`, shared with the Ticket tab); while it loads, or when it does not follow the
  * template, the usual decision card shows. The full plan, with its sections
  * folded past their limits, is `PlanBody`, shown in the Ticket tab.
@@ -12,18 +12,18 @@ import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { Text, View, type TextInput as NativeTextInput } from "react-native";
+import { Text, View } from "react-native";
 
 import { answerDecision, loadTicket } from "../shared/contracts";
-import { CHANGE_PLACEHOLDER, SCOPE_APPROVAL, planCardOptions, planChangeField, planPrimaryButton, type PlanActionsPlace } from "../shared/decision-view";
+import { SCOPE_APPROVAL, planCardOptions, planChangeBox, type PlanActionsPlace } from "../shared/decision-view";
 import { parsePlan, splitChoice, type ParsedPlan, type PlanSection } from "../shared/plan";
 import type { StoredDecision } from "../shared/state";
+import { ChangeBox } from "./change-box";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { useRevealFocused } from "./keyboard";
 import { Markdown, MarkdownInline } from "./markdown";
 import { useViewPlan } from "./plan-navigation";
-import { ReplyBox } from "./reply-box";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
@@ -171,6 +171,7 @@ function PlanCard({
           decision={decision}
           options={options}
           theme={theme}
+          compact={compact}
           answeredFrom={answeredFrom}
           onAnswered={onAnswered}
           place={unfolded ? "unfolded card" : "card"}
@@ -270,13 +271,15 @@ function PlanSummary({ plan, theme, compact, brief }: { plan: ParsedPlan; theme:
 }
 
 /**
- * Under the full plan only, the reply box first; then Approve, which reads Send change and sends the
- * words alone once something is typed (TR-083), View plan when given, and the other real options.
+ * The plan's buttons, asking as the acceptance card does (TR-112): Approve and Request changes…, View
+ * plan when given, and the other real options. Request changes…, or an option that asks for words,
+ * swaps the row for the change box with Send changes and Cancel.
  */
 export function PlanActions({
   decision,
   options,
   theme,
+  compact,
   answeredFrom,
   onAnswered,
   viewPlan = null,
@@ -286,10 +289,11 @@ export function PlanActions({
   decision: StoredDecision;
   options: PlanCardOptions;
   theme: PluginTheme;
+  compact?: boolean;
   answeredFrom: "screen" | "tab";
   onAnswered: () => void;
   viewPlan?: { label: string; onPress: () => void } | null;
-  /** Where the buttons are: the field comes only under the full plan. */
+  /** Where the buttons are, for the box's fill. */
   place?: PlanActionsPlace;
   /** The presses of another Approve for the same decision on the screen, so only one runs at a time. */
   presses?: Actions | null;
@@ -298,12 +302,11 @@ export function PlanActions({
   const ownPresses = useActions();
   const presses = sharedPresses ?? ownPresses;
   const [typed, setTyped] = useState("");
-  const field = useRef<NativeTextInput>(null);
-  // The box and the buttons under it are revealed together, so Approve / Send change stays above the keyboard.
-  const fieldRow = useRef<View>(null);
-  const reveal = useRevealFocused(fieldRow);
-  const withField = planChangeField(place);
-  const words = withField ? typed.trim() : "";
+  // The option the box is open for: null for Request changes…, undefined while the buttons show.
+  const [writing, setWriting] = useState<string | null | undefined>(undefined);
+  // The box and the buttons under it are revealed together, so Send changes stays above the keyboard.
+  const foot = useRef<View>(null);
+  const reveal = useRevealFocused(foot);
   const busy = presses.busy;
   const [rowWidth, setRowWidth] = useState<number | null>(null);
   const narrow = rowWidth !== null && rowWidth < NARROW_ROW_WIDTH;
@@ -311,80 +314,84 @@ export function PlanActions({
   const { colors } = theme;
   const styles = useMemo(
     () => ({
-      group: { gap: SPACE.sm },
       buttons: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm },
-      // Equal shares of the row, each button filling its share, so siblings match in size.
-      slot: { flexGrow: 1, flexBasis: 0, minWidth: narrow ? NARROW_BUTTON_MIN_WIDTH : BUTTON_MIN_WIDTH },
+      // Each button as wide as its label, sharing the spare width, so a label stays on one line: an equal
+      // share broke Request changes… over two lines beside Approve (TR-112). Siblings keep one height.
+      slot: { flexGrow: 1, flexBasis: "auto" as const, minWidth: narrow ? NARROW_BUTTON_MIN_WIDTH : BUTTON_MIN_WIDTH },
     }),
-    [colors, narrow],
+    [narrow],
   );
 
-  function send(key: string, label: string | null, asksForWords = false): void {
-    // An option that asks for words waits for them.
-    if (asksForWords && words === "") {
-      // Without a field here, the words are typed under the plan View plan opens.
-      if (withField) field.current?.focus();
-      else viewPlan?.onPress();
-      return;
-    }
+  function send(key: string, label: string | null, text: string): void {
     // The answered decision leaves, so the pressed button stays busy until it does.
-    presses.press(key, () => answer({ key: decision.key, label, text: words, from: answeredFrom }), {
+    presses.press(key, () => answer({ key: decision.key, label, text, from: answeredFrom }), {
       after: "hold",
       onSuccess: () => {
         setTyped("");
+        setWriting(undefined);
         onAnswered();
       },
     });
   }
 
-  const primary = planPrimaryButton(options.approveLabel, options.approve, words);
-  return (
-    <View ref={fieldRow} collapsable={false} style={styles.group}>
-      {withField ? (
-        <ReplyBox
+  if (writing !== undefined) {
+    const box = planChangeBox(writing, typed);
+    return (
+      <View ref={foot} collapsable={false}>
+        <ChangeBox
           theme={theme}
-          fieldRef={field}
+          compact={compact}
           value={typed}
           onChangeText={setTyped}
           onFocus={reveal}
-          placeholder={CHANGE_PLACEHOLDER}
-          editable={!busy}
-          // The unfolded card is surface1 itself; the Ticket view's Plan sits on the pane.
-          background={place === "unfolded card" ? colors.surface0 : undefined}
+          placeholder={box.placeholder}
+          sendLabel={box.sendLabel}
+          canSend={box.enabled}
+          busy={busy}
+          sendState={presses.stateOf("change")}
+          onSend={() => send("change", box.label, box.text)}
+          onCancel={() => setWriting(undefined)}
+          // The cards are surface1 themselves; the Ticket view's Plan sits on the pane.
+          background={place === "ticket plan" ? undefined : colors.surface0}
         />
-      ) : null}
-      <View style={styles.buttons} onLayout={(event) => setRowWidth(event.nativeEvent.layout.width)}>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.buttons} onLayout={(event) => setRowWidth(event.nativeEvent.layout.width)}>
+      <View style={styles.slot}>
+        <IconButton
+          icon={icon("Check")}
+          label={options.approveLabel}
+          showLabel
+          tone="accent"
+          theme={theme}
+          disabled={busy}
+          state={presses.stateOf("approve")}
+          onPress={() => send("approve", options.approve, "")}
+        />
+      </View>
+      <View style={styles.slot}>
+        <IconButton icon={icon("MessageSquare")} label="Request changes…" showLabel theme={theme} disabled={busy} onPress={() => setWriting(null)} />
+      </View>
+      {viewPlan === null ? null : (
         <View style={styles.slot}>
+          <IconButton icon={icon("FileText")} label={viewPlan.label} showLabel theme={theme} onPress={viewPlan.onPress} />
+        </View>
+      )}
+      {options.others.map((other) => (
+        <View key={other.label} style={styles.slot}>
           <IconButton
-            icon={icon(primary.icon)}
-            label={primary.label}
+            icon={icon("CornerDownRight")}
+            label={other.label}
             showLabel
-            tone="accent"
             theme={theme}
             disabled={busy}
-            state={presses.stateOf("approve")}
-            onPress={() => send("approve", primary.option)}
+            state={presses.stateOf(`option:${other.label}`)}
+            onPress={() => (other.asksForWords ? setWriting(other.label) : send(`option:${other.label}`, other.label, ""))}
           />
         </View>
-        {viewPlan === null ? null : (
-          <View style={styles.slot}>
-            <IconButton icon={icon("FileText")} label={viewPlan.label} showLabel theme={theme} onPress={viewPlan.onPress} />
-          </View>
-        )}
-        {options.others.map((other) => (
-          <View key={other.label} style={styles.slot}>
-            <IconButton
-              icon={icon("CornerDownRight")}
-              label={other.label}
-              showLabel
-              theme={theme}
-              disabled={busy}
-              state={presses.stateOf(`option:${other.label}`)}
-              onPress={() => send(`option:${other.label}`, other.label, other.asksForWords)}
-            />
-          </View>
-        ))}
-      </View>
+      ))}
     </View>
   );
 }
