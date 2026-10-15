@@ -27,6 +27,7 @@ export function QuestionCard({
   compact,
   onOpen,
   onAnswered,
+  fill = false,
 }: {
   decision: StoredDecision;
   /** Who asked, where a ticket card has its id: "The manager", or the project, ticket and agent. */
@@ -36,12 +37,15 @@ export function QuestionCard({
   /** Opens the full card where it is answered. */
   onOpen: () => void;
   onAnswered: () => void;
+  /** Grows to its grid row's height, its buttons at the bottom, so cards side by side line up (TR-105). */
+  fill?: boolean;
 }) {
   const now = useNow();
   const { colors } = theme;
   const styles = useMemo(
     () => ({
-      card: { borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: compact ? SPACE.md : SPACE.lg - 2, gap: SPACE.sm, backgroundColor: colors.surface0 },
+      card: { borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: compact ? SPACE.md : SPACE.lg - 2, gap: SPACE.sm, backgroundColor: colors.surface0, ...(fill ? { flexGrow: 1 } : {}) },
+      buttons: { gap: SPACE.sm, ...(fill ? { flexGrow: 1, justifyContent: "flex-end" as const } : {}) },
       head: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm },
       dot: { width: 8, height: 8, borderRadius: 4 },
       asker: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
@@ -65,7 +69,7 @@ export function QuestionCard({
       },
       actionText: { color: colors.accent, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
     }),
-    [colors, compact],
+    [colors, compact, fill],
   );
   const context = questionContext(decision, now);
   const tone = decision.blocking ? colors.statusWarning : colors.foregroundMuted;
@@ -90,11 +94,13 @@ export function QuestionCard({
         </View>
       </View>
       {/* Buttons start at the card's left edge, under the asker, not under the question (TR-089). */}
-      <OptionChips decision={decision} theme={theme} onOpen={onOpen} onAnswered={onAnswered} />
-      <Pressable accessibilityRole="button" accessibilityLabel={`Answer: ${decision.question}`} style={styles.action} onPress={onOpen}>
-        <CentredLabel style={styles.actionText}>Answer</CentredLabel>
-        <Icon name="ArrowRight" size={12} color={colors.accent} />
-      </Pressable>
+      <View style={styles.buttons}>
+        <OptionChips decision={decision} theme={theme} onOpen={onOpen} onAnswered={onAnswered} />
+        <Pressable accessibilityRole="button" accessibilityLabel={`Answer: ${decision.question}`} style={styles.action} onPress={onOpen}>
+          <CentredLabel style={styles.actionText}>Answer</CentredLabel>
+          <Icon name="ArrowRight" size={12} color={colors.accent} />
+        </Pressable>
+      </View>
     </Pressable>
   );
 }

@@ -41,6 +41,7 @@ export function TicketCard({
   stats = null,
   onOpen,
   onChanged,
+  fill = false,
 }: {
   card: Card;
   project: string;
@@ -51,6 +52,8 @@ export function TicketCard({
   stats?: StatsSummary | null;
   onOpen: () => void;
   onChanged: () => void;
+  /** Grows to its grid row's height, so cards side by side line up (TR-105). */
+  fill?: boolean;
 }) {
   const toast = useToast();
   const nudge = useRpc(nudgeAgent);
@@ -71,6 +74,7 @@ export function TicketCard({
         padding: compact ? SPACE.md : SPACE.lg - 2,
         gap: SPACE.sm,
         backgroundColor: colors.surface0,
+        ...(fill ? { flexGrow: 1 } : {}),
       },
       // Wraps so a long phase ("Awaiting acceptance") moves under the id in a narrow column instead of truncating.
       head: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "center" as const, gap: SPACE.sm },
@@ -112,7 +116,7 @@ export function TicketCard({
       footer: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "center" as const, columnGap: SPACE.xs, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: SPACE.sm },
       actionText: { color: colors.accent, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
     }),
-    [colors, compact, selected],
+    [colors, compact, selected, fill],
   );
 
   const owner = card.owner;

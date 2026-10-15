@@ -70,6 +70,7 @@ export function PlanDecision({
   brief = false,
   answeredFrom = "screen",
   onAnswered,
+  fill = false,
   children,
 }: {
   decision: StoredDecision;
@@ -83,13 +84,15 @@ export function PlanDecision({
   onOpenHead?: (() => void) | null;
   answeredFrom?: "screen" | "tab";
   onAnswered: () => void;
+  /** Grows to its grid row's height, its buttons at the bottom (TR-105). */
+  fill?: boolean;
   children: ReactNode;
 }) {
   const options = useMemo(() => planCardOptions(decision), [decision]);
   const eligible = decision.id === SCOPE_APPROVAL && decision.ticket !== null && options !== null;
   const plan = useTicketPlan(decision.project, decision.ticket, eligible);
   if (!eligible || options === null || plan === null) return <>{children}</>;
-  return <PlanCard decision={decision} plan={plan} options={options} theme={theme} compact={compact} head={head} onOpenHead={onOpenHead} brief={brief} answeredFrom={answeredFrom} onAnswered={onAnswered} />;
+  return <PlanCard decision={decision} plan={plan} options={options} theme={theme} compact={compact} head={head} onOpenHead={onOpenHead} brief={brief} answeredFrom={answeredFrom} onAnswered={onAnswered} fill={fill} />;
 }
 
 function PlanCard({
@@ -103,6 +106,7 @@ function PlanCard({
   brief,
   answeredFrom,
   onAnswered,
+  fill,
 }: {
   decision: StoredDecision;
   plan: ParsedPlan;
@@ -114,6 +118,7 @@ function PlanCard({
   brief: boolean;
   answeredFrom: "screen" | "tab";
   onAnswered: () => void;
+  fill: boolean;
 }) {
   const viewPlan = useViewPlan();
   // Outside the Taro screen there is no Ticket tab to open: the plan unfolds in the card instead.
@@ -128,6 +133,7 @@ function PlanCard({
         padding: compact ? SPACE.md : SPACE.lg,
         gap: SPACE.md,
         backgroundColor: colors.surface1,
+        ...(fill ? { flexGrow: 1 } : {}),
       },
       head: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
       headLink: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.xs },
@@ -135,8 +141,10 @@ function PlanCard({
       waiting: { color: colors.statusWarning, fontSize: FONT_SIZE.micro, fontWeight: "700" as const, letterSpacing: 0.5 },
       question: { color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" as const, lineHeight: lineHeightFor(FONT_SIZE.body) },
       titles: { gap: SPACE.xxs },
+      // In a grid row the buttons sit at the bottom, level with the cards beside it (TR-105).
+      buttons: fill ? { flexGrow: 1, justifyContent: "flex-end" as const } : {},
     }),
-    [colors, compact, decision.blocking],
+    [colors, compact, decision.blocking, fill],
   );
   const ticket = decision.ticket ?? "";
   return (
@@ -158,15 +166,17 @@ function PlanCard({
         <Text style={styles.question}>{decision.question}</Text>
       </View>
       {unfolded ? <PlanBody plan={plan} theme={theme} /> : <PlanSummary plan={plan} theme={theme} compact={compact} brief={brief} />}
-      <PlanActions
-        decision={decision}
-        options={options}
-        theme={theme}
-        answeredFrom={answeredFrom}
-        onAnswered={onAnswered}
-        place={unfolded ? "unfolded card" : "card"}
-        viewPlan={viewPlan === null ? { label: unfolded ? "Hide plan" : "View plan", onPress: () => setUnfolded((open) => !open) } : { label: "View plan", onPress: () => viewPlan(decision.project, ticket) }}
-      />
+      <View style={styles.buttons}>
+        <PlanActions
+          decision={decision}
+          options={options}
+          theme={theme}
+          answeredFrom={answeredFrom}
+          onAnswered={onAnswered}
+          place={unfolded ? "unfolded card" : "card"}
+          viewPlan={viewPlan === null ? { label: unfolded ? "Hide plan" : "View plan", onPress: () => setUnfolded((open) => !open) } : { label: "View plan", onPress: () => viewPlan(decision.project, ticket) }}
+        />
+      </View>
     </View>
   );
 }
