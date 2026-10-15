@@ -29,7 +29,9 @@ after the user has answered the last one, in a later turn, with that answer fold
 approval comes after the clarifying question's answer, and the plan includes it). While one of your
 decisions is open the plugin does not show another: it tells you which it held back. Re-asking the
 open decision (same `id`) is fine; to ask something else instead, withdraw the open one in the same
-message. The manager may ask about several tickets at once.
+message. Only an answer on the card or your withdrawal closes an owner's decision: messages in your
+tab, the manager's included, leave it open (TR-134). So when the user answers it in words instead
+(in your tab or chat), withdraw it in your reply. The manager may ask about several tickets at once.
 
 ````
 ```decision
