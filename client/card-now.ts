@@ -132,7 +132,7 @@ function callLines(call: CardCall, others: readonly CardCall[], now: number): Li
 export function queuedWaitLines(wait: QueuedWait): Lines {
   const on = wait.on.map((ticket) => (ticket.status === null ? ticket.id : `${ticket.id} (${ticket.status})`));
   const why = joined([wait.dependencies.length === 0 ? null : `Depends on ${wait.dependencies.join(", ")}`, wait.hold === null ? null : `Held: ${wait.hold}`]);
-  if (on.length === 0) return { headline: "Held by the manager", detail: wait.hold };
+  if (on.length === 0) return { headline: "Held by the manager", detail: wait.hold === null ? null : capitalised(wait.hold) };
   return { headline: `Waits on ${on.join(", ")}`, detail: why };
 }
 

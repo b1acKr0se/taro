@@ -416,7 +416,7 @@ describe("queued wait lines (TR-138)", () => {
   });
 
   it("says a hold naming no ticket is the manager's", () => {
-    expect(queued({ on: [], dependencies: [], hold: "one exclusive rewrite at a time" })).toEqual({ kind: "queued", headline: "Held by the manager", detail: "one exclusive rewrite at a time" });
+    expect(queued({ on: [], dependencies: [], hold: "one exclusive rewrite at a time" })).toEqual({ kind: "queued", headline: "Held by the manager", detail: "One exclusive rewrite at a time" });
   });
 
   it("lists several tickets, a ticket the tracker lacks by id alone, and both reasons", () => {
