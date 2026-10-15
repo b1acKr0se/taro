@@ -27,8 +27,10 @@ function clock(iso: string, seconds: boolean): string {
 }
 
 function heading(report: CrashReport): string {
-  if (report.error === null) return "The app stopped unexpectedly last time";
-  return report.error.source === "fatal" ? "The app crashed last time" : "Taro hit an error last time";
+  if (report.error === null) return "The app stopped unexpectedly";
+  if (report.error.source === "fatal") return "The app crashed";
+  // The app's own handlers see Paseo's errors too; only a Taro surface's boundary is surely Taro's.
+  return report.error.source === "boundary" ? "Taro hit an error" : "The app hit an error";
 }
 
 export function crashReportText(report: CrashReport, now: number): CrashReportText {
@@ -37,7 +39,7 @@ export function crashReportText(report: CrashReport, now: number): CrashReportTe
   const when = [ago === "" ? at : `${ago} (${at})`, deviceLine(report.device)].filter((part) => part !== "").join(" · ");
   const cause =
     report.error === null
-      ? "The app closed while in use, without an error Taro could see: a native crash, or the system ending the app."
+      ? "The app closed while in use, without an error Taro could see: a native crash, the system ending the app, or the app closed while it could not reach this host."
       : `${report.error.where === "app" ? "An error" : `An error in the ${report.error.where}`}: ${report.error.message}`;
   return {
     heading: heading(report),

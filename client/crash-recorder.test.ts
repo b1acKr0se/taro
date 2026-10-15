@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { TRAIL_ERRORS, TRAIL_STEPS, type TrailReport } from "../shared/crash-trail";
-import { createCrashRecorder, SEND_EVERY_MS, type TrailSend } from "./crash-recorder";
+import { createCrashRecorder, isPageFailure, SEND_EVERY_MS, type TrailSend } from "./crash-recorder";
 
 function harness(root: object = {}) {
   let clock = 1_000_000;
@@ -139,5 +139,34 @@ describe("createCrashRecorder", () => {
     h.advance(61_000);
     await h.recorder.flush();
     expect(h.sent).toHaveLength(1);
+  });
+
+  it("keeps steps added during a send, the newest included, and sends none twice", async () => {
+    const h = harness();
+    Array.from({ length: TRAIL_STEPS }, (_, index) => h.recorder.step("press", `old-${index}`));
+    let release: () => void = () => undefined;
+    const batches: string[][] = [];
+    h.recorder.setSender(async (report) => {
+      batches.push(report.steps.map((step) => step.what));
+      if (batches.length === 1) await new Promise<void>((resolve) => (release = resolve));
+    });
+    h.recorder.step("keyboard", "shown");
+    h.recorder.step("press", "submit");
+    release();
+    await Promise.resolve();
+    await Promise.resolve();
+    await h.recorder.flush();
+    expect(batches[0]).toHaveLength(TRAIL_STEPS);
+    expect(batches[1]).toEqual(["shown", "submit"]);
+    expect(new Set(batches.flat()).size).toBe(batches.flat().length);
+  });
+});
+
+describe("isPageFailure", () => {
+  it("counts an error event with an error object, not a browser warning", () => {
+    expect(isPageFailure({ error: new TypeError("x is undefined"), message: "Uncaught TypeError: x is undefined" })).toBe(true);
+    expect(isPageFailure({ error: null, message: "ResizeObserver loop completed with undelivered notifications." })).toBe(false);
+    expect(isPageFailure({ message: "Script error." })).toBe(false);
+    expect(isPageFailure({ error: new Error("ResizeObserver loop limit exceeded"), message: "ResizeObserver loop limit exceeded" })).toBe(false);
   });
 });

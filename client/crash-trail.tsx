@@ -10,7 +10,7 @@ import { AppState, Dimensions, Keyboard, Platform } from "react-native";
 
 import { reportTrail } from "../shared/contracts";
 import type { Device } from "../shared/crash-trail";
-import { crashRecorder, type TrailSend } from "./crash-recorder";
+import { crashRecorder, isPageFailure, type TrailSend } from "./crash-recorder";
 import { ErrorBoundary } from "./error-boundary";
 
 type GlobalHandler = (error: unknown, isFatal?: boolean) => void;
@@ -104,7 +104,9 @@ export function startCrashTrail(): () => void {
     const page: unknown = Reflect.get(globalThis, "window");
     if (Platform.OS === "web" && typeof page === "object" && page !== null && typeof (page as Partial<PageEvents>).addEventListener === "function") {
       const target = page as PageEvents;
-      const onError = (event: { error?: unknown; message?: unknown }) => recorder.error("error", "app", event.error ?? event.message);
+      const onError = (event: { error?: unknown; message?: unknown }) => {
+        if (isPageFailure(event)) recorder.error("error", "app", event.error);
+      };
       const onRejection = (event: { reason?: unknown }) => recorder.error("rejection", "app", event.reason);
       target.addEventListener("error", onError);
       target.addEventListener("unhandledrejection", onRejection);

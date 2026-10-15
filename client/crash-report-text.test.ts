@@ -21,9 +21,10 @@ const base: CrashReport = {
 describe("crashReportText", () => {
   it("says the app stopped, when, on which device, and the last steps", () => {
     const text = crashReportText(base, Date.parse(at) + 2 * 3_600_000);
-    expect(text.heading).toBe("The app stopped unexpectedly last time");
+    expect(text.heading).toBe("The app stopped unexpectedly");
     expect(text.when).toMatch(/^2h ago \(\d\d:\d\d\) · ios 18\.2 · phone · 390×844$/);
     expect(text.cause).toContain("native crash");
+    expect(text.cause).toContain("could not reach this host");
     expect(text.steps).toHaveLength(3);
     expect(text.steps[0]).toMatch(/^\d\d:\d\d:\d\d {2}showed project notes-app manager$/);
     expect(text.steps[1]).toMatch(/keyboard shown$/);
@@ -33,11 +34,13 @@ describe("crashReportText", () => {
 
   it("names a fatal error as a crash and a caught one as Taro's error", () => {
     const fatal = crashReportText({ ...base, cause: "error", error: trailError("fatal", "app", new TypeError("x is undefined"), at) }, Date.parse(at));
-    expect(fatal.heading).toBe("The app crashed last time");
+    expect(fatal.heading).toBe("The app crashed");
     expect(fatal.cause).toBe("An error: TypeError: x is undefined");
     const caught = crashReportText({ ...base, cause: "error", error: trailError("boundary", "Taro screen", new Error("boom"), at) }, Date.parse(at));
-    expect(caught.heading).toBe("Taro hit an error last time");
+    expect(caught.heading).toBe("Taro hit an error");
     expect(caught.cause).toBe("An error in the Taro screen: Error: boom");
+    const page = crashReportText({ ...base, cause: "error", error: trailError("error", "app", new Error("boom"), at) }, Date.parse(at));
+    expect(page.heading).toBe("The app hit an error");
   });
 
   it("draws no placeholder for a missing time or empty trail", () => {

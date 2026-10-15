@@ -24,7 +24,7 @@ export interface ErrorBoundaryState {
   error?: unknown;
 }
 
-type Boundary = Component<ErrorBoundaryProps, ErrorBoundaryState>;
+type Boundary = Component<ErrorBoundaryProps, ErrorBoundaryState> & { recordedError?: unknown };
 
 function ErrorBoundaryComponent(this: Boundary, props: ErrorBoundaryProps): void {
   (Component as unknown as (this: Boundary, props: ErrorBoundaryProps) => void).call(this, props);
@@ -44,18 +44,30 @@ function PassOn({ error }: { error: unknown }): ReactNode {
   throw error;
 }
 
-ErrorBoundaryComponent.prototype.componentDidCatch = function (this: Boundary, error: unknown, info: ErrorInfo): void {
-  if (this.props.fallback !== undefined) console.warn(`[taro] the ${this.props.label} failed and was replaced by its fallback`, error, info.componentStack);
+function record(label: string, error: unknown): void {
   try {
-    crashRecorder().error("boundary", this.props.label, error);
+    crashRecorder().error("boundary", label, error);
   } catch {
     // Tracing never adds a failure of its own.
   }
+}
+
+ErrorBoundaryComponent.prototype.componentDidCatch = function (this: Boundary, error: unknown, info: ErrorInfo): void {
+  // Only a boundary with a fallback gets here: one that passes the failure on is dropped by React with
+  // the render that threw, before its commit, so it records in `render` instead.
+  console.warn(`[taro] the ${this.props.label} failed and was replaced by its fallback`, error, info.componentStack);
+  record(this.props.label, error);
 };
 
 ErrorBoundaryComponent.prototype.render = function (this: Boundary): ReactNode {
   if (!this.state.failed) return this.props.children ?? null;
-  return this.props.fallback === undefined ? createElement(PassOn, { error: this.state.error }) : this.props.fallback;
+  if (this.props.fallback !== undefined) return this.props.fallback;
+  // React may render a failed boundary more than once (a retry); one failure is one record.
+  if (this.state.error !== this.recordedError) {
+    this.recordedError = this.state.error;
+    record(this.props.label, this.state.error);
+  }
+  return createElement(PassOn, { error: this.state.error });
 };
 
 export const ErrorBoundary = ErrorBoundaryComponent as unknown as ComponentClass<ErrorBoundaryProps, ErrorBoundaryState>;

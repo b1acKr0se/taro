@@ -80,8 +80,11 @@ export function createCrashRecorder(options: RecorderOptions = {}): CrashRecorde
     kept.sendingSince = now();
     try {
       await send({ launch: kept.launch, state: kept.state, steps, errors });
-      kept.steps = kept.steps.slice(steps.length);
-      kept.errors = kept.errors.slice(errors.length);
+      // Only what was sent leaves: steps added meanwhile may have pushed some of it out already.
+      const sentSteps = new Set(steps);
+      const sentErrors = new Set(errors);
+      kept.steps = kept.steps.filter((step) => !sentSteps.has(step));
+      kept.errors = kept.errors.filter((error) => !sentErrors.has(error));
     } catch {
       // Kept for the next try; the host may be reconnecting.
     } finally {
@@ -115,6 +118,13 @@ export function createCrashRecorder(options: RecorderOptions = {}): CrashRecorde
     },
     flush,
   };
+}
+
+/** A web page's error event that is a failure: one with an error object, not a browser warning such as ResizeObserver's loop notice. */
+export function isPageFailure(event: { error?: unknown; message?: unknown }): boolean {
+  if (event.error === undefined || event.error === null) return false;
+  const message = typeof event.message === "string" ? event.message : event.error instanceof Error ? event.error.message : "";
+  return !/ResizeObserver loop/.test(message);
 }
 
 let shared: CrashRecorder | null = null;

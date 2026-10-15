@@ -139,8 +139,17 @@ export function addReport(file: TrailFile, report: TrailReport, now: string): Tr
     errors: [...record.errors, ...errors].slice(0, TRAIL_ERRORS),
   };
   const others = file.launches.filter((launch) => launch.launch !== report.launch);
-  const launches = [...others, updated].sort((a, b) => a.startedAt.localeCompare(b.startedAt)).slice(-TRAIL_LAUNCHES);
-  return { version: 1, launches };
+  return { version: 1, launches: capLaunches([...others, updated].sort((a, b) => a.startedAt.localeCompare(b.startedAt))) };
+}
+
+/** The newest launches, oldest dropped first, but a crash nobody has dismissed goes last: reloads elsewhere must not push it out. */
+function capLaunches(launches: LaunchRecord[]): LaunchRecord[] {
+  let kept = launches;
+  while (kept.length > TRAIL_LAUNCHES) {
+    const quiet = kept.findIndex((launch) => launch.dismissed || crashCause(launch) === null);
+    kept = kept.filter((_, index) => index !== (quiet === -1 ? 0 : quiet));
+  }
+  return kept;
 }
 
 /** How a launch ended, judged after it: a recorded error, or a phone app that stopped while open. Null when it ended normally. */

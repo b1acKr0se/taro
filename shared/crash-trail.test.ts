@@ -110,6 +110,19 @@ describe("addReport", () => {
     expect(file.launches.at(-1)?.launch).toBe(`launch${String(TRAIL_LAUNCHES + 2).padStart(4, "0")}x`);
   });
 
+  it("keeps an undismissed crash while other launches pass the cap", () => {
+    let file = addReport(emptyTrailFile(), report("phonecrash1"), time(0));
+    for (let index = 0; index < TRAIL_LAUNCHES + 5; index += 1) {
+      file = addReport(file, report(`reload${String(index).padStart(4, "0")}`, { device: browser }), time(1 + index));
+    }
+    expect(file.launches).toHaveLength(TRAIL_LAUNCHES);
+    expect(lastCrash(file, "phonenext02", phone, "f")?.launch).toBe("phonecrash1");
+    expect(file.launches.at(-1)?.launch).toBe(`reload${String(TRAIL_LAUNCHES + 4).padStart(4, "0")}`);
+    // Dismissed, it is the oldest and goes first.
+    file = addReport(dismissLaunch(file, "phonecrash1"), report("reloadlast", { device: browser }), time(40));
+    expect(file.launches.some((launch) => launch.launch === "phonecrash1")).toBe(false);
+  });
+
   it("cleans step text that bypassed the client", () => {
     const file = addReport(emptyTrailFile(), report("launch0001", { steps: [{ at: time(0), kind: "screen", what: "please, fix <this>!" }] }), time(0));
     expect(file.launches[0]?.steps[0]?.what).toBe("please fix this");
