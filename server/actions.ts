@@ -144,8 +144,9 @@ export class Actions {
   async tellAgent(paseo: PaseoApi, agentId: string, text: string, attachments: Attachments = {}): Promise<void> {
     const words = text.trim();
     if (words === "" && !hasAttachments(attachments)) throw new Error("Say something first.");
-    if ((await fetchLiveAgent(paseo, agentId)) === null) throw new Error("That agent is no longer running.");
-    await sendWithAttachments(paseo, agentId, words, attachments);
+    const agent = await fetchLiveAgent(paseo, agentId);
+    if (agent === null) throw new Error("That agent is no longer running.");
+    await sendWithAttachments(paseo, agentId, words, { ...attachments, agentMidTurn: isMidTurn(agent) });
   }
 
   async nudge(paseo: PaseoApi, agentId: string): Promise<void> {

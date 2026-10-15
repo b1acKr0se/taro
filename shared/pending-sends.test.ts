@@ -4,11 +4,20 @@ import {
   ChatMessageIdSchema,
   handBack,
   heldToRelease,
+  nextRecheck,
+  COMPACTING_REFUSAL,
+  failureReason,
+  holdReason,
+  isCompacting,
+  isCompactingRefusal,
+  isPassingFailure,
   isWorking,
   newChatMessageId,
+  nextToSend,
   replacingProviders,
   STOPPED_GRACE_MS,
   steersMidTurn,
+  takeBack,
   viewSends,
   type PendingSend,
   type SendTimelineEntry,
@@ -118,19 +127,181 @@ describe("viewSends", () => {
   });
 
   it("has nothing to show with nothing sent", () => {
-    expect(viewSends([], [], WORKING, T0)).toEqual({ views: [], read: [] });
+    expect(viewSends([], [], WORKING, T0)).toEqual({ views: [], read: [], landed: [] });
+  });
+
+  it("shows a message on its way as sending, and a failed one with those after it waiting behind it (TR-102)", () => {
+    const sends = [sent("chat-a", T0, "sending"), sent("chat-b", T0, "failed"), sent("chat-c", T0, "sending"), sent("chat-d", T0, "held")];
+    const { views, read, landed } = viewSends(sends, [entry("assistant_message")], WORKING, T0);
+    expect(views.map((view) => [view.send.id, view.mark, view.rowKey])).toEqual([
+      ["chat-a", "sending", null],
+      ["chat-b", "failed", null],
+      ["chat-c", "behind", null],
+      ["chat-d", "held", null],
+    ]);
+    expect(read).toEqual([]);
+    expect(landed).toEqual([]);
+  });
+
+  it("takes a sending or failed message found in the timeline as sent: Paseo has it, only the answer was slow or lost", () => {
+    const mine = entry("user_message", T0, "chat-a");
+    const theirs = entry("user_message", T0, "chat-b");
+    const { views, landed } = viewSends([sent("chat-a", T0, "failed"), sent("chat-b", T0, "sending"), sent("chat-c", T0, "sending")], [mine, theirs], WORKING, T0);
+    expect(views.map((view) => [view.send.id, view.mark])).toEqual([
+      ["chat-a", "waiting"],
+      ["chat-b", "waiting"],
+      ["chat-c", "sending"],
+    ]);
+    expect(landed).toEqual(["chat-a", "chat-b"]);
+  });
+
+  it("never says a message on its way was not read, however long the agent has been stopped", () => {
+    const { views } = viewSends([sent("chat-a", T0, "sending")], [], { stoppedAt: T0 - 100_000, hasOlder: false }, T0 + 100_000);
+    expect(views[0]?.mark).toBe("sending");
+  });
+});
+
+describe("nextToSend (TR-102)", () => {
+  it("is the first message sending, in order", () => {
+    expect(nextToSend([sent("chat-a", T0, "sending"), sent("chat-b", T0, "sending")])?.id).toBe("chat-a");
+  });
+
+  it("is none while a failed message comes first, so nothing overtakes it", () => {
+    expect(nextToSend([sent("chat-a", T0, "failed"), sent("chat-b", T0, "sending")])).toBeNull();
+  });
+
+  it("is none while a held message comes first, so nothing overtakes it either", () => {
+    expect(nextToSend([sent("chat-a", T0, "held"), sent("chat-b", T0, "sending")])).toBeNull();
+  });
+
+  it("is the one before a failed message, which went first", () => {
+    expect(nextToSend([sent("chat-a", T0, "sending"), sent("chat-b", T0, "failed")])?.id).toBe("chat-a");
+  });
+
+  it("is none with nothing to send", () => {
+    expect(nextToSend([])).toBeNull();
+    expect(nextToSend([sent("chat-a"), sent("chat-b", T0, "held")])).toBeNull();
+  });
+
+  it("goes past messages already sent", () => {
+    expect(nextToSend([sent("chat-a"), sent("chat-b", T0, "sending")])?.id).toBe("chat-b");
+  });
+});
+
+describe("isPassingFailure", () => {
+  it("is a dropped connection or a plugin restarting", () => {
+    expect(isPassingFailure(new Error("Transport closed (code 1006)"))).toBe(true);
+    expect(isPassingFailure(new Error("Request failed: Plugin is not available: taro"))).toBe(true);
+    expect(isPassingFailure(new Error("Request timed out"))).toBe(true);
+  });
+
+  it("is not a refusal or a missing agent, which another try would not change", () => {
+    expect(isPassingFailure(new Error("That agent is no longer running."))).toBe(false);
+    expect(isPassingFailure(new Error("Say something to the Manager."))).toBe(false);
+    expect(isPassingFailure(undefined)).toBe(false);
+  });
+});
+
+describe("failureReason", () => {
+  it("is the error's message, trimmed", () => {
+    expect(failureReason(new Error("  That agent is no longer running. "))).toBe("That agent is no longer running.");
+    expect(failureReason("Say something to the Manager.")).toBe("Say something to the Manager.");
+  });
+
+  it("says the connection dropped, in words, for the app's transport errors (seen end to end: code 1006)", () => {
+    expect(failureReason(new Error("Transport closed (code 1006)"))).toBe("the connection to Paseo dropped.");
+    expect(failureReason(new Error("Not connected"))).toBe("the connection to Paseo dropped.");
+    expect(failureReason(new Error("Request timed out after 30000ms"))).toBe("the connection to Paseo dropped.");
+    expect(failureReason(new Error("Timeout waiting for response"))).toBe("the connection to Paseo dropped.");
+  });
+
+  it("says Taro was restarting for a call made while the plugin reloaded (seen end to end)", () => {
+    expect(failureReason(new Error("Request failed: Plugin is not available: taro requestType=plugin.rpc.invoke.request code=handler_error"))).toBe("Taro was restarting.");
+  });
+
+  it("says Paseo did not take it when the error says nothing", () => {
+    expect(failureReason(new Error(""))).toBe("Paseo did not take it.");
+    expect(failureReason(undefined)).toBe("Paseo did not take it.");
+    expect(failureReason({ code: 1 })).toBe("Paseo did not take it.");
   });
 });
 
 describe("heldToRelease", () => {
   const sends = [sent("chat-a", T0, "held"), sent("chat-b", T0 + 1), sent("chat-c", T0 + 2, "held")];
 
-  it("holds while the agent works", () => {
-    expect(heldToRelease(sends, true)).toEqual([]);
+  it("holds while something holds them: a replacing provider's step, or a compaction", () => {
+    expect(heldToRelease(sends, "replaces", T0)).toEqual([]);
+    expect(heldToRelease(sends, "compacting", T0)).toEqual([]);
   });
 
-  it("releases every held message, oldest first, once it stops", () => {
-    expect(heldToRelease(sends, false).map((send) => send.id)).toEqual(["chat-a", "chat-c"]);
+  it("releases every held message, oldest first, once nothing holds them", () => {
+    expect(heldToRelease(sends, null, T0).map((send) => send.id)).toEqual(["chat-a", "chat-c"]);
+  });
+
+  it("keeps one handed back as the agent compacts, and those after it, until its time, though the chat has not seen the compaction", () => {
+    const handedBack = [sent("chat-a", T0, "held"), { ...sent("chat-b", T0, "held"), heldUntil: T0 + 3_000 }, sent("chat-c", T0 + 1, "held")];
+    expect(heldToRelease(handedBack, null, T0 + 1_000).map((send) => send.id)).toEqual(["chat-a"]);
+    expect(heldToRelease(handedBack, null, T0 + 3_000).map((send) => send.id)).toEqual(["chat-a", "chat-b", "chat-c"]);
+    expect(heldToRelease(handedBack, "compacting", T0 + 9_000)).toEqual([]);
+  });
+});
+
+describe("nextRecheck", () => {
+  it("is the earliest time a handed-back message may go, null when none waits", () => {
+    const sends = [{ ...sent("chat-a", T0, "held"), heldUntil: T0 + 5_000 }, { ...sent("chat-b", T0, "held"), heldUntil: T0 + 3_000 }, sent("chat-c", T0, "held")];
+    expect(nextRecheck(sends, T0)).toBe(T0 + 3_000);
+    expect(nextRecheck(sends, T0 + 4_000)).toBe(T0 + 5_000);
+    expect(nextRecheck(sends, T0 + 5_000)).toBeNull();
+    expect(nextRecheck([{ ...sent("chat-d", T0), heldUntil: T0 + 5_000 }], T0)).toBeNull();
+    expect(nextRecheck([], T0)).toBeNull();
+  });
+});
+
+function compaction(status: "loading" | "completed"): SendTimelineEntry {
+  return { ...entry("compaction"), item: { type: "compaction", status } };
+}
+
+describe("isCompacting (TR-102)", () => {
+  it("is true from a compaction's start until its end", () => {
+    expect(isCompacting([entry("assistant_message"), compaction("loading")])).toBe(true);
+    expect(isCompacting([compaction("loading"), compaction("completed")])).toBe(false);
+  });
+
+  it("stays true with only the user's messages since: they wait for the compaction", () => {
+    expect(isCompacting([compaction("loading"), entry("user_message", T0, "chat-a")])).toBe(true);
+  });
+
+  it("is false once the agent took a step after a compaction that never ended (one cancelled)", () => {
+    expect(isCompacting([compaction("loading"), entry("user_message"), entry("assistant_message")])).toBe(false);
+    expect(isCompacting([compaction("loading"), tool("shell")])).toBe(false);
+  });
+
+  it("is false with no compaction", () => {
+    expect(isCompacting([])).toBe(false);
+    expect(isCompacting([entry("assistant_message")])).toBe(false);
+  });
+});
+
+describe("holdReason (TR-102)", () => {
+  it("holds while a working agent compacts, whatever its provider", () => {
+    expect(holdReason({ working: true, steers: true, compacting: true })).toBe("compacting");
+    expect(holdReason({ working: true, steers: false, compacting: true })).toBe("compacting");
+  });
+
+  it("holds while a replacing provider works", () => {
+    expect(holdReason({ working: true, steers: false, compacting: false })).toBe("replaces");
+  });
+
+  it("sends to a steering agent mid-turn, and to any stopped agent, even with a compaction left open", () => {
+    expect(holdReason({ working: true, steers: true, compacting: false })).toBeNull();
+    expect(holdReason({ working: false, steers: false, compacting: true })).toBeNull();
+  });
+});
+
+describe("isCompactingRefusal", () => {
+  it("recognises the plugin's answer through Paseo's wrapping, and nothing else", () => {
+    expect(isCompactingRefusal(new Error(`Request failed: ${COMPACTING_REFUSAL} code=handler_error`))).toBe(true);
+    expect(isCompactingRefusal(new Error("Transport closed (code 1006)"))).toBe(false);
   });
 });
 
@@ -180,6 +351,26 @@ describe("handBack", () => {
 
   it("puts nothing back for what the message did not have", () => {
     expect(handBack({ text: "", attachments: [] }, { ...failed, text: "", attachments: [] })).toEqual({ text: null, attachments: null });
+  });
+});
+
+describe("takeBack (TR-102)", () => {
+  const image = { id: "a1", kind: "image" as const, mimeType: "image/png", data: "AAAA", fileName: "shot.png" };
+  const file = { id: "a2", kind: "file" as const, mimeType: "text/plain", data: "BBBB", fileName: "notes.txt" };
+
+  it("puts the words and attachments of a message not sent into an empty box", () => {
+    expect(takeBack({ text: "  ", attachments: [] }, { ...sent("chat-a"), text: "hello", attachments: [image] })).toEqual({ text: "hello", attachments: [image] });
+  });
+
+  it("puts them ahead of what was written or attached since, losing neither (seen end to end: a half-typed reply)", () => {
+    expect(takeBack({ text: "half-typed reply ", attachments: [file] }, { ...sent("chat-a"), text: "first", attachments: [image] })).toEqual({
+      text: "first\n\nhalf-typed reply ",
+      attachments: [image, file],
+    });
+  });
+
+  it("keeps the box as it is for a message of attachments alone", () => {
+    expect(takeBack({ text: "typed", attachments: [] }, { ...sent("chat-a"), text: "", attachments: [image] })).toEqual({ text: "typed", attachments: [image] });
   });
 });
 

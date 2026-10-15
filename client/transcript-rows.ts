@@ -92,6 +92,8 @@ export function toolDisplayName(name: string): string {
 }
 
 const COMPACTING = "Compacting context…";
+/** A compaction cut short (a message sent during it, an interrupt): Paseo never says it ended (TR-102). */
+const COMPACTION_STOPPED = "Compaction stopped before it finished";
 
 /**
  * Adds a compaction's line to `rows`. A compaction arrives as two entries, one
@@ -170,5 +172,15 @@ export function transcriptRows(entries: readonly TimelineEntry[]): TranscriptRow
         break;
     }
   });
-  return rows.filter((row) => row.kind !== "agent" || row.text.trim() !== "");
+  return endStoppedCompactions(rows.filter((row) => row.kind !== "agent" || row.text.trim() !== ""));
+}
+
+/**
+ * A compaction still "compacting" with the agent's reply or tool call after it did not finish: Paseo
+ * sends no end for one cancelled, so its line would otherwise say "Compacting context…" for good.
+ */
+export function endStoppedCompactions<Row extends { kind: string; text?: string }>(rows: Row[]): Row[] {
+  return rows.map((row, index) =>
+    row.kind === "event" && row.text === COMPACTING && rows.slice(index + 1).some((later) => later.kind === "agent" || later.kind === "tool") ? { ...row, text: COMPACTION_STOPPED } : row,
+  );
 }

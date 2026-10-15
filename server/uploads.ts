@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { attachmentProblem, safeFileName, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
 import { paseoHome } from "./data-dir";
 import type { PaseoApi } from "./host-types";
-import { sendWithoutInterrupting } from "./send";
+import { sendChatMessageOnce, sendWithoutInterrupting } from "./send";
 
 /** What the composer sends with the words: attachments, and the chat's own id for the message (TR-084). */
 export interface Attachments {
@@ -19,6 +19,8 @@ export interface Attachments {
   files?: OutgoingFile[] | undefined;
   /** Lets the chat find the message in the timeline and mark it until the agent takes it up. */
   messageId?: string | undefined;
+  /** Whether the agent was mid-turn as the message came: one sent during its compaction is handed back (TR-102). */
+  agentMidTurn?: boolean | undefined;
 }
 
 export function hasAttachments(attachments: Attachments): boolean {
@@ -31,6 +33,11 @@ export function hasAttachments(attachments: Attachments): boolean {
  * send failing removes every file this call wrote, so a retry leaves no orphan copy behind.
  */
 export async function sendWithAttachments(paseo: PaseoApi, agentId: string, words: string, attachments: Attachments, home = paseoHome()): Promise<void> {
+  // A chat message sent again under its own id (a retry, a reconnect) goes once (TR-102).
+  await sendChatMessageOnce(paseo, agentId, attachments.messageId, () => sendWithUploads(paseo, agentId, words, attachments, home), attachments.agentMidTurn === true);
+}
+
+async function sendWithUploads(paseo: PaseoApi, agentId: string, words: string, attachments: Attachments, home: string): Promise<void> {
   const images = attachments.images ?? [];
   const files = attachments.files ?? [];
   const problem = attachmentProblem([...images.map((image) => ({ ...image, kind: "image" as const })), ...files]);

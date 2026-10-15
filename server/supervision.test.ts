@@ -8,7 +8,7 @@ import { viewTicket } from "./tickets";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
-import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, humanMessages, identityFromLabels, Supervisor } from "./supervision";
+import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, humanMessages, identityFromLabels, Supervisor, tabMessages } from "./supervision";
 
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
@@ -43,6 +43,12 @@ describe("turn text", () => {
 
   it("treats untagged user messages as the user's own words", () => {
     expect(humanMessages(turn)).toEqual(["also add a test"]);
+  });
+
+  it("counts a Taro chat's message as the user's words, but not as typed in the tab (TR-102)", () => {
+    const withChat = [...turn, { type: "user_message", text: "from the chat", clientMessageId: "chat-abc-1" }] as unknown as TimelineItem[];
+    expect(humanMessages(withChat)).toEqual(["also add a test", "from the chat"]);
+    expect(tabMessages(withChat)).toEqual(["also add a test"]);
   });
 });
 
@@ -372,6 +378,19 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     await run(taro, ...first);
     await run(taro, ...first, human("merge it"), reply);
     expect(decisions.map((decision) => decision.status)).toEqual(["answered"]);
+  });
+
+  it("keeps a decision open when the user sends a message from a Taro chat beside its card (TR-102, seen end to end)", async () => {
+    const { state, decisions } = fakeState();
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+    const first = [plugin("start"), ask("indent-style", "Tabs or spaces?")];
+    await run(taro, ...first);
+    const fromChat = { type: "user_message", text: "a message sent while the decision is open", clientMessageId: "chat-mv8xqzqs-1kpppuif" };
+    await run(taro, ...first, fromChat, reply);
+    expect(decisions.map((decision) => [decision.status, decision.answer])).toEqual([["open", null]]);
+    // Words typed in the agent's own tab still answer it.
+    await run(taro, ...first, fromChat, reply, human("spaces"), reply);
+    expect(decisions.map((decision) => [decision.status, decision.answer?.text])).toEqual([["answered", "spaces"]]);
   });
 
   it("takes the status line from this turn only, not an earlier turn's closing message", async () => {

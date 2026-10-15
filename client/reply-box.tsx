@@ -12,7 +12,7 @@ import { Platform, useWindowDimensions, View, type TextInput as NativeTextInput 
 import { COMPOSER_CONTROL_SIZE, COMPOSER_FONT_SIZE, COMPOSER_WEB_LINE_HEIGHT, composerMaxHeight, composerMetrics, sendsOnEnter } from "./composer-height";
 import { useComposerHeight } from "./composer-input-height";
 import { Pressable, TextInput } from "./focus";
-import { isSendKey, type WebKeyPressEvent } from "./keys";
+import { enterKeyAction, type WebKeyPressEvent } from "./keys";
 import { SPACE } from "./spacing";
 import { Spinner } from "./ui";
 
@@ -159,9 +159,10 @@ export function ReplyBox({
         onKeyPress={
           submitOnEnter
             ? (event: WebKeyPressEvent) => {
-                if (!isSendKey(event.nativeEvent) || !sendable) return;
+                const action = enterKeyAction(event.nativeEvent, sendable);
+                if (action === null) return;
                 event.preventDefault();
-                onSend?.();
+                if (action === "send") onSend?.();
               }
             : undefined
         }
