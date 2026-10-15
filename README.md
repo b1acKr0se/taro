@@ -25,8 +25,9 @@ in one place:
   be proved, then milestones, delivery, evidence and a short summary.
 - **Work goes on while you are away.** Stalled and crashed agents are handled for you (see
   Unattended work and cost).
-- **Desktop and phone.** The manager chat, Inbox, Board, Stats and ticket view are the same screens
-  in Paseo's desktop and mobile apps, so you can answer or accept a change wherever you are.
+- **Desktop and phone.** The manager chat, Inbox, Board, Stats and ticket view work in Paseo's
+  desktop and mobile apps, each laid out for the size of the screen, so you can answer or accept a
+  change wherever you are.
 
 <p align="center">
   <img src="assets/screenshots/board.png" width="100%" alt="Taro's board beside a task owner's chat">
