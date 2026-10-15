@@ -38,7 +38,7 @@ import { groupRows, toolRunSummary, type Group } from "./tool-runs";
 import { ATTACHMENTS_ONLY, transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
-import { composerNotice, heldMarkText } from "./composer-notice";
+import { composerNotice, heldFor, heldMarkText, offersSendNow } from "./composer-notice";
 import { usePendingSends, type ChatSend } from "./use-pending-sends";
 import { handBack, steersMidTurn, takeBack, type HoldReason, type PendingSend, type SendMark, type SendView } from "../shared/pending-sends";
 import { composerMetrics } from "./composer-height";
@@ -670,7 +670,12 @@ const MARK_ACTIONS: Record<SendMark, readonly { action: MarkAction; label: strin
 /** A failed message's mark says why, a held one what it waits for (TR-102). */
 function markText(view: SendView, holds: HoldReason | null): string {
   if (view.mark === "failed") return `Not sent: ${view.send.error ?? "Paseo did not take it."}`;
-  return view.mark === "held" ? heldMarkText(holds) : MARK_TEXT[view.mark];
+  return view.mark === "held" ? heldMarkText(heldFor(view.send, holds)) : MARK_TEXT[view.mark];
+}
+
+function markActions(view: SendView, holds: HoldReason | null): readonly { action: MarkAction; label: string; icon: string }[] {
+  const actions = MARK_ACTIONS[view.mark];
+  return view.mark === "held" && !offersSendNow(heldFor(view.send, holds)) ? actions.filter((each) => each.action !== "send-now") : actions;
 }
 
 function SendMarkLine({
@@ -702,9 +707,9 @@ function SendMarkLine({
         <Text style={[styles.markText, view.mark === "failed" ? { color: colors.statusDanger } : null]}>{markText(view, holds)}</Text>
       </View>
       {/* The shared button (Catch up's style), in a row of their own under the words, right-aligned with the bubble. */}
-      {MARK_ACTIONS[view.mark].length === 0 ? null : (
+      {markActions(view, holds).length === 0 ? null : (
         <View style={styles.markActions}>
-          {MARK_ACTIONS[view.mark].map((each) => (
+          {markActions(view, holds).map((each) => (
             <IconButton key={each.action} icon={each.icon} label={each.label} showLabel theme={theme} onPress={() => onAction(view.send.id, each.action)} />
           ))}
         </View>

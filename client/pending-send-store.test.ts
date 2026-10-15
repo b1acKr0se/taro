@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { PendingSend } from "../shared/pending-sends";
+import { COMPACTING_RECHECK_MS, type PendingSend } from "../shared/pending-sends";
 import { createPendingSendStore, releaseHeld, type PendingSendStore } from "./pending-send-store";
 
 function send(id: string, state: PendingSend["state"] = "sent"): PendingSend {
@@ -294,23 +294,66 @@ describe("sending (TR-102)", () => {
     expect(waits).toEqual([]);
   });
 
-  it("holds a message the plugin handed back as the agent compacts, and sends nothing after it until it is released", async () => {
+  it("holds a message the plugin handed back as the agent compacts, and those sending after it, for a while at least", async () => {
     const store = createPendingSendStore({}, () => 70);
     const wire = manualTransport();
     store.setTransport("agent-1", wire.transport);
     store.add("agent-1", send("chat-a", "sending"));
     store.add("agent-1", send("chat-b", "sending"));
+    store.add("agent-1", send("chat-c", "sent"));
     await settled();
     wire.calls[0]?.settle(new Error("Request failed: It is compacting its context; the message waits until that ends. code=handler_error"));
     await settled();
-    expect(states(store)).toEqual(["chat-a:held", "chat-b:sending"]);
+    // No Sending… spinner left on chat-b for the whole compaction.
+    expect(states(store)).toEqual(["chat-a:held", "chat-b:held", "chat-c:sent"]);
+    expect(store.get("agent-1").map((each) => each.heldUntil)).toEqual([70 + COMPACTING_RECHECK_MS, 70 + COMPACTING_RECHECK_MS, undefined]);
     expect(store.get("agent-1")[0]?.error).toBeUndefined();
     expect(wire.ids()).toEqual(["chat-a"]);
-    store.claim("agent-1", ["chat-a"], 80);
+    store.claim("agent-1", ["chat-a", "chat-b"], 80);
+    expect(store.get("agent-1")[0]?.heldUntil).toBeUndefined();
     await settled();
     wire.calls[1]?.settle();
     await settled();
     expect(wire.ids()).toEqual(["chat-a", "chat-a", "chat-b"]);
+  });
+
+  it("stops the last bundle's loop once a new one sends for the agent, so it never marks what the new one sends (a reconnect)", async () => {
+    const root = {};
+    const old = createPendingSendStore(root, () => 50, async () => {});
+    const deadLink = manualTransport();
+    old.setTransport("agent-1", deadLink.transport);
+    old.add("agent-1", send("chat-a", "sending"));
+    old.add("agent-1", send("chat-b", "sending"));
+    await settled();
+    // The bundles are evaluated again: a new store on the same root takes the agent over.
+    const store = createPendingSendStore(root, () => 60);
+    const wire = manualTransport();
+    store.setTransport("agent-1", wire.transport);
+    await settled();
+    expect(wire.ids()).toEqual(["chat-a"]);
+    // The old connection's send fails late, for good: the old loop neither marks nor retries it.
+    deadLink.calls[0]?.settle(new Error("Agent not found"));
+    await settled();
+    expect(states(store)).toEqual(["chat-a:sending", "chat-b:sending"]);
+    expect(deadLink.ids()).toEqual(["chat-a"]);
+    wire.calls[0]?.settle();
+    await settled();
+    wire.calls[1]?.settle();
+    await settled();
+    expect(states(store)).toEqual(["chat-a:sent", "chat-b:sent"]);
+    expect(wire.ids()).toEqual(["chat-a", "chat-b"]);
+  });
+
+  it("keeps each agent's sender: a second store taking one agent leaves another's sending (Taro on two hosts)", async () => {
+    const root = {};
+    const first = createPendingSendStore(root);
+    const firstWire = manualTransport();
+    first.setTransport("agent-1", firstWire.transport);
+    const second = createPendingSendStore(root);
+    second.setTransport("agent-2", manualTransport().transport);
+    first.add("agent-1", send("chat-a", "sending"));
+    await settled();
+    expect(firstWire.ids()).toEqual(["chat-a"]);
   });
 
   it("does not send held or already sent messages", async () => {

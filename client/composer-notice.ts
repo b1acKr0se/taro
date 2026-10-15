@@ -2,7 +2,7 @@
  * The line above a chat's reply box saying what Send will do when it is not a plain send (TR-084,
  * TR-102), and the matching send button label and held mark. Pure, for vitest.
  */
-import type { HoldReason } from "../shared/pending-sends";
+import type { HoldReason, PendingSend } from "../shared/pending-sends";
 
 export interface ComposerNotice {
   text: string;
@@ -19,6 +19,22 @@ export function composerNotice(holds: HoldReason | null, requestPending: boolean
   if (holds === "replaces") return { text: "Sending now would stop its current step, so Send holds your message until the step ends.", sendLabel: "Hold until its step ends" };
   if (requestPending) return { text: "Sending a message now turns down the request above. Answer it first to keep it.", sendLabel: "Send and turn down the request" };
   return null;
+}
+
+/**
+ * Why a held message is held: the chat's reason, or a compaction for one the plugin handed back as
+ * the agent compacts, which the chat may not have seen yet.
+ */
+export function heldFor(send: PendingSend, holds: HoldReason | null): HoldReason | null {
+  return send.heldUntil !== undefined && holds === null ? "compacting" : holds;
+}
+
+/**
+ * Whether a held message offers "Send now and stop it": not during a compaction, as the plugin hands
+ * a message sent then back (it would cancel the compaction), so the button could do nothing.
+ */
+export function offersSendNow(reason: HoldReason | null): boolean {
+  return reason !== "compacting";
 }
 
 /** What a held message's mark says, by why it is held. */

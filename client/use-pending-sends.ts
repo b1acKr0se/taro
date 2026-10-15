@@ -13,6 +13,7 @@ import {
   isCompacting,
   isWorking,
   newChatMessageId,
+  nextRecheck,
   STOPPED_GRACE_MS,
   viewSends,
   type HoldReason,
@@ -102,7 +103,14 @@ export function usePendingSends({
 
   const compacting = useMemo(() => isCompacting(entries), [entries]);
   const holds = holdReason({ working, steers, compacting });
-  const release = heldToRelease(sends, holds);
+  const release = heldToRelease(sends, holds, Date.now());
+  // Drawn again when a message handed back as the agent compacted may go, should nothing else change by then.
+  const recheck = nextRecheck(sends, Date.now());
+  useEffect(() => {
+    if (recheck === null) return;
+    const timer = setTimeout(() => setNow(Date.now()), Math.max(0, recheck - Date.now()) + 50);
+    return () => clearTimeout(timer);
+  }, [recheck]);
   useEffect(() => {
     // Claimed: the screen may release them too (`useReleaseHeld`), and only one of them sends each.
     if (release.length > 0) pendingSends.claim(agentId, release.map((held) => held.id), Date.now());

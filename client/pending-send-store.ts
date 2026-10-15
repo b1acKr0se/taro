@@ -9,7 +9,16 @@
  * evaluated again (a reconnect, a plugin reload) goes again, under its own id, once a chat or the
  * screen gives the agent a transport, and the plugin skips one Paseo already has (`server/send.ts`).
  */
-import { failureReason, isCompactingRefusal, isPassingFailure, isWorking, nextToSend, SEND_RETRY_DELAYS_MS, type PendingSend } from "../shared/pending-sends";
+import {
+  COMPACTING_RECHECK_MS,
+  failureReason,
+  isCompactingRefusal,
+  isPassingFailure,
+  isWorking,
+  nextToSend,
+  SEND_RETRY_DELAYS_MS,
+  type PendingSend,
+} from "../shared/pending-sends";
 import { keptMap } from "./kept";
 
 /** Hands a message to Paseo; resolves once Paseo has it. */
@@ -49,6 +58,12 @@ export function createPendingSendStore(
   // Not kept: a fresh bundle starts with no transport and no send under way.
   const transports = new Map<string, SendTransport>();
   const draining = new Set<string>();
+  // Which store sends each agent's messages: the last given its transport. The last bundle's loop may
+  // still await a dead connection after a reconnect; it stops rather than mark what this one sends.
+  // Per agent, not per store: Taro on two hosts runs two bundles at once, each with its own agents.
+  const owners = keptMap<string, object>(root, "pending-sends.owners");
+  const self = {};
+  const owns = (agentId: string) => owners.get(agentId) === self;
   function put(agentId: string, next: readonly PendingSend[]): void {
     if (next.length === 0) sends.delete(agentId);
     else sends.set(agentId, next);
@@ -73,15 +88,16 @@ export function createPendingSendStore(
       for (;;) {
         const transport = transports.get(agentId);
         const next = nextToSend(sends.get(agentId) ?? NONE);
-        if (transport === undefined || next === null) return;
+        if (transport === undefined || next === null || !owns(agentId)) return;
         try {
           await sendWithRetries(agentId, next);
+          if (!owns(agentId)) return;
           update(agentId, next.id, (send) => (send.state === "sending" ? { state: "sent", at: now() } : null));
         } catch (error) {
+          if (!owns(agentId)) return;
           // Seen in the timeline meanwhile, it was marked sent: the answer, not the message, was lost.
-          // Handed back as the agent compacts, it is held until the compaction ends, as the chat holds one sent then.
-          const after: Partial<PendingSend> = isCompactingRefusal(error) ? { state: "held", at: now() } : { state: "failed", error: failureReason(error) };
-          update(agentId, next.id, (send) => (send.state === "sending" ? after : null));
+          if (isCompactingRefusal(error)) holdForCompaction(agentId, next.id);
+          else update(agentId, next.id, (send) => (send.state === "sending" ? { state: "failed", error: failureReason(error) } : null));
         }
         // Marked sent or failed while it was on its way, or neither (forgotten): either way, on to the next.
         if ((sends.get(agentId) ?? NONE).some((send) => send.id === next.id && send.state === "sending")) return;
@@ -101,10 +117,23 @@ export function createPendingSendStore(
         const delay = SEND_RETRY_DELAYS_MS[attempt];
         if (delay === undefined || !isPassingFailure(error)) throw error;
         await wait(delay);
+        if (!owns(agentId)) return;
         const still = (sends.get(agentId) ?? NONE).find((send) => send.id === pending.id);
         if (still?.state !== "sending") return;
       }
     }
+  }
+  /**
+   * Handed back as the agent compacts: holds it and those sending after it until the compaction ends,
+   * as the chat holds one sent then; for a while at least, so a chat yet to see the compaction does not
+   * send it straight back.
+   */
+  function holdForCompaction(agentId: string, id: string): void {
+    const current = sends.get(agentId) ?? NONE;
+    const from = current.findIndex((send) => send.id === id && send.state === "sending");
+    if (from === -1) return;
+    const at = now();
+    put(agentId, current.map((send, index) => (index >= from && send.state === "sending" ? { ...send, state: "held", at, heldUntil: at + COMPACTING_RECHECK_MS } : send)));
   }
   function startSending(agentId: string): void {
     void drain(agentId);
@@ -130,7 +159,7 @@ export function createPendingSendStore(
     agentIds: () => [...sends.keys()],
     claim: (agentId, ids, now) => {
       const current = sends.get(agentId) ?? NONE;
-      const claimed = current.filter((send) => send.state === "held" && ids.includes(send.id)).map((send): PendingSend => ({ ...send, state: "sending", at: now }));
+      const claimed = current.filter((send) => send.state === "held" && ids.includes(send.id)).map((send): PendingSend => ({ ...send, state: "sending", at: now, heldUntil: undefined }));
       if (claimed.length === 0) return [];
       put(agentId, current.map((send) => claimed.find((each) => each.id === send.id) ?? send));
       startSending(agentId);
@@ -151,6 +180,7 @@ export function createPendingSendStore(
     },
     setTransport: (agentId, transport) => {
       transports.set(agentId, transport);
+      owners.set(agentId, self);
       startSending(agentId);
     },
     subscribe: (listener) => {

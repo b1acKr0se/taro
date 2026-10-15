@@ -4,6 +4,7 @@ import {
   ChatMessageIdSchema,
   handBack,
   heldToRelease,
+  nextRecheck,
   COMPACTING_REFUSAL,
   failureReason,
   holdReason,
@@ -229,12 +230,30 @@ describe("heldToRelease", () => {
   const sends = [sent("chat-a", T0, "held"), sent("chat-b", T0 + 1), sent("chat-c", T0 + 2, "held")];
 
   it("holds while something holds them: a replacing provider's step, or a compaction", () => {
-    expect(heldToRelease(sends, "replaces")).toEqual([]);
-    expect(heldToRelease(sends, "compacting")).toEqual([]);
+    expect(heldToRelease(sends, "replaces", T0)).toEqual([]);
+    expect(heldToRelease(sends, "compacting", T0)).toEqual([]);
   });
 
   it("releases every held message, oldest first, once nothing holds them", () => {
-    expect(heldToRelease(sends, null).map((send) => send.id)).toEqual(["chat-a", "chat-c"]);
+    expect(heldToRelease(sends, null, T0).map((send) => send.id)).toEqual(["chat-a", "chat-c"]);
+  });
+
+  it("keeps one handed back as the agent compacts, and those after it, until its time, though the chat has not seen the compaction", () => {
+    const handedBack = [sent("chat-a", T0, "held"), { ...sent("chat-b", T0, "held"), heldUntil: T0 + 3_000 }, sent("chat-c", T0 + 1, "held")];
+    expect(heldToRelease(handedBack, null, T0 + 1_000).map((send) => send.id)).toEqual(["chat-a"]);
+    expect(heldToRelease(handedBack, null, T0 + 3_000).map((send) => send.id)).toEqual(["chat-a", "chat-b", "chat-c"]);
+    expect(heldToRelease(handedBack, "compacting", T0 + 9_000)).toEqual([]);
+  });
+});
+
+describe("nextRecheck", () => {
+  it("is the earliest time a handed-back message may go, null when none waits", () => {
+    const sends = [{ ...sent("chat-a", T0, "held"), heldUntil: T0 + 5_000 }, { ...sent("chat-b", T0, "held"), heldUntil: T0 + 3_000 }, sent("chat-c", T0, "held")];
+    expect(nextRecheck(sends, T0)).toBe(T0 + 3_000);
+    expect(nextRecheck(sends, T0 + 4_000)).toBe(T0 + 5_000);
+    expect(nextRecheck(sends, T0 + 5_000)).toBeNull();
+    expect(nextRecheck([{ ...sent("chat-d", T0), heldUntil: T0 + 5_000 }], T0)).toBeNull();
+    expect(nextRecheck([], T0)).toBeNull();
   });
 });
 

@@ -87,6 +87,8 @@ export interface PendingSend {
   state: "held" | "sending" | "sent" | "failed";
   /** Why it was not sent, for a failed one. */
   error?: string | undefined;
+  /** For one the plugin handed back as the agent compacts: the chat sends it no sooner (ms). */
+  heldUntil?: number | undefined;
 }
 
 /** "behind": sending, but waiting for a failed message before it. */
@@ -216,6 +218,12 @@ export function isCompactingRefusal(error: unknown): boolean {
   return errorMessage(error).includes(COMPACTING_REFUSAL);
 }
 
+/**
+ * How long a message handed back as the agent compacts stays held before the chat may send it again,
+ * should it not see the compaction by then (its timeline lags the agent's).
+ */
+export const COMPACTING_RECHECK_MS = 3_000;
+
 /** Why Send holds a message now, or null when it sends. */
 export type HoldReason = "replaces" | "compacting";
 
@@ -268,7 +276,20 @@ export function takeBack(
   };
 }
 
-/** The held messages to send now that nothing holds them (the agent stopped, or its compaction ended), oldest first. */
-export function heldToRelease(sends: readonly PendingSend[], holding: HoldReason | null): PendingSend[] {
-  return holding !== null ? [] : sends.filter((send) => send.state === "held");
+/**
+ * The held messages to send now that nothing holds them (the agent stopped, or its compaction ended),
+ * oldest first. One handed back as the agent compacts waits until `heldUntil` too, and those after it
+ * with it, so none overtakes it.
+ */
+export function heldToRelease(sends: readonly PendingSend[], holding: HoldReason | null, now: number): PendingSend[] {
+  if (holding !== null) return [];
+  const held = sends.filter((send) => send.state === "held");
+  const waits = held.findIndex((send) => send.heldUntil !== undefined && send.heldUntil > now);
+  return waits === -1 ? held : held.slice(0, waits);
+}
+
+/** When the next held message handed back as the agent compacts may go, or null when none waits. */
+export function nextRecheck(sends: readonly PendingSend[], now: number): number | null {
+  const times = sends.flatMap((send) => (send.state === "held" && send.heldUntil !== undefined && send.heldUntil > now ? [send.heldUntil] : []));
+  return times.length === 0 ? null : Math.min(...times);
 }
