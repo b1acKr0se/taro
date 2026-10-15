@@ -53,8 +53,8 @@ default: Per trade         # what you do if the user does not answer (non-blocki
   decided, never "three options", "recommends A" or "see above". Labels are a few words each and
   read as answers to it.
 - Every card ends with an Other row and a text box: picking Other and typing is how the user asks for
-  a change or answers in their own words (a `scope-approval` card has its box under the full plan,
-  which View plan opens). A picked option is sent alone, with no note. So never offer an option that only stands for that: no "Change…", "Adjust…",
+  a change or answers in their own words (a `scope-approval` card has Request changes… instead,
+  which opens its box). A picked option is sent alone, with no note. So never offer an option that only stands for that: no "Change…", "Adjust…",
   "Alternative…", "Other" or "Something else" (the plugin hides them). Real options stay, such as
   "Split into children".
 - An option whose `prompt` ends with `…` asks the user to type more words with it (e.g. `Pick a
@@ -104,7 +104,7 @@ Use these ids and options for recurring decisions (add free-form ones as needed)
 | `review-dispute` | Apply the fix · Accept as a limitation | your verdict |
 
 The user asks for a change, or another approach, by typing in the card's field (for a plan, the
-field under the full plan); no preset has an option for it.
+box Request changes… opens); no preset has an option for it.
 
 Acceptance is not a decision block: the plugin shows Accept / Request changes on tickets in
 Awaiting acceptance.
