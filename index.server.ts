@@ -54,7 +54,7 @@ import { idleCompactAfterMs } from "./shared/idle-compaction";
 import { Supervisor, identityFromLabels } from "./server/supervision";
 import { sessionEnvironment } from "./server/environment";
 import { readTextIfPresent, writeTextAtomically } from "./server/files";
-import { installCompactHook, removeReloadFile } from "./server/compact-hook";
+import { ensureCompactHook, installCompactHook, removeReloadFile } from "./server/compact-hook";
 import { catchUpText, compactManager, launchManager, restartManager, resumeManager, tellManager, writeManagerInstructions } from "./server/manager";
 import { onboardProject, onboardingProblems } from "./server/onboard";
 import { listPaseoProjects, settingsTemplate } from "./server/paseo-projects";
@@ -342,8 +342,11 @@ export default function contribute(server: PluginServerContext) {
     tickets: (await stats.all(project)).map((ticket) => summarize(ticket)),
     managerIdleCompactions: (await stats.projectCounts(project)).idleCompactions,
   }));
-  const removeTurnStartHook = server.on("agent.turn_started", async ({ agent }) => {
+  const removeTurnStartHook = server.on("agent.turn_started", async ({ agent }, { paseo }) => {
     await stats.turnStarted(agent.id).catch((error: unknown) => reportFailure(`[taro] recording ${agent.id}'s turn start:`, error));
+    await ensureCompactHook(paseo, agent)
+      .then((done) => (done === null ? undefined : console.log(`[taro] ${agent.id}: ${done}`)))
+      .catch((error: unknown) => reportFailure(`[taro] compact hook for ${agent.id}:`, error));
   });
 
   // Supervision (decisions 28, 30, 35, 36): every Taro agent's turn end.

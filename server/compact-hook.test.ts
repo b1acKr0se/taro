@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fetchLiveAgent } from "./agents";
-import { installCompactHook, reloadFilePath, removeReloadFile } from "./compact-hook";
+import { ensureCompactHook, installCompactHook, reloadFilePath, removeReloadFile } from "./compact-hook";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 
 const scratch = mkdtempSync(join(tmpdir(), "taro-compact-hook-"));
@@ -123,5 +123,31 @@ describe("installCompactHook", () => {
     await removeReloadFile("agent-7");
     expect(existsSync(reloadFilePath("agent-7"))).toBe(false);
     await removeReloadFile("agent-7"); // already gone: no error
+  });
+
+  it("installs for a new owner at its first turn start, when its session open could not read its labels, and only once", async () => {
+    const worktree = repository();
+    liveAgent(null); // the session opens before Paseo has stored the new agent
+    expect(await installCompactHook(paseo, { agentId: "agent-8", cwd: worktree, provider: "claude" })).toBeNull();
+    expect(existsSync(join(worktree, ".claude"))).toBe(false);
+
+    liveAgent(owner);
+    expect(await ensureCompactHook(paseo, { id: "agent-8", cwd: worktree, provider: "claude" })).toMatch(/hook written/);
+    expect(readFileSync(reloadFilePath("agent-8"), "utf8")).toBe("reload owner NA-7\n");
+    expect(git(worktree, "status", "--porcelain")).toBe("");
+    vi.mocked(fetchLiveAgent).mockClear();
+    expect(await ensureCompactHook(paseo, { id: "agent-8", cwd: worktree, provider: "claude" })).toBeNull();
+    expect(fetchLiveAgent).not.toHaveBeenCalled();
+  });
+
+  it("settles an agent that is not Taro's at its first turn start and never looks again; skips Codex without looking", async () => {
+    const worktree = repository();
+    liveAgent({});
+    expect(await ensureCompactHook(paseo, { id: "agent-9", cwd: worktree, provider: "claude" })).toBeNull();
+    expect(await ensureCompactHook(paseo, { id: "agent-9", cwd: worktree, provider: "claude" })).toBeNull();
+    expect(fetchLiveAgent).toHaveBeenCalledTimes(1);
+    expect(await ensureCompactHook(paseo, { id: "agent-10", cwd: worktree, provider: "codex" })).toBeNull();
+    expect(fetchLiveAgent).toHaveBeenCalledTimes(1);
+    expect(existsSync(join(worktree, ".claude"))).toBe(false);
   });
 });

@@ -3,7 +3,7 @@
  * and resume), its reload text goes to a file in the plugin's data folder and a SessionStart hook
  * (matcher "compact") that prints it goes into `.claude/settings.local.json` in its working
  * directory: Paseo lets a plugin change only a session's env, and Claude reads hooks only from
- * settings files. The worktree stays clean: the file is excluded from git when nothing ignores it.
+ * settings files. A new owner gets it at its first turn start (`ensureCompactHook`). The worktree stays clean: the file is excluded from git when nothing ignores it.
  */
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -29,9 +29,17 @@ export function reloadFilePath(agentId: string): string {
   return dataPath(join(RELOAD_FOLDER, `${agentId}.md`));
 }
 
+/**
+ * Agents whose labels were read in this plugin run: whether each is a manager or owner was settled
+ * then. A new agent's session opens before Paseo stores it, so its labels cannot be read yet; its
+ * first turn start installs the hook instead (Claude reads a settings file changed mid-session).
+ */
+const settled = new Set<string>();
+
 /** A manager or an owner; a manager's home under the projects folder identifies it when labels do not. */
 async function sessionIdentity(paseo: PaseoApi, agentId: string, cwd: string): Promise<TaroIdentity | null> {
   const agent = await fetchLiveAgent(paseo, agentId);
+  if (agent !== null) settled.add(agentId);
   const identity = agent === null ? null : identityFromLabels(agent.labels, agent.title ?? null);
   if (identity !== null) return identity.role === "manager" || identity.role === "owner" ? identity : null;
   const root = await projectsDirectory();
@@ -69,7 +77,14 @@ export async function installCompactHook(paseo: PaseoApi, request: { agentId: st
   return `hook written to ${settingsPath}`;
 }
 
+/** At a turn start: installs once for an agent whose labels its session open could not read. */
+export async function ensureCompactHook(paseo: PaseoApi, agent: { id: string; cwd: string; provider: string }): Promise<string | null> {
+  if (settled.has(agent.id) || agent.provider !== "claude") return null;
+  return installCompactHook(paseo, { agentId: agent.id, cwd: agent.cwd, provider: agent.provider });
+}
+
 /** An archived agent's hook goes quiet: it prints nothing once its reload file is gone. */
 export async function removeReloadFile(agentId: string): Promise<void> {
+  settled.delete(agentId);
   await rm(reloadFilePath(agentId), { force: true });
 }
