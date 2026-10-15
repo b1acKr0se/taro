@@ -51,7 +51,7 @@ describe("focus sources", () => {
 
   it("gives pressable text the ring", () => {
     const pressableText = clientFiles.filter((file) => /<Text\b[^>]*\bonPress=/.test(file.source));
-    expect(pressableText.map((file) => file.name)).toEqual(["client/markdown.tsx", "client/ticket-card.tsx"]);
+    expect(pressableText.map((file) => file.name)).toEqual(["client/markdown.tsx"]);
     for (const file of pressableText) expect(file.source).toMatch(/focusRingStyle\(/);
   });
 

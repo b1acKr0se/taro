@@ -191,13 +191,13 @@ function lowercased(text: string): string {
 export const FOOTER_SEPARATOR = "\u00a0· ";
 
 /**
- * The footer as one wrapping line: the meta parts joined, then the PR link's label (null without a PR),
- * the separator before it ending `meta`.
+ * The footer: the meta parts joined, ending with the dot before the PR link when there is one (so a link
+ * wrapped onto its own line does not start with it), then the link's label (null without a PR).
  */
 export function cardFooterLine(card: Card): { meta: string; pullRequest: string | null } {
   const parts = cardFooterParts(card);
   const pullRequest = card.pullRequest === null ? null : pullRequestLabel(card.pullRequest);
-  return { meta: parts.join(FOOTER_SEPARATOR) + (parts.length > 0 && pullRequest !== null ? FOOTER_SEPARATOR : ""), pullRequest };
+  return { meta: parts.join(FOOTER_SEPARATOR) + (parts.length > 0 && pullRequest !== null ? FOOTER_SEPARATOR.trimEnd() : ""), pullRequest };
 }
 
 export function cardFooterParts(card: Card): string[] {

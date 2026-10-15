@@ -350,9 +350,9 @@ describe("cardFooterParts", () => {
 describe("cardFooterLine", () => {
   const long = { complexity: "medium", investigation: true, owner: { ...owner, contextUsedTokens: 166_000 }, subagents: [implementer({}), implementer({ id: "agent-3" })] };
 
-  it("joins the parts and ends with the separator before the PR, a no-break space before every dot", () => {
+  it("joins the parts and ends with the dot before the PR, a no-break space before every dot", () => {
     const line = cardFooterLine(card({ ...long, pullRequest: "https://github.com/example/notes-app/pull/12" }));
-    expect(line.meta).toBe("medium\u00a0· investigation\u00a0· context 166k\u00a0· 2 subagents\u00a0· ");
+    expect(line.meta).toBe("medium\u00a0· investigation\u00a0· context 166k\u00a0· 2 subagents\u00a0·");
     expect(line.pullRequest).toBe("PR\u00a0#12\u00a0· example/notes-app");
     // A plain space before a dot would let a wrapped line start with it (TR-095).
     expect(`${line.meta}${line.pullRequest}`).not.toMatch(/ ·/);

@@ -13,7 +13,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
-import { Platform, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { acceptTicket, nudgeAgent, relaunchOwner, resumeTicket, type Card, type StatsSummary } from "../shared/contracts";
 import { PhaseBadge } from "./badges";
@@ -21,7 +21,6 @@ import { cardFooterLine, cardNowLine, type NowLine } from "./card-now";
 import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
-import { focusRingStyle } from "./focus-ring";
 import { errorText, formatCost, formatDuration } from "./format";
 import { SPACE } from "./spacing";
 import { OptionChips } from "./option-chips";
@@ -102,12 +101,12 @@ export function TicketCard({
       dot: { width: 8, height: 8, borderRadius: 4 },
       row: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
       muted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
-      // Pressable text: the keyboard ring takes the accent too (TR-078).
-      link: { color: colors.accent, fontSize: FONT_SIZE.caption, ...focusRingStyle(colors.accent, Platform.OS === "web") },
+      link: { color: colors.accent, fontSize: FONT_SIZE.caption },
+      footerText: { flexShrink: 1, lineHeight: lineHeightFor(FONT_SIZE.caption) },
       track: { width: 44, height: 3, borderRadius: 2, backgroundColor: colors.surface2, overflow: "hidden" as const },
       childRow: { flexDirection: "row" as const, alignItems: "flex-start" as const, gap: SPACE.sm },
       childIcon: { width: 14, paddingTop: (lineHeightFor(FONT_SIZE.caption) - 13) / 2 },
-      footer: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: SPACE.sm },
+      footer: { flexDirection: "row" as const, flexWrap: "wrap" as const, alignItems: "center" as const, columnGap: SPACE.xs, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: SPACE.sm },
       actionText: { color: colors.accent, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
     }),
     [colors, compact, selected],
@@ -323,20 +322,18 @@ export function TicketCard({
         </View>
       )}
       {hasFooter ? (
-        // One text, so a narrow column or a phone wraps it at a word instead of cutting it off (TR-095).
+        // Wraps at a word instead of cutting off; the PR link, a pressable of its own for the keyboard, follows
+        // the meta line's last dot or wraps under it (TR-095).
         <View style={styles.footer}>
-          <Text style={[styles.muted, { lineHeight: lineHeightFor(FONT_SIZE.caption) }]}>
-            {footer.meta}
-            {footer.pullRequest === null ? null : (
-              <Text
-                accessibilityRole="link"
-                style={styles.link}
-                onPress={() => void openExternalUrl(card.pullRequest ?? "").catch((caught: unknown) => toast.error(errorText(caught)))}
-              >
-                {footer.pullRequest}
-              </Text>
-            )}
-          </Text>
+          {footer.meta === "" ? null : <Text style={[styles.muted, styles.footerText]}>{footer.meta}</Text>}
+          {footer.pullRequest === null ? null : (
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => void openExternalUrl(card.pullRequest ?? "").catch((caught: unknown) => toast.error(errorText(caught)))}
+            >
+              <Text style={[styles.link, styles.footerText]}>{footer.pullRequest}</Text>
+            </Pressable>
+          )}
         </View>
       ) : null}
     </Pressable>
