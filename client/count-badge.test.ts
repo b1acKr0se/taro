@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { COUNT_BADGE_MAX, countBadgeText } from "./count-badge-text";
 
 const source = (name: string) => readFileSync(join(__dirname, name), "utf8");
+const between = (text: string, start: string, end: string) => text.slice(text.indexOf(start), text.indexOf(end, text.indexOf(start)));
 
 describe("countBadgeText", () => {
   it("draws nothing when nothing waits", () => {
@@ -38,5 +39,11 @@ describe("the count badge's places", () => {
     expect(screen).toMatch(/tab\("inbox", "Inbox", "Inbox", showing === "inbox", \(\) => choose\(selected, "inbox"\), needsYouTotal\(list\)\)/);
     expect(screen).toContain('{ value: "inbox", label: "Inbox", count: needsYouTotal(all) }');
     expect(screen).not.toContain("`Inbox ${");
+  });
+
+  it("draws the phone's switch dense, so a 99+ badge and the settings button fit a 360-point phone", () => {
+    const phoneSwitch = between(source("taro-screen.tsx"), "<Segmented", "/>");
+    expect(phoneSwitch).toMatch(/^<Segmented\s+theme=\{theme\}\s+value=\{phoneTab\}\s+dense\b/);
+    expect(between(source("ui.tsx"), "export function Segmented", "export function JumpToEnd")).toContain("paddingHorizontal: SEGMENTED.densePaddingHorizontal");
   });
 });

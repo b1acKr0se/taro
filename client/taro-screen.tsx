@@ -543,7 +543,8 @@ function ProjectView({
               <Segmented
                 theme={theme}
                 value={phoneTab}
-                // Words without icons: all four and the settings button fit one row of a phone.
+                dense
+                // Words without icons, dense: all four, the Inbox's badge and the settings button fit one row of a phone.
                 options={[
                   { value: "manager", label: "Manager" },
                   // The Inbox lists every project, so its tab counts them all, as the sidebar does (TR-064, TR-123).

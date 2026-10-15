@@ -143,6 +143,7 @@ export function Segmented<Value extends string>({
   options,
   onChange,
   iconsOnly = false,
+  dense = false,
 }: {
   theme: PluginTheme;
   value: Value;
@@ -151,6 +152,8 @@ export function Segmented<Value extends string>({
   onChange: (value: Value) => void;
   /** Icons only, the labels kept for screen readers: a phone's header has no room for words (TR-031). */
   iconsOnly?: boolean;
+  /** Narrower segments, for a phone's row that must hold every tab and a badge (TR-123). */
+  dense?: boolean;
 }) {
   const colors = theme.colors;
   const control = useMemo(() => controlColors(colors), [colors]);
@@ -196,7 +199,11 @@ export function Segmented<Value extends string>({
               accessibilityRole="tab"
               accessibilityLabel={option.label}
               accessibilityState={{ selected }}
-              style={[styles.segment, selected ? styles.selected : null, iconsOnly ? { paddingHorizontal: BUTTON.iconOnlyPaddingHorizontal } : null]}
+              style={[
+                styles.segment,
+                selected ? styles.selected : null,
+                iconsOnly ? { paddingHorizontal: BUTTON.iconOnlyPaddingHorizontal } : dense ? { paddingHorizontal: SEGMENTED.densePaddingHorizontal } : null,
+              ]}
               onPress={() => onChange(option.value)}
             >
               {option.icon === undefined ? null : <Icon name={option.icon} size={BUTTON.iconSize} color={selected ? colors.foreground : colors.foregroundMuted} />}

@@ -22,6 +22,8 @@ export const BUTTON = {
 
 /**
  * `Segmented`'s track: its outline and padding around the segments, and the segments' own corner
- * radius. The outline (TR-093) took a point of the padding, so the segments kept their size.
+ * radius. The outline (TR-093) took a point of the padding, so the segments kept their size. A dense
+ * switch's segments are narrower, so the phone's four tabs, a "99+" badge and the settings button
+ * fit a 360-point phone (TR-123).
  */
-export const SEGMENTED = { trackBorderWidth: 1, padding: 1, gap: 2, segmentRadius: 6 } as const;
+export const SEGMENTED = { trackBorderWidth: 1, padding: 1, gap: 2, segmentRadius: 6, densePaddingHorizontal: 7 } as const;
