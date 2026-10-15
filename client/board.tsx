@@ -26,7 +26,7 @@ import { useLatestCallback } from "./latest-callback";
 import { KeyboardScrollView } from "./keyboard";
 import { QuestionCard } from "./question-card";
 import { useStats } from "./queries";
-import { paneGutter, SPACE } from "./spacing";
+import { paneGutter, PHONE_LIST_END, SPACE } from "./spacing";
 import { SyncProblemCard } from "./sync-problem-card";
 import { IconButton } from "./ui";
 import { PermissionAskCard } from "./permission-ask-card";
@@ -258,7 +258,7 @@ export function ProjectBoard({
             );
           })}
         </ScrollView>
-        <KeyboardScrollView scrollerRef={scroller} onScroll={trackScroll} contentContainerStyle={{ padding: SPACE.md, gap: SPACE.md }}>
+        <KeyboardScrollView scrollerRef={scroller} onScroll={trackScroll} contentContainerStyle={{ padding: SPACE.md, paddingBottom: PHONE_LIST_END, gap: SPACE.md }}>
           {top}
           {columnCards(column, shown)}
         </KeyboardScrollView>
