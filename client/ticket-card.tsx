@@ -21,7 +21,7 @@ import { cardFooterLine, cardNowLine, type NowLine } from "./card-now";
 import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
-import { cardStatsText, errorText, formatCost, pullRequestLabel } from "./format";
+import { cardStatsText, errorText, formatCost, pullRequestLabel, pullRequestNumberLabel } from "./format";
 import { mergedPurple } from "./github-colors";
 import { SPACE } from "./spacing";
 import { OptionChips } from "./option-chips";
@@ -107,7 +107,8 @@ export function TicketCard({
       row: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
       muted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
       stat: { flexDirection: "row" as const, alignItems: "flex-start" as const, gap: SPACE.xs, flexShrink: 1 },
-      statIcon: { paddingTop: (lineHeightFor(FONT_SIZE.caption) - 12) / 2 },
+      // One pixel above the line's middle: a 12px icon centred in the line sat low beside the text's capitals (TR-119).
+      statIcon: { paddingTop: (lineHeightFor(FONT_SIZE.caption) - 12) / 2 - 1 },
       statText: { flexShrink: 1, lineHeight: lineHeightFor(FONT_SIZE.caption) },
       link: { color: colors.accent, fontSize: FONT_SIZE.caption },
       footerText: { flexShrink: 1, lineHeight: lineHeightFor(FONT_SIZE.caption) },
@@ -144,7 +145,8 @@ export function TicketCard({
       <PhaseBadge theme={theme} status={card.status} />
     </View>
   );
-  // A Done card's PR sits on its stats line, GitHub's purple merged icon when it merged (TR-114).
+  // A Done card's PR sits on its stats line, GitHub's purple merged icon when it merged (TR-114); "PR #128"
+  // is plain like the time and cost beside it, on one line, as an accent-coloured link clashed with the purple (TR-119).
   const donePullRequest =
     card.column !== "done" || card.pullRequest === null ? null : (
       <Pressable
@@ -156,7 +158,9 @@ export function TicketCard({
         <View style={styles.statIcon}>
           <Icon name={card.pullRequestMerged ? "GitMerge" : "GitPullRequest"} size={12} color={card.pullRequestMerged ? mergedPurple(colors) : colors.foregroundMuted} />
         </View>
-        <Text style={[styles.link, styles.statText]}>{pullRequestLabel(card.pullRequest)}</Text>
+        <Text style={[styles.muted, styles.statText]} numberOfLines={1}>
+          {pullRequestNumberLabel(card.pullRequest)}
+        </Text>
       </Pressable>
     );
   const statsLine =

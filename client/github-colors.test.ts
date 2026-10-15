@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 
+import { contrastRatio, rgbOf, type Rgb } from "./control-colors";
 import { GITHUB_MERGED, mergedPurple } from "./github-colors";
+
+// Card surfaces (`surface0`) of Paseo 0.11.2's themes: light; dark, zinc, midnight, claude, ghostty, pure black.
+const LIGHT_CARDS = ["#ffffff"];
+const DARK_CARDS = ["#181B1A", "#18181b", "#161820", "#1f1f1e", "#282c34", "#000000"];
+
+function rgb(color: string): Rgb {
+  const value = rgbOf(color);
+  if (value === null) throw new Error(color);
+  return value;
+}
 
 describe("mergedPurple", () => {
   it("takes GitHub's dark purple when the foreground is light", () => {
@@ -16,5 +27,11 @@ describe("mergedPurple", () => {
   it("falls back to the light purple for a colour it cannot read", () => {
     expect(mergedPurple({ foreground: "rgb(250, 250, 250)" })).toBe(GITHUB_MERGED.light);
     expect(mergedPurple({ foreground: "" })).toBe(GITHUB_MERGED.light);
+  });
+
+  // The purple is the merged icon's alone (TR-119): an icon needs WCAG's 3:1 against the card.
+  it("keeps the merged icon at 3:1 on every theme's card", () => {
+    for (const card of LIGHT_CARDS) expect(contrastRatio(rgb(mergedPurple({ foreground: "#09090b" })), rgb(card))).toBeGreaterThanOrEqual(3);
+    for (const card of DARK_CARDS) expect(contrastRatio(rgb(mergedPurple({ foreground: "#fafafa" })), rgb(card))).toBeGreaterThanOrEqual(3);
   });
 });
