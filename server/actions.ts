@@ -500,15 +500,20 @@ export class Actions {
     });
     for (const change of statusChanges(lastLook, tickets)) {
       const before = previous.get(change.ticket);
-      try {
-        await this.wakeManager(paseo, project, change, tickets, () => this.markUndelivered(project, change.ticket, before));
-        if (!this.undelivered.get(project)?.has(change.ticket)) retrying.delete(change.ticket);
-      } catch (error: unknown) {
-        failure ??= error;
+      // Seen as before, so the next pass makes the same change again.
+      const retryLater = () => {
         if (before === undefined) {
           current.delete(change.ticket);
           retrying.add(change.ticket);
         } else current.set(change.ticket, before);
+      };
+      try {
+        const reached = await this.wakeManager(paseo, project, change, tickets, () => this.markUndelivered(project, change.ticket, before));
+        if (!reached) retryLater();
+        else if (!this.undelivered.get(project)?.has(change.ticket)) retrying.delete(change.ticket);
+      } catch (error: unknown) {
+        failure ??= error;
+        retryLater();
       }
     }
     await this.storeStatuses(project);
@@ -659,13 +664,14 @@ export class Actions {
    * (Awaiting acceptance counts as free, TR-029), unless nothing could start: no dependents cleared
    * by a Done, and no queued ticket or no room under the cap. The dependents are listed either way
    * (TR-043); they wake the manager only once the ticket is Done. The message carries the plugin's
-   * recount (TR-062).
+   * recount (TR-062). False when it was due but no manager is live (one being replaced and failed to
+   * start, or none started): the caller retries it at the next pass.
    */
-  private async wakeManager(paseo: PaseoApi, project: string, change: StatusChange, tickets: readonly TicketSummary[], whenHeld: () => () => void): Promise<void> {
+  private async wakeManager(paseo: PaseoApi, project: string, change: StatusChange, tickets: readonly TicketSummary[], whenHeld: () => () => void): Promise<boolean> {
     const queued = queuedTickets(tickets).map((candidate) => candidate.id);
     const cleared = change.status === "Done";
     // Reading every open ticket's dependencies is a file read each: only when a message may follow.
-    if (!cleared && (!change.freesSlot || queued.length === 0)) return;
+    if (!cleared && (!change.freesSlot || queued.length === 0)) return true;
     const paths = await projectPaths(project);
     const dependents: string[] = [];
     for (const candidate of tickets.filter((open) => open.status !== "Done" && open.status !== "Cancelled")) {
@@ -674,27 +680,32 @@ export class Actions {
     }
     const dependentsCleared = cleared ? dependents.length : 0;
     // Only the cap comparison needs the owners, and listing them is a round trip to the daemon.
-    if (dependentsCleared === 0 && (!change.freesSlot || queued.length === 0)) return;
+    if (dependentsCleared === 0 && (!change.freesSlot || queued.length === 0)) return true;
     const config = await requireProjectConfig(project);
     const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners);
-    if (!shouldWakeManager({ dependents: dependentsCleared, queued: queued.length, freesSlot: change.freesSlot, counting: count.counting.length, cap: config.maxParallelOwners })) return;
-    const manager = await fetchLiveAgent(paseo, config.managerAgentId);
-    if (manager === null) return;
+    if (!shouldWakeManager({ dependents: dependentsCleared, queued: queued.length, freesSlot: change.freesSlot, counting: count.counting.length, cap: config.maxParallelOwners })) return true;
     const text = await message(TEMPLATES.dependencyCleared, {
       ticket: change.ticket,
       status: change.status,
       dependents: dependents.length === 0 ? "none" : dependents.join(", "),
       recount: await recountText(count),
     });
-    // Held while threads are short (TR-012): a free owner slot is no reason to start one then.
-    let sent = false;
-    let delivered: (() => void) | null = null;
-    await this.recovery.tellManagerWhenHeadroom(paseo, project, manager.id, text, () => {
-      sent = true;
-      delivered?.();
-      this.woken(project, count, "a slot freed or a dependency cleared");
+    // Under the restart's lock (TR-128): a wake-up sent mid-replacement waits, then reads the new
+    // manager's id, rather than going to the one being archived.
+    return serialized(`manager:${project}`, async () => {
+      const manager = await fetchLiveAgent(paseo, (await requireProjectConfig(project)).managerAgentId);
+      if (manager === null) return false;
+      // Held while threads are short (TR-012): a free owner slot is no reason to start one then.
+      let sent = false;
+      let delivered: (() => void) | null = null;
+      await this.recovery.tellManagerWhenHeadroom(paseo, project, manager.id, text, () => {
+        sent = true;
+        delivered?.();
+        this.woken(project, count, "a slot freed or a dependency cleared");
+      });
+      if (!sent) delivered = whenHeld();
+      return true;
     });
-    if (!sent) delivered = whenHeld();
   }
 
   /** The plugin's recount (TR-062): owners from Paseo, the queue from the tracker, threads from the host. */

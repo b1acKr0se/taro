@@ -32,6 +32,7 @@ export function IconButton({
   accessibilityLabel,
   grow = false,
   state,
+  tip,
 }: {
   /** Null draws the label alone (a narrow row of labelled buttons); busy and done still show. */
   icon: string | null;
@@ -48,6 +49,11 @@ export function IconButton({
   accessibilityLabel?: string;
   /** Takes a share of its row's spare width, its content centred: one of a pair that wraps to equal full-width rows. */
   grow?: boolean;
+  /**
+   * An explanation shown elsewhere as a tooltip (TR-128): `onShow(true)` while the pointer is over the button
+   * or, with no pointer (a phone), while it is held down, which then does not press it; `text` is read out as its hint.
+   */
+  tip?: { text: string; onShow: (open: boolean) => void };
 }) {
   const colors = theme.colors;
   const color =
@@ -56,6 +62,11 @@ export function IconButton({
   // The pressed button stays at full strength while it spins; only the buttons waiting on it fade.
   const faded = disabled && !busy;
   const control = useMemo(() => controlColors(colors), [colors]);
+  const hovering = useRef(false);
+  const latestTip = useRef(tip);
+  latestTip.current = tip;
+  // A button that goes while its tooltip shows (its offer withdrawn) gets no hover-out: closed here instead.
+  useEffect(() => () => latestTip.current?.onShow(false), []);
   const styles = useMemo(
     () => ({
       button: {
@@ -85,8 +96,28 @@ export function IconButton({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled: disabled || busy, busy }}
+      accessibilityHint={tip?.text}
       disabled={disabled || busy}
       onPress={onPress}
+      onHoverIn={
+        tip === undefined
+          ? undefined
+          : () => {
+              hovering.current = true;
+              tip.onShow(true);
+            }
+      }
+      onHoverOut={
+        tip === undefined
+          ? undefined
+          : () => {
+              hovering.current = false;
+              tip.onShow(false);
+            }
+      }
+      onLongPress={tip === undefined ? undefined : () => tip.onShow(true)}
+      // A click under the pointer keeps the tooltip it points at; a finger lifted ends the hold.
+      onPressOut={tip === undefined ? undefined : () => (hovering.current ? undefined : tip.onShow(false))}
       style={styles.button}
     >
       {busy ? (

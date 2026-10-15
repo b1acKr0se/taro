@@ -67,6 +67,8 @@ export type SyncResolution = z.infer<typeof SyncResolutionSchema>;
 export const ProjectSummarySchema = z.object({
   config: ProjectConfigSchema,
   manager: AgentBriefSchema.nullable(),
+  /** When the manager's last turn ended, as the plugin saw it: the pane's Replace manager offer (TR-128). */
+  managerLastTurnEndedAt: z.string().nullable().default(null),
   trackerSyncProblem: TrackerSyncProblemSchema.nullable(),
   /** Cards in Needs you or Stalled, plus a paused ticket sync, for the sidebar badge and tabs. */
   needsYou: z.number().int(),

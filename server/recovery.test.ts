@@ -5,6 +5,7 @@ import { AgentStateSchema, type AgentState } from "../shared/state";
 import { fetchLiveAgent } from "./agents";
 import { runPaseoJson } from "./cli";
 import { readHeadroom } from "./headroom";
+import { serialized } from "./serialize";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import { restartManager } from "./manager";
 import { Recovery } from "./recovery";
@@ -269,6 +270,38 @@ describe("Recovery", () => {
     await vi.advanceTimersByTimeAsync(15_000);
     const calls = vi.mocked(sendFromPlugin).mock.calls.filter(([, , text]) => text.includes("TR-5 is Done"));
     expect(calls).toHaveLength(2);
+  });
+
+  it("keeps held wake-ups while no manager is live and sends them once one is (TR-128)", async () => {
+    vi.mocked(fetchLiveAgent).mockResolvedValue(null);
+    vi.mocked(readHeadroom).mockResolvedValue(high);
+    const { recovery } = setUp();
+    const sent: string[] = [];
+    await recovery.tellManagerWhenHeadroom(paseo, "taro", "manager-1", "TR-5 is Done", () => sent.push("TR-5"));
+    vi.mocked(readHeadroom).mockResolvedValue(null);
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(sent).toEqual([]);
+    expect(sentTo("recovered:")).toEqual([]);
+    vi.mocked(fetchLiveAgent).mockResolvedValue(agent("manager-1", "manager", null, "idle"));
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(sent).toEqual(["TR-5"]);
+    expect(sentTo("recovered:")).toEqual(["manager-1"]);
+  });
+
+  it("releases held wake-ups only once a manager replacement in progress has finished (TR-128)", async () => {
+    vi.mocked(fetchLiveAgent).mockResolvedValue(agent("manager-1", "manager", null, "idle"));
+    vi.mocked(readHeadroom).mockResolvedValue(high);
+    const { recovery } = setUp();
+    await recovery.tellManagerWhenHeadroom(paseo, "taro", "manager-1", "TR-5 is Done");
+    let finish: () => void = () => undefined;
+    const replacing = serialized("manager:taro", () => new Promise<void>((resolve) => (finish = resolve)));
+    vi.mocked(readHeadroom).mockResolvedValue(null);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(sentTo("recovered:")).toEqual([]);
+    finish();
+    await replacing;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sentTo("recovered:")).toEqual(["manager-1"]);
   });
 
   it("says when a held wake-up went out, and never for one dropped at dispose (TR-043)", async () => {

@@ -15,8 +15,8 @@ import { Icon } from "@getpaseo/plugin/client/react-native";
 import { memo, useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 
-import { catchUp, compactManager, resumeManager, tellManager, type Card, type ProjectSummary } from "../shared/contracts";
-import { MANAGER_ACTION_LABELS, MANAGER_ACTION_SUCCESS, managerPaneNotice } from "../shared/manager-actions";
+import { catchUp, compactManager, restartManager, resumeManager, tellManager, type Card, type ProjectSummary } from "../shared/contracts";
+import { MANAGER_ACTION_LABELS, MANAGER_ACTION_SUCCESS, managerPaneNotice, offersReplaceManager, REPLACE_MANAGER_LABEL, replaceManagerNotice } from "../shared/manager-actions";
 import { withoutDecisionBlocks } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import type { Suggestion } from "../shared/suggestions";
@@ -28,7 +28,7 @@ import { CentredLabel } from "./centred-label";
 import { CountBadge } from "./count-badge";
 import { countBadgeLabel, needsYouTotal } from "./count-badge-text";
 import { Pressable } from "./focus";
-import { errorText } from "./format";
+import { errorText, formatTokenCount } from "./format";
 import { Inbox } from "./inbox";
 import { keptObject } from "./kept";
 import { KeptPane, useRecent, useVisited } from "./kept-pane";
@@ -50,6 +50,7 @@ import { TicketView } from "./ticket-view";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
 import { useActions } from "./use-actions";
+import { useNow } from "./use-now";
 import { useBackStep, useScreenBack } from "./use-back";
 import { useReleaseHeld } from "./use-release-held";
 import { chooseMove, planShown, screenBackStep, ticketBackMove, ticketBackTarget, ticketShown, viewPlanMove, type OpenPlan, type PhoneTab, type ScreenMove, type ScreenNow, type ScreenView } from "./back-steps";
@@ -686,7 +687,13 @@ function ManagerPane({
   const askCatchUp = useRpc(catchUp);
   const compactRpc = useRpc(compactManager);
   const resume = useRpc(resumeManager);
+  const replace = useRpc(restartManager);
+  // The project list holds the manager: refreshed at once, so the old one's chat and its offer go now, not at the next poll.
+  const refreshProjects = useRefreshProjects();
   const actions = useActions();
+  const [tipOpen, setTipOpen] = useState(false);
+  // The offer appears as the cache hour passes, not only at the next poll that changes something.
+  const now = useNow(60_000);
   const project = summary.config.project;
   const manager = summary.manager;
   // On a phone the switch row above already shows the Manager tab and holds the settings button (TR-031).
@@ -707,6 +714,8 @@ function ManagerPane({
   }
   const running = manager.status === "running" || manager.status === "initializing";
   const notice = managerPaneNotice(manager);
+  const replaceTip =
+    manager.contextUsedTokens !== null && offersReplaceManager(manager, summary.managerLastTurnEndedAt, now) ? replaceManagerNotice(formatTokenCount(manager.contextUsedTokens)) : null;
   return (
     <View style={{ flex: 1 }}>
       {header}
@@ -764,6 +773,27 @@ function ManagerPane({
               state={actions.stateOf("catch-up")}
               onPress={() => actions.press("catch-up", () => askCatchUp({ project }))}
             />
+            {replaceTip === null ? null : (
+              <IconButton
+                icon="RefreshCw"
+                label={REPLACE_MANAGER_LABEL}
+                showLabel
+                theme={theme}
+                disabled={actions.busy}
+                state={actions.stateOf("replace")}
+                tip={{ text: replaceTip, onShow: setTipOpen }}
+                onPress={() =>
+                  actions.press("replace", () => replace({ project }), {
+                    success: MANAGER_ACTION_SUCCESS.fresh,
+                    onSuccess: () => {
+                      setTipOpen(false);
+                      refreshProjects();
+                      onChanged();
+                    },
+                  })
+                }
+              />
+            )}
             <IconButton
               icon="Minimize2"
               label="Compact"
@@ -776,6 +806,7 @@ function ManagerPane({
           </>
         }
         context={{ used: manager.contextUsedTokens, max: manager.contextMaxTokens }}
+        actionsTip={replaceTip !== null && tipOpen ? replaceTip : null}
       />
     </View>
   );

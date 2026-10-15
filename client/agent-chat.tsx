@@ -71,6 +71,8 @@ type ChatComposer =
       actions?: ReactNode;
       /** The agent's context window, drawn as a ring inside the composer beside the send button. */
       context?: { used: number | null | undefined; max: number | null | undefined };
+      /** A tooltip over the buttons' line, open while one of them is hovered or held (Replace manager's, TR-128). */
+      actionsTip?: string | null;
       readOnly?: undefined;
     }
   | {
@@ -80,6 +82,7 @@ type ChatComposer =
       onSend?: undefined;
       actions?: undefined;
       context?: undefined;
+      actionsTip?: undefined;
     };
 
 export function AgentChat({
@@ -91,6 +94,7 @@ export function AgentChat({
   onSend,
   actions,
   context,
+  actionsTip,
   readOnly,
   decorateRow,
   transformText,
@@ -527,10 +531,18 @@ export function AgentChat({
               // An owner's chat: its one action is a full-width link.
               actions === undefined ? null : <View style={styles.quick}>{actions}</View>
             ) : (
-              <ActionRow theme={theme}>
-                {actions}
-                {suggestions}
-              </ActionRow>
+              // The tooltip sits outside the sideways scroll, which would clip it.
+              <View style={{ zIndex: 1 }}>
+                <ActionRow theme={theme}>
+                  {actions}
+                  {suggestions}
+                </ActionRow>
+                {actionsTip === null || actionsTip === undefined ? null : (
+                  <View pointerEvents="none" style={styles.actionsTip}>
+                    <Text style={styles.actionsTipText}>{actionsTip}</Text>
+                  </View>
+                )}
+              </View>
             )}
             {notice === null ? null : (
               <View style={styles.quick}>
@@ -891,6 +903,21 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
     markText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
     markActions: { flexDirection: "row" as const, justifyContent: "flex-end" as const, gap: SPACE.sm },
     quick: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
+    // Above the buttons' line, from its start, as the context meter's tooltip sits above the ring.
+    actionsTip: {
+      position: "absolute" as const,
+      bottom: "100%" as const,
+      left: 0,
+      marginBottom: SPACE.xs,
+      maxWidth: ACTIONS_TIP_MAX_WIDTH,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface2,
+    },
+    actionsTipText: { color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
     // The row is the press target; Show is drawn as a button so the row reads as one (TR-093).
     show: rowButtonStyle(colors),
     showText: { color: colors.accent, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
@@ -909,6 +936,9 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
     readOnlyText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
   };
 }
+
+/** About 40 characters a line: a few lines over the transcript rather than one across the pane. */
+const ACTIONS_TIP_MAX_WIDTH = 320;
 
 type ChatStyles = ReturnType<typeof chatStyles>;
 
