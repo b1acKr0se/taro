@@ -24,7 +24,7 @@ vi.mock("./agents", async (original) => ({
   isMidTurn: () => false,
 }));
 vi.mock("./send", () => ({ sendFromPlugin: vi.fn(async () => undefined), sendWithoutInterrupting: vi.fn(async () => undefined), sendCommand: vi.fn() }));
-vi.mock("./package-files", () => ({ TEMPLATES: { answer: "answer", relaunchOwner: "relaunch", carriedQuestions: "carried" }, skillDirectory: async () => "/skill", message: async (path: string) => path }));
+vi.mock("./package-files", () => ({ TEMPLATES: { answer: "answer", planChanges: "plan-changes", relaunchOwner: "relaunch", carriedQuestions: "carried" }, skillDirectory: async () => "/skill", message: async (path: string) => path }));
 vi.mock("./projects", () => ({
   projectPaths: async () => ({ tracker: "/tracker", suggestions: "/nonexistent/taro-suggestions.md" }),
   readProjectConfig: async () => null,
@@ -195,6 +195,28 @@ describe("Actions.answerDecision", () => {
       const decisions = [withChange()];
       await actionsOver(decisions).answerDecision(live, key, null, " my own words ");
       expect(decisions[0]?.answer).toMatchObject({ text: "my own words", label: null });
+    });
+
+    // TR-140: words typed on a plan card were taken for approval and the owner built at once.
+    it("sends words typed on a plan as changes requested, and records them as Request changes", async () => {
+      vi.mocked(sendFromPlugin).mockClear();
+      await actionsOver([stored("owner")]).answerDecision(live, key, null, "no independent reviewer");
+      expect(vi.mocked(sendFromPlugin).mock.calls[0]?.[2]).toBe("plan-changes");
+      expect(vi.mocked(appendTicketNote).mock.calls[0]?.[2]).toContain(`→ Request changes ("no independent reviewer")`);
+    });
+
+    it("sends Approve on a plan, and typed words on any other decision, as a plain answer", async () => {
+      const other = { ...stored("owner"), id: "fee-storage", key: "owner:fee-storage" } as StoredDecision;
+      for (const [decision, decisionKey, label, note] of [
+        [stored("owner"), key, "Approve", `→ Approve ("Approve")`],
+        [other, "owner:fee-storage", null, `→ "per trade"`],
+      ] as const) {
+        vi.mocked(sendFromPlugin).mockClear();
+        vi.mocked(appendTicketNote).mockClear();
+        await actionsOver([decision]).answerDecision(live, decisionKey, label, label === null ? "per trade" : "");
+        expect(vi.mocked(sendFromPlugin).mock.calls[0]?.[2]).toBe("answer");
+        expect(vi.mocked(appendTicketNote).mock.calls[0]?.[2]).toContain(note);
+      }
     });
   });
 
