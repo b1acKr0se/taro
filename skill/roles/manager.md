@@ -41,7 +41,7 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
    (`HOLD <time> — exclusive rewrite SH-010 first`) and tell the user; append **RELEASE** when the
    reason is gone. Without a HOLD, a startable ticket left queued with a free slot gets you woken,
    then an alert to the user after ten minutes, then a fresh Manager after twenty.
-   **Paused tickets are the user's:** a HOLD "paused by the user" (from the card's Pause) and a
+   **Paused tickets are the user's:** a HOLD "paused by the user" (from Pause in the ticket view) and a
    RELEASE "queued to resume" (its Resume, with no free slot) keep their status and have no live
    owner. Never dispatch, relaunch or RELEASE one yourself; the plugin starts a fresh owner when the
    user resumes it and a slot frees. Such a ticket does not count until its fresh owner runs.

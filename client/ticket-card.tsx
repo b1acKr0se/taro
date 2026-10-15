@@ -3,10 +3,11 @@
  * happening now (`card-now.ts`: a headline read whole, a muted detail under it, and the action on its
  * own line, all in one column beside the icon), children folded to one line, and one muted footer line
  * (complexity, context, subagents, PR) that wraps rather than cuts off. A card carries only actions
- * that need the user now; Pause and Compact are in the ticket view's summary (TR-095). An ask is in the asker's words
- * (TR-045): a question with its options as chips that answer at once, what a permission asks to do, a
- * delivery's summary with Accept and Request changes as one pair; a scope approval with a template plan
- * is the compact plan card instead (TR-061). Once finished: what it was and what it cost.
+ * that need the user now; Pause and Compact are in the ticket view's summary (TR-095). An ask is in
+ * the asker's words (TR-045): a question with its options as chips that answer at once, what a
+ * permission asks to do, a delivery's summary with Accept and Request changes as one pair; a scope
+ * approval with a template plan is the compact plan card instead (TR-061). Once finished: what it was
+ * and what it cost.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";

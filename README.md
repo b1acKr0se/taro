@@ -68,8 +68,8 @@ not wasted.
 - **Every turn is read.** When an agent's turn ends, Taro reads its status line and questions and
   updates its card.
 - **Stalls get a nudge.** A task owner that stops without saying it is done, waiting or blocked
-  gets one nudge; if it stops again, its card turns **Stalled** for you to nudge, compact or
-  relaunch.
+  gets one nudge; if it stops again, its card turns **Stalled** for you to nudge or relaunch
+  (Compact is in the ticket view).
 - **Crashes are recovered.** An agent whose process dies is restarted with its conversation intact;
   when that fails, a task owner or the Manager is started afresh. After two recoveries within an
   hour Taro stops and leaves the card **Stalled**.
