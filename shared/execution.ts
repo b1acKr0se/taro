@@ -111,7 +111,7 @@ export function pullRequestMergeInstruction(notes: string | null, finalSummary: 
     "Then record ACCEPTANCE and set the ticket Done. " +
     "If the head moved, do not merge; present it again. " +
     `If GitHub refuses the ${title} method, do not use another: record NOT-MERGED with GitHub's reason. ` +
-    `If ${baseBranch} cannot fast-forward (uncommitted changes, another branch checked out, commits origin lacks, the fetch failed), do not touch it: record NOT-SYNCED with the reason.`
+    `If ${baseBranch} cannot fast-forward (uncommitted changes, another branch checked out, commits origin lacks, the fetch failed), do not touch it: record NOT-SYNCED with the reason and what I do first (not that it merged: the card says so).`
   );
 }
 

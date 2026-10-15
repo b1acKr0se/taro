@@ -142,7 +142,7 @@ describe("pullRequestMergeInstruction", () => {
     expect(text).toContain("git -C /home/user/notes-app fetch origin develop, then git -C /home/user/notes-app merge --ff-only origin/develop");
     expect(text.indexOf("merge --ff-only")).toBeGreaterThan(text.indexOf("Confirm its state is MERGED"));
     expect(text.indexOf("record ACCEPTANCE")).toBeGreaterThan(text.indexOf("merge --ff-only"));
-    expect(text).toContain("If develop cannot fast-forward (uncommitted changes, another branch checked out, commits origin lacks, the fetch failed), do not touch it: record NOT-SYNCED with the reason.");
+    expect(text).toContain("If develop cannot fast-forward (uncommitted changes, another branch checked out, commits origin lacks, the fetch failed), do not touch it: record NOT-SYNCED with the reason and what I do first (not that it merged: the card says so).");
   });
 
   it("lets a second Accept after NOT-SYNCED skip the merge GitHub already made", () => {
