@@ -116,7 +116,18 @@ export function Inbox({
       {[ordered.filter(isPlanApproval), ordered.filter((decision) => !isPlanApproval(decision))].map((group, kind) => (
         <CardGrid key={kind} width={listWidth}>
           {group.map((decision) => (
-            <PlanDecision key={decision.key} decision={decision} theme={theme} compact={compact} head={askedBy(decision)} brief={gridColumns(listWidth, GRID_GAP) > 1} fill onAnswered={refetch}>
+            <PlanDecision
+              key={decision.key}
+              decision={decision}
+              theme={theme}
+              compact={compact}
+              head={askedBy(decision)}
+              brief={gridColumns(listWidth, GRID_GAP) > 1}
+              fill
+              // A plan card opens its ticket's chat, at the plan's message, as on the board (TR-126).
+              onOpen={decision.ticket === null ? null : () => onOpenTicket(decision.project, { id: decision.ticket ?? "" })}
+              onAnswered={refetch}
+            >
               <QuestionCard
                 decision={decision}
                 asker={askedBy(decision)}

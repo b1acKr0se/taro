@@ -5,7 +5,8 @@
  * changes… opens the change box in place of the buttons, as on the acceptance card (TR-112). The plan comes from the
  * ticket (`loadTicket`, shared with the Ticket tab); while it loads, or when it does not follow the
  * template, the usual decision card shows. The full plan, with its sections
- * folded past their limits, is `PlanBody`, shown in the Ticket tab.
+ * folded past their limits, is `PlanBody`, shown in the Ticket tab. Given `onOpen`, the whole card opens
+ * the ticket's chat, where it lands on the plan's message, as the other cards that wait for the user do (TR-126).
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
@@ -66,7 +67,7 @@ export function PlanDecision({
   theme,
   compact,
   head = null,
-  onOpenHead = null,
+  onOpen = null,
   brief = false,
   answeredFrom = "screen",
   onAnswered,
@@ -80,8 +81,8 @@ export function PlanDecision({
   brief?: boolean;
   /** The line above the question: who asked, or the ticket on the board. */
   head?: string | null;
-  /** Opens what the head names (the ticket, on the board); the head is plain text without it. */
-  onOpenHead?: (() => void) | null;
+  /** Opens the ticket's chat from anywhere on the card outside its buttons; the card is not pressable without it. */
+  onOpen?: (() => void) | null;
   answeredFrom?: "screen" | "tab";
   onAnswered: () => void;
   /** Grows to its grid row's height, its buttons at the bottom (TR-105). */
@@ -92,7 +93,7 @@ export function PlanDecision({
   const eligible = decision.id === SCOPE_APPROVAL && decision.ticket !== null && options !== null;
   const plan = useTicketPlan(decision.project, decision.ticket, eligible);
   if (!eligible || options === null || plan === null) return <>{children}</>;
-  return <PlanCard decision={decision} plan={plan} options={options} theme={theme} compact={compact} head={head} onOpenHead={onOpenHead} brief={brief} answeredFrom={answeredFrom} onAnswered={onAnswered} fill={fill} />;
+  return <PlanCard decision={decision} plan={plan} options={options} theme={theme} compact={compact} head={head} onOpen={onOpen} brief={brief} answeredFrom={answeredFrom} onAnswered={onAnswered} fill={fill} />;
 }
 
 function PlanCard({
@@ -102,7 +103,7 @@ function PlanCard({
   theme,
   compact,
   head,
-  onOpenHead,
+  onOpen,
   brief,
   answeredFrom,
   onAnswered,
@@ -114,7 +115,7 @@ function PlanCard({
   theme: PluginTheme;
   compact: boolean;
   head: string | null;
-  onOpenHead: (() => void) | null;
+  onOpen: (() => void) | null;
   brief: boolean;
   answeredFrom: "screen" | "tab";
   onAnswered: () => void;
@@ -123,6 +124,9 @@ function PlanCard({
   const viewPlan = useViewPlan();
   // Outside the Taro screen there is no Ticket tab to open: the plan unfolds in the card instead.
   const [unfolded, setUnfolded] = useState(false);
+  // While the change box is open a click in its field must not leave for the chat; the card stays enabled, as
+  // a disabled one marks everything inside it disabled (aria-disabled) on the web, the box's buttons included.
+  const [writing, setWriting] = useState(false);
   const { colors } = theme;
   const styles = useMemo(
     () => ({
@@ -136,8 +140,8 @@ function PlanCard({
         ...(fill ? { flexGrow: 1 } : {}),
       },
       head: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
-      headLink: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.xs },
-      headLinkText: { flexShrink: 1 },
+      headRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.xs },
+      headText: { flexShrink: 1 },
       waiting: { color: colors.statusWarning, fontSize: FONT_SIZE.micro, fontWeight: "700" as const, letterSpacing: 0.5 },
       question: { color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" as const, lineHeight: lineHeightFor(FONT_SIZE.body) },
       titles: { gap: SPACE.xxs },
@@ -147,24 +151,23 @@ function PlanCard({
     [colors, compact, decision.blocking, fill],
   );
   const ticket = decision.ticket ?? "";
-  return (
-    <View style={styles.card}>
-      <View style={styles.titles}>
-        {head === null ? null : onOpenHead === null ? (
-          <Text style={styles.head} numberOfLines={1}>
+  const titles = (
+    <View style={styles.titles}>
+      {head === null ? null : (
+        <View style={styles.headRow}>
+          <Text style={[styles.head, styles.headText]} numberOfLines={1}>
             {head}
           </Text>
-        ) : (
-          <Pressable accessibilityRole="link" accessibilityLabel={`Open ${head}`} onPress={onOpenHead} style={styles.headLink}>
-            <Text style={[styles.head, styles.headLinkText]} numberOfLines={1}>
-              {head}
-            </Text>
-            <Icon name="ArrowRight" size={12} color={colors.foregroundMuted} />
-          </Pressable>
-        )}
-        {decision.blocking ? <Text style={styles.waiting}>WAITING FOR YOU</Text> : null}
-        <Text style={styles.question}>{decision.question}</Text>
-      </View>
+          {onOpen === null ? null : <Icon name="ArrowRight" size={12} color={colors.foregroundMuted} />}
+        </View>
+      )}
+      {decision.blocking ? <Text style={styles.waiting}>WAITING FOR YOU</Text> : null}
+      <Text style={styles.question}>{decision.question}</Text>
+    </View>
+  );
+  const body = (
+    <>
+      {titles}
       {unfolded ? <PlanBody plan={plan} theme={theme} /> : <PlanSummary plan={plan} theme={theme} compact={compact} brief={brief} />}
       <View style={styles.buttons}>
         <PlanActions
@@ -175,10 +178,17 @@ function PlanCard({
           answeredFrom={answeredFrom}
           onAnswered={onAnswered}
           place={unfolded ? "unfolded card" : "card"}
+          onWriting={setWriting}
           viewPlan={viewPlan === null ? { label: unfolded ? "Hide plan" : "View plan", onPress: () => setUnfolded((open) => !open) } : { label: "View plan", onPress: () => viewPlan(decision.project, ticket) }}
         />
       </View>
-    </View>
+    </>
+  );
+  if (onOpen === null) return <View style={styles.card}>{body}</View>;
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={`${head ?? ticket} asks: ${decision.question}`} onPress={writing ? undefined : onOpen} style={styles.card}>
+      {body}
+    </Pressable>
   );
 }
 
@@ -285,6 +295,7 @@ export function PlanActions({
   viewPlan = null,
   place = "ticket plan",
   presses: sharedPresses = null,
+  onWriting,
 }: {
   decision: StoredDecision;
   options: PlanCardOptions;
@@ -297,13 +308,19 @@ export function PlanActions({
   place?: PlanActionsPlace;
   /** The presses of another Approve for the same decision on the screen, so only one runs at a time. */
   presses?: Actions | null;
+  /** Told when the change box opens or closes. */
+  onWriting?: (open: boolean) => void;
 }) {
   const answer = useRpc(answerDecision);
   const ownPresses = useActions();
   const presses = sharedPresses ?? ownPresses;
   const [typed, setTyped] = useState("");
   // The option the box is open for: null for Request changes…, undefined while the buttons show.
-  const [writing, setWriting] = useState<string | null | undefined>(undefined);
+  const [writing, setWritingState] = useState<string | null | undefined>(undefined);
+  const setWriting = (value: string | null | undefined) => {
+    setWritingState(value);
+    onWriting?.(value !== undefined);
+  };
   // The box and the buttons under it are revealed together, so Send changes stays above the keyboard.
   const foot = useRef<View>(null);
   const reveal = useRevealFocused(foot);
