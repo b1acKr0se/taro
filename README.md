@@ -6,9 +6,9 @@ Taro is a [Paseo](https://github.com/getpaseo/paseo) plugin that runs software w
 
 ## Why Taro?
 
-In Paseo you usually open a new workspace for each task: you discuss and plan with an agent, then it
-builds. That is fine for one task. With many at once it breaks down. You cannot easily manage that
-many workspaces, and the only way to see how each task is going is to open it and read the chat.
+In Paseo you usually open a new workspace for each task, discuss and plan with an agent, and let it
+build. That works for one task. With many at once, you cannot easily manage that many workspaces,
+and the only way to see how each task is going is to open it and read the chat.
 
 Taro fixes this by giving you one point of contact, and makes the progress of every task visible
 in one place:
@@ -25,9 +25,8 @@ in one place:
   be proved, then milestones, delivery, evidence and a short summary.
 - **Work goes on while you are away.** Stalled and crashed agents are handled for you (see
   Unattended work and cost).
-- **Desktop and phone.** The manager chat, Inbox, Board, Stats and ticket view work in Paseo's
-  desktop and mobile apps, each laid out for the size of the screen, so you can answer or accept a
-  change wherever you are.
+- **Desktop and phone.** The same plugin works in Paseo's desktop and mobile apps, so you always
+  have access.
 
 <p align="center">
   <img src="assets/screenshots/board.png" width="100%" alt="Taro's board beside a task owner's chat">
