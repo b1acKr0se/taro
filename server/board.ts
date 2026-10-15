@@ -10,7 +10,7 @@ import { ticketFileAlerts } from "../shared/alerts";
 import { boardColumn, complexityOf, FIRST_PAGE, hasStarted, newestOwner, PAGED_COLUMNS, pageColumns, ticketAgents } from "../shared/board";
 import { offersCompact } from "../shared/compact";
 import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
-import { acceptedRecord, executionMachine, notMergedRecord, pullRequestUrl, type AcceptedRecord, type NotMergedRecord } from "../shared/execution";
+import { acceptedRecord, executionMachine, notMergedRecord, pullRequestMerged, pullRequestUrl, type AcceptedRecord, type NotMergedRecord } from "../shared/execution";
 import type { Board, BoardPaging, Card, TicketDetailView } from "../shared/contracts";
 import { latestMilestone, type Milestone } from "../shared/milestones";
 import { deliveredLine, firstAsk } from "../shared/needs-you";
@@ -43,6 +43,7 @@ async function recordedFacts(
 ): Promise<{
   hostElsewhere: string | null;
   pullRequest: string | null;
+  pullRequestMerged: boolean;
   latestMilestone: Milestone | null;
   evidenceRecord: ParsedEvidence | null;
   accepted: AcceptedRecord | null;
@@ -56,6 +57,7 @@ async function recordedFacts(
     return {
       hostElsewhere: host !== null && host !== hostname() ? host : null,
       pullRequest: pullRequestUrl(detail.implementationNotes, detail.finalSummary),
+      pullRequestMerged: pullRequestMerged(detail.implementationNotes),
       latestMilestone: latestMilestone(detail.implementationNotes),
       evidenceRecord: parseEvidence(detail.implementationNotes),
       accepted: acceptedRecord(detail.implementationNotes),
@@ -64,7 +66,7 @@ async function recordedFacts(
       notes: detail.implementationNotes,
     };
   } catch {
-    return { hostElsewhere: null, pullRequest: null, latestMilestone: null, evidenceRecord: null, accepted: null, notMerged: null, finalSummary: null, notes: null };
+    return { hostElsewhere: null, pullRequest: null, pullRequestMerged: false, latestMilestone: null, evidenceRecord: null, accepted: null, notMerged: null, finalSummary: null, notes: null };
   }
 }
 
@@ -237,6 +239,8 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         return role !== null && isSubagentRole(role) ? [{ ...agentBrief(agent, replacing), role }] : [];
       });
       const investigation = ticket.labels.includes("investigation");
+      // A Done card shows its PR (TR-114): read only for the cards on the page, which rarely change.
+      const pullRequestFacts = column === "done" ? await cachedRecordedFacts(paths.tracker, ticket.id, ticket.updatedAt) : facts;
       const evidence = ticket.status === "Awaiting acceptance" && facts !== null ? await judgeTicketEvidence(project, ticket.id, facts.evidenceRecord, investigation) : null;
       const archivedAgents = archivedByTicket.get(ticket.id) ?? [];
       const pastById = new Map(archivedAgents.map((agent) => [agent.id, agent]));
@@ -261,7 +265,8 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         updatedAt: ticket.updatedAt,
         owner: owner === null ? null : agentBrief(owner, replacing),
         ownerElsewhere: elsewhere,
-        pullRequest: facts?.pullRequest ?? null,
+        pullRequest: pullRequestFacts?.pullRequest ?? null,
+        pullRequestMerged: pullRequestFacts?.pullRequestMerged ?? false,
         lastStatus: ownLine ? ownerState?.lastStatus ?? null : null,
         stalled: ownerState?.stalled ?? false,
         stalledReason: ownerState?.stalled === true ? ownerState.stalledReason : null,

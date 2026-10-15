@@ -196,8 +196,10 @@ export const CardSchema = z.object({
   updatedAt: z.string().nullable(),
   owner: AgentBriefSchema.nullable(),
   ownerElsewhere: z.string().nullable(),
-  /** The ticket's PR, read from its records while it is Reviewing or Awaiting acceptance. */
+  /** The ticket's PR, read from its records while it is under way or Done. */
   pullRequest: z.string().nullable().default(null),
+  /** Whether the owner recorded the PR as merged at Accept (TR-114); shown on Done cards. */
+  pullRequestMerged: z.boolean().default(false),
   lastStatus: LastStatusSchema.nullable(),
   stalled: z.boolean(),
   /** Why the plugin left it stalled, when the status line does not say (a crash past the recovery limit). */

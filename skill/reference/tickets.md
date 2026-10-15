@@ -110,7 +110,11 @@ rather than exceed it.
   bullets; the first is the ticket's one-line result), How it was verified (at most 3, the review
   among them), Limitations (at most 3), then `Revision: <sha> on <branch> · PR: <URL or none>`.
   The evidence per criterion is the EVIDENCE record; do not repeat it.
-- **ACCEPTANCE**: the user's words, time, accepted revision and PR, merge result.
+- **ACCEPTANCE**: the user's words, time, accepted revision and PR, and the merge result as one
+  fixed field the board reads (a Done card shows GitHub's merged icon from it): `merge: merged
+  <merge commit or old → new>`, `merge: not merged — <reason>` or `merge: none` (nothing to merge,
+  such as an investigation). Write it exactly so, once, after the prose:
+  `ACCEPTANCE 2026-01-06T09:00Z — user: "I accept SH-012." Accepted 3f2a…, PR https://github.com/o/r/pull/42; merge: merged 9c1d…`.
 - **NOT-MERGED**: after Accept, a local-branch merge you did not make because of the main checkout
   (dirty, or on another branch), and only then: the reason in one short line the user reads on the
   card, what they do first. It ends the "merging" state and puts the card back in Needs you:

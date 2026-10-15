@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { boardColumn } from "./board";
-import { acceptedRecord, acceptedRecordText, executionMachine, executionWorkspace, finalSummaryBody, localMergeInstruction, noteRecords, notMergedRecord, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "./execution";
+import { acceptedRecord, acceptedRecordText, executionMachine, executionWorkspace, finalSummaryBody, localMergeInstruction, noteRecords, notMergedRecord, pullRequestMergeInstruction, pullRequestMerged, pullRequestUrl, reviewHead } from "./execution";
 
 const managerRecord = "EXECUTION 2026-10-13T11:22Z — owner agent d86f, workspace wks_67ddffd9312aa95a, machine devbox, worktree /w/tr-001";
 // As a Haiku owner wrote it on the throwaway daemon: the relaunch could not find its workspace (TR-001).
@@ -241,5 +241,73 @@ describe("notMergedRecord (TR-109)", () => {
   it("does not read the record's name mentioned inside another record", () => {
     expect(notMergedRecord(`${accepted}\nMILESTONE 2026-01-05T11:05Z — no NOT-MERGED needed, merging`)).toBeNull();
     expect(acceptedRecord(`${accepted}\nMILESTONE 2026-01-05T11:05Z — no NOT-MERGED needed, merging`)).not.toBeNull();
+  });
+});
+
+/** The ACCEPTED and ACCEPTANCE records of five tickets merged on GitHub before the merge field existed, verbatim but for the repository's owner. */
+const MERGED_BEFORE_THE_FIELD: Record<string, string> = {
+  "TR-107": [
+    "ACCEPTED 2026-10-15T02:54:45.156Z — the user accepted; merging: the pull request",
+    "ACCEPTANCE 2026-10-15T02:55Z — user: \"I accept TR-107. Merge https://github.com/example/taro/pull/1 now as roles/owner.md says, only if its headRefOid is still the recorded review head 2bf19219f87bb3c6546044b7131021870706ad2d\" — accepted revision 2bf19219f87bb3c6546044b7131021870706ad2d; PR https://github.com/example/taro/pull/1 squash-merged into main as f16d5ff5e13f41d36cc2bfe7c444ea1e276e1cfb (state MERGED)",
+  ].join("\n\n"),
+  "TR-109": [
+    "ACCEPTED 2026-10-15T03:08:51.300Z — the user accepted; merging: the pull request",
+    "ACCEPTANCE 2026-10-15T03:09Z — user's words: \"I accept TR-109.\" Accepted review head 9fcf158403fbf9649ff68a2554c1fe086236b509, PR https://github.com/example/taro/pull/4. Merge: squash with --match-head-commit, state MERGED, merge commit 63f99fcaf4dc6a106c87b660d95c4dcbfc0391a6 on origin/main (base 64bf24d unchanged since review).",
+  ].join("\n\n"),
+  "TR-111": [
+    "ACCEPTED 2026-10-15T02:59:24.111Z — the user accepted; merging: the pull request",
+    "ACCEPTANCE 2026-10-15T02:59Z — user: \"I accept TR-111. Merge https://github.com/example/taro/pull/2 now as roles/owner.md says, only if its headRefOid is still the recorded review head f19b8d3fa6e6f2abb8e3d978c60efdb57f231e20\"; accepted revision f19b8d3fa6e6f2abb8e3d978c60efdb57f231e20, PR https://github.com/example/taro/pull/2; head matched, squash-merged as 64bf24dfaabc95877c42c4e3f1dcfaadfac57f51, state MERGED",
+  ].join("\n\n"),
+  "TR-112": [
+    "ACCEPTED 2026-10-15T03:18:25.908Z — the user accepted; merging: the pull request",
+    "ACCEPTANCE 2026-10-15T03:18Z — user: \"I accept TR-112. Merge https://github.com/example/taro/pull/6 now as roles/owner.md says, only if its headRefOid is still the recorded review head 3553e2326850ab5bc69ce7ec7ee16c7aaac6609d\" — accepted revision 3553e2326850ab5bc69ce7ec7ee16c7aaac6609d; PR https://github.com/example/taro/pull/6 squash-merged with --match-head-commit, state MERGED, merge commit ab26974d08f3a4f37c40064390d8abc2639acb61",
+  ].join("\n\n"),
+  "TR-113": [
+    "ACCEPTED 2026-10-15T03:14:07.720Z — the user accepted; merging: the pull request",
+    "ACCEPTANCE 2026-10-15T03:14Z — user: \"I accept TR-113. Merge https://github.com/example/taro/pull/5 now as roles/owner.md says, only if its headRefOid is still the recorded review head c3fbfde113e798a992472c29458b043f45a57629 …\" Accepted revision c3fbfde113e798a992472c29458b043f45a57629, PR https://github.com/example/taro/pull/5; head matched; squash-merged with --match-head-commit; state MERGED, merge commit ce60b146af8c8ac073bcf67c181928f5bc752081.",
+  ].join("\n\n"),
+};
+
+describe("pullRequestMerged", () => {
+  const accepted = "ACCEPTED 2026-10-15T03:00:00.000Z — the user accepted; merging: the pull request";
+  const url = "https://github.com/example/notes-app/pull/7";
+
+  it("reads the merge field of the newest ACCEPTANCE record", () => {
+    expect(pullRequestMerged(`ACCEPTANCE 2026-10-15T03:01Z — user: "I accept." PR ${url}; merge: merged 0a1b2c3`)).toBe(true);
+    expect(pullRequestMerged(`ACCEPTANCE 2026-10-15T03:01Z — user: "I accept."\nmerge: Merged 0a1b2c3 (squash)`)).toBe(true);
+    expect(pullRequestMerged(`${accepted}\n\nACCEPTANCE 2026-10-15T03:01Z — PR ${url}, state MERGED; merge: not merged — GitHub refused the squash`)).toBe(false);
+    expect(pullRequestMerged(`ACCEPTANCE 2026-10-15T03:01Z — investigation, no code; merge: none`)).toBe(false);
+  });
+
+  it("lets a newer ACCEPTANCE record overrule an older one", () => {
+    const first = `ACCEPTANCE 2026-10-15T03:01Z — merge: not merged — the head moved`;
+    const second = `ACCEPTANCE 2026-10-15T04:01Z — merge: merged 0a1b2c3`;
+    expect(pullRequestMerged(`${first}\n\n${second}`)).toBe(true);
+    expect(pullRequestMerged(`${second}\n\n${first}`)).toBe(false);
+  });
+
+  it.each(Object.entries(MERGED_BEFORE_THE_FIELD))("reads %s, written before the field, as merged", (_id, notes) => {
+    expect(pullRequestMerged(notes)).toBe(true);
+  });
+
+  it("reads prose as merged only after the plugin's ACCEPTED note for the pull request", () => {
+    const prose = `ACCEPTANCE 2026-10-15T03:01Z — PR ${url} squash-merged, state MERGED`;
+    expect(pullRequestMerged(prose)).toBe(false);
+    expect(pullRequestMerged(`ACCEPTED 2026-10-15T03:00:00.000Z — the user accepted; merging: into main\n\n${prose}`)).toBe(false);
+    expect(pullRequestMerged(`${prose}\n\n${accepted}`)).toBe(false);
+    expect(pullRequestMerged(`${accepted}\n\nACCEPTANCE 2026-10-15T03:01Z — PR ${url}; merge commit 0a1b2c3`)).toBe(true);
+  });
+
+  it("does not read a local fast-forward, a missing PR or a refusal as a merged pull request", () => {
+    expect(pullRequestMerged(`${accepted}\n\nACCEPTANCE 2026-10-14T10:23Z — Merge: main fast-forwarded bee2749..aac6288, clean.`)).toBe(false);
+    expect(pullRequestMerged(`${accepted}\n\nACCEPTANCE 2026-10-15T03:01Z — state MERGED, merge commit 0a1b2c3`)).toBe(false);
+    expect(pullRequestMerged(`${accepted}\n\nACCEPTANCE 2026-10-15T03:01Z — PR ${url} NOT MERGED: GitHub refused`)).toBe(false);
+    expect(pullRequestMerged(`${accepted}\n\nACCEPTANCE 2026-10-15T03:01Z — PR ${url} closed without merging`)).toBe(false);
+  });
+
+  it("is false with no ACCEPTANCE record at all", () => {
+    expect(pullRequestMerged(accepted)).toBe(false);
+    expect(pullRequestMerged("")).toBe(false);
+    expect(pullRequestMerged(null)).toBe(false);
   });
 });
