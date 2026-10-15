@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decisionsOfLiveAgents, StoredDecisionSchema, withdrawOpenDecisions, type StoredDecision } from "./state";
+import { decisionsOfLiveAgents, openQuestionHolding, StoredDecisionSchema, withdrawOpenDecisions, type StoredDecision } from "./state";
 
 function decision(agentId: string, id: string, status: StoredDecision["status"] = "open", project = "taro"): StoredDecision {
   return {
@@ -36,6 +36,23 @@ describe("decisionsOfLiveAgents", () => {
   it("shows nothing when no agent is live, and nothing from nothing", () => {
     expect(decisionsOfLiveAgents([decision("a", "x")], new Set())).toEqual([]);
     expect(decisionsOfLiveAgents([], new Set(["a"]))).toEqual([]);
+  });
+});
+
+describe("openQuestionHolding (TR-124)", () => {
+  it("finds the agent's other open decision", () => {
+    const decisions = [decision("other-owner", "naming"), decision("owner", "naming"), decision("owner", "merge", "answered")];
+    expect(openQuestionHolding(decisions, "owner", "owner:scope-approval")?.key).toBe("owner:naming");
+  });
+
+  it("never holds a re-ask of the open decision itself", () => {
+    expect(openQuestionHolding([decision("owner", "scope-approval")], "owner", "owner:scope-approval")).toBeUndefined();
+  });
+
+  it("holds nothing once the earlier decisions are answered or withdrawn, or when there are none", () => {
+    expect(openQuestionHolding([decision("owner", "naming", "answered"), decision("owner", "size", "withdrawn")], "owner", "owner:scope-approval")).toBeUndefined();
+    expect(openQuestionHolding([], "owner", "owner:scope-approval")).toBeUndefined();
+    expect(openQuestionHolding([decision("other-owner", "naming")], "owner", "owner:scope-approval")).toBeUndefined();
   });
 });
 
