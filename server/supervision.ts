@@ -396,7 +396,9 @@ export class Supervisor {
     const held: { id: string; open: string }[] = [];
     const corrections = await this.state.updateDecisions((stored) => {
       const problems: string[] = [];
-      for (const decision of decisions) {
+      // Withdrawals first: an owner may withdraw its open question below the block that asks the next one.
+      const inOrder = [...decisions.filter((decision) => decision.withdrawn), ...decisions.filter((decision) => !decision.withdrawn)];
+      for (const decision of inOrder) {
         const key = `${agent.id}:${decision.id}`;
         const index = stored.findIndex((existing) => existing.key === key);
         if (decision.withdrawn) {
@@ -433,12 +435,12 @@ export class Supervisor {
           held.push({ id: decision.id, open: holding.id });
           continue;
         }
-        if (existing === undefined) {
-          stored.push(next);
+        if (existing === undefined) stored.push(next);
+        else stored[index] = next;
+        // Shown for the first time (a held one included): counted, and its format problems reported.
+        if (existing === undefined || existing.status === "withdrawn") {
           if (identity.ticket !== null) newlyAsked.push(identity.ticket);
           if (decision.problems.length > 0) problems.push(...decision.problems);
-        } else {
-          stored[index] = next;
         }
       }
       return problems;

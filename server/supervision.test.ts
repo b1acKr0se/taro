@@ -13,7 +13,7 @@ import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, huma
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held" },
+  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", decisionCorrection: "decision-correction" },
   skillDirectory: async () => "/skill",
   message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : `${path}:${values.ticket ?? ""}`),
 }));
@@ -448,6 +448,51 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
         ["scope-approval", "open"],
       ]);
       expect(held()).toEqual([]);
+    });
+
+    it("withdraws before it holds, so the withdrawal may follow the next question in the message", async () => {
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      const first = [human("start"), ask("naming", "naming?")];
+      await run(taro, ...first);
+      const withdrawal = { type: "assistant_message", text: "```decision\nid: naming\nstatus: withdrawn\n```" };
+      await run(taro, ...first, plugin("carry on"), ask("scope-approval", "scope-approval?"), withdrawal);
+      expect(decisions.map((decision) => [decision.id, decision.status])).toEqual([
+        ["naming", "withdrawn"],
+        ["scope-approval", "open"],
+      ]);
+      expect(held()).toEqual([]);
+    });
+
+    it("shows the next question when the user answers in the tab and the owner asks it in the same reply", async () => {
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      const first = [human("start"), ask("naming", "naming?")];
+      await run(taro, ...first);
+      await run(taro, ...first, human("Call it Notes"), ask("scope-approval", "scope-approval?"));
+      expect(decisions.map((decision) => [decision.id, decision.status, decision.answer?.text ?? null])).toEqual([
+        ["naming", "answered", "Call it Notes"],
+        ["scope-approval", "open", null],
+      ]);
+      expect(held()).toEqual([]);
+    });
+
+    it("counts a held decision and reports its format problems when it is shown, not when it is held", async () => {
+      const { state, decisions } = fakeState();
+      const count = vi.fn(async () => undefined);
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count } as unknown as Stats, recovery);
+      const incomplete = { type: "assistant_message", text: "```decision\nid: scope-approval\nquestion: Approve the plan for TR-9?\noptions:\n  - label: Approve\n    prompt: Approve\n```\n\nwaiting: plan" };
+      const corrections = () => vi.mocked(sendFromPlugin).mock.calls.filter(([, , text]) => text.startsWith("decision-correction"));
+      const first = [human("start"), ask("naming", "naming?"), incomplete];
+      await run(taro, ...first);
+      expect(decisions.map((decision) => decision.status)).toEqual(["open", "withdrawn"]);
+      expect(count).toHaveBeenCalledTimes(1);
+      expect(corrections()).toHaveLength(0);
+
+      await run(taro, ...first, human("Call it Notes"), incomplete);
+      expect(decisions.map((decision) => decision.status)).toEqual(["answered", "open"]);
+      expect(count).toHaveBeenCalledTimes(2);
+      expect(corrections()).toHaveLength(1);
     });
 
     it("still replaces the open decision when the owner asks it again", async () => {
