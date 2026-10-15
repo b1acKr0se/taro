@@ -32,6 +32,15 @@ describe("reply box sources", () => {
     expect(plan).toMatch(/label="Request changes…"/);
   });
 
+  it("reveals a change box's buttons with it on a phone, though the box focuses itself as it mounts (TR-129)", () => {
+    // autoFocus runs before the wrapper's ref is set: a companion read at focus time was null, and the
+    // buttons stayed under the keyboard. The reveal reads it when it runs.
+    const keyboard = clientFiles.find((file) => file.name === "client/keyboard.tsx")?.source ?? "";
+    expect(keyboard).toMatch(/claim\(\(\) => \(companion\?\.current \?\? null\)/);
+    expect(keyboard).toMatch(/revealedWith\.current\?\.\(\)/);
+    expect(clientFiles.find((file) => file.name === "client/change-box.tsx")?.source).toMatch(/\bautoFocus\b/);
+  });
+
   it("puts the send button inside the box only in the chats; cards send with their buttons under it", () => {
     // Each element runs from "<ReplyBox" to its own closing line, a lone "/>".
     const elements = (source: string) => source.split("<ReplyBox").slice(1).map((rest) => rest.split(/\n\s*\/>\n/)[0] ?? "");
