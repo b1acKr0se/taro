@@ -71,6 +71,8 @@ type ChatComposer =
       actions?: ReactNode;
       /** The agent's context window, drawn as a ring inside the composer beside the send button. */
       context?: { used: number | null | undefined; max: number | null | undefined };
+      /** A line just above the reply box (the manager's Replace manager offer, TR-128). */
+      composerNote?: ReactNode;
       readOnly?: undefined;
     }
   | {
@@ -80,6 +82,7 @@ type ChatComposer =
       onSend?: undefined;
       actions?: undefined;
       context?: undefined;
+      composerNote?: undefined;
     };
 
 export function AgentChat({
@@ -91,6 +94,7 @@ export function AgentChat({
   onSend,
   actions,
   context,
+  composerNote,
   readOnly,
   decorateRow,
   transformText,
@@ -532,6 +536,7 @@ export function AgentChat({
                 {suggestions}
               </ActionRow>
             )}
+            {composerNote ?? null}
             {notice === null ? null : (
               <View style={styles.quick}>
                 <Icon name="AlertTriangle" size={13} color={theme.colors.statusWarning} />

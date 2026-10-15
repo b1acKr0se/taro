@@ -208,7 +208,8 @@ export default function contribute(server: PluginServerContext) {
         const board = await loadBoard(paseo, state, config.project, actions.queueAlerts(config.project)).catch(() => null);
         const trackerSyncProblem = config.trackerSync === "remote" ? trackers.syncProblem(config.project) : null;
         const needsYou = inboxCount(board, trackerSyncProblem !== null);
-        return { config, manager: manager === null ? null : agentBrief(manager, await readReplacingProviders()), trackerSyncProblem, needsYou };
+        const managerLastTurnEndedAt = manager === null ? null : ((await state.agent(manager.id))?.lastTurnEndedAt ?? null);
+        return { config, manager: manager === null ? null : agentBrief(manager, await readReplacingProviders()), managerLastTurnEndedAt, trackerSyncProblem, needsYou };
       }),
     );
     return { taroHome: await taroHome(), projects };
