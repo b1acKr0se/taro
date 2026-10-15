@@ -17,6 +17,8 @@ import { deliveredLine, firstAsk } from "../shared/needs-you";
 import { dependsOn } from "../shared/owner-cap";
 import { pastTicketAgents } from "../shared/past-agents";
 import { pauseRefusal, pauseView, type PauseView } from "../shared/pause";
+import { holdReason } from "../shared/queue-check";
+import { queuedWait } from "../shared/queued-wait";
 import { offersSpecChange } from "../shared/spec-change";
 import { isSubagentRole, roleFromLabel, TARO_LABELS } from "../shared/project";
 import { boardAlerts, type BoardAlert } from "../shared/recovery";
@@ -240,8 +242,13 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         return role !== null && isSubagentRole(role) ? [{ ...agentBrief(agent, replacing), role }] : [];
       });
       const investigation = ticket.labels.includes("investigation");
-      // A Done card shows its PR (TR-114): read only for the cards on the page, which rarely change.
-      const pullRequestFacts = column === "done" ? await cachedRecordedFacts(paths.tracker, ticket.id, ticket.updatedAt) : facts;
+      // A Done card shows its PR (TR-114), a Queued one what it waits on (TR-138): read only for the cards on the page.
+      const pageFacts = column === "done" || column === "queued" ? await cachedRecordedFacts(paths.tracker, ticket.id, ticket.updatedAt) : facts;
+      const pullRequestFacts = column === "done" ? pageFacts : facts;
+      const waits =
+        column === "queued"
+          ? queuedWait({ id: ticket.id, dependencies: ticket.dependencies, holdReason: holdReason(pageFacts?.notes ?? null), tickets })
+          : null;
       const evidence = ticket.status === "Awaiting acceptance" && facts !== null ? await judgeTicketEvidence(project, ticket.id, facts.evidenceRecord, investigation) : null;
       const archivedAgents = archivedByTicket.get(ticket.id) ?? [];
       const pastById = new Map(archivedAgents.map((agent) => [agent.id, agent]));
@@ -284,6 +291,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         delivered: ticket.status === "Awaiting acceptance" ? deliveredLine(facts?.finalSummary ?? null) : null,
         pause: pausing.pause,
         pausable: pausing.pausable,
+        queuedWait: waits,
       };
     }),
   );

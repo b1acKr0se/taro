@@ -1,12 +1,13 @@
 /**
  * What a board card says is happening now (TR-026, TR-031): the first of why it stalled, what it asks
  * of you, that it was accepted and is merging, where a teammate's owner runs, the subagent the owner
- * waits on, what the running owner is doing (TR-080), or the idle owner's last status line or newer
- * milestone. Each is a headline read whole (it wraps, never cut
+ * waits on, what the running owner is doing (TR-080), what a queued ticket waits on (TR-138), or the
+ * idle owner's last status line or newer milestone. Each is a headline read whole (it wraps, never cut
  * mid-fact), a muted detail under it, and for an ask the action that opens it. Pure.
  */
 import type { Card } from "../shared/contracts";
 import { PAUSE_HANDOFF_TIMEOUT_MS, type PauseView } from "../shared/pause";
+import type { QueuedWait } from "../shared/queued-wait";
 import type { StatusState } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import { callAction, cardCalls, readinessText, waitingOnPermissions, type CardCall } from "./card-calls";
@@ -23,6 +24,7 @@ export type NowLine =
   | ({ kind: "stalled" } & Lines)
   | ({ kind: "pause"; state: PauseView["state"] } & Lines)
   | ({ kind: "call"; call: CardCall; action: string } & Lines)
+  | ({ kind: "queued" } & Lines)
   | ({ kind: "accepted" } & Lines)
   | ({ kind: "elsewhere" } & Lines)
   | ({ kind: "subagent" } & Lines)
@@ -43,8 +45,8 @@ export function cardNowLine(card: Card, now: number): NowLine | null {
       detail: ago(card.accepted.at, now),
     };
   }
-  // Not started: a child's status line is its parent owner's, about other work.
-  if (card.column === "queued") return null;
+  // Not started: a child's status line is its parent owner's, about other work. What it waits on is its own (TR-138).
+  if (card.column === "queued") return card.queuedWait === null ? null : { kind: "queued", ...queuedWaitLines(card.queuedWait) };
   if (card.ownerElsewhere !== null) return { kind: "elsewhere", headline: `Owner runs on ${card.ownerElsewhere}`, detail: null };
   const waiting = waitingOn(card, now);
   if (waiting !== null) {
@@ -121,6 +123,17 @@ function callLines(call: CardCall, others: readonly CardCall[], now: number): Li
   const more = call.count > 1 ? `${call.count - 1} more permission${call.count === 2 ? "" : "s"}` : null;
   if (call.title === null) return { headline: waitingOnPermissions(call.count), detail: joined(also) };
   return { headline: call.asker === null ? call.title : `${call.asker}: ${call.title}`, detail: joined([call.detail, more, ...also]) };
+}
+
+/**
+ * What a Queued ticket waits on (TR-138): the tickets first, each with its status, so cards queued behind
+ * the same one read alike whether by a dependency or by the manager's HOLD; why under it.
+ */
+export function queuedWaitLines(wait: QueuedWait): Lines {
+  const on = wait.on.map((ticket) => (ticket.status === null ? ticket.id : `${ticket.id} (${ticket.status})`));
+  const why = joined([wait.dependencies.length === 0 ? null : `Depends on ${wait.dependencies.join(", ")}`, wait.hold === null ? null : `Held: ${wait.hold}`]);
+  if (on.length === 0) return { headline: "Held by the manager", detail: wait.hold };
+  return { headline: `Waits on ${on.join(", ")}`, detail: why };
 }
 
 /** Why an accepted delivery did not merge (TR-109), or merged without the local base branch following it (TR-110), as the card's headline. */

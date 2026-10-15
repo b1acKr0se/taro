@@ -78,6 +78,7 @@ function card(parts: Partial<Card>): Card {
     delivered: null,
     pause: null,
     pausable: false,
+    queuedWait: null,
     ...parts,
   };
 }
