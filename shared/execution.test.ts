@@ -145,6 +145,10 @@ describe("pullRequestMergeInstruction", () => {
     expect(text).toContain("If develop cannot fast-forward (uncommitted changes, another branch checked out, commits origin lacks, the fetch failed), do not touch it: record NOT-SYNCED with the reason and what I do first (not that it merged: the card says so).");
   });
 
+  it("has ACCEPTANCE carry the merge field the Done card reads (TR-114)", () => {
+    expect(pullRequestMergeInstruction(notes, null, target)).toContain("Then record ACCEPTANCE ending with its merge field, merge: merged <merge commit>, and set the ticket Done.");
+  });
+
   it("lets a second Accept after NOT-SYNCED skip the merge GitHub already made", () => {
     expect(pullRequestMergeInstruction(notes, null, target)).toContain("an earlier Accept may have merged it already: then go on");
   });
@@ -348,6 +352,13 @@ describe("NOT-SYNCED (TR-110)", () => {
       merged: true,
     });
     expect(notMergedRecord("NOT-SYNCED 2026-01-05T11:04Z")).toEqual({ at: "2026-01-05T11:04Z", reason: "the owner gave no reason", merged: true });
+  });
+
+  it("counts as merged on the Done card once the sync's ACCEPTANCE records its merge field (TR-114)", () => {
+    const acceptance = 'ACCEPTANCE 2026-01-05T11:31Z — user: "I accept NA-2." Merge commit, PR https://github.com/o/r/pull/9; local main b4ea851 → db91252; merge: merged db91252';
+    const notes = `${accepted}\n${notSynced}\n${acceptedRecordText("2026-01-05T11:30Z", "the pull request")}\n${acceptance}`;
+    expect(pullRequestMerged(notes)).toBe(true);
+    expect(notMergedRecord(notes)).toBeNull();
   });
 
   it("clears the merging state, and is stale once the user accepts again", () => {
