@@ -8,6 +8,7 @@
  */
 import { randomUUID } from "node:crypto";
 
+import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { doneTicketOf, planRelease } from "../shared/done-release";
 import { acceptedRecord, acceptedRecordText, executionWorkspace, localMergeInstruction, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
 import { dependsOn, holdsSlot, shouldWakeManager, statusChanges, withRecordedStatuses, type StatusChange } from "../shared/owner-cap";
@@ -124,8 +125,10 @@ export class Actions {
     // Text that already starts with the prompt (the card prefills it; older cards send the prompt alone) is not repeated.
     const words = option === null ? typed : typed === "" ? prompt : typed.startsWith(lead) ? typed : `${lead}: ${typed}`;
     if (words === "") throw new Error("Type an answer or press an option.");
+    // Words typed on a plan without a button are Request changes, never approval (TR-140): bare, an owner took them for one.
+    const changesRequested = option === null && decision.id === SCOPE_APPROVAL;
     // Tagged as the plugin's, so this answer closes only its own decision, not the agent's others.
-    await sendFromPlugin(paseo, decision.agentId, await message(TEMPLATES.answer, { text: words }));
+    await sendFromPlugin(paseo, decision.agentId, await message(changesRequested ? TEMPLATES.planChanges : TEMPLATES.answer, { text: words }));
     // A decision without a ticket is the manager's: answering it acts on a queued alert as a message would.
     if (decision.ticket === null) this.userToldManager(decision.project);
     const at = new Date().toISOString();
@@ -138,7 +141,7 @@ export class Actions {
     });
     if (decision.ticket !== null) {
       const paths = await projectPaths(decision.project);
-      await appendTicketNote(paths.tracker, decision.ticket, `ANSWER ${at} — ${decision.id}: "${decision.question}" → ${option === null ? `"${words}"` : `${option.label} ("${words}")`} (the user, from ${from === "tab" ? "the agent's tab" : "the Taro screen"})`).catch(
+      await appendTicketNote(paths.tracker, decision.ticket, `ANSWER ${at} — ${decision.id}: "${decision.question}" → ${option === null ? (changesRequested ? `Request changes ("${words}")` : `"${words}"`) : `${option.label} ("${words}")`} (the user, from ${from === "tab" ? "the agent's tab" : "the Taro screen"})`).catch(
         (error: unknown) => console.warn(`[taro] could not record the answer on ${decision.ticket}: ${error instanceof Error ? error.message : String(error)}`),
       );
     }
