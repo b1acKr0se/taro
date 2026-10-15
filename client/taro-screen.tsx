@@ -26,7 +26,7 @@ import { isOpenTicketAsked } from "./board-paging";
 import { ProjectBoard } from "./board";
 import { CentredLabel } from "./centred-label";
 import { CountBadge } from "./count-badge";
-import { needsYouTotal } from "./count-badge-text";
+import { countBadgeLabel, needsYouTotal } from "./count-badge-text";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { Inbox } from "./inbox";
@@ -211,7 +211,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
 
   function tab(key: string, label: string, icon: string, active: boolean, onPress: () => void, count = 0) {
     return (
-      <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: active }} accessibilityLabel={label} style={[styles.tab, active ? styles.tabActive : null]} onPress={onPress}>
+      <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: active }} accessibilityLabel={countBadgeLabel(label, count)} style={[styles.tab, active ? styles.tabActive : null]} onPress={onPress}>
         <Icon name={icon} size={15} color={active ? colors.foreground : colors.foregroundMuted} />
         <CentredLabel style={active ? styles.tabText : styles.tabMuted}>{label}</CentredLabel>
         <CountBadge theme={theme} count={count} />

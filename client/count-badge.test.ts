@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { COUNT_BADGE_MAX, countBadgeText } from "./count-badge-text";
+import { COUNT_BADGE_MAX, countBadgeLabel, countBadgeText, needsYouTotal } from "./count-badge-text";
 
 const source = (name: string) => readFileSync(join(__dirname, name), "utf8");
 const between = (text: string, start: string, end: string) => text.slice(text.indexOf(start), text.indexOf(end, text.indexOf(start)));
@@ -26,12 +26,32 @@ describe("countBadgeText", () => {
   });
 });
 
+describe("countBadgeLabel", () => {
+  it("keeps a tab's name alone at zero and reads the badge's count after it otherwise", () => {
+    expect(countBadgeLabel("Inbox", 0)).toBe("Inbox");
+    expect(countBadgeLabel("Inbox", 6)).toBe("Inbox, 6 waiting");
+    expect(countBadgeLabel("Inbox", 250)).toBe("Inbox, 99+ waiting");
+  });
+});
+
+describe("needsYouTotal", () => {
+  it("adds every project's waiting items, zero for none", () => {
+    expect(needsYouTotal([])).toBe(0);
+    expect(needsYouTotal([{ needsYou: 4 }, { needsYou: 0 }, { needsYou: 2 }])).toBe(6);
+  });
+});
+
 describe("the count badge's places", () => {
   it("is the one pill on the sidebar, the tabs and the switch", () => {
     expect(source("sidebar.tsx")).toContain("<CountBadge theme={theme} count={waiting} />");
     expect(source("taro-screen.tsx")).toContain("<CountBadge theme={theme} count={count} />");
     expect(source("ui.tsx")).toContain("<CountBadge theme={theme} count={option.count ?? 0} />");
     for (const file of ["sidebar.tsx", "taro-screen.tsx"]) expect(source(file)).not.toContain("statusWarning, alignItems");
+  });
+
+  it("names the count to screen readers on the tabs and the switch's segments", () => {
+    expect(source("taro-screen.tsx")).toContain("accessibilityLabel={countBadgeLabel(label, count)}");
+    expect(source("ui.tsx")).toContain("accessibilityLabel={countBadgeLabel(option.label, option.count ?? 0)}");
   });
 
   it("counts every project's waiting items on the wide Inbox tab and the phone's Inbox segment", () => {

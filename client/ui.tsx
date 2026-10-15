@@ -9,8 +9,9 @@ import { useEffect, useMemo, useRef } from "react";
 import { ActivityIndicator, Animated, Easing, Platform, Text, View } from "react-native";
 import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
-import { CountBadge } from "./count-badge";
 import { BUTTON, SEGMENTED } from "./control-size";
+import { CountBadge } from "./count-badge";
+import { countBadgeLabel } from "./count-badge-text";
 import { Pressable } from "./focus";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 
@@ -197,7 +198,7 @@ export function Segmented<Value extends string>({
             <Pressable
               key={option.value}
               accessibilityRole="tab"
-              accessibilityLabel={option.label}
+              accessibilityLabel={countBadgeLabel(option.label, option.count ?? 0)}
               accessibilityState={{ selected }}
               style={[
                 styles.segment,
