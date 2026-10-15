@@ -13,9 +13,9 @@ import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, huma
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing" },
+  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held" },
   skillDirectory: async () => "/skill",
-  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : `${path}:${values.ticket ?? ""}`),
+  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : `${path}:${values.ticket ?? ""}`),
 }));
 vi.mock("./projects", () => ({ readProjectConfig: async () => null, projectPaths: async () => ({ tracker: "/tracker" }) }));
 vi.mock("./tickets", () => ({ viewTicket: vi.fn() }));
@@ -391,6 +391,84 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     // Words typed in the agent's own tab still answer it.
     await run(taro, ...first, fromChat, reply, human("spaces"), reply);
     expect(decisions.map((decision) => [decision.status, decision.answer?.text])).toEqual([["answered", "spaces"]]);
+  });
+
+  // TR-124: an owner asks the user one thing at a time.
+  describe("one open question per owner", () => {
+    const held = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("decision-held:"));
+    const both = (first: string, second: string) => ({ type: "assistant_message", text: `${(ask(first, `${first}?`) as { text: string }).text.replace(/\n\nwaiting: .*$/, "")}\n\n${(ask(second, `${second}?`) as { text: string }).text}` });
+
+    beforeEach(() => {
+      vi.mocked(sendFromPlugin).mockClear();
+    });
+
+    it("shows only the first of two decisions asked in one turn and tells the owner why", async () => {
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      await run(taro, human("start"), both("naming", "scope-approval"));
+      expect(decisions.map((decision) => [decision.id, decision.status])).toEqual([
+        ["naming", "open"],
+        ["scope-approval", "withdrawn"],
+      ]);
+      expect(held()).toEqual(["decision-held:`scope-approval`:naming"]);
+    });
+
+    it("holds a later turn's decision while one is open, and shows it once the first is answered", async () => {
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      const first = [human("start"), ask("naming", "naming?")];
+      await run(taro, ...first);
+      const second = [plugin("carry on"), ask("scope-approval", "scope-approval?")];
+      await run(taro, ...first, ...second);
+      expect(decisions.map((decision) => decision.status)).toEqual(["open", "withdrawn"]);
+      expect(held()).toHaveLength(1);
+
+      // The same turn seen again (a repeated hook, the reconcile) holds nothing new and says nothing.
+      await run(taro, ...first, ...second);
+      expect(held()).toHaveLength(1);
+
+      decisions[0]!.status = "answered";
+      await run(taro, ...first, ...second, plugin("Call it Notes"), ask("scope-approval", "scope-approval?"));
+      expect(decisions.map((decision) => [decision.id, decision.status])).toEqual([
+        ["naming", "answered"],
+        ["scope-approval", "open"],
+      ]);
+      expect(held()).toHaveLength(1);
+    });
+
+    it("lets the owner withdraw the open decision and ask the next in the same message", async () => {
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      const first = [human("start"), ask("naming", "naming?")];
+      await run(taro, ...first);
+      const withdrawal = { type: "assistant_message", text: "Going with Notes.\n\n```decision\nid: naming\nstatus: withdrawn\n```" };
+      await run(taro, ...first, plugin("carry on"), withdrawal, ask("scope-approval", "scope-approval?"));
+      expect(decisions.map((decision) => [decision.id, decision.status])).toEqual([
+        ["naming", "withdrawn"],
+        ["scope-approval", "open"],
+      ]);
+      expect(held()).toEqual([]);
+    });
+
+    it("still replaces the open decision when the owner asks it again", async () => {
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      const first = [human("start"), ask("scope-approval", "Approve v1?")];
+      await run(taro, ...first);
+      await run(taro, ...first, plugin("revise"), ask("scope-approval", "Approve v2?"));
+      expect(decisions.map((decision) => [decision.question, decision.status])).toEqual([["Approve v2?", "open"]]);
+      expect(held()).toEqual([]);
+    });
+
+    it("leaves the manager free to ask several at once", async () => {
+      const manager = { ...owner, id: "manager-1", title: "Taro manager", labels: { "taro.project": "taro", "taro.role": "manager" } };
+      vi.mocked(fetchLiveAgent).mockResolvedValue(manager as unknown as PaseoAgent);
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      await run(taro, human("start"), both("start-TR-1", "start-TR-2"));
+      expect(decisions.map((decision) => decision.status)).toEqual(["open", "open"]);
+      expect(held()).toEqual([]);
+    });
   });
 
   it("takes the status line from this turn only, not an earlier turn's closing message", async () => {

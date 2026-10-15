@@ -1,0 +1,2 @@
+<!-- Sent when an owner asked a decision while another of its decisions was still open (TR-124). Placeholders: {{held}}, {{open}}. -->
+Your decision {{held}} was not shown to the user: your decision `{{open}}` is still open, and you ask one question at a time. Wait for its answer, fold it into what you ask next (a plan approval includes it in the plan), then ask {{held}} again in that later turn. If you no longer need `{{open}}` answered, withdraw it (`status: withdrawn`) in the same message that asks the next one.

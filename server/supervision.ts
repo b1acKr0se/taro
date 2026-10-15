@@ -11,7 +11,7 @@ import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared
 import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
 import { isCrash } from "../shared/recovery";
 import { hashText, parseDecisionBlocks, parseStatusLine, seenAgain, withImagePaths, type ParsedDecision } from "../shared/reports";
-import { withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDecision } from "../shared/state";
+import { openQuestionHolding, withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDecision } from "../shared/state";
 import { fetchLiveAgent, isMidTurn, listTaroAgents } from "./agents";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
 import { ticketEvidence, ticketEvidenceDirectory } from "./evidence";
@@ -393,6 +393,7 @@ export class Supervisor {
 
   private async storeDecisions(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, decisions: readonly ParsedDecision[], turn: string | null, now: string): Promise<void> {
     const newlyAsked: string[] = [];
+    const held: { id: string; open: string }[] = [];
     const corrections = await this.state.updateDecisions((stored) => {
       const problems: string[] = [];
       for (const decision of decisions) {
@@ -418,13 +419,24 @@ export class Supervisor {
           answer: null,
         };
         const existing = stored[index];
+        if (existing !== undefined && existing.status !== "open" && seenAgain(existing, decision, turn)) {
+          // The same block seen again (a repeated hook, a replayed turn) does not reopen an answered decision; asked in a later turn, it does.
+          continue;
+        }
+        // An owner asks one question at a time (TR-124): the next one, in this turn or a later one, waits
+        // for the open one's answer. Stored withdrawn, so its turn seen again stays quiet and the tab says so.
+        const holding = identity.role === "owner" ? openQuestionHolding(stored, agent.id, key) : undefined;
+        if (holding !== undefined) {
+          const withheld = { ...next, status: "withdrawn" as const };
+          if (existing === undefined) stored.push(withheld);
+          else stored[index] = withheld;
+          held.push({ id: decision.id, open: holding.id });
+          continue;
+        }
         if (existing === undefined) {
           stored.push(next);
           if (identity.ticket !== null) newlyAsked.push(identity.ticket);
           if (decision.problems.length > 0) problems.push(...decision.problems);
-        } else if (existing.status !== "open" && seenAgain(existing, decision, turn)) {
-          // The same block seen again (a repeated hook, a replayed turn) does not reopen an answered decision; asked in a later turn, it does.
-          continue;
         } else {
           stored[index] = next;
         }
@@ -434,6 +446,9 @@ export class Supervisor {
     for (const ticket of newlyAsked) await this.stats.count(identity.project, ticket, "decisions").catch(() => undefined);
     if (corrections.length > 0) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.decisionCorrection, { problems: [...new Set(corrections)].join("; ") }));
+    }
+    if (held.length > 0) {
+      await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.decisionHeld, { held: held.map((each) => `\`${each.id}\``).join(", "), open: held[0]!.open }));
     }
   }
 
