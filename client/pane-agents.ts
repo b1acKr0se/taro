@@ -95,6 +95,20 @@ export function openingPaneAgent(list: readonly PaneAgent[], askerId: string | n
   return list.find((agent) => agent.live && agent.id === askerId) ?? defaultPaneAgent(list);
 }
 
+/** One opening of a ticket's pane (its card or Review tapped) and the agent asking permission then. */
+export interface PaneOpening {
+  key: string;
+  asker: string | null;
+}
+
+/**
+ * The opening the pane keeps (TR-096): a new one at each tap, even on the ticket already open, takes
+ * the agent asking at that moment; within one, answering does not move the chat away from it.
+ */
+export function paneOpening(previous: PaneOpening | null, key: string, askerId: string | null): PaneOpening {
+  return previous !== null && previous.key === key ? previous : { key, asker: askerId };
+}
+
 /**
  * What another of the ticket's agents asks while one is shown, to open it from the chat: its
  * permission first, which holds it up (TR-096), else its question.

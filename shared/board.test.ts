@@ -194,6 +194,16 @@ describe("ticketAgents", () => {
     expect(ticketAgents("DEMO-1", null, grouped([])).askers).toEqual([]);
   });
 
+  it("leaves a subagent titled for a child off its parent's asks: the child's card alone shows it", () => {
+    const forChild = agent("builder", "implementer", "DEMO-1", "running", "DEMO-1.01 · implementer: building the list", undefined, [{}]);
+    const forParent = agent("reviewer", "reviewer", "DEMO-1", "running", "DEMO-1 · reviewer: checking the branch", undefined, [{}]);
+    const untitled = agent("researcher", "researcher", "DEMO-1", "running", "reading the logs", undefined, [{}]);
+    const parent = ticketAgents("DEMO-1", null, grouped([parentOwner, forChild, forParent, untitled]));
+    expect(parent.askers.map((entry) => entry.id).sort()).toEqual(["researcher", "reviewer"]);
+    expect(ticketAgents("DEMO-1", null, grouped([parentOwner, forChild])).columnAgent?.id).toBe("owner");
+    expect(ticketAgents("DEMO-1.01", "DEMO-1", grouped([parentOwner, forChild])).askers.map((entry) => entry.id)).toEqual(["builder"]);
+  });
+
   it("lists a child's asking subagents, and the parent's owner only when it places the child", () => {
     const asking = agent("owner", "owner", "DEMO-1", "idle", "DEMO-1 · Parent work", undefined, [{}]);
     const builder = agent("builder", "implementer", "DEMO-1.01", "running", "DEMO-1.01 · implementer: x");

@@ -20,7 +20,7 @@ import { AgentChat } from "./agent-chat";
 import { AcceptanceCard } from "./acceptance-card";
 import { acceptanceReady } from "./card-calls";
 import { Pressable } from "./focus";
-import { askedElsewhere, openingPaneAgent, paneAgents, paneAgentJob, roleIcon } from "./pane-agents";
+import { askedElsewhere, openingPaneAgent, paneAgents, paneAgentJob, paneOpening, roleIcon, type PaneOpening } from "./pane-agents";
 import { PaneHeader } from "./pane-header";
 import { paneGutter, SPACE } from "./spacing";
 import { TicketView } from "./ticket-view";
@@ -45,6 +45,7 @@ export function OwnerPane({
   onOpenAgent,
   onChanged,
   onShowBoard,
+  opening = 0,
 }: {
   card: Card;
   project: string;
@@ -63,11 +64,15 @@ export function OwnerPane({
   onChanged: () => void;
   /** Brings the hidden board back; null while it shows. */
   onShowBoard: (() => void) | null;
+  /** Counts taps that opened a ticket: each starts the pane afresh, on the agent asking then (TR-096). */
+  opening?: number;
 }) {
   const tell = useRpc(tellAgent);
   // Kept with the card it was chosen on: opening another ticket (its Answer → or Review →) starts on Chat, where its asks are answered.
+  // A tap on the ticket already open is a new opening too: Review lands on the chat of whoever asks (TR-096).
+  const openKey = `${card.id}#${opening}`;
   const [chosenTab, setTab] = useState<{ card: string; tab: "chat" | "ticket" } | null>(null);
-  const tab = ticketBeside ? "chat" : planOpen ? "ticket" : chosenTab?.card !== card.id ? "chat" : chosenTab.tab;
+  const tab = ticketBeside ? "chat" : planOpen ? "ticket" : chosenTab?.card !== openKey ? "chat" : chosenTab.tab;
   // Chat and Ticket stay mounted once shown for this card, so switching between them draws nothing new (TR-069).
   const tabsVisited = useVisited(`${card.id}:${tab}`);
   // Back from a plan returns to wherever View plan was pressed, which it does not name.
@@ -76,13 +81,13 @@ export function OwnerPane({
   const [chosen, setChosen] = useState<{ card: string; agent: string } | null>(null);
   const agents = useMemo(() => paneAgents(card), [card.owner, card.subagents, card.pastAgents]);
   const now = useNow();
-  const chosenId = chosen?.card === card.id ? chosen.agent : null;
-  // Who asked permission as the ticket opened is kept with it, so answering does not move the chat to the owner (TR-096).
+  const chosenId = chosen?.card === openKey ? chosen.agent : null;
+  // Who asked permission as the ticket opened is kept with that opening, so answering does not move the chat to the owner (TR-096).
   const askerId = card.permission?.agentId ?? null;
-  const [openedOn, setOpenedOn] = useState<{ card: string; asker: string | null }>({ card: card.id, asker: askerId });
-  if (openedOn.card !== card.id) setOpenedOn({ card: card.id, asker: askerId });
-  const openedAsker = openedOn.card === card.id ? openedOn.asker : askerId;
-  const shown = agents.find((agent) => agent.id === chosenId) ?? openingPaneAgent(agents, openedAsker) ?? agents[0] ?? null;
+  const [openedOn, setOpenedOn] = useState<PaneOpening>(() => paneOpening(null, openKey, askerId));
+  const current = paneOpening(openedOn, openKey, askerId);
+  if (current !== openedOn) setOpenedOn(current);
+  const shown = agents.find((agent) => agent.id === chosenId) ?? openingPaneAgent(agents, current.asker) ?? agents[0] ?? null;
   const inset = paneGutter(compact);
   // Once accepted the owner is merging: nothing is left to accept (TR-031).
   const accepting = card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null;
@@ -100,7 +105,7 @@ export function OwnerPane({
       ]}
       onChange={(value: "chat" | "ticket") => {
         if (planOpen && value === "chat") onLeavePlan();
-        setTab({ card: card.id, tab: value });
+        setTab({ card: openKey, tab: value });
       }}
     />
   );
@@ -130,7 +135,7 @@ export function OwnerPane({
           <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small }}>Its current owner runs on {card.ownerElsewhere}.</Text>
         ) : null}
         {tab === "chat" && agents.length > 1 ? (
-          <AgentChips theme={theme} slim={compact} agents={agents} selectedId={shown?.id ?? null} now={now} onSelect={(agentId) => setChosen({ card: card.id, agent: agentId })} />
+          <AgentChips theme={theme} slim={compact} agents={agents} selectedId={shown?.id ?? null} now={now} onSelect={(agentId) => setChosen({ card: openKey, agent: agentId })} />
         ) : null}
       </View>
       ) : null}
@@ -173,7 +178,7 @@ export function OwnerPane({
                   elsewhere === null ? undefined : (
                     <Pressable
                       accessibilityRole="button"
-                      onPress={() => setChosen({ card: card.id, agent: elsewhere.agent.id })}
+                      onPress={() => setChosen({ card: openKey, agent: elsewhere.agent.id })}
                       style={{ width: "100%", flexDirection: "row", alignItems: "center", gap: SPACE.sm }}
                     >
                       <Icon name={elsewhere.permission ? "KeyRound" : "Hand"} size={13} color={elsewhere.blocking ? theme.colors.statusWarning : theme.colors.foregroundMuted} />

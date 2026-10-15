@@ -476,7 +476,12 @@ function ProjectView({
   const tabsVisited = useVisited(active && compact ? phoneTab : null);
   const rightVisited = useVisited(active && !compact && layout.board ? rightPane : null);
   const warmed = useWarmUp(PHONE_TABS.length, active && compact);
-  const openTicket = useLatestCallback((card: Pick<Card, "id">) => onTicket(card.id));
+  // Every tap opens afresh, the ticket already open too, so its pane lands on whoever asks now (TR-096).
+  const [opening, setOpening] = useState(0);
+  const openTicket = useLatestCallback((card: Pick<Card, "id">) => {
+    setOpening((count) => count + 1);
+    onTicket(card.id);
+  });
   // The manager's questions are answered in its chat: on a phone its tab, on a wide screen the left pane.
   const openManager = useLatestCallback(() => (compact ? onPhoneTab("manager") : onShowManager()));
   const openElsewhere = useLatestCallback(onOpenElsewhere);
@@ -518,6 +523,7 @@ function ProjectView({
         onOpenAgent={openAgent}
         onChanged={changed}
         onShowBoard={showBoard}
+        opening={opening}
       />
     );
   // The open ticket's pane over the manager's, which stays mounted beneath it for Back (TR-069).

@@ -134,7 +134,9 @@ export function ticketAgents<Agent extends JoinedAgent>(
   const owner = newestOwner(own) ?? newestOwner(parents);
   const asking = byNewest(subagents.filter(asks));
   if (parentId === null) {
-    const askers = owner !== null && asks(owner) ? [owner, ...asking] : asking;
+    // A subagent titled for a child asks on the child's card alone, so one request is not counted twice.
+    const forThis = asking.filter((agent) => titledTicket(agent.title) === null || titledTicket(agent.title) === ticketId);
+    const askers = owner !== null && asks(owner) ? [owner, ...forThis] : forThis;
     return { owner, subagents, columnAgent: askers[0] ?? owner, askers };
   }
   const running = newest(subagents.filter((agent) => agent.status === "running" || agent.status === "initializing"));
@@ -143,6 +145,11 @@ export function ticketAgents<Agent extends JoinedAgent>(
   const columnAgent = asking[0] ?? running ?? placing;
   // The parent's owner asks about the child only while nothing else of the child's is under way.
   return { owner, subagents, columnAgent, askers: columnAgent !== null && columnAgent === placing && asks(placing) ? [placing] : asking };
+}
+
+/** The ticket id a title starts with ("TR-1.01 · implementer: …"), or null. */
+function titledTicket(title: string | null | undefined): string | null {
+  return /^([A-Z][A-Z0-9]*-\d+(?:\.\d+)*)\s/.exec(title ?? "")?.[1] ?? null;
 }
 
 function asks(agent: JoinedAgent): boolean {

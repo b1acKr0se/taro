@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { AgentBrief, Card } from "../shared/contracts";
 import type { SubagentRole } from "../shared/project";
-import { askedElsewhere, defaultPaneAgent, openingPaneAgent, paneAgentDetail, paneAgentState, paneAgents, roleIcon, taskOfTitle, waitingOn } from "./pane-agents";
+import { askedElsewhere, defaultPaneAgent, openingPaneAgent, paneAgentDetail, paneOpening, paneAgentState, paneAgents, roleIcon, taskOfTitle, waitingOn } from "./pane-agents";
 
 function brief(id: string, title: string | null = null): AgentBrief {
   return {
@@ -191,5 +191,20 @@ describe("openingPaneAgent and askedElsewhere", () => {
   it("says nothing of the permission in the asker's own chat, and points it at another agent's question", () => {
     expect(askedElsewhere({ permission: ask, decisions: [] }, "researcher-1", listed)).toBeNull();
     expect(askedElsewhere({ permission: ask, decisions: [question] }, "researcher-1", listed)).toMatchObject({ agent: { id: "owner-1" }, text: "Call it drafts?", permission: false, blocking: false });
+  });
+});
+
+// TR-096 review: Review on the ticket already open stayed on the owner's chat.
+describe("paneOpening", () => {
+  it("takes the agent asking at each new opening, the ticket already open too", () => {
+    const first = paneOpening(null, "NA-1#1", "owner-1");
+    expect(first).toEqual({ key: "NA-1#1", asker: "owner-1" });
+    expect(paneOpening(first, "NA-1#2", "researcher-1")).toEqual({ key: "NA-1#2", asker: "researcher-1" });
+  });
+
+  it("keeps its asker within one opening once the request clears or another asks", () => {
+    const opened = paneOpening(null, "NA-1#1", "researcher-1");
+    expect(paneOpening(opened, "NA-1#1", null)).toBe(opened);
+    expect(paneOpening(opened, "NA-1#1", "reviewer-1")).toBe(opened);
   });
 });
