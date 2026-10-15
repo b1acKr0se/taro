@@ -101,6 +101,9 @@ export function TicketCard({
       dot: { width: 8, height: 8, borderRadius: 4 },
       row: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, alignItems: "center" as const },
       muted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
+      stat: { flexDirection: "row" as const, alignItems: "flex-start" as const, gap: SPACE.xs, flexShrink: 1 },
+      statIcon: { paddingTop: (lineHeightFor(FONT_SIZE.caption) - 12) / 2 },
+      statText: { flexShrink: 1, lineHeight: lineHeightFor(FONT_SIZE.caption) },
       link: { color: colors.accent, fontSize: FONT_SIZE.caption },
       footerText: { flexShrink: 1, lineHeight: lineHeightFor(FONT_SIZE.caption) },
       track: { width: 44, height: 3, borderRadius: 2, backgroundColor: colors.surface2, overflow: "hidden" as const },
@@ -139,16 +142,23 @@ export function TicketCard({
   const statsLine =
     stats === null ? null : (
       <View style={styles.row}>
-        <Icon name="Timer" size={12} color={colors.foregroundMuted} />
-        <Text style={styles.muted} numberOfLines={1}>
-          {formatDuration(stats.wallMs)} wall · {formatDuration(stats.agentActiveMs)} active · {stats.turns} turn{stats.turns === 1 ? "" : "s"}
-        </Text>
+        {/* Each icon stays beside its text: a narrow card wraps the text beside the icon, not under it (TR-103). */}
+        <View style={styles.stat}>
+          <View style={styles.statIcon}>
+            <Icon name="Timer" size={12} color={colors.foregroundMuted} />
+          </View>
+          <Text style={[styles.muted, styles.statText]}>
+            {formatDuration(stats.wallMs)} wall · {formatDuration(stats.agentActiveMs)} active · {stats.turns} turn{stats.turns === 1 ? "" : "s"}
+          </Text>
+        </View>
         {/* No recorded cost says nothing worth a line of its own. */}
         {stats.costUsd === null ? null : (
-          <>
-            <Icon name="Coins" size={12} color={colors.foregroundMuted} />
-            <Text style={styles.muted}>{formatCost(stats.costUsd)}</Text>
-          </>
+          <View style={styles.stat}>
+            <View style={styles.statIcon}>
+              <Icon name="Coins" size={12} color={colors.foregroundMuted} />
+            </View>
+            <Text style={[styles.muted, styles.statText]}>{formatCost(stats.costUsd)}</Text>
+          </View>
         )}
       </View>
     );
