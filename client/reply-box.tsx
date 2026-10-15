@@ -232,6 +232,9 @@ function useNativeText(enabled: boolean, value: string, onChangeText: (text: str
     ...shown,
     onChangeText: (text: string) => {
       sync.typed(text);
+      // Android sizes the field again only when its text prop changes, and a held delete (batched by the
+      // keyboard) left an emptied box several lines tall: emptying it changes that prop, once, to "".
+      if (text === "") setShown((current) => (current.text === "" ? current : { ...current, text: "" }));
       onChangeText(text);
     },
   };

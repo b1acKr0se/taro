@@ -214,4 +214,17 @@ describe("the reply box on a phone (TR-125)", () => {
       platform.OS = "ios";
     }
   });
+
+  it("hands the field an empty text once when typing empties it, so Android sizes it again", () => {
+    const harness = mount("A long kept draft");
+    const firstField = harness.renders[0]?.field;
+    harness.type("A long");
+    harness.type("");
+    expect(harness.renders[harness.renders.length - 1]?.defaultValue).toBe("");
+    harness.type("N");
+    harness.type("New");
+    expect(harness.renders.slice(2).map((render) => render.defaultValue)).toEqual(["", "", ""]);
+    expect(harness.renders.every((render) => render.field === firstField)).toBe(true);
+    expect(textWrites(harness)).toBe(0);
+  });
 });
