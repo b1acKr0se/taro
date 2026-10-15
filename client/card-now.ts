@@ -182,13 +182,10 @@ function lowercased(text: string): string {
   return text.charAt(0).toLowerCase() + text.slice(1);
 }
 
-/** Over this much context an idle owner offers Compact on its card. */
-export const COMPACT_OFFER_TOKENS = 150_000;
-
 /**
  * The card's muted footer, in order: complexity, investigation, context, subagents (where a teammate's
  * owner runs is the now line).
- * A child's owner is its parent's, so its context (and Compact) stay on the parent's card.
+ * A child's owner is its parent's, so its context stays on the parent's card.
  */
 export function cardFooterParts(card: Card): string[] {
   const parts: string[] = [];
@@ -198,9 +195,4 @@ export function cardFooterParts(card: Card): string[] {
   if (used !== null) parts.push(`context ${formatTokenCount(used)}`);
   if (card.subagents.length > 0) parts.push(`${card.subagents.length} subagent${card.subagents.length === 1 ? "" : "s"}`);
   return parts;
-}
-
-export function offersCompact(card: Card): boolean {
-  const owner = card.owner;
-  return card.parent === null && owner !== null && owner.status === "idle" && (owner.contextUsedTokens ?? 0) > COMPACT_OFFER_TOKENS;
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Card } from "../shared/contracts";
 import type { StoredDecision } from "../shared/state";
-import { cardFooterParts, cardNowLine, offersCompact, pauseRow, questionContext } from "./card-now";
+import { cardFooterParts, cardNowLine, pauseRow, questionContext } from "./card-now";
 
 const NOW = Date.parse("2026-01-01T12:00:00Z");
 
@@ -344,17 +344,6 @@ describe("cardFooterParts", () => {
 
   it("leaves a child's context to its parent's card", () => {
     expect(cardFooterParts(card({ parent: "NA-027", owner: { ...owner, contextUsedTokens: 153_400 }, subagents: [implementer({})] }))).toEqual(["1 subagent"]);
-  });
-});
-
-describe("offersCompact", () => {
-  it("only for an idle owner past 150k", () => {
-    expect(offersCompact(card({ owner: { ...owner, contextUsedTokens: 150_001 } }))).toBe(true);
-    expect(offersCompact(card({ owner: { ...owner, contextUsedTokens: 150_000 } }))).toBe(false);
-    expect(offersCompact(card({ owner: { ...owner, status: "running", contextUsedTokens: 200_000 } }))).toBe(false);
-    expect(offersCompact(card({ owner: { ...owner, contextUsedTokens: null } }))).toBe(false);
-    expect(offersCompact(card({ owner: null }))).toBe(false);
-    expect(offersCompact(card({ parent: "NA-027", owner: { ...owner, contextUsedTokens: 200_000 } }))).toBe(false);
   });
 });
 

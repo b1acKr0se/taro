@@ -12,7 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 
-import { answerDecision, listOpenDecisions, loadTicket, pauseTicket, resumeTicket } from "../shared/contracts";
+import { answerDecision, compactAgent, listOpenDecisions, loadTicket, pauseTicket, resumeTicket } from "../shared/contracts";
 import { ticketViewApproval } from "../shared/decision-view";
 import { descriptionParts } from "../shared/description";
 import { finalSummaryBody } from "../shared/execution";
@@ -83,6 +83,8 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
   const approvePresses = useActions();
   const pauseRpc = useRpc(pauseTicket);
   const resumeRpc = useRpc(resumeTicket);
+  const compactRpc = useRpc(compactAgent);
+  // One owner of the Pause, Resume and Compact presses: while one is in flight the others are disabled.
   const pausePresses = useActions();
   // What Pause and Resume did is the server's to say (TR-088).
   const told = (result: { message: string }) => {
@@ -115,6 +117,7 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
   // The delivery names the PR; the user opens it from here before accepting (decision 34).
   const openLink = (url: string) => void openExternalUrl(url).catch((caught: unknown) => toast.error(errorText(caught)));
   const stacked = width !== null && width < STACK_BELOW_WIDTH;
+  const compactOwner = data.compactOwner;
 
   // An older ticket's criteria: inside the plan, under How I'll prove it.
   const criteria =
@@ -209,6 +212,15 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
               ? { kind: "resume", run: () => pausePresses.press("resume", () => resumeRpc({ project, ticket }), { after: "hold", onSuccess: told }), state: pausePresses.stateOf("resume"), busy: pausePresses.busy }
               : null
         }
+        compactAction={
+          compactOwner === null
+            ? null
+            : {
+                run: () => pausePresses.press("compact", () => compactRpc({ agentId: compactOwner }), { success: "Compacting after a handoff.", onSuccess: () => void detail.refetch() }),
+                state: pausePresses.stateOf("compact"),
+                busy: pausePresses.busy,
+              }
+        }
         summary={summary}
         approve={approving === null ? null : { ...approving, presses: approvePresses }}
         answeredFrom={answeredFrom}
@@ -248,6 +260,7 @@ function SummaryBlock({
   labels,
   pause,
   pauseAction,
+  compactAction,
   summary,
   approve,
   answeredFrom,
@@ -260,6 +273,8 @@ function SummaryBlock({
   pause: PauseView | null;
   /** Pause for a ticket under way, Resume for a paused one (TR-088). */
   pauseAction: { kind: "pause" | "resume"; run: () => void; state: "busy" | "done" | undefined; busy: boolean } | null;
+  /** Compact beside Pause, for an idle owner with a large context (TR-095). */
+  compactAction: { run: () => void; state: "busy" | "done" | undefined; busy: boolean } | null;
   summary: TicketSummary;
   approve: { decision: StoredDecision; options: PlanCardOptions; presses: Actions } | null;
   answeredFrom: "screen" | "tab";
@@ -292,17 +307,30 @@ function SummaryBlock({
         {labels.map((each) => (
           <Chip key={each} theme={theme} icon="Tag" text={each} color={colors.foregroundMuted} />
         ))}
-        {pauseAction === null ? null : (
-          <View style={{ marginLeft: "auto" }}>
-            <IconButton
-              icon={pauseAction.kind === "pause" ? "Pause" : "Play"}
-              label={pauseAction.kind === "pause" ? "Pause" : "Resume"}
-              showLabel
-              theme={theme}
-              disabled={pauseAction.busy}
-              state={pauseAction.state}
-              onPress={pauseAction.run}
-            />
+        {pauseAction === null && compactAction === null ? null : (
+          <View style={{ marginLeft: "auto", flexDirection: "row", flexWrap: "wrap", gap: SPACE.sm }}>
+            {pauseAction === null ? null : (
+              <IconButton
+                icon={pauseAction.kind === "pause" ? "Pause" : "Play"}
+                label={pauseAction.kind === "pause" ? "Pause" : "Resume"}
+                showLabel
+                theme={theme}
+                disabled={pauseAction.busy}
+                state={pauseAction.state}
+                onPress={pauseAction.run}
+              />
+            )}
+            {compactAction === null ? null : (
+              <IconButton
+                icon="Minimize2"
+                label="Compact"
+                showLabel
+                theme={theme}
+                disabled={compactAction.busy}
+                state={compactAction.state}
+                onPress={compactAction.run}
+              />
+            )}
           </View>
         )}
       </View>

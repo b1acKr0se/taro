@@ -271,6 +271,8 @@ export const TicketDetailSchema = z.object({
   /** Pausing, paused or queued to resume (TR-088), else null. */
   pause: PauseViewSchema.nullable().default(null),
   pausable: z.boolean().default(false),
+  /** The owner's agent id while Compact is offered for it (`shared/compact.ts`, TR-095), else null. */
+  compactOwner: z.string().nullable().default(null),
 });
 export type TicketDetailView = z.infer<typeof TicketDetailSchema>;
 

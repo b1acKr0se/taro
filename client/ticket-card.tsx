@@ -1,8 +1,9 @@
 /**
  * One ticket on the board (decision 10, TR-026, TR-031): id, phase and live dot, the title, what is
  * happening now (`card-now.ts`: a headline read whole, a muted detail under it, and the action on its
- * own line, all in one column beside the icon), children folded to one line, and one muted footer
- * (complexity, context, subagents, PR, and Compact when it applies). An ask is in the asker's words
+ * own line, all in one column beside the icon), children folded to one line, and one muted footer line
+ * (complexity, context, subagents, PR) that wraps rather than cuts off. A card carries only actions
+ * that need the user now; Pause and Compact are in the ticket view's summary (TR-095). An ask is in the asker's words
  * (TR-045): a question with its options as chips that answer at once, what a permission asks to do, a
  * delivery's summary with Accept and Request changes as one pair; a scope approval with a template plan
  * is the compact plan card instead (TR-061). Once finished: what it was and what it cost.
@@ -13,9 +14,9 @@ import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 
-import { acceptTicket, compactAgent, nudgeAgent, pauseTicket, relaunchOwner, resumeTicket, type Card, type StatsSummary } from "../shared/contracts";
+import { acceptTicket, nudgeAgent, relaunchOwner, resumeTicket, type Card, type StatsSummary } from "../shared/contracts";
 import { PhaseBadge } from "./badges";
-import { cardFooterParts, cardNowLine, offersCompact, type NowLine } from "./card-now";
+import { cardFooterParts, cardNowLine, type NowLine } from "./card-now";
 import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
@@ -53,9 +54,7 @@ export function TicketCard({
   const toast = useToast();
   const nudge = useRpc(nudgeAgent);
   const relaunch = useRpc(relaunchOwner);
-  const compactRpc = useRpc(compactAgent);
   const accept = useRpc(acceptTicket);
-  const pause = useRpc(pauseTicket);
   const resume = useRpc(resumeTicket);
   const actions = useActions();
   const busy = actions.busy;
@@ -165,9 +164,8 @@ export function TicketCard({
 
   const nowLine = cardNowLine(card, now);
   const footer = cardFooterParts(card);
-  const compactOffered = offersCompact(card);
-  const hasFooter = footer.length > 0 || card.pullRequest !== null || compactOffered || card.pausable;
-  // What Pause and Resume did is the server's to say: paused at once, pausing, started or queued (TR-088).
+  const hasFooter = footer.length > 0 || card.pullRequest !== null;
+  // What Resume did is the server's to say: started or queued (TR-088).
   const told = (result: { message: string }) => {
     toast.show(result.message, { variant: "success" });
     onChanged();
@@ -322,44 +320,20 @@ export function TicketCard({
         </View>
       )}
       {hasFooter ? (
+        // Never cut off: a narrow column or a phone wraps the meta line, and the PR link follows it (TR-095).
         <View style={styles.footer}>
-          <Text style={[styles.muted, { flexShrink: 1 }]} numberOfLines={1}>
-            {footer.join(" · ")}
-          </Text>
+          {footer.length === 0 ? null : <Text style={[styles.muted, { flexShrink: 1 }]}>{footer.join(" · ")}</Text>}
           {card.pullRequest === null ? null : (
             <Pressable
               accessibilityRole="link"
               onPress={() => void openExternalUrl(card.pullRequest ?? "").catch((caught: unknown) => toast.error(errorText(caught)))}
             >
-              <Text style={styles.link} numberOfLines={1}>
+              <Text style={styles.link}>
                 {footer.length === 0 ? "" : "· "}
                 {pullRequestLabel(card.pullRequest)}
               </Text>
             </Pressable>
           )}
-          <View style={{ flex: 1 }} />
-          {card.pausable ? (
-            <IconButton
-              icon="Pause"
-              label="Pause"
-              showLabel
-              theme={theme}
-              disabled={busy}
-              state={actions.stateOf("pause")}
-              onPress={() => actions.press("pause", () => pause({ project, ticket: card.id }), { after: "hold", onSuccess: told })}
-            />
-          ) : null}
-          {compactOffered && owner !== null ? (
-            <IconButton
-              icon="Minimize2"
-              label="Compact"
-              showLabel
-              theme={theme}
-              disabled={busy}
-              state={actions.stateOf("compact")}
-              onPress={() => actions.press("compact", () => compactRpc({ agentId: owner.id }), { success: "Compacting after a handoff.", onSuccess: onChanged })}
-            />
-          ) : null}
         </View>
       ) : null}
     </Pressable>
