@@ -33,8 +33,8 @@ describe("formatCost", () => {
 
 describe("pullRequestLabel", () => {
   it("shortens a pull request URL to its number and repository", () => {
-    expect(pullRequestLabel("https://github.com/o/r/pull/42")).toBe("PR #42 · o/r");
-    expect(pullRequestLabel("https://ghe.example.com/team/app/pull/7")).toBe("PR #7 · team/app");
+    expect(pullRequestLabel("https://github.com/o/r/pull/42")).toBe("PR\u00a0#42\u00a0· o/r");
+    expect(pullRequestLabel("https://ghe.example.com/team/app/pull/7")).toBe("PR\u00a0#7\u00a0· team/app");
   });
 
   it("keeps anything else as it is", () => {

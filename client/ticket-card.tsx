@@ -328,7 +328,7 @@ export function TicketCard({
       {hasFooter ? (
         // One text, so a narrow column or a phone wraps it at a word instead of cutting it off (TR-095).
         <View style={styles.footer}>
-          <Text style={styles.muted}>
+          <Text style={[styles.muted, { lineHeight: lineHeightFor(FONT_SIZE.caption) }]}>
             {footer.join(FOOTER_SEPARATOR)}
             {card.pullRequest === null ? null : (
               <>

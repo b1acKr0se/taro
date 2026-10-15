@@ -84,7 +84,8 @@ export function formatCost(usd: number | null): string {
 /** "PR #42 · owner/repo" for a GitHub-style pull request URL, else the URL itself. */
 export function pullRequestLabel(url: string): string {
   const match = /\/([^/]+\/[^/]+)\/pull\/(\d+)$/.exec(url);
-  return match === null ? url : `PR #${match[2]} · ${match[1]}`;
+  // No-break spaces keep "PR #42 ·" together when a card's meta line wraps (TR-095).
+  return match === null ? url : `PR\u00a0#${match[2]}\u00a0· ${match[1]}`;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
