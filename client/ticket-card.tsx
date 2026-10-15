@@ -17,12 +17,12 @@ import { Platform, Text, View } from "react-native";
 
 import { acceptTicket, nudgeAgent, relaunchOwner, resumeTicket, type Card, type StatsSummary } from "../shared/contracts";
 import { PhaseBadge } from "./badges";
-import { cardFooterParts, cardNowLine, type NowLine } from "./card-now";
+import { cardFooterLine, cardNowLine, type NowLine } from "./card-now";
 import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
 import { focusRingStyle } from "./focus-ring";
-import { errorText, formatCost, pullRequestLabel, formatDuration } from "./format";
+import { errorText, formatCost, formatDuration } from "./format";
 import { SPACE } from "./spacing";
 import { OptionChips } from "./option-chips";
 import { PlanDecision } from "./plan-card";
@@ -32,9 +32,6 @@ import { AcceptancePair, IconButton } from "./ui";
 import { useActions } from "./use-actions";
 import { useNow } from "./use-now";
 import { phaseLook, statusStateLook, toneColor } from "./visual-meta";
-
-/** A no-break space before the dot: a wrapped meta line never starts with "·". */
-const FOOTER_SEPARATOR = "\u00a0· ";
 
 export function TicketCard({
   card,
@@ -169,8 +166,8 @@ export function TicketCard({
   }
 
   const nowLine = cardNowLine(card, now);
-  const footer = cardFooterParts(card);
-  const hasFooter = footer.length > 0 || card.pullRequest !== null;
+  const footer = cardFooterLine(card);
+  const hasFooter = footer.meta !== "" || footer.pullRequest !== null;
   // What Resume did is the server's to say: started or queued (TR-088).
   const told = (result: { message: string }) => {
     toast.show(result.message, { variant: "success" });
@@ -329,18 +326,15 @@ export function TicketCard({
         // One text, so a narrow column or a phone wraps it at a word instead of cutting it off (TR-095).
         <View style={styles.footer}>
           <Text style={[styles.muted, { lineHeight: lineHeightFor(FONT_SIZE.caption) }]}>
-            {footer.join(FOOTER_SEPARATOR)}
-            {card.pullRequest === null ? null : (
-              <>
-                {footer.length === 0 ? "" : FOOTER_SEPARATOR}
-                <Text
-                  accessibilityRole="link"
-                  style={styles.link}
-                  onPress={() => void openExternalUrl(card.pullRequest ?? "").catch((caught: unknown) => toast.error(errorText(caught)))}
-                >
-                  {pullRequestLabel(card.pullRequest)}
-                </Text>
-              </>
+            {footer.meta}
+            {footer.pullRequest === null ? null : (
+              <Text
+                accessibilityRole="link"
+                style={styles.link}
+                onPress={() => void openExternalUrl(card.pullRequest ?? "").catch((caught: unknown) => toast.error(errorText(caught)))}
+              >
+                {footer.pullRequest}
+              </Text>
             )}
           </Text>
         </View>

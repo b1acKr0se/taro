@@ -10,7 +10,7 @@ import { PAUSE_HANDOFF_TIMEOUT_MS, type PauseView } from "../shared/pause";
 import type { StatusState } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import { callAction, cardCalls, readinessText, waitingOnPermissions, type CardCall } from "./card-calls";
-import { formatTokenCount, relativeTime } from "./format";
+import { formatTokenCount, pullRequestLabel, relativeTime } from "./format";
 import { waitingOn } from "./pane-agents";
 
 interface Lines {
@@ -187,6 +187,19 @@ function lowercased(text: string): string {
  * owner runs is the now line).
  * A child's owner is its parent's, so its context stays on the parent's card.
  */
+/** A no-break space before each dot: a wrapped meta line never starts with "·" (TR-095). */
+export const FOOTER_SEPARATOR = "\u00a0· ";
+
+/**
+ * The footer as one wrapping line: the meta parts joined, then the PR link's label (null without a PR),
+ * the separator before it ending `meta`.
+ */
+export function cardFooterLine(card: Card): { meta: string; pullRequest: string | null } {
+  const parts = cardFooterParts(card);
+  const pullRequest = card.pullRequest === null ? null : pullRequestLabel(card.pullRequest);
+  return { meta: parts.join(FOOTER_SEPARATOR) + (parts.length > 0 && pullRequest !== null ? FOOTER_SEPARATOR : ""), pullRequest };
+}
+
 export function cardFooterParts(card: Card): string[] {
   const parts: string[] = [];
   if (card.complexity !== null) parts.push(card.complexity);

@@ -7,7 +7,7 @@ import { hostname } from "node:os";
 
 import { latestActivity, type Activity } from "../shared/activity";
 import { ticketFileAlerts } from "../shared/alerts";
-import { boardColumn, complexityOf, FIRST_PAGE, hasStarted, PAGED_COLUMNS, pageColumns, ticketAgents } from "../shared/board";
+import { boardColumn, complexityOf, FIRST_PAGE, hasStarted, newestOwner, PAGED_COLUMNS, pageColumns, ticketAgents } from "../shared/board";
 import { offersCompact } from "../shared/compact";
 import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
 import { acceptedRecord, executionMachine, pullRequestUrl, type AcceptedRecord } from "../shared/execution";
@@ -322,7 +322,7 @@ export async function loadTicketDetail(paseo: PaseoApi, project: string, ticketI
   const tracker = (await projectPaths(project)).tracker;
   const detail = await viewTicket(tracker, ticketId);
   const owners = (await projectAgents(paseo, project, "owner").catch(() => [])).filter((agent) => dependsOn([agent.labels[TARO_LABELS.ticket] ?? ""], detail.id));
-  const owner = owners.find((agent) => agent.status !== "closed") ?? null;
+  const owner = newestOwner(owners);
   const pausing = ticketPause(detail, owner, {
     notes: detail.implementationNotes,
     accepted: detail.status === "Awaiting acceptance" ? acceptedRecord(detail.implementationNotes) : null,

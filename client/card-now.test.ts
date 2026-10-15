@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Card } from "../shared/contracts";
 import type { StoredDecision } from "../shared/state";
-import { cardFooterParts, cardNowLine, pauseRow, questionContext } from "./card-now";
+import { cardFooterLine, cardFooterParts, cardNowLine, pauseRow, questionContext } from "./card-now";
 
 const NOW = Date.parse("2026-01-01T12:00:00Z");
 
@@ -344,6 +344,24 @@ describe("cardFooterParts", () => {
 
   it("leaves a child's context to its parent's card", () => {
     expect(cardFooterParts(card({ parent: "NA-027", owner: { ...owner, contextUsedTokens: 153_400 }, subagents: [implementer({})] }))).toEqual(["1 subagent"]);
+  });
+});
+
+describe("cardFooterLine", () => {
+  const long = { complexity: "medium", investigation: true, owner: { ...owner, contextUsedTokens: 166_000 }, subagents: [implementer({}), implementer({ id: "agent-3" })] };
+
+  it("joins the parts and ends with the separator before the PR, a no-break space before every dot", () => {
+    const line = cardFooterLine(card({ ...long, pullRequest: "https://github.com/example/notes-app/pull/12" }));
+    expect(line.meta).toBe("medium\u00a0· investigation\u00a0· context 166k\u00a0· 2 subagents\u00a0· ");
+    expect(line.pullRequest).toBe("PR\u00a0#12\u00a0· example/notes-app");
+    // A plain space before a dot would let a wrapped line start with it (TR-095).
+    expect(`${line.meta}${line.pullRequest}`).not.toMatch(/ ·/);
+  });
+
+  it("has no trailing separator without a PR, and no leading one with only a PR", () => {
+    expect(cardFooterLine(card(long))).toEqual({ meta: "medium\u00a0· investigation\u00a0· context 166k\u00a0· 2 subagents", pullRequest: null });
+    expect(cardFooterLine(card({ pullRequest: "https://github.com/example/notes-app/pull/14" }))).toEqual({ meta: "", pullRequest: "PR\u00a0#14\u00a0· example/notes-app" });
+    expect(cardFooterLine(card({}))).toEqual({ meta: "", pullRequest: null });
   });
 });
 

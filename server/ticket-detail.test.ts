@@ -56,8 +56,8 @@ describe("loadTicketDetail children", () => {
   });
 });
 
-function ownerAgent(status: string, used: number | null, ticket = "NA-1"): PaseoAgent {
-  return { id: "agent-1", status, labels: { "taro.ticket": ticket }, lastUsage: used === null ? null : { contextWindowUsedTokens: used } } as unknown as PaseoAgent;
+function ownerAgent(status: string, used: number | null, ticket = "NA-1", id = "agent-1", updatedAt = "2026-01-01T12:00:00Z"): PaseoAgent {
+  return { id, status, updatedAt, labels: { "taro.ticket": ticket, "taro.role": "owner" }, lastUsage: used === null ? null : { contextWindowUsedTokens: used } } as unknown as PaseoAgent;
 }
 
 describe("loadTicketDetail Compact", () => {
@@ -73,6 +73,14 @@ describe("loadTicketDetail Compact", () => {
       vi.mocked(projectAgents).mockResolvedValue(agents);
       expect((await loadTicketDetail({} as PaseoApi, "notes", "NA-1")).compactOwner).toBeNull();
     }
+  });
+
+  it("acts on the newest live owner, the one the board shows, not the first listed", async () => {
+    vi.mocked(viewTicket).mockResolvedValue(parent([]));
+    vi.mocked(projectAgents).mockResolvedValue([ownerAgent("idle", 200_000, "NA-1", "agent-old", "2026-01-01T10:00:00Z"), ownerAgent("idle", 180_000, "NA-1", "agent-new", "2026-01-01T12:00:00Z")]);
+    expect((await loadTicketDetail({} as PaseoApi, "notes", "NA-1")).compactOwner).toBe("agent-new");
+    vi.mocked(projectAgents).mockResolvedValue([ownerAgent("idle", 200_000, "NA-1", "agent-old", "2026-01-01T10:00:00Z"), ownerAgent("running", 180_000, "NA-1", "agent-new", "2026-01-01T12:00:00Z")]);
+    expect((await loadTicketDetail({} as PaseoApi, "notes", "NA-1")).compactOwner).toBeNull();
   });
 
   it("is null for a child, whose owner is its parent's", async () => {

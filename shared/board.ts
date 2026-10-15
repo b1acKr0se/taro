@@ -161,7 +161,8 @@ export function hasStarted(status: string): boolean {
   return UNDER_WAY.has(status) || status === "Awaiting acceptance" || status === "Blocked" || status === "Done" || status === "Cancelled";
 }
 
-function newestOwner<Agent extends JoinedAgent>(agents: readonly Agent[]): Agent | null {
+/** The live owner the board shows; the ticket view acts on the same one (TR-095). */
+export function newestOwner<Agent extends JoinedAgent>(agents: readonly Agent[]): Agent | null {
   return newest(agents.filter((agent) => agent.labels[TARO_LABELS.role] === "owner" && agent.status !== "closed"));
 }
 
