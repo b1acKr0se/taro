@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { cardStatsText, formatClock, formatCost, formatDay, formatDuration, pullRequestLabel } from "./format";
+import { cardStatsText, formatClock, formatCost, formatDay, formatDuration, pullRequestLabel, pullRequestNumberLabel } from "./format";
 
 describe("formatDuration", () => {
   it("writes nothing as a dash", () => {
@@ -44,6 +44,20 @@ describe("formatCost", () => {
     expect(formatCost(0.004)).toBe("<$0.01");
     expect(formatCost(0.005)).toBe("$0.01");
     expect(formatCost(12.345)).toBe("$12.35");
+  });
+});
+
+describe("pullRequestNumberLabel", () => {
+  it("keeps only the number, held to its PR with a no-break space", () => {
+    expect(pullRequestNumberLabel("https://github.com/o/r/pull/42")).toBe("PR\u00a0#42");
+    expect(pullRequestNumberLabel("https://github.com/example-organisation/notes-app-for-teams/pull/1024")).toBe("PR\u00a0#1024");
+    expect(pullRequestNumberLabel("https://ghe.example.com/team/app/pull/7")).toBe("PR\u00a0#7");
+  });
+
+  it("shows any other link whole", () => {
+    expect(pullRequestNumberLabel("https://example.com/merge-requests/3")).toBe("https://example.com/merge-requests/3");
+    expect(pullRequestNumberLabel("https://github.com/o/r/pull/42/files")).toBe("https://github.com/o/r/pull/42/files");
+    expect(pullRequestNumberLabel("")).toBe("");
   });
 });
 

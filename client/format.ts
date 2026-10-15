@@ -104,6 +104,12 @@ export function pullRequestLabel(url: string): string {
   return match === null ? url : `PR\u00a0#${match[2]}\u00a0· ${(match[1] ?? "").replace(/-/g, "\u2011")}`;
 }
 
+/** "PR #42" for a GitHub-style pull request URL, else the URL itself: a Done card's PR mark, without the repository (TR-119). */
+export function pullRequestNumberLabel(url: string): string {
+  const match = /\/pull\/(\d+)$/.exec(url);
+  return match === null ? url : `PR\u00a0#${match[1]}`;
+}
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** A record's clock time on the milestone timeline, in local time ("14:03"); null when it has none or it is unreadable. */
