@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { PaseoApi } from "./host-types";
+import { COMPACTING_REFUSAL } from "../shared/pending-sends";
 import { holdsMessage, sendChatMessageOnce } from "./send";
 
 /** A Paseo whose timeline holds user messages under these ids, read as many times as asked. */
@@ -93,5 +94,26 @@ describe("holdsMessage", () => {
     expect(holdsMessage(entries, "chat-b")).toBe(true);
     expect(holdsMessage(entries, "chat-a")).toBe(false);
     expect(holdsMessage([], "chat-b")).toBe(false);
+  });
+});
+
+describe("sendChatMessageOnce during a compaction (TR-102)", () => {
+  function paseoCompacting(items: { type: string; status?: string }[]) {
+    return {
+      agents: { ref: () => ({ timeline: { refetch: async () => ({ entries: items.map((item) => ({ item })) }) } }) },
+    } as unknown as PaseoApi;
+  }
+
+  it("hands a message back unsent while a mid-turn agent compacts: Paseo would cancel the compaction for it", async () => {
+    const send = vi.fn(async () => {});
+    await expect(sendChatMessageOnce(paseoCompacting([{ type: "compaction", status: "loading" }]), "agent-1", "chat-a", send, true)).rejects.toThrow(COMPACTING_REFUSAL);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("sends once the compaction ended, or to an agent no longer mid-turn (a compaction left open)", async () => {
+    const send = vi.fn(async () => {});
+    await sendChatMessageOnce(paseoCompacting([{ type: "compaction", status: "loading" }, { type: "compaction", status: "completed" }]), "agent-1", "chat-a", send, true);
+    await sendChatMessageOnce(paseoCompacting([{ type: "compaction", status: "loading" }]), "agent-1", "chat-b", send, false);
+    expect(send).toHaveBeenCalledTimes(2);
   });
 });

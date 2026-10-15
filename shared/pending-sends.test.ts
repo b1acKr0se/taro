@@ -4,7 +4,11 @@ import {
   ChatMessageIdSchema,
   handBack,
   heldToRelease,
+  COMPACTING_REFUSAL,
   failureReason,
+  holdReason,
+  isCompacting,
+  isCompactingRefusal,
   isPassingFailure,
   isWorking,
   newChatMessageId,
@@ -156,12 +160,16 @@ describe("viewSends", () => {
 });
 
 describe("nextToSend (TR-102)", () => {
-  it("is the first message sending, past those sent and held", () => {
-    expect(nextToSend([sent("chat-a"), sent("chat-b", T0, "held"), sent("chat-c", T0, "sending"), sent("chat-d", T0, "sending")])?.id).toBe("chat-c");
+  it("is the first message sending, in order", () => {
+    expect(nextToSend([sent("chat-a", T0, "sending"), sent("chat-b", T0, "sending")])?.id).toBe("chat-a");
   });
 
   it("is none while a failed message comes first, so nothing overtakes it", () => {
     expect(nextToSend([sent("chat-a", T0, "failed"), sent("chat-b", T0, "sending")])).toBeNull();
+  });
+
+  it("is none while a held message comes first, so nothing overtakes it either", () => {
+    expect(nextToSend([sent("chat-a", T0, "held"), sent("chat-b", T0, "sending")])).toBeNull();
   });
 
   it("is the one before a failed message, which went first", () => {
@@ -171,6 +179,10 @@ describe("nextToSend (TR-102)", () => {
   it("is none with nothing to send", () => {
     expect(nextToSend([])).toBeNull();
     expect(nextToSend([sent("chat-a"), sent("chat-b", T0, "held")])).toBeNull();
+  });
+
+  it("goes past messages already sent", () => {
+    expect(nextToSend([sent("chat-a"), sent("chat-b", T0, "sending")])?.id).toBe("chat-b");
   });
 });
 
@@ -215,12 +227,61 @@ describe("failureReason", () => {
 describe("heldToRelease", () => {
   const sends = [sent("chat-a", T0, "held"), sent("chat-b", T0 + 1), sent("chat-c", T0 + 2, "held")];
 
-  it("holds while the agent works", () => {
-    expect(heldToRelease(sends, true)).toEqual([]);
+  it("holds while something holds them: a replacing provider's step, or a compaction", () => {
+    expect(heldToRelease(sends, "replaces")).toEqual([]);
+    expect(heldToRelease(sends, "compacting")).toEqual([]);
   });
 
-  it("releases every held message, oldest first, once it stops", () => {
-    expect(heldToRelease(sends, false).map((send) => send.id)).toEqual(["chat-a", "chat-c"]);
+  it("releases every held message, oldest first, once nothing holds them", () => {
+    expect(heldToRelease(sends, null).map((send) => send.id)).toEqual(["chat-a", "chat-c"]);
+  });
+});
+
+function compaction(status: "loading" | "completed"): SendTimelineEntry {
+  return { ...entry("compaction"), item: { type: "compaction", status } };
+}
+
+describe("isCompacting (TR-102)", () => {
+  it("is true from a compaction's start until its end", () => {
+    expect(isCompacting([entry("assistant_message"), compaction("loading")])).toBe(true);
+    expect(isCompacting([compaction("loading"), compaction("completed")])).toBe(false);
+  });
+
+  it("stays true with only the user's messages since: they wait for the compaction", () => {
+    expect(isCompacting([compaction("loading"), entry("user_message", T0, "chat-a")])).toBe(true);
+  });
+
+  it("is false once the agent took a step after a compaction that never ended (one cancelled)", () => {
+    expect(isCompacting([compaction("loading"), entry("user_message"), entry("assistant_message")])).toBe(false);
+    expect(isCompacting([compaction("loading"), tool("shell")])).toBe(false);
+  });
+
+  it("is false with no compaction", () => {
+    expect(isCompacting([])).toBe(false);
+    expect(isCompacting([entry("assistant_message")])).toBe(false);
+  });
+});
+
+describe("holdReason (TR-102)", () => {
+  it("holds while a working agent compacts, whatever its provider", () => {
+    expect(holdReason({ working: true, steers: true, compacting: true })).toBe("compacting");
+    expect(holdReason({ working: true, steers: false, compacting: true })).toBe("compacting");
+  });
+
+  it("holds while a replacing provider works", () => {
+    expect(holdReason({ working: true, steers: false, compacting: false })).toBe("replaces");
+  });
+
+  it("sends to a steering agent mid-turn, and to any stopped agent, even with a compaction left open", () => {
+    expect(holdReason({ working: true, steers: true, compacting: false })).toBeNull();
+    expect(holdReason({ working: false, steers: false, compacting: true })).toBeNull();
+  });
+});
+
+describe("isCompactingRefusal", () => {
+  it("recognises the plugin's answer through Paseo's wrapping, and nothing else", () => {
+    expect(isCompactingRefusal(new Error(`Request failed: ${COMPACTING_REFUSAL} code=handler_error`))).toBe(true);
+    expect(isCompactingRefusal(new Error("Transport closed (code 1006)"))).toBe(false);
   });
 });
 

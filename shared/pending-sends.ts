@@ -183,14 +183,45 @@ export function handBack(
 
 /**
  * The message to send next: the first one sending, once everything before it has gone. Null while a
- * failed one is before it, so a message never overtakes one sent earlier.
+ * failed or held one is before it, so a message never overtakes one sent earlier.
  */
 export function nextToSend(sends: readonly PendingSend[]): PendingSend | null {
   for (const send of sends) {
-    if (send.state === "failed") return null;
+    if (send.state === "failed" || send.state === "held") return null;
     if (send.state === "sending") return send;
   }
   return null;
+}
+
+/**
+ * Whether the agent is compacting its context: its last compaction started and has neither ended nor
+ * been followed by a step of the agent's (one cut short never ends). A message sent now would cancel it:
+ * Claude cannot take a message mid-compaction, so Paseo replaces the running turn (Paseo 0.11.2, seen
+ * end to end), and the chat holds the message instead (TR-102).
+ */
+export function isCompacting(entries: readonly SendTimelineEntry[]): boolean {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const item = entries[index]?.item;
+    if (item === undefined) continue;
+    if (item.type === "compaction") return item.status === "loading";
+    if (isAgentStep(item)) return false;
+  }
+  return false;
+}
+
+/** What the plugin answers a chat message sent while the agent compacts; the chat holds it then. */
+export const COMPACTING_REFUSAL = "It is compacting its context; the message waits until that ends.";
+
+export function isCompactingRefusal(error: unknown): boolean {
+  return errorMessage(error).includes(COMPACTING_REFUSAL);
+}
+
+/** Why Send holds a message now, or null when it sends. */
+export type HoldReason = "replaces" | "compacting";
+
+export function holdReason(agent: { working: boolean; steers: boolean; compacting: boolean }): HoldReason | null {
+  if (agent.working && agent.compacting) return "compacting";
+  return agent.working && !agent.steers ? "replaces" : null;
 }
 
 /** How Paseo's app says the link to the daemon went (0.11.2: "Transport closed (code 1006)", "Not connected", a timeout). */
@@ -222,7 +253,7 @@ export function isPassingFailure(error: unknown): boolean {
 /** The waits before each new try of a send that failed in passing: about 10 s in all, a plugin reload's length. */
 export const SEND_RETRY_DELAYS_MS: readonly number[] = [1_000, 3_000, 6_000];
 
-/** The held messages to send now that the agent stopped, oldest first. */
-export function heldToRelease(sends: readonly PendingSend[], working: boolean): PendingSend[] {
-  return working ? [] : sends.filter((send) => send.state === "held");
+/** The held messages to send now that nothing holds them (the agent stopped, or its compaction ended), oldest first. */
+export function heldToRelease(sends: readonly PendingSend[], holding: HoldReason | null): PendingSend[] {
+  return holding !== null ? [] : sends.filter((send) => send.state === "held");
 }

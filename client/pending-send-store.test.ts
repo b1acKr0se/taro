@@ -294,6 +294,25 @@ describe("sending (TR-102)", () => {
     expect(waits).toEqual([]);
   });
 
+  it("holds a message the plugin handed back as the agent compacts, and sends nothing after it until it is released", async () => {
+    const store = createPendingSendStore({}, () => 70);
+    const wire = manualTransport();
+    store.setTransport("agent-1", wire.transport);
+    store.add("agent-1", send("chat-a", "sending"));
+    store.add("agent-1", send("chat-b", "sending"));
+    await settled();
+    wire.calls[0]?.settle(new Error("Request failed: It is compacting its context; the message waits until that ends. code=handler_error"));
+    await settled();
+    expect(states(store)).toEqual(["chat-a:held", "chat-b:sending"]);
+    expect(store.get("agent-1")[0]?.error).toBeUndefined();
+    expect(wire.ids()).toEqual(["chat-a"]);
+    store.claim("agent-1", ["chat-a"], 80);
+    await settled();
+    wire.calls[1]?.settle();
+    await settled();
+    expect(wire.ids()).toEqual(["chat-a", "chat-a", "chat-b"]);
+  });
+
   it("does not send held or already sent messages", async () => {
     const store = createPendingSendStore({});
     const wire = manualTransport();

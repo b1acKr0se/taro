@@ -10,7 +10,7 @@
  */
 import { randomUUID } from "node:crypto";
 
-import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
+import { CHAT_MESSAGE_PREFIX, COMPACTING_REFUSAL, isCompacting, type SendTimelineEntry } from "../shared/pending-sends";
 import type { PaseoApi, TimelineItem } from "./host-types";
 
 type SendOptions = NonNullable<Parameters<ReturnType<PaseoApi["agents"]["ref"]>["send"]>[1]>;
@@ -53,8 +53,10 @@ const chatSendsUnderWay = new Map<string, Promise<void>>();
  * its own id after a failure (Retry), or after a reconnect or reload while it was on its way: when the
  * first send reached Paseo and only its answer was lost, the message is already in the timeline, or
  * still on its way here, and is not sent twice. A timeline that cannot be read is taken as not holding it.
+ * One sent while the agent compacts is handed back unsent (`COMPACTING_REFUSAL`): Paseo would cancel the
+ * compaction for it, and the chat holds it until the compaction ends.
  */
-export async function sendChatMessageOnce(paseo: PaseoApi, agentId: string, messageId: string | undefined, send: () => Promise<void>): Promise<void> {
+export async function sendChatMessageOnce(paseo: PaseoApi, agentId: string, messageId: string | undefined, send: () => Promise<void>, midTurn = false): Promise<void> {
   if (messageId === undefined || !messageId.startsWith(CHAT_MESSAGE_PREFIX)) return send();
   const key = `${agentId} ${messageId}`;
   const underWay = chatSendsUnderWay.get(key);
@@ -64,6 +66,7 @@ export async function sendChatMessageOnce(paseo: PaseoApi, agentId: string, mess
       .then(() => paseo.agents.ref(agentId).timeline.refetch({ direction: "tail", limit: ALREADY_SENT_LOOKBACK, projection: "projected" }))
       .catch(() => null);
     if (page !== null && holdsMessage(page.entries, messageId)) return;
+    if (midTurn && page !== null && isCompacting(page.entries as unknown as readonly SendTimelineEntry[])) throw new Error(COMPACTING_REFUSAL);
     await send();
   })();
   chatSendsUnderWay.set(key, sending);

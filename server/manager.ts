@@ -179,7 +179,7 @@ export async function tellManager(paseo: PaseoApi, project: string, text: string
   const words = text.trim();
   if (words === "" && !hasAttachments(attachments)) throw new Error("Say something to the manager.");
   const agent = await requireManager(paseo, project);
-  await sendWithAttachments(paseo, agent.id, words, attachments);
+  await sendWithAttachments(paseo, agent.id, words, { ...attachments, agentMidTurn: isMidTurn(agent) });
   return agent.id;
 }
 

@@ -38,8 +38,9 @@ import { groupRows, toolRunSummary, type Group } from "./tool-runs";
 import { ATTACHMENTS_ONLY, transcriptRows } from "./transcript-rows";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
+import { composerNotice, heldMarkText } from "./composer-notice";
 import { usePendingSends, type ChatSend } from "./use-pending-sends";
-import { handBack, steersMidTurn, type PendingSend, type SendMark, type SendView } from "../shared/pending-sends";
+import { handBack, steersMidTurn, type HoldReason, type PendingSend, type SendMark, type SendView } from "../shared/pending-sends";
 import { composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
@@ -238,6 +239,7 @@ export function AgentChat({
     ));
   }
   const { pending, respond } = usePendingRequests(agent.id, timeline.agent?.pendingPermissions, follow.pin);
+  const notice = composerNotice(sends.holds, pending.length > 0);
   const [draft, setDraftState] = useState(() => drafts.get(agent.id));
   const [attachments, setAttachmentsState] = useState(() => draftAttachments.get(agent.id));
   const field = useRef<NativeTextInput>(null);
@@ -447,6 +449,7 @@ export function AgentChat({
                 text={view.send.text === "" ? ATTACHMENTS_ONLY : view.send.text}
                 images={undefined}
                 mark={view}
+                holds={sends.holds}
                 theme={theme}
                 styles={styles}
                 onMarkAction={markActionLatest}
@@ -514,12 +517,12 @@ export function AgentChat({
                 {suggestions}
               </ActionRow>
             )}
-            {sends.holds ? (
+            {notice === null ? null : (
               <View style={styles.quick}>
                 <Icon name="AlertTriangle" size={13} color={theme.colors.statusWarning} />
-                <Text style={[styles.lineText, { color: theme.colors.foreground }]}>Sending now would stop its current step, so Send holds your message until the step ends.</Text>
+                <Text style={[styles.lineText, { color: theme.colors.foreground }]}>{notice.text}</Text>
               </View>
-            ) : null}
+            )}
             <ReplyBox
               theme={theme}
               compact={compact}
@@ -531,7 +534,7 @@ export function AgentChat({
               enterHint
               onSend={sendDraft}
               canSend={!nothingToSend}
-              sendLabel={sends.holds ? "Hold until its step ends" : "Send"}
+              sendLabel={notice?.sendLabel ?? "Send"}
               above={<AttachmentPreviews theme={theme} attachments={attachments} onRemove={(id) => setAttachments(attachments.filter((attachment) => attachment.id !== id))} />}
               leading={attachButton}
               trailing={context === undefined ? null : <ContextMeter theme={theme} used={context.used} max={context.max} ringSize={metrics.ringSize} />}
@@ -573,6 +576,7 @@ function UserMessage({
   text,
   images,
   mark,
+  holds = null,
   theme,
   styles,
   onMarkAction,
@@ -580,6 +584,8 @@ function UserMessage({
   text: string;
   images: readonly SentImage[] | undefined;
   mark: SendView | undefined;
+  /** Why the chat holds messages, for a held one's mark; only the chat's own rows are held. */
+  holds?: HoldReason | null | undefined;
   theme: PluginTheme;
   styles: ChatStyles;
   onMarkAction: (id: string, action: MarkAction) => void;
@@ -610,7 +616,7 @@ function UserMessage({
             </View>
           )}
         </View>
-        {mark === undefined ? null : <SendMarkLine view={mark} theme={theme} styles={styles} onAction={onMarkAction} />}
+        {mark === undefined ? null : <SendMarkLine view={mark} holds={holds} theme={theme} styles={styles} onAction={onMarkAction} />}
       </View>
     </View>
   );
@@ -646,12 +652,25 @@ const MARK_ACTIONS: Record<SendMark, readonly { action: MarkAction; label: strin
   ],
 };
 
-/** A failed message's mark says why (TR-102). */
-function markText(view: SendView): string {
-  return view.mark === "failed" ? `Not sent: ${view.send.error ?? "Paseo did not take it."}` : MARK_TEXT[view.mark];
+/** A failed message's mark says why, a held one what it waits for (TR-102). */
+function markText(view: SendView, holds: HoldReason | null): string {
+  if (view.mark === "failed") return `Not sent: ${view.send.error ?? "Paseo did not take it."}`;
+  return view.mark === "held" ? heldMarkText(holds) : MARK_TEXT[view.mark];
 }
 
-function SendMarkLine({ view, theme, styles, onAction }: { view: SendView; theme: PluginTheme; styles: ChatStyles; onAction: (id: string, action: MarkAction) => void }) {
+function SendMarkLine({
+  view,
+  holds,
+  theme,
+  styles,
+  onAction,
+}: {
+  view: SendView;
+  holds: HoldReason | null;
+  theme: PluginTheme;
+  styles: ChatStyles;
+  onAction: (id: string, action: MarkAction) => void;
+}) {
   const { colors } = theme;
   return (
     <View style={styles.mark}>
@@ -665,7 +684,7 @@ function SendMarkLine({ view, theme, styles, onAction }: { view: SendView; theme
             color={view.mark === "held" || view.mark === "behind" ? colors.foregroundMuted : view.mark === "failed" ? colors.statusDanger : colors.statusWarning}
           />
         )}
-        <Text style={[styles.markText, view.mark === "failed" ? { color: colors.statusDanger } : null]}>{markText(view)}</Text>
+        <Text style={[styles.markText, view.mark === "failed" ? { color: colors.statusDanger } : null]}>{markText(view, holds)}</Text>
       </View>
       {/* The shared button (Catch up's style), in a row of their own under the words, right-aligned with the bubble. */}
       {MARK_ACTIONS[view.mark].length === 0 ? null : (

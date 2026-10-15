@@ -7,7 +7,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { outgoingAttachments, type DraftAttachment, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
-import { heldToRelease, isWorking, newChatMessageId, STOPPED_GRACE_MS, viewSends, type PendingSend, type SendTimelineEntry, type SendView } from "../shared/pending-sends";
+import {
+  heldToRelease,
+  holdReason,
+  isCompacting,
+  isWorking,
+  newChatMessageId,
+  STOPPED_GRACE_MS,
+  viewSends,
+  type HoldReason,
+  type PendingSend,
+  type SendTimelineEntry,
+  type SendView,
+} from "../shared/pending-sends";
 import { useLatestCallback } from "./latest-callback";
 import { pendingSends } from "./pending-send-store";
 
@@ -26,8 +38,11 @@ export interface PendingSends {
   retry(id: string): void;
   /** Forgets a message: a held one is not sent, an unread one loses its mark, a failed one is taken back. */
   forget(id: string): PendingSend | null;
-  /** Whether Send holds the message: the agent works and its provider would replace the turn. */
-  holds: boolean;
+  /**
+   * Why Send holds the message, or null when it sends: the agent works and its provider would replace
+   * the turn, or it compacts its context and a message would cancel the compaction (TR-102).
+   */
+  holds: HoldReason | null;
 }
 
 export function usePendingSends({
@@ -85,24 +100,27 @@ export function usePendingSends({
     landed.forEach((id) => pendingSends.update(agentId, id, { state: "sent", error: undefined }));
   }, [agentId, landed.join(" ")]);
 
-  const release = heldToRelease(sends, working);
+  const compacting = useMemo(() => isCompacting(entries), [entries]);
+  const holds = holdReason({ working, steers, compacting });
+  const release = heldToRelease(sends, holds);
   useEffect(() => {
     // Claimed: the screen may release them too (`useReleaseHeld`), and only one of them sends each.
     if (release.length > 0) pendingSends.claim(agentId, release.map((held) => held.id), Date.now());
   }, [release.map((send) => send.id).join(" ")]);
 
-  const holds = working && !steers;
   return {
     views,
     holds,
     send(text, attachments) {
-      pendingSends.add(agentId, { id: newChatMessageId(), text, attachments, at: Date.now(), state: holds ? "held" : "sending" });
+      // Behind a held message it is held too, so the two go in the order sent.
+      const behindHeld = pendingSends.get(agentId).some((send) => send.state === "held");
+      pendingSends.add(agentId, { id: newChatMessageId(), text, attachments, at: Date.now(), state: holds !== null || behindHeld ? "held" : "sending" });
     },
     sendNow(id) {
       pendingSends.claim(agentId, [id], Date.now());
     },
     resend(id) {
-      pendingSends.resend(agentId, id, { id: newChatMessageId(), at: Date.now(), holds });
+      pendingSends.resend(agentId, id, { id: newChatMessageId(), at: Date.now(), holds: holds !== null });
     },
     retry(id) {
       pendingSends.retry(agentId, id);

@@ -19,6 +19,8 @@ export interface Attachments {
   files?: OutgoingFile[] | undefined;
   /** Lets the chat find the message in the timeline and mark it until the agent takes it up. */
   messageId?: string | undefined;
+  /** Whether the agent was mid-turn as the message came: one sent during its compaction is handed back (TR-102). */
+  agentMidTurn?: boolean | undefined;
 }
 
 export function hasAttachments(attachments: Attachments): boolean {
@@ -32,7 +34,7 @@ export function hasAttachments(attachments: Attachments): boolean {
  */
 export async function sendWithAttachments(paseo: PaseoApi, agentId: string, words: string, attachments: Attachments, home = paseoHome()): Promise<void> {
   // A chat message sent again under its own id (a retry, a reconnect) goes once (TR-102).
-  await sendChatMessageOnce(paseo, agentId, attachments.messageId, () => sendWithUploads(paseo, agentId, words, attachments, home));
+  await sendChatMessageOnce(paseo, agentId, attachments.messageId, () => sendWithUploads(paseo, agentId, words, attachments, home), attachments.agentMidTurn === true);
 }
 
 async function sendWithUploads(paseo: PaseoApi, agentId: string, words: string, attachments: Attachments, home: string): Promise<void> {

@@ -9,7 +9,7 @@
  * evaluated again (a reconnect, a plugin reload) goes again, under its own id, once a chat or the
  * screen gives the agent a transport, and the plugin skips one Paseo already has (`server/send.ts`).
  */
-import { failureReason, isPassingFailure, isWorking, nextToSend, SEND_RETRY_DELAYS_MS, type PendingSend } from "../shared/pending-sends";
+import { failureReason, isCompactingRefusal, isPassingFailure, isWorking, nextToSend, SEND_RETRY_DELAYS_MS, type PendingSend } from "../shared/pending-sends";
 import { keptMap } from "./kept";
 
 /** Hands a message to Paseo; resolves once Paseo has it. */
@@ -79,7 +79,9 @@ export function createPendingSendStore(
           update(agentId, next.id, (send) => (send.state === "sending" ? { state: "sent", at: now() } : null));
         } catch (error) {
           // Seen in the timeline meanwhile, it was marked sent: the answer, not the message, was lost.
-          update(agentId, next.id, (send) => (send.state === "sending" ? { state: "failed", error: failureReason(error) } : null));
+          // Handed back as the agent compacts, it is held until the compaction ends, as the chat holds one sent then.
+          const after: Partial<PendingSend> = isCompactingRefusal(error) ? { state: "held", at: now() } : { state: "failed", error: failureReason(error) };
+          update(agentId, next.id, (send) => (send.state === "sending" ? after : null));
         }
         // Marked sent or failed while it was on its way, or neither (forgotten): either way, on to the next.
         if ((sends.get(agentId) ?? NONE).some((send) => send.id === next.id && send.state === "sending")) return;
