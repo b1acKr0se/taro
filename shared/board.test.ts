@@ -280,8 +280,14 @@ describe("inboxCount counts each card the Inbox lists (TR-123)", () => {
     expect(inboxCount({ ...quiet, cards: [owner("needs-you", [question])], ticketQuestions: 1 }, false)).toBe(1);
   });
 
-  it("counts a blocking question while its owner still runs", () => {
-    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, openBlockingDecisions: 1 })).toBe("working");
+  it("keeps a blocking question in Needs you while its owner replies to other messages (TR-134)", () => {
+    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, openBlockingDecisions: 1 })).toBe("needs-you");
+    expect(boardColumn({ ...base, agent: { status: "initializing", pendingPermissions: 0 }, openBlockingDecisions: 1 })).toBe("needs-you");
+    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, openBlockingDecisions: 0 })).toBe("working");
+    expect(inboxCount({ ...quiet, cards: [owner("needs-you", [question])], ticketQuestions: 1 }, false)).toBe(1);
+  });
+
+  it("counts a non-blocking question while its owner still runs", () => {
     expect(inboxCount({ ...quiet, cards: [owner("working", [question])], ticketQuestions: 1 }, false)).toBe(1);
   });
 
