@@ -133,6 +133,15 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
 - **pull-request delivery:** once local checks pass, push `taro/<id>` and open a **draft** PR
   (status Reviewing). Reviewers post findings and you post your fix summary as PR comments. When
   review is done, mark the PR ready. With only a self-review, open it ready. CI is not a gate.
+  - **Title and body are yours, never the commit's:** `gh pr create --draft --title '<title>'
+    --body-file <file>`, never `--fill` (it copies a lone commit's message). Default title:
+    `<ID>: <outcome in user terms>`, usually the ticket title, at most about 70 characters, no
+    Conventional Commit prefix. Default body: `templates/pull-request.md`, neutral (SKILL.md
+    rule 8). Before Awaiting acceptance, bring the body up to date with `gh pr edit --body-file`.
+  - **The repository's conventions win:** a PR template (`.github/pull_request_template.md`, or
+    one under `.github/PULL_REQUEST_TEMPLATE/` or `docs/`) is the body instead; a title format in
+    its instructions (AGENTS.md, CLAUDE.md, CONTRIBUTING) replaces the default, and if they forbid
+    ticket IDs in titles, leave the ID out.
 - **local-only delivery:** leave a clean branch that fast-forwards from the base branch.
 - **Show it as the user will see it** (any visible change, at every level):
   - Capture with **realistic content**: text of real length and shape, with the markup real text
