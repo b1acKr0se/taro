@@ -17,6 +17,7 @@ import { deliveredLine, firstAsk } from "../shared/needs-you";
 import { dependsOn } from "../shared/owner-cap";
 import { pastTicketAgents } from "../shared/past-agents";
 import { pauseRefusal, pauseView, type PauseView } from "../shared/pause";
+import { offersSpecChange } from "../shared/spec-change";
 import { isSubagentRole, roleFromLabel, TARO_LABELS } from "../shared/project";
 import { boardAlerts, type BoardAlert } from "../shared/recovery";
 import { decisionsOfLiveAgents, type StoredDecision } from "../shared/state";
@@ -354,6 +355,7 @@ export async function loadTicketDetail(paseo: PaseoApi, project: string, ticketI
     pausable: pausing.pausable,
     compactOwner:
       owner !== null && offersCompact({ parent: detail.parentTaskId, owner: { status: owner.status, contextUsedTokens: owner.lastUsage?.contextWindowUsedTokens ?? null } }) ? owner.id : null,
+    specChangeable: offersSpecChange({ status: detail.status, parent: detail.parentTaskId, ownerRunning: owner !== null, paused: pausing.pause !== null }),
   };
 }
 

@@ -76,6 +76,8 @@ rather than exceed it.
   **RESUMED**: written by the plugin when the user presses Pause (the owner writes a HANDOFF and is
   archived; the ticket keeps its status) and Resume (a fresh owner starts in the same worktree, at
   once or, as "queued to resume", when a slot frees). A paused owner is told so by a message.
+- **SCOPE-CHANGE**: written by the plugin when the user presses Change spec… on a Queued ticket
+  with no owner, with their words; the manager then rewrites the Description to match.
 - **QUEUE-WAKE**, **QUEUE-ALERT**, **QUEUE-RESTART**: written by the plugin as it wakes the manager
   for a queued ticket, alerts the user, and restarts the manager.
 - **REVIEW**: reviewer, revision, verdict, every finding answered (fixed, or rejected with the

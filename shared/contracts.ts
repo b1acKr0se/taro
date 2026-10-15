@@ -290,6 +290,8 @@ export const TicketDetailSchema = z.object({
   pausable: z.boolean().default(false),
   /** The owner's agent id while Compact is offered for it (`shared/compact.ts`, TR-095), else null. */
   compactOwner: z.string().nullable().default(null),
+  /** Change spec… is offered: Queued with no owner (`shared/spec-change.ts`, TR-129). */
+  specChangeable: z.boolean().default(false),
 });
 export type TicketDetailView = z.infer<typeof TicketDetailSchema>;
 
@@ -365,6 +367,12 @@ export const dismissQueueAlert = defineRpc({
 });
 export const requestChanges = defineRpc({
   name: "taro.ticket.request-changes",
+  input: z.object({ project: ProjectNameSchema, ticket: z.string(), text: z.string().min(1) }),
+  output: Empty,
+});
+/** Change spec… on a Queued ticket with no owner (TR-129): the user's words go to the manager, tagged with the ticket. */
+export const changeQueuedSpec = defineRpc({
+  name: "taro.ticket.change-spec",
   input: z.object({ project: ProjectNameSchema, ticket: z.string(), text: z.string().min(1) }),
   output: Empty,
 });

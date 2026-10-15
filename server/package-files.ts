@@ -35,6 +35,7 @@ export const TEMPLATES = {
   pause: "messages/pause.md",
   accept: "messages/accept.md",
   requestChanges: "messages/request-changes.md",
+  specChange: "messages/spec-change.md",
   dependencyCleared: "messages/dependency-cleared.md",
   ticketQueued: "messages/ticket-queued.md",
   queueIdle: "messages/queue-idle.md",

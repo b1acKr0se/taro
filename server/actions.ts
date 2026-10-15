@@ -20,6 +20,7 @@ import {
   pauseProgress,
   pauseRefusal,
   pauseRequestedAt,
+  pauseView,
   queuedToResume,
   resumedReleaseText,
   resumeRefusal,
@@ -49,13 +50,14 @@ import {
   type Recount,
 } from "../shared/queue-check";
 import { hasHeadroom, type BoardAlert } from "../shared/recovery";
+import { specChangeRefusal } from "../shared/spec-change";
 import { TARO_LABELS, TICKET_STATUSES } from "../shared/project";
 import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
 import { taroEnvironment } from "./environment";
 import { requireCompleteEvidence } from "./evidence";
 import { readHeadroom } from "./headroom";
 import type { PaseoAgent, PaseoApi } from "./host-types";
-import { restartManager } from "./manager";
+import { restartManager, tellManager } from "./manager";
 import { bypassModeId } from "./models";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { listProjectConfigs, projectPaths, requireProjectConfig } from "./projects";
@@ -211,6 +213,20 @@ export class Actions {
     await sendWithoutInterrupting(paseo, owner.id, await message(TEMPLATES.requestChanges, { ticket, text: text.trim() }));
     const paths = await projectPaths(project);
     await appendTicketNote(paths.tracker, ticket, `CHANGES-REQUESTED ${new Date().toISOString()} — the user: "${text.trim()}"`).catch(() => undefined);
+  }
+
+  /** Change spec… (TR-129): only while the ticket waits in Queued with no owner; an owner takes changes in its own chat. */
+  async changeQueuedSpec(paseo: PaseoApi, project: string, ticket: string, text: string): Promise<void> {
+    const words = text.trim();
+    if (words === "") throw new Error("Say what to change first.");
+    const paths = await projectPaths(project);
+    const detail = await viewTicket(paths.tracker, ticket);
+    const ownerRunning = (await this.owners(paseo, project, ticket)).some((agent) => agent.status !== "closed");
+    const paused = pauseView(detail.implementationNotes, ownerRunning) !== null;
+    const refusal = specChangeRefusal(ticket, { status: detail.status, parent: detail.parentTaskId, ownerRunning, paused });
+    if (refusal !== null) throw new Error(refusal);
+    await tellManager(paseo, project, await message(TEMPLATES.specChange, { ticket, title: detail.title, text: words }));
+    await appendTicketNote(paths.tracker, ticket, `SCOPE-CHANGE ${new Date().toISOString()} — sent to the manager before an owner started; the user: "${words}"`).catch(() => undefined);
   }
 
   /** A fresh owner in the same workspace, from the ticket's latest handoff or milestone (decision 30). */

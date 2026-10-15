@@ -16,16 +16,19 @@ import { Text, View } from "react-native";
 
 import { tellAgent, type Card } from "../shared/contracts";
 import { decisionBlocksAsText, withoutDecisionBlocks } from "../shared/reports";
+import { offersSpecChange } from "../shared/spec-change";
 import { AgentChat } from "./agent-chat";
 import { AcceptanceCard } from "./acceptance-card";
 import { acceptanceReady } from "./card-calls";
 import { rowButtonStyle } from "./control-colors";
 import { Pressable } from "./focus";
 import { askedElsewhere, openingPaneAgent, paneAgents, paneAgentJob, paneOpening, roleIcon, type PaneOpening } from "./pane-agents";
+import { KeyboardScrollView } from "./keyboard";
 import { PaneHeader } from "./pane-header";
+import { SpecChangeBox } from "./spec-change-box";
 import { paneGutter, SPACE } from "./spacing";
 import { TicketView } from "./ticket-view";
-import { FONT_SIZE, labelLineHeightFor } from "./type-scale";
+import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
 import { AgentChips } from "./agent-chips";
 import { KeptPane, useVisited } from "./kept-pane";
@@ -92,6 +95,8 @@ export function OwnerPane({
   const inset = paneGutter(compact);
   // Once accepted the owner is merging: nothing is left to accept (TR-031).
   const accepting = card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null;
+  // A Queued ticket nobody owns yet takes a change of spec through the manager (TR-129).
+  const specChangeable = offersSpecChange({ status: card.status, parent: card.parent, ownerRunning: card.owner !== null || card.ownerElsewhere !== null, paused: card.pause !== null });
   const shownAsks = useMemo(() => card.decisions.filter((decision) => decision.agentId === shown?.id), [card.decisions, shown?.id]);
   // A permission or question another of the ticket's agents asked is answered in that agent's chat.
   const elsewhere = askedElsewhere(card, shown?.id ?? null, agents);
@@ -148,7 +153,14 @@ export function OwnerPane({
         ) : null}
         {!tabsVisited.has(`${card.id}:chat`) ? null : (
           <KeptPane key={`chat:${card.id}`} shown={tab === "chat"}>
-            {shown === null ? (
+            {shown === null && specChangeable ? (
+              <KeyboardScrollView contentContainerStyle={{ padding: SPACE.lg, gap: SPACE.md }}>
+                <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) }}>
+                  {card.id} is queued: no owner has started yet. To change what it should do, tell the manager, and it updates the ticket before an owner starts.
+                </Text>
+                <SpecChangeBox project={project} ticket={card.id} theme={theme} compact={compact} onSent={onChanged} />
+              </KeyboardScrollView>
+            ) : shown === null ? (
               <Text style={{ color: theme.colors.foregroundMuted, padding: SPACE.lg }}>
                 {card.ownerElsewhere !== null ? `Its owner runs on ${card.ownerElsewhere}.` : "No owner is running for this ticket."}
               </Text>

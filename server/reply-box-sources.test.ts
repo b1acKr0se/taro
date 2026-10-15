@@ -25,11 +25,20 @@ describe("reply box sources", () => {
     expect(users.sort()).toEqual(["client/agent-chat.tsx", "client/change-box.tsx", "client/decision-card.tsx", "client/permission-card.tsx"]);
   });
 
-  it("asks for changes alike on the acceptance and plan cards: one change box behind Request changes… (TR-112)", () => {
+  it("asks for changes alike on the acceptance and plan cards and Change spec…: one change box behind Request changes… (TR-112, TR-129)", () => {
     const users = clientFiles.filter((file) => /<ChangeBox\b/.test(file.source)).map((file) => file.name);
-    expect(users.sort()).toEqual(["client/acceptance-card.tsx", "client/plan-card.tsx"]);
+    expect(users.sort()).toEqual(["client/acceptance-card.tsx", "client/plan-card.tsx", "client/spec-change-box.tsx"]);
     const plan = clientFiles.find((file) => file.name === "client/plan-card.tsx")?.source ?? "";
     expect(plan).toMatch(/label="Request changes…"/);
+  });
+
+  it("reveals a change box's buttons with it on a phone, though the box focuses itself as it mounts (TR-129)", () => {
+    // autoFocus runs before the wrapper's ref is set: a companion read at focus time was null, and the
+    // buttons stayed under the keyboard. The reveal reads it when it runs.
+    const keyboard = clientFiles.find((file) => file.name === "client/keyboard.tsx")?.source ?? "";
+    expect(keyboard).toMatch(/claim\(\(\) => \(companion\?\.current \?\? null\)/);
+    expect(keyboard).toMatch(/revealedWith\.current\?\.\(\)/);
+    expect(clientFiles.find((file) => file.name === "client/change-box.tsx")?.source).toMatch(/\bautoFocus\b/);
   });
 
   it("puts the send button inside the box only in the chats; cards send with their buttons under it", () => {
