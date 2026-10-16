@@ -88,7 +88,8 @@ type ChatComposer =
       placeholder?: undefined;
       onSend?: undefined;
       actions?: undefined;
-      context?: undefined;
+      /** How full its context window was, drawn at the footer's end (TR-156). */
+      context?: { used: number | null | undefined; max: number | null | undefined };
       actionsTip?: undefined;
     };
 
@@ -581,6 +582,7 @@ export function AgentChat({
             <View style={styles.readOnly}>
               <Icon name="Archive" size={14} color={theme.colors.foregroundMuted} />
               <Text style={styles.readOnlyText}>{readOnly.note}</Text>
+              {context === undefined ? null : <ContextMeter theme={theme} used={context.used} max={context.max} ringSize={metrics.ringSize} />}
             </View>
           </View>
         ) : (

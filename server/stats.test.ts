@@ -158,9 +158,29 @@ describe("agents' cost (TR-097)", () => {
   });
 
   it("is recorded from Paseo's usage when present", () => {
-    expect(usageReading({ totalCostUsd: 3.5, contextWindowUsedTokens: 9 })).toEqual({ costUsd: 3.5, contextTokens: 9 });
-    expect(usageReading({ contextWindowUsedTokens: 9 })).toEqual({ costUsd: null, contextTokens: 9 });
-    expect(usageReading(null)).toEqual({ costUsd: null, contextTokens: null });
+    expect(usageReading({ totalCostUsd: 3.5, contextWindowUsedTokens: 9, contextWindowMaxTokens: 200_000 })).toEqual({ costUsd: 3.5, contextTokens: 9, contextMaxTokens: 200_000 });
+    expect(usageReading({ contextWindowUsedTokens: 9 })).toEqual({ costUsd: null, contextTokens: 9, contextMaxTokens: null });
+    expect(usageReading(null)).toEqual({ costUsd: null, contextTokens: null, contextMaxTokens: null });
+  });
+
+  it("saves the context window with the used tokens, at a turn end and at the archive, so an archived agent's chat can draw its meter (TR-156)", async () => {
+    const stats = new Stats();
+    await stats.turnEnded("taro", "TR-1.2", subagent, 1_000, { costUsd: 0.4, contextTokens: 20_000, contextMaxTokens: 200_000 });
+    expect((await statsFile()).tickets["taro:TR-1.2"]?.agents[subagent.id]).toMatchObject({ contextTokens: 20_000, contextMaxTokens: 200_000 });
+    // The archive's reading has a larger window (a 1M session) and lands on the parent too.
+    await stats.agentUsage("taro", "TR-1.2", subagent.id, { costUsd: 0.5, contextTokens: 300_000, contextMaxTokens: 1_000_000 });
+    // A reading without a window (an older caller) keeps the saved one.
+    await stats.agentUsage("taro", "TR-1.2", subagent.id, { costUsd: null, contextTokens: 310_000 });
+    for (const ticket of ["taro:TR-1.2", "taro:TR-1"]) {
+      expect((await statsFile()).tickets[ticket]?.agents[subagent.id]).toMatchObject({ contextTokens: 310_000, contextMaxTokens: 1_000_000 });
+    }
+  });
+
+  it("reads a stats file saved before the window was kept, with no window", async () => {
+    await mkdir(statsDirectory(), { recursive: true });
+    const old = { agentId: subagent.id, role: "implementer", model: null, title: null, turns: 1, activeMs: 0, costUsd: null, contextTokens: 90_000, startingContextTokens: null };
+    await writeFile(join(statsDirectory(), "stats.json"), JSON.stringify({ tickets: { "taro:TR-1": { project: "taro", ticket: "TR-1", agents: { [subagent.id]: old } } } }));
+    expect((await new Stats().all("taro"))[0]?.agents[subagent.id]).toMatchObject({ contextTokens: 90_000, contextMaxTokens: null });
   });
 
   it("of a child's agent counts on the child and on its parent, and once in the project totals", async () => {

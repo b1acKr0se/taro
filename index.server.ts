@@ -59,6 +59,7 @@ import type { PaseoApi } from "./server/host-types";
 import { Recovery } from "./server/recovery";
 import { PluginState } from "./server/state";
 import { Stats, turnMayStillEnd } from "./server/stats";
+import { withSavedContext } from "./shared/past-context";
 import { summarize, waitingTickets } from "./shared/stats";
 import { idleCompactAfterMs } from "./shared/idle-compaction";
 import { Supervisor, identityFromLabels } from "./server/supervision";
@@ -286,7 +287,8 @@ export default function contribute(server: PluginServerContext) {
 
   server.handle(loadBoardRpc, async ({ project, limits, include }, { paseo }) => {
     void trackers.pullIfDue(project);
-    return loadBoard(keep(paseo), state, project, actions.queueAlerts(project), { limits, include });
+    const [board, saved] = await Promise.all([loadBoard(keep(paseo), state, project, actions.queueAlerts(project), { limits, include }), stats.all(project)]);
+    return withSavedContext(board, saved);
   });
   server.handle(loadTicket, async ({ project, ticket }, { paseo }) => {
     void trackers.pullIfDue(project);

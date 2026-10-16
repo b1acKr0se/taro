@@ -45,10 +45,11 @@ function ticketAndParent(ticket: string): string[] {
 export interface AgentUsageReading {
   costUsd: number | null;
   contextTokens: number | null;
+  contextMaxTokens?: number | null;
 }
 
-export function usageReading(usage: { totalCostUsd?: number; contextWindowUsedTokens?: number } | null | undefined): AgentUsageReading {
-  return { costUsd: usage?.totalCostUsd ?? null, contextTokens: usage?.contextWindowUsedTokens ?? null };
+export function usageReading(usage: { totalCostUsd?: number; contextWindowUsedTokens?: number; contextWindowMaxTokens?: number } | null | undefined): AgentUsageReading {
+  return { costUsd: usage?.totalCostUsd ?? null, contextTokens: usage?.contextWindowUsedTokens ?? null, contextMaxTokens: usage?.contextWindowMaxTokens ?? null };
 }
 
 /**
@@ -58,6 +59,7 @@ export function usageReading(usage: { totalCostUsd?: number; contextWindowUsedTo
 function applyUsage(record: AgentStats, usage: AgentUsageReading): void {
   if (usage.costUsd !== null) record.costUsd = Math.max(record.costUsd ?? 0, usage.costUsd);
   if (usage.contextTokens !== null) record.contextTokens = usage.contextTokens;
+  if (usage.contextMaxTokens !== null && usage.contextMaxTokens !== undefined) record.contextMaxTokens = usage.contextMaxTokens;
 }
 
 /**
@@ -244,7 +246,7 @@ export class Stats {
     if (ticket === null) return;
     for (const target of ticketAndParent(ticket)) {
       await this.update(project, target, (stats) => {
-        const record = stats.agents[agent.id] ?? { agentId: agent.id, role: agent.role, model: agent.model, title: agent.title, turns: 0, activeMs: 0, costUsd: null, contextTokens: null, startingContextTokens: null };
+        const record = stats.agents[agent.id] ?? { agentId: agent.id, role: agent.role, model: agent.model, title: agent.title, turns: 0, activeMs: 0, costUsd: null, contextTokens: null, contextMaxTokens: null, startingContextTokens: null };
         record.turns += 1;
         if (activeMs !== undefined) record.activeMs += activeMs;
         applyUsage(record, usage);
