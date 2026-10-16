@@ -621,6 +621,19 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       expect(decisions.map((decision) => decision.status)).toEqual(["answered"]);
     });
 
+    it("keeps an open planning question blocking when its turn is seen again and the ticket no longer reads as planning", async () => {
+      ticket("Planning", null);
+      const { state, decisions } = fakeState();
+      const taro = supervisor(state);
+      const first = [human("start"), lightly("naming")];
+      await run(taro, ...first);
+      vi.mocked(viewTicket).mockRejectedValue(new Error("tracker locked"));
+      await run(taro, ...first);
+      ticket("In Progress", "APPROVAL 2026-10-16T02:45Z — Approve");
+      await run(taro, ...first);
+      expect(decisions.map((decision) => [decision.status, decision.blocking, decision.planning])).toEqual([["open", true, true]]);
+    });
+
     it("leaves the flag as asked after APPROVAL, once building, or when the ticket cannot be read", async () => {
       for (const [status, notes] of [["Planning", "APPROVAL 2026-10-16T02:45Z — Approve"], ["In Progress", null]] as const) {
         ticket(status, notes);

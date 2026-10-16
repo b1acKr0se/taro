@@ -411,9 +411,11 @@ export class Supervisor {
       // Withdrawals first: an owner may withdraw its open question below the block that asks the next one.
       const inOrder = [...decisions.filter((decision) => decision.withdrawn), ...decisions.filter((decision) => !decision.withdrawn)];
       for (const block of inOrder) {
-        const decision = asPlanningQuestion(block, planning);
-        const key = `${agent.id}:${decision.id}`;
+        const key = `${agent.id}:${block.id}`;
         const index = stored.findIndex((existing) => existing.key === key);
+        // Still open from the planning phase: a later read (failed, or the ticket moved on) does not unblock it.
+        const stillPlanning = stored[index]?.status === "open" && stored[index]?.planning === true;
+        const decision = asPlanningQuestion(block, planning || stillPlanning);
         if (decision.withdrawn) {
           const existing = stored[index];
           if (existing !== undefined) {
