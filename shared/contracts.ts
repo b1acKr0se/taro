@@ -315,13 +315,13 @@ export const loadTicket = defineRpc({
   output: TicketDetailSchema,
 });
 
-/** The project (and ticket) an agent belongs to, for the panel beside an agent tab. */
 /** A finished plan card's plan (TR-157), as it stood when the user answered it or, unanswered, when it was asked; null when the tracker's history does not reach it. */
 export const loadPastPlan = defineRpc({
   name: "taro.ticket.past-plan",
   input: z.object({ project: ProjectNameSchema, ticket: z.string(), answeredAt: z.string().nullable(), askedAt: z.string().nullable() }),
   output: z.object({ plan: z.string().nullable() }),
 });
+/** The project (and ticket) an agent belongs to, for the panel beside an agent tab. */
 export const findAgentTicket = defineRpc({
   name: "taro.agent.find",
   input: z.object({ agentId: z.string() }),

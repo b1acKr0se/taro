@@ -139,6 +139,16 @@ describe("pastPlan", () => {
     expect(await pastPlan(repo.path, "NA-12", notes, { answeredAt: null, askedAt: "2026-10-16T02:49:40.000Z" })).toBe(PLAN_B);
   });
 
+  it("never takes a plan rewritten after the asking for it: withdrawn at once and asked again", async () => {
+    const repo = tracker();
+    repo.write(PLAN_A, "MILESTONE 2026-10-16T02:35Z — plan written");
+    repo.commit("2026-10-16T02:35:55Z");
+    // Plan A asked at 02:36:00, withdrawn; plan B written at 02:36:20 and committed 5 s later.
+    repo.write(PLAN_B, "MILESTONE 2026-10-16T02:35Z — plan written");
+    repo.commit("2026-10-16T02:36:25Z");
+    expect(await pastPlan(repo.path, "NA-12", "", { answeredAt: null, askedAt: ASKED_A })).toBe(PLAN_A);
+  });
+
   it("falls back to the asking time when the answer's record is not in the notes", async () => {
     const { repo, notes } = history();
     expect(await pastPlan(repo.path, "NA-12", notes, { answeredAt: "2026-10-16T03:10:00.000Z", askedAt: ASKED_A })).toBe(PLAN_A);

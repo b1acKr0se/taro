@@ -37,8 +37,12 @@ export async function planBeforeRecord(trackerPath: string, ticketId: string, re
   return plan;
 }
 
-/** How long after a plan was asked its ticket's commit may land: the tracker commits a few seconds after a write. */
-const ASKED_GRACE_MS = 60_000;
+/**
+ * How long after a plan was asked its ticket's commit may land: the tracker commits 5 s after a
+ * write (`tracker-watch.ts`). Kept short, so a plan rewritten soon after it was asked (withdrawn and
+ * asked again) is not taken for it.
+ */
+const ASKED_GRACE_MS = 15_000;
 
 /** The ticket's plan as committed by `askedAt` (and the grace after it); null when no commit is that old or the plan was empty. */
 async function planAsAsked(trackerPath: string, ticketId: string, askedAt: string): Promise<string | null> {

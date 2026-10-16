@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { StoredDecisionSchema, type StoredDecision } from "../shared/state";
 import type { PermissionAsk } from "../shared/permission-asks";
-import { blockCardSubject, deliveryCards, deliveryCardView, deliveryRecords, permissionCards, oldPlanView, permissionCardView, planCardView, questionCards, type DeliveryRecord } from "./finished-cards";
+import { blockCardSubject, deliveryCards, deliveryCardView, deliveryRecords, permissionCards, OLD_PLAN_MISSING, oldPlanCaption, oldPlanView, permissionCardView, planCardView, questionCards, type DeliveryRecord } from "./finished-cards";
 import type { PlanLine } from "./plan-lines";
 
 const clock = (iso: string) => iso.slice(11, 16);
@@ -47,6 +47,17 @@ describe("oldPlanView", () => {
     expect(oldPlanView(line({ closed: "withdrawn", at: "2026-01-05T10:30:00Z", replaced: true }), clock, day)).toMatchObject({ outcome: "Withdrawn · replaced by a later plan", time: "10:30", answeredAt: null });
     expect(oldPlanView(line({ closed: "answered in chat" }), clock, day)).toMatchObject({ outcome: "Answered in chat", time: null, answeredAt: null, askedAt: "2026-01-05T10:00:00Z" });
     expect(oldPlanView(line({ replaced: true }), clock, day).outcome).toBe("Replaced by a later plan");
+  });
+});
+
+describe("oldPlanCaption", () => {
+  it("says which plan is shown only once it is found, and never claims a missing plan", () => {
+    expect(oldPlanCaption({ answeredAt: "2026-01-05T10:20:00Z" }, "found")).toBe("The plan as it stood when you answered it.");
+    expect(oldPlanCaption({ answeredAt: null }, "found")).toBe("The plan as it stood when it was asked.");
+    expect(oldPlanCaption({ answeredAt: "2026-01-05T10:20:00Z" }, "missing")).toBeNull();
+    expect(oldPlanCaption({ answeredAt: null }, "missing")).toBeNull();
+    expect(oldPlanCaption({ answeredAt: "2026-01-05T10:20:00Z" }, "loading")).toBeNull();
+    expect(OLD_PLAN_MISSING).toContain("not in the tracker’s history");
   });
 });
 
