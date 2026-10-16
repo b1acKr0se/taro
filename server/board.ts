@@ -16,6 +16,7 @@ import { latestMilestone, type Milestone } from "../shared/milestones";
 import { deliveredLine, firstAsk } from "../shared/needs-you";
 import { dependsOn } from "../shared/owner-cap";
 import { pastTicketAgents } from "../shared/past-agents";
+import { createPullRequestStates } from "./pull-request-states";
 import { pauseRefusal, pauseView, type PauseView } from "../shared/pause";
 import { holdReason, queuedTickets, recount, type Recount } from "../shared/queue-check";
 import { queuedSlot, queuedWait } from "../shared/queued-wait";
@@ -123,6 +124,9 @@ function cachedActivity(paseo: PaseoApi, agent: PaseoAgent | null): Promise<Acti
   for (const [id, entry] of activityCache) if (Date.now() - entry.at > ACTIVITY_CACHE_MS) activityCache.delete(id);
   return activity;
 }
+
+/** Not forgotten after an action: a merge at Accept shows from its record at once. */
+const pullRequestStates = createPullRequestStates();
 
 /** One read serves every caller for a moment: the screen, the Inbox and the sidebar all poll. */
 const BOARD_CACHE_MS = 2_000;
@@ -246,6 +250,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
       // A Done card shows its PR (TR-114), a Queued one what it waits on (TR-138): read only for the cards on the page.
       const pageFacts = column === "done" || column === "queued" ? await cachedRecordedFacts(paths.tracker, ticket.id, ticket.updatedAt) : facts;
       const pullRequestFacts = column === "done" ? pageFacts : facts;
+      const pullRequest = pullRequestFacts?.pullRequest ?? null;
       const waits =
         column === "queued"
           ? queuedWait({
@@ -280,8 +285,9 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         updatedAt: ticket.updatedAt,
         owner: owner === null ? null : agentBrief(owner, replacing),
         ownerElsewhere: elsewhere,
-        pullRequest: pullRequestFacts?.pullRequest ?? null,
+        pullRequest,
         pullRequestMerged: pullRequestFacts?.pullRequestMerged ?? false,
+        pullRequestState: pullRequest === null ? null : pullRequestStates.current(pullRequest),
         lastStatus: ownLine ? ownerState?.lastStatus ?? null : null,
         stalled: ownerState?.stalled ?? false,
         stalledReason: ownerState?.stalled === true ? ownerState.stalledReason : null,

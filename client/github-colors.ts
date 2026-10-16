@@ -1,3 +1,4 @@
+import type { PullRequestTone } from "../shared/pull-request-state";
 import { contrastRatio, rgbOf } from "./control-colors";
 
 /**
@@ -14,4 +15,12 @@ export function mergedPurple(colors: { readonly foreground: string }): string {
   const foreground = rgbOf(colors.foreground);
   if (foreground === null) return GITHUB_MERGED.light;
   return contrastRatio(foreground, BLACK) > contrastRatio(foreground, WHITE) ? GITHUB_MERGED.dark : GITHUB_MERGED.light;
+}
+
+/** A PR mark's colour (TR-152): green and red are the theme's own, so only the merged purple sits outside it. */
+export function pullRequestColor(tone: PullRequestTone, colors: { readonly foreground: string; readonly foregroundMuted: string; readonly statusSuccess: string; readonly statusDanger: string }): string {
+  if (tone === "merged") return mergedPurple(colors);
+  if (tone === "open") return colors.statusSuccess;
+  if (tone === "closed") return colors.statusDanger;
+  return colors.foregroundMuted;
 }
