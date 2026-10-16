@@ -13,9 +13,9 @@ import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, huma
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", decisionCorrection: "decision-correction", planningQuestion: "planning-question" },
+  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question" },
   skillDirectory: async () => "/skill",
-  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : `${path}:${values.ticket ?? ""}`),
+  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : `${path}:${values.ticket ?? ""}`),
 }));
 vi.mock("./projects", () => ({ readProjectConfig: async () => null, projectPaths: async () => ({ tracker: "/tracker" }) }));
 vi.mock("./tickets", () => ({ viewTicket: vi.fn(), endDelivery: vi.fn(async () => true) }));
@@ -663,11 +663,29 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
 
   // TR-130: an owner asking back while awaiting acceptance went back to work; the delivery ends.
   describe("a question asked while awaiting acceptance", () => {
-    const ended = () => vi.mocked(endDelivery).mock.calls.map(([tracker, ticket, record]) => [tracker, ticket, record.replace(/^DELIVERY-ENDED \S+/, "DELIVERY-ENDED <at>")]);
     const lightly = (id: string) => ({ type: "assistant_message", text: (ask(id, `${id}?`) as { text: string }).text.replace("blocking: true", "blocking: false") });
+    const takenBack = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("delivery-open-question:"));
+    // The tracker writes only while the delivery is on offer, as endDelivery checks under its lock.
+    let onOffer = true;
+    let endings: string[][] = [];
+    const ended = () => endings;
 
     beforeEach(() => {
-      vi.mocked(endDelivery).mockClear();
+      onOffer = true;
+      endings = [];
+      vi.mocked(sendFromPlugin).mockClear();
+      vi.mocked(endDelivery).mockReset();
+      vi.mocked(endDelivery).mockImplementation(async (tracker, ticket, record) => {
+        if (!onOffer) return false;
+        onOffer = false;
+        endings.push([tracker, ticket, record.replace(/^DELIVERY-ENDED \S+/, "DELIVERY-ENDED <at>")]);
+        return true;
+      });
+    });
+
+    afterEach(() => {
+      vi.mocked(endDelivery).mockReset();
+      vi.mocked(endDelivery).mockImplementation(async () => true);
     });
 
     it("ends the owner's delivery when it opens a blocking question", async () => {
@@ -688,16 +706,44 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
 
       // Asked again after its answer: open anew, so it ends the delivery the owner made since.
       decisions[0]!.status = "answered";
+      onOffer = true;
       await run(taro, ...first, plugin("carry on"), ask("rename-scope", "Rename?"), plugin("more"), ask("rename-scope", "Rename?"));
       expect(ended()).toHaveLength(2);
     });
 
-    it("leaves the delivery for a non-blocking question, investigation-done, or a held-back question", async () => {
+    // TR-146: the user answers every question before Accept.
+    it("takes back a delivery made with a non-blocking question still open, and tells the owner once", async () => {
       const { state } = fakeState();
       const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
-      await run(taro, human("start"), lightly("tone"));
-      expect(ended()).toEqual([]);
+      const first = [human("start"), lightly("tone")];
+      await run(taro, ...first);
+      expect(ended()).toEqual([["/tracker", "TR-9", "DELIVERY-ENDED <at> — the owner delivered with `tone` still open: back to In Progress until it is answered and the owner delivers again"]]);
+      expect(takenBack()).toEqual(["delivery-open-question:TR-9:`tone`"]);
+      // Back in In Progress: the next turn with the question still open writes and says nothing.
+      await run(taro, ...first, plugin("carry on"), reply);
+      expect(ended()).toHaveLength(1);
+      expect(takenBack()).toHaveLength(1);
+    });
 
+    it("takes back a delivery made while an earlier turn's question is still open, but not once it is answered", async () => {
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      onOffer = false;
+      const first = [human("start"), lightly("tone")];
+      await run(taro, ...first);
+      // The owner delivers in a later turn, the question still open.
+      onOffer = true;
+      await run(taro, ...first, plugin("carry on"), reply);
+      expect(ended()).toHaveLength(1);
+      expect(takenBack()).toHaveLength(1);
+
+      decisions[0]!.status = "answered";
+      onOffer = true;
+      await run(taro, ...first, plugin("Use the warm tone"), reply);
+      expect(ended()).toHaveLength(1);
+    });
+
+    it("leaves the delivery for investigation-done or a held-back question", async () => {
       const other = fakeState();
       const investigating = new Supervisor(other.state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
       const first = [human("start"), ask("investigation-done", "Accept the findings?")];

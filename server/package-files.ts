@@ -24,6 +24,7 @@ export const TEMPLATES = {
   decisionCorrection: "messages/decision-correction.md",
   decisionHeld: "messages/decision-held.md",
   planningQuestion: "messages/planning-question.md",
+  deliveryWithOpenQuestion: "messages/delivery-with-open-question.md",
   subagentReport: "messages/subagent-report.md",
   handoffRequest: "messages/handoff-request.md",
   compactInstructions: "messages/compact-instructions.md",

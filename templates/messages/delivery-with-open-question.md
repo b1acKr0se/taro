@@ -1,0 +1,2 @@
+<!-- Sent when an owner's ticket awaited acceptance while one of its questions was still open (TR-146). Placeholders: {{ticket}}, {{question}}. -->
+{{ticket}} is back in In Progress: your decision {{question}} is still open, and the user answers every question before Accept is offered. Wait for its answer (end your turn with `waiting: <what you asked>`), fold it in, then deliver again and end with `done: …`. If the user already answered it in words, or it no longer needs an answer, withdraw it (`status: withdrawn`) and deliver again in the same turn.

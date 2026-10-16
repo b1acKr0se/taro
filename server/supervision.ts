@@ -6,7 +6,7 @@
  */
 import { join } from "node:path";
 
-import { deliveryEndedRecord, questionEndingDelivery } from "../shared/delivery-end";
+import { deliveryEndedRecord, deliveryTakenBackRecord, questionEndingDelivery, questionOpenAtDelivery } from "../shared/delivery-end";
 import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compaction";
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
@@ -298,6 +298,7 @@ export class Supervisor {
       }
     }
 
+    if (outcome.kind === "completed" && (await this.takeBackDeliveryWithOpenQuestion(paseo, live, identity))) return;
     if (await this.flushHeldReports(paseo, live.id)) return;
     if (outcome.kind === "completed" && (await this.remindAboutEvidence(paseo, live, identity))) return;
     await this.maybeStartCompaction(paseo, live, identity);
@@ -490,6 +491,26 @@ export class Supervisor {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * An owner that delivered with one of its questions still open (TR-146): the user answers every
+   * question before Accept, so the delivery goes back to In Progress and the owner is told why.
+   */
+  private async takeBackDeliveryWithOpenQuestion(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity): Promise<boolean> {
+    if (identity.ticket === null) return false;
+    const open = questionOpenAtDelivery(await this.state.allDecisions(), agent.id);
+    if (open === null) return false;
+    try {
+      // Written only while the delivery is on offer, checked under the tracker's lock.
+      const tracker = (await projectPaths(identity.project)).tracker;
+      if (!(await endDelivery(tracker, identity.ticket, deliveryTakenBackRecord(new Date().toISOString(), open.id)))) return false;
+    } catch (error) {
+      console.warn(`[taro] taking back ${identity.ticket}'s delivery: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+    await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.deliveryWithOpenQuestion, { ticket: identity.ticket, question: `\`${open.id}\`` }));
+    return true;
   }
 
   /**
