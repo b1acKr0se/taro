@@ -28,7 +28,8 @@ export interface PullRequestAccept extends Common {
 }
 
 export interface LocalAccept extends Common {
-  branch: string;
+  /** The ticket's branch, most likely first: the first that exists is used. */
+  branches: readonly string[];
   head: string;
 }
 
@@ -127,13 +128,19 @@ export async function acceptPullRequest(input: PullRequestAccept): Promise<Accep
  * A base branch that moved needs a rebase and the project's checks, which only an owner can run.
  */
 export async function acceptLocalBranch(input: LocalAccept): Promise<AcceptOutcome> {
-  const { branch, head, baseBranch, repoPath } = input;
+  const { head, baseBranch, repoPath } = input;
   const base = await headOf(input, `refs/heads/${baseBranch}`);
   if (base === null) return { kind: "surprise", found: `${repoPath} has no branch ${baseBranch}` };
   // Already there: an earlier run fast-forwarded it and a reload cut it off before the record.
   if (await isAncestor(input, head, base)) return { kind: "done", acceptance: acceptanceText(input.at(), input.ticket, `Accepted ${head}; ${baseBranch} already contains it at ${shortSha(base)}`, `merged ${shortSha(base)} → ${shortSha(base)}`) };
-  const branchHead = await headOf(input, `refs/heads/${branch}`);
-  if (branchHead === null) return { kind: "surprise", found: `${repoPath} has no branch ${branch}` };
+  let branch = "";
+  let branchHead: string | null = null;
+  for (const candidate of input.branches) {
+    branchHead = await headOf(input, `refs/heads/${candidate}`);
+    branch = candidate;
+    if (branchHead !== null) break;
+  }
+  if (branchHead === null) return { kind: "surprise", found: `${repoPath} has no branch ${[...new Set(input.branches)].join(" or ")}` };
   if (branchHead !== head) return { kind: "surprise", found: `${branch} moved to ${branchHead} since the review head ${head}; present it again` };
   const problem = await checkoutProblem(input);
   if (problem !== null) return { kind: "not-merged", reason: problem };

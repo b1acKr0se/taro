@@ -179,9 +179,20 @@ export function pluginAcceptPending(notes: string | null): boolean {
   return false;
 }
 
-/** The ticket's branch from the newest EXECUTION record that names one (`branch taro/sh-12`). */
+/**
+ * The ticket's branch from the newest EXECUTION record that names one (`branch taro/sh-12`). Owners
+ * also log their reviewers there ("checking the whole branch at 1826b13", "branch main..taro/sh-12"),
+ * so only a name with a slash and no range counts: Taro's branches are `taro/<id>`.
+ */
 export function executionBranch(notes: string | null): string | null {
-  return newestExecutionMatch(notes, /\bbranch\b[\s:=`*"']*([A-Za-z0-9][A-Za-z0-9._/-]*[A-Za-z0-9_])/i);
+  const records = noteRecords(notes).filter((record) => /^EXECUTION\b/.test(record));
+  for (let index = records.length - 1; index >= 0; index--) {
+    for (const match of (records[index] ?? "").matchAll(/\bbranch\b[\s:=`*"']*([A-Za-z0-9][A-Za-z0-9._/-]*[A-Za-z0-9_])/gi)) {
+      const name = match[1] ?? "";
+      if (name.includes("/") && !name.includes("..")) return name;
+    }
+  }
+  return null;
 }
 
 /**

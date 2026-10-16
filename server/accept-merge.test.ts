@@ -49,7 +49,7 @@ describe("local branch", () => {
   }
 
   function input(head: string) {
-    return { run: runCommand, ticket: "NT-1", at, baseBranch: "main", repoPath: repo, branch: "taro/nt-1", head };
+    return { run: runCommand, ticket: "NT-1", at, baseBranch: "main", repoPath: repo, branches: ["taro/nt-1"], head };
   }
 
   it("fast-forwards main to the reviewed head", async () => {
@@ -104,9 +104,16 @@ describe("local branch", () => {
     expect(await git(repo, "rev-parse", "HEAD")).toBe(moved);
   });
 
-  it("hands over a missing branch", async () => {
-    const outcome = await acceptLocalBranch(input("a".repeat(40)));
-    expect(outcome).toEqual({ kind: "surprise", found: `${repo} has no branch taro/nt-1` });
+  it("hands over a missing branch, naming every name it tried", async () => {
+    const outcome = await acceptLocalBranch({ ...input("a".repeat(40)), branches: ["feature/notes", "taro/nt-1"] });
+    expect(outcome).toEqual({ kind: "surprise", found: `${repo} has no branch feature/notes or taro/nt-1` });
+  });
+
+  it("falls back to the next name when the recorded branch does not exist", async () => {
+    const head = await branchWithWork();
+    const outcome = await acceptLocalBranch({ ...input(head), branches: ["feature/misread", "taro/nt-1"] });
+    expect(outcome.kind).toBe("done");
+    expect(await git(repo, "rev-parse", "HEAD")).toBe(head);
   });
 });
 

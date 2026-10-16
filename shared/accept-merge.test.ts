@@ -92,4 +92,16 @@ describe("executionBranch", () => {
     expect(executionBranch("MILESTONE 2026-01-01T00:00Z — branch other")).toBeNull();
     expect(executionBranch(null)).toBeNull();
   });
+
+  it("skips what owners log about their reviewers: words and ranges after 'branch'", () => {
+    const owner = "EXECUTION 2026-01-01T00:00Z — owner agent o, workspace wks_1, worktree /w, branch taro/nt-1, base main";
+    const reviewers = [
+      "EXECUTION 2026-01-01T01:00Z — reviewer r (claude/opus), checking the whole branch at 1826b13",
+      "EXECUTION 2026-01-01T02:00Z: reviewer r, job reviewer, task: checking the whole branch main..taro/nt-1 at 8b02a02.",
+      "EXECUTION 2026-01-01T03:00Z — reviewer r (sonnet) checking the whole branch.",
+      "EXECUTION 2026-01-01T04:00Z — reviewer r, reviewing 7bc9c9b..00b1d2f on the branch 7bc9c9b..00b1d2f",
+    ];
+    expect(executionBranch([owner, ...reviewers].join("\n"))).toBe("taro/nt-1");
+    expect(executionBranch("EXECUTION 2026-01-01T00:00Z — owner o, branch notes")).toBeNull();
+  });
 });

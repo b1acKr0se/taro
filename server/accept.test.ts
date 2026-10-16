@@ -11,6 +11,7 @@ import type { PaseoAgent, PaseoApi } from "./host-types";
 import { listProjectConfigs, requireProjectConfig } from "./projects";
 import type { Recovery } from "./recovery";
 import { sendWithoutInterrupting } from "./send";
+import { isStopping } from "./stopping";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
 import type { Supervisor } from "./supervision";
@@ -29,6 +30,7 @@ vi.mock("./tickets", () => ({
 vi.mock("./evidence", () => ({ requireCompleteEvidence: async () => undefined }));
 vi.mock("./send", () => ({ sendWithoutInterrupting: vi.fn(async () => undefined), sendFromPlugin: vi.fn(async () => undefined) }));
 vi.mock("./accept-merge", () => ({ acceptPullRequest: vi.fn(), acceptLocalBranch: vi.fn() }));
+vi.mock("./stopping", async (original) => ({ ...(await original<typeof import("./stopping")>()), isStopping: vi.fn(() => false) }));
 vi.mock("./models", () => ({ bypassModeId: async () => null }));
 vi.mock("./environment", () => ({ taroEnvironment: async () => ({}) }));
 vi.mock("./package-files", async (original) => ({
@@ -97,7 +99,7 @@ describe("accept run by the plugin", () => {
     await accept();
     expect(written()).toHaveLength(1);
     expect(written()[0]).toMatch(/^ACCEPTED \S+ — the user accepted; merging: into main; by: the plugin$/);
-    expect(vi.mocked(acceptLocalBranch).mock.calls[0]?.[0]).toMatchObject({ branch: "taro/dm-1", head, baseBranch: "main", repoPath: "/repo", ticket: "DM-1" });
+    expect(vi.mocked(acceptLocalBranch).mock.calls[0]?.[0]).toMatchObject({ branches: ["taro/dm-1"], head, baseBranch: "main", repoPath: "/repo", ticket: "DM-1" });
     expect(vi.mocked(closeTicket)).toHaveBeenCalledWith("/tracker", "DM-1", "ACCEPTANCE x — merge: merged a → b");
     expect(vi.mocked(sendWithoutInterrupting)).not.toHaveBeenCalled();
     expect(created).toEqual([]);
@@ -108,7 +110,33 @@ describe("accept run by the plugin", () => {
     ticket(`EXECUTION 2026-01-01T00:00Z — review-head: ${head}`);
     outcome({ kind: "done", acceptance: "ACCEPTANCE x" });
     await accept();
-    expect(vi.mocked(acceptLocalBranch).mock.calls[0]?.[0]).toMatchObject({ branch: "taro/dm-1" });
+    expect(vi.mocked(acceptLocalBranch).mock.calls[0]?.[0]).toMatchObject({ branches: ["taro/dm-1"] });
+  });
+
+  it("uses the owner's branch when a reviewer's record comes after it, then the taro branch", async () => {
+    config({});
+    ticket(
+      `EXECUTION 2026-01-01T00:00Z — owner agent owner-1, workspace wks_1, worktree /w, branch feature/dm-1, review-head: ${head}\n` +
+        "EXECUTION 2026-01-01T01:00Z — reviewer r (claude/opus), checking the whole branch at 1826b13",
+    );
+    outcome({ kind: "done", acceptance: "ACCEPTANCE x" });
+    await accept();
+    expect(vi.mocked(acceptLocalBranch).mock.calls[0]?.[0]).toMatchObject({ branches: ["feature/dm-1", "taro/dm-1"] });
+  });
+
+  it("records nothing when a stop cut the steps off, leaving them to resume at start", async () => {
+    config({});
+    ticket(`EXECUTION 2026-01-01T00:00Z — review-head: ${head}`);
+    vi.mocked(acceptLocalBranch).mockImplementation(async () => {
+      vi.mocked(isStopping).mockReturnValue(true);
+      return { kind: "not-merged", reason: "git could not read the main checkout: Taro is stopping" };
+    });
+    await accept();
+    vi.mocked(isStopping).mockReturnValue(false);
+    expect(written()).toHaveLength(1);
+    expect(written()[0]).toMatch(/^ACCEPTED .*by: the plugin$/);
+    expect(vi.mocked(closeTicket)).not.toHaveBeenCalled();
+    expect(vi.mocked(sendWithoutInterrupting)).not.toHaveBeenCalled();
   });
 
   it("merges a pull request with the project's method", async () => {

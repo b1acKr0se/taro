@@ -244,9 +244,18 @@ export class Actions {
       else if (head === null) outcome = { kind: "surprise", found: "the ticket records no review-head" };
       else if (config.delivery === "pull-request")
         outcome = url === null ? { kind: "surprise", found: "the ticket records no PR URL" } : await acceptPullRequest({ ...common, url, head, method: config.mergeMethod });
-      else outcome = await acceptLocalBranch({ ...common, head, branch: executionBranch(detail.implementationNotes) ?? `taro/${ticket.toLowerCase()}` });
+      else {
+        const recorded = executionBranch(detail.implementationNotes);
+        const fallback = `taro/${ticket.toLowerCase()}`;
+        outcome = await acceptLocalBranch({ ...common, head, branches: recorded === null || recorded === fallback ? [fallback] : [recorded, fallback] });
+      }
     } catch (error) {
       outcome = { kind: "surprise", found: error instanceof Error ? error.message : String(error) };
+    }
+    // A stop refuses new commands, which would read as failures: record nothing, so the next start resumes the steps.
+    if (isStopping()) {
+      console.log(`[taro] ${project}: Accept on ${ticket} cut off by the stop; it resumes at start`);
+      return;
     }
     if (outcome.kind === "done") await closeTicket(paths.tracker, ticket, outcome.acceptance);
     else if (outcome.kind === "not-merged") await appendTicketNote(paths.tracker, ticket, `NOT-MERGED ${at()} — ${outcome.reason}`);
