@@ -18,6 +18,7 @@ import { droppedFilesAsAttachments, imagesFromPaste, pickAttachments } from "./a
 import { availableSources, type AttachmentSource } from "./attachment-sources";
 import { AttachButton, AttachmentPreviews, DropBackdrop } from "./composer-attachments";
 import type { StoredDecision } from "../shared/state";
+import { WRITING_A_QUESTION } from "../shared/streaming-text";
 import { ContextMeter } from "./context-meter";
 import { useOnPaneHidden } from "./pane-visibility";
 import { DecisionCard } from "./decision-card";
@@ -38,7 +39,7 @@ import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
 import { cardFits, cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
 import { groupRows, toolRunSummary, type Group } from "./tool-runs";
-import { ATTACHMENTS_ONLY, transcriptRows } from "./transcript-rows";
+import { ATTACHMENTS_ONLY, transcriptRows, whileWriting } from "./transcript-rows";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
 import { composerNotice, heldFor, heldMarkText, offersSendNow } from "./composer-notice";
@@ -140,14 +141,15 @@ export function AgentChat({
 } & ChatComposer) {
   const toast = useToast();
   const timeline = useAgentTimeline(agent.id, `${agent.updatedAt}:${agent.pendingPermissions}`);
-  const rows = useMemo(() => transcriptRows(timeline.entries), [timeline.entries]);
+  // The timeline's read of the agent when it is newer than the board's: it follows the stream.
+  const live = timeline.agent !== null && timeline.agent.updatedAt >= agent.updatedAt ? timeline.agent : null;
+  const writing = (live?.status ?? agent.status) === "running";
+  const rows = useMemo(() => whileWriting(transcriptRows(timeline.entries), writing), [timeline.entries, writing]);
   const groups = useMemo(() => groupRows(rows), [rows]);
   // The newest entry's position, not the count: the timeline is a tail and stops growing in length.
   const sentImages = useSentImages(agent.id, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0);
   const rowImages = useMemo(() => matchSentImages(rows, sentImages), [rows, sentImages]);
   const agentRows = useMemo(() => rows.filter((row) => row.kind === "agent"), [rows]);
-  // The timeline's read of the agent when it is newer than the board's: it follows the stream.
-  const live = timeline.agent !== null && timeline.agent.updatedAt >= agent.updatedAt ? timeline.agent : null;
   /** Edit on a message not sent: its words and attachments go back ahead of what the box holds, or it stays when they would not fit. */
   function takeBackFailed(id: string): void {
     const failed = sends.views.find((view) => view.send.id === id)?.send;
@@ -775,15 +777,13 @@ function SendMarkLine({
 function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, transformText, decorateRow, theme, styles, onToggle, onRowLayout, onOpenLink, renderCards, onMarkAction }: TranscriptGroupProps) {
   if ("tools" in group) {
     const summary = toolRunSummary(group.tools);
-    const lone = group.tools.length === 1;
     const toggle = () => onToggle(group.key);
     return (
       <View key={group.key} style={styles.toolRun}>
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ expanded: open }}
-          accessibilityLabel={lone ? summary.title : `${summary.title}, ${open ? "fold" : "show"}`}
-          disabled={lone}
+          accessibilityLabel={`${summary.title}${summary.failed > 0 ? `, ${summary.failed} failed` : ""}${summary.state === "running" ? ", running" : ""}, ${open ? "fold" : "show"}`}
           style={[styles.toolHead, summary.state === "failed" ? { borderColor: theme.colors.statusDanger } : null]}
           onPress={toggle}
         >
@@ -792,18 +792,15 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, trans
           ) : (
             <Icon name={summary.state === "failed" ? "X" : "Wrench"} size={11} color={summary.state === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
           )}
-          <Text style={lone ? styles.toolLatest : styles.toolTitle} numberOfLines={1}>
+          {/* Never cut: the counts are what the reader wants, and one kind of step each keeps it short. */}
+          <Text style={styles.toolTitle}>
             {summary.title}
-            {summary.failed > 0 && !lone ? ` · ${summary.failed} failed` : ""}
           </Text>
-          {summary.latest === null || open ? null : (
-            <Text style={styles.toolLatest} numberOfLines={1}>
-              {summary.latest}
-            </Text>
-          )}
-          {lone ? null : <Icon name={open ? "ChevronDown" : "ChevronRight"} size={12} color={theme.colors.foregroundMuted} />}
+          {/* Its own text, so a long summary is cut before the failure is. */}
+          {summary.failed > 0 && group.tools.length > 1 ? <Text style={styles.toolFailed}>{`· ${summary.failed} failed`}</Text> : null}
+          <Icon name={open ? "ChevronDown" : "ChevronRight"} size={12} color={theme.colors.foregroundMuted} />
         </Pressable>
-        {open && !lone ? (
+        {open ? (
           <View style={styles.toolList}>
             {group.tools.map((tool) => (
               <View key={tool.key} style={styles.line}>
@@ -831,6 +828,7 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, trans
       return (
         <View key={row.key} style={styles.agentRow} onLayout={targets.length === 0 ? undefined : (event) => onRowLayout(row.key, targets, "row", event.nativeEvent.layout)}>
           <Markdown source={transformText === undefined ? row.text : transformText(row.text)} theme={theme} onOpenLink={onOpenLink} />
+          {row.asking === true ? <Text style={styles.asking}>{WRITING_A_QUESTION}</Text> : null}
           {decorateRow === undefined ? null : decorateRow(row.text, row.key)}
           {pastPlan === undefined ? null : <PastPlanLine line={pastPlan} theme={theme} styles={styles} />}
           {targets.length === 0 ? null : (
@@ -948,13 +946,15 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
       borderColor: colors.border,
     },
     toolList: { gap: SPACE.xs, marginLeft: SPACE.md, paddingLeft: SPACE.sm, borderLeftWidth: 1, borderLeftColor: colors.border },
-    toolLatest: { flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontFamily: MONOSPACE },
     lineText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
     lineTop: { alignItems: "flex-start" as const },
     lineTextHeight: { lineHeight: lineHeightFor(FONT_SIZE.caption) },
     lineIcon: { height: lineHeightFor(FONT_SIZE.caption), justifyContent: "center" as const },
     toolText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontFamily: MONOSPACE },
-    toolTitle: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
+    toolTitle: { flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
+    // Not the agent's words: the chat saying a question is on its way (TR-144).
+    asking: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, fontStyle: "italic" as const },
+    toolFailed: { flexShrink: 0, color: colors.statusDanger, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
     error: { color: colors.statusDanger, fontSize: FONT_SIZE.small },
     hint: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center" as const, padding: SPACE.lg },
     composerFrame: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface0 },

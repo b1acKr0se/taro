@@ -12,7 +12,10 @@
  */
 import type { usePaseo } from "@getpaseo/plugin/client";
 
+import { heldWhileWriting } from "../shared/streaming-text";
+
 import { imageLineOf } from "./markdown-parse";
+import { toolAction, type ToolCategory, type ToolDetail } from "./tool-wording";
 
 type PaseoApi = ReturnType<typeof usePaseo>;
 export type TimelinePage = Awaited<ReturnType<ReturnType<PaseoApi["agents"]["ref"]>["timeline"]["refetch"]>>;
@@ -22,10 +25,14 @@ type ToolCallItem = Extract<TimelineItem, { type: "tool_call" }>;
 
 export type TranscriptRow =
   | { key: string; kind: "user"; text: string }
-  /** `at`: when the message started, for matching what was answered after it (TR-135). */
-  | { key: string; kind: "agent"; text: string; at?: string }
+  /**
+   * `at`: when the message started, for matching what was answered after it (TR-135). `asking`: the
+   * reply is writing a decision block, not drawn until it closes (TR-144).
+   */
+  | { key: string; kind: "agent"; text: string; at?: string; asking?: boolean }
   | { key: string; kind: "event"; text: string }
-  | { key: string; kind: "tool"; text: string; status: ToolCallItem["status"] }
+  /** A tool call: `text` is the raw call the opened run lists, `plain` its plain words for a folded one (TR-144). */
+  | { key: string; kind: "tool"; text: string; plain: string; category: ToolCategory; status: ToolCallItem["status"] }
   | { key: string; kind: "error"; text: string };
 
 /** A user row's text when the message had attachments and no words. */
@@ -184,9 +191,11 @@ export function transcriptRows(entries: readonly TimelineEntry[]): TranscriptRow
         previousReply = entry;
         break;
       }
-      case "tool_call":
-        rows.push({ key, kind: "tool", text: toolSummary(item), status: item.status });
+      case "tool_call": {
+        const action = toolAction(item.detail as ToolDetail, item.name);
+        rows.push({ key, kind: "tool", text: toolSummary(item), plain: action.text, category: action.category, status: item.status });
         break;
+      }
       case "error":
         rows.push({ key, kind: "error", text: item.message });
         break;
@@ -211,4 +220,15 @@ export function endStoppedCompactions<Row extends { kind: string; text?: string 
   return rows.map((row, index) =>
     row.kind === "event" && row.text === COMPACTING && rows.slice(index + 1).some((later) => later.kind === "agent" || later.kind === "tool") ? { ...row, text: COMPACTION_STOPPED } : row,
   );
+}
+
+/**
+ * The rows while the agent writes (TR-144): the newest reply, when it is the last row, without a
+ * decision block or status line it has not finished (`heldWhileWriting`). The same rows otherwise.
+ */
+export function whileWriting(rows: TranscriptRow[], writing: boolean): TranscriptRow[] {
+  const last = rows[rows.length - 1];
+  if (!writing || last === undefined || last.kind !== "agent") return rows;
+  const held = heldWhileWriting(last.text);
+  return held.text === last.text && !held.asking ? rows : [...rows.slice(0, -1), { ...last, text: held.text, asking: held.asking }];
 }

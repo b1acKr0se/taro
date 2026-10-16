@@ -6,7 +6,7 @@ import type { Group } from "./tool-runs";
 const message = (key: string, text: string): Group => ({ key, row: { key, kind: "agent", text } });
 const tools = (key: string, ...states: ["running" | "completed" | "failed", string][]): Group => ({
   key,
-  tools: states.map(([status, text], index) => ({ key: `${key}-${index}`, kind: "tool" as const, text, status })),
+  tools: states.map(([status, text], index) => ({ key: `${key}-${index}`, kind: "tool" as const, text, plain: `plain ${text}`, category: "other" as const, status })),
 });
 
 describe("sameGroup", () => {
@@ -16,6 +16,12 @@ describe("sameGroup", () => {
 
   it("redraws a message whose words grew while streaming", () => {
     expect(sameGroup(message("m1", "Plan"), message("m1", "Plan written."))).toBe(false);
+  });
+
+  it("redraws a message whose question line came or went while the words stayed (TR-144)", () => {
+    const asking: Group = { key: "m1", row: { key: "m1", kind: "agent", text: "Plan written.", asking: true } };
+    expect(sameGroup(message("m1", "Plan written."), asking)).toBe(false);
+    expect(sameGroup(asking, { key: "m1", row: { key: "m1", kind: "agent", text: "Plan written.", asking: true } })).toBe(true);
   });
 
   it("redraws a row that became another kind or another row", () => {
