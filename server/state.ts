@@ -1,11 +1,12 @@
 /**
  * The plugin's own state on disk (decision 37): parsed decisions, each
  * agent's supervision record, the ticket statuses last acted on (TR-043), and
- * the queue ladder's restarts and dismissed alerts (TR-062). Kept in memory, written through on every change,
+ * the queue ladder's restarts and dismissed alerts (TR-062), and Taro agents' permission asks (TR-149). Kept in memory, written through on every change,
  * read back on start, so a reload or restart loses nothing.
  */
 import { z } from "zod";
 
+import { keptAsks, PermissionAskSchema, resolveAsk, type AskResolution, type PermissionAsk } from "../shared/permission-asks";
 import { AgentStateSchema, StoredDecisionSchema, type AgentState, type StoredDecision } from "../shared/state";
 import { statePath } from "./data-dir";
 import { readJsonIfPresent, writeJsonAtomically } from "./files";
@@ -16,6 +17,7 @@ const AgentsFileSchema = z.object({ agents: z.record(z.string(), AgentStateSchem
 const TicketStatusesFileSchema = z.object({ projects: z.record(z.string(), z.record(z.string(), z.string())).default({}) });
 const QueueLadderSchema = z.object({ restarts: z.array(z.string()).default([]), dismissed: z.array(z.string()).default([]) });
 export type StoredQueueLadder = z.infer<typeof QueueLadderSchema>;
+const PermissionAsksFileSchema = z.object({ asks: z.array(PermissionAskSchema).default([]) });
 const QueueLaddersFileSchema = z.object({ projects: z.record(z.string(), QueueLadderSchema).default({}) });
 
 /** Answered and withdrawn decisions are kept this long for the record, then dropped. */
@@ -26,6 +28,7 @@ export class PluginState {
   private agents: Record<string, AgentState> | null = null;
   private ticketStatusesByProject: Record<string, Record<string, string>> | null = null;
   private queueLadders: Record<string, StoredQueueLadder> | null = null;
+  private permissionAsks: PermissionAsk[] | null = null;
 
   private async loadQueueLadders(): Promise<Record<string, StoredQueueLadder>> {
     if (this.queueLadders === null) {
@@ -146,6 +149,76 @@ export class PluginState {
       const projects = await this.loadTicketStatuses();
       projects[project] = Object.fromEntries(statuses);
       await writeJsonAtomically(statePath("ticket-statuses.json"), { projects });
+    });
+  }
+
+  private async loadPermissionAsks(): Promise<PermissionAsk[]> {
+    if (this.permissionAsks === null) {
+      const raw = await readJsonIfPresent(statePath("permission-asks.json")).catch(() => null);
+      const parsed = PermissionAsksFileSchema.safeParse(raw ?? {});
+      this.permissionAsks = parsed.success ? parsed.data.asks : [];
+    }
+    return this.permissionAsks;
+  }
+
+  /** An agent's answered permission asks, oldest first, for its chat's finished cards. */
+  async answeredPermissionAsks(agentId: string): Promise<PermissionAsk[]> {
+    return (await this.loadPermissionAsks())
+      .filter((ask) => ask.agentId === agentId && ask.answeredAt !== null)
+      .sort((left, right) => Date.parse(left.askedAt) - Date.parse(right.askedAt));
+  }
+
+  /** Changes the asks under one lock, drops those past keeping, and writes them back. */
+  private updatePermissionAsks<T>(change: (asks: PermissionAsk[]) => T): Promise<T> {
+    return serialized("state:permission-asks", async () => {
+      const asks = await this.loadPermissionAsks();
+      const result = change(asks);
+      this.permissionAsks = keptAsks(asks, Date.now());
+      await writeJsonAtomically(statePath("permission-asks.json"), { asks: this.permissionAsks });
+      return result;
+    });
+  }
+
+  /** A new ask; the same request asked again replaces it. */
+  recordPermissionAsk(ask: PermissionAsk): Promise<void> {
+    return this.updatePermissionAsks((asks) => {
+      const index = asks.findIndex((each) => each.agentId === ask.agentId && each.requestId === ask.requestId);
+      if (index === -1) asks.push(ask);
+      else asks[index] = ask;
+    });
+  }
+
+  /**
+   * Taro's rules are answering this ask (TR-143): marked before they respond, so the resolution that
+   * follows is theirs and not the user's. Whether an ask was recorded to mark.
+   */
+  markPermissionAskByRules(agentId: string, requestId: string, rule: string): Promise<boolean> {
+    return this.updatePermissionAsks((asks) => {
+      const ask = asks.find((each) => each.agentId === agentId && each.requestId === requestId && each.answeredAt === null);
+      if (ask === undefined) return false;
+      ask.rule = rule;
+      return true;
+    });
+  }
+
+  /** The rules could not respond: the answer, now or later, is the user's. */
+  clearPermissionAskRules(agentId: string, requestId: string): Promise<void> {
+    return this.updatePermissionAsks((asks) => {
+      const ask = asks.find((each) => each.agentId === agentId && each.requestId === requestId);
+      if (ask === undefined || ask.rule === null) return;
+      ask.rule = null;
+      if (ask.by === "rules") ask.by = "you";
+    });
+  }
+
+  /** The ask's answer; an ask never recorded (another agent's, or made before TR-149) is ignored. Whether one was answered. */
+  resolvePermissionAsk(agentId: string, requestId: string, resolution: AskResolution, at: string): Promise<boolean> {
+    return this.updatePermissionAsks((asks) => {
+      const index = asks.findIndex((each) => each.agentId === agentId && each.requestId === requestId);
+      const ask = asks[index];
+      if (ask === undefined) return false;
+      asks[index] = resolveAsk(ask, resolution, at, ask.rule === null ? null : { rule: ask.rule });
+      return true;
     });
   }
 }

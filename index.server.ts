@@ -10,6 +10,8 @@ import {
   dismissSuggestion as dismissSuggestionRpc,
   dismissQueueAlert,
   findAgentTicket,
+  answeredPermissionAsks,
+  listAgentDecisions,
   listOpenDecisions,
   loadBoard as loadBoardRpc,
   loadTicket,
@@ -45,10 +47,12 @@ import {
   dismissCrash,
 } from "./shared/contracts";
 import { inboxCount } from "./shared/board";
+import { askFromRequest } from "./shared/permission-asks";
 import { ProjectSettingsSchema } from "./shared/project";
 import { Actions } from "./server/actions";
 import { createCrashTrail } from "./server/crash-trail";
 import { backfillCosts, recordArchivedUsage } from "./server/cost-recording";
+import { decisionsOfAgent } from "./server/agent-decisions";
 import { fetchLiveAgent, isAgentLive } from "./server/agents";
 import { dismissSuggestion, invalidateBoards, liveOpenDecisions, loadBoard, loadTicketDetail } from "./server/board";
 import type { PaseoApi } from "./server/host-types";
@@ -65,7 +69,7 @@ import { ensureCompactHook, installCompactHook, removeReloadFile } from "./serve
 import { catchUpText, compactManager, launchManager, restartManager, resumeManager, tellManager, writeManagerInstructions } from "./server/manager";
 import { onboardProject, onboardingProblems } from "./server/onboard";
 import { listPaseoProjects, settingsTemplate } from "./server/paseo-projects";
-import { triageAsk } from "./server/permission-triage";
+import { isTaroAsker, triageAsk } from "./server/permission-triage";
 import { readImage } from "./server/images";
 import { Notifier } from "./server/notifications";
 import { allowedMergeMethods } from "./server/merge-methods";
@@ -304,6 +308,8 @@ export default function contribute(server: PluginServerContext) {
     return { decision, agentLive: decision?.status === "open" ? await isAgentLive(keep(paseo), agentId) : true };
   });
   server.handle(listOpenDecisions, async ({ project }, { paseo }) => ({ decisions: await liveOpenDecisions(keep(paseo), state, project) }));
+  server.handle(answeredPermissionAsks, async ({ agentId }) => ({ asks: await state.answeredPermissionAsks(agentId) }));
+  server.handle(listAgentDecisions, async ({ agentId }) => ({ decisions: decisionsOfAgent(await state.allDecisions(), agentId) }));
   server.handle(tellAgent, async ({ agentId, text, images, files, messageId }, { paseo }) => {
     await actions.tellAgent(keep(paseo), agentId, text, { images, files, messageId });
     return {};
@@ -416,12 +422,24 @@ export default function contribute(server: PluginServerContext) {
   });
 
   // A bypass-mode agent's shell ask is answered by fixed rules when they decide it; the rest wait for the user (TR-143).
+  // A Taro agent's asks are recorded first, so the rules can mark one as theirs before they answer it (TR-149).
   const removePermissionHook = server.on("agent.permission_requested", async ({ agent, request }, { paseo }) => {
-    const decided = await triageAsk(paseo, stats, agent, request).catch((error: unknown) => {
+    await isTaroAsker(paseo, (agentId) => state.agent(agentId), agent.id)
+      .then((taro) => (taro ? state.recordPermissionAsk(askFromRequest(agent.id, request, new Date().toISOString())) : undefined))
+      .catch((error: unknown) => reportFailure(`[taro] recording ${agent.id}'s permission ask:`, error));
+    const rulesMark = {
+      mark: (requestId: string, rule: string) => state.markPermissionAskByRules(agent.id, requestId, rule),
+      clear: (requestId: string) => state.clearPermissionAskRules(agent.id, requestId),
+    };
+    const decided = await triageAsk(paseo, stats, agent, request, rulesMark).catch((error: unknown) => {
       reportFailure(`[taro] triaging ${agent.id}'s permission ask:`, error);
       return null;
     });
     if (decided !== null) invalidateBoards();
+  });
+  // Whoever answered: the rules' mark on the ask says it was them, otherwise it was the user.
+  const removePermissionResolvedHook = server.on("agent.permission_resolved", async ({ agent, requestId, resolution }) => {
+    await state.resolvePermissionAsk(agent.id, requestId, resolution, new Date().toISOString()).catch((error: unknown) => reportFailure(`[taro] recording the answer to ${agent.id}'s permission ask:`, error));
   });
 
   // Every Taro agent knows where its tracker and skill are, and has `taro` on PATH, on create and on resume (decision 38).
@@ -459,6 +477,7 @@ export default function contribute(server: PluginServerContext) {
     removeSessionHook();
     removeCreateHook();
     removePermissionHook();
+    removePermissionResolvedHook();
     // Last: commands under way get a moment to finish, then are killed with their children (TR-073).
     await stopCommands();
   };

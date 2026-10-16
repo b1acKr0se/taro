@@ -9,8 +9,8 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState, type ReactNode } from "react";
-import { Text, View } from "react-native";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Text, View, type ScrollView as NativeScrollView } from "react-native";
 
 import { answerDecision, compactAgent, listOpenDecisions, loadTicket, pauseTicket, resumeTicket } from "../shared/contracts";
 import { ticketViewApproval } from "../shared/decision-view";
@@ -66,7 +66,20 @@ const SECTION_LOOK: Record<TicketSectionKey, { icon: string; name: string }> = {
   records: { icon: "ScrollText", name: "Records" },
 };
 
-export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: { project: string; ticket: string; theme: PluginTheme; answeredFrom?: "screen" | "tab" }) {
+export function TicketView({
+  project,
+  ticket,
+  theme,
+  answeredFrom = "screen",
+  planRequest = 0,
+}: {
+  project: string;
+  ticket: string;
+  theme: PluginTheme;
+  answeredFrom?: "screen" | "tab";
+  /** A ticket beside the chat (TR-149): when this counts up from 0 or changes, the Plan row unfolds and scrolls into view. */
+  planRequest?: number;
+}) {
   const load = useRpc(loadTicket);
   const listDecisions = useRpc(listOpenDecisions);
   const toast = useToast();
@@ -77,6 +90,22 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
   const [width, setWidth] = useState<number | null>(null);
   // Change spec…'s box, opened from the summary row's button (TR-129).
   const [specOpen, setSpecOpen] = useState(false);
+  // Where the Plan row lies: the sections' top in the content, and the row's in them. Both are known once drawn.
+  const scroller = useRef<NativeScrollView>(null);
+  const sectionsTop = useRef<number | null>(null);
+  const planTop = useRef<number | null>(null);
+  const planWanted = useRef(false);
+  function scrollToPlan(): void {
+    if (!planWanted.current || sectionsTop.current === null || planTop.current === null) return;
+    planWanted.current = false;
+    scroller.current?.scrollTo({ y: Math.max(0, sectionsTop.current + planTop.current - SPACE.sm), animated: true });
+  }
+  useEffect(() => {
+    if (planRequest <= 0) return;
+    setToggled((current) => ({ ...current, plan: true }));
+    planWanted.current = true;
+    scrollToPlan();
+  }, [planRequest]);
   const planSource = detail.data?.plan ?? null;
   const plan = useMemo(() => parsePlan(planSource), [planSource]);
   const allDecisions = decisions.data?.decisions;
@@ -205,7 +234,7 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
   }
 
   return (
-    <KeyboardScrollView contentContainerStyle={styles.body}>
+    <KeyboardScrollView scrollerRef={scroller} contentContainerStyle={styles.body}>
       <SummaryBlock
         theme={theme}
         status={data.status}
@@ -236,7 +265,13 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
       />
       {data.specChangeable ? <SpecChangeBox project={project} ticket={ticket} theme={theme} open={specOpen} onOpenChange={setSpecOpen} onSent={() => void detail.refetch()} /> : null}
       {sections.length === 0 ? null : (
-        <View onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
+        <View
+          onLayout={(event) => {
+            setWidth(event.nativeEvent.layout.width);
+            sectionsTop.current = event.nativeEvent.layout.y;
+            scrollToPlan();
+          }}
+        >
           {sections.map((section, index) => {
             const expanded = toggled[section.key] ?? section.open;
             return (
@@ -249,6 +284,14 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
                 expanded={expanded}
                 stacked={stacked}
                 last={index === sections.length - 1}
+                onLayout={
+                  section.key === "plan"
+                    ? (top) => {
+                        planTop.current = top;
+                        scrollToPlan();
+                      }
+                    : undefined
+                }
                 onToggle={() => setToggled((current) => ({ ...current, [section.key]: !expanded }))}
               >
                 {expanded ? body(section.key) : null}
@@ -427,6 +470,7 @@ function SectionRow({
   expanded,
   stacked,
   last,
+  onLayout,
   onToggle,
   children,
 }: {
@@ -437,6 +481,8 @@ function SectionRow({
   expanded: boolean;
   stacked: boolean;
   last: boolean;
+  /** The row's top within its sections. */
+  onLayout?: ((top: number) => void) | undefined;
   onToggle: () => void;
   children: ReactNode;
 }) {
@@ -446,7 +492,10 @@ function SectionRow({
   // The summary says what is folded; an open section shows it instead.
   const shownSummary = expanded || summary === "" ? null : summary;
   return (
-    <View style={{ borderTopWidth: 1, borderTopColor: colors.border, borderBottomWidth: last ? 1 : 0, borderBottomColor: colors.border }}>
+    <View
+      onLayout={onLayout === undefined ? undefined : (event) => onLayout(event.nativeEvent.layout.y)}
+      style={{ borderTopWidth: 1, borderTopColor: colors.border, borderBottomWidth: last ? 1 : 0, borderBottomColor: colors.border }}
+    >
       <Pressable accessibilityRole="button" accessibilityLabel={name} accessibilityState={{ expanded }} onPress={onToggle} style={{ paddingVertical: SPACE.md, gap: SPACE.xxs }}>
         <View style={{ flexDirection: "row", alignItems: stacked || shownSummary === null ? "center" : "flex-start", gap: SPACE.sm }}>
           <View style={{ height: lineHeightFor(FONT_SIZE.small), justifyContent: "center" }}>

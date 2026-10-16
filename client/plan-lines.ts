@@ -1,6 +1,6 @@
 /**
- * What an owner's past plans say in its chat (TR-135): a plan answered or asked again leaves one
- * labelled line under its message, "Plan · approved 08:12", where the card was; only the newest
+ * What an owner's past plans say in its chat (TR-135): a plan answered or asked again leaves a
+ * finished card under its message, "Plan · Approved 08:12", where the live card was; only the newest
  * open plan keeps a live card. The answers come from the ticket's ANSWER records, matched to each
  * asking by time. Pure.
  */
@@ -12,13 +12,17 @@ export interface PlanAnswer {
   at: string;
   /** "approved", "changes requested", or another option's label (Split into children). */
   outcome: string;
+  /** What the user typed with the answer, from its first line; null when the record carries none. */
+  words: string | null;
 }
 
 export interface PlanLine {
   /** What the user answered; null when it was not answered on the card. */
   outcome: string | null;
-  /** When it was answered; null without an answer record. */
+  /** When it was answered, or withdrawn (the withdrawing message's time); null without either. */
   at: string | null;
+  /** The words typed with the answer; null without any. */
+  words: string | null;
   /** Asked again further down. */
   replaced: boolean;
   /** Without an answer: withdrawn by the owner, or answered in words in the chat (the owner then withdraws it). */
@@ -35,7 +39,7 @@ export function planAnswers(notes: string | null): PlanAnswer[] {
     .flatMap((line) => {
       const match = RECORD.exec(line.trim());
       if (match === null || match[1] === undefined || match[2] === undefined || Number.isNaN(Date.parse(match[1]))) return [];
-      return [{ at: match[1], outcome: answerOutcome(match[2]) }];
+      return [{ at: match[1], outcome: answerOutcome(match[2]), words: answerWords(match[2]) }];
     })
     .sort((left, right) => Date.parse(left.at) - Date.parse(right.at));
 }
@@ -47,6 +51,13 @@ function answerOutcome(answer: string): string {
   if (label === "Approve") return "approved";
   if (label === "" || label === "Request changes") return "changes requested";
   return `${label.charAt(0).toLowerCase()}${label.slice(1)}`;
+}
+
+/** The words inside `Label ("words")` or a bare `"words"`, without the record's "(the user, from …)" tail. */
+function answerWords(answer: string): string | null {
+  const body = answer.replace(/\s*\(the user, from [^)]*\)\s*$/, "");
+  const words = body.startsWith('"') ? body.slice(1).replace(/"$/, "") : body.includes(' ("') ? body.slice(body.indexOf(' ("') + 3).replace(/"\)$/, "") : "";
+  return words.trim() === "" ? null : words.trim();
 }
 
 /**
@@ -79,24 +90,19 @@ export function planLines(
     const end = next?.at ?? Number.POSITIVE_INFINITY;
     const endIndex = next?.index ?? rows.length;
     const answer = answers.find((each) => Date.parse(each.at) >= asking.at && Date.parse(each.at) < end);
-    const between = rows.slice(asking.index + 1, endIndex);
-    const userSpoke = between.some((each) => each.kind === "user");
-    const withdrawn = withdrawals.some((index) => index > asking.index && index < endIndex);
+    const firstWithdrawal = withdrawals.find((index) => index > asking.index && index < endIndex);
+    const withdrawn = firstWithdrawal !== undefined;
+    // The user's words answered it only when the owner had not already withdrawn it.
+    const userSpoke = rows.slice(asking.index + 1, firstWithdrawal ?? endIndex).some((each) => each.kind === "user");
     if (answer === undefined && next === undefined && (settling || (!withdrawn && !userSpoke))) return;
+    const closed = answer !== undefined ? null : userSpoke ? "answered in chat" : withdrawn ? "withdrawn" : null;
     lines.set(row.key, {
       outcome: answer?.outcome ?? null,
-      at: answer?.at ?? null,
+      at: answer?.at ?? (closed === "withdrawn" && firstWithdrawal !== undefined ? (rows[firstWithdrawal]?.at ?? null) : null),
+      words: answer?.words ?? null,
       replaced: next !== undefined,
-      closed: answer !== undefined ? null : userSpoke ? "answered in chat" : withdrawn ? "withdrawn" : null,
+      closed,
     });
   });
   return lines;
-}
-
-/** "Plan · changes requested 08:10 — replaced by the plan below"; `clock` formats a time ("08:10"). */
-export function planLineText(line: PlanLine, clock: (iso: string) => string | null): string {
-  const time = line.at === null ? null : clock(line.at);
-  const what = line.outcome !== null ? [line.outcome, time].filter((part) => part !== null).join(" ") : line.closed;
-  const parts = [what, line.replaced ? "replaced by the plan below" : null].filter((part) => part !== null);
-  return `Plan · ${parts.length === 0 ? "closed" : parts.join(" — ")}`;
 }

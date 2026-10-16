@@ -88,23 +88,6 @@ export function withoutDecisionBlocks(message: string): string {
   return message.replace(/\r\n?/g, "\n").replace(FENCE, "").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-/**
- * The message with each decision block turned into a short quote — the question and its options,
- * the recommended one marked — for a finished agent's chat, where no card can answer it any more.
- */
-export function decisionBlocksAsText(message: string): string {
-  return message
-    .replace(/\r\n?/g, "\n")
-    .replace(FENCE, (_block, body: string) => {
-      const decision = parseDecisionBody(body);
-      if (decision.withdrawn) return "";
-      const options = decision.options.map((option) => (option.label === decision.recommended ? `**${option.label}** (recommended)` : option.label));
-      return `> **Asked:** ${decision.question.replace(/\s+/g, " ").trim()}${options.length === 0 ? "" : `\n>\n> ${options.join(" · ")}`}\n`;
-    })
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
 export type MessageSegment = { kind: "text"; text: string } | { kind: "decision"; decision: ParsedDecision };
 
 /**

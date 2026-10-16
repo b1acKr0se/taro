@@ -141,6 +141,8 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   }, [next]);
 
   const [plan, setPlan] = useState<OpenPlan | null>(keptPlan);
+  // Counts View plan presses, so a ticket beside the chat unfolds its Plan on each (TR-149).
+  const [planRequest, setPlanRequest] = useState(0);
 
   /** The screen now, for the moves in `back-steps.ts`. */
   function now(): ScreenNow {
@@ -190,6 +192,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   }, [showing, shownProject, shownTicket, phoneTab, plan, layout.compact]);
 
   function viewPlan(project: string, planFor: string): void {
+    setPlanRequest((count) => count + 1);
     go(viewPlanMove(now(), plan, project, planFor));
   }
 
@@ -353,6 +356,7 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
                 active={active}
                 ticket={active ? ticket : null}
                 planOpen={active && planShown(plan, ticket)}
+                planRequest={planRequest}
                 phoneTab={phoneTab}
                 onPhoneTab={setPhoneTab}
                 onLeavePlan={() => {
@@ -406,6 +410,7 @@ function ProjectView({
   active,
   ticket,
   planOpen,
+  planRequest,
   phoneTab,
   onPhoneTab,
   onLeavePlan,
@@ -438,6 +443,8 @@ function ProjectView({
   backTo: (phoneTab: PhoneTab) => string;
   /** The open ticket was opened by View plan: its Ticket tab shows, and Back returns to where it was pressed. */
   planOpen: boolean;
+  /** View plan presses so far; the ticket beside the chat unfolds its Plan when it counts up while the plan is shown. */
+  planRequest: number;
   /** The user left the plan for the ticket's chat: Back goes to the manager again. */
   onLeavePlan: () => void;
   onSettings: () => void;
@@ -525,6 +532,7 @@ function ProjectView({
         ticketBeside={layout.ticketBeside}
         backTo={backTo(phoneTab)}
         planOpen={planOpen}
+        planRequest={planRequest}
         onBack={ticketBackLatest}
         onLeavePlan={leavePlan}
         onOpenAgent={openAgent}
@@ -596,7 +604,7 @@ function ProjectView({
         {layout.ticketBeside && openCard !== null ? (
           <View style={{ width: "42%", minWidth: 360, borderLeftWidth: 1, borderLeftColor: theme.colors.border, backgroundColor: theme.colors.surface0 }}>
             <PaneHeader theme={theme} title={`${openCard.id} · ticket`} icon="ClipboardList" />
-            <TicketView key={openCard.id} project={project} ticket={openCard.id} theme={theme} />
+            <TicketView key={openCard.id} project={project} ticket={openCard.id} theme={theme} planRequest={planOpen ? planRequest : 0} />
           </View>
         ) : null}
       </View>
