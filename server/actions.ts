@@ -217,7 +217,10 @@ export class Actions {
     await sendWithoutInterrupting(paseo, owner.id, await message(TEMPLATES.requestChanges, { ticket, text: text.trim() }));
     const paths = await projectPaths(project);
     // Sending ends the delivery (TR-131): back to In Progress at once, so the card and its Accept row leave the chat.
-    await recordChangesRequested(paths.tracker, ticket, `CHANGES-REQUESTED ${new Date().toISOString()} — the user: "${text.trim()}"`).catch(() => undefined);
+    // A failed write keeps the card: the user is told the words went but the ticket did not move, rather than shown a delivery that ended only on screen.
+    await recordChangesRequested(paths.tracker, ticket, `CHANGES-REQUESTED ${new Date().toISOString()} — the user: "${text.trim()}"`).catch((error: unknown) => {
+      throw new Error(`Sent to the owner, but ${ticket} could not be moved to In Progress: ${error instanceof Error ? error.message : String(error)}`);
+    });
   }
 
   /** Change spec… (TR-129): only while the ticket waits in Queued with no owner; an owner takes changes in its own chat. */

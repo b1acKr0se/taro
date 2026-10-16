@@ -111,4 +111,10 @@ describe("requestChanges (TR-131)", () => {
     await expect(actions.requestChanges({} as PaseoApi, "demo", "DM-1", "Rename it")).rejects.toThrow("gone");
     expect(vi.mocked(recordChangesRequested)).not.toHaveBeenCalled();
   });
+
+  it("fails, saying the words went, when the ticket could not be moved to In Progress, so the card stays", async () => {
+    vi.mocked(recordChangesRequested).mockRejectedValueOnce(new Error("tracker locked"));
+    await expect(actions.requestChanges({} as PaseoApi, "demo", "DM-1", "Rename it")).rejects.toThrow("Sent to the owner, but DM-1 could not be moved to In Progress: tracker locked");
+    expect(vi.mocked(sendWithoutInterrupting)).toHaveBeenCalledOnce();
+  });
 });

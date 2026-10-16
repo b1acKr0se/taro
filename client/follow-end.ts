@@ -184,10 +184,12 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
       // A hidden pane's scroll view reports nothing about where the reader was.
       if (hidden.current || layoutMeasurement.height === 0) return;
       const kind = scrollEventKind(contentOffset.y, Math.max(0, contentSize.height - layoutMeasurement.height), revealOffsets.current, pendingReveals.current);
-      if (kind === "stale") return;
-      if (kind === "reader") readerScrolled.current = true;
-      pinnedToEnd.current = isAtEnd(contentOffset.y, layoutMeasurement.height, contentSize.height, knownHeight.current);
-      setAway(!pinnedToEnd.current);
+      // A stale event still says where the view is, as a reveal to the same offset fires none; it only must not decide following.
+      if (kind !== "stale") {
+        if (kind === "reader") readerScrolled.current = true;
+        pinnedToEnd.current = isAtEnd(contentOffset.y, layoutMeasurement.height, contentSize.height, knownHeight.current);
+        setAway(!pinnedToEnd.current);
+      }
       offset.current = contentOffset.y;
       onScrolled?.(contentOffset.y, layoutMeasurement.height);
     },
