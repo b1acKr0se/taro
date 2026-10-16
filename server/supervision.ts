@@ -164,7 +164,7 @@ async function unansweredMidTurn(paseo: PaseoApi, agentId: string, timeline: rea
 }
 
 /** The words shown back once, as the next turn no longer holds them; after the reload text when there is one. */
-async function withMidTurnReminder(before: string | null, unanswered: readonly string[]): Promise<string> {
+export async function withMidTurnReminder(before: string | null, unanswered: readonly string[]): Promise<string> {
   if (unanswered.length === 0) return before ?? "";
   const reminder = await message(TEMPLATES.midTurnUnanswered, { messages: quotedForReminder(unanswered) });
   return before === null ? reminder : `${before}\n\n${reminder}`;
