@@ -86,6 +86,10 @@ describe("latestMilestone", () => {
 });
 
 describe("kindLabel", () => {
+  it("calls a PAUSE-REQUESTED record by the button's name since TR-166", () => {
+    expect(kindLabel("PAUSE-REQUESTED")).toBe("Park requested");
+  });
+
   it("writes a record kind in plain words", () => {
     expect(kindLabel("MILESTONE")).toBe("Milestone");
     expect(kindLabel("DISPATCH-INTENT")).toBe("Dispatch intent");
