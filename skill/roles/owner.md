@@ -29,8 +29,8 @@ too, test-daemon and scratch-repository cleanup most of all. Then follow the flo
    | --- | --- | --- | --- | --- |
    | trivial | the request fully determines the change (exact value, typo, rename) | one line of scope | you | self |
    | low | small and clear, one area | 3–6 lines: change, criteria, assumptions | you | self |
-   | medium | a feature in one subsystem | half a page: decisions, criteria, short plan | you | one independent round |
-   | high | several subsystems, contracts, real ambiguity | full spec: decisions, numbered criteria, task list or children | implementers | up to two rounds |
+   | medium | a feature in one subsystem | half a page: decisions, criteria, short plan | you | one independent round + fix check |
+   | high | several subsystems, contracts, real ambiguity | full spec: decisions, numbered criteria, task list or children | implementers | up to two rounds + fix check |
 
    **Risk floor:** anything touching contracts, money or fee math, auth, or stored data is at least
    medium.
@@ -86,7 +86,8 @@ one a "helper".
   contradicts, everything traces to the approved spec.
 - **Threads are finite:** before starting a subagent or a test daemon, read `cat
   /sys/fs/cgroup/pids.current /sys/fs/cgroup/pids.max` and wait while usage is above 85% (skip where
-  the files are missing). Stop test daemons and finished subagents promptly (a reviewer once its fix check is done). Before you finish,
+  the files are missing). Stop test daemons and finished subagents promptly (a reviewer once
+  its fix check is done). Before you finish,
   stop every test daemon you started (`paseo daemon stop --home <its home>`, or kill its pid) and
   check `ps -eo pid,ppid,etime,args` for what it left: its plugin's processes, a `git`
   under PID 1 from its home or tracker. Kill those by pid and delete the home.
@@ -120,8 +121,9 @@ decisions to the user.
   `taro.role=reviewer` and the strongest model for risky code. For a visible change, capture the
   screenshots first and give it their absolute paths, the user's words and the criteria: it looks at
   them before the code, in the same round.
-- **high:** a reviewer over the combined diff; its fixes get a fix check (below), which is the
-  second round; then escalate with a `review-dispute` decision rather than loop.
+- **high:** a reviewer over the combined diff; if it found a blocker, a second round re-reviews the
+  whole branch after your fixes, whatever their size; otherwise the fixes get a fix check (below).
+  Then escalate with a `review-dispute` decision rather than loop.
 
 You verify every finding against the code yourself (valid / partially valid / invalid, with
 evidence), fix the valid blockers and should-fix findings yourself, and record a REVIEW note that
@@ -138,10 +140,11 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
 **Fix check (TR-148):** once you fixed an independent round's valid blockers or should-fix findings
 (medium or high), a reviewer checks the fixes before delivery; fixes alone can break what was
 reviewed. Send it to the same reviewer (`paseo send`; it still holds the context), so archive it
-only after its fix check; start a fresh one with the findings only when it is gone. Send the fix
-range (`<reviewed head>..HEAD`), each fixed finding with its test and that test's failing output
-from before the fix (run it at the reviewed head, or with the fix reverted), and the full suite's
-result after the last fix. Ask for a **full re-review** of the whole branch instead when the fix
+only after its fix check; only when it is gone, start a fresh one as for the first round (the
+user's words, criteria, reviewed range) plus the valid findings. Send the fix range (`<reviewed
+head>..HEAD`); each behaviour fix with its test and that test's failing output from before the
+fix (run it at the reviewed head, or with the fix reverted), each text-only fix with its changed
+lines; and the full suite's result after the last fix. Ask for a **full re-review** of the whole branch instead when the fix
 diff changes more than half as many lines as the reviewed change (`git diff --shortstat`), or a
 blocker's fix changed the approach. Findings rejected as invalid and Questions are not sent. The
 check is part of its round: new blockers or should-fix it finds are fixed and checked once more;
