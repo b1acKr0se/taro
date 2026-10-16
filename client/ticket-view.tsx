@@ -29,7 +29,7 @@ import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { KeyboardScrollView } from "./keyboard";
 import { Markdown, MarkdownInline } from "./markdown";
-import { PlanActions, PlanBody, type PlanCardOptions } from "./plan-card";
+import { PlanActions, PlanBody, usePlanMarks, type PlanCardOptions } from "./plan-card";
 import { SpecChangeBox } from "./spec-change-box";
 import { withAlpha } from "./tint";
 import { recentMilestoneRows } from "./milestone-rows";
@@ -78,6 +78,8 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
   const [specOpen, setSpecOpen] = useState(false);
   const planSource = detail.data?.plan ?? null;
   const plan = useMemo(() => parsePlan(planSource), [planSource]);
+  // What changed since the plan the user last answered shows in green (TR-151).
+  const planMarks = usePlanMarks(plan, detail.data?.previousPlan);
   const allDecisions = decisions.data?.decisions;
   const open = useMemo(() => (allDecisions ?? []).filter((decision) => decision.ticket === ticket && decision.status === "open"), [allDecisions, ticket]);
   // The open scope approval is answered here (beside Needs you, and at the end of the plan after reading it), plan template or not.
@@ -144,7 +146,7 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
         return (
           <View style={{ gap: SPACE.sm }}>
             {plan !== null ? (
-              <PlanBody plan={plan} theme={theme} proof={criteria} />
+              <PlanBody plan={plan} marks={planMarks} theme={theme} proof={criteria} />
             ) : (
               <View style={{ gap: SPACE.md }}>
                 {/* A plan in no template shape stays Markdown, as written. */}

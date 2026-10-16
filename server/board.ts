@@ -32,6 +32,7 @@ import { readJsonIfPresent, readTextIfPresent, writeJsonAtomically } from "./fil
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import { projectPaths, readProjectConfig } from "./projects";
 import { serialized } from "./serialize";
+import { previousPlan } from "./plan-history";
 import type { PluginState } from "./state";
 import { readReplacingProviders } from "./provider-steering";
 import { agentBrief } from "./summaries";
@@ -393,6 +394,7 @@ export async function loadTicketDetail(paseo: PaseoApi, project: string, ticketI
     compactOwner:
       owner !== null && offersCompact({ parent: detail.parentTaskId, owner: { status: owner.status, contextUsedTokens: owner.lastUsage?.contextWindowUsedTokens ?? null } }) ? owner.id : null,
     specChangeable: offersSpecChange({ status: detail.status, parent: detail.parentTaskId, ownerRunning: owner !== null, paused: pausing.pause !== null }),
+    previousPlan: detail.implementationPlan === null ? null : await previousPlan(tracker, detail.id, detail.implementationNotes),
   };
 }
 
