@@ -89,6 +89,13 @@ describe("transcriptRows times", () => {
     expect(rows).toEqual([{ key: "1", kind: "agent", text: "Hello", at: "2026-01-05T10:00:00Z" }]);
   });
 
+  it("dates a user message by its entry, so a permission ask raised after the answer is placed after it (TR-149)", () => {
+    const sent = (seq: number, timestamp?: string) =>
+      ({ seqStart: seq, seqEnd: seq, ...(timestamp === undefined ? {} : { timestamp }), item: { type: "user_message", text: "Go on" } }) as unknown as TimelineEntry;
+    const rows = transcriptRows([sent(1, "2026-01-05T10:00:00Z"), sent(2)]);
+    expect(rows.map((row) => (row.kind === "user" ? row.at : null))).toEqual(["2026-01-05T10:00:00Z", undefined]);
+  });
+
   it("dates a tool call by its entry, so a permission ask it raised is placed after it (TR-149)", () => {
     const call = (seq: number, timestamp?: string) =>
       ({ seqStart: seq, seqEnd: seq, ...(timestamp === undefined ? {} : { timestamp }), item: { type: "tool_call", name: "Bash", status: "completed", detail: { type: "shell", command: "ls" } } }) as unknown as TimelineEntry;

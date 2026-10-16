@@ -24,7 +24,8 @@ type TimelineItem = TimelineEntry["item"];
 type ToolCallItem = Extract<TimelineItem, { type: "tool_call" }>;
 
 export type TranscriptRow =
-  | { key: string; kind: "user"; text: string }
+  /** `at`: when it was sent, to place a permission ask raised after it (TR-149). */
+  | { key: string; kind: "user"; text: string; at?: string }
   /**
    * `at`: when the message started, for matching what was answered after it (TR-135). `asking`: the
    * reply is writing a decision block, not drawn until it closes (TR-144).
@@ -147,7 +148,7 @@ export function transcriptRows(entries: readonly TimelineEntry[], cwd?: string |
         const summary = injectedSummary(item.text, item.clientMessageId);
         // A message of attachments alone has no words; the row still says the user sent something.
         const text = item.text.trim() === "" ? ATTACHMENTS_ONLY : item.text;
-        rows.push(summary === null ? { key, kind: "user", text } : { key, kind: "event", text: summary });
+        rows.push(summary === null ? (entry.timestamp === undefined ? { key, kind: "user", text } : { key, kind: "user", text, at: entry.timestamp }) : { key, kind: "event", text: summary });
         break;
       }
       case "assistant_message": {
