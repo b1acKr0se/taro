@@ -2,6 +2,7 @@ import { usePaseo } from "@getpaseo/plugin/client";
 import { useEffect, useRef, useState } from "react";
 
 import { keptMap } from "./kept";
+import { MAX_PIECES, streamedPiece, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
 import { CACHED_AGENTS, cacheable, createTimelineCache } from "./timeline-cache";
 import type { TimelinePage, TimelineEntry } from "./transcript-rows";
 
@@ -9,6 +10,8 @@ import type { TimelinePage, TimelineEntry } from "./transcript-rows";
 const QUIET_MS = 300;
 /** A stream that never pauses is still re-read this often. */
 const CEILING_MS = 1500;
+/** A reply being written is drawn at most this often: about ten times a second keeps a phone smooth (TR-069). */
+const DRAW_MS = 100;
 
 export interface AgentTimeline {
   entries: TimelineEntry[];
@@ -42,6 +45,10 @@ const cache = createTimelineCache<CachedRead>(CACHED_AGENTS, keptMap(globalThis,
  * during it coalesce into a single follow-up, and the ceiling keeps a turn
  * that streams without pause from freezing the pane. The agent's last read is
  * drawn at once from the cache while the first read of a mount runs.
+ *
+ * The one exception is the reply's own text (TR-144): its pieces are drawn after
+ * the last read as they arrive, so the reply grows as it is written, and the
+ * next read takes their place (`stream-pieces.ts`).
  */
 export function useAgentTimeline(agentId: string | null, revision = "", limit = 150): AgentTimeline {
   const paseo = usePaseo();
@@ -70,6 +77,11 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     let queued = false;
     let quiet: ReturnType<typeof setTimeout> | undefined;
     let ceiling: ReturnType<typeof setTimeout> | undefined;
+    let draw: ReturnType<typeof setTimeout> | undefined;
+    /** The last read's entries and epoch, and the reply's pieces streamed since. */
+    let read: readonly TimelineEntry[] = [];
+    let epoch: string | null = null;
+    let pieces: StreamedPiece[] = [];
     // Another agent in the same mount: its cached read, or a blank pane rather than the last agent's words.
     const cached = cache.get(id);
     setEntries(cached?.entries ?? []);
@@ -81,8 +93,15 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     function clearTimers(): void {
       clearTimeout(quiet);
       clearTimeout(ceiling);
+      clearTimeout(draw);
       quiet = undefined;
       ceiling = undefined;
+      draw = undefined;
+    }
+
+    function drawPieces(): void {
+      draw = undefined;
+      if (alive) setEntries(withStreamed(read, epoch, pieces) as TimelineEntry[]);
     }
 
     // An async function, not an async arrow: Hermes evaluates an async arrow
@@ -97,7 +116,10 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
         const page = await timeline.refetch({ direction: "tail", limit, projection: "projected" });
         if (!alive) return;
         if (cacheable(page)) cache.set(id, { entries: page.entries, agent: page.agent ?? cache.get(id)?.agent ?? null, hasOlder: page.hasOlder });
-        setEntries(page.entries);
+        read = page.entries;
+        epoch = page.epoch;
+        pieces = unreadPieces(pieces, epoch, read);
+        setEntries(withStreamed(read, epoch, pieces) as TimelineEntry[]);
         if (page.agent !== null) setAgent(page.agent);
         setHasOlder(page.hasOlder);
         setError(page.error ?? null);
@@ -126,9 +148,19 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
       if (ceiling === undefined) ceiling = setTimeout(refresh, CEILING_MS);
     }
 
+    function onEvent(event: unknown): void {
+      const piece = streamedPiece(event);
+      if (piece !== null) {
+        if (pieces.length >= MAX_PIECES) pieces = [];
+        pieces.push(piece);
+        if (draw === undefined) draw = setTimeout(drawPieces, DRAW_MS);
+      }
+      schedule();
+    }
+
     reread.current = schedule;
     void load();
-    const unsubscribe = timeline.subscribe(schedule);
+    const unsubscribe = timeline.subscribe(onEvent);
     return () => {
       alive = false;
       clearTimers();

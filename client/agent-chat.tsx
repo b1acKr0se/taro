@@ -38,7 +38,7 @@ import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
 import { cardFits, cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
 import { groupRows, toolRunSummary, type Group } from "./tool-runs";
-import { ATTACHMENTS_ONLY, transcriptRows } from "./transcript-rows";
+import { ATTACHMENTS_ONLY, transcriptRows, whileWriting } from "./transcript-rows";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
 import { composerNotice, heldFor, heldMarkText, offersSendNow } from "./composer-notice";
@@ -140,14 +140,15 @@ export function AgentChat({
 } & ChatComposer) {
   const toast = useToast();
   const timeline = useAgentTimeline(agent.id, `${agent.updatedAt}:${agent.pendingPermissions}`);
-  const rows = useMemo(() => transcriptRows(timeline.entries), [timeline.entries]);
+  // The timeline's read of the agent when it is newer than the board's: it follows the stream.
+  const live = timeline.agent !== null && timeline.agent.updatedAt >= agent.updatedAt ? timeline.agent : null;
+  const writing = (live?.status ?? agent.status) === "running";
+  const rows = useMemo(() => whileWriting(transcriptRows(timeline.entries), writing), [timeline.entries, writing]);
   const groups = useMemo(() => groupRows(rows), [rows]);
   // The newest entry's position, not the count: the timeline is a tail and stops growing in length.
   const sentImages = useSentImages(agent.id, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0);
   const rowImages = useMemo(() => matchSentImages(rows, sentImages), [rows, sentImages]);
   const agentRows = useMemo(() => rows.filter((row) => row.kind === "agent"), [rows]);
-  // The timeline's read of the agent when it is newer than the board's: it follows the stream.
-  const live = timeline.agent !== null && timeline.agent.updatedAt >= agent.updatedAt ? timeline.agent : null;
   /** Edit on a message not sent: its words and attachments go back ahead of what the box holds, or it stays when they would not fit. */
   function takeBackFailed(id: string): void {
     const failed = sends.views.find((view) => view.send.id === id)?.send;

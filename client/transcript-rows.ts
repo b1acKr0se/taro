@@ -12,6 +12,8 @@
  */
 import type { usePaseo } from "@getpaseo/plugin/client";
 
+import { heldWhileWriting } from "../shared/streaming-text";
+
 import { imageLineOf } from "./markdown-parse";
 import { toolAction, type ToolCategory, type ToolDetail } from "./tool-wording";
 
@@ -216,4 +218,15 @@ export function endStoppedCompactions<Row extends { kind: string; text?: string 
   return rows.map((row, index) =>
     row.kind === "event" && row.text === COMPACTING && rows.slice(index + 1).some((later) => later.kind === "agent" || later.kind === "tool") ? { ...row, text: COMPACTION_STOPPED } : row,
   );
+}
+
+/**
+ * The rows while the agent writes (TR-144): the newest reply, when it is the last row, without a
+ * decision block or status line it has not finished (`heldWhileWriting`). The same rows otherwise.
+ */
+export function whileWriting(rows: TranscriptRow[], writing: boolean): TranscriptRow[] {
+  const last = rows[rows.length - 1];
+  if (!writing || last === undefined || last.kind !== "agent") return rows;
+  const text = heldWhileWriting(last.text);
+  return text === last.text ? rows : [...rows.slice(0, -1), { ...last, text }];
 }
