@@ -6,11 +6,13 @@ import { projectAgents, projectArchivedAgents } from "./agents";
 import { invalidateBoards, loadBoard } from "./board";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import type { PluginState } from "./state";
+import { readHeadroom } from "./headroom";
+import { readProjectConfig } from "./projects";
 import { listTickets, viewTicket } from "./tickets";
 
 vi.mock("./agents", () => ({ projectAgents: vi.fn(), projectArchivedAgents: vi.fn() }));
-vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: "/tracker", suggestions: "/nonexistent/taro-suggestions.md" }) }));
-vi.mock("./headroom", () => ({ readHeadroom: async () => null }));
+vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: "/tracker", suggestions: "/nonexistent/taro-suggestions.md" }), readProjectConfig: vi.fn() }));
+vi.mock("./headroom", () => ({ readHeadroom: vi.fn() }));
 vi.mock("./tickets", () => ({ listTickets: vi.fn(), viewTicket: vi.fn(), ticketProblems: async () => [] }));
 
 const ticket = (id: string, status: string, updatedAt: string | null = "2026-10-13 15:00") => ({
@@ -50,6 +52,8 @@ let now = Date.parse("2026-10-13T15:00:00Z");
 beforeEach(() => {
   invalidateBoards();
   vi.spyOn(Date, "now").mockImplementation(() => now);
+  vi.mocked(readProjectConfig).mockReset().mockResolvedValue(null);
+  vi.mocked(readHeadroom).mockReset().mockResolvedValue(null);
   vi.mocked(viewTicket).mockReset().mockResolvedValue({ implementationNotes: notes, finalSummary: "" } as unknown as Awaited<ReturnType<typeof viewTicket>>);
   vi.mocked(listTickets).mockReset().mockResolvedValue([ticket("TR-1", "In Progress"), ticket("TR-2", "Done")] as unknown as Awaited<ReturnType<typeof listTickets>>);
   vi.mocked(projectAgents).mockReset().mockResolvedValue([agent("owner-live", "owner", "TR-1", "2026-10-13T14:50:00Z"), agent("reviewer-live", "reviewer", "TR-1", "2026-10-13T14:55:00Z"), agent("legacy-live", "helper", "TR-1", "2026-10-13T14:56:00Z"), agent("researcher-live", "researcher", "TR-1", "2026-10-13T14:57:00Z")]);
@@ -188,12 +192,61 @@ describe("loadBoard", () => {
     expect(waits).toEqual({
       "TR-1": null,
       "TR-2": null,
-      "TR-3": { on: [{ id: "TR-1", status: "Planning" }], dependencies: [], hold: "overlaps TR-1, which reworks the same card; start TR-3 once TR-1 is Done." },
-      "TR-4": { on: [{ id: "TR-1", status: "Planning" }], dependencies: ["TR-1"], hold: null },
+      "TR-3": { on: [{ id: "TR-1", status: "Planning" }], dependencies: [], hold: "overlaps TR-1, which reworks the same card; start TR-3 once TR-1 is Done.", slot: null },
+      "TR-4": { on: [{ id: "TR-1", status: "Planning" }], dependencies: ["TR-1"], hold: null, slot: null },
       "TR-5": null,
       // Paused, so the card says the pause; its dependency still shows once it is resumed.
-      "TR-6": { on: [{ id: "TR-1", status: "Planning" }], dependencies: ["TR-1"], hold: null },
+      "TR-6": { on: [{ id: "TR-1", status: "Planning" }], dependencies: ["TR-1"], hold: null, slot: null },
     });
+  });
+
+  it("says a startable Queued card waits for an owner slot from the plugin's recount, and no other card (TR-142)", async () => {
+    vi.mocked(readProjectConfig).mockResolvedValue({ maxParallelOwners: 2, managerAgentId: "manager" } as unknown as Awaited<ReturnType<typeof readProjectConfig>>);
+    vi.mocked(readHeadroom).mockResolvedValue({ current: 900, max: 2048, high: false, highSince: null });
+    vi.mocked(listTickets).mockResolvedValue([
+      ticket("TR-1", "In Progress"),
+      ticket("TR-2", "Reviewing"),
+      ticket("TR-3", "Queued"),
+      { ...ticket("TR-4", "Queued"), dependencies: ["TR-1"] },
+      ticket("TR-5", "Queued"),
+    ] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    vi.mocked(viewTicket).mockImplementation(
+      async (_tracker: string, id: string) => ({ implementationNotes: id === "TR-5" ? "HOLD 2026-10-13T14:59Z — one rewrite at a time" : null, finalSummary: "" }) as unknown as Awaited<ReturnType<typeof viewTicket>>,
+    );
+    vi.mocked(projectAgents).mockResolvedValue([
+      agent("owner-1", "owner", "TR-1", "2026-10-13T14:50:00Z"),
+      agent("owner-2", "owner", "TR-2", "2026-10-13T14:50:00Z"),
+      agent("reviewer-2", "reviewer", "TR-2", "2026-10-13T14:55:00Z"),
+      agent("manager", "manager", "TR-0", "2026-10-13T14:40:00Z"),
+    ]);
+    const board = await loadBoard({} as PaseoApi, state([]), "taro");
+    const waits = Object.fromEntries(board.cards.map((card) => [card.id, card.queuedWait]));
+    expect(waits["TR-3"]).toEqual({ on: [], dependencies: [], hold: null, slot: { running: ["TR-1", "TR-2"], cap: 2, startable: 1, threads: { current: 900, max: 2048 }, managerRunning: true } });
+    expect(waits["TR-4"]?.slot).toBeNull();
+    expect(waits["TR-5"]?.slot).toBeNull();
+    expect(waits["TR-1"]).toBeNull();
+  });
+
+  it("says whether the project's manager is live to fill a free slot: closed, another manager-labelled agent, or none recorded is not", async () => {
+    vi.mocked(listTickets).mockResolvedValue([ticket("TR-3", "Queued")] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    const managerRunning = async (managerAgentId: string, agents: PaseoAgent[]) => {
+      invalidateBoards();
+      vi.mocked(readProjectConfig).mockResolvedValue({ maxParallelOwners: 3, managerAgentId } as unknown as Awaited<ReturnType<typeof readProjectConfig>>);
+      vi.mocked(projectAgents).mockResolvedValue(agents);
+      return (await loadBoard({} as PaseoApi, state([]), "taro")).cards[0]?.queuedWait?.slot?.managerRunning;
+    };
+    const manager = agent("manager", "manager", "TR-0", "2026-10-13T14:40:00Z");
+    expect(await managerRunning("manager", [manager])).toBe(true);
+    expect(await managerRunning("manager", [{ ...manager, status: "closed" } as PaseoAgent])).toBe(false);
+    expect(await managerRunning("manager", [])).toBe(false);
+    expect(await managerRunning("other", [manager])).toBe(false);
+    expect(await managerRunning("", [manager])).toBe(false);
+  });
+
+  it("gives no slot without a project config", async () => {
+    vi.mocked(listTickets).mockResolvedValue([ticket("TR-3", "Queued")] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    const board = await loadBoard({} as PaseoApi, state([]), "taro");
+    expect(board.cards[0]?.queuedWait).toBeNull();
   });
 
   it("reads a running owner's latest tool call as its activity, and none for an idle one", async () => {

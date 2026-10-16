@@ -12,7 +12,7 @@ import type { PluginState } from "./state";
 
 const paths = vi.hoisted(() => ({ tracker: "" }));
 vi.mock("./agents", () => ({ projectAgents: async () => [], projectArchivedAgents: async () => [] }));
-vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: paths.tracker, suggestions: "/nonexistent/taro-suggestions.md" }) }));
+vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: paths.tracker, suggestions: "/nonexistent/taro-suggestions.md" }), readProjectConfig: async () => null }));
 vi.mock("./headroom", () => ({ readHeadroom: async () => null }));
 
 const state = { allDecisions: async () => [], allAgents: async () => ({}) } as unknown as PluginState;

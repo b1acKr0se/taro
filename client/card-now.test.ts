@@ -400,7 +400,9 @@ describe("questionContext", () => {
 });
 
 describe("queued wait lines (TR-138)", () => {
-  const queued = (queuedWait: Card["queuedWait"], parts: Partial<Card> = {}) => cardNowLine(card({ column: "queued", status: "Queued", owner: null, queuedWait, ...parts }), NOW);
+  type Wait = Omit<NonNullable<Card["queuedWait"]>, "slot"> & Partial<Pick<NonNullable<Card["queuedWait"]>, "slot">>;
+  const queued = (wait: Wait | null, parts: Partial<Card> = {}) =>
+    cardNowLine(card({ column: "queued", status: "Queued", owner: null, queuedWait: wait === null ? null : { slot: null, ...wait }, ...parts }), NOW);
 
   it("names the dependency and its status, and says it is one", () => {
     expect(queued({ on: [{ id: "NA-031", status: "Planning" }], dependencies: ["NA-031"], hold: null })).toEqual({
@@ -428,6 +430,58 @@ describe("queued wait lines (TR-138)", () => {
   it("says nothing for a queued ticket that waits on nothing, and a pause wins over a wait", () => {
     expect(queued(null)).toBeNull();
     expect(queued({ on: [{ id: "NA-031", status: "Planning" }], dependencies: ["NA-031"], hold: null }, { pause: { state: "paused", since: null, withoutHandoff: false } })?.kind).toBe("pause");
+  });
+
+  type Slot = Omit<NonNullable<NonNullable<Card["queuedWait"]>["slot"]>, "managerRunning"> & { managerRunning?: boolean };
+  const slotted = (slot: Slot) => queued({ on: [], dependencies: [], hold: null, slot: { managerRunning: true, ...slot } });
+
+  it("says a startable ticket waits for an owner slot when every slot is taken, naming the running tickets (TR-142)", () => {
+    expect(slotted({ running: ["TR-131", "TR-139", "TR-141"], cap: 3, startable: 1, threads: { current: 825, max: 2048 } })).toEqual({
+      kind: "queued",
+      headline: "Waits for an owner slot",
+      detail: "3 of 3 owners running: TR-131, TR-139, TR-141",
+    });
+    // Over the cap (an owner of an unlisted ticket counts), one owner, threads unknown.
+    expect(slotted({ running: ["TR-1", "TR-2"], cap: 1, startable: 2, threads: null })?.detail).toBe("2 of 1 owner running: TR-1, TR-2");
+  });
+
+  it("adds high threads to a full cap's line, and says threads when they alone hold it", () => {
+    expect(slotted({ running: ["TR-1", "TR-2"], cap: 2, startable: 1, threads: { current: 1900, max: 2048 } })?.detail).toBe("2 of 2 owners running: TR-1, TR-2 · 1900 of 2048 threads in use");
+    expect(slotted({ running: ["TR-1"], cap: 3, startable: 1, threads: { current: 1900, max: 2048 } })).toEqual({
+      kind: "queued",
+      headline: "Waits for host threads to free up",
+      detail: "1900 of 2048 threads in use · 1 of 3 owners running",
+    });
+  });
+
+  it("says a free slot, and that more tickets are ready than slots rather than guess which starts", () => {
+    expect(slotted({ running: ["TR-1"], cap: 3, startable: 2, threads: { current: 100, max: 2048 } })).toEqual({
+      kind: "queued",
+      headline: "An owner slot is free: the manager starts it next",
+      detail: "1 of 3 owners running",
+    });
+    expect(slotted({ running: [], cap: 1, startable: 1, threads: null })?.headline).toBe("An owner slot is free: the manager starts it next");
+    expect(slotted({ running: ["TR-1", "TR-2"], cap: 3, startable: 3, threads: null })).toEqual({ kind: "queued", headline: "An owner slot is free", detail: "2 of 3 owners running · 3 ready for 1 slot" });
+    expect(slotted({ running: [], cap: 2, startable: 3, threads: null })?.detail).toBe("0 of 2 owners running · 3 ready for 2 slots");
+  });
+
+  it("says no manager is running to fill a free slot rather than promise one, but a full cap or high threads still wait", () => {
+    expect(slotted({ running: ["TR-1"], cap: 3, startable: 1, threads: null, managerRunning: false })).toEqual({
+      kind: "queued",
+      headline: "An owner slot is free: no manager is running to start it",
+      detail: "1 of 3 owners running",
+    });
+    expect(slotted({ running: ["TR-1", "TR-2"], cap: 3, startable: 2, threads: null, managerRunning: false })?.detail).toBe("2 of 3 owners running · 2 ready for 1 slot");
+    expect(slotted({ running: ["TR-1"], cap: 1, startable: 1, threads: null, managerRunning: false })?.headline).toBe("Waits for an owner slot");
+    expect(slotted({ running: [], cap: 1, startable: 1, threads: { current: 1900, max: 2048 }, managerRunning: false })?.headline).toBe("Waits for host threads to free up");
+  });
+
+  it("puts a dependency or a hold before the slot, and a pause before both", () => {
+    const slot = { running: ["TR-1"], cap: 1, startable: 1, threads: null, managerRunning: true };
+    expect(queued({ on: [{ id: "NA-031", status: "Planning" }], dependencies: ["NA-031"], hold: null, slot })?.headline).toBe("Waits on NA-031 (Planning)");
+    expect(queued({ on: [], dependencies: [], hold: "one rewrite at a time", slot })?.headline).toBe("Held by the manager");
+    expect(slotted(slot)).toMatchObject({ headline: "Waits for an owner slot" });
+    expect(queued({ on: [], dependencies: [], hold: null, slot }, { pause: { state: "paused", since: null, withoutHandoff: false } })?.kind).toBe("pause");
   });
 
   it("is a queued child's own line, though its parent owner's status is not", () => {
