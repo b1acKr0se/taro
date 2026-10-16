@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { alertHeading } from "./alerts";
 import type { AgentAskView, Board, Card } from "./contracts";
+import { questionHoldingAccept } from "./delivery-end";
 import type { BoardAlert } from "./recovery";
 import type { StoredDecision } from "./state";
 
@@ -57,11 +58,14 @@ function cardEntries(card: Card): NeedsYouEntry[] {
   });
   // Keyed by the ticket alone: the summary or the status line may change while it waits, and must not announce it again.
   const waiting = (kind: string, title: string, body: string): NeedsYouEntry => ({ ...entry(kind, title, body), key: `${WHILE_WAITING}${card.id}:${kind}` });
+  // The owner's open question holds Accept back (TR-146): announced instead of the delivery, whatever its flag.
+  const holding = card.status === "Awaiting acceptance" && card.accepted === null ? questionHoldingAccept(card.decisions) : null;
   const episode = (): NeedsYouEntry[] => {
     if (card.status === "Awaiting acceptance" && card.accepted === null) {
       // Accepted and not merged (TR-109): the reason is what to act on before accepting again.
       if (card.notMerged !== null)
         return [waiting("not-merged", card.notMerged.merged ? `${card.id} merged; local base branch not updated` : `${card.id} was not merged`, card.notMerged.reason)];
+      if (holding !== null) return [];
       return [waiting("accept", `${card.id} is ready to accept`, card.delivered ?? card.title)];
     }
     if (card.status === "Blocked" || card.lastStatus?.state === "blocked") {
@@ -77,7 +81,7 @@ function cardEntries(card: Card): NeedsYouEntry[] {
   const entries: NeedsYouEntry[] = [];
   if (card.permission !== null) entries.push(permissionEntry(card.permission, `${card.id}:`, card.id, agentId, workspaceId));
   for (const decision of card.decisions) {
-    if (decision.blocking) entries.push(decisionEntry(decision, `${card.id} asks`, decision.agentId === agentId ? workspaceId : null));
+    if (decision.blocking || decision === holding) entries.push(decisionEntry(decision, `${card.id} asks`, decision.agentId === agentId ? workspaceId : null));
   }
   return card.column === "needs-you" ? [...entries, ...episode()] : entries;
 }

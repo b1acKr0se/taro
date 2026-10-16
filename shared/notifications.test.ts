@@ -116,6 +116,15 @@ describe("needsYouEntries", () => {
     ]);
   });
 
+  it("announces the owner's question instead of the delivery while it holds Accept back, whatever its flag (TR-146)", () => {
+    const held = entries([card({ status: "Awaiting acceptance", column: "needs-you", delivered: "Drafts work offline.", decisions: [decision({ blocking: false })] })]);
+    expect(held).toEqual([{ key: "decision:agent-1:naming:2026-01-01T00:00:00Z", title: "NA-027 asks", body: "Call it drafts?", agentId: "agent-1", workspaceId: "workspace-1" }]);
+    // An investigation delivers with its question open; a subagent's question holds nothing back.
+    for (const open of [decision({ id: "investigation-done", key: "agent-1:investigation-done", blocking: false }), decision({ agentRole: "implementer", blocking: false })]) {
+      expect(entries([card({ status: "Awaiting acceptance", column: "needs-you", decisions: [open] })]).map((entry) => entry.key)).toEqual(["while-waiting:NA-027:accept"]);
+    }
+  });
+
   it("says nothing for an accepted ticket the owner is merging", () => {
     expect(entries([card({ status: "Awaiting acceptance", column: "working", accepted: { at: "2026-01-01T00:00:00Z", merging: null } })])).toEqual([]);
   });

@@ -210,14 +210,15 @@ describe("cardNowLine", () => {
         subagents: [implementer({})],
         owner: { ...owner, pendingPermissions: 2 },
         permission: { title: "Edit", detail: null, id: null, agentId: null, role: null, workspaceId: null, count: 2 },
-        decisions: [decision({}), decision({ id: "scope-approval", key: "agent-1:scope-approval", question: "Approve the plan?", blocking: true })],
+        // An investigation delivers with its question open; an implementer's question holds no Accept back (TR-146).
+        decisions: [decision({ agentRole: "implementer" }), decision({ id: "investigation-done", key: "agent-1:investigation-done", question: "Accept the findings?", blocking: true })],
       }),
       NOW,
     );
     expect(line).toMatchObject({
       kind: "call",
       action: "Answer",
-      headline: "Approve the plan?",
+      headline: "Accept the findings?",
       detail: "Blocking · asked 12h ago · 1 more question · also ready to accept · also waiting on 2 permissions",
     });
   });

@@ -17,6 +17,7 @@ import { Text, View } from "react-native";
 
 import { tellAgent, type Card } from "../shared/contracts";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
+import { questionHoldingAccept } from "../shared/delivery-end";
 import { decisionBlocksAsText, withoutDecisionBlocks } from "../shared/reports";
 import { offersSpecChange } from "../shared/spec-change";
 import { AgentChat } from "./agent-chat";
@@ -118,7 +119,8 @@ export function OwnerPane({
   const [changesSentOn, setChangesSentOn] = useState<string | null>(null);
   const deliveryEnded = changesSentOn === `${card.id}@${card.updatedAt ?? ""}`;
   // Once accepted the ticket is merging: nothing is left to accept (TR-031).
-  const accepting = card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null && !deliveryEnded;
+  // An owner question still open is answered first (TR-146).
+  const accepting = card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null && questionHoldingAccept(card.decisions) === null && !deliveryEnded;
   // A Queued ticket nobody owns yet takes a change of spec through the manager (TR-129).
   const specChangeable = offersSpecChange({ status: card.status, parent: card.parent, ownerRunning: card.owner !== null || card.ownerElsewhere !== null, paused: card.pause !== null });
   const shownAsks = useMemo(() => card.decisions.filter((decision) => decision.agentId === shown?.id), [card.decisions, shown?.id]);

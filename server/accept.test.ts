@@ -4,6 +4,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AcceptOutcome } from "../shared/accept-merge";
+import type { StoredDecision } from "../shared/state";
 import { acceptLocalBranch, acceptPullRequest } from "./accept-merge";
 import { Actions } from "./actions";
 import { listTaroAgents } from "./agents";
@@ -74,6 +75,8 @@ function written(): string[] {
   return vi.mocked(appendTicketNote).mock.calls.map((call) => call[2]);
 }
 
+let stored: StoredDecision[] = [];
+
 async function accept(): Promise<void> {
   await actions.accept(paseo, "demo", "DM-1");
   await actions.acceptRunning("demo", "DM-1");
@@ -86,12 +89,31 @@ beforeEach(() => {
   lastTurnEndedAt = new Date(now - 3 * 3_600_000).toISOString();
   ownerStatus = "idle";
   vi.mocked(listTaroAgents).mockImplementation(async () => [owner()]);
-  const state = { agent: async () => ({ lastTurnEndedAt }), updateDecisions: async (change: (decisions: never[]) => unknown) => change([]), forgetAgent: async () => undefined } as unknown as PluginState;
+  stored = [];
+  const state = { agent: async () => ({ lastTurnEndedAt }), allDecisions: async () => stored, updateDecisions: async (change: (decisions: never[]) => unknown) => change([]), forgetAgent: async () => undefined } as unknown as PluginState;
   const supervisor = { withdrawDecisionsOf: async () => undefined } as unknown as Supervisor;
   actions = new Actions(state, supervisor, {} as TrackerWatch, {} as Stats, {} as Recovery);
 });
 
 describe("accept run by the plugin", () => {
+  // TR-146: the user answers the owner's open question before anything merges.
+  it("refuses while the owner waits on a question, and runs once it is answered or only investigation-done is open", async () => {
+    config({});
+    ticket(`EXECUTION 2026-01-01T00:00Z — review-head: ${head}`);
+    outcome({ kind: "done", acceptance: "ACCEPTANCE x" });
+    const question = (id: string, change: Partial<StoredDecision> = {}) =>
+      ({ id, project: "demo", ticket: "DM-1", agentRole: "owner", status: "open", ...change }) as StoredDecision;
+    stored = [question("count-style", { blocking: false })];
+    await expect(actions.accept(paseo, "demo", "DM-1")).rejects.toThrow("DM-1's owner still waits on its question `count-style`: answer it first.");
+    expect(written()).toEqual([]);
+    expect(vi.mocked(acceptLocalBranch)).not.toHaveBeenCalled();
+
+    // Another ticket's question, a subagent's, an answered one and investigation-done hold nothing.
+    stored = [question("count-style", { ticket: "DM-2" }), question("schema", { agentRole: "implementer" }), question("count-style", { status: "answered" }), question("investigation-done")];
+    await accept();
+    expect(vi.mocked(acceptLocalBranch)).toHaveBeenCalledTimes(1);
+  });
+
   it("fast-forwards a local branch and sets Done without messaging the owner", async () => {
     config({});
     ticket(`EXECUTION 2026-01-01T00:00Z — branch taro/dm-1, review-head: ${head}`);

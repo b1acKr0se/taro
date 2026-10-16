@@ -4,6 +4,7 @@
  * first; answering in full happens where its context is, in the owner's chat. Pure.
  */
 import type { Card } from "../shared/contracts";
+import { questionHoldingAccept } from "../shared/delivery-end";
 import { evidenceSummary } from "../shared/evidence";
 import { askerPrefix } from "../shared/needs-you";
 import type { StoredDecision } from "../shared/state";
@@ -29,7 +30,8 @@ export function cardCalls(card: Card): CardCall[] {
   const first = open[0];
   if (first !== undefined) calls.push({ kind: "decision", decision: first, more: open.length - 1 });
   // Accepting messages the owner, so without one there is nothing to press; once accepted, nothing is left to press.
-  if (card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null) {
+  // An owner question still open is answered before Accept is offered (TR-146).
+  if (card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null && questionHoldingAccept(card.decisions) === null) {
     calls.push({ kind: "acceptance", ready: acceptanceReady(card), delivered: card.delivered, evidence: card.evidence === null ? null : evidenceSummary(card.evidence), notMerged: card.notMerged === null ? null : { reason: card.notMerged.reason, merged: card.notMerged.merged } });
   }
   const ask = card.permission;

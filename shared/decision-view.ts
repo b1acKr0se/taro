@@ -3,6 +3,7 @@
  * live card while Taro still holds it open, otherwise a short note of what
  * became of it. Pure, so the in-tab renderer stays a thin view.
  */
+import { asStored } from "./planning-questions";
 import { decisionMessageSegments, sameQuestion, type OptionImage, type ParsedDecision } from "./reports";
 import type { StoredDecision } from "./state";
 
@@ -37,7 +38,7 @@ export function decisionBlockView(block: ParsedDecision, lookup: DecisionLookup)
   if (lookup.state !== "done") return { kind: "read-only", note: READ_ONLY_NOTES[lookup.state] };
   const stored = lookup.decision;
   if (stored === null) return { kind: "read-only", note: READ_ONLY_NOTES.untracked };
-  if (!sameQuestion(block, stored)) return { kind: "replaced" };
+  if (!sameQuestion(asStored(block, stored), stored)) return { kind: "replaced" };
   if (stored.status === "answered") return { kind: "answered", answer: stored.answer?.text ?? "", label: stored.answer?.label ?? null };
   if (stored.status === "withdrawn" || !lookup.agentLive) return { kind: "withdrawn" };
   return { kind: "open", decision: stored };

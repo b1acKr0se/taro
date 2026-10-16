@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deliveryEndedRecord, deliveryOnOffer, questionEndingDelivery } from "./delivery-end";
+import { deliveryEndedRecord, deliveryOnOffer, deliveryTakenBackRecord, questionEndingDelivery, questionHoldingAccept, questionOpenAtDelivery } from "./delivery-end";
 
 const asked = (id: string, blocking: boolean) => ({ id, blocking });
 
@@ -56,5 +56,38 @@ describe("deliveryEndedRecord", () => {
     expect(deliveryEndedRecord("2026-10-16T00:40:00.000Z", "rename-scope")).toBe(
       "DELIVERY-ENDED 2026-10-16T00:40:00.000Z — the owner asked `rename-scope` while awaiting acceptance: back to In Progress until it delivers again",
     );
+  });
+});
+
+describe("questionOpenAtDelivery (TR-146)", () => {
+  const stored = (id: string, agentId: string, status: string) => ({ id, agentId, status });
+
+  it("picks the owner's first open question, blocking or not", () => {
+    const decisions = [stored("tone", "other-owner", "open"), stored("naming", "owner-1", "answered"), stored("layout", "owner-1", "open"), stored("later", "owner-1", "open")];
+    expect(questionOpenAtDelivery(decisions, "owner-1")).toEqual(stored("layout", "owner-1", "open"));
+  });
+
+  it("is null with nothing open, only withdrawn or held-back ones, or only investigation-done", () => {
+    expect(questionOpenAtDelivery([], "owner-1")).toBeNull();
+    expect(questionOpenAtDelivery([stored("tone", "owner-1", "withdrawn"), stored("naming", "owner-1", "answered")], "owner-1")).toBeNull();
+    expect(questionOpenAtDelivery([stored("investigation-done", "owner-1", "open")], "owner-1")).toBeNull();
+  });
+});
+
+describe("deliveryTakenBackRecord", () => {
+  it("names the open question as a DELIVERY-ENDED record", () => {
+    expect(deliveryTakenBackRecord("2026-10-16T03:10:00.000Z", "tone")).toBe(
+      "DELIVERY-ENDED 2026-10-16T03:10:00.000Z — the owner delivered with `tone` still open: back to In Progress until it is answered and the owner delivers again",
+    );
+  });
+});
+
+describe("questionHoldingAccept (TR-146)", () => {
+  const stored = (id: string, agentRole: string, status: string) => ({ id, agentRole, status });
+
+  it("is the owner's open question, not a subagent's, an answered one or investigation-done", () => {
+    expect(questionHoldingAccept([stored("schema", "implementer", "open"), stored("tone", "owner", "answered"), stored("investigation-done", "owner", "open")])).toBeNull();
+    expect(questionHoldingAccept([stored("schema", "implementer", "open"), stored("count-style", "owner", "open")])).toEqual(stored("count-style", "owner", "open"));
+    expect(questionHoldingAccept([])).toBeNull();
   });
 });

@@ -53,10 +53,14 @@ default: Per trade         # what you do if the user does not answer (non-blocki
 ````
 
 - **Non-blocking** (`blocking: false`): carry on at once with `default`; the card says so and the
-  user may override later. This is the normal case: decide, state the assumption, keep going.
-- **Blocking** (`blocking: true`): stop and wait. Only for real gates: scope approval when you made a
-  choice the user did not, a child breakdown, a merge, anything destructive, a review dispute you
-  cannot settle.
+  user may override later. This is the normal case once a plan is approved: decide, state the
+  assumption, keep going. An owner still settles it before delivering: answered, or withdrawn when
+  the user answered it in words or it no longer applies (Accept waits until then).
+- **Blocking** (`blocking: true`): stop and wait. Only for real gates: an owner's question before
+  its plan is approved (every one: the plugin shows it as blocking whatever its flag), a reviewer's
+  Question (asked and answered before the owner delivers), scope approval when you made a choice the
+  user did not, a child breakdown, a merge, anything destructive, a review dispute you cannot settle.
+  An owner never delivers with a question open: the plugin takes such a delivery back.
 - The board shows the `question` and the option labels on a card with nothing else, and a tap on a
   label answers. So the `question` stands alone, in at most about three lines: say what is to be
   decided, never "three options", "recommends A" or "see above". Labels are a few words each and

@@ -4,6 +4,7 @@
  * sections in a fixed order, each with a one-line summary. Pure; the view only draws it.
  */
 import { SCOPE_APPROVAL } from "./decision-view";
+import { questionHoldingAccept } from "./delivery-end";
 import { descriptionParts, firstSentence, firstTextLine } from "./description";
 import { finalSections } from "./final-summary";
 import { kindLabel, ticketMilestones, type Milestone } from "./milestones";
@@ -30,10 +31,12 @@ export interface OpenDecision {
   id: string;
   question: string;
   blocking: boolean;
+  agentRole: string;
+  status: string;
 }
 
 export interface TicketSummary {
-  /** "decision" while a blocking decision waits, "acceptance" while the delivery does, else "nothing". */
+  /** "decision" while a blocking decision (or the owner question holding Accept back) waits, "acceptance" while the delivery does, else "nothing". */
   need: "decision" | "acceptance" | "nothing";
   /** The words after "Needs you:". */
   needText: string;
@@ -44,7 +47,9 @@ export interface TicketSummary {
 }
 
 export function ticketSummary(ticket: TicketFacts, decisions: readonly OpenDecision[]): TicketSummary {
-  const blocking = decisions.filter((decision) => decision.blocking);
+  // The owner's open question holds Accept back (TR-146), so it is what the delivery waits on.
+  const holding = ticket.status === "Awaiting acceptance" ? questionHoldingAccept(decisions) : null;
+  const blocking = decisions.filter((decision) => decision.blocking || decision === holding);
   const first = blocking[0];
   const more = blocking.length > 1 ? ` (+${blocking.length - 1} more)` : "";
   const need: TicketSummary["need"] = first !== undefined ? "decision" : ticket.status === "Awaiting acceptance" ? "acceptance" : "nothing";

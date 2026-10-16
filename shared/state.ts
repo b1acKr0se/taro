@@ -31,6 +31,11 @@ export const StoredDecisionSchema = ParsedDecisionSchema.extend({
   carriedTo: z.string().optional(),
   /** Held back while another of its owner's questions was open (TR-124), so never shown; true until shown or withdrawn. */
   held: z.boolean().optional(),
+  /**
+   * Stored blocking by the plugin whatever its block said (TR-146): asked by an owner while its ticket
+   * was planning, or still open when its owner delivered.
+   */
+  madeBlocking: z.boolean().optional(),
 });
 export type StoredDecision = z.infer<typeof StoredDecisionSchema>;
 

@@ -13,10 +13,12 @@ too, test-daemon and scratch-repository cleanup most of all. Then follow the flo
 
 1. **Orient** — the relevant code and instructions only, about ten files at most. Past that, asking
    is cheaper than reading.
-2. **Ask** only questions whose answers would change the implementation: one at a time, as decision
-   blocks with a recommendation and its reason. One decision open at a time: ask the next only after
-   the user answered the last, in a later turn (`reference/formats.md`; the plugin holds back a
-   second). Zero questions is normal for a clear ask. Decide everything else yourself and state it
+2. **Ask** only questions whose answers would change the implementation: one at a time, as
+   **blocking** decision blocks with a recommendation and its reason. Every question before your
+   plan is approved is blocking (TR-146): stop and wait for the answer, never go on with a default
+   (the plugin shows it as blocking whatever its flag, and tells you if you did not stop). One
+   decision open at a time: ask the next only after the user answered the last, in a later turn
+   (`reference/formats.md`; the plugin holds back a second). Zero questions is normal for a clear ask. Decide everything else yourself and state it
    as an assumption.
 3. **Rate complexity** and write the **proposal** into the ticket (`-d`, `--plan`, `--add-label
    complexity-<level>`), sized to the level. The plan follows `templates/plan.md`: its six sections
@@ -129,10 +131,11 @@ You verify every finding against the code yourself (valid / partially valid / in
 evidence), fix the valid blockers and should-fix findings yourself, and record a REVIEW note that
 answers every finding: fixed, or rejected with the reason. A **Question** (a preference the user did
 not settle in their words or a decision: a label, wording, density, a layout choice) is not yours or the
-reviewer's to settle: raise it as a non-blocking decision with your recommendation as the default,
-carry on, and note it in the REVIEW record. Still one open at a time: raise the next Question once the
-user answers, or keep its default and name it in FINAL. A reviewer blocker that is really a preference is a
-Question too. **Every** review checks test
+reviewer's to settle: fix the rest first, then raise it as a **blocking** decision with your
+recommendation, wait for the answer, and note it in the REVIEW record. Still one open at a time: raise
+the next Question once the user answers. Every Question is answered **before you deliver**: never
+deliver with one of your questions open (the plugin takes such a delivery back to In Progress, TR-146).
+A reviewer blocker that is really a preference is a Question too. **Every** review checks test
 sufficiency: each changed behaviour has a test that would fail if it regressed; a bug fix keeps its
 reproduction; tests cover the input space (empty, zero, maximum, rounding, ordering), not the code's
 own assumption. A missing or empty test for a changed behaviour is a blocker.
@@ -187,6 +190,9 @@ full re-review or fix check, and the reviewer's verdict.
   - Record the result as the EVIDENCE `ux:` line (`reference/tickets.md`), naming the alignment and
     placeholder result per changed screen; a reviewer's visual verdict goes on it too. Accept is
     refused without it when there are screenshots.
+- Deliver with none of your questions open, non-blocking ones included: each one answered, or
+  withdrawn when the user answered it in words or it no longer applies (`investigation-done` is the
+  exception: it is the delivery). Accept waits until then.
 - Before FINAL, write an EVIDENCE record (`reference/tickets.md`): checks with results, the review
   outcome, the `ux:` line, and screenshots in `$TARO_EVIDENCE/<ID>/` (desktop and phone for visible changes), each
   named for what it shows and captioned (`reference/formats.md`, Images), or `screenshots: none`
