@@ -121,6 +121,15 @@ describe("questionCards", () => {
     ]);
   });
 
+  it("never quotes an option's own prompt as the user's words, and drops it from words typed after it", () => {
+    const options = [{ label: "In memory", prompt: "Keep it in memory" }, { label: "Name it…", prompt: "Call it…" }];
+    const rows = [message("a", [block("one"), block("two"), block("three")])];
+    const pressed = stored("one", { options, answer: { text: "Keep it in memory", label: "In memory", at: "2026-01-19T10:05:00Z" } });
+    const withWords = stored("two", { options, answer: { text: "Call it: Notes", label: "Name it…", at: "2026-01-19T10:05:00Z" } });
+    const ownWords = stored("three", { options, answer: { text: "Keep it in memory, but cap it at 1 MB", label: "In memory", at: "2026-01-19T10:05:00Z" } });
+    expect(cards(rows, [pressed, withWords, ownWords]).get("a")?.map((card) => card.words)).toEqual([null, "Notes", "Keep it in memory, but cap it at 1 MB"]);
+  });
+
   it("quotes a typed answer without a label", () => {
     const typed = stored("one", { answer: { text: "Use SQLite", label: null, at: "2026-01-19T10:05:00Z" } });
     expect(cards([message("a", [block("one")])], [typed]).get("a")).toEqual([{ id: "one", subject: "Question one?", outcome: "Answered: “Use SQLite”", tone: "positive", time: "10:05", words: null }]);

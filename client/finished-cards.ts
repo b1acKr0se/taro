@@ -136,7 +136,17 @@ export function storedDecisionView(decision: StoredDecision, clock: (iso: string
   const typed = answer?.text.trim() ?? "";
   const time = answer === null ? null : clock(answer.at);
   if (label === null) return { outcome: typed === "" ? "Answered" : `Answered: “${typed}”`, tone: "positive", time, words: null };
-  return { outcome: `Answered: ${label}`, tone: "positive", time, words: typed === "" || typed === label.trim() ? null : typed };
+  return { outcome: `Answered: ${label}`, tone: "positive", time, words: typedBeside(typed, label, decision.options.find((option) => option.label === label)?.prompt ?? "") };
+}
+
+/**
+ * What the user typed with a picked option, or null. A pressed option sends its own prompt, and words
+ * typed with it go after the prompt (`server/actions.ts`): neither is the user's to quote.
+ */
+function typedBeside(typed: string, label: string, prompt: string): string | null {
+  const lead = prompt.trim().replace(/…$/, "").trim();
+  if (typed === "" || typed === label.trim() || typed === prompt.trim() || typed === lead) return null;
+  return lead !== "" && typed.startsWith(`${lead}: `) ? typed.slice(lead.length + 2).trim() || null : typed;
 }
 
 const ASKED_AGAIN: FinishedView = { outcome: "Asked again below", tone: "neutral", time: null, words: null };
