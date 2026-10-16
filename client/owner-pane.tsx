@@ -11,6 +11,7 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 
@@ -25,6 +26,7 @@ import { Pressable } from "./focus";
 import { askedElsewhere, openingPaneAgent, paneAgents, paneAgentJob, paneOpening, roleIcon, type PaneOpening } from "./pane-agents";
 import { KeyboardScrollView } from "./keyboard";
 import { PaneHeader } from "./pane-header";
+import { useTicketPlanAnswers } from "./plan-card";
 import { SpecChangeBox } from "./spec-change-box";
 import { paneGutter, SPACE } from "./spacing";
 import { TicketView } from "./ticket-view";
@@ -72,6 +74,13 @@ export function OwnerPane({
   opening?: number;
 }) {
   const tell = useRpc(tellAgent);
+  const planAnswers = useTicketPlanAnswers(project, card.id);
+  const queries = useQueryClient();
+  // The answer's record is on the ticket by now: read it at once, so the plan's line replaces its card without a gap.
+  const answered = () => {
+    onChanged();
+    void queries.invalidateQueries({ queryKey: ["taro", "ticket", project, card.id] });
+  };
   // Kept with the card it was chosen on: opening another ticket (its Answer → or Review →) starts on Chat, where its asks are answered.
   // A tap on the ticket already open is a new opening too: Review lands on the chat of whoever asks (TR-096).
   const openKey = `${card.id}#${opening}`;
@@ -179,7 +188,8 @@ export function OwnerPane({
                   await tell({ agentId: shown.id, text, ...attachments, messageId });
                 }}
                 transformText={withoutDecisionBlocks}
-                asks={{ decisions: shownAsks, onAnswered: onChanged }}
+                asks={{ decisions: shownAsks, onAnswered: answered }}
+                planAnswers={shown.role === "owner" ? planAnswers : undefined}
                 delivery={
                   accepting && shown.id === card.owner?.id
                     ? {

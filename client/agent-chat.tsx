@@ -12,6 +12,7 @@ import { Keyboard, Platform, SafeAreaView, ScrollView, Text, useWindowDimensions
 
 import { attachmentProblem, refuseOversizedImages, type DraftAttachment } from "../shared/attachments";
 import { listSentImages, type SentImagesMessage } from "../shared/contracts";
+import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { ActionRow } from "./action-row";
 import { droppedFilesAsAttachments, imagesFromPaste, pickAttachments } from "./attachment-pickers";
 import { availableSources, type AttachmentSource } from "./attachment-sources";
@@ -28,8 +29,10 @@ import { Pressable } from "./focus";
 import { useFollowEnd } from "./follow-end";
 import { ImageThumbnail } from "./image-view";
 import { KeyboardRevealProvider, useKeyboardOverlap, useKeyboardScroll, useRevealFocused } from "./keyboard";
+import { formatClock } from "./format";
 import { Markdown } from "./markdown";
 import { PermissionCard, usePendingRequests } from "./permission-card";
+import { planLines, planLineText, type PlanAnswer, type PlanLine } from "./plan-lines";
 import { ReplyBox } from "./reply-box";
 import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
@@ -100,6 +103,7 @@ export function AgentChat({
   transformText,
   asks,
   delivery,
+  planAnswers,
   suggestions,
 }: {
   agent: ChatAgent;
@@ -125,6 +129,11 @@ export function AgentChat({
    * when that message is older than the timeline.
    */
   delivery?: { card: ReactNode; label: string; ready: boolean; accept: ReactNode } | undefined;
+  /**
+   * The ticket's plan answers (TR-135): a plan answered or asked again leaves one labelled line under
+   * its message. Null while the ticket loads (no lines yet), undefined for a chat without plans.
+   */
+  planAnswers?: readonly PlanAnswer[] | null | undefined;
   /** Things to send (the manager's suggestions, TR-045), after the buttons in their sideways-scrolling line. */
   suggestions?: ReactNode;
 } & ChatComposer) {
@@ -168,6 +177,9 @@ export function AgentChat({
   const marksByRow = useMemo(() => new Map(sends.views.flatMap((view) => (view.rowKey === null ? [] : [[view.rowKey, view] as const]))), [sends.views]);
   const echoes = sends.views.filter((view) => view.rowKey === null);
   const places = useMemo(() => (asks === undefined || asks.decisions.length === 0 ? null : placeDecisions(agentRows, asks.decisions)), [agentRows, asks?.decisions]);
+  /** The message whose plan is the live card; every other plan asking gets its line. */
+  const livePlanRow = useMemo(() => (places === null ? null : ([...places.byRow].find(([, decisions]) => decisions.some((decision) => decision.id === SCOPE_APPROVAL))?.[0] ?? null)), [places]);
+  const pastPlans = useMemo(() => (planAnswers === undefined || planAnswers === null ? null : planLines(rows, planAnswers, livePlanRow)), [rows, planAnswers, livePlanRow]);
   /** The acceptance card's place in the layouts, beside the decisions' keys. */
   const deliveryTarget = `delivery:${agent.id}`;
   /** The message the acceptance card is drawn under; null draws it at the end. */
@@ -472,6 +484,7 @@ export function AgentChat({
                     mark={row?.kind === "user" ? marksByRow.get(row.key) : undefined}
                     onMarkAction={markActionLatest}
                     asked={row?.kind === "agent" ? (places?.byRow.get(row.key) ?? NO_DECISIONS) : NO_DECISIONS}
+                    pastPlan={row?.kind === "agent" ? pastPlans?.get(row.key) : undefined}
                     transformText={transformText}
                     decorateRow={decorateRow}
                     theme={theme}
@@ -611,6 +624,8 @@ interface TranscriptGroupProps {
   onMarkAction: (id: string, action: MarkAction) => void;
   /** The open decisions this message asked, drawn under it. */
   asked: readonly StoredDecision[];
+  /** The line left where this message's plan card was, once answered or asked again (TR-135). */
+  pastPlan: PlanLine | undefined;
   transformText: ((text: string) => string) | undefined;
   decorateRow: ((text: string, key: string) => ReactNode) | undefined;
   theme: PluginTheme;
@@ -756,7 +771,7 @@ function SendMarkLine({
   );
 }
 
-function TranscriptGroupView({ group, open, images, mark, asked, transformText, decorateRow, theme, styles, onToggle, onRowLayout, onOpenLink, renderCards, onMarkAction }: TranscriptGroupProps) {
+function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, transformText, decorateRow, theme, styles, onToggle, onRowLayout, onOpenLink, renderCards, onMarkAction }: TranscriptGroupProps) {
   if ("tools" in group) {
     const summary = toolRunSummary(group.tools);
     const lone = group.tools.length === 1;
@@ -816,6 +831,7 @@ function TranscriptGroupView({ group, open, images, mark, asked, transformText, 
         <View key={row.key} style={styles.agentRow} onLayout={targets.length === 0 ? undefined : (event) => onRowLayout(row.key, targets, "row", event.nativeEvent.layout)}>
           <Markdown source={transformText === undefined ? row.text : transformText(row.text)} theme={theme} onOpenLink={onOpenLink} />
           {decorateRow === undefined ? null : decorateRow(row.text, row.key)}
+          {pastPlan === undefined ? null : <PastPlanLine line={pastPlan} theme={theme} styles={styles} />}
           {targets.length === 0 ? null : (
             <View style={styles.agentRow} onLayout={(event) => onRowLayout(row.key, targets, "cards", event.nativeEvent.layout)}>
               {renderCards(asked)}
@@ -849,6 +865,7 @@ const TranscriptGroup = memo(
     previous.mark?.send.id === next.mark?.send.id &&
     previous.onMarkAction === next.onMarkAction &&
     sameItems(previous.asked, next.asked) &&
+    samePlanLine(previous.pastPlan, next.pastPlan) &&
     previous.open === next.open &&
     previous.transformText === next.transformText &&
     previous.decorateRow === next.decorateRow &&
@@ -861,6 +878,23 @@ const TranscriptGroup = memo(
 );
 
 const NO_DECISIONS: readonly StoredDecision[] = [];
+
+function samePlanLine(left: PlanLine | undefined, right: PlanLine | undefined): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  return left.outcome === right.outcome && left.at === right.at && left.replaced === right.replaced && left.closed === right.closed;
+}
+
+/** A past plan's one line, drawn like the chat's other notes: an approved one with the accent check. */
+function PastPlanLine({ line, theme, styles }: { line: PlanLine; theme: PluginTheme; styles: ChatStyles }) {
+  const approved = line.outcome === "approved";
+  const text = planLineText(line, formatClock);
+  return (
+    <View style={styles.line} accessibilityLabel={text}>
+      <Icon name={approved ? "CircleCheck" : line.replaced ? "RotateCw" : line.closed === "withdrawn" ? "X" : "MessageSquare"} size={12} color={approved ? theme.colors.accent : theme.colors.foregroundMuted} />
+      <Text style={styles.lineText}>{text}</Text>
+    </View>
+  );
+}
 
 /** The chat's styles, built once per theme, width and composer size. */
 function chatStyles(theme: PluginTheme, compact: boolean) {

@@ -81,3 +81,11 @@ describe("transcriptRows separate replies", () => {
     expect(rows).toEqual([{ key: "1", kind: "agent", text: "Done.\n\nok" }]);
   });
 });
+
+describe("transcriptRows times", () => {
+  it("dates an agent message by its first piece, so a plan's answers can be matched after it (TR-135)", () => {
+    const at = (seq: number, text: string, timestamp: string) => ({ ...said(seq, text), timestamp }) as TimelineEntry;
+    const rows = transcriptRows([at(1, "Hel", "2026-01-05T10:00:00Z"), at(2, "lo", "2026-01-05T10:00:05Z")]);
+    expect(rows).toEqual([{ key: "1", kind: "agent", text: "Hello", at: "2026-01-05T10:00:00Z" }]);
+  });
+});
