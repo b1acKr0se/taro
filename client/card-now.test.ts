@@ -172,6 +172,29 @@ describe("cardNowLine", () => {
       });
     });
 
+    // TR-153: the delivering turn (or a reply while it awaits acceptance) says so, never the acceptance it has not finished.
+    it("reads Delivering… on a delivered ticket until the turn ends, with this turn's tool call", () => {
+      const delivered = { status: "Awaiting acceptance", column: "working" as const, delivered: "Drafts work offline.", evidence: null };
+      expect(cardNowLine(card({ ...delivered, owner: running, lastStatus: approval }), NOW)).toEqual({ kind: "working", headline: "Delivering…", detail: "started 9m ago" });
+      const activity = { text: "updating the ticket", at: "2026-01-01T11:59:30Z" };
+      expect(cardNowLine(card({ ...delivered, owner: running, activity }), NOW)).toEqual({ kind: "working", headline: "Delivering…", detail: "Updating the ticket · just now" });
+      // A tool call from before the turn is the previous turn's, and a milestone does not replace the headline.
+      const latestMilestone = { kind: "MILESTONE", time: "2026-01-01T11:55Z", text: "evidence recorded" };
+      expect(cardNowLine(card({ ...delivered, owner: running, latestMilestone, activity: { ...activity, at: "2026-01-01T11:40:00Z" } }), NOW)).toEqual({
+        kind: "working",
+        headline: "Delivering…",
+        detail: "started 9m ago",
+      });
+      expect(cardNowLine(card({ ...delivered, owner: { ...running, turnStartedAt: null } }), NOW)).toEqual({ kind: "working", headline: "Delivering…", detail: null });
+      // Once the turn ends: the acceptance.
+      expect(cardNowLine(card({ ...delivered, column: "needs-you", owner: { ...running, status: "idle" } }), NOW)).toMatchObject({ kind: "call", headline: "Drafts work offline." });
+    });
+
+    it("says it was accepted, not Delivering…, while the owner merges", () => {
+      const accepted = { at: "2026-01-01T11:58:00Z", merging: "into main" };
+      expect(cardNowLine(card({ status: "Awaiting acceptance", owner: running, accepted }), NOW)?.kind).toBe("accepted");
+    });
+
     it("still says what it waits for when a permission is pending", () => {
       const permission = { title: "Allow Bash?", detail: "npm install", id: "p1", agentId: null, role: null, workspaceId: null, count: 1 };
       const asking = { ...running, pendingPermissions: 1 };

@@ -4,7 +4,7 @@
  * sections in a fixed order, each with a one-line summary. Pure; the view only draws it.
  */
 import { SCOPE_APPROVAL } from "./decision-view";
-import { questionHoldingAccept } from "./delivery-end";
+import { questionHoldingAccept, stillDelivering } from "./delivery-end";
 import { descriptionParts, firstSentence, firstTextLine } from "./description";
 import { finalSections } from "./final-summary";
 import { kindLabel, ticketMilestones, type Milestone } from "./milestones";
@@ -24,6 +24,8 @@ export interface TicketFacts {
   evidence: { checks: readonly unknown[]; screenshots: readonly unknown[] } | null;
   /** Paused by the user (TR-088): only their Resume moves it on. */
   pause?: { state: string } | null;
+  /** The owner is in a turn (TR-153): a delivery is not offered until it ends. */
+  ownerRunning?: boolean;
 }
 
 /** An open decision of this ticket (the caller picks the ticket's open ones), the parts read here. */
@@ -52,13 +54,16 @@ export function ticketSummary(ticket: TicketFacts, decisions: readonly OpenDecis
   const blocking = decisions.filter((decision) => decision.blocking || decision === holding);
   const first = blocking[0];
   const more = blocking.length > 1 ? ` (+${blocking.length - 1} more)` : "";
-  const need: TicketSummary["need"] = first !== undefined ? "decision" : ticket.status === "Awaiting acceptance" ? "acceptance" : "nothing";
+  const delivering = stillDelivering(ticket.status, ticket.ownerRunning === true ? "running" : null);
+  const need: TicketSummary["need"] = first !== undefined ? "decision" : ticket.status === "Awaiting acceptance" && !delivering ? "acceptance" : "nothing";
   const needText =
     first !== undefined
       ? `${first.id === SCOPE_APPROVAL ? "Approve the plan" : first.question}${more}`
       : need === "acceptance"
         ? "Accept or request changes"
-        : ticket.pause?.state === "paused"
+        : delivering
+          ? "nothing yet, the owner is delivering"
+          : ticket.pause?.state === "paused"
           ? "Resume when you want it continued"
           : `nothing, ${ticket.status}`;
   const goal = parsePlan(ticket.plan)?.goal || firstTextLine(descriptionParts(ticket.description).userWords) || ticket.title;

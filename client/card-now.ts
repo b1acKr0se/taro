@@ -6,6 +6,7 @@
  * mid-fact), a muted detail under it, and for an ask the action that opens it. Pure.
  */
 import type { Card } from "../shared/contracts";
+import { stillDelivering } from "../shared/delivery-end";
 import { PAUSE_HANDOFF_TIMEOUT_MS, type PauseView } from "../shared/pause";
 import type { QueuedSlot, QueuedWait } from "../shared/queued-wait";
 import { isHigh } from "../shared/recovery";
@@ -49,12 +50,14 @@ export function cardNowLine(card: Card, now: number): NowLine | null {
   // Not started: a child's status line is its parent owner's, about other work. What it waits on is its own (TR-138).
   if (card.column === "queued") return card.queuedWait === null ? null : { kind: "queued", ...queuedWaitLines(card.queuedWait) };
   if (card.ownerElsewhere !== null) return { kind: "elsewhere", headline: `Owner runs on ${card.ownerElsewhere}`, detail: null };
+  const owner = card.owner;
+  // The delivering turn is not over (TR-153): the acceptance waits for its message, so the card says so instead.
+  if (owner !== null && stillDelivering(card.status, owner.status)) return { kind: "working", ...deliveringLines(card, owner.turnStartedAt, now) };
   const waiting = waitingOn(card, now);
   if (waiting !== null) {
     const parts = [waiting.running === null ? null : `running ${waiting.running}`, waiting.more > 0 ? `${waiting.more} more running` : null];
     return { kind: "subagent", headline: waiting.text, detail: joined(parts) };
   }
-  const owner = card.owner;
   if (owner !== null && (owner.status === "running" || owner.status === "initializing")) return { kind: "working", ...workingLines(card, owner.turnStartedAt, now) };
   return restingLine(card, now);
 }
@@ -73,6 +76,15 @@ function workingLines(card: Card, turnStartedAt: string | null, now: number): Li
   if (activity !== null) return { headline: capitalised(activity.text), detail: joined(["Working", ago(activity.at, now)]) };
   const started = turnStartedAt === null ? null : ago(turnStartedAt, now);
   return { headline: "Working", detail: started === null ? null : `started ${started}` };
+}
+
+/** The owner's turn on a delivered ticket (TR-153): "Delivering…", with this turn's latest tool call, else when the turn started. */
+function deliveringLines(card: Card, turnStartedAt: string | null, now: number): Lines {
+  const since = turnStartedAt ?? card.lastStatus?.at ?? null;
+  const activity = card.activity !== null && notBefore(card.activity.at, since) ? card.activity : null;
+  if (activity !== null) return { headline: "Delivering…", detail: joined([capitalised(activity.text), ago(activity.at, now)]) };
+  const started = turnStartedAt === null ? null : ago(turnStartedAt, now);
+  return { headline: "Delivering…", detail: started === null ? null : `started ${started}` };
 }
 
 /** Idle: the last status line, unless a milestone written after it says something newer. */

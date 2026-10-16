@@ -1,5 +1,6 @@
 // TR-068: the Ticket tab lists a parent's children with their status, which the store's view gives (TR-081).
 // TR-095: it offers Compact for the ticket's owner under the board's old rule.
+// TR-153: it says whether that owner is mid-turn, which holds a delivery's acceptance back.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ticketSections } from "../shared/ticket-summary";
@@ -9,7 +10,7 @@ import type { PaseoAgent, PaseoApi } from "./host-types";
 import { listTickets, viewTicket } from "./tickets";
 
 vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: "/tracker" }) }));
-vi.mock("./agents", () => ({ projectAgents: vi.fn(async () => []) }));
+vi.mock("./agents", async (original) => ({ ...(await original<typeof import("./agents")>()), projectAgents: vi.fn(async () => []) }));
 vi.mock("./tickets", () => ({ listTickets: vi.fn(), viewTicket: vi.fn() }));
 
 type Viewed = Awaited<ReturnType<typeof viewTicket>>;
@@ -87,5 +88,25 @@ describe("loadTicketDetail Compact", () => {
     vi.mocked(viewTicket).mockResolvedValue(parent([], "NA-0"));
     vi.mocked(projectAgents).mockResolvedValue([ownerAgent("idle", 200_000)]);
     expect((await loadTicketDetail({} as PaseoApi, "notes", "NA-1")).compactOwner).toBeNull();
+  });
+});
+
+describe("loadTicketDetail ownerRunning", () => {
+  it("is true only while the ticket's newest live owner is mid-turn", async () => {
+    vi.mocked(viewTicket).mockResolvedValue(parent([]));
+    for (const [status, running] of [["running", true], ["initializing", true], ["idle", false], ["error", false], ["closed", false]] as const) {
+      vi.mocked(projectAgents).mockResolvedValue([ownerAgent(status, null)]);
+      expect((await loadTicketDetail({} as PaseoApi, "notes", "NA-1")).ownerRunning).toBe(running);
+    }
+    for (const agents of [[], [ownerAgent("running", null, "NA-2")]]) {
+      vi.mocked(projectAgents).mockResolvedValue(agents);
+      expect((await loadTicketDetail({} as PaseoApi, "notes", "NA-1")).ownerRunning).toBe(false);
+    }
+  });
+
+  it("is false when the agents cannot be listed", async () => {
+    vi.mocked(viewTicket).mockResolvedValue(parent([]));
+    vi.mocked(projectAgents).mockRejectedValue(new Error("daemon away"));
+    expect((await loadTicketDetail({} as PaseoApi, "notes", "NA-1")).ownerRunning).toBe(false);
   });
 });

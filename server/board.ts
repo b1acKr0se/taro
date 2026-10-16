@@ -25,7 +25,7 @@ import { isSubagentRole, roleFromLabel, TARO_LABELS } from "../shared/project";
 import { boardAlerts, type BoardAlert } from "../shared/recovery";
 import { decisionsOfLiveAgents, type StoredDecision } from "../shared/state";
 import { currentSuggestions, parseSuggestions, suggestionKey, withoutFixedActions } from "../shared/suggestions";
-import { projectAgents, projectArchivedAgents } from "./agents";
+import { isMidTurn, projectAgents, projectArchivedAgents } from "./agents";
 import { statePath } from "./data-dir";
 import { judgeTicketEvidence, ticketEvidence } from "./evidence";
 import { readHeadroom } from "./headroom";
@@ -401,6 +401,7 @@ export async function loadTicketDetail(paseo: PaseoApi, project: string, ticketI
       owner !== null && offersCompact({ parent: detail.parentTaskId, owner: { status: owner.status, contextUsedTokens: owner.lastUsage?.contextWindowUsedTokens ?? null } }) ? owner.id : null,
     specChangeable: offersSpecChange({ status: detail.status, parent: detail.parentTaskId, ownerRunning: owner !== null, paused: pausing.pause !== null }),
     previousPlan: detail.implementationPlan === null ? null : await previousPlan(tracker, detail.id, detail.implementationNotes),
+    ownerRunning: owner !== null && isMidTurn(owner),
   };
 }
 

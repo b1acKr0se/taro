@@ -68,6 +68,12 @@ describe("ticketSummary", () => {
     expect(ticketSummary({ ...SHORT, status: "Awaiting acceptance" }, [])).toMatchObject({ need: "acceptance", needText: "Accept or request changes" });
   });
 
+  it("asks nothing yet while the owner's delivering turn runs (TR-153)", () => {
+    expect(ticketSummary({ ...SHORT, status: "Awaiting acceptance", ownerRunning: true }, [])).toMatchObject({ need: "nothing", needText: "nothing yet, the owner is delivering" });
+    expect(ticketSummary({ ...SHORT, status: "Awaiting acceptance", ownerRunning: false }, [])).toMatchObject({ need: "acceptance" });
+    expect(ticketSummary({ ...SHORT, status: "In Progress", ownerRunning: true }, []).needText).toBe("nothing, In Progress");
+  });
+
   it("asks to resume a paused ticket, and nothing while it is pausing or queued to resume (TR-088)", () => {
     expect(ticketSummary({ ...EMPTY, status: "In Progress", pause: { state: "paused" } }, [])).toMatchObject({ need: "nothing", needText: "Resume when you want it continued" });
     expect(ticketSummary({ ...EMPTY, status: "In Progress", pause: { state: "pausing" } }, []).needText).toBe("nothing, In Progress");
