@@ -135,7 +135,11 @@ describe("questionCards", () => {
 
   it("quotes a typed answer without a label", () => {
     const typed = stored("one", { answer: { text: "Use SQLite", label: null, at: "2026-01-19T10:05:00Z" } });
-    expect(cards([message("a", [block("one")])], [typed]).get("a")).toEqual([{ id: "one", subject: "Question one?", outcome: "Answered: “Use SQLite”", tone: "positive", time: "10:05", words: null }]);
+    expect(cards([message("a", [block("one")])], [typed]).get("a")).toEqual([{ id: "one", subject: "Question one?", outcome: "Answered", tone: "positive", time: "10:05", words: "Use SQLite" }]);
+    const multiline = stored("one", { answer: { text: "Use SQLite.\n\nMove to Postgres later.", label: null, at: "2026-01-19T10:05:00Z" } });
+    expect(cards([message("a", [block("one")])], [multiline]).get("a")?.[0]).toMatchObject({ outcome: "Answered", words: "Use SQLite.\n\nMove to Postgres later." });
+    const empty = stored("one", { answer: { text: "  ", label: null, at: "2026-01-19T10:05:00Z" } });
+    expect(cards([message("a", [block("one")])], [empty]).get("a")?.[0]).toMatchObject({ outcome: "Answered", words: null });
   });
 
   it("says withdrawn, and that its agent went away", () => {

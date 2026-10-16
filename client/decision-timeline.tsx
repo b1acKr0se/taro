@@ -60,9 +60,7 @@ export function DecisionBlockItem({ agentId, item, theme, layout }: PluginTimeli
       return (
         <FinishedCard
           theme={theme}
-          compact={layout.compact}
-          icon={plan ? "Map" : "MessageCircleQuestion"}
-          kind={plan ? "Plan" : "Question"}
+          lead={plan ? null : "Question"}
           subject={blockCardSubject(block, stored?.ticket ?? null)}
           outcome={outcome.outcome}
           tone={outcome.tone}
