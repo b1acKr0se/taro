@@ -35,7 +35,7 @@ export function imagePixelSize(bytes: Uint8Array): PixelSize | null {
 
 function webpSize(bytes: Uint8Array, view: DataView): PixelSize | null {
   if (bytes.length < 30) return null;
-  const chunk = String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15]);
+  const chunk = String.fromCharCode(view.getUint8(12), view.getUint8(13), view.getUint8(14), view.getUint8(15));
   // Lossy: 14-bit sizes after the key frame's start code.
   if (chunk === "VP8 ") return sizeOrNull(view.getUint16(26, true) & 0x3fff, view.getUint16(28, true) & 0x3fff);
   // Lossless: 14-bit sizes less one, packed after the signature byte.
@@ -45,8 +45,8 @@ function webpSize(bytes: Uint8Array, view: DataView): PixelSize | null {
   }
   // Extended: 24-bit canvas sizes less one.
   if (chunk === "VP8X") {
-    const width = bytes[24] | (bytes[25] << 8) | (bytes[26] << 16);
-    const height = bytes[27] | (bytes[28] << 8) | (bytes[29] << 16);
+    const width = view.getUint16(24, true) | (view.getUint8(26) << 16);
+    const height = view.getUint16(27, true) | (view.getUint8(29) << 16);
     return sizeOrNull(width + 1, height + 1);
   }
   return null;
@@ -62,7 +62,7 @@ function jpegSize(bytes: Uint8Array, view: DataView): PixelSize | null {
   let turned = false;
   while (offset + 4 <= bytes.length) {
     if (bytes[offset] !== 0xff) return null;
-    const marker = bytes[offset + 1];
+    const marker = view.getUint8(offset + 1);
     // Fill bytes before a marker.
     if (marker === 0xff) {
       offset += 1;
