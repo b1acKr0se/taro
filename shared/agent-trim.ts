@@ -148,9 +148,12 @@ export function toolMisses(items: readonly unknown[]): ToolMiss[] {
   return [...misses.values()];
 }
 
-/** The TOOL-MISS record for a ticket's notes; what was missed comes first, as a collapsed row shows only its start. */
+/**
+ * The TOOL-MISS record for a ticket's notes; what was missed comes first, as a collapsed row shows
+ * only its start. Tool names are code, or the Ticket tab would read `mcp__paseo__…` as bold.
+ */
 export function toolMissRecord(at: string, agent: { id: string; role: string }, misses: readonly ToolMiss[]): string {
-  const list = misses.map((miss) => `${miss.tool} (${miss.reason})`).join("; ");
+  const list = misses.map((miss) => `\`${miss.tool}\` (${miss.reason})`).join("; ");
   return `TOOL-MISS ${at} — ${list}: ${agent.role} ${agent.id} reached for what Taro removed at launch (TR-139). If the role needs it, take it off the lists in shared/agent-trim.ts.`;
 }
 

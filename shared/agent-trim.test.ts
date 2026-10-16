@@ -121,7 +121,7 @@ describe("toolMisses", () => {
 describe("records", () => {
   it("are records the Ticket tab reads, with their time", () => {
     const notes = [
-      toolMissRecord("2026-10-16T01:02Z", { id: "agent-1", role: "reviewer" }, [{ tool: "Agent", reason: "a removed tool" }]),
+      toolMissRecord("2026-10-16T01:02Z", { id: "agent-1", role: "reviewer" }, [{ tool: "Agent", reason: "a removed tool" }, { tool: "mcp__paseo__list_agents", reason: "a removed tool" }]),
       contextRecord("2026-10-16T01:03Z", { id: "agent-2", role: "owner" }, 41_250),
     ].join("\n\n");
     expect(ticketMilestones(notes).map((record) => [record.kind, record.time])).toEqual([
@@ -129,7 +129,7 @@ describe("records", () => {
       ["CONTEXT", "2026-10-16T01:03Z"],
     ]);
     // What matters leads, as a collapsed row shows only the start.
-    expect(notes).toContain("— Agent (a removed tool): reviewer agent-1");
+    expect(notes).toContain("— `Agent` (a removed tool); `mcp__paseo__list_agents` (a removed tool): reviewer agent-1");
     expect(notes).toContain("— 41,250 tokens at start, over 30,000: owner agent-2");
     expect(notes).toContain(STARTING_CONTEXT_LIMIT.toLocaleString("en-US"));
   });

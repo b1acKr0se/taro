@@ -119,7 +119,7 @@ describe("watchTrimmedTurn", () => {
       [join(projects, "notes-app", "tracker"), "NA-7", "TOOL-MISS"],
       [join(projects, "notes-app", "tracker"), "NA-7", "CONTEXT"],
     ]);
-    expect(vi.mocked(appendTicketNote).mock.calls[0]?.[2]).toContain("mcp__paseo__list_agents (a removed tool)");
+    expect(vi.mocked(appendTicketNote).mock.calls[0]?.[2]).toContain("`mcp__paseo__list_agents` (a removed tool)");
   });
 
   it("records a start under the limit without a note, and reads the transcript no more once recorded", async () => {
