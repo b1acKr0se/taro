@@ -62,3 +62,22 @@ export function offersReplaceManager(manager: { status: string; contextUsedToken
 export function replaceManagerNotice(tokens: string): string {
   return `Idle for over an hour with ${tokens} tokens of context: your next message rereads all of it uncached. A fresh manager starts small; tickets are kept and this conversation is archived.`;
 }
+
+/** The presses that, while Replace manager is offered, first ask to replace (TR-161). */
+export type ReplaceFirstAction = "catch-up" | "compact" | "suggestion" | "send";
+
+const GO_AHEAD_LABELS: Readonly<Record<ReplaceFirstAction, string>> = {
+  "catch-up": "Catch up anyway",
+  compact: "Compact anyway",
+  suggestion: "Send suggestion anyway",
+  send: "Send anyway",
+};
+
+/** The dialog a press opens while Replace manager is offered: why, and the label of going ahead with it. */
+export function replaceFirstDialog(action: ReplaceFirstAction, tokens: string): { title: string; body: string; goAhead: string } {
+  return {
+    title: "Replace the manager first?",
+    body: `${replaceManagerNotice(tokens)} Replacing it first is recommended.`,
+    goAhead: GO_AHEAD_LABELS[action],
+  };
+}

@@ -29,12 +29,15 @@ export function SuggestionPills({
   suggestions: current,
   theme,
   onChanged,
+  beforeSend,
 }: {
   project: string;
   suggestions: readonly Suggestion[];
   theme: PluginTheme;
   /** Reloads the board, which carries the suggestions. */
   onChanged: () => void;
+  /** Given each tap before it sends (TR-161): it calls `send` to go ahead, or later, or never. */
+  beforeSend?: ((send: () => void) => void) | undefined;
 }) {
   const toast = useToast();
   const tell = useRpc(tellManager);
@@ -126,7 +129,7 @@ export function SuggestionPills({
         key={suggestionKey(suggestion)}
         style={[styles.suggestion, state === "failed" ? { borderColor: withAlpha(colors.statusDanger, 0.6) } : state === "sent" ? { borderColor: withAlpha(colors.statusSuccess, 0.6) } : null]}
       >
-        <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ busy, disabled: busy }} disabled={busy} style={styles.suggestionSend} onPress={() => sendSuggestion(suggestion, index)}>
+        <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ busy, disabled: busy }} disabled={busy} style={styles.suggestionSend} onPress={() => (beforeSend === undefined ? sendSuggestion(suggestion, index) : beforeSend(() => sendSuggestion(suggestion, index)))}>
           <Text style={[styles.suggestionText, busy ? { color: colors.foregroundMuted } : null]} numberOfLines={1}>
             {suggestion.label}
           </Text>
