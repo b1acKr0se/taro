@@ -7,6 +7,9 @@ import {
   pausedByTaro,
   pausedHold,
   pausedHoldText,
+  isParkReason,
+  parkedUnstartedHoldText,
+  parksBeforeStart,
   pauseProgress,
   pauseView,
   pauseRefusal,
@@ -15,6 +18,7 @@ import {
   resumedReleaseText,
   resumeRefusal,
   resumesNow,
+  unparkedReleaseText,
 } from "./pause";
 import { holdReason } from "./queue-check";
 
@@ -26,12 +30,12 @@ const notes = (...records: string[]) => records.join("\n\n");
 describe("pausedHold", () => {
   it("reads a pause with a handoff", () => {
     const text = notes(EXECUTION, REQUESTED, HANDOFF, pausedHoldText("2026-01-05T10:04Z", "handoff", true));
-    expect(pausedHold(text)).toEqual({ at: "2026-01-05T10:04Z", withoutHandoff: false });
+    expect(pausedHold(text)).toEqual({ at: "2026-01-05T10:04Z", withoutHandoff: false, notStarted: false });
   });
 
   it("reads a pause without a handoff after the timeout", () => {
     const text = notes(EXECUTION, REQUESTED, pausedHoldText("2026-01-05T10:10Z", "timed-out", false));
-    expect(pausedHold(text)).toEqual({ at: "2026-01-05T10:10Z", withoutHandoff: true });
+    expect(pausedHold(text)).toEqual({ at: "2026-01-05T10:10Z", withoutHandoff: true, notStarted: false });
     expect(holdReason(text)).toContain("did not write one within 10 minutes");
   });
 
@@ -39,7 +43,29 @@ describe("pausedHold", () => {
     expect(pausedHold(notes(EXECUTION, "HOLD 2026-01-05T11:00Z — paused by the user to unblock a rewrite; resume from this HANDOFF"))).toEqual({
       at: "2026-01-05T11:00Z",
       withoutHandoff: false,
+      notStarted: false,
     });
+  });
+
+  it("reads a Queued ticket parked before it started, with nothing to hand off (TR-166)", () => {
+    const text = notes(parkedUnstartedHoldText("2026-01-05T10:04Z"));
+    expect(text).toBe("HOLD 2026-01-05T10:04Z — parked by the user before it started: never start it until the user resumes it");
+    expect(pausedHold(text)).toEqual({ at: "2026-01-05T10:04Z", withoutHandoff: false, notStarted: true });
+    expect(pausedByTaro(text)).toBe(false);
+    // Resume returns it to the queue: no park in force, and not queued to resume (that relaunches an owner).
+    const resumed = notes(text, unparkedReleaseText("2026-01-05T11:00Z"));
+    expect(pausedHold(resumed)).toBeNull();
+    expect(queuedToResume(resumed)).toBe(false);
+    expect(holdReason(resumed)).toBeNull();
+  });
+
+  it("reads the pre-TR-166 'paused by the user' holds as parks, so no ticket needs rewriting", () => {
+    const old = notes(EXECUTION, REQUESTED, HANDOFF, "HOLD 2026-01-05T10:04Z — parked by the user; resume from the latest HANDOFF");
+    expect(pausedHold(old)).toEqual({ at: "2026-01-05T10:04Z", withoutHandoff: false, notStarted: false });
+    expect(pausedByTaro(old)).toBe(true);
+    expect(isParkReason("Paused by the user; no handoff")).toBe(true);
+    expect(isParkReason("parked by the user before it started")).toBe(true);
+    expect(isParkReason("exclusive rewrite NA-10 first")).toBe(false);
   });
 
   it("ignores the manager's own holds and a pause lifted by RELEASE", () => {
@@ -106,9 +132,9 @@ describe("pauseProgress", () => {
 
 describe("pausedHoldText", () => {
   it("says where the next owner resumes from", () => {
-    expect(pausedHoldText("2026-01-05T10:04Z", "handoff", true)).toBe("HOLD 2026-01-05T10:04Z — paused by the user; resume from the latest HANDOFF");
+    expect(pausedHoldText("2026-01-05T10:04Z", "handoff", true)).toBe("HOLD 2026-01-05T10:04Z — parked by the user; resume from the latest HANDOFF");
     expect(pausedHoldText("2026-01-05T10:04Z", "owner-gone", false)).toBe(
-      "HOLD 2026-01-05T10:04Z — paused by the user; no handoff (the owner had already stopped): resume from the latest milestone",
+      "HOLD 2026-01-05T10:04Z — parked by the user; no handoff (the owner had already stopped): resume from the latest milestone",
     );
     // An owner gone after writing its handoff still leaves one to resume from.
     expect(pausedHoldText("2026-01-05T10:04Z", "owner-gone", true)).toContain("resume from the latest HANDOFF");
@@ -118,8 +144,8 @@ describe("pausedHoldText", () => {
 describe("pauseRefusal", () => {
   const ticket = { id: "NA-1", status: "In Progress", parentTaskId: null, notes: EXECUTION };
 
-  it("allows a ticket under way", () => {
-    for (const status of ["Planning", "Ready", "In Progress", "Reviewing", "Blocked"]) expect(pauseRefusal({ ...ticket, status }, false)).toBeNull();
+  it("allows a ticket under way, and a Queued one (TR-166)", () => {
+    for (const status of ["Queued", "Planning", "Ready", "In Progress", "Reviewing", "Blocked"]) expect(pauseRefusal({ ...ticket, status }, false)).toBeNull();
   });
 
   it("refuses while awaiting acceptance or merging, with different words", () => {
@@ -127,13 +153,13 @@ describe("pauseRefusal", () => {
     expect(pauseRefusal({ ...ticket, status: "Awaiting acceptance" }, true)).toBe("NA-1 is merging: wait for it to finish.");
   });
 
-  it("refuses finished, unstarted, child, paused and pausing tickets", () => {
-    expect(pauseRefusal({ ...ticket, status: "Done" }, false)).toBe("NA-1 is Done: there is nothing to pause.");
-    expect(pauseRefusal({ ...ticket, status: "Cancelled" }, false)).toContain("nothing to pause");
-    expect(pauseRefusal({ ...ticket, status: "Queued" }, false)).toContain("has not started");
-    expect(pauseRefusal({ ...ticket, parentTaskId: "NA-0" }, false)).toBe("NA-1 is a child: pause its parent NA-0 instead.");
-    expect(pauseRefusal({ ...ticket, notes: notes(EXECUTION, pausedHoldText("2026-01-05T10:04Z", "handoff", true)) }, false)).toBe("NA-1 is already paused.");
-    expect(pauseRefusal({ ...ticket, notes: notes(EXECUTION, REQUESTED) }, false)).toContain("already pausing");
+  it("refuses finished, child, parked and parking tickets", () => {
+    expect(pauseRefusal({ ...ticket, status: "Done" }, false)).toBe("NA-1 is Done: there is nothing to park.");
+    expect(pauseRefusal({ ...ticket, status: "Cancelled" }, false)).toContain("nothing to park");
+    expect(pauseRefusal({ ...ticket, parentTaskId: "NA-0" }, false)).toBe("NA-1 is a child: park its parent NA-0 instead.");
+    expect(pauseRefusal({ ...ticket, notes: notes(EXECUTION, pausedHoldText("2026-01-05T10:04Z", "handoff", true)) }, false)).toBe("NA-1 is already parked.");
+    expect(pauseRefusal({ ...ticket, status: "Queued", notes: parkedUnstartedHoldText("2026-01-05T10:04Z") }, false)).toBe("NA-1 is already parked.");
+    expect(pauseRefusal({ ...ticket, notes: notes(EXECUTION, REQUESTED) }, false)).toContain("already being parked");
     const queued = notes(EXECUTION, pausedHoldText("2026-01-05T10:04Z", "handoff", true), resumedReleaseText("2026-01-05T11:00Z", { counting: 3, cap: 3 }));
     // Queued to resume, it may go back to Paused; once its fresh owner runs, it may pause again.
     expect(pauseRefusal({ ...ticket, notes: queued }, false)).toBeNull();
@@ -153,12 +179,25 @@ describe("resumeRefusal", () => {
     expect(resumeRefusal({ ...paused, status: "Awaiting acceptance" }, true, false)).toBe("NA-1 is merging: wait for it to finish.");
   });
 
-  it("refuses a ticket not paused, already queued to resume, or with a live owner", () => {
-    expect(resumeRefusal({ ...paused, notes: EXECUTION }, false, false)).toBe("NA-1 is not paused.");
+  it("allows a Queued ticket parked before it started (TR-166)", () => {
+    expect(resumeRefusal({ ...paused, status: "Queued", notes: parkedUnstartedHoldText("2026-01-05T10:04Z") }, false, false)).toBeNull();
+  });
+
+  it("refuses a ticket not parked, already queued to resume, or with a live owner", () => {
+    expect(resumeRefusal({ ...paused, notes: EXECUTION }, false, false)).toBe("NA-1 is not parked.");
     expect(resumeRefusal({ ...paused, notes: notes(paused.notes, resumedReleaseText("2026-01-05T11:00Z", { counting: 3, cap: 3 })) }, false, false)).toBe(
       "NA-1 is already queued to resume.",
     );
     expect(resumeRefusal(paused, false, true)).toContain("live owner");
+  });
+});
+
+describe("parksBeforeStart", () => {
+  it("holds at once only a Queued ticket with no live owner", () => {
+    expect(parksBeforeStart("Queued", false)).toBe(true);
+    // An owner just dispatched, its ticket still Queued: it writes a handoff like any other.
+    expect(parksBeforeStart("Queued", true)).toBe(false);
+    for (const status of ["Planning", "Ready", "In Progress", "Blocked"]) expect(parksBeforeStart(status, false)).toBe(false);
   });
 });
 
@@ -188,16 +227,20 @@ describe("pauseView", () => {
   const paused = pausedHoldText("2026-01-05T10:04Z", "timed-out", false);
 
   it("says pausing while the owner writes its handoff, alive or not", () => {
-    expect(pauseView(notes(EXECUTION, REQUESTED), true)).toEqual({ state: "pausing", since: "2026-01-05T10:00:12Z", withoutHandoff: false });
+    expect(pauseView(notes(EXECUTION, REQUESTED), true)).toEqual({ state: "pausing", since: "2026-01-05T10:00:12Z", withoutHandoff: false, notStarted: false });
     expect(pauseView(notes(EXECUTION, REQUESTED), false)?.state).toBe("pausing");
   });
 
   it("says paused, and queued to resume, only with no live owner", () => {
-    expect(pauseView(notes(REQUESTED, paused), false)).toEqual({ state: "paused", since: "2026-01-05T10:04Z", withoutHandoff: true });
+    expect(pauseView(notes(REQUESTED, paused), false)).toEqual({ state: "paused", since: "2026-01-05T10:04Z", withoutHandoff: true, notStarted: false });
     expect(pauseView(notes(REQUESTED, paused), true)).toBeNull();
     const queued = notes(REQUESTED, paused, resumedReleaseText("2026-01-05T11:00Z", { counting: 3, cap: 3 }));
-    expect(pauseView(queued, false)).toEqual({ state: "queued-to-resume", since: "2026-01-05T11:00Z", withoutHandoff: false });
+    expect(pauseView(queued, false)).toEqual({ state: "queued-to-resume", since: "2026-01-05T11:00Z", withoutHandoff: false, notStarted: false });
     expect(pauseView(queued, true)).toBeNull();
+  });
+
+  it("says parked before it started for a Queued ticket parked with no owner (TR-166)", () => {
+    expect(pauseView(parkedUnstartedHoldText("2026-01-05T10:04Z"), false)).toEqual({ state: "paused", since: "2026-01-05T10:04Z", withoutHandoff: false, notStarted: true });
   });
 
   it("is null for a ticket never paused", () => {
@@ -241,11 +284,11 @@ describe("pausedAgainHoldText", () => {
   it("pauses again from the earlier pause's handoff, or its milestone when it had none", () => {
     const withHandoff = notes(EXECUTION, REQUESTED, HANDOFF, pausedHoldText("2026-01-05T10:04Z", "handoff", true), queued);
     const again = pausedAgainHoldText("2026-01-05T11:05Z", withHandoff);
-    expect(again).toBe("HOLD 2026-01-05T11:05Z — paused by the user again before it resumed; resume from the latest HANDOFF");
-    expect(pausedHold(notes(withHandoff, again))).toEqual({ at: "2026-01-05T11:05Z", withoutHandoff: false });
+    expect(again).toBe("HOLD 2026-01-05T11:05Z — parked by the user again before it resumed; resume from the latest HANDOFF");
+    expect(pausedHold(notes(withHandoff, again))).toEqual({ at: "2026-01-05T11:05Z", withoutHandoff: false, notStarted: false });
     expect(queuedToResume(notes(withHandoff, again))).toBe(false);
 
     const without = notes(EXECUTION, REQUESTED, pausedHoldText("2026-01-05T10:10Z", "timed-out", false), queued);
-    expect(pausedHold(notes(without, pausedAgainHoldText("2026-01-05T11:05Z", without)))).toEqual({ at: "2026-01-05T11:05Z", withoutHandoff: true });
+    expect(pausedHold(notes(without, pausedAgainHoldText("2026-01-05T11:05Z", without)))).toEqual({ at: "2026-01-05T11:05Z", withoutHandoff: true, notStarted: false });
   });
 });

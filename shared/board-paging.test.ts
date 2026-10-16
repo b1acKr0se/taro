@@ -16,7 +16,7 @@ describe("pageColumns", () => {
   });
 
   it("keeps nothing and counts zero for an empty board", () => {
-    expect(pageColumns([])).toEqual({ kept: [], totals: { "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 }, offPage: [] });
+    expect(pageColumns([])).toEqual({ kept: [], totals: { "needs-you": 0, working: 0, stalled: 0, queued: 0, parked: 0, done: 0 }, offPage: [] });
   });
 
   it("keeps a column of fewer than a page, or exactly a page, whole", () => {
@@ -44,7 +44,7 @@ describe("pageColumns", () => {
 
   it("never trims Needs you, Working or Stalled, however long", () => {
     const placed = [...tickets("needs-you", 12, "NY"), ...tickets("working", 12, "WO"), ...tickets("stalled", 12, "ST")];
-    expect(pageColumns(placed, { queued: 0, done: 0 }).kept).toHaveLength(36);
+    expect(pageColumns(placed, { queued: 0, parked: 0, done: 0 }).kept).toHaveLength(36);
   });
 
   it("puts a ticket that just became Done on the first page, pushing the oldest of it off", () => {
@@ -72,6 +72,6 @@ describe("pageColumns", () => {
 
 describe("boardCounts", () => {
   it("shows each column's true total, with what else waits on the user in Needs you", () => {
-    expect(boardCounts({ "needs-you": 1, working: 2, stalled: 0, queued: 40, done: 91 }, 3)).toEqual({ "needs-you": 4, working: 2, stalled: 0, queued: 40, done: 91 });
+    expect(boardCounts({ "needs-you": 1, working: 2, stalled: 0, queued: 40, parked: 0, done: 91 }, 3)).toEqual({ "needs-you": 4, working: 2, stalled: 0, queued: 40, parked: 0, done: 91 });
   });
 });

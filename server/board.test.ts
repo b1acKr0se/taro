@@ -149,7 +149,7 @@ describe("loadBoard", () => {
     expect((await columns({ status: "running" }))["TR-1.01"]?.[0]).toBe("working");
   });
 
-  it("puts a paused ticket without an owner in Queued with Resume, and keeps a pausing one where it is (TR-088)", async () => {
+  it("places a parked ticket without an owner apart from Queued, and keeps a parking one where it is (TR-088, TR-166)", async () => {
     const requested = "PAUSE-REQUESTED 2026-10-13T14:58:00Z — the user pressed Pause";
     const hold = "HOLD 2026-10-13T14:59Z — paused by the user; resume from the latest HANDOFF";
     const recordsOf: Record<string, string> = {
@@ -157,21 +157,28 @@ describe("loadBoard", () => {
       "TR-3": `${notes}\n\n${requested}\n\nHANDOFF 2026-10-13T14:58Z\n- Phase: x\n\n${hold}`,
       "TR-4": `${notes}\n\n${hold}`,
       "TR-5": notes,
+      "TR-6": "HOLD 2026-10-13T14:59Z — parked by the user before it started: never start it until the user resumes it",
     };
-    vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "In Progress"), ticket("TR-3", "In Progress"), ticket("TR-4", "Ready"), ticket("TR-5", "In Progress")] as unknown as Awaited<
-      ReturnType<typeof listTickets>
-    >);
+    vi.mocked(listTickets).mockResolvedValue(
+      [ticket("TR-1", "In Progress"), ticket("TR-3", "In Progress"), ticket("TR-4", "Ready"), ticket("TR-5", "In Progress"), ticket("TR-6", "Queued"), ticket("TR-7", "Queued")] as unknown as Awaited<
+        ReturnType<typeof listTickets>
+      >,
+    );
     vi.mocked(viewTicket).mockImplementation(async (_tracker: string, id: string) => ({ implementationNotes: recordsOf[id] ?? null, finalSummary: "" }) as unknown as Awaited<ReturnType<typeof viewTicket>>);
     vi.mocked(projectAgents).mockResolvedValue([agent("owner-live", "owner", "TR-1", "2026-10-13T14:50:00Z")]);
     const board = await loadBoard({ agents: { ref: () => ({ timeline: { refetch: async () => ({ entries: [] }) } }) } } as unknown as PaseoApi, state([]), "taro");
     const cards = Object.fromEntries(board.cards.map((card) => [card.id, [card.column, card.pause?.state ?? null, card.pausable]]));
     expect(cards).toEqual({
       "TR-1": ["working", "pausing", false],
-      "TR-3": ["queued", "paused", false],
-      "TR-4": ["queued", "paused", false],
-      // Not paused and with no owner: still Stalled, and Pause is offered.
+      "TR-3": ["parked", "paused", false],
+      "TR-4": ["parked", "paused", false],
+      // Not parked and with no owner: still Stalled, and Park is offered.
       "TR-5": ["stalled", null, true],
+      // Parked before it started; a Queued one nobody parked starts next, and Park is offered on it.
+      "TR-6": ["parked", "paused", false],
+      "TR-7": ["queued", null, true],
     });
+    expect(board.totals).toMatchObject({ queued: 1, parked: 3 });
   });
 
   it("says what a Queued card waits on: unfinished dependencies and the tickets a manager's HOLD names, not a pause (TR-138)", async () => {
@@ -197,8 +204,8 @@ describe("loadBoard", () => {
       "TR-3": { on: [{ id: "TR-1", status: "Planning" }], dependencies: [], hold: "overlaps TR-1, which reworks the same card; start TR-3 once TR-1 is Done.", slot: null },
       "TR-4": { on: [{ id: "TR-1", status: "Planning" }], dependencies: ["TR-1"], hold: null, slot: null },
       "TR-5": null,
-      // Paused, so the card says the pause; its dependency still shows once it is resumed.
-      "TR-6": { on: [{ id: "TR-1", status: "Planning" }], dependencies: ["TR-1"], hold: null, slot: null },
+      // Parked, so it is not queued and the card says the park; its dependency shows once it is resumed.
+      "TR-6": null,
     });
   });
 

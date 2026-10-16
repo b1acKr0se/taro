@@ -1,11 +1,13 @@
 /**
- * Pause and Resume a ticket (TR-088). Pause asks the owner for a HANDOFF (a PAUSE-REQUESTED record
- * marks when), then archives the ticket's agents and appends a HOLD whose reason starts with
- * "paused by the user"; the ticket keeps its status, so a fresh owner knows the phase. Resume
- * appends RELEASE and relaunches at once with a free slot; without one the RELEASE says "queued to
- * resume" and the plugin relaunches it when a slot frees, oldest first with the Queued tickets, and
- * marks that with a RESUMED record. Everything here reads the ticket's notes, which are append-only,
- * so record order is time order. Pure.
+ * Park (once Pause, TR-088, renamed by TR-166) and Resume a ticket. Park asks the owner for a HANDOFF
+ * (a PAUSE-REQUESTED record marks when), then archives the ticket's agents and appends a HOLD whose
+ * reason starts with "parked by the user" (older ones say "paused by the user"); the ticket keeps its
+ * status, so a fresh owner knows the phase. A Queued ticket nobody started is parked at once, and
+ * Resume puts it back in the queue for the manager. A started one's Resume appends RELEASE and
+ * relaunches at once with a free slot; without one the RELEASE says "queued to resume" and the plugin
+ * relaunches it when a slot frees, oldest first with the Queued tickets, and marks that with a
+ * RESUMED record. Everything here reads the ticket's notes, which are append-only, so record order
+ * is time order. Pure.
  */
 import { z } from "zod";
 
@@ -16,8 +18,12 @@ import { holdReason } from "./queue-check";
 /** How long Pause waits for the owner's HANDOFF before pausing without one. */
 export const PAUSE_HANDOFF_TIMEOUT_MS = 10 * 60_000;
 
-/** A HOLD whose reason starts with this is a pause; the manager's own holds never do. */
+/** A HOLD whose reason starts with this is a park; the manager's own holds never do. */
+export const PARKED_REASON = "parked by the user";
+/** What a park's HOLD said before TR-166: still read as one, so no ticket needs rewriting. */
 export const PAUSED_REASON = "paused by the user";
+/** The HOLD of a Queued ticket parked before anyone started it: its Resume returns it to the queue. */
+const BEFORE_IT_STARTED = "before it started";
 const QUEUED_TO_RESUME = "queued to resume";
 
 const QUEUED_STATUS = TICKET_STATUSES[0];
@@ -27,6 +33,14 @@ export interface PausedHold {
   at: string | null;
   /** The pause went ahead without a HANDOFF (the owner did not answer, or had already gone). */
   withoutHandoff: boolean;
+  /** Parked while Queued with no owner: nothing to hand off, and Resume returns it to the queue. */
+  notStarted: boolean;
+}
+
+/** Whether a HOLD's reason is the user's park, in its current or its pre-TR-166 words. */
+export function isParkReason(reason: string): boolean {
+  const lower = reason.toLowerCase();
+  return lower.startsWith(PARKED_REASON) || lower.startsWith(PAUSED_REASON);
 }
 
 function recordTime(record: string): string | null {
@@ -41,9 +55,10 @@ function lastHoldOrRelease(notes: string | null): string | null {
 /** The pause in force: the newest HOLD or RELEASE record is a HOLD paused by the user. */
 export function pausedHold(notes: string | null): PausedHold | null {
   const reason = holdReason(notes);
-  if (reason === null || !reason.toLowerCase().startsWith(PAUSED_REASON)) return null;
+  if (reason === null || !isParkReason(reason)) return null;
   const record = lastHoldOrRelease(notes) ?? "";
-  return { at: recordTime(record), withoutHandoff: /\bno handoff\b/i.test(reason) };
+  const notStarted = reason.toLowerCase().includes(BEFORE_IT_STARTED);
+  return { at: recordTime(record), withoutHandoff: !notStarted && /\bno handoff\b/i.test(reason), notStarted };
 }
 
 /**
@@ -119,9 +134,19 @@ export function pauseProgress(input: { notes: string | null; requestedAt: number
 
 /** The HOLD record that completes a pause. */
 export function pausedHoldText(at: string, progress: Exclude<PauseProgress, "waiting">, handoffWritten: boolean): string {
-  if (handoffWritten) return `HOLD ${at} — ${PAUSED_REASON}; resume from the latest HANDOFF`;
+  if (handoffWritten) return `HOLD ${at} — ${PARKED_REASON}; resume from the latest HANDOFF`;
   const why = progress === "timed-out" ? `the owner did not write one within ${PAUSE_HANDOFF_TIMEOUT_MS / 60_000} minutes` : "the owner had already stopped";
-  return `HOLD ${at} — ${PAUSED_REASON}; no handoff (${why}): resume from the latest milestone`;
+  return `HOLD ${at} — ${PARKED_REASON}; no handoff (${why}): resume from the latest milestone`;
+}
+
+/** The HOLD that parks a Queued ticket nobody has started: the queue and the manager pass it by until Resume. */
+export function parkedUnstartedHoldText(at: string): string {
+  return `HOLD ${at} — ${PARKED_REASON} ${BEFORE_IT_STARTED}: never start it until the user resumes it`;
+}
+
+/** The RELEASE that Resume appends to a ticket parked before it started: queued like any other again, for the manager to start. */
+export function unparkedReleaseText(at: string): string {
+  return `RELEASE ${at} — resumed by the user: back in the queue, for the manager to start`;
 }
 
 /**
@@ -132,7 +157,7 @@ export function pausedAgainHoldText(at: string, notes: string | null): string {
   const records = noteRecords(notes);
   const earlier = [...records].reverse().find((record) => /^HOLD\b/.test(record)) ?? "";
   const from = /\bno handoff\b/i.test(earlier) ? "no handoff: resume from the latest milestone" : "resume from the latest HANDOFF";
-  return `HOLD ${at} — ${PAUSED_REASON} again before it resumed; ${from}`;
+  return `HOLD ${at} — ${PARKED_REASON} again before it resumed; ${from}`;
 }
 
 /** The RELEASE record Resume appends: with `queued`, the plugin starts the owner when a slot frees. */
@@ -148,17 +173,21 @@ export interface PauseTicket {
   notes: string | null;
 }
 
-/** Why Pause is refused for this ticket, in words for the user, or null when it may pause. */
+/** Why Park is refused for this ticket, in words for the user, or null when it may be parked; a Queued one may (TR-166). */
 export function pauseRefusal(ticket: PauseTicket, merging: boolean): string | null {
-  if (ticket.parentTaskId !== null) return `${ticket.id} is a child: pause its parent ${ticket.parentTaskId} instead.`;
+  if (ticket.parentTaskId !== null) return `${ticket.id} is a child: park its parent ${ticket.parentTaskId} instead.`;
   if (ticket.status === "Awaiting acceptance") {
     return merging ? `${ticket.id} is merging: wait for it to finish.` : `${ticket.id} is awaiting your acceptance: accept it or request changes instead.`;
   }
-  if (ticket.status === "Done" || ticket.status === "Cancelled") return `${ticket.id} is ${ticket.status}: there is nothing to pause.`;
-  if (ticket.status === QUEUED_STATUS) return `${ticket.id} has not started: it is ${QUEUED_STATUS.toLowerCase()} and has no owner to pause.`;
-  if (pausedHold(ticket.notes) !== null) return `${ticket.id} is already paused.`;
-  if (pauseRequestedAt(ticket.notes) !== null) return `${ticket.id} is already pausing: its owner is writing a handoff.`;
+  if (ticket.status === "Done" || ticket.status === "Cancelled") return `${ticket.id} is ${ticket.status}: there is nothing to park.`;
+  if (pausedHold(ticket.notes) !== null) return `${ticket.id} is already parked.`;
+  if (pauseRequestedAt(ticket.notes) !== null) return `${ticket.id} is already being parked: its owner is writing a handoff.`;
   return null;
+}
+
+/** Whether Park holds this ticket at once, with no handoff to wait for: Queued, and nobody has started it. */
+export function parksBeforeStart(status: string, ownerAlive: boolean): boolean {
+  return status === QUEUED_STATUS && !ownerAlive;
 }
 
 /** Why Resume is refused, in words for the user, or null when it may resume. */
@@ -166,8 +195,8 @@ export function resumeRefusal(ticket: PauseTicket, merging: boolean, ownerAlive:
   if (ticket.status === "Awaiting acceptance") {
     return merging ? `${ticket.id} is merging: wait for it to finish.` : `${ticket.id} is awaiting your acceptance: accept it or request changes instead.`;
   }
-  if (pausedHold(ticket.notes) === null) return queuedToResume(ticket.notes) ? `${ticket.id} is already queued to resume.` : `${ticket.id} is not paused.`;
-  if (ownerAlive) return `${ticket.id} still has a live owner: it was not paused by Taro.`;
+  if (pausedHold(ticket.notes) === null) return queuedToResume(ticket.notes) ? `${ticket.id} is already queued to resume.` : `${ticket.id} is not parked.`;
+  if (ownerAlive) return `${ticket.id} still has a live owner: it was not parked by Taro.`;
   return null;
 }
 
@@ -192,16 +221,18 @@ export const PauseViewSchema = z.object({
   since: z.string().nullable(),
   /** Paused without a HANDOFF: the next owner starts from the latest milestone. */
   withoutHandoff: z.boolean(),
+  /** Parked while Queued, before any owner (TR-166): Resume returns it to the queue. */
+  notStarted: z.boolean().default(false),
 });
 export type PauseView = z.infer<typeof PauseViewSchema>;
 
 /** What the card and the ticket view say about a pause; a live owner means it was started again (or never paused by Taro). */
 export function pauseView(notes: string | null, ownerAlive: boolean): PauseView | null {
   const requested = pauseRequestedAt(notes);
-  if (requested !== null) return { state: "pausing", since: requested, withoutHandoff: false };
+  if (requested !== null) return { state: "pausing", since: requested, withoutHandoff: false, notStarted: false };
   if (ownerAlive) return null;
   const paused = pausedHold(notes);
-  if (paused !== null) return { state: "paused", since: paused.at, withoutHandoff: paused.withoutHandoff };
-  if (queuedToResume(notes)) return { state: "queued-to-resume", since: recordTime(lastHoldOrRelease(notes) ?? ""), withoutHandoff: false };
+  if (paused !== null) return { state: "paused", since: paused.at, withoutHandoff: paused.withoutHandoff, notStarted: paused.notStarted };
+  if (queuedToResume(notes)) return { state: "queued-to-resume", since: recordTime(lastHoldOrRelease(notes) ?? ""), withoutHandoff: false, notStarted: false };
   return null;
 }

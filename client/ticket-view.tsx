@@ -119,9 +119,9 @@ export function TicketView({
   const pauseRpc = useRpc(pauseTicket);
   const resumeRpc = useRpc(resumeTicket);
   const compactRpc = useRpc(compactAgent);
-  // One owner of the Pause, Resume and Compact presses: while one is in flight the others are disabled.
+  // One owner of the Park, Resume and Compact presses: while one is in flight the others are disabled.
   const pausePresses = useActions();
-  // What Pause and Resume did is the server's to say (TR-088).
+  // What Park and Resume did is the server's to say (TR-088).
   const told = (result: { message: string }) => {
     toast.show(result.message, { variant: "success" });
     void detail.refetch();
@@ -323,9 +323,9 @@ function SummaryBlock({
   status: string;
   labels: readonly string[];
   pause: PauseView | null;
-  /** Pause for a ticket under way, Resume for a paused one (TR-088). */
+  /** Park for a queued or under-way ticket, Resume for a parked one (TR-088, TR-166). */
   pauseAction: { kind: "pause" | "resume"; run: () => void; state: "busy" | "done" | undefined; busy: boolean } | null;
-  /** Compact beside Pause, for an idle owner with a large context (TR-095). */
+  /** Compact beside Park, for an idle owner with a large context (TR-095). */
   compactAction: { run: () => void; state: "busy" | "done" | undefined; busy: boolean } | null;
   /** Opens Change spec…'s box under the block, on a Queued ticket with no owner (TR-129). */
   specChange: (() => void) | null;
@@ -365,8 +365,8 @@ function SummaryBlock({
           <View style={{ marginLeft: "auto", flexDirection: "row", flexWrap: "wrap", gap: SPACE.sm }}>
             {pauseAction === null ? null : (
               <IconButton
-                icon={pauseAction.kind === "pause" ? "Pause" : "Play"}
-                label={pauseAction.kind === "pause" ? "Pause" : "Resume"}
+                icon={pauseAction.kind === "pause" ? "SquareParking" : "Play"}
+                label={pauseAction.kind === "pause" ? "Park" : "Resume"}
                 showLabel
                 theme={theme}
                 disabled={pauseAction.busy}
@@ -392,7 +392,7 @@ function SummaryBlock({
       {pause === null
         ? null
         : row(
-            pause.state === "queued-to-resume" ? "Clock" : "Pause",
+            pause.state === "queued-to-resume" ? "Clock" : "SquareParking",
             colors.foregroundMuted,
             pauseRow(pause, now).label,
             <Text style={text}>{pauseRow(pause, now).value}</Text>,

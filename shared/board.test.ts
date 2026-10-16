@@ -5,16 +5,27 @@ import { boardColumn, columnCounts, complexityOf, inboxCount, isInboxTicket, nee
 const base: CardInputs = { status: "In Progress", ownerElsewhere: false, agent: { status: "idle", pendingPermissions: 0 }, lastStatus: "waiting", openBlockingDecisions: 0, stalledAfterNudge: false };
 
 describe("boardColumn", () => {
-  it("queues a paused ticket with no owner, never Stalled (TR-088)", () => {
-    for (const status of ["Planning", "In Progress", "Reviewing", "Ready", "Blocked"]) {
-      expect(boardColumn({ ...base, status, agent: null, paused: true })).toBe("queued");
+  it("places a parked ticket with no owner apart from Queued, never Stalled (TR-088, TR-166)", () => {
+    for (const status of ["Queued", "Planning", "In Progress", "Reviewing", "Ready", "Blocked"]) {
+      expect(boardColumn({ ...base, status, agent: null, parked: true })).toBe("parked");
+      expect(boardColumn({ ...base, status, agent: { status: "closed", pendingPermissions: 0 }, parked: true })).toBe("parked");
     }
     expect(boardColumn({ ...base, agent: null })).toBe("stalled");
-    // A fresh owner started from the pause is placed by its own state.
-    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, paused: true })).toBe("working");
-    // Its last owner's EXECUTION names another machine: the pause, in the tracker, still holds.
-    expect(boardColumn({ ...base, ownerElsewhere: true, agent: null, paused: true })).toBe("queued");
+    // A fresh owner started from the park is placed by its own state.
+    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, parked: true })).toBe("working");
+    // Its last owner's EXECUTION names another machine: the park, in the tracker, still holds.
+    expect(boardColumn({ ...base, ownerElsewhere: true, agent: null, parked: true })).toBe("parked");
     expect(boardColumn({ ...base, ownerElsewhere: true, agent: null })).toBe("working");
+    // An idle owner still alive under the park (one Taro did not park) is parked, not Stalled.
+    expect(boardColumn({ ...base, agent: { status: "idle", pendingPermissions: 0 }, parked: true })).toBe("parked");
+  });
+
+  it("queues a ticket resumed with no free slot: it starts next, so it is not parked (TR-088)", () => {
+    for (const status of ["Planning", "In Progress", "Reviewing"]) {
+      expect(boardColumn({ ...base, status, agent: null, queuedToResume: true })).toBe("queued");
+    }
+    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, queuedToResume: true })).toBe("working");
+    expect(boardColumn({ ...base, ownerElsewhere: true, agent: null, queuedToResume: true })).toBe("queued");
   });
 
   it("files finished tickets under Done", () => {
@@ -223,13 +234,14 @@ describe("ticketAgents", () => {
 
 describe("columnCounts", () => {
   it("is zero everywhere on an empty board", () => {
-    expect(columnCounts([], 0)).toEqual({ "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 });
+    expect(columnCounts([], 0)).toEqual({ "needs-you": 0, working: 0, stalled: 0, queued: 0, parked: 0, done: 0 });
   });
 
   it("counts the manager's questions in Needs you with the tickets there (TR-045)", () => {
     expect(columnCounts([], 3)["needs-you"]).toBe(3);
-    const cards = [{ column: "needs-you" as const }, { column: "working" as const }, { column: "working" as const }, { column: "done" as const }];
-    expect(columnCounts(cards, 2)).toEqual({ "needs-you": 3, working: 2, stalled: 0, queued: 0, done: 1 });
+    const cards = [{ column: "needs-you" as const }, { column: "working" as const }, { column: "working" as const }, { column: "parked" as const }, { column: "done" as const }];
+    // A parked ticket counts apart from Queued (TR-166).
+    expect(columnCounts(cards, 2)).toEqual({ "needs-you": 3, working: 2, stalled: 0, queued: 0, parked: 1, done: 1 });
   });
 });
 
@@ -285,7 +297,7 @@ describe("inboxCount counts each card the Inbox lists (TR-123)", () => {
     expect(boardColumn({ ...base, agent: { status: "initializing", pendingPermissions: 0 }, openBlockingDecisions: 1 })).toBe("needs-you");
     expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, openBlockingDecisions: 0 })).toBe("working");
     // Pausing: the owner writes its handoff while its question is still open, until it is archived.
-    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, paused: true, openBlockingDecisions: 1 })).toBe("needs-you");
+    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, parked: true, openBlockingDecisions: 1 })).toBe("needs-you");
     expect(inboxCount({ ...quiet, cards: [owner("needs-you", [question])], ticketQuestions: 1 }, false)).toBe(1);
   });
 

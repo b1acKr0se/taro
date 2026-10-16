@@ -180,29 +180,35 @@ export function questionContext(decision: Pick<StoredDecision, "blocking" | "ask
   return joined([decision.blocking ? "Blocking" : null, asked === null ? null : `asked ${asked}`]);
 }
 
-/** Pausing, paused or queued to resume (TR-088): what happens next, and since when. */
+/** Parking, parked or queued to resume (TR-088, TR-166): what happens next, and since when. */
 function pauseLines(pause: PauseView, now: number): Lines {
   const since = pause.since === null ? null : ago(pause.since, now);
   if (pause.state === "pausing") {
-    return { headline: "Pausing: the owner is writing its handoff", detail: joined([since === null ? null : `asked ${since}`, `pauses without one after ${PAUSE_HANDOFF_TIMEOUT_MS / 60_000} min`]) };
+    return { headline: "Parking: the owner is writing its handoff", detail: joined([since === null ? null : `asked ${since}`, `parks without one after ${PAUSE_HANDOFF_TIMEOUT_MS / 60_000} min`]) };
   }
   if (pause.state === "queued-to-resume") return { headline: "Queued to resume", detail: joined(["a fresh owner starts when a slot frees", since === null ? null : `Resume pressed ${since}`]) };
   return {
-    headline: "Paused by you",
-    detail: joined([since, pause.withoutHandoff ? "no handoff: resumes from the latest milestone" : "resumes from its handoff"]),
+    headline: "Parked by you",
+    detail: joined([since, resumesFrom(pause)]),
   };
+}
+
+/** What Resume does for a parked ticket: back to the queue when it never started (TR-166), else a fresh owner from what the owner left. */
+function resumesFrom(pause: PauseView): string {
+  if (pause.notStarted) return "not started: Resume puts it back in Queued";
+  return pause.withoutHandoff ? "no handoff: resumes from the latest milestone" : "resumes from its handoff";
 }
 
 /** The ticket view's pause row: its label says the state, so the value does not say it again. */
 export function pauseRow(pause: PauseView, now: number): { label: string; value: string } {
   const since = pause.since === null ? null : ago(pause.since, now);
   if (pause.state === "pausing") {
-    return { label: "Pausing:", value: joined(["the owner is writing its handoff", since === null ? null : `asked ${since}`, `pauses without one after ${PAUSE_HANDOFF_TIMEOUT_MS / 60_000} min`]) ?? "" };
+    return { label: "Parking:", value: joined(["the owner is writing its handoff", since === null ? null : `asked ${since}`, `parks without one after ${PAUSE_HANDOFF_TIMEOUT_MS / 60_000} min`]) ?? "" };
   }
   if (pause.state === "queued-to-resume") {
     return { label: "Resuming:", value: joined(["queued: a fresh owner starts when a slot frees", since === null ? null : `Resume pressed ${since}`]) ?? "" };
   }
-  return { label: "Paused:", value: joined(["by you", since, pause.withoutHandoff ? "no handoff: resumes from the latest milestone" : "resumes from its handoff"]) ?? "" };
+  return { label: "Parked:", value: joined(["by you", since, resumesFrom(pause)]) ?? "" };
 }
 
 /** Why a stalled card stopped, from the plugin's reason or else from the owner's Paseo status and last words. */

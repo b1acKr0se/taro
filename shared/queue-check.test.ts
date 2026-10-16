@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { parkedUnstartedHoldText, unparkedReleaseText } from "./pause";
 import {
   MANAGER_HUNG_AFTER_MS,
   alertRaisedAt,
@@ -115,7 +116,22 @@ describe("recount", () => {
     expect(closed).toMatchObject({ counting: [], startable: ["TR-5"], owned: [] });
   });
 
-  it("has no free slot at the cap", () => {
+  it("never calls a ticket the user parked startable, in its old or its TR-166 words, until Resume releases it", () => {
+    const parked = parkedUnstartedHoldText("2026-10-14T10:00Z");
+    const count = recount({
+      owners: [],
+      tickets,
+      queued: [queued("TR-5", [], parked), queued("TR-6", [], "HOLD 2026-10-14T10:00Z — paused by the user; resume from the latest HANDOFF"), queued("TR-8")],
+      cap: 3,
+      threads: null,
+    });
+    expect(count.startable).toEqual(["TR-8"]);
+    expect(count.held.map((held) => held.id)).toEqual(["TR-5", "TR-6"]);
+    const resumed = recount({ owners: [], tickets, queued: [queued("TR-5", [], `${parked}\n\n${unparkedReleaseText("2026-10-14T11:00Z")}`)], cap: 3, threads: null });
+    expect(resumed.startable).toEqual(["TR-5"]);
+  });
+
+    it("has no free slot at the cap", () => {
     expect(recount({ owners: [owner("TR-1")], tickets, queued: [], cap: 1, threads: null }).freeSlot).toBe(false);
   });
 

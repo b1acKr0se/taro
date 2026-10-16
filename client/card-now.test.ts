@@ -345,34 +345,37 @@ describe("cardNowLine", () => {
   });
 });
 
-describe("pause lines (TR-088)", () => {
-  it("says pausing over the owner's own line and questions", () => {
-    const line = cardNowLine(card({ pause: { state: "pausing", since: "2026-01-01T11:58:00Z", withoutHandoff: false }, lastStatus: status, decisions: [decision({})] }), NOW);
-    expect(line).toEqual({ kind: "pause", state: "pausing", headline: "Pausing: the owner is writing its handoff", detail: "asked 2m ago · pauses without one after 10 min" });
+describe("park lines (TR-088, TR-166)", () => {
+  it("says parking over the owner's own line and questions", () => {
+    const line = cardNowLine(card({ pause: { state: "pausing", since: "2026-01-01T11:58:00Z", withoutHandoff: false, notStarted: false }, lastStatus: status, decisions: [decision({})] }), NOW);
+    expect(line).toEqual({ kind: "pause", state: "pausing", headline: "Parking: the owner is writing its handoff", detail: "asked 2m ago · parks without one after 10 min" });
   });
 
-  it("says paused, with or without a handoff, and queued to resume", () => {
-    const paused = (withoutHandoff: boolean) => cardNowLine(card({ column: "queued", owner: null, pause: { state: "paused", since: "2026-01-01T11:00:00Z", withoutHandoff } }), NOW);
-    expect(paused(false)).toEqual({ kind: "pause", state: "paused", headline: "Paused by you", detail: "1h ago · resumes from its handoff" });
+  it("says parked, with or without a handoff or before it started, and queued to resume", () => {
+    const paused = (withoutHandoff: boolean) => cardNowLine(card({ column: "parked", owner: null, pause: { state: "paused", since: "2026-01-01T11:00:00Z", withoutHandoff, notStarted: false } }), NOW);
+    expect(paused(false)).toEqual({ kind: "pause", state: "paused", headline: "Parked by you", detail: "1h ago · resumes from its handoff" });
     expect(paused(true)?.detail).toBe("1h ago · no handoff: resumes from the latest milestone");
-    const queued = cardNowLine(card({ column: "queued", owner: null, pause: { state: "queued-to-resume", since: null, withoutHandoff: false } }), NOW);
+    const unstarted = cardNowLine(card({ column: "parked", owner: null, pause: { state: "paused", since: "2026-01-01T11:00:00Z", withoutHandoff: false, notStarted: true } }), NOW);
+    expect(unstarted).toEqual({ kind: "pause", state: "paused", headline: "Parked by you", detail: "1h ago · not started: Resume puts it back in Queued" });
+    const queued = cardNowLine(card({ column: "queued", owner: null, pause: { state: "queued-to-resume", since: null, withoutHandoff: false, notStarted: false } }), NOW);
     expect(queued).toEqual({ kind: "pause", state: "queued-to-resume", headline: "Queued to resume", detail: "a fresh owner starts when a slot frees" });
-    const queuedSince = cardNowLine(card({ column: "queued", owner: null, pause: { state: "queued-to-resume", since: "2026-01-01T11:58Z", withoutHandoff: false } }), NOW);
+    const queuedSince = cardNowLine(card({ column: "queued", owner: null, pause: { state: "queued-to-resume", since: "2026-01-01T11:58Z", withoutHandoff: false, notStarted: false } }), NOW);
     expect(queuedSince?.detail).toBe("a fresh owner starts when a slot frees · Resume pressed 2m ago");
   });
 
   it("words the ticket view's row without repeating its label", () => {
-    expect(pauseRow({ state: "pausing", since: "2026-01-01T11:58:00Z", withoutHandoff: false }, NOW)).toEqual({
-      label: "Pausing:",
-      value: "the owner is writing its handoff · asked 2m ago · pauses without one after 10 min",
+    expect(pauseRow({ state: "pausing", since: "2026-01-01T11:58:00Z", withoutHandoff: false, notStarted: false }, NOW)).toEqual({
+      label: "Parking:",
+      value: "the owner is writing its handoff · asked 2m ago · parks without one after 10 min",
     });
-    expect(pauseRow({ state: "paused", since: "2026-01-01T11:00Z", withoutHandoff: false }, NOW)).toEqual({ label: "Paused:", value: "by you · 1h ago · resumes from its handoff" });
-    expect(pauseRow({ state: "paused", since: null, withoutHandoff: true }, NOW)).toEqual({ label: "Paused:", value: "by you · no handoff: resumes from the latest milestone" });
-    expect(pauseRow({ state: "queued-to-resume", since: "2026-01-01T11:58Z", withoutHandoff: false }, NOW)).toEqual({
+    expect(pauseRow({ state: "paused", since: "2026-01-01T11:00Z", withoutHandoff: false, notStarted: false }, NOW)).toEqual({ label: "Parked:", value: "by you · 1h ago · resumes from its handoff" });
+    expect(pauseRow({ state: "paused", since: null, withoutHandoff: true, notStarted: false }, NOW)).toEqual({ label: "Parked:", value: "by you · no handoff: resumes from the latest milestone" });
+    expect(pauseRow({ state: "paused", since: null, withoutHandoff: false, notStarted: true }, NOW)).toEqual({ label: "Parked:", value: "by you · not started: Resume puts it back in Queued" });
+    expect(pauseRow({ state: "queued-to-resume", since: "2026-01-01T11:58Z", withoutHandoff: false, notStarted: false }, NOW)).toEqual({
       label: "Resuming:",
       value: "queued: a fresh owner starts when a slot frees · Resume pressed 2m ago",
     });
-    expect(pauseRow({ state: "queued-to-resume", since: null, withoutHandoff: false }, NOW).value).toBe("queued: a fresh owner starts when a slot frees");
+    expect(pauseRow({ state: "queued-to-resume", since: null, withoutHandoff: false, notStarted: false }, NOW).value).toBe("queued: a fresh owner starts when a slot frees");
   });
 });
 
@@ -454,7 +457,7 @@ describe("queued wait lines (TR-138)", () => {
 
   it("says nothing for a queued ticket that waits on nothing, and a pause wins over a wait", () => {
     expect(queued(null)).toBeNull();
-    expect(queued({ on: [{ id: "NA-031", status: "Planning" }], dependencies: ["NA-031"], hold: null }, { pause: { state: "paused", since: null, withoutHandoff: false } })?.kind).toBe("pause");
+    expect(queued({ on: [{ id: "NA-031", status: "Planning" }], dependencies: ["NA-031"], hold: null }, { pause: { state: "paused", since: null, withoutHandoff: false, notStarted: false } })?.kind).toBe("pause");
   });
 
   type Slot = Omit<NonNullable<NonNullable<Card["queuedWait"]>["slot"]>, "managerRunning"> & { managerRunning?: boolean };
@@ -506,7 +509,7 @@ describe("queued wait lines (TR-138)", () => {
     expect(queued({ on: [{ id: "NA-031", status: "Planning" }], dependencies: ["NA-031"], hold: null, slot })?.headline).toBe("Waits on NA-031 (Planning)");
     expect(queued({ on: [], dependencies: [], hold: "one rewrite at a time", slot })?.headline).toBe("Held by the manager");
     expect(slotted(slot)).toMatchObject({ headline: "Waits for an owner slot" });
-    expect(queued({ on: [], dependencies: [], hold: null, slot }, { pause: { state: "paused", since: null, withoutHandoff: false } })?.kind).toBe("pause");
+    expect(queued({ on: [], dependencies: [], hold: null, slot }, { pause: { state: "paused", since: null, withoutHandoff: false, notStarted: false } })?.kind).toBe("pause");
   });
 
   it("is a queued child's own line, though its parent owner's status is not", () => {

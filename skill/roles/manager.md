@@ -41,10 +41,12 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
    (`HOLD <time> — exclusive rewrite SH-010 first`) and tell the user; append **RELEASE** when the
    reason is gone. Without a HOLD, a startable ticket left queued with a free slot gets you woken,
    then an alert to the user after ten minutes, then a fresh manager after twenty.
-   **Paused tickets are the user's:** a HOLD "paused by the user" (from Pause in the ticket view) and a
-   RELEASE "queued to resume" (its Resume, with no free slot) keep their status and have no live
-   owner. Never dispatch, relaunch or RELEASE one yourself; the plugin starts a fresh owner when the
-   user resumes it and a slot frees. Such a ticket does not count until its fresh owner runs.
+   **Parked tickets are the user's:** a HOLD "parked by the user" (or, older, "paused by the user";
+   from Park in the ticket view, on a Queued ticket too) and a RELEASE "queued to resume" (its Resume,
+   with no free slot) keep their status and have no live owner. Never dispatch, relaunch or RELEASE
+   one yourself; the plugin starts a fresh owner when the user resumes it and a slot frees. Such a
+   ticket does not count until its fresh owner runs. A ticket parked before it started comes back
+   with a RELEASE "back in the queue": dispatch it like any other Queued ticket.
    **Check thread headroom too:** every agent, subagent and test daemon costs threads, idle owners
    waiting for acceptance included, and the host crashes agents at its limit. Read `cat /sys/fs/cgroup/pids.current
    /sys/fs/cgroup/pids.max` (skip the check where the files are missing or the max is `max`); above

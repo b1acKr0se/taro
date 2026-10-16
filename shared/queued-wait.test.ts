@@ -59,7 +59,8 @@ describe("queuedWait", () => {
   it("keeps a hold that names no ticket, and ignores a user's pause", () => {
     expect(wait([], "HOLD 2026-01-01T10:00Z — one rewrite at a time")).toEqual({ on: [], dependencies: [], hold: "one rewrite at a time", slot: null });
     expect(wait([], "HOLD 2026-01-01T10:00Z — paused by the user; see NA-031")).toBeNull();
-    expect(wait(["NA-031"], "HOLD 2026-01-01T10:00Z — paused by the user")).toEqual({ on: [{ id: "NA-031", status: "Planning" }], dependencies: ["NA-031"], hold: null, slot: null });
+    expect(wait(["NA-031"], "HOLD 2026-01-01T10:00Z — paused by the user")).toEqual({ on: [{ id: "NA-031", status: "Planning" }], dependencies: ["NA-031"], hold: null, slot: null });    // Its TR-166 words too.
+    expect(wait([], "HOLD 2026-01-01T10:00Z — parked by the user before it started: never start it until the user resumes it")).toBeNull();
   });
 });
 
