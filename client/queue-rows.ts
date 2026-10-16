@@ -63,12 +63,16 @@ export const EDIT_REFUSAL = "Remove the attachments from the box first";
 export const EDIT_SENT_MEANWHILE = "That message was sent to the agent meanwhile; its words stay in the box.";
 
 /**
- * Edit fills the box from `taro.queue.take`, then asks `taro.queue.remove` to take the message out: a
- * removal refused as "no longer queued" means the queue sent it meanwhile (the words stay, with a
- * note); any other failure leaves it queued, and the box goes back as it was so it is not there twice.
+ * Edit fills the box from `taro.queue.take`, then asks `taro.queue.remove` to take the message out. A
+ * removal refused as "no longer queued" means the queue sent it meanwhile (the words stay, with a note).
+ * Any other failure may be a lost answer to a removal that went through, so the queue is read again
+ * (`queuedIds`, null when that failed too): still there, the box goes back as it was so it is not there
+ * twice; gone, or unknown, the words stay, as a message in neither the box nor the queue is lost.
  */
-export function editRemoval(error: string): "sent-meanwhile" | "still-queued" {
-  return error.includes(NOT_QUEUED) ? "sent-meanwhile" : "still-queued";
+export function editRemoval(error: string, messageId: string, queuedIds: readonly string[] | null): "sent-meanwhile" | "still-queued" | "removed" | "unknown" {
+  if (error.includes(NOT_QUEUED)) return "sent-meanwhile";
+  if (queuedIds === null) return "unknown";
+  return queuedIds.includes(messageId) ? "still-queued" : "removed";
 }
 
 /**

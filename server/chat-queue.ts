@@ -88,10 +88,15 @@ export class ChatQueue {
     return join(this.directory(), "carried", `${encodeURIComponent(slot)}.json`);
   }
 
-  /** A queue file, or null when there is none; one that cannot be read or parsed counts as empty. */
+  /**
+   * A queue file, or null when there is none; one that cannot be parsed counts as empty. A read that
+   * fails (too many open files, a permission) throws: counted as empty and kept, the next add would
+   * write over the real messages.
+   */
   private async readFile(path: string, owner: string): Promise<ChatQueueFile | null> {
     const raw = await this.read(path).catch((error: unknown) => {
-      console.warn(`[taro] ${owner}'s chat queue cannot be read, so it counts as empty: ${error instanceof Error ? error.message : String(error)}`);
+      if (!(error instanceof SyntaxError)) throw error;
+      console.warn(`[taro] ${owner}'s chat queue is not valid JSON, so it counts as empty: ${error.message}`);
       return {};
     });
     if (raw === null) return null;
@@ -244,9 +249,13 @@ export class ChatQueue {
     return names.filter((name) => name.endsWith(".json")).map((name) => decodeURIComponent(name.slice(0, -".json".length)));
   }
 
-  /** Whether the agent has messages waiting (an owner's subagent reports wait behind them, TR-171). */
+  /**
+   * Whether the agent has messages that will go at its next turn end (an owner's subagent reports wait
+   * behind them, TR-171). A front marked Not sent waits for the user's Retry or Edit, so it holds nothing.
+   */
   async hasQueued(agentId: string): Promise<boolean> {
-    return (await this.load(agentId)).messages.length > 0;
+    const front = (await this.load(agentId)).messages[0];
+    return front !== undefined && front.failed === null;
   }
 
   /** Whether the agent's recent timeline holds the message; a timeline that cannot be read does not. */

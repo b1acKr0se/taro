@@ -77,11 +77,21 @@ describe("queueCompacting (TR-171)", () => {
 
 describe("editRemoval (TR-171)", () => {
   it("reads 'no longer queued' as sent meanwhile, the words kept", () => {
-    expect(editRemoval(NOT_QUEUED)).toBe("sent-meanwhile");
+    expect(editRemoval(NOT_QUEUED, "chat-a", ["chat-b"])).toBe("sent-meanwhile");
+    expect(editRemoval(NOT_QUEUED, "chat-a", null)).toBe("sent-meanwhile");
   });
 
-  it("reads any other failure as still queued", () => {
-    expect(editRemoval("Transport closed (code 1006)")).toBe("still-queued");
+  it("reads another failure with the message still listed as still queued: the box goes back", () => {
+    expect(editRemoval("Transport closed (code 1006)", "chat-a", ["chat-a", "chat-b"])).toBe("still-queued");
+  });
+
+  it("reads another failure with the message gone from the queue as a removal whose answer was lost: the words stay (N1)", () => {
+    expect(editRemoval("Transport closed (code 1006)", "chat-a", ["chat-b"])).toBe("removed");
+    expect(editRemoval("Transport closed (code 1006)", "chat-a", [])).toBe("removed");
+  });
+
+  it("keeps the words when the queue cannot be read again either: a copy in the box, never a loss (N1)", () => {
+    expect(editRemoval("Transport closed (code 1006)", "chat-a", null)).toBe("unknown");
   });
 });
 

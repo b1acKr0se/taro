@@ -208,6 +208,22 @@ describe("the queue's files", () => {
     expect(await newQueue().take("owner-1", "chat-a")).toEqual({ text: "words chat-a", images, files });
   });
 
+  it("never counts a queue it could not read as empty, so an add cannot write over it (N3)", async () => {
+    const seeded = newQueue();
+    await seeded.add("owner-1", message_("chat-a"));
+    let failing = true;
+    const queue = newQueue(async (path: string) => {
+      if (failing) throw Object.assign(new Error("EMFILE: too many open files"), { code: "EMFILE" });
+      return readJsonIfPresent(path);
+    });
+    await expect(queue.list("owner-1")).rejects.toThrow("EMFILE");
+    await expect(queue.add("owner-1", message_("chat-b"))).rejects.toThrow("EMFILE");
+    failing = false;
+    expect(await ids(queue)).toEqual(["chat-a"]);
+    await queue.add("owner-1", message_("chat-b"));
+    expect(await ids(newQueue())).toEqual(["chat-a", "chat-b"]);
+  });
+
   it("reads a corrupt file as empty without throwing, and writes over it on the next add", async () => {
     await writeFile(join(directory, "owner-1.json"), "{ not json", "utf8");
     const queue = newQueue();
@@ -820,18 +836,38 @@ describe("subagent reports wait behind the owner's queued messages (S6)", () => 
     expect(records["owner-1"]?.heldReports).toEqual([]);
   });
 
-  it("does not flush held reports at a turn end while the owner's queue holds a message", async () => {
-    const { queue, endOwner, endSubagent, reports } = setUp();
+  it("does not flush held reports while the owner's queue holds a message that will go", async () => {
+    const { queue, supervisor, endSubagent, reports } = setUp();
     agents["owner-1"]!.status = "running";
     await endSubagent(); // held: the owner works
     expect(records["owner-1"]?.heldReports).toHaveLength(1);
+    await queue.add("owner-1", message_("chat-a"));
+    agents["owner-1"]!.status = "idle";
+    expect(await supervisor.flushHeldReports(paseo, "owner-1")).toBe(false);
+    expect(reports()).toEqual([]);
+    // Once the queue is empty (the user took the message to edit), they go.
+    await queue.remove("owner-1", "chat-a");
+    expect(await supervisor.flushHeldReports(paseo, "owner-1")).toBe(true);
+    expect(reports()).toHaveLength(1);
+  });
+
+  it("delivers reports past a front marked Not sent, which waits for the user's Retry or Edit (N2)", async () => {
+    const { queue, endOwner, endSubagent, reports } = setUp();
+    agents["owner-1"]!.status = "running";
+    await endSubagent(); // held: the owner works
     await queue.add("owner-1", message_("chat-a", { failed: "Agent not accepting prompts" }));
     await endOwner();
-    expect(reports()).toEqual([]);
-    // Once the queue is empty (the user took the message to edit), the next turn end delivers it.
-    await queue.remove("owner-1", "chat-a");
-    await endOwner();
     expect(reports()).toHaveLength(1);
+    expect(records["owner-1"]?.heldReports).toEqual([]);
+    expect(await ids(queue)).toEqual(["chat-a"]);
+  });
+
+  it("delivers a report at once to an idle owner whose only queued message is marked Not sent (N2)", async () => {
+    const { queue, endSubagent, reports } = setUp();
+    await queue.add("owner-1", message_("chat-a", { failed: "Agent not accepting prompts" }));
+    await endSubagent();
+    expect(reports()).toEqual([expect.objectContaining({ statusAtSend: "idle" })]);
+    expect(records["owner-1"]?.heldReports ?? []).toEqual([]);
   });
 });
 

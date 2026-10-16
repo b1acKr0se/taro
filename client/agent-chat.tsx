@@ -11,7 +11,7 @@ import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, 
 import { Keyboard, Platform, ScrollView, Text, useWindowDimensions, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
 
 import { attachmentProblem, refuseOversizedImages, type DraftAttachment } from "../shared/attachments";
-import { answeredPermissionAsks, listAgentDecisions, listSentImages, removeQueuedMessage, retryQueuedMessage, sendQueuedMessageNow, takeQueuedMessage, type SentImagesMessage } from "../shared/contracts";
+import { answeredPermissionAsks, listAgentDecisions, listChatQueue, listSentImages, removeQueuedMessage, retryQueuedMessage, sendQueuedMessageNow, takeQueuedMessage, type SentImagesMessage } from "../shared/contracts";
 import type { PermissionAsk } from "../shared/permission-asks";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { ActionRow } from "./action-row";
@@ -460,6 +460,7 @@ export function AgentChat({
 
   const takeQueued = useRpc(takeQueuedMessage);
   const removeQueued = useRpc(removeQueuedMessage);
+  const listQueued = useRpc(listChatQueue);
   const sendQueuedNow = useRpc(sendQueuedMessageNow);
   const retryQueued = useRpc(retryQueuedMessage);
   const [queueBusy, setQueueBusy] = useState<{ id: string; action: QueueRowAction } | null>(null);
@@ -483,13 +484,18 @@ export function AgentChat({
             const back = takeBack(before, { text: taken.text, attachments: takenAttachments(message.id, taken) });
             setDraft(back.text);
             setAttachments(back.attachments);
-            await removeQueued(input).catch((caught: unknown) => {
-              if (editRemoval(errorText(caught)) === "sent-meanwhile") {
-                toast.show(EDIT_SENT_MEANWHILE);
-                return;
+            await removeQueued(input).catch(async (caught: unknown) => {
+              const queuedIds = await listQueued({ agentId: agent.id }).then(
+                (listed) => listed.messages.map((each) => each.id),
+                () => null,
+              );
+              const removal = editRemoval(errorText(caught), message.id, queuedIds);
+              if (removal === "sent-meanwhile") toast.show(EDIT_SENT_MEANWHILE);
+              if (removal === "sent-meanwhile" || removal === "removed") return;
+              if (removal === "still-queued") {
+                setDraft(before.text);
+                setAttachments(before.attachments);
               }
-              setDraft(before.text);
-              setAttachments(before.attachments);
               throw caught;
             });
           })
