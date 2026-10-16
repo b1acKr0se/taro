@@ -24,7 +24,7 @@ import {
   type QueuedMessage,
   type QueuedMessageSummary,
 } from "../shared/chat-queue";
-import { failureReason, newChatMessageId } from "../shared/pending-sends";
+import { failureReason, isCompactingRefusal, isPassingFailure, newChatMessageId } from "../shared/pending-sends";
 import { fetchLiveAgent, isAgentGone, isMidTurn } from "./agents";
 import { dataPath } from "./data-dir";
 import { readJsonIfPresent, writeJsonAtomically } from "./files";
@@ -165,7 +165,8 @@ export class ChatQueue {
         await sendWithAttachments(paseo, agentId, front.text, { images: front.images, files: front.files, messageId: front.id });
       } catch (error: unknown) {
         console.warn(`[taro] ${agentId}: its next queued message was not sent: ${failureReason(error)}`);
-        await this.markFailed(agentId, front.id, failureReason(error)).catch(() => undefined);
+        // One that passes by itself (the connection, a restart) is tried again by the sweep; only the rest wait for Retry.
+        if (!isPassingFailure(error)) await this.markFailed(agentId, front.id, failureReason(error)).catch(() => undefined);
         return false;
       }
       await this.remove(agentId, front.id).catch(() => undefined);
@@ -176,7 +177,7 @@ export class ChatQueue {
   /**
    * Send now: that message out of the queue and to the agent at once, interrupting a running turn (with
    * a note to check what the cut-off step left). Refused while Taro compacts the agent, the message left
-   * where it is; a failed send puts it back at the front, marked, and throws.
+   * where it is; a failed send puts it back at the front, marked unless the failure passes by itself, and throws.
    */
   sendNow(paseo: PaseoApi, agentId: string, messageId: string): Promise<void> {
     return this.sending(agentId, async () => {
@@ -194,7 +195,9 @@ export class ChatQueue {
         await sendWithAttachments(paseo, agentId, words, { images: taken.images, files: taken.files, messageId: taken.id, agentMidTurn: midTurn, interrupt: true });
       } catch (error: unknown) {
         this.sendNowAt.delete(agentId);
-        await this.change(agentId, (messages) => ({ messages: withFront(messages, { ...taken, failed: failureReason(error) }), result: undefined }));
+        // Refused as Claude compacts, or a failure in passing: back unmarked, to go at the next turn end or sweep.
+        const failed = isCompactingRefusal(error) || isPassingFailure(error) ? null : failureReason(error);
+        await this.change(agentId, (messages) => ({ messages: withFront(messages, { ...taken, failed }), result: undefined }));
         throw error;
       }
     });

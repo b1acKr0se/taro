@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { listChatQueue, retryQueuedMessage, sendQueuedMessageNow, takeQueuedMessage } from "../shared/contracts";
 import { INTERRUPT_NOTE_START, stripInterruptNote, type QueuedMessage } from "../shared/chat-queue";
+import { COMPACTING_REFUSAL } from "../shared/pending-sends";
 import { AgentStateSchema, type AgentState } from "../shared/state";
 import { ChatQueue } from "./chat-queue";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
@@ -292,12 +293,12 @@ describe("draining", () => {
     const queue = newQueue();
     await three(queue);
     agents["owner-1"]!.status = "idle";
-    failSends = new Error("Transport closed (code 1006)");
+    failSends = new Error("Agent not accepting prompts");
     expect(await queue.drain(paseo, "owner-1", "completed")).toBe(false);
     failSends = null;
     const listed = await queue.list("owner-1");
     expect(listed.map((entry) => [entry.id, entry.failed])).toEqual([
-      ["chat-a", "the connection to Paseo dropped."],
+      ["chat-a", "Agent not accepting prompts"],
       ["chat-b", null],
       ["chat-c", null],
     ]);
@@ -307,6 +308,22 @@ describe("draining", () => {
     expect(await queue.retry(paseo, "owner-1", "chat-a")).toBe(true);
     expect(sent.map((each) => each.messageId)).toEqual(["chat-a"]);
     expect(await ids(queue)).toEqual(["chat-b", "chat-c"]);
+  });
+
+  it("leaves a send that failed in passing unmarked, for the sweep to send", async () => {
+    const queue = newQueue();
+    await three(queue);
+    agents["owner-1"]!.status = "idle";
+    failSends = new Error("Transport closed (code 1006)");
+    expect(await queue.drain(paseo, "owner-1", "completed")).toBe(false);
+    expect((await queue.list("owner-1")).map((entry) => [entry.id, entry.failed])).toEqual([
+      ["chat-a", null],
+      ["chat-b", null],
+      ["chat-c", null],
+    ]);
+    failSends = null;
+    expect(await queue.drain(paseo, "owner-1", "sweep")).toBe(true);
+    expect(sent.map((each) => each.messageId)).toEqual(["chat-a"]);
   });
 
   it("does not send twice a message Paseo took before the plugin lost track of it", async () => {
@@ -373,6 +390,18 @@ describe("Send now", () => {
     clock += 1;
     expect(await queue.drain(paseo, "owner-1", "canceled")).toBe(true);
     expect(sent.map((each) => each.messageId)).toEqual(["chat-a", "chat-b"]);
+  });
+
+  it("puts a Send now refused as Claude compacts back at the front, unmarked", async () => {
+    const queue = newQueue();
+    await queue.tell(paseo, live(), "first", { messageId: "chat-a" }, false);
+    await queue.tell(paseo, live(), "urgent", { messageId: "chat-b" }, false);
+    failSends = new Error(COMPACTING_REFUSAL);
+    await expect(queue.sendNow(paseo, "owner-1", "chat-b")).rejects.toThrow(COMPACTING_REFUSAL);
+    expect((await queue.list("owner-1")).map((entry) => [entry.id, entry.failed])).toEqual([
+      ["chat-b", null],
+      ["chat-a", null],
+    ]);
   });
 
   it("puts a failed message back at the front, marked, and says why", async () => {
