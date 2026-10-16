@@ -28,7 +28,7 @@ import { watchFileDrops } from "./file-drop";
 import { draftAttachments } from "./draft-attachments";
 import { rowButtonStyle } from "./control-colors";
 import { Pressable } from "./focus";
-import { nearTheTop, useFollowEnd } from "./follow-end";
+import { keepVisibleFrom, nearTheTop, useFollowEnd } from "./follow-end";
 import { ImageThumbnail } from "./image-view";
 import { KeyboardRevealProvider, useKeyboardOverlap, useKeyboardScroll, useRevealFocused } from "./keyboard";
 import { formatClock } from "./format";
@@ -510,7 +510,7 @@ export function AgentChat({
         <ScrollView
           {...follow.scrollProps}
           // A phone keeps the reader's place as earlier pages go in above them (TR-169); the web does it in `holdAfter`.
-          maintainVisibleContentPosition={Platform.OS !== "web" && timeline.olderAsked ? KEEP_VISIBLE : undefined}
+          maintainVisibleContentPosition={Platform.OS !== "web" && timeline.olderAsked ? keepVisibleFrom(timeline.error !== null) : undefined}
           onScroll={(event) => {
             follow.scrollProps.onScroll(event);
             keyboardScroll.onScroll(event);
@@ -529,7 +529,7 @@ export function AgentChat({
           style={styles.transcript}
           contentContainerStyle={styles.transcriptBody}
         >
-          {/* Out of the flow, so the content's gap does not count it. */}
+          {/* Out of the flow, so the content's gap does not count it. It, the error and the first line come before the rows: `keepVisibleFrom` counts them. */}
           <View ref={contentAnchor} collapsable={false} pointerEvents="none" style={styles.contentAnchor} />
           <KeyboardRevealProvider value={keyboardScroll.claim}>
             {timeline.error === null ? null : <Text style={styles.error}>{timeline.error}</Text>}
@@ -987,9 +987,6 @@ function samePlanLine(left: PlanLine | undefined, right: PlanLine | undefined): 
 }
 
 /** The chat's styles, built once per theme, width and composer size. */
-/** What the phone keeps in place when earlier pages go in: the first row on screen (TR-169). */
-const KEEP_VISIBLE = { minIndexForVisible: 0 };
-
 /**
  * The transcript's first line (TR-169): earlier messages being read, a link to read them (a chat too
  * short to scroll up), or the conversation's start.

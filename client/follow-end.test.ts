@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { layoutShown, nearTheTop, revealsAgain, scrollEventKind, viewportChange, webScrollNode } from "./follow-end";
+import { keepVisibleFrom, layoutShown, nearTheTop, revealsAgain, scrollEventKind, viewportChange, webScrollNode } from "./follow-end";
 
 describe("revealsAgain", () => {
   it("scrolls to a revealed row again while the transcript settles", () => {
@@ -111,5 +111,16 @@ describe("webScrollNode (TR-169)", () => {
     expect(webScrollNode({ getScrollableNode: () => 42 })).toBeNull();
     expect(webScrollNode(null)).toBeNull();
     expect(webScrollNode({})).toBeNull();
+  });
+});
+
+describe("keepVisibleFrom (TR-169)", () => {
+  it("skips the anchor and the earlier-messages line, and the error when it shows", () => {
+    expect(keepVisibleFrom(false).minIndexForVisible).toBe(2);
+    expect(keepVisibleFrom(true).minIndexForVisible).toBe(3);
+  });
+
+  it("is the same object each render, so the phone's scroll view is not reconfigured", () => {
+    expect(keepVisibleFrom(false)).toBe(keepVisibleFrom(false));
   });
 });

@@ -68,6 +68,20 @@ export function nearTheTop(scroll: Pick<NativeScrollEvent, "contentOffset" | "co
   return scroll.contentOffset.y < viewportHeight && !isAtEnd(scroll.contentOffset.y, viewportHeight, scroll.contentSize.height, 0);
 }
 
+/** The phone's `maintainVisibleContentPosition`, without and with the error line. */
+const KEEP_FIRST_ROW = { minIndexForVisible: 2 };
+const KEEP_FIRST_ROW_UNDER_ERROR = { minIndexForVisible: 3 };
+
+/**
+ * What a phone keeps in place as earlier pages go in above the reader (TR-169): the first row on
+ * screen. The transcript's children before the rows (the measuring anchor, the error when one shows,
+ * and the "earlier messages" line) never move when rows go in after them, and a reader at the very
+ * top would be anchored to one of them and left looking at the new page: they are skipped.
+ */
+export function keepVisibleFrom(errorShown: boolean): { minIndexForVisible: number } {
+  return errorShown ? KEEP_FIRST_ROW_UNDER_ERROR : KEEP_FIRST_ROW;
+}
+
 /** A web scroll view's DOM node: what a browser lays out. */
 export interface WebScrollNode {
   scrollHeight: number;
