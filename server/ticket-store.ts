@@ -101,6 +101,8 @@ export interface TicketStore {
   search(query: string): Promise<TicketSummary[]>;
   create(input: CreateTicketInput): Promise<Ticket>;
   edit(id: string, changes: TicketChanges, options?: { revision?: string }): Promise<Ticket>;
+  /** Applies `changes` only when `when` holds for the ticket as read under the lock; null (nothing written) otherwise. */
+  editIf(id: string, when: (ticket: Ticket) => boolean, changes: TicketChanges): Promise<Ticket | null>;
   appendNote(id: string, record: string): Promise<Ticket>;
   forget(file?: string): void;
   /** Runs work under the tracker lock, as every write does. */
@@ -630,6 +632,19 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
     });
   }
 
+  async function editIf(id: string, when: (ticket: Ticket) => boolean, changes: TicketChanges): Promise<Ticket | null> {
+    assertId(id);
+    assertRecordTimes(changes);
+    return locked(async () => {
+      const { ticket } = await readTicket(id);
+      if (!when(ticket)) return null;
+      applyChanges(ticket, changes);
+      ticket.updated = timestampOf(now());
+      await writeTicket(ticket);
+      return ticket;
+    });
+  }
+
   async function appendNote(id: string, record: string): Promise<Ticket> {
     if (record.trim() === "") throw new Error("A note needs some text.");
     return edit(id, { appendNotes: [record] });
@@ -644,5 +659,5 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
     cache.delete(file.slice(slash + 1));
   }
 
-  return { list, view, search, create, edit, appendNote, forget, withLock: locked, cacheEntries: () => cache };
+  return { list, view, search, create, edit, editIf, appendNote, forget, withLock: locked, cacheEntries: () => cache };
 }

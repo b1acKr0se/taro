@@ -189,6 +189,13 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
   and when nothing needs to change, deliver again as it was (Awaiting acceptance, the same review
   head). Either way the turn that delivers again ends with `done: …`, which brings the card back
   under it.
+- **The user chats instead** (a message while you await acceptance, not from Request changes): the
+  ticket stays Awaiting acceptance and its card stays. Words that only ask: answer them and end with
+  `waiting: acceptance of <ID>`. Words that need any change: move the ticket to In Progress before
+  you work, then deliver again as above. A blocking question back to the user ends the delivery: the
+  plugin moves the ticket to In Progress when it shows the decision (a DELIVERY-ENDED record), so
+  only the question shows. Once it is answered, deliver again (Awaiting acceptance, a new review head
+  if anything changed) and end with `done: …`.
 - **Accept:** if the message says to merge (accept-also-merges), merge only what the user reviewed.
   - **Pull request** (TR-110), in this order:
     1. The PR is already `MERGED` (an earlier Accept merged it, then recorded NOT-SYNCED) → go to 3.

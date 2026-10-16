@@ -2,6 +2,7 @@
  * Tickets, read and written in process through one ticket store per tracker (TR-081): no process
  * is started for a ticket.
  */
+import { deliveryOnOffer } from "../shared/delivery-end";
 import { noteRecords } from "../shared/execution";
 import type { TicketPriority, TicketProblem } from "../shared/ticket-format";
 import { createTicketStore, type TicketStore } from "./ticket-store";
@@ -104,6 +105,16 @@ export async function appendTicketNote(trackerPath: string, ticketId: string, re
  */
 export async function recordChangesRequested(trackerPath: string, ticketId: string, record: string): Promise<void> {
   await storeFor(trackerPath).edit(ticketId, { appendNotes: [record], status: "In Progress", statusFrom: "Awaiting acceptance" });
+}
+
+/**
+ * The owner asked a blocking question while its delivery was on offer (TR-130): the record lands and the
+ * ticket goes back to In Progress in one write, checked under the lock so an Accept that just landed
+ * keeps its ticket. False when the delivery was no longer on offer (nothing written).
+ */
+export async function endDelivery(trackerPath: string, ticketId: string, record: string): Promise<boolean> {
+  const ticket = await storeFor(trackerPath).editIf(ticketId, deliveryOnOffer, { appendNotes: [record], status: "In Progress" });
+  return ticket !== null;
 }
 
 /** The watcher saw `file` (a name under `tickets/`; every file when undefined) change: the next list reads it again. */

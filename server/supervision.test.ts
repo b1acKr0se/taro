@@ -4,7 +4,7 @@ import type { AgentState, StoredDecision } from "../shared/state";
 import { fetchLiveAgent, listTaroAgents } from "./agents";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
 import { sendFromPlugin } from "./send";
-import { viewTicket } from "./tickets";
+import { endDelivery, viewTicket } from "./tickets";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
@@ -18,7 +18,7 @@ vi.mock("./package-files", () => ({
   message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : `${path}:${values.ticket ?? ""}`),
 }));
 vi.mock("./projects", () => ({ readProjectConfig: async () => null, projectPaths: async () => ({ tracker: "/tracker" }) }));
-vi.mock("./tickets", () => ({ viewTicket: vi.fn() }));
+vi.mock("./tickets", () => ({ viewTicket: vi.fn(), endDelivery: vi.fn(async () => true) }));
 
 const recovery = { onCrash: vi.fn(async () => undefined), recoverLeftovers: async () => 0 } as unknown as Recovery;
 
@@ -569,6 +569,74 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       await run(taro, human("start"), both("start-TR-1", "start-TR-2"));
       expect(decisions.map((decision) => decision.status)).toEqual(["open", "open"]);
       expect(held()).toEqual([]);
+    });
+  });
+
+  // TR-130: an owner asking back while awaiting acceptance went back to work; the delivery ends.
+  describe("a question asked while awaiting acceptance", () => {
+    const ended = () => vi.mocked(endDelivery).mock.calls.map(([tracker, ticket, record]) => [tracker, ticket, record.replace(/^DELIVERY-ENDED \S+/, "DELIVERY-ENDED <at>")]);
+    const lightly = (id: string) => ({ type: "assistant_message", text: (ask(id, `${id}?`) as { text: string }).text.replace("blocking: true", "blocking: false") });
+
+    beforeEach(() => {
+      vi.mocked(endDelivery).mockClear();
+    });
+
+    it("ends the owner's delivery when it opens a blocking question", async () => {
+      const { state } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      await run(taro, human("why the rename?"), ask("rename-scope", "Rename the settings too?"));
+      expect(ended()).toEqual([["/tracker", "TR-9", "DELIVERY-ENDED <at> — the owner asked `rename-scope` while awaiting acceptance: back to In Progress until it delivers again"]]);
+    });
+
+    it("ends it once: the same turn seen again, or the question still open, asks nothing new", async () => {
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      const first = [human("why?"), ask("rename-scope", "Rename?")];
+      await run(taro, ...first);
+      await run(taro, ...first);
+      await run(taro, ...first, plugin("carry on"), ask("rename-scope", "Rename?"));
+      expect(ended()).toHaveLength(1);
+
+      // Asked again after its answer: open anew, so it ends the delivery the owner made since.
+      decisions[0]!.status = "answered";
+      await run(taro, ...first, plugin("carry on"), ask("rename-scope", "Rename?"), plugin("more"), ask("rename-scope", "Rename?"));
+      expect(ended()).toHaveLength(2);
+    });
+
+    it("leaves the delivery for a non-blocking question, investigation-done, or a held-back question", async () => {
+      const { state } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      await run(taro, human("start"), lightly("tone"));
+      expect(ended()).toEqual([]);
+
+      const other = fakeState();
+      const investigating = new Supervisor(other.state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      const first = [human("start"), ask("investigation-done", "Accept the findings?")];
+      await run(investigating, ...first);
+      expect(ended()).toEqual([]);
+      // Held back behind the open one (TR-124): not shown, so nothing ends.
+      await run(investigating, ...first, plugin("carry on"), ask("follow-up", "File a follow-up?"));
+      expect(other.decisions.map((decision) => [decision.id, decision.status])).toEqual([
+        ["investigation-done", "open"],
+        ["follow-up", "withdrawn"],
+      ]);
+      expect(ended()).toEqual([]);
+    });
+
+    it("never ends a delivery for the manager's questions", async () => {
+      asManager();
+      const { state } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      await run(taro, human("start"), ask("start-TR-1", "Start TR-1?"));
+      expect(ended()).toEqual([]);
+    });
+
+    it("keeps the turn going when the write fails", async () => {
+      vi.mocked(endDelivery).mockRejectedValueOnce(new Error("tracker locked"));
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      await run(taro, human("why?"), ask("rename-scope", "Rename?"));
+      expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
     });
   });
 

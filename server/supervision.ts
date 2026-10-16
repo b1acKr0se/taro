@@ -6,6 +6,7 @@
  */
 import { join } from "node:path";
 
+import { deliveryEndedRecord, questionEndingDelivery } from "../shared/delivery-end";
 import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compaction";
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
@@ -18,7 +19,7 @@ import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from 
 import { ticketEvidence, ticketEvidenceDirectory } from "./evidence";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { projectPaths, readProjectConfig } from "./projects";
-import { viewTicket } from "./tickets";
+import { endDelivery, viewTicket } from "./tickets";
 import { isPluginMessageId, sendCommand, sendFromPlugin } from "./send";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
@@ -400,6 +401,7 @@ export class Supervisor {
 
   private async storeDecisions(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, decisions: readonly ParsedDecision[], turn: string | null, now: string): Promise<void> {
     const newlyAsked: string[] = [];
+    const opened: StoredDecision[] = [];
     const held: { id: string; open: string }[] = [];
     const corrections = await this.state.updateDecisions((stored) => {
       const problems: string[] = [];
@@ -448,6 +450,7 @@ export class Supervisor {
         }
         if (existing === undefined) stored.push(next);
         else stored[index] = next;
+        if (existing === undefined || existing.status !== "open") opened.push(next);
         // Shown for the first time (a held one included): counted, and its format problems reported.
         if (existing === undefined || existing.status === "withdrawn") {
           if (identity.ticket !== null) newlyAsked.push(identity.ticket);
@@ -457,11 +460,25 @@ export class Supervisor {
       return problems;
     });
     for (const ticket of newlyAsked) await this.stats.count(identity.project, ticket, "decisions").catch(() => undefined);
+    const ending = identity.role === "owner" ? questionEndingDelivery(opened) : null;
+    if (ending !== null && identity.ticket !== null) await this.endDeliveryOn(identity, identity.ticket, ending.id);
     if (corrections.length > 0) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.decisionCorrection, { problems: [...new Set(corrections)].join("; ") }));
     }
     if (held.length > 0) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.decisionHeld, { held: held.map((each) => `\`${each.id}\``).join(", "), open: held[0]!.open }));
+    }
+  }
+
+  /**
+   * An owner asking a blocking question while awaiting acceptance went back to work (TR-130): the
+   * ticket returns to In Progress, so the question shows alone until the owner delivers again.
+   */
+  private async endDeliveryOn(identity: TaroIdentity, ticket: string, question: string): Promise<void> {
+    try {
+      await endDelivery((await projectPaths(identity.project)).tracker, ticket, deliveryEndedRecord(new Date().toISOString(), question));
+    } catch (error) {
+      console.warn(`[taro] ending ${ticket}'s delivery: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
