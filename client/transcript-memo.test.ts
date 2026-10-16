@@ -6,7 +6,7 @@ import type { Group } from "./tool-runs";
 const message = (key: string, text: string): Group => ({ key, row: { key, kind: "agent", text } });
 const tools = (key: string, ...states: ["running" | "completed" | "failed", string][]): Group => ({
   key,
-  tools: states.map(([status, text], index) => ({ key: `${key}-${index}`, kind: "tool" as const, text, plain: `plain ${text}`, category: "other" as const, status })),
+  tools: states.map(([status, text], index) => ({ key: `${key}-${index}`, kind: "tool" as const, text, label: "Shell", summary: text, icon: "SquareTerminal", tally: { kind: "command" as const }, alone: false, status })),
 });
 
 describe("sameGroup", () => {
@@ -30,11 +30,11 @@ describe("sameGroup", () => {
   });
 
   it("redraws a tool run when a tool finishes, fails or another joins it", () => {
-    const running = tools("t1", ["running", "$ npm test"]);
-    expect(sameGroup(running, tools("t1", ["running", "$ npm test"]))).toBe(true);
-    expect(sameGroup(running, tools("t1", ["completed", "$ npm test"]))).toBe(false);
-    expect(sameGroup(running, tools("t1", ["failed", "$ npm test"]))).toBe(false);
-    expect(sameGroup(running, tools("t1", ["running", "$ npm test"], ["running", "$ git status"]))).toBe(false);
+    const running = tools("t1", ["running", "Shell npm test"]);
+    expect(sameGroup(running, tools("t1", ["running", "Shell npm test"]))).toBe(true);
+    expect(sameGroup(running, tools("t1", ["completed", "Shell npm test"]))).toBe(false);
+    expect(sameGroup(running, tools("t1", ["failed", "Shell npm test"]))).toBe(false);
+    expect(sameGroup(running, tools("t1", ["running", "Shell npm test"], ["running", "Shell git status"]))).toBe(false);
   });
 
   it("never matches a message with a tool run of the same key", () => {

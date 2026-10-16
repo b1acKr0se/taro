@@ -15,7 +15,7 @@ import type { usePaseo } from "@getpaseo/plugin/client";
 import { heldWhileWriting } from "../shared/streaming-text";
 
 import { imageLineOf } from "./markdown-parse";
-import { toolAction, type ToolCategory, type ToolDetail } from "./tool-wording";
+import { joinsRuns, toolDisplay, toolTally, type ToolDetail, type ToolTally } from "./tool-wording";
 
 type PaseoApi = ReturnType<typeof usePaseo>;
 export type TimelinePage = Awaited<ReturnType<ReturnType<PaseoApi["agents"]["ref"]>["timeline"]["refetch"]>>;
@@ -31,8 +31,11 @@ export type TranscriptRow =
    */
   | { key: string; kind: "agent"; text: string; at?: string; asking?: boolean }
   | { key: string; kind: "event"; text: string }
-  /** A tool call: `text` is the raw call the opened run lists, `plain` its plain words for a folded one (TR-144). */
-  | { key: string; kind: "tool"; text: string; plain: string; category: ToolCategory; status: ToolCallItem["status"] }
+  /**
+   * A tool call as Paseo shows it (TR-150): its label, detail and icon (`text` is both, for what reads
+   * every row's words), what it adds to its run's counts, and `alone` for a call Paseo never puts in a run.
+   */
+  | { key: string; kind: "tool"; text: string; label: string; summary?: string; icon: string; tally: ToolTally; alone: boolean; status: ToolCallItem["status"] }
   | { key: string; kind: "error"; text: string };
 
 /** A user row's text when the message had attachments and no words. */
@@ -59,44 +62,6 @@ export function injectedSummary(text: string, clientMessageId?: string): string 
     return first ?? tag;
   }
   return null;
-}
-
-/** One line, at most `max` characters. */
-export function clip(text: string, max = 120): string {
-  const single = text.replace(/\s+/g, " ").trim();
-  return single.length <= max ? single : `${single.slice(0, max - 1)}…`;
-}
-
-/** One line for a tool call: what it did, in the fewest words its detail allows. */
-export function toolSummary(item: ToolCallItem): string {
-  const detail = item.detail;
-  switch (detail.type) {
-    case "shell":
-      return `$ ${clip(detail.command, 100)}`;
-    case "read":
-      return `Read ${detail.filePath}`;
-    case "edit":
-      return `Edit ${detail.filePath}`;
-    case "write":
-      return `Write ${detail.filePath}`;
-    case "search":
-      return `Search ${clip(detail.query, 80)}`;
-    case "fetch":
-      return `Fetch ${detail.url}`;
-    case "sub_agent":
-      return `Agent ${clip(detail.description ?? detail.subAgentType ?? "", 80)}`.trim();
-    case "plain_text":
-      return clip(detail.label ?? detail.text ?? item.name, 100);
-    case "plan":
-      return "Plan";
-    default:
-      return toolDisplayName(item.name);
-  }
-}
-
-/** MCP tools arrive as `mcp__paseo__create_agent`; the server name is noise. */
-export function toolDisplayName(name: string): string {
-  return name.replace(/^mcp__[^_]+__/, "").replace(/_/g, " ");
 }
 
 const COMPACTING = "Compacting context…";
@@ -167,9 +132,10 @@ function appendReply(text: string, piece: string): string {
 /**
  * Timeline entries to rows. Consecutive assistant messages are one row, since
  * a streamed reply can arrive in several pieces that split anywhere; a separate
- * reply in that row starts a new paragraph.
+ * reply in that row starts a new paragraph. `cwd`, the agent's folder, shortens
+ * the paths of tool calls inside it, as Paseo does.
  */
-export function transcriptRows(entries: readonly TimelineEntry[]): TranscriptRow[] {
+export function transcriptRows(entries: readonly TimelineEntry[], cwd?: string | null): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
   let previousReply: TimelineEntry | undefined;
   entries.forEach((entry) => {
@@ -192,8 +158,9 @@ export function transcriptRows(entries: readonly TimelineEntry[]): TranscriptRow
         break;
       }
       case "tool_call": {
-        const action = toolAction(item.detail as ToolDetail, item.name);
-        rows.push({ key, kind: "tool", text: toolSummary(item), plain: action.text, category: action.category, status: item.status });
+        const detail = item.detail as ToolDetail;
+        const display = toolDisplay(detail, item.name, cwd, "metadata" in item ? item.metadata : undefined);
+        rows.push({ key, kind: "tool", text: display.summary === undefined ? display.label : `${display.label} ${display.summary}`, ...display, tally: toolTally(detail, item.name), alone: !joinsRuns(detail, item.name), status: item.status });
         break;
       }
       case "error":
