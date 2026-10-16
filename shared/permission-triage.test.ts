@@ -27,6 +27,9 @@ describe("allowed: literal paths in scratch space or the worktree", () => {
     ["export S=/tmp/x; rm -rf \"$S/sub\"", ["/tmp/x/sub"]],
     ["rmdir /tmp/empty && echo done 2>&1 >/dev/null", ["/tmp/empty"]],
     ["cd /tmp && rm -rf /tmp/old # cleanup", ["/tmp/old"]],
+    ["D='/tmp/x y'; rm -rf \"$D\"", ["/tmp/x y"]],
+    ["S=/tmp/a && rm -rf $S", ["/tmp/a"]],
+    ["echo hi 2>&1 >&2 >&-; rm -rf /tmp/a", ["/tmp/a"]],
   ])("%s", (command, paths) => {
     expect(verdict(command)).toEqual({ verdict: "allow", rule: "scratch-or-worktree", paths });
   });
@@ -53,6 +56,10 @@ describe("denied: removals no unattended agent should make", () => {
     ["rm -rf $DIR/*", "unguarded-variable", "/"],
     ["rm -rf \"$DIR\"/home", "unguarded-variable", "/home"],
     ["rm -rf /tmp/$NAME", "unguarded-variable", "/tmp"],
+    // An assignment that may not have run in this shell leaves the variable unknown.
+    ["true || HOME=/tmp/a; rm -rf $HOME/", "unguarded-variable", "/"],
+    ["HOME=/tmp/a & rm -rf $HOME/", "unguarded-variable", "/"],
+    ["D=/tmp/a | rm -rf $D/", "unguarded-variable", "/"],
     ["rm -rf $DIR/sub", "unguarded-variable", "/sub"],
     ["E=$TARO_EVIDENCE/TR-140; rm -rf $E", "unguarded-variable", "/TR-140"],
     ["E=; rm -rf $E/x", "top-level", "/x"],
@@ -75,6 +82,17 @@ describe("left to the user", () => {
     "rm -rf /home/user/work/other-project",
     "rm -rf /home/user/.paseo/worktrees/abc/tr-1/.git",
     "rm -rf /var/tmp/x",
+    // Review of TR-143: an unquoted value is split and globbed; an IFS change splits elsewhere.
+    "cd /; D='/tmp/x etc'; rm -rf $D",
+    "cd /; IFS=/; D=/tmp/etc; rm -rf $D",
+    "D='/tmp/*'; rm -rf $D",
+    // `>&file` writes the file.
+    "echo x >&/home/user/.bashrc; rm -rf /tmp/a",
+    "echo x >& /home/user/.bashrc; rm -rf /tmp/a",
+    "echo x 2>&1x; rm -rf /tmp/a",
+    // Modes that write or assign.
+    "D=/tmp/a; printf -v D %s /etc; rm -rf -- \"$D\"/x",
+    "date -s 2020-01-01; rm -rf /tmp/a",
     "rm -rf /tmp/a/../b",
     "rm -rf /tmp/x; echo hi > /home/user/.bashrc",
     "rm -rf /tmp/x && git push --force",

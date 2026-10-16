@@ -40,7 +40,8 @@ export function triagePermission(request: ShellAsk, context: TriageContext): Tri
 }
 
 /** Commands that only read or print, run beside a removal without changing the verdict. */
-const READ_ONLY = new Set(["ls", "echo", "printf", "true", "false", "test", "[", "pwd", "cat", "stat", "du", "wc", "sleep", "date", "file", "readlink", "realpath", "basename", "dirname", "head", "tail", "grep", "which", "cd"]);
+// No `printf` (`-v` assigns) or `date` (`-s` sets the clock).
+const READ_ONLY = new Set(["ls", "echo", "true", "false", "test", "[", "pwd", "cat", "stat", "du", "wc", "sleep", "file", "readlink", "realpath", "basename", "dirname", "head", "tail", "grep", "which", "cd"]);
 const REMOVALS = new Set(["rm", "rmdir", "unlink"]);
 /** System folders: removing one, or anything in one, is never an agent's cleanup. Scratch space inside them is left to the user. */
 const SYSTEM = ["/bin", "/boot", "/dev", "/etc", "/lib", "/lib32", "/lib64", "/libx32", "/opt", "/proc", "/run", "/sbin", "/srv", "/sys", "/usr", "/var"];
@@ -103,6 +104,8 @@ export interface Segment {
  * anything not followed here: command or process substitution, here-documents, subshells, groups.
  */
 export function parseCommand(command: string): Segment[] | null {
+  // A changed IFS splits words where this parser does not.
+  if (/\bIFS=/.test(command)) return null;
   const variables = new Map<string, Word>();
   const segments: Segment[] = [];
   let words: Word[] = [];
@@ -128,7 +131,10 @@ export function parseCommand(command: string): Segment[] | null {
     }
     words.push(finished);
   };
-  const finishSegment = (): boolean => {
+  // The operator before the segment being read: an assignment holds for what follows only when it
+  // surely ran in this shell, after `;`, a newline or `&&` (not `||`) and not in a pipe or background.
+  let before: string | null = null;
+  const finishSegment = (after: string | null): boolean => {
     finishWord();
     if (pendingRedirect !== null) return false;
     const assignments: [string, Word][] = [];
@@ -142,8 +148,13 @@ export function parseCommand(command: string): Segment[] | null {
     }
     // Only a segment of nothing but assignments sets them for what follows; `NAME=x cmd` sets them for cmd alone.
     if (rest.length === 0) {
-      for (const [name, value] of assignments) variables.set(name, value);
+      const ran = [null, ";", "\n", "&&"].includes(before) && [null, ";", "\n", "&&"].includes(after);
+      for (const [name, value] of assignments) {
+        if (ran) variables.set(name, value);
+        else variables.delete(name);
+      }
     }
+    before = after;
     if (rest.length > 0 || writes) segments.push({ words: rest, writes });
     words = [];
     writes = false;
@@ -177,6 +188,8 @@ export function parseCommand(command: string): Segment[] | null {
       if (expansion === null) return null;
       const current = start();
       const known = expansion.name === null ? undefined : variables.get(expansion.name);
+      // An unquoted value is split on IFS and globbed: only one that is a single plain word reads as itself.
+      if (known !== undefined && quote === null && /[\s*?[\]{}]/.test(known.text)) return null;
       if (known !== undefined) {
         // Assigned earlier in the command: its value, carrying what it was made of.
         current.text += known.text;
@@ -220,8 +233,9 @@ export function parseCommand(command: string): Segment[] | null {
         index += command[index + 2] === ">" ? 3 : 2;
         continue;
       }
-      if (!finishSegment()) return null;
-      index += (character === "&" || character === "|") && next === character ? 2 : 1;
+      const operator = (character === "&" || character === "|") && next === character ? character + next : character;
+      if (!finishSegment(operator)) return null;
+      index += operator.length;
       continue;
     }
     if (character === "(" || character === ")") return null;
@@ -237,11 +251,15 @@ export function parseCommand(command: string): Segment[] | null {
       let length = 1;
       if (character === ">" && (next === ">" || next === "|")) length = 2;
       if (command[index + length] === "&") {
-        // `>&2`, `2>&1`: a descriptor, not a file.
         length += 1;
-        while (/\d|-/.test(command[index + length] ?? "")) length += 1;
-        index += length;
-        continue;
+        let end = index + length;
+        while (/[\d-]/.test(command[end] ?? "")) end += 1;
+        // `>&2`, `2>&1`, `>&-`: a descriptor, not a file. `>&file` writes the file.
+        if (end > index + length && /^$|[\s;&|<>]/.test(command[end] ?? "")) {
+          index = end;
+          continue;
+        }
+        if (end > index + length) return null;
       }
       pendingRedirect = character === ">" ? "write" : "read";
       index += length;
@@ -266,7 +284,7 @@ export function parseCommand(command: string): Segment[] | null {
     index += 1;
   }
   if (quote !== null) return null;
-  if (!finishSegment()) return null;
+  if (!finishSegment(null)) return null;
   return segments;
 }
 
