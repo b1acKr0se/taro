@@ -339,6 +339,8 @@ describe("the dependency-cleared message", () => {
     const text = await realMessage(TEMPLATES.ticketDone, { ticket: "DM-1", afterDone });
     expect(text).not.toContain("{{");
     expect(text).toMatch(/^DM-1 is Done\. Merge: not merged — GitHub refused the squash\. Do what your standing orders ask/);
+    // Only what the plugin checked: an accepted ticket's slot was freed (and announced) at Awaiting acceptance.
+    expect(text).toContain("This Done clears no dependents and frees no new owner slot, so it starts nothing new");
   });
 });
 
