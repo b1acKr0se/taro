@@ -11,6 +11,7 @@ import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compa
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
 import { asPlanningQuestion, asStored, planningTicket } from "../shared/planning-questions";
+import type { DrainTrigger } from "../shared/chat-queue";
 import { isCrash } from "../shared/recovery";
 import { hashText, parseDecisionBlocks, parseStatusLine, seenAgain, withImagePaths, type ParsedDecision } from "../shared/reports";
 import { openQuestionHolding, withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDecision } from "../shared/state";
@@ -22,6 +23,7 @@ import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { projectPaths, readProjectConfig } from "./projects";
 import { endDelivery, viewTicket } from "./tickets";
 import { isPluginMessageId, sendCommand, sendFromPlugin } from "./send";
+import type { ChatQueue } from "./chat-queue";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import { usageReading, type Stats } from "./stats";
@@ -199,7 +201,17 @@ export class Supervisor {
     private readonly state: PluginState,
     private readonly stats: Stats,
     private readonly recovery: Recovery,
+    private readonly queue: Pick<ChatQueue, "drain"> | null = null,
   ) {}
+
+  /** The user's next queued chat message as the agent's next prompt (TR-171); whether it went. */
+  private async drainQueue(paseo: PaseoApi, agentId: string, trigger: DrainTrigger): Promise<boolean> {
+    if (this.queue === null) return false;
+    return this.queue.drain(paseo, agentId, trigger).catch((error: unknown) => {
+      console.warn(`[taro] draining ${agentId}'s chat queue: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    });
+  }
 
   async onTurnEnded(paseo: PaseoApi, hookAgent: HookAgent, outcome: TurnOutcome, timeline: readonly TimelineItem[], turnId: string | null, activeMs: number | undefined): Promise<void> {
     const live = await fetchLiveAgent(paseo, hookAgent.id);
@@ -247,8 +259,13 @@ export class Supervisor {
       return record.compaction;
     });
 
-    if (outcome.kind === "canceled") return;
+    // A canceled turn may be the one Send now cut off: the queue knows, and holds its drain (TR-171).
+    if (outcome.kind === "canceled") {
+      await this.drainQueue(paseo, live.id, "canceled");
+      return;
+    }
     // Any role, the manager included (TR-012): a dead process gets no further turns on its own.
+    // Nor a queued message: the recovery restarts it, and the turn end after drains.
     const failure = outcome.kind === "failed" ? (outcome.error?.message ?? "") : "";
     if (isCrash(failure)) {
       await this.recovery.onCrash(paseo, live, identity, failure);
@@ -256,7 +273,10 @@ export class Supervisor {
     }
 
     if (isSubagentRole(identity.role)) {
-      if (outcome.kind === "completed") await this.deliverReport(paseo, live, identity, closing, turnKey, hookAgent.parentAgentId);
+      if (outcome.kind === "completed") {
+        await this.deliverReport(paseo, live, identity, closing, turnKey, hookAgent.parentAgentId);
+        await this.drainQueue(paseo, live.id, "completed");
+      }
       return;
     }
     if (identity.role !== "owner" && identity.role !== "manager") return;
@@ -272,11 +292,13 @@ export class Supervisor {
       await sendFromPlugin(paseo, live.id, await reloadText(identity));
       return;
     }
-    if (identity.role !== "owner") return;
-    if (autoCompactedThisTurn(timeline)) {
+    if (identity.role === "owner" && autoCompactedThisTurn(timeline)) {
       await sendFromPlugin(paseo, live.id, await reloadText(identity));
       return;
     }
+    // The user's queued message is the next prompt (TR-171); the nudge, held reports and reminders wait for its turn end.
+    if (outcome.kind === "completed" && (await this.drainQueue(paseo, live.id, "completed"))) return;
+    if (identity.role !== "owner") return;
 
     if (outcome.kind === "completed") {
       const stalled = (status === null || status.state === "working") && !openBlocking;

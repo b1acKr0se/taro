@@ -21,6 +21,7 @@ export const TEMPLATES = {
   managerResumed: "messages/manager-resumed.md",
   catchUp: "messages/catch-up.md",
   nudge: "messages/nudge.md",
+  interrupted: "messages/interrupted.md",
   decisionCorrection: "messages/decision-correction.md",
   decisionHeld: "messages/decision-held.md",
   planningQuestion: "messages/planning-question.md",

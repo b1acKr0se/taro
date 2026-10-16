@@ -1,0 +1,2 @@
+<!-- Put before a queued message the user sent with Send now while the agent was working, between the interrupt markers the chat hides (TR-171). No placeholders. -->
+The user interrupted your turn with the message below. The step you were on was cut off: check what it left — a command or test still running or half done, a test daemon, a commit or merge, a half-written file — and record or finish it before you go on. Then answer the message.

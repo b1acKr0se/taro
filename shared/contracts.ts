@@ -6,7 +6,7 @@ import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
 import { ActivitySchema } from "./activity";
-import { OutgoingAttachmentsSchema } from "./attachments";
+import { OutgoingAttachmentsSchema, OutgoingFileSchema, OutgoingImageSchema } from "./attachments";
 import { ChatMessageIdSchema } from "./pending-sends";
 import { ColumnIdSchema } from "./board";
 import { MilestoneSchema } from "./milestones";
@@ -165,8 +165,10 @@ export const compactManager = defineRpc({ name: "taro.manager.compact", input: P
 export const tellManager = defineRpc({
   name: "taro.manager.tell",
   // Images and files from the composer (TR-036); the words may be empty when there are some.
-  input: z.object({ project: ProjectNameSchema, text: z.string(), ...OutgoingAttachmentsSchema, messageId: ChatMessageIdSchema.optional() }),
-  output: ManagerResult,
+  // `answersRequest`: the chat has a permission or question pending that the words answer, so they go at once even mid-turn.
+  input: z.object({ project: ProjectNameSchema, text: z.string(), ...OutgoingAttachmentsSchema, messageId: ChatMessageIdSchema.optional(), answersRequest: z.boolean().optional() }),
+  // `queued`: the manager was working, so the message waits on the daemon for its turn end (TR-171).
+  output: ManagerResult.extend({ queued: z.boolean() }),
 });
 export const catchUp = defineRpc({ name: "taro.manager.catch-up", input: ProjectInput, output: ManagerResult });
 
@@ -369,9 +371,32 @@ const AgentInput = z.object({ agentId: z.string() });
 export const tellAgent = defineRpc({
   name: "taro.agent.tell",
   // `messageId`: the chat's id for the message, to mark it until the agent takes it up (TR-084).
-  input: z.object({ agentId: z.string(), text: z.string(), ...OutgoingAttachmentsSchema, messageId: ChatMessageIdSchema.optional() }),
-  output: Empty,
+  // `answersRequest` and `queued`: as `tellManager`'s (TR-171).
+  input: z.object({ agentId: z.string(), text: z.string(), ...OutgoingAttachmentsSchema, messageId: ChatMessageIdSchema.optional(), answersRequest: z.boolean().optional() }),
+  output: z.object({ queued: z.boolean() }),
 });
+
+/** One message of an agent's chat queue (TR-171), by the chat's id for it. */
+const QueuedMessageInput = z.object({ agentId: z.string(), messageId: z.string() });
+
+/** An agent's queued chat messages, oldest first, without their attachments' data. */
+export const listChatQueue = defineRpc({
+  name: "taro.queue.list",
+  input: AgentInput,
+  output: z.object({
+    messages: z.array(z.object({ id: z.string(), text: z.string(), at: z.string(), imageCount: z.number(), fileNames: z.array(z.string()), failed: z.string().nullable() })),
+  }),
+});
+/** Edit: the message out of the queue, whole, back to the composer. */
+export const takeQueuedMessage = defineRpc({
+  name: "taro.queue.take",
+  input: QueuedMessageInput,
+  output: z.object({ text: z.string(), images: z.array(OutgoingImageSchema), files: z.array(OutgoingFileSchema) }),
+});
+/** Send now: the message out of the queue and to the agent at once, interrupting its turn. */
+export const sendQueuedMessageNow = defineRpc({ name: "taro.queue.send-now", input: QueuedMessageInput, output: Empty });
+/** Retry: a message whose send failed loses its mark, and the queue drains if the agent is idle. */
+export const retryQueuedMessage = defineRpc({ name: "taro.queue.retry", input: QueuedMessageInput, output: Empty });
 export const nudgeAgent = defineRpc({ name: "taro.agent.nudge", input: AgentInput, output: Empty });
 export const compactAgent = defineRpc({ name: "taro.agent.compact", input: AgentInput, output: Empty });
 export const relaunchOwner = defineRpc({

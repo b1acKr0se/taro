@@ -14,6 +14,7 @@ import { TEMPLATES, fill, message, readTemplate, skillDirectory } from "./packag
 import { projectPaths, requireProjectConfig, updateProjectConfig } from "./projects";
 import { sendFromPlugin } from "./send";
 import { hasAttachments, sendWithAttachments, type Attachments } from "./uploads";
+import type { ChatQueue } from "./chat-queue";
 import { serialized } from "./serialize";
 import type { PluginState } from "./state";
 import { ensureTaroProject } from "./taro-project";
@@ -175,12 +176,23 @@ async function requireManager(paseo: PaseoApi, project: string): Promise<PaseoAg
   return agent;
 }
 
-export async function tellManager(paseo: PaseoApi, project: string, text: string, attachments: Attachments = {}): Promise<string> {
+/**
+ * Words to the manager. From its chat (`chat` given) they wait in its queue while it works (TR-171),
+ * unless they answer its pending request; anything else (Catch up, a spec change) is sent at once.
+ */
+export async function tellManager(
+  paseo: PaseoApi,
+  project: string,
+  text: string,
+  attachments: Attachments = {},
+  chat: { queue: ChatQueue; answersRequest: boolean } | null = null,
+): Promise<{ agentId: string; queued: boolean }> {
   const words = text.trim();
   if (words === "" && !hasAttachments(attachments)) throw new Error("Say something to the manager.");
   const agent = await requireManager(paseo, project);
+  if (chat !== null) return { agentId: agent.id, ...(await chat.queue.tell(paseo, agent, words, attachments, chat.answersRequest)) };
   await sendWithAttachments(paseo, agent.id, words, { ...attachments, agentMidTurn: isMidTurn(agent) });
-  return agent.id;
+  return { agentId: agent.id, queued: false };
 }
 
 /** The Compact button: the same handoff → /compact → reload pipeline as an idle compaction (TR-101), never a bare /compact. */

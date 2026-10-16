@@ -28,6 +28,11 @@ export async function sendWithoutInterrupting(paseo: PaseoApi, agentId: string, 
   await paseo.agents.ref(agentId).send(text, { ...extras, activeTurnBehavior: "steer" });
 }
 
+/** Send now (TR-171): the user's queued words cut the running turn off and start a new one, atomically in Paseo. */
+export async function sendInterrupting(paseo: PaseoApi, agentId: string, text: string, extras: SendExtras = {}): Promise<void> {
+  await paseo.agents.ref(agentId).send(text, { ...extras, activeTurnBehavior: "interrupt" });
+}
+
 /** A message the plugin itself writes (nudge, report, reload, correction). */
 export async function sendFromPlugin(paseo: PaseoApi, agentId: string, text: string): Promise<void> {
   await sendWithoutInterrupting(paseo, agentId, text, { messageId: `${PLUGIN_MESSAGE_PREFIX}${randomUUID()}` });

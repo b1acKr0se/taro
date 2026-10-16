@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { attachmentProblem, safeFileName, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
 import { paseoHome } from "./data-dir";
 import type { PaseoApi } from "./host-types";
-import { sendChatMessageOnce, sendWithoutInterrupting } from "./send";
+import { sendChatMessageOnce, sendInterrupting, sendWithoutInterrupting } from "./send";
 
 /** What the composer sends with the words: attachments, and the chat's own id for the message (TR-084). */
 export interface Attachments {
@@ -21,6 +21,8 @@ export interface Attachments {
   messageId?: string | undefined;
   /** Whether the agent was mid-turn as the message came: one sent during its compaction is handed back (TR-102). */
   agentMidTurn?: boolean | undefined;
+  /** Send now (TR-171): cut the running turn off rather than join it. */
+  interrupt?: boolean | undefined;
 }
 
 export function hasAttachments(attachments: Attachments): boolean {
@@ -28,9 +30,10 @@ export function hasAttachments(attachments: Attachments): boolean {
 }
 
 /**
- * The user's words and attachments to an agent, joining a running turn where possible. Throws a
- * sentence when the attachments are too many or too large, before writing anything; a write or the
- * send failing removes every file this call wrote, so a retry leaves no orphan copy behind.
+ * The user's words and attachments to an agent, joining a running turn where possible (or, for Send
+ * now, cutting it off). Throws a sentence when the attachments are too many or too large, before
+ * writing anything; a write or the send failing removes every file this call wrote, so a retry
+ * leaves no orphan copy behind.
  */
 export async function sendWithAttachments(paseo: PaseoApi, agentId: string, words: string, attachments: Attachments, home = paseoHome()): Promise<void> {
   // A chat message sent again under its own id (a retry, a reconnect) goes once (TR-102).
@@ -65,7 +68,8 @@ async function sendWithUploads(paseo: PaseoApi, agentId: string, words: string, 
   }
   const uploaded = writes.flatMap((write) => (write.status === "fulfilled" ? [write.value] : []));
   try {
-    await sendWithoutInterrupting(paseo, agentId, words, {
+    const send = attachments.interrupt === true ? sendInterrupting : sendWithoutInterrupting;
+    await send(paseo, agentId, words, {
       ...(images.length > 0 ? { images } : null),
       ...(uploaded.length > 0 ? { attachments: uploaded } : null),
       ...(attachments.messageId === undefined ? null : { messageId: attachments.messageId }),

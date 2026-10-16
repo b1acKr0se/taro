@@ -24,6 +24,10 @@ import {
   changeQueuedSpec,
   resolveTrackerSync as resolveTrackerSyncRpc,
   tellAgent,
+  listChatQueue,
+  takeQueuedMessage,
+  sendQueuedMessageNow,
+  retryQueuedMessage,
   checkOnboarding,
   checkPrerequisites as checkPrerequisitesRpc,
   compactManager as compactManagerRpc,
@@ -51,6 +55,7 @@ import { inboxCount } from "./shared/board";
 import { askFromRequest } from "./shared/permission-asks";
 import { ProjectSettingsSchema } from "./shared/project";
 import { Actions } from "./server/actions";
+import { ChatQueue } from "./server/chat-queue";
 import { createCrashTrail } from "./server/crash-trail";
 import { backfillCosts, recordArchivedUsage } from "./server/cost-recording";
 import { decisionsOfAgent } from "./server/agent-decisions";
@@ -90,8 +95,9 @@ export default function contribute(server: PluginServerContext) {
   const state = new PluginState();
   const stats = new Stats();
   const recovery = new Recovery(state, stats);
-  const supervisor = new Supervisor(state, stats, recovery);
-  const actions = new Actions(state, supervisor, trackers, stats, recovery);
+  const chatQueue = new ChatQueue(state);
+  const supervisor = new Supervisor(state, stats, recovery, chatQueue);
+  const actions = new Actions(state, supervisor, trackers, stats, recovery, chatQueue);
   recovery.setRelaunchOwner((paseo, project, ticket) => actions.relaunchOwner(paseo, project, ticket));
   // Each Needs-you check also records which cards wait on the user, for Stats' Waiting on you (TR-100).
   const crashTrail = createCrashTrail();
@@ -191,6 +197,22 @@ export default function contribute(server: PluginServerContext) {
   };
   const notifyTimer = setInterval(checkNotifications, 15_000);
 
+  // Chat messages queued while the plugin was down, or whose agent's turn end it missed (TR-171).
+  let sweepingQueues = false;
+  const queueTimer = setInterval(() => {
+    if (kept === null || sweepingQueues || isStopping()) return;
+    sweepingQueues = true;
+    void chatQueue
+      .sweep(kept)
+      .then((sent) => {
+        if (sent > 0) console.log(`[taro] sent ${sent} queued chat message(s) to idle agents`);
+      })
+      .catch((error: unknown) => reportFailure("[taro] chat queue sweep failed:", error))
+      .finally(() => {
+        sweepingQueues = false;
+      });
+  }, 15_000);
+
   // Idle compaction (TR-015): once a minute, so an agent is caught inside its 55–60 minute window.
   const idleAfterMs = idleCompactAfterMs(process.env.TARO_IDLE_COMPACT_AFTER_SECONDS);
   let checkingIdle = false;
@@ -274,13 +296,13 @@ export default function contribute(server: PluginServerContext) {
   server.handle(restartManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await restartManager(paseo, project)).agentId }));
   server.handle(resumeManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await resumeManager(paseo, project, state)).agentId }));
   server.handle(compactManagerRpc, async ({ project }, { paseo }) => ({ agentId: await compactManager(paseo, project, supervisor) }));
-  server.handle(tellManagerRpc, async ({ project, text, images, files, messageId }, { paseo }) => {
-    const agentId = await tellManager(paseo, project, text, { images, files, messageId });
+  server.handle(tellManagerRpc, async ({ project, text, images, files, messageId, answersRequest }, { paseo }) => {
+    const told = await tellManager(keep(paseo), project, text, { images, files, messageId }, { queue: chatQueue, answersRequest: answersRequest === true });
     actions.userToldManager(project);
-    return { agentId };
+    return told;
   });
   server.handle(catchUp, async ({ project }, { paseo }) => {
-    const agentId = await tellManager(paseo, project, await catchUpText(project));
+    const { agentId } = await tellManager(paseo, project, await catchUpText(project));
     // Asking the manager to catch up acts on a queued alert as a message does (TR-062).
     actions.userToldManager(project);
     return { agentId };
@@ -314,8 +336,17 @@ export default function contribute(server: PluginServerContext) {
   server.handle(listOpenDecisions, async ({ project }, { paseo }) => ({ decisions: await liveOpenDecisions(keep(paseo), state, project) }));
   server.handle(answeredPermissionAsks, async ({ agentId }) => ({ asks: await state.answeredPermissionAsks(agentId) }));
   server.handle(listAgentDecisions, async ({ agentId }) => ({ decisions: decisionsOfAgent(await state.allDecisions(), agentId) }));
-  server.handle(tellAgent, async ({ agentId, text, images, files, messageId }, { paseo }) => {
-    await actions.tellAgent(keep(paseo), agentId, text, { images, files, messageId });
+  server.handle(tellAgent, async ({ agentId, text, images, files, messageId, answersRequest }, { paseo }) => {
+    return actions.tellAgent(keep(paseo), agentId, text, { images, files, messageId }, answersRequest === true);
+  });
+  server.handle(listChatQueue, async ({ agentId }) => ({ messages: await chatQueue.list(agentId) }));
+  server.handle(takeQueuedMessage, async ({ agentId, messageId }) => chatQueue.take(agentId, messageId));
+  server.handle(sendQueuedMessageNow, async ({ agentId, messageId }, { paseo }) => {
+    await chatQueue.sendNow(keep(paseo), agentId, messageId);
+    return {};
+  });
+  server.handle(retryQueuedMessage, async ({ agentId, messageId }, { paseo }) => {
+    await chatQueue.retry(keep(paseo), agentId, messageId);
     return {};
   });
   server.handle(nudgeAgent, async ({ agentId }, { paseo }) => {
@@ -415,6 +446,7 @@ export default function contribute(server: PluginServerContext) {
   const removeArchiveHook = server.on("agent.archived", async ({ agent }, { paseo }) => {
     await recordArchivedUsage(paseo, stats, agent.id).catch((error: unknown) => reportFailure(`[taro] recording ${agent.id}'s cost at archive:`, error));
     await removeReloadFile(agent.id).catch((error: unknown) => reportFailure(`[taro] removing ${agent.id}'s reload file:`, error));
+    await chatQueue.forget(agent.id).catch((error: unknown) => reportFailure(`[taro] removing ${agent.id}'s chat queue:`, error));
     const withdrawn = await supervisor.withdrawDecisionsOf(agent.id).catch((error: unknown) => {
       reportFailure(`[taro] withdrawing ${agent.id}'s decisions:`, error);
       return 0;
@@ -473,6 +505,7 @@ export default function contribute(server: PluginServerContext) {
     trackers.stop();
     clearInterval(idleTimer);
     clearInterval(notifyTimer);
+    clearInterval(queueTimer);
     clearInterval(backstopTimer);
     recovery.dispose();
     removeTurnHook();

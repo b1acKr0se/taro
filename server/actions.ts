@@ -76,6 +76,7 @@ import { runCommand } from "./process";
 import { serialized } from "./serialize";
 import { sendFromPlugin, sendWithoutInterrupting } from "./send";
 import { hasAttachments, sendWithAttachments, type Attachments } from "./uploads";
+import type { ChatQueue } from "./chat-queue";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import { identityFromLabels, lastHumanMessageAt, managerHandoffPath, type Supervisor } from "./supervision";
@@ -123,6 +124,8 @@ export class Actions {
     private readonly trackers: TrackerWatch,
     private readonly stats: Stats,
     private readonly recovery: Recovery,
+    /** Without one (tests of other paths), a chat message is sent at once, as before TR-171. */
+    private readonly queue: ChatQueue | null = null,
   ) {}
 
   async answerDecision(paseo: PaseoApi, key: string, label: string | null, text: string, from: "screen" | "tab" = "screen"): Promise<void> {
@@ -164,12 +167,15 @@ export class Actions {
     }
   }
 
-  async tellAgent(paseo: PaseoApi, agentId: string, text: string, attachments: Attachments = {}): Promise<void> {
+  /** A chat message: queued while the agent works (TR-171), unless it answers the agent's pending request. */
+  async tellAgent(paseo: PaseoApi, agentId: string, text: string, attachments: Attachments = {}, answersRequest = false): Promise<{ queued: boolean }> {
     const words = text.trim();
     if (words === "" && !hasAttachments(attachments)) throw new Error("Say something first.");
     const agent = await fetchLiveAgent(paseo, agentId);
     if (agent === null) throw new Error("That agent is no longer running.");
+    if (this.queue !== null) return this.queue.tell(paseo, agent, words, attachments, answersRequest);
     await sendWithAttachments(paseo, agentId, words, { ...attachments, agentMidTurn: isMidTurn(agent) });
+    return { queued: false };
   }
 
   async nudge(paseo: PaseoApi, agentId: string): Promise<void> {
