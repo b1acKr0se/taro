@@ -1,8 +1,8 @@
 /**
  * A card that has been dealt with (TR-149), left in the chat where the live card was. TR-159 drew it as
  * one quiet line rather than a card, so it reads as a record between messages: a toned mark, how it
- * ended, when, and what was asked; the user's own words quoted under it. One style for plans,
- * deliveries, questions and permission asks.
+ * ended, when, and what was asked; the user's own words quoted under it. TR-163 put it in a grey dashed
+ * box. One style for plans, deliveries, questions and permission asks.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
@@ -63,7 +63,9 @@ export function FinishedCard({
       </Pressable>
     );
   return (
-    <View style={{ alignSelf: "stretch", gap: SPACE.xs }}>
+    // TR-163: a grey dashed box sets the record apart from the messages. The same on all four sides, as
+    // React Native dashes a border reliably only then; the quote's one-sided bar inside stays solid.
+    <View style={{ alignSelf: "stretch", gap: SPACE.xs, borderWidth: 1, borderStyle: "dashed", borderColor: colors.foregroundMuted, borderRadius: 8, paddingVertical: SPACE.sm, paddingHorizontal: SPACE.md }}>
       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm }}>
         {/* Grouped for a screen reader apart from the link, which must stay reachable. */}
         <View accessible accessibilityLabel={label} style={{ flex: 1, flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm }}>
