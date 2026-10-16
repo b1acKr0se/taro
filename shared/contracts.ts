@@ -452,7 +452,8 @@ export const loadStats = defineRpc({
 export const readImageRpc = defineRpc({
   name: "taro.image.read",
   input: z.object({ path: z.string() }),
-  output: z.object({ image: z.object({ mimeType: z.string(), data: z.string() }).nullable() }),
+  // The size in pixels from the file's header, so the phone need not decode the image to learn its shape (TR-164); absent when unreadable.
+  output: z.object({ image: z.object({ mimeType: z.string(), data: z.string(), width: z.number().int().positive().optional(), height: z.number().int().positive().optional() }).nullable() }),
 });
 
 export const SentImagesMessageSchema = z.object({
