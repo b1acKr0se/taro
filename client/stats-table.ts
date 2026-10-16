@@ -1,8 +1,10 @@
 /**
  * How the Stats table meets its pane (TR-107): it fits whole when the pane is wide enough, the
  * ticket column taking the spare width; otherwise it scrolls sideways under a pinned ticket column,
- * with a fade on the side that has more columns and buttons that page through them.
+ * with a fade on the side that has more columns and buttons that page through them. Its rows come in
+ * pages (TR-155).
  */
+import { parentOf } from "../shared/stats";
 
 /** Within this many pixels of an end counts as at it: a scroll position can stop a fraction short. */
 const EDGE_SLACK = 1;
@@ -54,4 +56,50 @@ export function pageOffset({ offset, viewport, content, pinned, direction, colum
   const within = ahead.filter((start) => (direction === 1 ? start <= target : start >= target));
   const pick = within.length > 0 ? within[direction === 1 ? within.length - 1 : 0] : ahead[direction === 1 ? 0 : ahead.length - 1];
   return Math.min(Math.max(pick ?? (direction === 1 ? end : 0), 0), end);
+}
+
+/** Tickets a Stats page shows (TR-155). */
+export const STATS_PAGE_SIZE = 25;
+
+function topLevelOf(ticket: string): string {
+  let top = ticket;
+  for (let parent = parentOf(top); parent !== null; parent = parentOf(top)) top = parent;
+  return top;
+}
+
+/**
+ * The table's tickets (in its order, a parent's children right after it) in pages of at most `size`.
+ * A top-level ticket and its descendants are never parted: a family that would cross a page's end
+ * starts the next page, and one bigger than a page has a page of its own.
+ */
+export function ticketPages(tickets: readonly string[], size: number): string[][] {
+  const families: string[][] = [];
+  for (const ticket of tickets) {
+    const last = families[families.length - 1];
+    if (last !== undefined && topLevelOf(last[0] ?? "") === topLevelOf(ticket)) last.push(ticket);
+    else families.push([ticket]);
+  }
+  const pages: string[][] = [];
+  let page: string[] = [];
+  for (const family of families) {
+    if (page.length > 0 && page.length + family.length > size) {
+      pages.push(page);
+      page = [];
+    }
+    page.push(...family);
+  }
+  if (page.length > 0) pages.push(page);
+  return pages;
+}
+
+/** The tickets a page shows, counted from 1 across every page, and how many there are in all. */
+export function pageRange(pages: readonly (readonly string[])[], index: number): { first: number; last: number; total: number } {
+  const before = pages.slice(0, index).reduce((count, page) => count + page.length, 0);
+  const total = pages.reduce((count, page) => count + page.length, 0);
+  return { first: before + 1, last: before + (pages[index]?.length ?? 0), total };
+}
+
+/** A page index within `count` pages: the list can shrink under the page the user is on. */
+export function clampPage(index: number, count: number): number {
+  return Math.min(Math.max(index, 0), Math.max(count - 1, 0));
 }

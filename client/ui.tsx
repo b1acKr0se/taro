@@ -31,6 +31,7 @@ export function IconButton({
   showLabel = false,
   accessibilityLabel,
   grow = false,
+  iconAfterLabel = false,
   state,
   tip,
 }: {
@@ -49,6 +50,8 @@ export function IconButton({
   accessibilityLabel?: string;
   /** Takes a share of its row's spare width, its content centred: one of a pair that wraps to equal full-width rows. */
   grow?: boolean;
+  /** Draws a shown label first, its icon after it: Next ›, where the arrow points the way it goes. */
+  iconAfterLabel?: boolean;
   /**
    * An explanation shown elsewhere as a tooltip (TR-128): `onShow(true)` while the pointer is over the button
    * or, with no pointer (a phone), while it is held down, which then does not press it; `text` is read out as its hint.
@@ -118,7 +121,7 @@ export function IconButton({
       onLongPress={tip === undefined ? undefined : () => tip.onShow(true)}
       // A click under the pointer keeps the tooltip it points at; a finger lifted ends the hold.
       onPressOut={tip === undefined ? undefined : () => (hovering.current ? undefined : tip.onShow(false))}
-      style={styles.button}
+      style={[styles.button, iconAfterLabel ? { flexDirection: "row-reverse" as const } : null]}
     >
       {busy ? (
         <Spinner size={BUTTON.iconSize} color={color} />

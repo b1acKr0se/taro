@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { pageOffset, scrollEdges, tableFit, trailingSpace } from "./stats-table";
+import { clampPage, pageOffset, pageRange, scrollEdges, tableFit, ticketPages, trailingSpace } from "./stats-table";
 
 describe("tableFit", () => {
   const columns = { side: 16, ticketMinWidth: 230, rest: 844 };
@@ -97,5 +97,60 @@ describe("pageOffset", () => {
 
   it("stays put when the table fits", () => {
     expect(pageOffset({ viewport: 1300, content: 1200, pinned: 246, columnStarts: [0, 120], offset: 0, direction: 1 })).toBe(0);
+  });
+});
+
+describe("ticketPages", () => {
+  const ids = (count: number, from = count) => Array.from({ length: count }, (_, index) => `TR-${from - index}`);
+
+  it("has no page without tickets", () => {
+    expect(ticketPages([], 25)).toEqual([]);
+  });
+
+  it("splits tickets into pages of the page size, the last one shorter", () => {
+    const pages = ticketPages(ids(60), 25);
+    expect(pages.map((page) => page.length)).toEqual([25, 25, 10]);
+    expect(pages[1]?.[0]).toBe("TR-35");
+  });
+
+  it("makes no empty page at an exact multiple", () => {
+    expect(ticketPages(ids(50), 25).map((page) => page.length)).toEqual([25, 25]);
+  });
+
+  it("moves a parent with its children to the next page rather than part them", () => {
+    // TR-3 and its children would cross the end of a page of 4.
+    const pages = ticketPages(["TR-5", "TR-4", "TR-3", "TR-3.1", "TR-3.2", "TR-2", "TR-1"], 4);
+    expect(pages).toEqual([["TR-5", "TR-4"], ["TR-3", "TR-3.1", "TR-3.2", "TR-2"], ["TR-1"]]);
+  });
+
+  it("keeps grandchildren with their top-level ticket", () => {
+    expect(ticketPages(["TR-2", "TR-1", "TR-1.1", "TR-1.1.1"], 2)).toEqual([["TR-2"], ["TR-1", "TR-1.1", "TR-1.1.1"]]);
+  });
+
+  it("gives a family bigger than a page a page of its own", () => {
+    expect(ticketPages(["TR-2", "TR-1", "TR-1.1", "TR-1.2"], 2)).toEqual([["TR-2"], ["TR-1", "TR-1.1", "TR-1.2"]]);
+  });
+
+  it("keeps a child whose parent is not listed on one page with its siblings", () => {
+    expect(ticketPages(["TR-1.1", "TR-1.2", "TR-0"], 2)).toEqual([["TR-1.1", "TR-1.2"], ["TR-0"]]);
+  });
+});
+
+describe("pageRange", () => {
+  const pages = [["TR-9", "TR-8"], ["TR-7", "TR-7.1", "TR-6"], ["TR-5"]];
+
+  it("counts the tickets before a page, so the range follows pages of uneven length", () => {
+    expect(pageRange(pages, 0)).toEqual({ first: 1, last: 2, total: 6 });
+    expect(pageRange(pages, 1)).toEqual({ first: 3, last: 5, total: 6 });
+    expect(pageRange(pages, 2)).toEqual({ first: 6, last: 6, total: 6 });
+  });
+});
+
+describe("clampPage", () => {
+  it("keeps a page within the pages there are, the first when there are none", () => {
+    expect(clampPage(1, 3)).toBe(1);
+    expect(clampPage(5, 3)).toBe(2);
+    expect(clampPage(-1, 3)).toBe(0);
+    expect(clampPage(2, 0)).toBe(0);
   });
 });
