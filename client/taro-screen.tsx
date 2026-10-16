@@ -41,6 +41,7 @@ import { CreationProgress, NewProject, resetNewProject, returnToNewProject, useC
 import { afterCreation, resetCreation } from "./project-creation";
 import { ProjectSetup } from "./project-setup";
 import { ReplaceFirstDialog } from "./replace-first-dialog";
+import { ScreenLayerHost } from "./screen-layer";
 import { useProjects, useRefreshProjects } from "./queries";
 import { paneGutter, SPACE } from "./spacing";
 import { StatsView } from "./stats-view";
@@ -384,16 +385,19 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
 
   return (
     <PlanNavigation.Provider value={viewPlan}>
-      <View style={styles.root}>
-        {/* Inside a ticket on a phone the conversation gets the height; Back returns to the tabs (TR-031). */}
-        {layout.compact && showing === "project" && ticketOpen ? null : tabs}
-        <CrashCard theme={theme} compact={layout.compact} />
-        <View style={styles.body}>
-          {projects.error !== null && projects.data === undefined ? <Text style={styles.error}>{errorText(projects.error)}</Text> : null}
-          {body}
-          {kept}
+      {/* Above every pane: the manager's replace-first dialog (TR-161). */}
+      <ScreenLayerHost>
+        <View style={styles.root}>
+          {/* Inside a ticket on a phone the conversation gets the height; Back returns to the tabs (TR-031). */}
+          {layout.compact && showing === "project" && ticketOpen ? null : tabs}
+          <CrashCard theme={theme} compact={layout.compact} />
+          <View style={styles.body}>
+            {projects.error !== null && projects.data === undefined ? <Text style={styles.error}>{errorText(projects.error)}</Text> : null}
+            {body}
+            {kept}
+          </View>
         </View>
-      </View>
+      </ScreenLayerHost>
     </PlanNavigation.Provider>
   );
 }
