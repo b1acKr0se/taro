@@ -229,8 +229,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
     }),
   );
   const page = pageColumns(placed, paging.limits, paging.include);
-  const count = page.kept.some((entry) => entry.column === "queued") ? await queueRecount(project, paths.tracker, tickets, agents, headroom) : null;
-  const managerRunning = agents.some((agent) => agent.labels[TARO_LABELS.role] === "manager" && agent.status !== "closed");
+  const queue = page.kept.some((entry) => entry.column === "queued") ? await queueRecount(project, paths.tracker, tickets, agents, headroom) : null;
 
   const childrenOf = new Map<string, { id: string; title: string; status: string }[]>();
   for (const ticket of tickets) {
@@ -254,7 +253,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
               dependencies: ticket.dependencies,
               holdReason: holdReason(pageFacts?.notes ?? null),
               tickets,
-              slot: count === null ? null : queuedSlot(count, ticket.id, managerRunning),
+              slot: queue === null ? null : queuedSlot(queue.count, ticket.id, queue.managerRunning),
             })
           : null;
       const evidence = ticket.status === "Awaiting acceptance" && facts !== null ? await judgeTicketEvidence(project, ticket.id, facts.evidenceRecord, investigation) : null;
@@ -324,7 +323,8 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
 
 /**
  * The plugin's recount of the queue (TR-062), as the manager's wake-ups give it, for the slot a startable
- * Queued card waits for (TR-142). Null for a project without a config.
+ * Queued card waits for (TR-142), and whether the project's manager, the agent the wake-ups go to, is
+ * live to fill a free slot. Null for a project without a config.
  */
 async function queueRecount(
   project: string,
@@ -332,13 +332,15 @@ async function queueRecount(
   tickets: readonly { id: string; status: string; parentTaskId: string | null; dependencies: readonly string[]; updatedAt: string | null }[],
   agents: readonly PaseoAgent[],
   headroom: { current: number; max: number } | null,
-): Promise<Recount | null> {
+): Promise<{ count: Recount; managerRunning: boolean } | null> {
   const config = await readProjectConfig(project).catch(() => null);
   if (config === null) return null;
   const queued = await Promise.all(
     queuedTickets(tickets).map(async (ticket) => ({ id: ticket.id, dependencies: ticket.dependencies, notes: (await cachedRecordedFacts(trackerPath, ticket.id, ticket.updatedAt)).notes })),
   );
-  return recount({ owners: agents, tickets, queued, cap: config.maxParallelOwners, threads: headroom === null ? null : { current: headroom.current, max: headroom.max } });
+  const count = recount({ owners: agents, tickets, queued, cap: config.maxParallelOwners, threads: headroom === null ? null : { current: headroom.current, max: headroom.max } });
+  const managerRunning = config.managerAgentId !== "" && agents.some((agent) => agent.id === config.managerAgentId && agent.status !== "closed");
+  return { count, managerRunning };
 }
 
 /** A ticket's pause (TR-088) and whether Pause is offered, from its recorded facts and whether its owner is alive. */

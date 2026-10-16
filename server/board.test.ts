@@ -201,7 +201,7 @@ describe("loadBoard", () => {
   });
 
   it("says a startable Queued card waits for an owner slot from the plugin's recount, and no other card (TR-142)", async () => {
-    vi.mocked(readProjectConfig).mockResolvedValue({ maxParallelOwners: 2 } as unknown as Awaited<ReturnType<typeof readProjectConfig>>);
+    vi.mocked(readProjectConfig).mockResolvedValue({ maxParallelOwners: 2, managerAgentId: "manager" } as unknown as Awaited<ReturnType<typeof readProjectConfig>>);
     vi.mocked(readHeadroom).mockResolvedValue({ current: 900, max: 2048, high: false, highSince: null });
     vi.mocked(listTickets).mockResolvedValue([
       ticket("TR-1", "In Progress"),
@@ -227,12 +227,20 @@ describe("loadBoard", () => {
     expect(waits["TR-1"]).toBeNull();
   });
 
-  it("says whether a live manager is there to fill a free slot", async () => {
-    vi.mocked(readProjectConfig).mockResolvedValue({ maxParallelOwners: 3 } as unknown as Awaited<ReturnType<typeof readProjectConfig>>);
+  it("says whether the project's manager is live to fill a free slot: closed, another manager-labelled agent, or none recorded is not", async () => {
     vi.mocked(listTickets).mockResolvedValue([ticket("TR-3", "Queued")] as unknown as Awaited<ReturnType<typeof listTickets>>);
-    vi.mocked(projectAgents).mockResolvedValue([{ ...agent("manager", "manager", "TR-0", "2026-10-13T14:40:00Z"), status: "closed" } as PaseoAgent]);
-    const board = await loadBoard({} as PaseoApi, state([]), "taro");
-    expect(board.cards[0]?.queuedWait?.slot).toEqual({ running: [], cap: 3, startable: 1, threads: null, managerRunning: false });
+    const managerRunning = async (managerAgentId: string, agents: PaseoAgent[]) => {
+      invalidateBoards();
+      vi.mocked(readProjectConfig).mockResolvedValue({ maxParallelOwners: 3, managerAgentId } as unknown as Awaited<ReturnType<typeof readProjectConfig>>);
+      vi.mocked(projectAgents).mockResolvedValue(agents);
+      return (await loadBoard({} as PaseoApi, state([]), "taro")).cards[0]?.queuedWait?.slot?.managerRunning;
+    };
+    const manager = agent("manager", "manager", "TR-0", "2026-10-13T14:40:00Z");
+    expect(await managerRunning("manager", [manager])).toBe(true);
+    expect(await managerRunning("manager", [{ ...manager, status: "closed" } as PaseoAgent])).toBe(false);
+    expect(await managerRunning("manager", [])).toBe(false);
+    expect(await managerRunning("other", [manager])).toBe(false);
+    expect(await managerRunning("", [manager])).toBe(false);
   });
 
   it("gives no slot without a project config", async () => {
