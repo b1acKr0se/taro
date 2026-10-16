@@ -13,9 +13,9 @@ import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, huma
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question" },
+  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question", midTurnUnanswered: "mid-turn" },
   skillDirectory: async () => "/skill",
-  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : `${path}:${values.ticket ?? ""}`),
+  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : path === "mid-turn" ? `mid-turn:${values.messages}` : `${path}:${values.ticket ?? ""}`),
 }));
 vi.mock("./projects", () => ({ readProjectConfig: async () => null, projectPaths: async () => ({ tracker: "/tracker" }) }));
 vi.mock("./tickets", () => ({ viewTicket: vi.fn(), endDelivery: vi.fn(async () => true) }));
@@ -1027,5 +1027,85 @@ describe("Supervisor.onTurnEnded records the agent's cost (TR-097)", () => {
   it("passes an empty reading when Paseo has no usage (after a daemon restart)", async () => {
     const call = await endTurn(subagent);
     expect(call[4]).toEqual({ costUsd: null, contextTokens: null, contextMaxTokens: null });
+  });
+});
+
+describe("Supervisor.onTurnEnded reminds about a message from mid-turn (TR-168)", () => {
+  const QUESTION = "Would we need to migrate old pause tickets?";
+  const agentOf = (role: string) => ({
+    id: `${role}-1`,
+    provider: "claude",
+    model: "sonnet",
+    title: "TR-9 · x",
+    status: "idle",
+    labels: { "taro.project": "taro", "taro.role": role, ...(role === "manager" ? {} : { "taro.ticket": "TR-9" }) },
+  });
+
+  function supervisor(): Supervisor {
+    const agents: Record<string, AgentState> = {};
+    const state = {
+      allDecisions: async () => [],
+      updateDecisions: async <T>(change: (decisions: never[]) => T) => change([]),
+      agent: async (agentId: string) => agents[agentId] ?? null,
+      updateAgent: async <T>(agentId: string, initial: () => AgentState, change: (record: AgentState) => T) => {
+        const record = agents[agentId] ?? initial();
+        agents[agentId] = record;
+        return change(record);
+      },
+    } as unknown as PluginState;
+    const stats = { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats;
+    return new Supervisor(state, stats, recovery);
+  }
+
+  /** Paseo's projected page: each item with its turn id, as `fetchAgentTimeline` returns it. */
+  function paseoWith(entries: { item: unknown; turnId?: string }[]): PaseoApi {
+    return { agents: { ref: () => ({ timeline: { refetch: async () => ({ entries, hasOlder: false, startCursor: null }) } }) } } as unknown as PaseoApi;
+  }
+
+  const opening = { type: "user_message", text: "Plan TR-9", clientMessageId: "taro-1" };
+  const steered = { type: "user_message", text: QUESTION, clientMessageId: "chat-abc" };
+  const shell = { type: "tool_call", callId: "c1", name: "shell", status: "completed" };
+  const silent = { type: "assistant_message", text: "Plan written.\n\nwaiting: approval of the TR-9 plan" };
+  const answered = { type: "assistant_message", text: `> ${QUESTION}\n\nNo: old tickets keep working.\n\nwaiting: approval of the TR-9 plan` };
+  const completed = { kind: "completed" } as unknown as TurnOutcome;
+  const reminders = () => vi.mocked(sendFromPlugin).mock.calls.filter(([, , text]) => text.startsWith("mid-turn:"));
+
+  async function endTurn(role: string, closing: unknown, turnIds: [string, string] = ["foreground-turn-2", "foreground-turn-2"]): Promise<void> {
+    const agent = agentOf(role);
+    vi.mocked(fetchLiveAgent).mockResolvedValue(agent as unknown as PaseoAgent);
+    const items = [opening, shell, steered, shell, closing];
+    const entries = items.map((item, index) => ({ item, turnId: index < 2 ? turnIds[0] : turnIds[1] }));
+    await supervisor().onTurnEnded(paseoWith(entries), { id: agent.id, parentAgentId: null } as unknown as HookAgent, completed, items as unknown as TimelineItem[], "foreground-turn-2", undefined);
+  }
+
+  beforeEach(() => {
+    vi.mocked(sendFromPlugin).mockClear();
+    vi.mocked(viewTicket).mockResolvedValue({ status: "Planning", implementationNotes: "", labels: [] } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+  });
+
+  it.each(["owner", "manager"])("reminds the %s once, quoting the words, when nothing after them quotes them", async (role) => {
+    await endTurn(role, silent);
+    expect(reminders().map(([, id, text]) => [id, text])).toEqual([[`${role}-1`, `mid-turn:> ${QUESTION}`]]);
+    expect(vi.mocked(sendFromPlugin).mock.calls.filter(([, , text]) => text.startsWith("nudge"))).toEqual([]);
+  });
+
+  it("sends nothing when the reply quotes the message", async () => {
+    await endTurn("owner", answered);
+    expect(reminders()).toEqual([]);
+  });
+
+  it("sends nothing when the message opened its own turn", async () => {
+    await endTurn("owner", silent, ["foreground-turn-1", "foreground-turn-2"]);
+    expect(reminders()).toEqual([]);
+  });
+
+  it("sends nothing to a subagent: its next turn would deliver its report again", async () => {
+    await endTurn("implementer", silent);
+    expect(reminders()).toEqual([]);
+  });
+
+  it("sends the reminder alone when the turn also ended without a status line: it asks for one", async () => {
+    await endTurn("owner", { type: "assistant_message", text: "Plan written." });
+    expect(vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text)).toEqual([`mid-turn:> ${QUESTION}`]);
   });
 });

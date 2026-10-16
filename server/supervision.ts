@@ -8,6 +8,7 @@ import { join } from "node:path";
 
 import { deliveryEndedRecord, deliveryTakenBackRecord, questionEndingDelivery, questionOpenAtDelivery } from "../shared/delivery-end";
 import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compaction";
+import { midTurnMessages, quotedForReminder, turnEntries, unansweredMessages, type MidTurnEntry } from "../shared/mid-turn";
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
 import { asPlanningQuestion, asStored, planningTicket } from "../shared/planning-questions";
@@ -126,6 +127,28 @@ async function latestTurnItems(paseo: PaseoApi, agentId: string): Promise<Timeli
     items = [...page.entries.map((entry) => entry.item), ...items];
   }
   return items;
+}
+
+/**
+ * The entries of turn `turnId`, from Paseo's projected timeline (the hook's items carry no turn ids),
+ * paging back while the turn reaches a page's start; bounded like `latestTurnItems`. Null when unread.
+ */
+async function readTurn(paseo: PaseoApi, agentId: string, turnId: string): Promise<MidTurnEntry[] | null> {
+  const timeline = paseo.agents.ref(agentId).timeline;
+  let page = await timeline.refetch({ direction: "tail", limit: 60, projection: "projected" }).catch(() => null);
+  if (page === null) return null;
+  // Only the fields read here; some timeline items type their text otherwise.
+  const asEntries = (from: readonly unknown[]): MidTurnEntry[] => from as MidTurnEntry[];
+  let entries = asEntries(page.entries);
+  let turn = turnEntries(entries, turnId);
+  for (let older = 0; older < 10 && !turn.complete; older++) {
+    if (!page.hasOlder || page.startCursor === null) break;
+    page = await timeline.refetch({ direction: "before", cursor: page.startCursor, limit: 60, projection: "projected" }).catch(() => null);
+    if (page === null) return null;
+    entries = [...asEntries(page.entries), ...entries];
+    turn = turnEntries(entries, turnId);
+  }
+  return turn.entries;
 }
 
 /**
@@ -272,11 +295,13 @@ export class Supervisor {
       await sendFromPlugin(paseo, live.id, await reloadText(identity));
       return;
     }
-    if (identity.role !== "owner") return;
-    if (autoCompactedThisTurn(timeline)) {
+    if (identity.role === "owner" && autoCompactedThisTurn(timeline)) {
       await sendFromPlugin(paseo, live.id, await reloadText(identity));
       return;
     }
+    // Before the stall nudge: the reminder asks for a status line too, and the next turn no longer holds the message.
+    if (outcome.kind === "completed" && (await this.remindAboutMidTurnMessages(paseo, live.id, timeline, turnId))) return;
+    if (identity.role !== "owner") return;
 
     if (outcome.kind === "completed") {
       const stalled = (status === null || status.state === "working") && !openBlocking;
@@ -348,6 +373,22 @@ export class Supervisor {
   /** An archived agent never reads an answer, whoever archived it: the plugin, the user, the CLI. */
   async withdrawDecisionsOf(agentId: string): Promise<number> {
     return this.state.updateDecisions((stored) => withdrawOpenDecisions(stored, (decision) => decision.agentId === agentId, true));
+  }
+
+  /**
+   * The user wrote while the agent worked and nothing it wrote after quotes their words (TR-168): it is
+   * shown the words once, as the next turn no longer holds them. Owners and the manager only: a
+   * subagent's next turn would deliver its report again. A turn that cannot be read is let be.
+   */
+  private async remindAboutMidTurnMessages(paseo: PaseoApi, agentId: string, timeline: readonly TimelineItem[], turnId: string | null): Promise<boolean> {
+    if (turnId === null) return false;
+    const turn = await readTurn(paseo, agentId, turnId);
+    if (turn === null) return false;
+    const unanswered = unansweredMessages(timeline, midTurnMessages(turn, (item) => humanMessages([item as TimelineItem]).length > 0));
+    if (unanswered.length === 0) return false;
+    console.log(`[taro] ${agentId}: reminding it of ${unanswered.length} message(s) from mid-turn`);
+    await sendFromPlugin(paseo, agentId, await message(TEMPLATES.midTurnUnanswered, { messages: quotedForReminder(unanswered) }));
+    return true;
   }
 
   /**
