@@ -139,7 +139,12 @@ export function OldPlanSheet({
         {view.words === null ? null : <Text style={[small, { color: colors.foregroundMuted, fontStyle: "italic" }]}>{`“${view.words}”`}</Text>}
         <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: SPACE.sm }}>
           {caption === null ? null : <Text style={[small, { flexShrink: 1, color: colors.foregroundMuted }]}>{caption}</Text>}
-          {onOpenCurrent === null ? null : <IconButton icon="Map" label="Open current plan" showLabel theme={theme} onPress={onOpenCurrent} />}
+          {/* On the right in every case: beside the caption, under it when it wraps, alone when there is none. */}
+          {onOpenCurrent === null ? null : (
+            <View style={{ marginLeft: "auto" }}>
+              <IconButton icon="Map" label="Open current plan" showLabel theme={theme} onPress={onOpenCurrent} />
+            </View>
+          )}
         </View>
       </View>
       <ScrollView style={{ flexGrow: 0, flexShrink: 1 }} contentContainerStyle={{ padding: SPACE.lg }}>
