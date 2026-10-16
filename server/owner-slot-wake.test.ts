@@ -2,6 +2,8 @@
 // child reaching Done never claims a slot, since children have no owner of their own.
 // TR-043: the statuses acted on survive a restart, so a change made while the plugin was down
 // (the merge at an accept reloads it as the ticket goes Done) still wakes the manager.
+// TR-147: a ticket with no parent that becomes Done wakes the manager once, with what merged, even
+// when nothing can start, so it can do its after-Done duties.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Actions } from "./actions";
@@ -54,6 +56,8 @@ const manager = { id: "manager", status: "idle", labels: {}, workspaceId: "ws-ma
 let live: PaseoAgent[];
 let told: Record<string, string>[];
 let dependencies: Record<string, string[]>;
+/** Each ticket's notes, where its ACCEPTANCE record is. */
+let notes: Record<string, string>;
 let actions: Actions;
 /** The plugin state's stored statuses, kept across the `Actions` of one test as a disk would be. */
 let stored: Map<string, ReadonlyMap<string, string>>;
@@ -76,6 +80,7 @@ beforeEach(() => {
   live = [];
   told = [];
   dependencies = {};
+  notes = {};
   stored = new Map();
   recorded = new Map();
   held = [];
@@ -84,16 +89,16 @@ beforeEach(() => {
   vi.mocked(projectArchivedAgents).mockImplementation(async () => []);
   vi.mocked(listTaroAgents).mockImplementation(async () => [...live]);
   vi.mocked(fetchLiveAgent).mockImplementation(async (_paseo, id) => (id === "manager" ? manager : live.find((candidate) => candidate.id === id) ?? null));
-  vi.mocked(viewTicket).mockImplementation(async (_tracker, id) => ({ dependencies: dependencies[id] ?? [] }) as unknown as Awaited<ReturnType<typeof viewTicket>>);
+  vi.mocked(viewTicket).mockImplementation(async (_tracker, id) => ({ dependencies: dependencies[id] ?? [], implementationNotes: notes[id] ?? null }) as unknown as Awaited<ReturnType<typeof viewTicket>>);
   actions = start();
 });
 
-/** A told message's values, with the recount's (TR-062) alongside the message's own. */
+/** A told message's values, with the recount's (TR-062) and the merge (TR-147) alongside the message's own. */
 function flatten(text: string): Record<string, string> {
-  const { recount, ...values } = JSON.parse(text) as Record<string, string>;
-  if (recount === undefined) return values;
-  const { path: _path, ...counted } = JSON.parse(recount) as Record<string, string>;
-  return { ...values, ...counted };
+  const { recount, afterDone, ...values } = JSON.parse(text) as Record<string, string>;
+  const { path: _recountPath, ...counted } = recount === undefined ? {} : (JSON.parse(recount) as Record<string, string>);
+  const { path: _afterDonePath, ...merge } = afterDone === undefined || afterDone === "" ? {} : (JSON.parse(afterDone) as Record<string, string>);
+  return { ...values, ...counted, ...merge };
 }
 
 /** A plugin instance, as after a start or reload: a fresh `Actions` over the same stored state. */
@@ -191,9 +196,9 @@ describe("a freed owner slot wakes the manager", () => {
     expect(told).toEqual([]);
   });
 
-  it("does not wake again for a slot when an accepted ticket goes from Awaiting acceptance to Done", async () => {
+  it("does not wake again for a slot when an accepted ticket goes from Awaiting acceptance to Done, only to say it is Done", async () => {
     await move([ticket("DM-1", "Awaiting acceptance"), ticket("DM-2", "Queued")], [ticket("DM-1", "Done"), ticket("DM-2", "Queued")]);
-    expect(told).toEqual([]);
+    expect(told.map((entry) => [entry.path, entry.ticket])).toEqual([["messages/ticket-done.md", "DM-1"]]);
   });
 
   it("still wakes it for tickets that depended on the accepted one", async () => {
@@ -219,6 +224,91 @@ describe("a freed owner slot wakes the manager", () => {
   });
 });
 
+describe("a ticket becoming Done wakes the manager once (TR-147)", () => {
+  const accepted = "ACCEPTANCE 2026-10-16T03:01Z — user: \"I accept DM-1.\" squash; accepted and closed by the plugin; merge: merged 0a1b2c3";
+
+  it("tells it with what merged when nothing can start: no dependents and every slot full (the TR-139 case)", async () => {
+    notes = { "DM-1": accepted };
+    live = [agent("two", "DM-2", "owner"), agent("three", "DM-3", "owner")];
+    await move(
+      [ticket("DM-1", "Awaiting acceptance"), ticket("DM-2", "In Progress"), ticket("DM-3", "In Progress"), ticket("DM-4", "Queued")],
+      [ticket("DM-1", "Done"), ticket("DM-2", "In Progress"), ticket("DM-3", "In Progress"), ticket("DM-4", "Queued")],
+    );
+    expect(told).toEqual([{ path: "messages/ticket-done.md", ticket: "DM-1", merge: "merged 0a1b2c3" }]);
+  });
+
+  it("tells it with nothing queued", async () => {
+    notes = { "DM-1": accepted };
+    await move([ticket("DM-1", "Awaiting acceptance")], [ticket("DM-1", "Done")]);
+    expect(told).toEqual([{ path: "messages/ticket-done.md", ticket: "DM-1", merge: "merged 0a1b2c3" }]);
+  });
+
+  it("says so when the ticket has no ACCEPTANCE record (set Done by hand)", async () => {
+    await move([ticket("DM-1", "In Progress")], [ticket("DM-1", "Done")]);
+    expect(told).toEqual([{ path: "messages/ticket-done.md", ticket: "DM-1", merge: "no ACCEPTANCE record" }]);
+  });
+
+  it("puts the merge into the one dependency-cleared wake-up when dependents cleared, never a second message", async () => {
+    notes = { "DM-1": accepted };
+    dependencies = { "DM-2": ["DM-1"] };
+    await move([ticket("DM-1", "Awaiting acceptance"), ticket("DM-2", "Queued")], [ticket("DM-1", "Done"), ticket("DM-2", "Queued")]);
+    expect(told.map((entry) => [entry.path, entry.ticket, entry.dependents, entry.merge])).toEqual([["messages/dependency-cleared.md", "DM-1", "DM-2", "merged 0a1b2c3"]]);
+  });
+
+  it("puts the merge into the one wake-up for a slot freed straight into Done", async () => {
+    notes = { "DM-1": accepted };
+    await move([ticket("DM-1", "In Progress"), ticket("DM-2", "Queued")], [ticket("DM-1", "Done"), ticket("DM-2", "Queued")]);
+    expect(told.map((entry) => [entry.path, entry.ticket, entry.startable, entry.merge])).toEqual([["messages/dependency-cleared.md", "DM-1", "DM-2", "merged 0a1b2c3"]]);
+  });
+
+  it("leaves the merge out of a wake-up for Awaiting acceptance", async () => {
+    await move([ticket("DM-1", "Reviewing"), ticket("DM-2", "Queued")], [ticket("DM-1", "Awaiting acceptance"), ticket("DM-2", "Queued")]);
+    expect(told.map((entry) => [entry.path, entry.merge])).toEqual([["messages/dependency-cleared.md", undefined]]);
+  });
+
+  it("stays quiet for a child reaching Done with no dependents", async () => {
+    await move([ticket("DM-1", "In Progress"), ticket("DM-1.1", "In Progress", "DM-1")], [ticket("DM-1", "In Progress"), ticket("DM-1.1", "Done", "DM-1")]);
+    expect(told).toEqual([]);
+  });
+
+  it("tells it once, and not again at the next pass or after a start", async () => {
+    await move([ticket("DM-1", "Awaiting acceptance")], [ticket("DM-1", "Done")]);
+    await actions.onTrackerChanged(paseo, "demo");
+    actions = start();
+    await actions.catchUpAfterStart(paseo);
+    expect(told.map((entry) => [entry.path, entry.ticket])).toEqual([["messages/ticket-done.md", "DM-1"]]);
+  });
+
+  it("tells it after a start when the ticket went Done during the reload", async () => {
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Awaiting acceptance")]);
+    await actions.primeStatuses();
+    actions = start();
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Done")]);
+    await actions.catchUpAfterStart(paseo);
+    expect(told.map((entry) => [entry.path, entry.ticket])).toEqual([["messages/ticket-done.md", "DM-1"]]);
+  });
+
+  it("tells it at a later pass when no manager was live, and releases the ticket's mid-turn owner meanwhile", async () => {
+    const archived: string[] = [];
+    const releasing = { ...paseo, agents: { ref: (id: string) => ({ archive: async () => void archived.push(id) }) } } as unknown as PaseoApi;
+    vi.mocked(fetchLiveAgent).mockImplementation(async (_paseo, id) => live.find((candidate) => candidate.id === id) ?? null);
+    live = [agent("one", "DM-1", "owner", "running")];
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Awaiting acceptance")]);
+    await actions.primeStatuses();
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Done")]);
+    await actions.onTrackerChanged(releasing, "demo");
+    expect(told).toEqual([]);
+
+    live = [agent("one", "DM-1", "owner", "idle")];
+    await actions.onAgentTurnEnded(releasing, "one");
+    expect(archived).toEqual(["one"]);
+
+    live = [manager];
+    await actions.onTrackerChanged(releasing, "demo");
+    expect(told.map((entry) => [entry.path, entry.ticket])).toEqual([["messages/ticket-done.md", "DM-1"]]);
+  });
+});
+
 describe("the dependency-cleared message", () => {
   it("fills every placeholder the wake-up passes", async () => {
     const { message: realMessage, TEMPLATES } = await vi.importActual<typeof import("./package-files")>("./package-files");
@@ -233,12 +323,24 @@ describe("the dependency-cleared message", () => {
       held: "DM-5 (exclusive rewrite DM-2 first)",
       owned: "DM-6",
     });
-    const text = await realMessage(TEMPLATES.dependencyCleared, { ticket: "DM-1", status: "Awaiting acceptance", dependents: "DM-4", recount });
+    const afterDone = await realMessage(TEMPLATES.afterDone, { merge: "merged 0a1b2c3" });
+    const text = await realMessage(TEMPLATES.dependencyCleared, { ticket: "DM-1", status: "Awaiting acceptance", dependents: "DM-4", afterDone, recount });
     expect(text).not.toContain("{{");
     expect(text).toContain("DM-1 is now Awaiting acceptance");
+    expect(text).toContain("Merge: merged 0a1b2c3. Do what your standing orders ask once a ticket is Done");
     expect(text).toContain("Tickets that depend on it: DM-4; they can start only once DM-1 is Done.");
     expect(text).toContain("trust it over your own count: owners counting towards the cap 1 of 2 (DM-2), so 1 free; threads 820 of 2048 (40%).");
     expect(text).toContain("startable now (no unmet dependency, no HOLD), oldest first: DM-3. Waiting on dependencies: DM-4 (on DM-1). Held: DM-5 (exclusive rewrite DM-2 first). Queued but already with an owner (counted above): DM-6.");
+  });
+
+  it("fills every placeholder of the short Done message (TR-147)", async () => {
+    const { message: realMessage, TEMPLATES } = await vi.importActual<typeof import("./package-files")>("./package-files");
+    const afterDone = await realMessage(TEMPLATES.afterDone, { merge: "not merged — GitHub refused the squash" });
+    const text = await realMessage(TEMPLATES.ticketDone, { ticket: "DM-1", afterDone });
+    expect(text).not.toContain("{{");
+    expect(text).toMatch(/^DM-1 is Done\. Merge: not merged — GitHub refused the squash\. Do what your standing orders ask/);
+    // Only what the plugin checked: an accepted ticket's slot was freed (and announced) at Awaiting acceptance.
+    expect(text).toContain("This Done clears no dependents and frees no new owner slot, so it starts nothing new");
   });
 });
 
