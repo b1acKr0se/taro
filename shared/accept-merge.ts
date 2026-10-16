@@ -71,7 +71,34 @@ export function acceptanceText(at: string, ticket: string, prose: string, merge:
   return `ACCEPTANCE ${at} — user: "I accept ${ticket}." ${prose}; accepted and closed by the plugin; merge: ${merge}`;
 }
 
-/** Written when the plugin hands a surprise to an owner, so a restart does not run the steps again. */
-export function handoffText(at: string, found: string, to: string): string {
-  return `ACCEPT-HANDOFF ${at} — the plugin stopped: ${found}; handed to ${to}`;
+/** Who took a surprise over: the current owner (idle for `idleMs`, or mid-turn when null), or a fresh one. */
+export type Handover = { kind: "owner"; owner: string; idleMs: number | null } | { kind: "fresh"; owner: string; fresh: string; idleMs: number | null };
+
+/** "under a minute", "42 min", "9 h 5 min". */
+export function idleText(ms: number): string {
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "under a minute";
+  if (minutes < 60) return `${minutes} min`;
+  const rest = minutes % 60;
+  return rest === 0 ? `${Math.floor(minutes / 60)} h` : `${Math.floor(minutes / 60)} h ${rest} min`;
+}
+
+/** Agent ids and commit shas cut to 8 characters: the timeline row is one line, the full ones are in EXECUTION and the owner's message. */
+function shortIds(text: string): string {
+  return text.replace(/\b([0-9a-f]{8})(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{32})\b/g, "$1");
+}
+
+/**
+ * Written when the plugin hands a surprise to an owner, so a restart does not run the steps again.
+ * It leads with who took over and why (the user's question: is the fresh owner visible?), as the
+ * timeline shows a record's first line.
+ */
+export function handoffText(at: string, found: string, handover: Handover): string {
+  const owner = handover.owner.slice(0, 8);
+  const idle = handover.idleMs === null || !Number.isFinite(handover.idleMs) ? null : idleText(Math.max(0, handover.idleMs));
+  const who =
+    handover.kind === "fresh"
+      ? `Handed to a fresh owner ${handover.fresh.slice(0, 8)}: the owner ${owner} had been idle ${idle ?? "for an unknown time"}, past the ${idleText(WARM_OWNER_MS)} its context stays cached`
+      : `Handed to the owner ${owner}, ${idle === null ? "mid-turn" : `active ${idle} ago`}`;
+  return shortIds(`ACCEPT-HANDOFF ${at} — ${who}. The plugin stopped: ${found}`);
 }

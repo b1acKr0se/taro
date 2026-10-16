@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { acceptanceText, changedPaths, handoffText, ownerIsWarm, parsePullRequestView, WARM_OWNER_MS } from "./accept-merge";
+import { acceptanceText, changedPaths, handoffText, idleText, ownerIsWarm, parsePullRequestView, WARM_OWNER_MS } from "./accept-merge";
 import { acceptedRecord, acceptedRecordText, executionBranch, pluginAcceptPending, pullRequestMerged } from "./execution";
 
 const now = Date.parse("2026-01-02T12:00:00Z");
@@ -18,6 +18,46 @@ describe("ownerIsWarm (TR-141)", () => {
     expect(ownerIsWarm(null, true, now)).toBe(true);
     expect(ownerIsWarm(null, false, now)).toBe(false);
     expect(ownerIsWarm("not a time", false, now)).toBe(false);
+  });
+});
+
+describe("handoffText (the timeline shows who took over first)", () => {
+  const owner = "ecb53427-4c5e-4b02-b9ea-d8ffbbcf0ef6";
+  const fresh = "f8078033-20ca-428e-8df9-10efe6e31c4c";
+  const sha = "a4d0a9f3c60977894b6d4fe5d7f47ca582c86507";
+  const found = `the pull request's head moved to ${sha} since the review head 7fe26f7c60977894b6d4fe5d7f47ca582c865071; present it again`;
+
+  it("leads with the fresh owner and how long the old one had been idle, overnight included", () => {
+    expect(handoffText("2026-01-02T08:00Z", found, { kind: "fresh", owner, fresh, idleMs: (9 * 60 + 12) * 60_000 })).toBe(
+      "ACCEPT-HANDOFF 2026-01-02T08:00Z — Handed to a fresh owner f8078033: the owner ecb53427 had been idle 9 h 12 min, past the 5 min its context stays cached. The plugin stopped: the pull request's head moved to a4d0a9f3 since the review head 7fe26f7c; present it again",
+    );
+  });
+
+  it("says when the old owner's idle time is unknown", () => {
+    expect(handoffText("2026-01-02T08:00Z", "x", { kind: "fresh", owner, fresh, idleMs: null })).toContain("the owner ecb53427 had been idle for an unknown time, past");
+  });
+
+  it("names the warm owner with how long ago it was active, or mid-turn", () => {
+    expect(handoffText("2026-01-02T08:00Z", "x", { kind: "owner", owner, idleMs: 4 * 60_000 + 59_000 })).toBe("ACCEPT-HANDOFF 2026-01-02T08:00Z — Handed to the owner ecb53427, active 4 min ago. The plugin stopped: x");
+    expect(handoffText("2026-01-02T08:00Z", "x", { kind: "owner", owner, idleMs: 20_000 })).toContain("active under a minute ago.");
+    expect(handoffText("2026-01-02T08:00Z", "x", { kind: "owner", owner, idleMs: null })).toContain("Handed to the owner ecb53427, mid-turn.");
+  });
+
+  it("keeps short ids and non-hex words as they are", () => {
+    expect(handoffText("2026-01-02T08:00Z", "main moved to c since taro/dm-1", { kind: "owner", owner: "owner-1", idleMs: 60_000 })).toBe(
+      "ACCEPT-HANDOFF 2026-01-02T08:00Z — Handed to the owner owner-1, active 1 min ago. The plugin stopped: main moved to c since taro/dm-1",
+    );
+  });
+});
+
+describe("idleText", () => {
+  it("rounds down to minutes and hours", () => {
+    expect(idleText(0)).toBe("under a minute");
+    expect(idleText(59_999)).toBe("under a minute");
+    expect(idleText(60_000)).toBe("1 min");
+    expect(idleText(59 * 60_000 + 59_999)).toBe("59 min");
+    expect(idleText(60 * 60_000)).toBe("1 h");
+    expect(idleText(49 * 3_600_000 + 5 * 60_000)).toBe("49 h 5 min");
   });
 });
 
@@ -70,7 +110,7 @@ describe("pluginAcceptPending", () => {
 
   it("is not pending after an outcome, a hand-off, or for an owner-run Accept", () => {
     expect(pluginAcceptPending(null)).toBe(false);
-    expect(pluginAcceptPending(`${accepted}\n${handoffText("2026-01-02T00:01Z", "x", "the owner o")}`)).toBe(false);
+    expect(pluginAcceptPending(`${accepted}\n${handoffText("2026-01-02T00:01Z", "x", { kind: "owner", owner: "o", idleMs: 0 })}`)).toBe(false);
     expect(pluginAcceptPending(`${accepted}\nACCEPTANCE 2026-01-02T00:01Z — merge: merged a`)).toBe(false);
     expect(pluginAcceptPending(`${accepted}\nNOT-MERGED 2026-01-02T00:01Z — dirty`)).toBe(false);
     expect(pluginAcceptPending(`${accepted}\nNOT-SYNCED 2026-01-02T00:01Z — dirty`)).toBe(false);

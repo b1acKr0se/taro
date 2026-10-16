@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { doneTicketOf, planRelease } from "../shared/done-release";
-import { acceptanceText, handoffText, ownerIsWarm, type AcceptOutcome } from "../shared/accept-merge";
+import { acceptanceText, handoffText, ownerIsWarm, type AcceptOutcome, type Handover } from "../shared/accept-merge";
 import { acceptedRecord, acceptedRecordText, executionBranch, executionWorkspace, localMergeInstruction, pluginAcceptPending, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
 import { dependsOn, holdsSlot, shouldWakeManager, statusChanges, withRecordedStatuses, type StatusChange } from "../shared/owner-cap";
 import {
@@ -272,16 +272,20 @@ export class Actions {
   private async handOffAccept(paseo: PaseoApi, project: string, ticket: string, found: string, mergeInstruction: string): Promise<void> {
     const owner = await this.requireOwner(paseo, project, ticket);
     const lastTurnEndedAt = (await this.state.agent(owner.id))?.lastTurnEndedAt ?? owner.updatedAt;
-    let to: string;
-    if (ownerIsWarm(lastTurnEndedAt, isMidTurn(owner), Date.now())) {
+    const now = Date.now();
+    const midTurn = isMidTurn(owner);
+    const ended = lastTurnEndedAt === null ? Number.NaN : Date.parse(lastTurnEndedAt);
+    const idleMs = midTurn || !Number.isFinite(ended) ? null : now - ended;
+    let handover: Handover;
+    if (ownerIsWarm(lastTurnEndedAt, midTurn, now)) {
       await sendWithoutInterrupting(paseo, owner.id, await message(TEMPLATES.accept, { ticket, found, mergeInstruction }));
-      to = `the owner ${owner.id}`;
+      handover = { kind: "owner", owner: owner.id, idleMs };
     } else {
       const fresh = await this.relaunchOwner(paseo, project, ticket, await message(TEMPLATES.acceptFreshOwner, { ticket, found, mergeInstruction }));
-      to = `a fresh owner ${fresh} (the owner ${owner.id} was idle)`;
+      handover = { kind: "fresh", owner: owner.id, fresh, idleMs };
     }
     const paths = await projectPaths(project);
-    await appendTicketNote(paths.tracker, ticket, handoffText(new Date().toISOString(), found, to)).catch(() => undefined);
+    await appendTicketNote(paths.tracker, ticket, handoffText(new Date().toISOString(), found, handover)).catch(() => undefined);
   }
 
   /** Accept steps a reload cut off (TR-043: merging into the main checkout can reload the plugin) run again; each is safe to repeat. */

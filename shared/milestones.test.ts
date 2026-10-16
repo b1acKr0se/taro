@@ -28,6 +28,12 @@ describe("ticketMilestones", () => {
     expect(ticketMilestones(notes).map((milestone) => milestone.time)).toEqual(["2026-10-13T14:02:05Z", "2026-10-13T14:02:05.123Z"]);
   });
 
+  it("reads the plugin's Accept hand-off as one record, its label in plain words", () => {
+    const notes = "ACCEPT-HANDOFF — Handed to a fresh owner f8078033: the owner ecb53427 had been idle 9 h. The plugin stopped: x";
+    expect(ticketMilestones(notes)).toEqual([{ kind: "ACCEPT-HANDOFF", time: null, text: "Handed to a fresh owner f8078033: the owner ecb53427 had been idle 9 h. The plugin stopped: x" }]);
+    expect(kindLabel("ACCEPT-HANDOFF")).toBe("Accept handoff");
+  });
+
   it("collapses a multi-line body", () => {
     const notes = "MILESTONE 2026-10-13T14:02Z — first line\n  second   line\n\n  third";
     expect(ticketMilestones(notes)[0]?.text).toBe("first line second line third");
