@@ -783,7 +783,7 @@ function ToolLine({ tool, theme, styles }: { tool: ToolRow; theme: PluginTheme; 
       {tool.status === "running" ? (
         <Spinner size={13} color={theme.colors.foregroundMuted} />
       ) : (
-        <Icon name={tool.status === "failed" ? "X" : tool.icon} size={13} color={tool.status === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
+        <Icon name={tool.status === "failed" ? "TriangleAlert" : tool.icon} size={13} color={tool.status === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
       )}
       <Text style={styles.toolText} numberOfLines={1}>
         <Text style={styles.toolLabel}>{tool.label}</Text>
@@ -811,11 +811,7 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, trans
           {summary.state === "running" ? (
             <Spinner size={13} color={theme.colors.foregroundMuted} />
           ) : (
-            <Icon
-              name={open ? "ChevronDown" : summary.state === "failed" ? "X" : "Wrench"}
-              size={13}
-              color={summary.state === "failed" && !open ? theme.colors.statusDanger : open ? theme.colors.foreground : theme.colors.foregroundMuted}
-            />
+            <Icon name={open ? "ChevronDown" : "Wrench"} size={13} color={open ? theme.colors.foreground : theme.colors.foregroundMuted} />
           )}
           {/* Never cut: the counts are what the reader wants. */}
           <Text style={[styles.toolTitle, open ? styles.toolTitleOpen : null]}>{summary.title}</Text>
@@ -964,13 +960,13 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
     lineTop: { alignItems: "flex-start" as const },
     lineTextHeight: { lineHeight: lineHeightFor(FONT_SIZE.caption) },
     lineIcon: { height: lineHeightFor(FONT_SIZE.caption), justifyContent: "center" as const },
-    toolText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: labelLineHeightFor(FONT_SIZE.small) },
+    toolText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body) },
     toolLabel: { color: colors.foreground },
-    toolTitle: { flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: labelLineHeightFor(FONT_SIZE.small) },
+    toolTitle: { flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body) },
     toolTitleOpen: { color: colors.foreground },
     // Not the agent's words: the chat saying a question is on its way (TR-144).
     asking: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, fontStyle: "italic" as const },
-    toolFailed: { flexShrink: 0, color: colors.statusDanger, fontSize: FONT_SIZE.small, lineHeight: labelLineHeightFor(FONT_SIZE.small) },
+    toolFailed: { flexShrink: 0, color: colors.statusDanger, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body) },
     error: { color: colors.statusDanger, fontSize: FONT_SIZE.small },
     hint: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center" as const, padding: SPACE.lg },
     composerFrame: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface0 },
