@@ -101,9 +101,16 @@ describe("toolMisses", () => {
     // The shapes a real turn carried on a throwaway daemon (TR-139 EVIDENCE).
     const refusal = { type: "tool_result", content: "<tool_use_error>Skill paseo is disabled for model invocation in skillOverrides settings</tool_use_error>", is_error: true };
     expect(toolMisses([call("Skill", "failed", refusal, { type: "plain_text", label: "paseo", icon: "sparkles" })])).toEqual([{ tool: "Skill(paseo)", reason: "a hidden skill" }]);
-    expect(toolMisses([call("Skill", "failed", { message: "Unknown skill: deploy" }, { type: "plain_text", label: "deploy", icon: "sparkles" })])).toEqual([{ tool: "Skill", reason: "refused: Unknown skill: deploy" }]);
+    expect(toolMisses([call("Skill", "failed", { message: "<tool_use_error>Unknown skill: deploy</tool_use_error>" }, { type: "plain_text", label: "deploy", icon: "sparkles" })])).toEqual([{ tool: "Skill", reason: "refused: Unknown skill: deploy" }]);
     expect(toolMisses([call("NewTool", "failed", "<tool_use_error>No such tool available: NewTool</tool_use_error>")])).toEqual([{ tool: "NewTool", reason: "refused: No such tool available: NewTool" }]);
     expect(toolMisses([call("Skill", "completed", null, { type: "plain_text", label: "lean-spec", icon: "sparkles" })])).toEqual([]);
+  });
+
+  it("never takes a failed command's output for a refusal, whatever it prints", () => {
+    // A failing test of this very file prints these words; only Claude Code's wrapper marks a refusal.
+    const output = "FAIL shared/agent-trim.test.ts > expected 'No such tool available: NewTool' and Unknown skill: deploy; tool Agent is not available";
+    expect(toolMisses([call("Bash", "failed", { type: "tool_result", content: output, is_error: true }), call("Monitor", "failed", output)])).toEqual([]);
+    expect(toolMisses([call("Bash", "failed", `Exit code 1\n<tool_use_error>No such tool available: Agent</tool_use_error>`)])).toEqual([]);
   });
 
   it("lists a repeated miss once", () => {
@@ -121,8 +128,9 @@ describe("records", () => {
       ["TOOL-MISS", "2026-10-16T01:02Z"],
       ["CONTEXT", "2026-10-16T01:03Z"],
     ]);
-    expect(notes).toContain("Agent (a removed tool)");
-    expect(notes).toContain("41,250 tokens");
+    // What matters leads, as a collapsed row shows only the start.
+    expect(notes).toContain("— Agent (a removed tool): reviewer agent-1");
+    expect(notes).toContain("— 41,250 tokens at start, over 30,000: owner agent-2");
     expect(notes).toContain(STARTING_CONTEXT_LIMIT.toLocaleString("en-US"));
   });
 });

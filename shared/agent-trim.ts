@@ -74,7 +74,12 @@ export function isTrimmedTool(name: string): boolean {
   return TRIMMED_TOOLS.includes(name);
 }
 
-/** What Claude Code answers a call to a tool or skill the agent does not have. */
+/**
+ * What Claude Code answers a call to a tool or skill the agent does not have, inside the
+ * `<tool_use_error>` it wraps its own refusals in. A failed command's error is its output, which may
+ * print these words (a failing test of this file does), so unwrapped text is never a refusal.
+ */
+const REFUSAL = /^\s*<tool_use_error>([\s\S]*?)<\/tool_use_error>/;
 const MISSING_ERROR = /no such tool|unknown skill|skill .* (is )?(not found|disabled|not available)|disabled for model invocation|tool .* (is )?not available/i;
 
 export interface ToolMiss {
@@ -137,21 +142,21 @@ export function toolMisses(items: readonly unknown[]): ToolMiss[] {
       }
     }
     if (item.status !== "failed") continue;
-    const error = textOf(item.error);
-    if (MISSING_ERROR.test(error)) add({ tool: name, reason: `refused: ${oneLine(error.replace(/<\/?tool_use_error>/g, ""))}` });
+    const refusal = REFUSAL.exec(textOf(item.error))?.[1];
+    if (refusal !== undefined && MISSING_ERROR.test(refusal)) add({ tool: name, reason: `refused: ${oneLine(refusal)}` });
   }
   return [...misses.values()];
 }
 
-/** The TOOL-MISS record for a ticket's notes. */
+/** The TOOL-MISS record for a ticket's notes; what was missed comes first, as a collapsed row shows only its start. */
 export function toolMissRecord(at: string, agent: { id: string; role: string }, misses: readonly ToolMiss[]): string {
   const list = misses.map((miss) => `${miss.tool} (${miss.reason})`).join("; ");
-  return `TOOL-MISS ${at} — ${agent.role} ${agent.id} reached for what Taro removed at launch (TR-139): ${list}. If the role needs it, take it off the lists in shared/agent-trim.ts.`;
+  return `TOOL-MISS ${at} — ${list}: ${agent.role} ${agent.id} reached for what Taro removed at launch (TR-139). If the role needs it, take it off the lists in shared/agent-trim.ts.`;
 }
 
-/** The CONTEXT record for a ticket's notes. */
+/** The CONTEXT record for a ticket's notes; the size comes first, as a collapsed row shows only its start. */
 export function contextRecord(at: string, agent: { id: string; role: string }, tokens: number): string {
-  return `CONTEXT ${at} — ${agent.role} ${agent.id} started with ${tokens.toLocaleString("en-US")} tokens; a trimmed owner or subagent starts under ${STARTING_CONTEXT_LIMIT.toLocaleString("en-US")} (TR-139). It was launched without the Taro environment, or new tools, MCP servers, skills or instructions grew its first request.`;
+  return `CONTEXT ${at} — ${tokens.toLocaleString("en-US")} tokens at start, over ${STARTING_CONTEXT_LIMIT.toLocaleString("en-US")}: ${agent.role} ${agent.id}, where a trimmed owner or subagent starts under that (TR-139). It was launched without the Taro environment, or new tools, MCP servers, skills or instructions grew its first request.`;
 }
 
 /** The first request's whole input (fresh, cache written and cache read) from a transcript line, or null. */
