@@ -176,6 +176,25 @@ describe("ticket store", () => {
       expect((await store().view("TR-001")).ticket.notes).toBe("earlier\n\nMILESTONE 2026-10-14T16:20Z — on time");
     });
 
+    it("editIf applies its changes only when the ticket under the lock passes, and writes nothing otherwise (TR-130)", async () => {
+      await writeTicketFile({ id: "TR-001", status: "Awaiting acceptance", notes: "earlier" });
+      const before = await readFile(ticketPath("TR-001"), "utf8");
+      const seen: string[] = [];
+      expect(
+        await store().editIf("TR-001", (ticket) => {
+          seen.push(ticket.status);
+          return ticket.status === "Done";
+        }, { status: "In Progress", appendNotes: ["record"] }),
+      ).toBeNull();
+      expect(seen).toEqual(["Awaiting acceptance"]);
+      expect(await readFile(ticketPath("TR-001"), "utf8")).toBe(before);
+
+      const edited = await store().editIf("TR-001", (ticket) => ticket.status === "Awaiting acceptance", { status: "In Progress", appendNotes: ["record"] });
+      expect(edited).toMatchObject({ status: "In Progress", notes: "earlier\n\nrecord" });
+      expect((await store().view("TR-001")).ticket).toEqual(edited);
+      await expect(store().editIf("TR-042", () => true, { status: "Done" })).rejects.toBeInstanceOf(TicketNotFound);
+    });
+
     it("a record ending in many newlines is stored without them", async () => {
       await writeTicketFile({ id: "TR-001", notes: "earlier" });
       await store().appendNote("TR-001", "record\n\n\n\n\n\n");

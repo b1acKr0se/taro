@@ -259,10 +259,11 @@ describe("notMergedRecord (TR-109)", () => {
     expect(column).toBe("needs-you");
   });
 
-  it("is stale once the user accepts again or asks for changes, or the owner presents again", () => {
+  it("is stale once the user accepts again or asks for changes, the owner asks a question that ends the delivery (TR-130), or it presents again", () => {
     const head = "a".repeat(40);
     expect(notMergedRecord(`${notMerged}\n${acceptedRecordText("2026-01-05T11:30Z", "into main")}`)).toBeNull();
     expect(notMergedRecord(`${notMerged}\nCHANGES-REQUESTED 2026-01-05T11:30Z — the user: "rename it"`)).toBeNull();
+    expect(notMergedRecord(`${notMerged}\nDELIVERY-ENDED 2026-01-05T11:30Z — the owner asked \`naming\` while awaiting acceptance: back to In Progress until it delivers again`)).toBeNull();
     expect(notMergedRecord(`${notMerged}\nEVIDENCE 2026-01-05T11:30Z — again\ncheck: npm test — 40 passed`)).toBeNull();
     expect(notMergedRecord(`${notMerged}\nEXECUTION 2026-01-05T11:30Z — review-head: ${head}`)).toBeNull();
   });

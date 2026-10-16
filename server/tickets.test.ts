@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { serializeTicket, type Ticket } from "../shared/ticket-format";
-import { appendTicketNote, forgetTicketFile, listTickets, recordChangesRequested, ticketProblems, viewTicket } from "./tickets";
+import { appendTicketNote, endDelivery, forgetTicketFile, listTickets, recordChangesRequested, ticketProblems, viewTicket } from "./tickets";
 
 vi.mock("node:child_process", () => ({
   spawn: () => {
@@ -161,6 +161,35 @@ describe("recordChangesRequested (TR-131)", () => {
     const detail = await viewTicket(tracker, "NA-003");
     expect(detail.status).toBe(status);
     expect(detail.implementationNotes).toBe(record);
+  });
+});
+
+describe("endDelivery (TR-130)", () => {
+  const evidence = "EVIDENCE 2026-10-14T15:55:00Z — check: npm test — passed";
+  const record = "DELIVERY-ENDED 2026-10-14T16:00:00Z — the owner asked `rename-scope` while awaiting acceptance: back to In Progress until it delivers again";
+
+  it("moves a delivery on offer to In Progress and lands the record, in one write", async () => {
+    write(ticket({ id: "NA-003", title: "Delivered", status: "Awaiting acceptance", notes: evidence }));
+    expect(await endDelivery(tracker, "NA-003", record)).toBe(true);
+    const detail = await viewTicket(tracker, "NA-003");
+    expect(detail.status).toBe("In Progress");
+    expect(detail.implementationNotes).toBe(`${evidence}\n\n${record}`);
+  });
+
+  it("writes nothing once the user accepted: the owner is merging", async () => {
+    const accepted = `${evidence}\n\nACCEPTED 2026-10-14T15:58:00Z — the user accepted; merging: the pull request`;
+    write(ticket({ id: "NA-003", title: "Accepted", status: "Awaiting acceptance", notes: accepted }));
+    const before = readFileSync(join(tracker, "tickets", "NA-003.md"), "utf8");
+    expect(await endDelivery(tracker, "NA-003", record)).toBe(false);
+    expect(readFileSync(join(tracker, "tickets", "NA-003.md"), "utf8")).toBe(before);
+  });
+
+  it.each(["In Progress", "Reviewing", "Done", "Blocked", "Planning"] as const)("writes nothing to a %s ticket", async (status) => {
+    write(ticket({ id: "NA-003", title: "Elsewhere", status, notes: evidence }));
+    expect(await endDelivery(tracker, "NA-003", record)).toBe(false);
+    const detail = await viewTicket(tracker, "NA-003");
+    expect(detail.status).toBe(status);
+    expect(detail.implementationNotes).toBe(evidence);
   });
 });
 

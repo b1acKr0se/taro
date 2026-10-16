@@ -80,6 +80,8 @@ rather than exceed it.
   with no owner, with their words; the manager then rewrites the Description to match.
 - **QUEUE-WAKE**, **QUEUE-ALERT**, **QUEUE-RESTART**: written by the plugin as it wakes the manager
   for a queued ticket, alerts the user, and restarts the manager.
+- **DELIVERY-ENDED**: written by the plugin when an owner asks a blocking question while its ticket
+  awaits acceptance; it moves the ticket to In Progress in the same write (`roles/owner.md`).
 - **REVIEW**: reviewer, revision, verdict, every finding answered (fixed, or rejected with the
   reason).
 - **EVIDENCE**: what the user sees before Accept; the newest record counts. One fact per line,
