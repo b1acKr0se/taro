@@ -12,6 +12,7 @@ import { ColumnIdSchema } from "./board";
 import { MilestoneSchema } from "./milestones";
 import { PauseViewSchema } from "./pause";
 import { PlanAnswerKindSchema } from "./plan-changes";
+import { PULL_REQUEST_STATES } from "./pull-request-state";
 import { QueuedWaitSchema } from "./queued-wait";
 import { PaseoProjectCandidateSchema, SettingsTemplateSchema } from "./project-candidates";
 import { ProjectConfigSchema, ProjectNameSchema, ProjectSettingsSchema, ROLES, SUBAGENT_ROLES } from "./project";
@@ -212,6 +213,8 @@ export const CardSchema = z.object({
   pullRequest: z.string().nullable().default(null),
   /** Whether the owner recorded the PR as merged at Accept (TR-114); shown on Done cards. */
   pullRequestMerged: z.boolean().default(false),
+  /** What GitHub last said of the PR (TR-152); null until it has answered, or with no gh. */
+  pullRequestState: z.enum(PULL_REQUEST_STATES).nullable().default(null),
   lastStatus: LastStatusSchema.nullable(),
   stalled: z.boolean(),
   /** Why the plugin left it stalled, when the status line does not say (a crash past the recovery limit). */

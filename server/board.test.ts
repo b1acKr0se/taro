@@ -7,12 +7,14 @@ import { invalidateBoards, loadBoard } from "./board";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import type { PluginState } from "./state";
 import { readHeadroom } from "./headroom";
+import { runCommand } from "./process";
 import { readProjectConfig } from "./projects";
 import { listTickets, viewTicket } from "./tickets";
 
 vi.mock("./agents", () => ({ projectAgents: vi.fn(), projectArchivedAgents: vi.fn() }));
 vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: "/tracker", suggestions: "/nonexistent/taro-suggestions.md" }), readProjectConfig: vi.fn() }));
 vi.mock("./headroom", () => ({ readHeadroom: vi.fn() }));
+vi.mock("./process", () => ({ runCommand: vi.fn(async () => ({ code: 1, stdout: "", stderr: "gh: not logged in" })) }));
 vi.mock("./tickets", () => ({ listTickets: vi.fn(), viewTicket: vi.fn(), ticketProblems: async () => [] }));
 
 const ticket = (id: string, status: string, updatedAt: string | null = "2026-10-13 15:00") => ({
@@ -389,6 +391,35 @@ describe("loadBoard", () => {
       "TR-3": ["https://github.com/example/notes-app/pull/7", false],
       "TR-4": [null, true],
     });
+  });
+
+  it("gives every card with a PR what GitHub says of it, once gh has answered (TR-152)", async () => {
+    const pr = (number: number) => `https://github.com/example/notes-app/pull/${number}`;
+    const recordsOf: Record<string, string> = {
+      "TR-1": `EXECUTION 2026-10-15T02:52Z — pr: ${pr(61)}`,
+      "TR-5": `EXECUTION 2026-10-15T02:52Z — pr: ${pr(65)}`,
+      "TR-2": `EXECUTION 2026-10-15T02:52Z — pr: ${pr(62)}\n\nACCEPTANCE 2026-10-15T03:18Z — merge: merged ab26974`,
+      "TR-3": `EXECUTION 2026-10-15T02:52Z — pr: ${pr(63)}\n\nACCEPTANCE 2026-10-15T03:18Z — merge: not merged — closed`,
+      "TR-4": "ACCEPTANCE 2026-10-14T10:23Z — merge: merged bee2749 → aac6288",
+    };
+    const github: Record<string, { state: string; isDraft: boolean }> = {
+      [pr(61)]: { state: "OPEN", isDraft: true },
+      [pr(65)]: { state: "OPEN", isDraft: false },
+      [pr(62)]: { state: "MERGED", isDraft: false },
+      [pr(63)]: { state: "CLOSED", isDraft: false },
+    };
+    vi.mocked(runCommand).mockImplementation(async (_command, args) => ({ code: 0, stdout: JSON.stringify(github[args[2] ?? ""]), stderr: "" }));
+    vi.mocked(viewTicket).mockImplementation(async (_tracker, id) => ({ implementationNotes: recordsOf[id] ?? notes, finalSummary: "" }) as unknown as Awaited<ReturnType<typeof viewTicket>>);
+    vi.mocked(listTickets).mockResolvedValue(
+      [ticket("TR-1", "Reviewing"), ticket("TR-5", "Awaiting acceptance"), ticket("TR-2", "Done"), ticket("TR-3", "Done"), ticket("TR-4", "Done")] as unknown as Awaited<ReturnType<typeof listTickets>>,
+    );
+    const states = (board: Awaited<ReturnType<typeof loadBoard>>) => Object.fromEntries(board.cards.map((card) => [card.id, card.pullRequestState]));
+    // The board does not wait on gh: the first read knows nothing yet.
+    expect(states(await loadBoard({} as PaseoApi, state([]), "taro"))).toEqual({ "TR-1": null, "TR-5": null, "TR-2": null, "TR-3": null, "TR-4": null });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    invalidateBoards();
+    expect(states(await loadBoard({} as PaseoApi, state([]), "taro"))).toEqual({ "TR-1": "draft", "TR-5": "open", "TR-2": "merged", "TR-3": "closed", "TR-4": null });
+    expect(vi.mocked(runCommand).mock.calls.map((call) => call[1][2]).sort()).toEqual([pr(61), pr(62), pr(63), pr(65)]);
   });
 
   it("reads a ticket's records again only when the ticket changed or a minute passed", async () => {
