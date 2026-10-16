@@ -9,6 +9,7 @@ import { tellAgent as tellAgentRpc, tellManager as tellManagerRpc } from "../sha
 import { Actions } from "./actions";
 import { fetchLiveAgent } from "./agents";
 import type { PaseoAgent, PaseoApi } from "./host-types";
+import { ChatQueue } from "./chat-queue";
 import { tellManager } from "./manager";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
@@ -84,7 +85,7 @@ describe("telling an agent", () => {
 
 describe("telling a project's manager", () => {
   it("sends attachments with no words to the manager", async () => {
-    expect(await tellManager(paseo, "demo", "", { files: [FILE] })).toBe("manager-1");
+    expect(await tellManager(paseo, "demo", "", { files: [FILE] })).toEqual({ agentId: "manager-1", queued: false });
     expect(sent[0]).toMatchObject({ agentId: "manager-1", text: "" });
     expect(sent[0]?.options.attachments).toHaveLength(1);
   });
@@ -100,10 +101,56 @@ describe("telling a project's manager", () => {
   });
 });
 
+describe("a chat message to an agent at work waits in its queue (TR-171)", () => {
+  let status: string;
+  let queue: ChatQueue;
+
+  beforeEach(() => {
+    status = "running";
+    vi.mocked(fetchLiveAgent).mockImplementation(async (_paseo, id) => (live.includes(id) ? ({ id, status } as unknown as PaseoAgent) : null));
+    queue = new ChatQueue({ agent: async () => null } as unknown as PluginState, { directory: () => join(home, "chat-queue") });
+    actions = new Actions({} as PluginState, {} as Supervisor, {} as TrackerWatch, {} as Stats, {} as Recovery, queue);
+  });
+
+  it("queues an agent's message mid-turn, behind a waiting one when idle, and sends one to an idle agent with nothing queued at once", async () => {
+    expect(await actions.tellAgent(paseo, "agent-1", " wait for me ", { messageId: "chat-a" })).toEqual({ queued: true });
+    expect(sent).toEqual([]);
+    expect((await queue.list("agent-1")).map((message) => message.text)).toEqual(["wait for me"]);
+    status = "idle";
+    // Never ahead of the one waiting: queued behind it, and the drain after queueing sends the older.
+    expect(await actions.tellAgent(paseo, "agent-1", "next", { messageId: "chat-b" })).toEqual({ queued: true });
+    expect(sent.map((each) => each.text)).toEqual(["wait for me"]);
+    expect((await queue.list("agent-1")).map((message) => message.text)).toEqual(["next"]);
+    await queue.drain(paseo, "agent-1", "completed");
+    expect(await actions.tellAgent(paseo, "agent-1", "now", { messageId: "chat-c" })).toEqual({ queued: false });
+    expect(sent.map((each) => each.text)).toEqual(["wait for me", "next", "now"]);
+  });
+
+  it("sends at once mid-turn when the words answer a pending request", async () => {
+    expect(await actions.tellAgent(paseo, "agent-1", "allow it", { messageId: "chat-a" }, true)).toEqual({ queued: false });
+    expect(sent.map((each) => each.text)).toEqual(["allow it"]);
+    expect(await queue.list("agent-1")).toEqual([]);
+  });
+
+  it("queues the manager's chat message mid-turn; Catch up and the plugin's own words still go at once", async () => {
+    expect(await tellManager(paseo, "demo", "later", { messageId: "chat-a" }, { queue, answersRequest: false })).toEqual({ agentId: "manager-1", queued: true });
+    expect(await tellManager(paseo, "demo", "catch up")).toEqual({ agentId: "manager-1", queued: false });
+    expect(sent.map((each) => each.text)).toEqual(["catch up"]);
+    expect((await queue.list("manager-1")).map((message) => message.text)).toEqual(["later"]);
+  });
+});
+
 describe("the tell contracts", () => {
   it("keep the images and files they carry (zod drops keys a schema does not name)", () => {
     expect(tellAgentRpc.input.parse({ agentId: "a", text: "", images: [IMAGE], files: [FILE] })).toEqual({ agentId: "a", text: "", images: [IMAGE], files: [FILE] });
     expect(tellManagerRpc.input.parse({ project: "demo", text: "", images: [IMAGE], files: [FILE] })).toEqual({ project: "demo", text: "", images: [IMAGE], files: [FILE] });
+  });
+
+  it("carry whether the words answer a pending request, and say whether the message was queued (TR-171)", () => {
+    expect(tellAgentRpc.input.parse({ agentId: "a", text: "yes", answersRequest: true })).toEqual({ agentId: "a", text: "yes", answersRequest: true });
+    expect(tellManagerRpc.input.parse({ project: "demo", text: "yes", answersRequest: false })).toEqual({ project: "demo", text: "yes", answersRequest: false });
+    expect(tellAgentRpc.output.parse({ queued: true })).toEqual({ queued: true });
+    expect(tellManagerRpc.output.parse({ agentId: "m", queued: false })).toEqual({ agentId: "m", queued: false });
   });
 
   it("still take words alone, from older clients", () => {

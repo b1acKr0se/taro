@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { INTERRUPT_NOTE_END, INTERRUPT_NOTE_START } from "../shared/chat-queue";
 import { matchSentImages } from "./sent-images";
 
 const A = { path: "/data/uploads/a.png", mimeType: "image/png" };
@@ -48,5 +49,11 @@ describe("matchSentImages", () => {
 
   it("matches nothing without sent messages", () => {
     expect(matchSentImages([user("1", "look")], []).size).toBe(0);
+  });
+
+  it("matches a Send now message, whose note the row does not show, by the user's words (TR-171)", () => {
+    const note = `${INTERRUPT_NOTE_START}\nnote\n${INTERRUPT_NOTE_END}`;
+    expect(Object.fromEntries(matchSentImages([user("1", "look")], [{ text: `${note}\n\nlook`, images: [A] }]))).toEqual({ "1": [A] });
+    expect(Object.fromEntries(matchSentImages([user("2", "(attachments)")], [{ text: note, images: [B] }]))).toEqual({ "2": [B] });
   });
 });

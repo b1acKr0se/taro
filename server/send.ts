@@ -28,6 +28,11 @@ export async function sendWithoutInterrupting(paseo: PaseoApi, agentId: string, 
   await paseo.agents.ref(agentId).send(text, { ...extras, activeTurnBehavior: "steer" });
 }
 
+/** Send now (TR-171): the user's queued words cut the running turn off and start a new one, atomically in Paseo. */
+export async function sendInterrupting(paseo: PaseoApi, agentId: string, text: string, extras: SendExtras = {}): Promise<void> {
+  await paseo.agents.ref(agentId).send(text, { ...extras, activeTurnBehavior: "interrupt" });
+}
+
 /** A message the plugin itself writes (nudge, report, reload, correction). */
 export async function sendFromPlugin(paseo: PaseoApi, agentId: string, text: string): Promise<void> {
   await sendWithoutInterrupting(paseo, agentId, text, { messageId: `${PLUGIN_MESSAGE_PREFIX}${randomUUID()}` });
@@ -56,8 +61,19 @@ const chatSendsUnderWay = new Map<string, Promise<void>>();
  * One sent while the agent compacts is handed back unsent (`COMPACTING_REFUSAL`): Paseo would cancel the
  * compaction for it, and the chat holds it until the compaction ends.
  */
-export async function sendChatMessageOnce(paseo: PaseoApi, agentId: string, messageId: string | undefined, send: () => Promise<void>, midTurn = false): Promise<void> {
-  if (messageId === undefined || !messageId.startsWith(CHAT_MESSAGE_PREFIX)) return send();
+export async function sendChatMessageOnce(
+  paseo: PaseoApi,
+  agentId: string,
+  messageId: string | undefined,
+  send: () => Promise<void>,
+  midTurn = false,
+  /** The last look before the send (a queued message's: is the agent still idle?); throws to send nothing. */
+  beforeSend: () => Promise<void> = async () => undefined,
+): Promise<void> {
+  if (messageId === undefined || !messageId.startsWith(CHAT_MESSAGE_PREFIX)) {
+    await beforeSend();
+    return send();
+  }
   const key = `${agentId} ${messageId}`;
   const underWay = chatSendsUnderWay.get(key);
   if (underWay !== undefined) return underWay;
@@ -67,6 +83,7 @@ export async function sendChatMessageOnce(paseo: PaseoApi, agentId: string, mess
       .catch(() => null);
     if (page !== null && holdsMessage(page.entries, messageId)) return;
     if (midTurn && page !== null && isCompacting(page.entries as unknown as readonly SendTimelineEntry[])) throw new Error(COMPACTING_REFUSAL);
+    await beforeSend();
     await send();
   })();
   chatSendsUnderWay.set(key, sending);

@@ -5,6 +5,7 @@
  * message with the same words. The chat holds only the timeline's tail, so counting from the start
  * would shift once older rows fall out of it.
  */
+import { stripInterruptNote } from "../shared/chat-queue";
 import type { SentImagesMessage } from "../shared/contracts";
 import { ATTACHMENTS_ONLY } from "./transcript-rows";
 
@@ -17,7 +18,8 @@ export function matchSentImages(
 ): Map<string, SentImage[]> {
   const byText = new Map<string, SentImage[][]>();
   messages.forEach((message) => {
-    const text = message.text.trim();
+    // As its row shows it: without a Send now's note (TR-171).
+    const text = stripInterruptNote(message.text).trim();
     byText.set(text, [...(byText.get(text) ?? []), message.images]);
   });
   const seen = new Map<string, number>();

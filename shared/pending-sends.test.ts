@@ -2,21 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   ChatMessageIdSchema,
-  handBack,
-  heldToRelease,
-  nextRecheck,
   COMPACTING_REFUSAL,
   failureReason,
-  holdReason,
   isCompacting,
   isCompactingRefusal,
   isPassingFailure,
   isWorking,
   newChatMessageId,
   nextToSend,
-  replacingProviders,
   STOPPED_GRACE_MS,
-  steersMidTurn,
   takeBack,
   viewSends,
   type PendingSend,
@@ -120,24 +114,17 @@ describe("viewSends", () => {
     expect(viewSends([sent("chat-a", T0 + 120_000)], later, { stoppedAt: null, hasOlder: true }, T0 + 120_000).read).toEqual([]);
   });
 
-  it("shows a held message as held, drawn by the chat, whatever the agent does", () => {
-    const held = sent("chat-a", T0, "held");
-    const { views } = viewSends([held], [entry("assistant_message")], { stoppedAt: T0 - 100_000, hasOlder: false }, T0 + 100_000);
-    expect(views).toEqual([{ send: held, mark: "held", rowKey: null }]);
-  });
-
   it("has nothing to show with nothing sent", () => {
     expect(viewSends([], [], WORKING, T0)).toEqual({ views: [], read: [], landed: [] });
   });
 
   it("shows a message on its way as sending, and a failed one with those after it waiting behind it (TR-102)", () => {
-    const sends = [sent("chat-a", T0, "sending"), sent("chat-b", T0, "failed"), sent("chat-c", T0, "sending"), sent("chat-d", T0, "held")];
+    const sends = [sent("chat-a", T0, "sending"), sent("chat-b", T0, "failed"), sent("chat-c", T0, "sending")];
     const { views, read, landed } = viewSends(sends, [entry("assistant_message")], WORKING, T0);
     expect(views.map((view) => [view.send.id, view.mark, view.rowKey])).toEqual([
       ["chat-a", "sending", null],
       ["chat-b", "failed", null],
       ["chat-c", "behind", null],
-      ["chat-d", "held", null],
     ]);
     expect(read).toEqual([]);
     expect(landed).toEqual([]);
@@ -170,17 +157,13 @@ describe("nextToSend (TR-102)", () => {
     expect(nextToSend([sent("chat-a", T0, "failed"), sent("chat-b", T0, "sending")])).toBeNull();
   });
 
-  it("is none while a held message comes first, so nothing overtakes it either", () => {
-    expect(nextToSend([sent("chat-a", T0, "held"), sent("chat-b", T0, "sending")])).toBeNull();
-  });
-
   it("is the one before a failed message, which went first", () => {
     expect(nextToSend([sent("chat-a", T0, "sending"), sent("chat-b", T0, "failed")])?.id).toBe("chat-a");
   });
 
   it("is none with nothing to send", () => {
     expect(nextToSend([])).toBeNull();
-    expect(nextToSend([sent("chat-a"), sent("chat-b", T0, "held")])).toBeNull();
+    expect(nextToSend([sent("chat-a"), sent("chat-b")])).toBeNull();
   });
 
   it("goes past messages already sent", () => {
@@ -226,37 +209,6 @@ describe("failureReason", () => {
   });
 });
 
-describe("heldToRelease", () => {
-  const sends = [sent("chat-a", T0, "held"), sent("chat-b", T0 + 1), sent("chat-c", T0 + 2, "held")];
-
-  it("holds while something holds them: a replacing provider's step, or a compaction", () => {
-    expect(heldToRelease(sends, "replaces", T0)).toEqual([]);
-    expect(heldToRelease(sends, "compacting", T0)).toEqual([]);
-  });
-
-  it("releases every held message, oldest first, once nothing holds them", () => {
-    expect(heldToRelease(sends, null, T0).map((send) => send.id)).toEqual(["chat-a", "chat-c"]);
-  });
-
-  it("keeps one handed back as the agent compacts, and those after it, until its time, though the chat has not seen the compaction", () => {
-    const handedBack = [sent("chat-a", T0, "held"), { ...sent("chat-b", T0, "held"), heldUntil: T0 + 3_000 }, sent("chat-c", T0 + 1, "held")];
-    expect(heldToRelease(handedBack, null, T0 + 1_000).map((send) => send.id)).toEqual(["chat-a"]);
-    expect(heldToRelease(handedBack, null, T0 + 3_000).map((send) => send.id)).toEqual(["chat-a", "chat-b", "chat-c"]);
-    expect(heldToRelease(handedBack, "compacting", T0 + 9_000)).toEqual([]);
-  });
-});
-
-describe("nextRecheck", () => {
-  it("is the earliest time a handed-back message may go, null when none waits", () => {
-    const sends = [{ ...sent("chat-a", T0, "held"), heldUntil: T0 + 5_000 }, { ...sent("chat-b", T0, "held"), heldUntil: T0 + 3_000 }, sent("chat-c", T0, "held")];
-    expect(nextRecheck(sends, T0)).toBe(T0 + 3_000);
-    expect(nextRecheck(sends, T0 + 4_000)).toBe(T0 + 5_000);
-    expect(nextRecheck(sends, T0 + 5_000)).toBeNull();
-    expect(nextRecheck([{ ...sent("chat-d", T0), heldUntil: T0 + 5_000 }], T0)).toBeNull();
-    expect(nextRecheck([], T0)).toBeNull();
-  });
-});
-
 function compaction(status: "loading" | "completed"): SendTimelineEntry {
   return { ...entry("compaction"), item: { type: "compaction", status } };
 }
@@ -282,75 +234,10 @@ describe("isCompacting (TR-102)", () => {
   });
 });
 
-describe("holdReason (TR-102)", () => {
-  it("holds while a working agent compacts, whatever its provider", () => {
-    expect(holdReason({ working: true, steers: true, compacting: true })).toBe("compacting");
-    expect(holdReason({ working: true, steers: false, compacting: true })).toBe("compacting");
-  });
-
-  it("holds while a replacing provider works", () => {
-    expect(holdReason({ working: true, steers: false, compacting: false })).toBe("replaces");
-  });
-
-  it("sends to a steering agent mid-turn, and to any stopped agent, even with a compaction left open", () => {
-    expect(holdReason({ working: true, steers: true, compacting: false })).toBeNull();
-    expect(holdReason({ working: false, steers: false, compacting: true })).toBeNull();
-  });
-});
-
 describe("isCompactingRefusal", () => {
   it("recognises the plugin's answer through Paseo's wrapping, and nothing else", () => {
     expect(isCompactingRefusal(new Error(`Request failed: ${COMPACTING_REFUSAL} code=handler_error`))).toBe(true);
     expect(isCompactingRefusal(new Error("Transport closed (code 1006)"))).toBe(false);
-  });
-});
-
-describe("steersMidTurn", () => {
-  it("takes Paseo's steering providers, a plugin's or custom provider, and an agent not read yet, as steering", () => {
-    // `claude-work`: a custom provider extending claude under its own id, which Paseo steers like claude.
-    for (const provider of ["claude", "codex", "opencode", "pi", "omp", "claude-work", "my-plugin-agent", null, undefined]) expect(steersMidTurn(provider)).toBe(true);
-  });
-
-  it("takes Copilot and the ACP agents as replacing the turn", () => {
-    for (const provider of ["copilot", "acp", "cursor", "kimi", "kiro", "traecli"]) expect(steersMidTurn(provider)).toBe(false);
-  });
-});
-
-describe("replacingProviders", () => {
-  it("adds a custom provider extending an ACP one, directly or through another custom one", () => {
-    const config = { agents: { providers: { gemini: { extends: "acp", command: ["gemini", "--acp"] }, "gemini-work": { extends: "gemini" }, "pilot": { extends: "copilot" } } } };
-    const replacing = replacingProviders(config);
-    for (const provider of ["gemini", "gemini-work", "pilot", "copilot", "acp"]) expect(steersMidTurn(provider, replacing)).toBe(false);
-  });
-
-  it("keeps a custom provider extending a steering one, an override of a built-in, and a loop steering", () => {
-    const config = { agents: { providers: { "claude-work": { extends: "claude" }, codex: { enabled: false }, loop: { extends: "loop-back" }, "loop-back": { extends: "loop" } } } };
-    const replacing = replacingProviders(config);
-    for (const provider of ["claude-work", "codex", "loop", "loop-back"]) expect(steersMidTurn(provider, replacing)).toBe(true);
-  });
-
-  it("is the built-in list for a config without providers, or one that is not an object", () => {
-    for (const config of [{}, { agents: {} }, { agents: { providers: [] } }, null, "text", { agents: { providers: { odd: { extends: 3 } } } }]) {
-      expect([...replacingProviders(config)].sort()).toEqual(["acp", "copilot", "cursor", "kimi", "kiro", "traecli"]);
-    }
-  });
-});
-
-describe("handBack", () => {
-  const image = { id: "image-1", kind: "image" as const, fileName: "screen.png", mimeType: "image/png", data: "iVBORw0KGgo=" };
-  const failed: PendingSend = { ...sent("chat-a"), text: "Please also check the phone layout", attachments: [image] };
-
-  it("puts the words and attachments back into an empty composer", () => {
-    expect(handBack({ text: "  ", attachments: [] }, failed)).toEqual({ text: failed.text, attachments: [image] });
-  });
-
-  it("keeps what was written or attached since", () => {
-    expect(handBack({ text: "a new thought", attachments: [] }, failed)).toEqual({ text: null, attachments: [image] });
-    expect(handBack({ text: "", attachments: [image] }, failed)).toEqual({ text: failed.text, attachments: null });
-  });
-
-  it("puts nothing back for what the message did not have", () => {
-    expect(handBack({ text: "", attachments: [] }, { ...failed, text: "", attachments: [] })).toEqual({ text: null, attachments: null });
   });
 });
 
@@ -367,6 +254,10 @@ describe("takeBack (TR-102)", () => {
       text: "first\n\nhalf-typed reply ",
       attachments: [image, file],
     });
+  });
+
+  it("takes a message out of the daemon's queue as it takes back one not sent (TR-171)", () => {
+    expect(takeBack({ text: "typed", attachments: [] }, { text: "queued words", attachments: [file] })).toEqual({ text: "queued words\n\ntyped", attachments: [file] });
   });
 
   it("keeps the box as it is for a message of attachments alone", () => {

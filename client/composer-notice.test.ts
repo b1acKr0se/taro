@@ -1,49 +1,28 @@
 import { describe, expect, it } from "vitest";
 
-import type { PendingSend } from "../shared/pending-sends";
-import { composerNotice, heldFor, heldMarkText, offersSendNow } from "./composer-notice";
+import { composerNotice, sendLabel } from "./composer-notice";
 
-describe("composerNotice (TR-102)", () => {
-  it("says nothing for a plain send", () => {
-    expect(composerNotice(null, false)).toBeNull();
+describe("composerNotice", () => {
+  it("says nothing for a plain send, whether the agent works or not", () => {
+    expect(composerNotice(false)).toBeNull();
   });
 
-  it("says Send holds the message while the agent compacts, as a message would cancel the compaction", () => {
-    expect(composerNotice("compacting", false)?.text).toContain("compacting");
-    expect(composerNotice("compacting", true)?.sendLabel).toBe("Hold until it has compacted");
-  });
-
-  it("says Send holds it while a replacing provider works", () => {
-    expect(composerNotice("replaces", false)?.sendLabel).toBe("Hold until its step ends");
-  });
-
-  it("warns that a message turns down a pending permission or question, when it is sent at once", () => {
-    expect(composerNotice(null, true)).toEqual({ text: "Sending a message now turns down the request above. Answer it first to keep it.", sendLabel: "Send and turn down the request" });
+  it("warns that a message turns down a pending permission or question, as it is sent at once", () => {
+    expect(composerNotice(true)).toBe("Sending a message now turns down the request above. Answer it first to keep it.");
   });
 });
 
-describe("held messages during a compaction (TR-102)", () => {
-  const held: PendingSend = { id: "chat-a", text: "a", attachments: [], at: 1, state: "held" };
-
-  it("offers no Send now while the agent compacts: the plugin would hand the message back", () => {
-    expect(offersSendNow("compacting")).toBe(false);
-    expect(offersSendNow("replaces")).toBe(true);
-    expect(offersSendNow(null)).toBe(true);
+describe("sendLabel (TR-171)", () => {
+  it("is Send to an idle agent", () => {
+    expect(sendLabel({ working: false, requestPending: false })).toBe("Send");
   });
 
-  it("counts one the plugin handed back as held for the compaction, before the chat sees it", () => {
-    expect(heldFor({ ...held, heldUntil: 5 }, null)).toBe("compacting");
-    expect(heldFor({ ...held, heldUntil: 5 }, "compacting")).toBe("compacting");
-    expect(heldFor(held, null)).toBeNull();
-    expect(heldFor(held, "replaces")).toBe("replaces");
+  it("is Add to queue while the agent works", () => {
+    expect(sendLabel({ working: true, requestPending: false })).toBe("Add to queue");
   });
-});
 
-describe("heldMarkText", () => {
-  it("names what the message waits for", () => {
-    expect(heldMarkText("compacting")).toBe("Held until it has compacted");
-    expect(heldMarkText("replaces")).toBe("Held until its current step ends");
-    // Once nothing holds it, it is about to go: the step it waited for ended.
-    expect(heldMarkText(null)).toBe("Held until its current step ends");
+  it("says the request is turned down while one is pending, working or not: the message goes at once", () => {
+    expect(sendLabel({ working: true, requestPending: true })).toBe("Send and turn down the request");
+    expect(sendLabel({ working: false, requestPending: true })).toBe("Send and turn down the request");
   });
 });

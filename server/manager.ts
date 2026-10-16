@@ -5,6 +5,7 @@
  */
 import { writeFile } from "node:fs/promises";
 
+import { carriedSlot } from "../shared/chat-queue";
 import { TARO_LABELS, type ProjectConfig } from "../shared/project";
 import { fetchLiveAgent, isMidTurn } from "./agents";
 import { runPaseoJson } from "./cli";
@@ -14,6 +15,7 @@ import { TEMPLATES, fill, message, readTemplate, skillDirectory } from "./packag
 import { projectPaths, requireProjectConfig, updateProjectConfig } from "./projects";
 import { sendFromPlugin } from "./send";
 import { hasAttachments, sendWithAttachments, type Attachments } from "./uploads";
+import type { ChatQueue } from "./chat-queue";
 import { serialized } from "./serialize";
 import type { PluginState } from "./state";
 import { ensureTaroProject } from "./taro-project";
@@ -78,7 +80,10 @@ export async function resolveManager(paseo: PaseoApi, config: ProjectConfig): Pr
   return { agent: await fetchLiveAgent(paseo, config.managerAgentId) };
 }
 
-async function startManager(paseo: PaseoApi, config: ProjectConfig, restart: boolean, why: string | null = null): Promise<{ agentId: string; workspaceId: string }> {
+/** What carries a replaced manager's chat queue to the next one (TR-171). */
+export type QueueCarrier = Pick<ChatQueue, "carry" | "claim">;
+
+async function startManager(paseo: PaseoApi, config: ProjectConfig, restart: boolean, why: string | null, queue: QueueCarrier | null): Promise<{ agentId: string; workspaceId: string }> {
   await writeManagerInstructions(config);
   const workspaceId = await ensureManagerWorkspace(paseo, config);
   const values = await projectValues(config);
@@ -98,16 +103,18 @@ async function startManager(paseo: PaseoApi, config: ProjectConfig, restart: boo
     prompt,
   });
   await updateProjectConfig(config.project, { managerAgentId: agent.id });
+  // The queue of the manager this one replaces, or of one replaced before a crash (TR-171).
+  await queue?.claim(carriedSlot(config.project, "manager"), agent.id).catch((error: unknown) => console.warn(`[taro] ${config.project}: the new manager could not take over the chat queue: ${error instanceof Error ? error.message : String(error)}`));
   return { agentId: agent.id, workspaceId };
 }
 
 /** Starts the project's manager; refused when one is already running. */
-export function launchManager(paseo: PaseoApi, project: string): Promise<{ agentId: string; workspaceId: string }> {
+export function launchManager(paseo: PaseoApi, project: string, queue: QueueCarrier | null = null): Promise<{ agentId: string; workspaceId: string }> {
   return serialized(`manager:${project}`, async () => {
     const config = await requireProjectConfig(project);
     const current = await resolveManager(paseo, config);
     if (current.agent !== null) throw new Error(`${project} already has a manager (${current.agent.title ?? current.agent.id}).`);
-    return startManager(paseo, config, false);
+    return startManager(paseo, config, false, null, queue);
   });
 }
 
@@ -119,16 +126,27 @@ export function launchManager(paseo: PaseoApi, project: string): Promise<{ agent
 export function restartManager(
   paseo: PaseoApi,
   project: string,
-  options: { why?: string; evenMidTurn?: boolean } = {},
+  options: { why?: string; evenMidTurn?: boolean; queue?: QueueCarrier | null } = {},
 ): Promise<{ agentId: string; workspaceId: string }> {
   return serialized(`manager:${project}`, async () => {
     const config = await requireProjectConfig(project);
     const { agent } = await resolveManager(paseo, config);
+    const queue = options.queue ?? null;
     if (agent !== null) {
       if (isMidTurn(agent) && options.evenMidTurn !== true) throw new Error(`The ${project} manager is in the middle of a turn. Restart it once it is idle.`);
-      await paseo.agents.ref(agent.id).archive();
+      // The user's queued messages go to the fresh manager (TR-171): set aside before the archive, and again after it for one that came in between.
+      const slot = carriedSlot(project, "manager");
+      await queue?.carry(agent.id, slot);
+      try {
+        await paseo.agents.ref(agent.id).archive();
+      } catch (error: unknown) {
+        // Still the manager: its queue comes back.
+        await queue?.claim(slot, agent.id).catch(() => undefined);
+        throw error;
+      }
+      await queue?.carry(agent.id, slot);
     }
-    return startManager(paseo, config, agent !== null, options.why ?? null);
+    return startManager(paseo, config, agent !== null, options.why ?? null, queue);
   });
 }
 
@@ -175,12 +193,23 @@ async function requireManager(paseo: PaseoApi, project: string): Promise<PaseoAg
   return agent;
 }
 
-export async function tellManager(paseo: PaseoApi, project: string, text: string, attachments: Attachments = {}): Promise<string> {
+/**
+ * Words to the manager. From its chat (`chat` given) they wait in its queue while it works (TR-171),
+ * unless they answer its pending request; anything else (Catch up, a spec change) is sent at once.
+ */
+export async function tellManager(
+  paseo: PaseoApi,
+  project: string,
+  text: string,
+  attachments: Attachments = {},
+  chat: { queue: ChatQueue; answersRequest: boolean } | null = null,
+): Promise<{ agentId: string; queued: boolean }> {
   const words = text.trim();
   if (words === "" && !hasAttachments(attachments)) throw new Error("Say something to the manager.");
   const agent = await requireManager(paseo, project);
+  if (chat !== null) return { agentId: agent.id, ...(await chat.queue.tell(paseo, agent, words, attachments, chat.answersRequest)) };
   await sendWithAttachments(paseo, agent.id, words, { ...attachments, agentMidTurn: isMidTurn(agent) });
-  return agent.id;
+  return { agentId: agent.id, queued: false };
 }
 
 /** The Compact button: the same handoff → /compact → reload pipeline as an idle compaction (TR-101), never a bare /compact. */

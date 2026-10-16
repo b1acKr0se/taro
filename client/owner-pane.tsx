@@ -200,13 +200,11 @@ export function OwnerPane({
               <AgentChat
                 key={shown.id}
                 asker={{ kind: "ticket", ticket: card.id, role: shown.role }}
-                agent={{ id: shown.id, updatedAt: shown.brief.updatedAt, pendingPermissions: shown.brief.pendingPermissions, status: shown.brief.status, steers: shown.brief.steers }}
+                agent={{ id: shown.id, updatedAt: shown.brief.updatedAt, pendingPermissions: shown.brief.pendingPermissions, status: shown.brief.status }}
                 theme={theme}
                 compact={compact}
                 placeholder={`Talk to ${card.id}'s ${paneAgentJob(shown.role)}…`}
-                onSend={async (text, attachments, messageId) => {
-                  await tell({ agentId: shown.id, text, ...attachments, messageId });
-                }}
+                onSend={(text, attachments, messageId, answersRequest) => tell({ agentId: shown.id, text, ...attachments, messageId, answersRequest })}
                 transformText={withoutDecisionBlocks}
                 asks={{ decisions: shownAsks, onAnswered: onChanged }}
                 records={shown.role === "owner" ? { project, ticket: card.id, plans: records?.plans ?? null, deliveries: records?.deliveries ?? NO_RECORDS, settling } : undefined}

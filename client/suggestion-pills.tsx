@@ -6,12 +6,13 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
+import { useQueryClient } from "@tanstack/react-query";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 
 import { dismissSuggestion, tellManager } from "../shared/contracts";
-import { suggestionKey, suggestionPills, type SendState, type Suggestion, type SuggestionPill, type SuggestionSend } from "../shared/suggestions";
+import { deliveredWording, suggestionKey, suggestionPills, type SendState, type Suggestion, type SuggestionPill, type SuggestionSend } from "../shared/suggestions";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { SPACE } from "./spacing";
@@ -20,8 +21,9 @@ import { controlColors } from "./control-colors";
 import { BUTTON } from "./control-size";
 import { Spinner } from "./ui";
 import { usePressGuards } from "./use-actions";
+import { chatQueueKey } from "./queue-rows";
 
-/** How long a sent suggestion shows "Sent to the manager" before it leaves the row. */
+/** How long a sent suggestion shows "Sent to the manager" (or "Queued for the manager") before it leaves the row. */
 const SENT_VISIBLE_MS = 2500;
 
 export function SuggestionPills({
@@ -42,6 +44,7 @@ export function SuggestionPills({
   const toast = useToast();
   const tell = useRpc(tellManager);
   const dismiss = useRpc(dismissSuggestion);
+  const queries = useQueryClient();
   const guardFor = usePressGuards();
   const [sends, setSends] = useState<SuggestionSend[]>([]);
   const { colors } = theme;
@@ -90,7 +93,9 @@ export function SuggestionPills({
     setSend(suggestion, index, "sending");
     void running.then((outcome) => {
       if (outcome.ok) {
-        setSend(suggestion, index, "sent");
+        // Sent to a working manager, it waits in the chat's queue (TR-171): its row shows at once.
+        if (outcome.value.queued) void queries.invalidateQueries({ queryKey: chatQueueKey() });
+        setSend(suggestion, index, outcome.value.queued ? "queued" : "sent");
         dismiss({ project, label: suggestion.label, prompt: suggestion.prompt }).catch((caught: unknown) => toast.error(errorText(caught)));
         setTimeout(() => {
           setSend(suggestion, index, null);
@@ -115,19 +120,20 @@ export function SuggestionPills({
 
   function suggestionPill(item: SuggestionPill, index: number) {
     const { suggestion, state, reason } = item;
-    const busy = state === "sending" || state === "sent";
+    const delivered = state === "sent" || state === "queued" ? state : null;
+    const busy = state === "sending" || delivered !== null;
     const label =
       state === "sending"
         ? `Sending to the manager: ${suggestion.label}`
-        : state === "sent"
-          ? `Sent to the manager: ${suggestion.label}`
+        : delivered !== null
+          ? `${deliveredWording(delivered)}: ${suggestion.label}`
           : state === "failed"
             ? `Not sent to the manager${reason === undefined ? "" : ` (${reason})`}, tap to retry: ${suggestion.label}`
             : `Send to the manager: ${suggestion.label}`;
     return (
       <View
         key={suggestionKey(suggestion)}
-        style={[styles.suggestion, state === "failed" ? { borderColor: withAlpha(colors.statusDanger, 0.6) } : state === "sent" ? { borderColor: withAlpha(colors.statusSuccess, 0.6) } : null]}
+        style={[styles.suggestion, state === "failed" ? { borderColor: withAlpha(colors.statusDanger, 0.6) } : delivered !== null ? { borderColor: withAlpha(colors.statusSuccess, 0.6) } : null]}
       >
         <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ busy, disabled: busy }} disabled={busy} style={styles.suggestionSend} onPress={() => (beforeSend === undefined ? sendSuggestion(suggestion, index) : beforeSend(() => sendSuggestion(suggestion, index)))}>
           <Text style={[styles.suggestionText, busy ? { color: colors.foregroundMuted } : null]} numberOfLines={1}>
@@ -138,10 +144,10 @@ export function SuggestionPills({
               <Spinner size={BUTTON.iconSize} color={colors.foregroundMuted} />
               <Text style={[styles.suggestionState, { color: colors.foregroundMuted }]}>Sending…</Text>
             </>
-          ) : state === "sent" ? (
+          ) : delivered !== null ? (
             <>
               <Icon name="Check" size={BUTTON.iconSize} color={colors.statusSuccess} />
-              <Text style={[styles.suggestionState, { color: colors.statusSuccess }]}>Sent to the manager</Text>
+              <Text style={[styles.suggestionState, { color: colors.statusSuccess }]}>{deliveredWording(delivered)}</Text>
             </>
           ) : state === "failed" ? (
             <>

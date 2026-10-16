@@ -7,7 +7,7 @@ import { runPaseoJson } from "./cli";
 import { readHeadroom } from "./headroom";
 import { serialized } from "./serialize";
 import type { PaseoAgent, PaseoApi } from "./host-types";
-import { restartManager } from "./manager";
+import { restartManager, type QueueCarrier } from "./manager";
 import { Recovery } from "./recovery";
 import { sendFromPlugin } from "./send";
 import type { PluginState } from "./state";
@@ -27,7 +27,7 @@ vi.mock("./projects", () => ({
   readProjectConfig: async () => null,
 }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { crashRecovery: "crash", subagentCrashed: "subagent-crashed", headroomRecovered: "recovered", midTurnUnanswered: "mid-turn" },
+  TEMPLATES: { crashRecovery: "crash", subagentCrashed: "subagent-crashed", headroomRecovered: "recovered" },
   skillDirectory: async () => "/skill",
   message: async (path: string, values: Record<string, string> = {}) => `${path}:${JSON.stringify(values)}`,
 }));
@@ -46,6 +46,9 @@ function agent(id: string, role: string, ticket: string | null, status = "error"
   } as unknown as PaseoAgent;
 }
 
+/** Stands for the chat queue the recovery hands a manager restart (TR-171). */
+const chatQueue = { carry: async () => undefined, claim: async () => 0 } as unknown as QueueCarrier;
+
 function setUp(): { recovery: Recovery; agents: Record<string, AgentState>; counted: string[] } {
   const agents: Record<string, AgentState> = {};
   const state = {
@@ -58,7 +61,7 @@ function setUp(): { recovery: Recovery; agents: Record<string, AgentState>; coun
   } as unknown as PluginState;
   const counted: string[] = [];
   const stats = { count: async (_project: string, ticket: string, field: string) => void counted.push(`${ticket}:${field}`) } as unknown as Stats;
-  return { recovery: new Recovery(state, stats), agents, counted };
+  return { recovery: new Recovery(state, stats, chatQueue), agents, counted };
 }
 
 async function crashed(recovery: Recovery, target: PaseoAgent): Promise<void> {
@@ -178,19 +181,6 @@ describe("Recovery", () => {
     expect(agents["owner-1"]?.compaction).toBe("none");
   });
 
-  it("sends the user's words a cut-short handoff carried with the recovery, and keeps them no longer (TR-168)", async () => {
-    const owner = agent("owner-1", "owner", "TR-5");
-    vi.mocked(fetchLiveAgent).mockResolvedValue(owner);
-    const { recovery, agents } = setUp();
-    agents["owner-1"] = AgentStateSchema.parse({ project: "taro", role: "owner", ticket: "TR-5", compaction: "compacting", unansweredMidTurn: ["Is the label final?"] });
-    await crashed(recovery, owner);
-    await vi.advanceTimersByTimeAsync(5_000);
-    const sent = vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("crash:"));
-    expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatch(/\n\nmid-turn:\{"messages":"> Is the label final\?"\}$/);
-    expect(agents["owner-1"]?.unansweredMidTurn).toEqual([]);
-  });
-
   it("allows two recoveries an hour, then leaves the agent stalled with the reason", async () => {
     const owner = agent("owner-1", "owner", "TR-5");
     vi.mocked(fetchLiveAgent).mockResolvedValue(owner);
@@ -236,7 +226,7 @@ describe("Recovery", () => {
     const { recovery } = setUp();
     await crashed(recovery, manager);
     await vi.advanceTimersByTimeAsync(5_000);
-    expect(restartManager).toHaveBeenCalledWith(paseo, "taro");
+    expect(restartManager).toHaveBeenCalledWith(paseo, "taro", { queue: chatQueue });
     // The manager has no ticket to note.
     expect(appendTicketNote).not.toHaveBeenCalled();
   });

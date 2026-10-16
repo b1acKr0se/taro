@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { currentSuggestions, mentionedTicketIds, moreToTheRight, parseSuggestions, suggestionPills, withoutFixedActions, type SuggestionSend } from "./suggestions";
+import { currentSuggestions, deliveredWording, mentionedTicketIds, moreToTheRight, parseSuggestions, suggestionPills, withoutFixedActions, type SuggestionSend } from "./suggestions";
 
 describe("parseSuggestions", () => {
   it("reads label :: prompt lines and skips notes", () => {
@@ -164,5 +164,16 @@ describe("moreToTheRight", () => {
     expect(moreToTheRight(0, 300, 280)).toBe(false);
     expect(moreToTheRight(0, 0, 0)).toBe(false);
     expect(moreToTheRight(199.5, 300, 500)).toBe(false);
+  });
+});
+
+describe("a delivered pill's wording (TR-171)", () => {
+  it("says the manager has it, or that it waits in the manager's queue", () => {
+    expect(deliveredWording("sent")).toBe("Sent to the manager");
+    expect(deliveredWording("queued")).toBe("Queued for the manager");
+  });
+  it("keeps a queued pill in the row like a sent one until it leaves", () => {
+    const pill = { label: "Status", prompt: "Give me a status" };
+    expect(suggestionPills([], [{ suggestion: pill, state: "queued", index: 0 }])).toEqual([{ suggestion: pill, state: "queued" }]);
   });
 });

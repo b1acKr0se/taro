@@ -121,5 +121,4 @@ tracker as it is now.
 
 ## Every turn
 
-End with a status line (`reference/formats.md`); ask the user only with a decision block. A message
-the user sends while you work gets its answer in that turn, under a quote of it (SKILL.md rule 9).
+End with a status line (`reference/formats.md`); ask the user only with a decision block.

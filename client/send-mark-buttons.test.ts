@@ -1,5 +1,5 @@
 /**
- * The actions under a chat message's mark (Resend / Dismiss, Send now and stop it / Cancel, TR-084)
+ * The actions under a chat message's mark (Resend / Dismiss, Retry / Edit, TR-084)
  * are the shared button Catch up uses, not text links, in one row right-aligned under the bubble.
  * React Native that vitest cannot render, so this reads the source.
  */

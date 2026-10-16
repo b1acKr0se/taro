@@ -1,0 +1,2 @@
+<!-- Put before a queued message the user sent with Send now while the agent was working, between the interrupt markers the chat hides (TR-171). No placeholders. -->
+The user interrupted your turn with the message below. The step you were on was cut off, even if its tool result says it was rejected or never ran: a command may have started and been killed part way. Before you answer, check what it left (files it wrote, processes or test daemons still running, a commit or merge half made) by looking, not from the tool result, and record or finish it. Then answer the message.

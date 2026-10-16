@@ -15,7 +15,7 @@ import { fetchLiveAgent } from "./agents";
 import { runPaseoJson } from "./cli";
 import { readHeadroom } from "./headroom";
 import type { PaseoAgent, PaseoApi } from "./host-types";
-import { restartManager } from "./manager";
+import { restartManager, type QueueCarrier } from "./manager";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { projectPaths, requireProjectConfig } from "./projects";
 import { sendFromPlugin } from "./send";
@@ -23,7 +23,7 @@ import { serialized } from "./serialize";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
 import { isSubagentRole } from "../shared/project";
-import { currentOwner, freshState, identityFromLabels, withMidTurnReminder, type TaroIdentity } from "./supervision";
+import { currentOwner, freshState, identityFromLabels, type TaroIdentity } from "./supervision";
 import { reportFailure } from "./stopping";
 import { appendTicketNote } from "./tickets";
 
@@ -59,6 +59,8 @@ export class Recovery {
   constructor(
     private readonly state: PluginState,
     private readonly stats: Stats,
+    /** Carries a restarted manager's chat queue to the fresh one (TR-171). */
+    private readonly chatQueue: QueueCarrier | null = null,
   ) {}
 
   /** The owner relaunch lives in `Actions`, which is built after this. */
@@ -167,21 +169,18 @@ export class Recovery {
     const identity = identityFromLabels(agent.labels, agent.title ?? null);
     if (identity === null) return;
     const at = new Date().toISOString();
-    const { attempt, unanswered } = await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
+    const attempt = await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
       record.recoveries = [...recentRecoveries(record.recoveries, Date.parse(at)), at];
-      // A handoff or /compact the crash cut short: its next turn answers the recovery, not the pipeline,
-      // so the user's words it carried for the reload go with the recovery instead (TR-168).
+      // A handoff or /compact the crash cut short: its next turn answers the recovery, not the pipeline.
       record.compaction = "none";
-      const carried = record.unansweredMidTurn;
-      record.unansweredMidTurn = [];
-      return { attempt: record.recoveries.length, unanswered: carried };
+      return record.recoveries.length;
     });
     if (identity.ticket !== null) await this.stats.count(identity.project, identity.ticket, "recoveries").catch(() => undefined);
 
     let outcome: string;
     try {
       await runPaseoJson(["agent", "reload", agent.id], "a crashed agent cannot be reloaded");
-      await sendFromPlugin(paseo, agent.id, await withMidTurnReminder(await message(TEMPLATES.crashRecovery, { error: oneLine(crash.error), skill: await skillDirectory() }), unanswered));
+      await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.crashRecovery, { error: oneLine(crash.error), skill: await skillDirectory() }));
       outcome = `reloaded ${agent.id} in place (its conversation kept) and told it to check its checkout and continue`;
     } catch (error: unknown) {
       const reloadError = error instanceof Error ? error.message : String(error);
@@ -202,7 +201,7 @@ export class Recovery {
       if (identity.role === "manager") {
         const config = await requireProjectConfig(identity.project);
         if (config.managerAgentId !== agent.id) return "left it: it is no longer the project's manager";
-        const restarted = await restartManager(paseo, identity.project);
+        const restarted = await restartManager(paseo, identity.project, { queue: this.chatQueue });
         return `restarted the manager as ${restarted.agentId}`;
       }
     } catch (error: unknown) {
