@@ -388,7 +388,15 @@ export class ChatQueue {
   async sweep(paseo: PaseoApi): Promise<number> {
     let sent = 0;
     for (const agentId of await this.queuedAgents()) {
-      const queued = (await this.load(agentId)).messages.length;
+      // One queue that cannot be read this time does not hold up the rest.
+      const queued = await this.load(agentId).then(
+        (file) => file.messages.length,
+        (error: unknown) => {
+          console.warn(`[taro] ${agentId}'s chat queue cannot be read; tried again at the next sweep: ${error instanceof Error ? error.message : String(error)}`);
+          return null;
+        },
+      );
+      if (queued === null) continue;
       if (queued === 0) {
         // Only sent ids left: deleted once, if its agent is gone.
         if (!this.lookedAt.has(agentId)) {

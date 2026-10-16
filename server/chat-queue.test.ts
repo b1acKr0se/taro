@@ -224,6 +224,24 @@ describe("the queue's files", () => {
     expect(await ids(newQueue())).toEqual(["chat-a", "chat-b"]);
   });
 
+  it("sweeps the other queues past one it cannot read, and that one once it reads again (N3)", async () => {
+    const seeded = newQueue();
+    await seeded.add("owner-1", message_("chat-a"));
+    await seeded.add("owner-2", message_("chat-b"));
+    agents = { "owner-1": agent("owner-1", "owner", "idle"), "owner-2": agent("owner-2", "owner", "idle") };
+    let failing = true;
+    const queue = newQueue(async (path: string) => {
+      if (failing && path.includes("owner-1")) throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+      return readJsonIfPresent(path);
+    });
+    clock += 60_000;
+    expect(await queue.sweep(paseo)).toBe(1);
+    expect(sent.map((each) => each.messageId)).toEqual(["chat-b"]);
+    failing = false;
+    expect(await queue.sweep(paseo)).toBe(1);
+    expect(sent.map((each) => each.messageId)).toEqual(["chat-b", "chat-a"]);
+  });
+
   it("reads a corrupt file as empty without throwing, and writes over it on the next add", async () => {
     await writeFile(join(directory, "owner-1.json"), "{ not json", "utf8");
     const queue = newQueue();
