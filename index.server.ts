@@ -25,6 +25,7 @@ import {
   resolveTrackerSync as resolveTrackerSyncRpc,
   tellAgent,
   listChatQueue,
+  removeQueuedMessage,
   takeQueuedMessage,
   sendQueuedMessageNow,
   retryQueuedMessage,
@@ -93,8 +94,8 @@ export default function contribute(server: PluginServerContext) {
   const trackers = new TrackerWatch();
   const state = new PluginState();
   const stats = new Stats();
-  const recovery = new Recovery(state, stats);
   const chatQueue = new ChatQueue(state);
+  const recovery = new Recovery(state, stats, chatQueue);
   const supervisor = new Supervisor(state, stats, recovery, chatQueue);
   const actions = new Actions(state, supervisor, trackers, stats, recovery, chatQueue);
   recovery.setRelaunchOwner((paseo, project, ticket) => actions.relaunchOwner(paseo, project, ticket));
@@ -291,8 +292,8 @@ export default function contribute(server: PluginServerContext) {
     return {};
   });
 
-  server.handle(launchManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await launchManager(paseo, project)).agentId }));
-  server.handle(restartManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await restartManager(paseo, project)).agentId }));
+  server.handle(launchManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await launchManager(paseo, project, chatQueue)).agentId }));
+  server.handle(restartManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await restartManager(paseo, project, { queue: chatQueue })).agentId }));
   server.handle(resumeManagerRpc, async ({ project }, { paseo }) => ({ agentId: (await resumeManager(paseo, project, state)).agentId }));
   server.handle(compactManagerRpc, async ({ project }, { paseo }) => ({ agentId: await compactManager(paseo, project, supervisor) }));
   server.handle(tellManagerRpc, async ({ project, text, images, files, messageId, answersRequest }, { paseo }) => {
@@ -338,8 +339,12 @@ export default function contribute(server: PluginServerContext) {
   server.handle(tellAgent, async ({ agentId, text, images, files, messageId, answersRequest }, { paseo }) => {
     return actions.tellAgent(keep(paseo), agentId, text, { images, files, messageId }, answersRequest === true);
   });
-  server.handle(listChatQueue, async ({ agentId }) => ({ messages: await chatQueue.list(agentId) }));
+  server.handle(listChatQueue, async ({ agentId }) => chatQueue.listing(agentId));
   server.handle(takeQueuedMessage, async ({ agentId, messageId }) => chatQueue.take(agentId, messageId));
+  server.handle(removeQueuedMessage, async ({ agentId, messageId }) => {
+    await chatQueue.remove(agentId, messageId);
+    return {};
+  });
   server.handle(sendQueuedMessageNow, async ({ agentId, messageId }, { paseo }) => {
     await chatQueue.sendNow(keep(paseo), agentId, messageId);
     return {};

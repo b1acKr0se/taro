@@ -201,8 +201,14 @@ export class Supervisor {
     private readonly state: PluginState,
     private readonly stats: Stats,
     private readonly recovery: Recovery,
-    private readonly queue: Pick<ChatQueue, "drain"> | null = null,
+    private readonly queue: Pick<ChatQueue, "drain" | "hasQueued"> | null = null,
   ) {}
+
+  /** Whether the user's messages wait in the agent's queue: they go before held reports (TR-171). */
+  private async userMessagesQueued(agentId: string): Promise<boolean> {
+    if (this.queue === null) return false;
+    return this.queue.hasQueued(agentId).catch(() => false);
+  }
 
   /** The user's next queued chat message as the agent's next prompt (TR-171); whether it went. */
   private async drainQueue(paseo: PaseoApi, agentId: string, trigger: DrainTrigger): Promise<boolean> {
@@ -576,7 +582,8 @@ export class Supervisor {
     const ownerIdentity = identityFromLabels(owner.labels, owner.title ?? null);
     if (ownerIdentity === null) return;
     const ownerState = await this.state.agent(owner.id);
-    if (isMidTurn(owner) || (ownerState !== null && ownerState.compaction !== "none")) {
+    // Held behind the user's queued messages too, which take the owner's next turns first (TR-171).
+    if (isMidTurn(owner) || (ownerState !== null && ownerState.compaction !== "none") || (await this.userMessagesQueued(owner.id))) {
       await this.state.updateAgent(owner.id, () => freshState(ownerIdentity), (record) => {
         record.heldReports.push(report);
       });
@@ -596,10 +603,11 @@ export class Supervisor {
     });
   }
 
-  /** Sends reports held while the owner was busy; returns whether it sent anything. */
+  /** Sends reports held while the owner was busy; returns whether it sent anything. Not while the user's messages wait in its queue. */
   async flushHeldReports(paseo: PaseoApi, ownerId: string): Promise<boolean> {
     const held = await this.state.agent(ownerId);
     if (held === null || held.heldReports.length === 0 || held.compaction !== "none") return false;
+    if (await this.userMessagesQueued(ownerId)) return false;
     const reports = await this.state.updateAgent(ownerId, () => held, (record) => {
       const taken = record.heldReports;
       record.heldReports = [];

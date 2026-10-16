@@ -22,8 +22,37 @@ export const QueuedMessageSchema = z.object({
 });
 export type QueuedMessage = z.infer<typeof QueuedMessageSchema>;
 
-/** One agent's queue file; a new version starts the queue over rather than misreading it. */
-export const ChatQueueFileSchema = z.object({ version: z.literal(1), messages: z.array(QueuedMessageSchema).default([]) });
+/**
+ * One agent's queue file; a new version starts the queue over rather than misreading it. `sent`: the ids
+ * the queue sent last, so a tell retried after its answer was lost is not queued and sent again.
+ */
+export const ChatQueueFileSchema = z.object({ version: z.literal(1), messages: z.array(QueuedMessageSchema).default([]), sent: z.array(z.string()).default([]) });
+export type ChatQueueFile = Pick<z.infer<typeof ChatQueueFileSchema>, "messages" | "sent">;
+
+/** How many sent ids a queue keeps. */
+export const SENT_IDS_KEPT = 100;
+
+/** The error for a message that left the queue; the chat tells it apart from other failures. */
+export const NOT_QUEUED = "That message is no longer queued: it was sent, or taken back to edit.";
+
+/** The sent ids with one more, the oldest dropped past `SENT_IDS_KEPT`. */
+export function withSent(sent: readonly string[], messageId: string): string[] {
+  return [...sent.filter((id) => id !== messageId), messageId].slice(-SENT_IDS_KEPT);
+}
+
+/**
+ * A replaced agent's queue joined to its replacement's (TR-171): the carried messages first, as they were
+ * queued earlier, one copy per id; the sent ids of both.
+ */
+export function withCarried(carried: ChatQueueFile, current: ChatQueueFile): ChatQueueFile {
+  const messages = [...carried.messages, ...current.messages.filter((queued) => !carried.messages.some((each) => each.id === queued.id))];
+  return { messages, sent: [...new Set([...carried.sent, ...current.sent])].slice(-SENT_IDS_KEPT) };
+}
+
+/** The slot a replaced agent's queue waits in until its replacement starts: one per project and role (and ticket). */
+export function carriedSlot(project: string, role: "manager" | "owner", ticket: string | null = null): string {
+  return ticket === null ? `${project} ${role}` : `${project} ${role} ${ticket}`;
+}
 
 /** What `taro.queue.list` shows of a message: no attachment data, which can be megabytes. */
 export interface QueuedMessageSummary {
@@ -54,11 +83,12 @@ function isWorking(status: string): boolean {
 }
 
 /**
- * Where a chat message goes: at once to an idle agent, into the queue while it works. A message that
+ * Where a chat message goes: at once to an idle agent with nothing queued, into the queue while it works
+ * or behind messages already waiting, so it never overtakes an earlier one (TR-102). A message that
  * answers a pending permission or question goes at once even mid-turn: the turn waits on it.
  */
-export function routeChatMessage(agent: { status: string }, answersRequest: boolean): "send" | "queue" {
-  return answersRequest || !isWorking(agent.status) ? "send" : "queue";
+export function routeChatMessage(agent: { status: string }, answersRequest: boolean, queued: number): "send" | "queue" {
+  return answersRequest || (!isWorking(agent.status) && queued === 0) ? "send" : "queue";
 }
 
 /** How long after a Send now a canceled turn end is taken for the turn it cut off. */

@@ -21,8 +21,14 @@ import { Spinner } from "./ui";
 
 const NO_MESSAGES: readonly QueueRowMessage[] = [];
 
+export interface ChatQueueView {
+  messages: readonly QueueRowMessage[];
+  /** Taro compacts the agent: the daemon refuses Send now. */
+  compacting: boolean;
+}
+
 /** The agent's queued messages, oldest first; read every 2 s while there are some or the agent works. Not read for a chat with no composer. */
-export function useChatQueue(agentId: string, working: boolean, enabled: boolean): readonly QueueRowMessage[] {
+export function useChatQueue(agentId: string, working: boolean, enabled: boolean): ChatQueueView {
   const list = useRpc(listChatQueue);
   const query = useQuery({
     queryKey: chatQueueKey(agentId),
@@ -33,7 +39,9 @@ export function useChatQueue(agentId: string, working: boolean, enabled: boolean
     // The interval follows the last read: often while a row waits to leave.
     refetchInterval: (current) => queuePollMs({ queued: current.state.data?.messages.length ?? 0, working }),
   });
-  return enabled ? (query.data?.messages ?? NO_MESSAGES) : NO_MESSAGES;
+  const messages = enabled ? (query.data?.messages ?? NO_MESSAGES) : NO_MESSAGES;
+  const compacting = enabled && query.data?.compacting === true;
+  return useMemo(() => ({ messages, compacting }), [messages, compacting]);
 }
 
 /** Paseo's queue button: 32 px, round, never shrunk by a long message beside it. */

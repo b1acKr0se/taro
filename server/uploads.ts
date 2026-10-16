@@ -23,6 +23,8 @@ export interface Attachments {
   agentMidTurn?: boolean | undefined;
   /** Send now (TR-171): cut the running turn off rather than join it. */
   interrupt?: boolean | undefined;
+  /** A queued message's last look, after the timeline's (TR-171): throws when it must not go now. */
+  beforeSend?: (() => Promise<void>) | undefined;
 }
 
 export function hasAttachments(attachments: Attachments): boolean {
@@ -37,7 +39,7 @@ export function hasAttachments(attachments: Attachments): boolean {
  */
 export async function sendWithAttachments(paseo: PaseoApi, agentId: string, words: string, attachments: Attachments, home = paseoHome()): Promise<void> {
   // A chat message sent again under its own id (a retry, a reconnect) goes once (TR-102).
-  await sendChatMessageOnce(paseo, agentId, attachments.messageId, () => sendWithUploads(paseo, agentId, words, attachments, home), attachments.agentMidTurn === true);
+  await sendChatMessageOnce(paseo, agentId, attachments.messageId, () => sendWithUploads(paseo, agentId, words, attachments, home), attachments.agentMidTurn === true, attachments.beforeSend);
 }
 
 async function sendWithUploads(paseo: PaseoApi, agentId: string, words: string, attachments: Attachments, home: string): Promise<void> {

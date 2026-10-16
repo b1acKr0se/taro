@@ -3,7 +3,7 @@
  * it offers, whether Edit may put it back in the box, and how often the queue is read. Pure, for vitest.
  */
 import { imageFileName, type DraftAttachment, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
-import type { QueuedMessageSummary } from "../shared/chat-queue";
+import { NOT_QUEUED, type QueuedMessageSummary } from "../shared/chat-queue";
 import type { SendView } from "../shared/pending-sends";
 
 export type QueueRowMessage = QueuedMessageSummary;
@@ -50,12 +50,30 @@ export function queueRowActions(message: QueueRowMessage, compacting: boolean): 
   return compacting ? [EDIT] : [EDIT, SEND_NOW];
 }
 
+/**
+ * Whether the agent compacts, for its rows: the timeline shows Claude's own compaction, the daemon
+ * Taro's handoff → /compact → reload, during which it refuses Send now as well.
+ */
+export function queueCompacting(timelineCompacting: boolean, daemonCompacting: boolean): boolean {
+  return timelineCompacting || daemonCompacting;
+}
+
 export const EDIT_REFUSAL = "Remove the attachments from the box first";
+
+export const EDIT_SENT_MEANWHILE = "That message was sent to the agent meanwhile; its words stay in the box.";
+
+/**
+ * Edit fills the box from `taro.queue.take`, then asks `taro.queue.remove` to take the message out: a
+ * removal refused as "no longer queued" means the queue sent it meanwhile (the words stay, with a
+ * note); any other failure leaves it queued, and the box goes back as it was so it is not there twice.
+ */
+export function editRemoval(error: string): "sent-meanwhile" | "still-queued" {
+  return error.includes(NOT_QUEUED) ? "sent-meanwhile" : "still-queued";
+}
 
 /**
  * Why Edit may not take the message out of the queue, or null when it may: the box and the message both
- * hold attachments, which together may be too many to send. Refused before the message leaves the
- * daemon's queue, so nothing is lost.
+ * hold attachments, which together may be too many to send. Refused before the message is taken.
  */
 export function editRefusal(box: { text: string; attachments: number }, message: QueueRowMessage): string | null {
   return box.attachments > 0 && message.imageCount + message.fileNames.length > 0 ? EDIT_REFUSAL : null;

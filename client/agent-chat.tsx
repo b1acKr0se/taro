@@ -11,7 +11,7 @@ import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, 
 import { Keyboard, Platform, ScrollView, Text, useWindowDimensions, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
 
 import { attachmentProblem, refuseOversizedImages, type DraftAttachment } from "../shared/attachments";
-import { answeredPermissionAsks, listAgentDecisions, listSentImages, retryQueuedMessage, sendQueuedMessageNow, takeQueuedMessage, type SentImagesMessage } from "../shared/contracts";
+import { answeredPermissionAsks, listAgentDecisions, listSentImages, removeQueuedMessage, retryQueuedMessage, sendQueuedMessageNow, takeQueuedMessage, type SentImagesMessage } from "../shared/contracts";
 import type { PermissionAsk } from "../shared/permission-asks";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { ActionRow } from "./action-row";
@@ -49,7 +49,7 @@ import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from
 import { composerNotice, sendLabel } from "./composer-notice";
 import { usePendingSends, type ChatSend } from "./use-pending-sends";
 import { isCompacting, isWorking, takeBack, type SendMark, type SendView } from "../shared/pending-sends";
-import { chatQueueKey, editRefusal, sendingToQueue, takenAttachments, type QueueRowAction, type QueueRowMessage } from "./queue-rows";
+import { chatQueueKey, EDIT_SENT_MEANWHILE, editRefusal, editRemoval, queueCompacting, sendingToQueue, takenAttachments, type QueueRowAction, type QueueRowMessage } from "./queue-rows";
 import { QueueTrack, useChatQueue } from "./queue-track";
 import { COMPOSER_CONTROL_SIZE, composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
@@ -188,8 +188,9 @@ export function AgentChat({
   });
   const working = isWorking(live?.status ?? agent.status);
   // The messages waiting on the daemon for the turn to end (TR-171), drawn above the box.
-  const queued = useChatQueue(agent.id, working, readOnly === undefined);
-  const compacting = useMemo(() => isCompacting(timeline.entries), [timeline.entries]);
+  const queue = useChatQueue(agent.id, working, readOnly === undefined);
+  const timelineCompacting = useMemo(() => isCompacting(timeline.entries), [timeline.entries]);
+  const compacting = queueCompacting(timelineCompacting, queue.compacting);
   const marksByRow = useMemo(() => new Map(sends.views.flatMap((view) => (view.rowKey === null ? [] : [[view.rowKey, view] as const]))), [sends.views]);
   // On their way to a working agent: drawn in the queue track, where the daemon will put them (TR-171).
   const sendingRows = useMemo(() => sendingToQueue(sends.views, working), [sends.views, working]);
@@ -458,6 +459,7 @@ export function AgentChat({
   }
 
   const takeQueued = useRpc(takeQueuedMessage);
+  const removeQueued = useRpc(removeQueuedMessage);
   const sendQueuedNow = useRpc(sendQueuedMessageNow);
   const retryQueued = useRpc(retryQueuedMessage);
   const [queueBusy, setQueueBusy] = useState<{ id: string; action: QueueRowAction } | null>(null);
@@ -475,10 +477,21 @@ export function AgentChat({
     const input = { agentId: agent.id, messageId: message.id };
     const call =
       action === "edit"
-        ? takeQueued(input).then((taken) => {
-            const back = takeBack({ text: drafts.get(agent.id), attachments: draftAttachments.get(agent.id) }, { text: taken.text, attachments: takenAttachments(message.id, taken) });
+        ? takeQueued(input).then(async (taken) => {
+            // The box first, then the message out of the queue: a lost answer on either loses nothing.
+            const before = { text: drafts.get(agent.id), attachments: draftAttachments.get(agent.id) };
+            const back = takeBack(before, { text: taken.text, attachments: takenAttachments(message.id, taken) });
             setDraft(back.text);
             setAttachments(back.attachments);
+            await removeQueued(input).catch((caught: unknown) => {
+              if (editRemoval(errorText(caught)) === "sent-meanwhile") {
+                toast.show(EDIT_SENT_MEANWHILE);
+                return;
+              }
+              setDraft(before.text);
+              setAttachments(before.attachments);
+              throw caught;
+            });
           })
         : (action === "send-now" ? sendQueuedNow(input) : retryQueued(input)).then(() => follow.pin());
     setQueueBusy({ id: message.id, action });
@@ -696,7 +709,7 @@ export function AgentChat({
               </View>
             )}
             {/* Directly above the box, as Paseo draws its own queue. */}
-            <QueueTrack messages={queued} sending={sendingRows} compacting={compacting} busy={queueBusy} theme={theme} onAction={queueAction} />
+            <QueueTrack messages={queue.messages} sending={sendingRows} compacting={compacting} busy={queueBusy} theme={theme} onAction={queueAction} />
             {notice === null ? null : (
               <View style={styles.quick}>
                 <Icon name="AlertTriangle" size={13} color={theme.colors.statusWarning} />

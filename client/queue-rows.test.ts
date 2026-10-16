@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { chatQueueKey, EDIT_REFUSAL, editRefusal, takenAttachments, queuePollMs, queueRowActions, queueRowText, QUEUE_POLL_BUSY_MS, QUEUE_POLL_QUIET_MS, type QueueRowMessage, sendingToQueue } from "./queue-rows";
+import { NOT_QUEUED } from "../shared/chat-queue";
+import { chatQueueKey, EDIT_REFUSAL, editRefusal, editRemoval, queueCompacting, takenAttachments, queuePollMs, queueRowActions, queueRowText, QUEUE_POLL_BUSY_MS, QUEUE_POLL_QUIET_MS, type QueueRowMessage, sendingToQueue } from "./queue-rows";
 import type { PendingSend, SendView } from "../shared/pending-sends";
 
 function queued(change: Partial<QueueRowMessage> = {}): QueueRowMessage {
@@ -63,6 +64,24 @@ describe("queueRowActions (TR-171)", () => {
       { action: "send-now", label: "Send queued message now", icon: "ArrowUp", accent: true },
     ]);
     expect(queueRowActions(queued({ failed: "no" }), false)[1]).toEqual({ action: "retry", label: "Retry queued message", icon: "RotateCcw", accent: true });
+  });
+});
+
+describe("queueCompacting (TR-171)", () => {
+  it("hides Send now while Claude compacts (the timeline) or Taro does (the daemon)", () => {
+    expect(queueRowActions(queued(), queueCompacting(false, false)).map((action) => action.action)).toEqual(["edit", "send-now"]);
+    expect(queueRowActions(queued(), queueCompacting(true, false)).map((action) => action.action)).toEqual(["edit"]);
+    expect(queueRowActions(queued(), queueCompacting(false, true)).map((action) => action.action)).toEqual(["edit"]);
+  });
+});
+
+describe("editRemoval (TR-171)", () => {
+  it("reads 'no longer queued' as sent meanwhile, the words kept", () => {
+    expect(editRemoval(NOT_QUEUED)).toBe("sent-meanwhile");
+  });
+
+  it("reads any other failure as still queued", () => {
+    expect(editRemoval("Transport closed (code 1006)")).toBe("still-queued");
   });
 });
 

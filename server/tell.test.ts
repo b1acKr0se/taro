@@ -112,13 +112,18 @@ describe("a chat message to an agent at work waits in its queue (TR-171)", () =>
     actions = new Actions({} as PluginState, {} as Supervisor, {} as TrackerWatch, {} as Stats, {} as Recovery, queue);
   });
 
-  it("queues an agent's message mid-turn, and sends one to an idle agent at once", async () => {
+  it("queues an agent's message mid-turn, behind a waiting one when idle, and sends one to an idle agent with nothing queued at once", async () => {
     expect(await actions.tellAgent(paseo, "agent-1", " wait for me ", { messageId: "chat-a" })).toEqual({ queued: true });
     expect(sent).toEqual([]);
     expect((await queue.list("agent-1")).map((message) => message.text)).toEqual(["wait for me"]);
     status = "idle";
-    expect(await actions.tellAgent(paseo, "agent-1", "now", { messageId: "chat-b" })).toEqual({ queued: false });
-    expect(sent.map((each) => each.text)).toEqual(["now"]);
+    // Never ahead of the one waiting: queued behind it, and the drain after queueing sends the older.
+    expect(await actions.tellAgent(paseo, "agent-1", "next", { messageId: "chat-b" })).toEqual({ queued: true });
+    expect(sent.map((each) => each.text)).toEqual(["wait for me"]);
+    expect((await queue.list("agent-1")).map((message) => message.text)).toEqual(["next"]);
+    await queue.drain(paseo, "agent-1", "completed");
+    expect(await actions.tellAgent(paseo, "agent-1", "now", { messageId: "chat-c" })).toEqual({ queued: false });
+    expect(sent.map((each) => each.text)).toEqual(["wait for me", "next", "now"]);
   });
 
   it("sends at once mid-turn when the words answer a pending request", async () => {

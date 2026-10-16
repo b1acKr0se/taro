@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  carriedSlot,
   ChatQueueFileSchema,
   drainBlocker,
   INTERRUPT_NOTE_END,
@@ -12,7 +13,10 @@ import {
   sweepDue,
   withFront,
   withInterruptNote,
+  withCarried,
   withQueued,
+  withSent,
+  SENT_IDS_KEPT,
   type DrainCheck,
   type DrainTrigger,
   type QueuedMessage,
@@ -25,19 +29,25 @@ function queued(id: string, extra: Partial<QueuedMessage> = {}): QueuedMessage {
 
 describe("routeChatMessage", () => {
   it("sends to an idle agent at once, and queues while it works", () => {
-    expect(routeChatMessage({ status: "idle" }, false)).toBe("send");
-    expect(routeChatMessage({ status: "error" }, false)).toBe("send");
-    expect(routeChatMessage({ status: "running" }, false)).toBe("queue");
+    expect(routeChatMessage({ status: "idle" }, false, 0)).toBe("send");
+    expect(routeChatMessage({ status: "error" }, false, 0)).toBe("send");
+    expect(routeChatMessage({ status: "running" }, false, 0)).toBe("queue");
   });
 
   it("queues for an agent still starting its turn", () => {
-    expect(routeChatMessage({ status: "initializing" }, false)).toBe("queue");
+    expect(routeChatMessage({ status: "initializing" }, false, 0)).toBe("queue");
   });
 
   it("sends words that answer a pending request at once, even mid-turn", () => {
-    expect(routeChatMessage({ status: "running" }, true)).toBe("send");
-    expect(routeChatMessage({ status: "initializing" }, true)).toBe("send");
-    expect(routeChatMessage({ status: "idle" }, true)).toBe("send");
+    expect(routeChatMessage({ status: "running" }, true, 0)).toBe("send");
+    expect(routeChatMessage({ status: "initializing" }, true, 0)).toBe("send");
+    expect(routeChatMessage({ status: "idle" }, true, 0)).toBe("send");
+    expect(routeChatMessage({ status: "idle" }, true, 2)).toBe("send");
+  });
+
+  it("queues behind messages already waiting, even for an idle agent, so none is overtaken", () => {
+    expect(routeChatMessage({ status: "idle" }, false, 1)).toBe("queue");
+    expect(routeChatMessage({ status: "error" }, false, 3)).toBe("queue");
   });
 });
 
@@ -154,5 +164,33 @@ describe("queue edits", () => {
   it("reads a file of another version as not one it knows", () => {
     expect(ChatQueueFileSchema.safeParse({ version: 2, messages: [] }).success).toBe(false);
     expect(ChatQueueFileSchema.parse({ version: 1, messages: [queued("chat-a")] }).messages).toHaveLength(1);
+  });
+
+  it("reads a file from before sent ids as having none", () => {
+    expect(ChatQueueFileSchema.parse({ version: 1, messages: [] }).sent).toEqual([]);
+  });
+
+  it("keeps the last sent ids, one copy each", () => {
+    let sent: string[] = [];
+    for (let index = 0; index < SENT_IDS_KEPT + 5; index += 1) sent = withSent(sent, `chat-${index}`);
+    sent = withSent(sent, "chat-50");
+    expect(sent).toHaveLength(SENT_IDS_KEPT);
+    expect(sent[0]).toBe("chat-5");
+    expect(sent.at(-1)).toBe("chat-50");
+  });
+
+  it("puts a carried queue before the replacement's own, one copy per id, with both sent lists", () => {
+    const joined = withCarried({ messages: [queued("chat-a"), queued("chat-b", { failed: "x" })], sent: ["chat-0"] }, { messages: [queued("chat-b"), queued("chat-c")], sent: ["chat-9"] });
+    expect(joined.messages.map((message) => [message.id, message.failed])).toEqual([
+      ["chat-a", null],
+      ["chat-b", "x"],
+      ["chat-c", null],
+    ]);
+    expect(joined.sent).toEqual(["chat-0", "chat-9"]);
+  });
+
+  it("names one carried slot per project, role and ticket", () => {
+    expect(carriedSlot("taro", "manager")).toBe("taro manager");
+    expect(carriedSlot("taro", "owner", "TR-9")).toBe("taro owner TR-9");
   });
 });

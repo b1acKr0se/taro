@@ -61,8 +61,19 @@ const chatSendsUnderWay = new Map<string, Promise<void>>();
  * One sent while the agent compacts is handed back unsent (`COMPACTING_REFUSAL`): Paseo would cancel the
  * compaction for it, and the chat holds it until the compaction ends.
  */
-export async function sendChatMessageOnce(paseo: PaseoApi, agentId: string, messageId: string | undefined, send: () => Promise<void>, midTurn = false): Promise<void> {
-  if (messageId === undefined || !messageId.startsWith(CHAT_MESSAGE_PREFIX)) return send();
+export async function sendChatMessageOnce(
+  paseo: PaseoApi,
+  agentId: string,
+  messageId: string | undefined,
+  send: () => Promise<void>,
+  midTurn = false,
+  /** The last look before the send (a queued message's: is the agent still idle?); throws to send nothing. */
+  beforeSend: () => Promise<void> = async () => undefined,
+): Promise<void> {
+  if (messageId === undefined || !messageId.startsWith(CHAT_MESSAGE_PREFIX)) {
+    await beforeSend();
+    return send();
+  }
   const key = `${agentId} ${messageId}`;
   const underWay = chatSendsUnderWay.get(key);
   if (underWay !== undefined) return underWay;
@@ -72,6 +83,7 @@ export async function sendChatMessageOnce(paseo: PaseoApi, agentId: string, mess
       .catch(() => null);
     if (page !== null && holdsMessage(page.entries, messageId)) return;
     if (midTurn && page !== null && isCompacting(page.entries as unknown as readonly SendTimelineEntry[])) throw new Error(COMPACTING_REFUSAL);
+    await beforeSend();
     await send();
   })();
   chatSendsUnderWay.set(key, sending);

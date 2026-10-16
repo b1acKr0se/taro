@@ -8,6 +8,7 @@
  */
 import { randomUUID } from "node:crypto";
 
+import { carriedSlot } from "../shared/chat-queue";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { questionHoldingAccept } from "../shared/delivery-end";
 import { doneTicketOf, planRelease } from "../shared/done-release";
@@ -359,8 +360,12 @@ export class Actions {
     }
     if (workspaceId === null) throw new Error(`Cannot tell which workspace ${ticket} used; its EXECUTION record names none.`);
     if (previous !== null && isMidTurn(previous)) throw new Error("Its owner is running; nudge or interrupt it instead.");
+    // The user's queued messages go to the new owner (TR-171): set aside before the archive, and again after it for one that came in between.
+    const slot = carriedSlot(project, "owner", ticket);
     if (previous !== null) {
+      await this.queue?.carry(previous.id, slot);
       await paseo.agents.ref(previous.id).archive().catch(() => undefined);
+      await this.queue?.carry(previous.id, slot);
       // The archive hook does this too; done here as well so the new owner never appears beside the old questions.
       await this.supervisor.withdrawDecisionsOf(previous.id);
     }
@@ -397,6 +402,8 @@ export class Actions {
         })
       ).trim() + (then.trim() === "" ? "" : `\n\n${then.trim()}`),
     });
+    // The queue of the owner this one replaces, or of one replaced before a crash.
+    await this.queue?.claim(slot, agentId).catch((error: unknown) => console.warn(`[taro] ${ticket}: the new owner could not take over the chat queue: ${error instanceof Error ? error.message : String(error)}`));
     if (previous !== null) await this.state.forgetAgent(previous.id);
     return agentId;
   }
@@ -1090,7 +1097,7 @@ export class Actions {
     });
     const at = new Date(now).toISOString();
     try {
-      const restarted = await restartManager(paseo, project, { why, evenMidTurn: condition === "unresponsive" && manager !== null && isMidTurn(manager) });
+      const restarted = await restartManager(paseo, project, { queue: this.queue, why, evenMidTurn: condition === "unresponsive" && manager !== null && isMidTurn(manager) });
       markRestarted(watch, due, count, now, true);
       await this.saveQueueWatch(project, watch);
       console.warn(`[taro] ${project}: restarted the ${condition} manager ${manager?.id ?? "?"} as ${restarted.agentId}: ${due.join(", ")} stayed queued with a free slot`);

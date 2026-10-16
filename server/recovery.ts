@@ -15,7 +15,7 @@ import { fetchLiveAgent } from "./agents";
 import { runPaseoJson } from "./cli";
 import { readHeadroom } from "./headroom";
 import type { PaseoAgent, PaseoApi } from "./host-types";
-import { restartManager } from "./manager";
+import { restartManager, type QueueCarrier } from "./manager";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { projectPaths, requireProjectConfig } from "./projects";
 import { sendFromPlugin } from "./send";
@@ -59,6 +59,8 @@ export class Recovery {
   constructor(
     private readonly state: PluginState,
     private readonly stats: Stats,
+    /** Carries a restarted manager's chat queue to the fresh one (TR-171). */
+    private readonly chatQueue: QueueCarrier | null = null,
   ) {}
 
   /** The owner relaunch lives in `Actions`, which is built after this. */
@@ -199,7 +201,7 @@ export class Recovery {
       if (identity.role === "manager") {
         const config = await requireProjectConfig(identity.project);
         if (config.managerAgentId !== agent.id) return "left it: it is no longer the project's manager";
-        const restarted = await restartManager(paseo, identity.project);
+        const restarted = await restartManager(paseo, identity.project, { queue: this.chatQueue });
         return `restarted the manager as ${restarted.agentId}`;
       }
     } catch (error: unknown) {

@@ -383,14 +383,18 @@ export const listChatQueue = defineRpc({
   input: AgentInput,
   output: z.object({
     messages: z.array(z.object({ id: z.string(), text: z.string(), at: z.string(), imageCount: z.number(), fileNames: z.array(z.string()), failed: z.string().nullable() })),
+    /** Taro compacts the agent (handoff, /compact, reload): no Send now, which it would refuse. */
+    compacting: z.boolean(),
   }),
 });
-/** Edit: the message out of the queue, whole, back to the composer. */
+/** Edit's first step: the message, whole, for the composer; it stays queued until `taro.queue.remove`. */
 export const takeQueuedMessage = defineRpc({
   name: "taro.queue.take",
   input: QueuedMessageInput,
   output: z.object({ text: z.string(), images: z.array(OutgoingImageSchema), files: z.array(OutgoingFileSchema) }),
 });
+/** Edit's second step: the message out of the queue; an error when the queue sent it meanwhile. */
+export const removeQueuedMessage = defineRpc({ name: "taro.queue.remove", input: QueuedMessageInput, output: Empty });
 /** Send now: the message out of the queue and to the agent at once, interrupting its turn. */
 export const sendQueuedMessageNow = defineRpc({ name: "taro.queue.send-now", input: QueuedMessageInput, output: Empty });
 /** Retry: a message whose send failed loses its mark, and the queue drains if the agent is idle. */

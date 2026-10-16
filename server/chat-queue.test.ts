@@ -8,11 +8,12 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { listChatQueue, retryQueuedMessage, sendQueuedMessageNow, takeQueuedMessage } from "../shared/contracts";
-import { INTERRUPT_NOTE_START, stripInterruptNote, type QueuedMessage } from "../shared/chat-queue";
+import { listChatQueue, removeQueuedMessage, retryQueuedMessage, sendQueuedMessageNow, takeQueuedMessage } from "../shared/contracts";
+import { INTERRUPT_NOTE_START, NOT_QUEUED, stripInterruptNote, type QueuedMessage } from "../shared/chat-queue";
 import { COMPACTING_REFUSAL } from "../shared/pending-sends";
 import { AgentStateSchema, type AgentState } from "../shared/state";
 import { ChatQueue } from "./chat-queue";
+import { readJsonIfPresent } from "./files";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
 import { message, TEMPLATES } from "./package-files";
 import type { Recovery } from "./recovery";
@@ -54,6 +55,10 @@ let records: Record<string, AgentState>;
 let sent: Sent[];
 let timelines: Record<string, { item: TimelineItem; timestamp: string }[]>;
 let failSends: Error | null;
+/** A send waits here once it reached Paseo's door (after the timeline read): to stand for a plugin that dies mid-send. */
+let sendGate: { entered: () => void; until: Promise<void>; release: () => void } | null;
+/** Runs as a send reads the timeline: a turn that starts in that gap. */
+let onTimelineRead: (() => void) | null;
 let paseo: PaseoApi;
 
 function agent(id: string, role: string, status = "idle"): FakeAgent {
@@ -73,8 +78,22 @@ const state = {
   },
 } as unknown as PluginState;
 
-function newQueue(): ChatQueue {
-  return new ChatQueue(state, { directory: () => directory, now: () => clock });
+function newQueue(read?: (path: string) => Promise<unknown>): ChatQueue {
+  return new ChatQueue(state, { directory: () => directory, now: () => clock, ...(read === undefined ? {} : { read }) });
+}
+
+/** A gate for the next send; `open` lets it through, `fail` rejects it. */
+function gateSends(): { entered: Promise<void>; open: () => void; fail: (error: Error) => void } {
+  let entered = () => undefined as void;
+  let open = () => undefined as void;
+  let fail = (_error: Error) => undefined as void;
+  const reached = new Promise<void>((resolve) => (entered = resolve));
+  const until = new Promise<void>((resolve, reject) => {
+    open = resolve;
+    fail = reject;
+  });
+  sendGate = { entered, until, release: () => fail(new Error("the test ended")) };
+  return { entered: reached, open, fail };
 }
 
 beforeEach(async () => {
@@ -88,6 +107,8 @@ beforeEach(async () => {
   sent = [];
   timelines = {};
   failSends = null;
+  sendGate = null;
+  onTimelineRead = null;
   paseo = {
     agents: {
       list: async () => ({ entries: [], pageInfo: { hasMore: false, nextCursor: null } }),
@@ -97,18 +118,29 @@ beforeEach(async () => {
           const target = agents[agentId];
           if (target === undefined) throw new Error("Agent not found");
           if (failSends !== null) throw failSends;
+          if (sendGate !== null) {
+            sendGate.entered();
+            await sendGate.until;
+          }
           sent.push({ agentId, text, behavior: options.activeTurnBehavior, messageId: options.messageId, images: options.images ?? [], attachments: options.attachments ?? [], statusAtSend: target.status });
           (timelines[agentId] ??= []).push({ item: { type: "user_message", text, clientMessageId: options.messageId } as unknown as TimelineItem, timestamp: new Date(clock).toISOString() });
           // Paseo starts a turn for a prompt it takes, and keeps the agent busy through an interrupt's replacement.
           target.status = "running";
         },
-        timeline: { refetch: async () => ({ entries: timelines[agentId] ?? [], hasOlder: false, startCursor: null }) },
+        timeline: {
+          refetch: async () => {
+            onTimelineRead?.();
+            return { entries: timelines[agentId] ?? [], hasOlder: false, startCursor: null };
+          },
+        },
       }),
     },
   } as unknown as PaseoApi;
 });
 
 afterEach(async () => {
+  // A send a failed test left waiting would hold the agent's send lock for every test after it.
+  sendGate?.release();
   if (previousHome === undefined) delete process.env.PASEO_HOME;
   else process.env.PASEO_HOME = previousHome;
   await rm(directory, { recursive: true, force: true });
@@ -162,6 +194,7 @@ describe("the queue's files", () => {
     const second = newQueue();
     expect(await ids(second)).toEqual(["chat-a", "chat-b"]);
     expect(await second.take("owner-1", "chat-a")).toEqual({ text: "words chat-a", images: [IMAGE], files: [FILE] });
+    expect(await ids(second)).toEqual(["chat-a", "chat-b"]);
   });
 
   it("holds ten attachments, base64, and lists only their count and names", async () => {
@@ -183,22 +216,37 @@ describe("the queue's files", () => {
     expect(await ids(queue)).toEqual(["chat-a"]);
   });
 
-  it("takes a message out for Edit, and answers an error for one not there", async () => {
+  it("Edit: take answers the message and keeps it queued; remove takes it out; either answers an error for one not there", async () => {
     const queue = newQueue();
     await queue.add("owner-1", message_("chat-a"));
-    await queue.add("owner-1", message_("chat-b"));
-    expect((await queue.take("owner-1", "chat-b")).text).toBe("words chat-b");
+    await queue.add("owner-1", message_("chat-b", { images: [IMAGE] }));
+    expect(await queue.take("owner-1", "chat-b")).toEqual({ text: "words chat-b", images: [IMAGE], files: [] });
+    // An answer lost on its way to the chat loses nothing.
+    expect(await ids(queue)).toEqual(["chat-a", "chat-b"]);
+    expect(await ids(newQueue())).toEqual(["chat-a", "chat-b"]);
+    await queue.remove("owner-1", "chat-b");
     expect(await ids(queue)).toEqual(["chat-a"]);
     await expect(queue.take("owner-1", "chat-b")).rejects.toThrow("no longer queued");
+    await expect(queue.remove("owner-1", "chat-b")).rejects.toThrow("no longer queued");
     await expect(queue.sendNow(paseo, "owner-1", "chat-zz")).rejects.toThrow("no longer queued");
     await expect(queue.retry(paseo, "owner-1", "chat-zz")).rejects.toThrow("no longer queued");
     expect(await ids(queue)).toEqual(["chat-a"]);
   });
 
+  it("Edit's remove of a message the queue sent meanwhile answers 'no longer queued'", async () => {
+    const queue = newQueue();
+    await queue.tell(paseo, live(), "first", { messageId: "chat-a" }, false);
+    const taken = await queue.take("owner-1", "chat-a");
+    agents["owner-1"]!.status = "idle";
+    expect(await queue.drain(paseo, "owner-1", "completed")).toBe(true);
+    expect(taken.text).toBe("first");
+    await expect(queue.remove("owner-1", "chat-a")).rejects.toThrow(NOT_QUEUED);
+  });
+
   it("deletes the file once its last message is gone, and on forget", async () => {
     const queue = newQueue();
     await queue.add("owner-1", message_("chat-a"));
-    await queue.take("owner-1", "chat-a");
+    await queue.remove("owner-1", "chat-a");
     expect(await readdir(directory)).toEqual([]);
     await queue.add("owner-1", message_("chat-b"));
     await queue.forget("owner-1");
@@ -559,12 +607,241 @@ describe("turn ends drain the queue (Supervisor.onTurnEnded)", () => {
   });
 });
 
+describe("Send now takes the message out only once Paseo took it (S1)", () => {
+  it("keeps it queued, at the front, when the send throws", async () => {
+    const queue = newQueue();
+    await queue.tell(paseo, live(), "first", { messageId: "chat-a" }, false);
+    await queue.tell(paseo, live(), "urgent", { messageId: "chat-b" }, false);
+    failSends = new Error("Transport closed (code 1006)");
+    await expect(queue.sendNow(paseo, "owner-1", "chat-b")).rejects.toThrow("Transport closed");
+    expect(await ids(queue)).toEqual(["chat-b", "chat-a"]);
+    expect(await ids(newQueue())).toEqual(["chat-b", "chat-a"]);
+  });
+
+  it("keeps it on disk while the send is under way, so a plugin that dies mid-send loses nothing", async () => {
+    const queue = newQueue();
+    await queue.tell(paseo, live(), "first", { messageId: "chat-a" }, false);
+    await queue.tell(paseo, live(), "urgent", { messageId: "chat-b" }, false);
+    const gate = gateSends();
+    const sending = queue.sendNow(paseo, "owner-1", "chat-b");
+    await gate.entered;
+    // What the next plugin process would read, had this one died here.
+    expect(await ids(newQueue())).toEqual(["chat-a", "chat-b"]);
+    gate.fail(new Error("Transport closed (code 1006)"));
+    await expect(sending).rejects.toThrow("Transport closed");
+    expect(await ids(newQueue())).toEqual(["chat-b", "chat-a"]);
+  });
+
+  it("removes it once the send went through", async () => {
+    const queue = newQueue();
+    await queue.tell(paseo, live(), "urgent", { messageId: "chat-a" }, false);
+    const gate = gateSends();
+    const sending = queue.sendNow(paseo, "owner-1", "chat-a");
+    await gate.entered;
+    expect(await ids(queue)).toEqual(["chat-a"]);
+    gate.open();
+    await sending;
+    expect(await ids(newQueue())).toEqual([]);
+  });
+});
+
+describe("a retried tell is never sent twice (S3)", () => {
+  it("turns away a tell the queue already sent, even once the agent works again", async () => {
+    const queue = newQueue();
+    expect(await queue.tell(paseo, live(), "use sqlite", { messageId: "chat-a" }, false)).toEqual({ queued: true });
+    agents["owner-1"]!.status = "idle";
+    expect(await queue.drain(paseo, "owner-1", "completed")).toBe(true);
+    expect(agents["owner-1"]!.status).toBe("running");
+    // The chat's answer was lost and it sends again; the timeline has scrolled past the message.
+    timelines["owner-1"] = [];
+    expect(await queue.tell(paseo, live(), "use sqlite", { messageId: "chat-a" }, false)).toEqual({ queued: true });
+    expect(await queue.list("owner-1")).toEqual([]);
+    agents["owner-1"]!.status = "idle";
+    expect(await queue.drain(paseo, "owner-1", "completed")).toBe(false);
+    expect(sent.map((each) => each.messageId)).toEqual(["chat-a"]);
+  });
+
+  it("remembers the sent ids across a restart, in a file kept while the queue is empty", async () => {
+    const queue = newQueue();
+    await queue.tell(paseo, live(), "use sqlite", { messageId: "chat-a" }, false);
+    agents["owner-1"]!.status = "idle";
+    await queue.drain(paseo, "owner-1", "completed");
+    expect(await readdir(directory)).toEqual(["owner-1.json"]);
+    timelines["owner-1"] = [];
+    expect(await newQueue().tell(paseo, live(), "use sqlite", { messageId: "chat-a" }, false)).toEqual({ queued: true });
+    expect(await newQueue().list("owner-1")).toEqual([]);
+  });
+
+  it("turns away a tell whose message the agent's timeline already holds", async () => {
+    const queue = newQueue();
+    timelines["owner-1"] = [{ item: { type: "user_message", text: "hi", clientMessageId: "chat-a" } as unknown as TimelineItem, timestamp: "2026-10-16T09:59:00.000Z" }];
+    expect(await queue.tell(paseo, live(), "hi", { messageId: "chat-a" }, false)).toEqual({ queued: true });
+    expect(await queue.list("owner-1")).toEqual([]);
+    expect(sent).toEqual([]);
+  });
+});
+
+describe("the list says when Taro compacts the agent (S4)", () => {
+  it("answers compacting while the stored stage is not none", async () => {
+    const queue = newQueue();
+    await queue.add("owner-1", message_("chat-a"));
+    expect(await queue.listing("owner-1")).toEqual({ messages: [expect.objectContaining({ id: "chat-a" })], compacting: false });
+    for (const compaction of ["handoff", "compacting"] as const) {
+      records["owner-1"] = AgentStateSchema.parse({ project: "taro", role: "owner", compaction });
+      expect((await queue.listing("owner-1")).compacting).toBe(true);
+    }
+    records["owner-1"] = AgentStateSchema.parse({ project: "taro", role: "owner", compaction: "none" });
+    expect((await queue.listing("owner-1")).compacting).toBe(false);
+  });
+});
+
+describe("listing reads the file once (S5)", () => {
+  it("does not read the file again on each list, and stays right through add, remove and a failed mark", async () => {
+    const read = vi.fn(readJsonIfPresent);
+    await newQueue().add("owner-1", message_("chat-a", { images: [IMAGE] }));
+    const queue = newQueue(read);
+    expect(await ids(queue)).toEqual(["chat-a"]);
+    for (let poll = 0; poll < 5; poll += 1) await queue.list("owner-1");
+    expect(read).toHaveBeenCalledTimes(1);
+    await queue.add("owner-1", message_("chat-b"));
+    await queue.add("owner-1", message_("chat-c"));
+    await queue.remove("owner-1", "chat-c");
+    agents["owner-1"]!.status = "idle";
+    failSends = new Error("Agent not accepting prompts");
+    await queue.drain(paseo, "owner-1", "completed");
+    expect((await queue.list("owner-1")).map((each) => [each.id, each.failed])).toEqual([
+      ["chat-a", "Agent not accepting prompts"],
+      ["chat-b", null],
+    ]);
+    expect(read).toHaveBeenCalledTimes(1);
+    // What it holds is what the disk holds.
+    expect(await newQueue().list("owner-1")).toEqual(await queue.list("owner-1"));
+  });
+});
+
+describe("a drained message never joins a turn started in the gap (S6)", () => {
+  it("does not send when the agent started working after the drain's first look", async () => {
+    const queue = newQueue();
+    await queue.add("owner-1", message_("chat-a"));
+    agents["owner-1"]!.status = "idle";
+    // A turn starts (a plugin nudge, the user in the agent's tab) while the drain reads the timeline.
+    onTimelineRead = () => void (agents["owner-1"]!.status = "running");
+    expect(await queue.drain(paseo, "owner-1", "completed")).toBe(false);
+    expect(sent).toEqual([]);
+    expect((await queue.list("owner-1")).map((each) => [each.id, each.failed])).toEqual([["chat-a", null]]);
+    // That turn's end sends it.
+    onTimelineRead = null;
+    agents["owner-1"]!.status = "idle";
+    expect(await queue.drain(paseo, "owner-1", "completed")).toBe(true);
+    expect(sent).toEqual([expect.objectContaining({ messageId: "chat-a", statusAtSend: "idle" })]);
+  });
+});
+
+describe("a message never overtakes an earlier one (order)", () => {
+  it("sends at once to an idle agent with an empty queue", async () => {
+    agents["owner-1"]!.status = "idle";
+    const queue = newQueue();
+    expect(await queue.tell(paseo, live(), "hello", { messageId: "chat-a" }, false)).toEqual({ queued: false });
+    expect(sent.map((each) => each.messageId)).toEqual(["chat-a"]);
+  });
+
+  it("queues behind a waiting message for an idle agent, and the drain after queueing sends the older first", async () => {
+    const queue = newQueue();
+    await queue.add("owner-1", message_("chat-a"));
+    agents["owner-1"]!.status = "idle";
+    expect(await queue.tell(paseo, live(), "later", { messageId: "chat-b" }, false)).toEqual({ queued: true });
+    expect(sent.map((each) => each.messageId)).toEqual(["chat-a"]);
+    expect(await ids(queue)).toEqual(["chat-b"]);
+  });
+
+  it("queues behind a failed front, and sends nothing until Retry", async () => {
+    const queue = newQueue();
+    await queue.add("owner-1", message_("chat-a", { failed: "Agent not accepting prompts" }));
+    agents["owner-1"]!.status = "idle";
+    expect(await queue.tell(paseo, live(), "later", { messageId: "chat-b" }, false)).toEqual({ queued: true });
+    expect(sent).toEqual([]);
+    expect(await ids(queue)).toEqual(["chat-a", "chat-b"]);
+    expect(await queue.retry(paseo, "owner-1", "chat-a")).toBe(true);
+    expect(sent.map((each) => each.messageId)).toEqual(["chat-a"]);
+  });
+
+  it("still sends words that answer a pending request at once, queue or not", async () => {
+    const queue = newQueue();
+    await queue.add("owner-1", message_("chat-a"));
+    expect(await queue.tell(paseo, live(), "yes", { messageId: "chat-b" }, true)).toEqual({ queued: false });
+    expect(sent.map((each) => each.messageId)).toEqual(["chat-b"]);
+  });
+});
+
+describe("subagent reports wait behind the owner's queued messages (S6)", () => {
+  const recovery = { onCrash: vi.fn(async () => undefined), recoverLeftovers: async () => 0 } as unknown as Recovery;
+  const stats = { turnEnded: async () => undefined, count: async () => undefined, countProject: async () => undefined } as unknown as Stats;
+  const completed = { kind: "completed" } as unknown as TurnOutcome;
+  const subagentTurn = [
+    { type: "user_message", text: "build it", messageId: "taro-1" },
+    { type: "assistant_message", text: "Built the list.\n\ndone: the notes list" },
+  ] as unknown as TimelineItem[];
+  const ownerTurn = [
+    { type: "user_message", text: "words", messageId: "chat-x" },
+    { type: "assistant_message", text: "Noted.\n\nwaiting: on the implementer" },
+  ] as unknown as TimelineItem[];
+
+  function setUp(): { queue: ChatQueue; supervisor: Supervisor; endOwner: () => Promise<void>; endSubagent: () => Promise<void>; reports: () => Sent[] } {
+    agents = { "owner-1": agent("owner-1", "owner", "idle"), "sub-1": agent("sub-1", "implementer", "running") };
+    const queue = newQueue();
+    const supervisor = new Supervisor(state, stats, recovery, queue);
+    return {
+      queue,
+      supervisor,
+      endOwner: async () => {
+        agents["owner-1"]!.status = "idle";
+        await supervisor.onTurnEnded(paseo, { id: "owner-1", parentAgentId: null } as unknown as HookAgent, completed, ownerTurn, null, undefined);
+      },
+      endSubagent: async () => {
+        agents["sub-1"]!.status = "idle";
+        await supervisor.onTurnEnded(paseo, { id: "sub-1", parentAgentId: "owner-1" } as unknown as HookAgent, completed, subagentTurn, null, undefined);
+      },
+      reports: () => sent.filter((each) => each.agentId === "owner-1" && each.text.includes("the notes list")),
+    };
+  }
+
+  it("holds a report that arrives while the idle owner has queued messages, and delivers it at the turn end after the queue drained", async () => {
+    const { queue, endOwner, endSubagent, reports } = setUp();
+    await queue.add("owner-1", message_("chat-a"));
+    await endSubagent();
+    expect(reports()).toEqual([]);
+    expect(records["owner-1"]?.heldReports).toHaveLength(1);
+    // The sweep drains the owner's queue; the turn that answers it ends.
+    clock += 60_000;
+    expect(await queue.sweep(paseo)).toBe(1);
+    expect(sent.filter((each) => each.agentId === "owner-1").map((each) => each.messageId)).toEqual(["chat-a"]);
+    await endOwner();
+    expect(reports()).toEqual([expect.objectContaining({ statusAtSend: "idle" })]);
+    expect(records["owner-1"]?.heldReports).toEqual([]);
+  });
+
+  it("does not flush held reports at a turn end while the owner's queue holds a message", async () => {
+    const { queue, endOwner, endSubagent, reports } = setUp();
+    agents["owner-1"]!.status = "running";
+    await endSubagent(); // held: the owner works
+    expect(records["owner-1"]?.heldReports).toHaveLength(1);
+    await queue.add("owner-1", message_("chat-a", { failed: "Agent not accepting prompts" }));
+    await endOwner();
+    expect(reports()).toEqual([]);
+    // Once the queue is empty (the user took the message to edit), the next turn end delivers it.
+    await queue.remove("owner-1", "chat-a");
+    await endOwner();
+    expect(reports()).toHaveLength(1);
+  });
+});
+
 describe("the queue's contracts", () => {
   it("have wire names Paseo takes, and list without attachment data", () => {
-    for (const contract of [listChatQueue, takeQueuedMessage, sendQueuedMessageNow, retryQueuedMessage]) expect(contract.name).toMatch(/^[a-z][a-z0-9._-]*$/);
-    expect([listChatQueue.name, takeQueuedMessage.name, sendQueuedMessageNow.name, retryQueuedMessage.name]).toEqual(["taro.queue.list", "taro.queue.take", "taro.queue.send-now", "taro.queue.retry"]);
+    const contracts = [listChatQueue, takeQueuedMessage, removeQueuedMessage, sendQueuedMessageNow, retryQueuedMessage];
+    for (const contract of contracts) expect(contract.name).toMatch(/^[a-z][a-z0-9._-]*$/);
+    expect(contracts.map((contract) => contract.name)).toEqual(["taro.queue.list", "taro.queue.take", "taro.queue.remove", "taro.queue.send-now", "taro.queue.retry"]);
     const listed = { id: "chat-a", text: "x", at: "2026-10-16T10:00:00.000Z", imageCount: 1, fileNames: ["a.txt"], failed: null };
-    expect(listChatQueue.output.parse({ messages: [listed] })).toEqual({ messages: [listed] });
+    expect(listChatQueue.output.parse({ messages: [listed], compacting: false })).toEqual({ messages: [listed], compacting: false });
     expect(takeQueuedMessage.output.parse({ text: "x", images: [IMAGE], files: [FILE] })).toEqual({ text: "x", images: [IMAGE], files: [FILE] });
   });
 });
