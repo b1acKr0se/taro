@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { COMPACTING_RECHECK_MS, type PendingSend } from "../shared/pending-sends";
-import { createPendingSendStore, releaseHeld, type PendingSendStore } from "./pending-send-store";
+import type { PendingSend } from "../shared/pending-sends";
+import { keptMap } from "./kept";
+import { createPendingSendStore, migrateKeptSends, type PendingSendStore } from "./pending-send-store";
 
 function send(id: string, state: PendingSend["state"] = "sent"): PendingSend {
   return { id, text: id, attachments: [], at: 1, state };
@@ -9,11 +10,16 @@ function send(id: string, state: PendingSend["state"] = "sent"): PendingSend {
 
 /** A transport whose sends settle when the test says, recording each message id it was handed. */
 function manualTransport() {
-  const calls: { id: string; settle: (error?: Error) => void }[] = [];
+  const calls: { id: string; answersRequest: boolean | undefined; settle: (error?: Error) => void; queue: () => void }[] = [];
   const transport = vi.fn(
     (pending: PendingSend) =>
-      new Promise<void>((resolve, reject) => {
-        calls.push({ id: pending.id, settle: (error) => (error === undefined ? resolve() : reject(error)) });
+      new Promise<{ queued: boolean }>((resolve, reject) => {
+        calls.push({
+          id: pending.id,
+          answersRequest: pending.answersRequest,
+          settle: (error) => (error === undefined ? resolve({ queued: false }) : reject(error)),
+          queue: () => resolve({ queued: true }),
+        });
       }),
   );
   return { transport, calls, ids: () => calls.map((call) => call.id) };
@@ -33,7 +39,7 @@ describe("createPendingSendStore", () => {
     const store = createPendingSendStore({});
     const listener = vi.fn();
     store.subscribe(listener);
-    store.add("agent-1", send("chat-a", "held"));
+    store.add("agent-1", send("chat-a", "failed"));
     store.add("agent-1", send("chat-b"));
     store.add("agent-2", send("chat-c"));
     store.update("agent-1", "chat-a", { state: "sent", at: 5 });
@@ -54,29 +60,18 @@ describe("createPendingSendStore", () => {
 
   it("outlives the bundle: a new store on the same root reads what the last one kept", () => {
     const root = {};
-    createPendingSendStore(root).add("agent-1", send("chat-a", "held"));
-    expect(createPendingSendStore(root).get("agent-1")).toEqual([send("chat-a", "held")]);
+    createPendingSendStore(root).add("agent-1", send("chat-a", "failed"));
+    expect(createPendingSendStore(root).get("agent-1")).toEqual([send("chat-a", "failed")]);
   });
 
-  it("claims held messages once and in order: they are marked sending, and a second claim gets nothing", () => {
-    const store = createPendingSendStore({});
-    store.add("agent-1", send("chat-a", "held"));
-    store.add("agent-1", send("chat-b"));
-    store.add("agent-1", send("chat-c", "held"));
-    expect(store.claim("agent-1", ["chat-c", "chat-b", "chat-a"], 9).map((each) => each.id)).toEqual(["chat-a", "chat-c"]);
-    expect(store.get("agent-1")).toEqual([{ ...send("chat-a", "sending"), at: 9 }, send("chat-b"), { ...send("chat-c", "sending"), at: 9 }]);
-    expect(store.claim("agent-1", ["chat-a"], 10)).toEqual([]);
-    expect(store.claim("agent-1", ["chat-missing"], 10)).toEqual([]);
-  });
-
-  it("resends a message as a new one at the end, sending or held, and nothing for one gone", () => {
+  it("resends a message as a new one at the end, to send, and nothing for one gone", () => {
     const store = createPendingSendStore({});
     store.add("agent-1", send("chat-a"));
     store.add("agent-1", send("chat-b"));
-    expect(store.resend("agent-1", "chat-a", { id: "chat-c", at: 7, holds: false })).toEqual({ ...send("chat-a", "sending"), id: "chat-c", at: 7, error: undefined });
+    expect(store.resend("agent-1", "chat-a", { id: "chat-c", at: 7 })).toEqual({ ...send("chat-a", "sending"), id: "chat-c", at: 7, error: undefined });
     expect(states(store)).toEqual(["chat-b:sent", "chat-c:sending"]);
-    expect(store.resend("agent-1", "chat-b", { id: "chat-d", at: 8, holds: true })?.state).toBe("held");
-    expect(store.resend("agent-1", "chat-gone", { id: "chat-e", at: 9, holds: false })).toBeNull();
+    expect(store.resend("agent-1", "chat-b", { id: "chat-d", at: 8 })?.state).toBe("sending");
+    expect(store.resend("agent-1", "chat-gone", { id: "chat-e", at: 9 })).toBeNull();
     expect(store.get("agent-1").map((each) => each.id)).toEqual(["chat-c", "chat-d"]);
   });
 });
@@ -294,29 +289,6 @@ describe("sending (TR-102)", () => {
     expect(waits).toEqual([]);
   });
 
-  it("holds a message the plugin handed back as the agent compacts, and those sending after it, for a while at least", async () => {
-    const store = createPendingSendStore({}, () => 70);
-    const wire = manualTransport();
-    store.setTransport("agent-1", wire.transport);
-    store.add("agent-1", send("chat-a", "sending"));
-    store.add("agent-1", send("chat-b", "sending"));
-    store.add("agent-1", send("chat-c", "sent"));
-    await settled();
-    wire.calls[0]?.settle(new Error("Request failed: It is compacting its context; the message waits until that ends. code=handler_error"));
-    await settled();
-    // No Sending… spinner left on chat-b for the whole compaction.
-    expect(states(store)).toEqual(["chat-a:held", "chat-b:held", "chat-c:sent"]);
-    expect(store.get("agent-1").map((each) => each.heldUntil)).toEqual([70 + COMPACTING_RECHECK_MS, 70 + COMPACTING_RECHECK_MS, undefined]);
-    expect(store.get("agent-1")[0]?.error).toBeUndefined();
-    expect(wire.ids()).toEqual(["chat-a"]);
-    store.claim("agent-1", ["chat-a", "chat-b"], 80);
-    expect(store.get("agent-1")[0]?.heldUntil).toBeUndefined();
-    await settled();
-    wire.calls[1]?.settle();
-    await settled();
-    expect(wire.ids()).toEqual(["chat-a", "chat-a", "chat-b"]);
-  });
-
   it("stops the last bundle's loop once a new one sends for the agent, so it never marks what the new one sends (a reconnect)", async () => {
     const root = {};
     const old = createPendingSendStore(root, () => 50, async () => {});
@@ -356,71 +328,76 @@ describe("sending (TR-102)", () => {
     expect(firstWire.ids()).toEqual(["chat-a"]);
   });
 
-  it("does not send held or already sent messages", async () => {
+  it("does not send failed or already sent messages", async () => {
     const store = createPendingSendStore({});
     const wire = manualTransport();
     store.setTransport("agent-1", wire.transport);
-    store.add("agent-1", send("chat-a", "held"));
-    store.add("agent-1", send("chat-b", "sent"));
+    store.add("agent-1", send("chat-a", "sent"));
+    store.add("agent-1", send("chat-b", "failed"));
     await settled();
     expect(wire.ids()).toEqual([]);
   });
 });
 
-describe("releaseHeld", () => {
-  function held(id: string, at: number) {
-    return { ...send(id, "held"), at };
-  }
-
-  it("sends each stopped agent's held messages, oldest first, once", async () => {
+describe("the chat queue on the daemon (TR-171)", () => {
+  it("forgets a message the daemon queued, at once: it shows in the queue, not as Sending or Waiting", async () => {
     const store = createPendingSendStore({});
     const wire = manualTransport();
     store.setTransport("agent-1", wire.transport);
-    store.add("agent-1", held("chat-a", 10));
-    store.add("agent-1", send("chat-b"));
-    store.add("agent-1", held("chat-c", 11));
-    const agents = new Map([["agent-1", { status: "idle", updatedAt: 20 }]]);
-    releaseHeld(store, agents, 30);
-    releaseHeld(store, agents, 31);
+    store.add("agent-1", send("chat-a", "sending"));
+    store.add("agent-1", send("chat-b", "sending"));
     await settled();
-    wire.calls[0]?.settle();
+    wire.calls[0]?.queue();
     await settled();
-    expect(wire.ids()).toEqual(["chat-a", "chat-c"]);
-    expect(store.get("agent-1")[2]).toMatchObject({ id: "chat-c", state: "sending", at: 30 });
+    expect(states(store)).toEqual(["chat-b:sending"]);
+    wire.calls[1]?.settle();
+    await settled();
+    expect(states(store)).toEqual(["chat-b:sent"]);
   });
 
-  it("holds while the agent works, or when its status was read before the message was held", async () => {
+  it("hands the transport whether the message answers a pending request", async () => {
     const store = createPendingSendStore({});
     const wire = manualTransport();
     store.setTransport("agent-1", wire.transport);
-    store.setTransport("agent-2", wire.transport);
-    store.add("agent-1", held("chat-a", 10));
-    store.add("agent-2", held("chat-b", 10));
-    releaseHeld(store, new Map([["agent-1", { status: "running", updatedAt: 20 }], ["agent-2", { status: "idle", updatedAt: 5 }]]), 30);
+    store.add("agent-1", { ...send("chat-a", "sending"), answersRequest: true });
     await settled();
-    expect(wire.ids()).toEqual([]);
-    expect(store.get("agent-2")[0]?.state).toBe("held");
+    expect(wire.calls[0]?.answersRequest).toBe(true);
+  });
+});
+
+describe("migrateKeptSends (TR-171)", () => {
+  it("turns a held message into one to send, which the daemon queues, and keeps the rest as they were", () => {
+    const old = [
+      { id: "chat-a", text: "a", attachments: [], at: 1, state: "held" },
+      { id: "chat-b", text: "b", attachments: [], at: 2, state: "held", heldUntil: 9 },
+      { id: "chat-c", text: "c", attachments: [], at: 3, state: "failed", error: "no" },
+      { id: "chat-d", text: "d", attachments: [], at: 4, state: "sent" },
+    ];
+    expect(migrateKeptSends(old)).toEqual([
+      { id: "chat-a", text: "a", attachments: [], at: 1, state: "sending" },
+      { id: "chat-b", text: "b", attachments: [], at: 2, state: "sending" },
+      { id: "chat-c", text: "c", attachments: [], at: 3, state: "failed", error: "no" },
+      { id: "chat-d", text: "d", attachments: [], at: 4, state: "sent" },
+    ]);
   });
 
-  it("leaves an agent it was told nothing about to its chat", () => {
-    const store = createPendingSendStore({});
-    store.add("agent-1", held("chat-a", 10));
-    releaseHeld(store, new Map(), 30);
-    expect(store.get("agent-1")[0]?.state).toBe("held");
+  it("drops what is not a message", () => {
+    expect(migrateKeptSends([null, 3, { id: "chat-a" }, { id: "chat-b", text: "b", attachments: [], at: 2, state: "lost" }])).toEqual([]);
+    expect(migrateKeptSends("not a list")).toEqual([]);
   });
 
-  it("sends a message once when a listener releases again while it releases (the screen and a chat at once)", async () => {
-    const store = createPendingSendStore({});
+  it("reads the last version's slot once, so held messages left by the last bundle are sent, not dropped", async () => {
+    const root = {};
+    const old = keptMap<string, unknown>(root, "pending-sends.v2");
+    old.set("agent-1", [{ id: "chat-a", text: "a", attachments: [], at: 1, state: "held" }, { id: "chat-b", text: "b", attachments: [], at: 2, state: "sent" }]);
+    const store = createPendingSendStore(root);
+    expect(states(store)).toEqual(["chat-a:sending", "chat-b:sent"]);
+    expect(old.size).toBe(0);
     const wire = manualTransport();
     store.setTransport("agent-1", wire.transport);
-    store.add("agent-1", held("chat-a", 10));
-    store.add("agent-1", held("chat-b", 11));
-    const agents = new Map([["agent-1", { status: "idle", updatedAt: 20 }]]);
-    store.subscribe(() => releaseHeld(store, agents, 30));
-    releaseHeld(store, agents, 30);
     await settled();
-    wire.calls[0]?.settle();
-    await settled();
-    expect(wire.ids()).toEqual(["chat-a", "chat-b"]);
+    expect(wire.ids()).toEqual(["chat-a"]);
+    // A second store on the same root finds nothing more to move.
+    expect(states(createPendingSendStore(root))).toEqual(["chat-a:sending", "chat-b:sent"]);
   });
 });

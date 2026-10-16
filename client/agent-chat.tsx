@@ -6,12 +6,12 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Keyboard, Platform, ScrollView, Text, useWindowDimensions, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
 
 import { attachmentProblem, refuseOversizedImages, type DraftAttachment } from "../shared/attachments";
-import { answeredPermissionAsks, listAgentDecisions, listSentImages, type SentImagesMessage } from "../shared/contracts";
+import { answeredPermissionAsks, listAgentDecisions, listSentImages, retryQueuedMessage, sendQueuedMessageNow, takeQueuedMessage, type SentImagesMessage } from "../shared/contracts";
 import type { PermissionAsk } from "../shared/permission-asks";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { ActionRow } from "./action-row";
@@ -46,9 +46,11 @@ import { groupRows, toolRunSummary, type Group, type ToolRow } from "./tool-runs
 import { ATTACHMENTS_ONLY, transcriptRows, whileWriting } from "./transcript-rows";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
-import { composerNotice, heldFor, heldMarkText, offersSendNow } from "./composer-notice";
+import { composerNotice, sendLabel } from "./composer-notice";
 import { usePendingSends, type ChatSend } from "./use-pending-sends";
-import { handBack, steersMidTurn, takeBack, type HoldReason, type PendingSend, type SendMark, type SendView } from "../shared/pending-sends";
+import { isCompacting, isWorking, takeBack, type SendMark, type SendView } from "../shared/pending-sends";
+import { chatQueueKey, editRefusal, takenAttachments, type QueueRowAction, type QueueRowMessage } from "./queue-rows";
+import { QueueTrack, useChatQueue } from "./queue-track";
 import { COMPOSER_CONTROL_SIZE, composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
@@ -62,8 +64,6 @@ export interface ChatAgent {
   updatedAt: string;
   pendingPermissions: number;
   status: string;
-  /** From the server, which reads Paseo's provider config (TR-084); else judged from the provider id. */
-  steers?: boolean | undefined;
 }
 
 /** A conversation the user can write to, or one only to read (an archived agent's). */
@@ -72,7 +72,7 @@ type ChatComposer =
       placeholder: string;
       /**
        * Sends the user's words and attachments (the words may be empty when there are some) under the chat's
-       * own message id (TR-084); rejects with a sentence on failure.
+       * own message id (TR-084); resolves with whether the daemon queued it (TR-171), rejects with a sentence on failure.
        */
       onSend: ChatSend;
       /** Given each send before it leaves the box (TR-161): it calls `send` to go ahead, or later, or never; the words wait in the box meanwhile. */
@@ -176,19 +176,20 @@ export function AgentChat({
     drafts.set(agent.id, back.text);
     draftAttachments.set(agent.id, back.attachments);
   }
-  function putBack(send: PendingSend): void {
-    const back = handBack({ text: drafts.get(agent.id), attachments: draftAttachments.get(agent.id) }, send);
-    if (back.text !== null) drafts.set(agent.id, back.text);
-    if (back.attachments !== null) draftAttachments.set(agent.id, back.attachments);
-  }
+  const queries = useQueryClient();
+  const refreshQueue = () => void queries.invalidateQueries({ queryKey: chatQueueKey(agent.id) });
   const sends = usePendingSends({
     agentId: agent.id,
     status: live?.status ?? agent.status,
-    steers: agent.steers ?? steersMidTurn(timeline.agent?.provider),
     entries: timeline.entries,
     hasOlder: timeline.hasOlder,
     onSend,
+    onQueued: refreshQueue,
   });
+  const working = isWorking(live?.status ?? agent.status);
+  // The messages waiting on the daemon for the turn to end (TR-171), drawn above the box.
+  const queued = useChatQueue(agent.id, working, readOnly === undefined);
+  const compacting = useMemo(() => isCompacting(timeline.entries), [timeline.entries]);
   const marksByRow = useMemo(() => new Map(sends.views.flatMap((view) => (view.rowKey === null ? [] : [[view.rowKey, view] as const]))), [sends.views]);
   const echoes = sends.views.filter((view) => view.rowKey === null);
   const places = useMemo(() => (asks === undefined || asks.decisions.length === 0 ? null : placeDecisions(agentRows, asks.decisions)), [agentRows, asks?.decisions]);
@@ -336,7 +337,10 @@ export function AgentChat({
       </View>
     );
   }
-  const notice = composerNotice(sends.holds, pending.length > 0);
+  const notice = composerNotice(pending.length > 0);
+  // Read when the words leave the box, which a confirmation may put off (`beforeSend`).
+  const requestPending = useRef(false);
+  requestPending.current = pending.length > 0;
   const [draft, setDraftState] = useState(() => drafts.get(agent.id));
   const [attachments, setAttachmentsState] = useState(() => draftAttachments.get(agent.id));
   const field = useRef<NativeTextInput>(null);
@@ -447,8 +451,41 @@ export function AgentChat({
     if (onSend === undefined || (text === "" && sent.length === 0)) return;
     setDraft("");
     setAttachments([]);
-    sends.send(text, sent);
+    sends.send(text, sent, requestPending.current);
     follow.pin();
+  }
+
+  const takeQueued = useRpc(takeQueuedMessage);
+  const sendQueuedNow = useRpc(sendQueuedMessageNow);
+  const retryQueued = useRpc(retryQueuedMessage);
+  const [queueBusy, setQueueBusy] = useState<{ id: string; action: QueueRowAction } | null>(null);
+  /** Edit, Send now or Retry on a queued message (TR-171); an error's sentence goes to a toast, and the queue is read again either way. */
+  function queueAction(message: QueueRowMessage, action: QueueRowAction): void {
+    if (queueBusy !== null) return;
+    if (action === "edit") {
+      // Before the call: both sets of attachments might not fit together, and the message would be out of the queue.
+      const refusal = editRefusal({ text: drafts.get(agent.id), attachments: draftAttachments.get(agent.id).length }, message);
+      if (refusal !== null) {
+        toast.error(refusal);
+        return;
+      }
+    }
+    const input = { agentId: agent.id, messageId: message.id };
+    const call =
+      action === "edit"
+        ? takeQueued(input).then((taken) => {
+            const back = takeBack({ text: drafts.get(agent.id), attachments: draftAttachments.get(agent.id) }, { text: taken.text, attachments: takenAttachments(message.id, taken) });
+            setDraft(back.text);
+            setAttachments(back.attachments);
+          })
+        : (action === "send-now" ? sendQueuedNow(input) : retryQueued(input)).then(() => follow.pin());
+    setQueueBusy({ id: message.id, action });
+    void call
+      .catch((caught: unknown) => toast.error(errorText(caught)))
+      .finally(() => {
+        setQueueBusy(null);
+        refreshQueue();
+      });
   }
 
   const attachButton = (
@@ -479,15 +516,10 @@ export function AgentChat({
   const openLinkLatest = useLatestCallback(openLink);
   const decisionCardsLatest = useLatestCallback(decisionCards);
   const markActionLatest = useLatestCallback((id: string, action: MarkAction) => {
-    if (action === "send-now") sends.sendNow(id);
-    else if (action === "resend") sends.resend(id);
+    if (action === "resend") sends.resend(id);
     else if (action === "retry") sends.retry(id);
     else if (action === "edit") takeBackFailed(id);
-    else {
-      const gone = sends.forget(id);
-      // A cancelled message goes back into the composer, to change or send later.
-      if (action === "cancel" && gone !== null) putBack(gone);
-    }
+    else sends.forget(id);
   });
 
   const styles = useMemo(
@@ -574,14 +606,13 @@ export function AgentChat({
               })}
               </>
             )}
-            {/* Sent but not in the timeline yet, or held: drawn here until the timeline shows them. */}
+            {/* Sent but not in the timeline yet: drawn here until the timeline shows them. A queued one is in the queue track instead. */}
             {echoes.map((view) => (
               <UserMessage
                 key={view.send.id}
                 text={view.send.text === "" ? ATTACHMENTS_ONLY : view.send.text}
                 images={undefined}
                 mark={view}
-                holds={sends.holds}
                 theme={theme}
                 styles={styles}
                 onMarkAction={markActionLatest}
@@ -662,10 +693,12 @@ export function AgentChat({
                 )}
               </View>
             )}
+            {/* Directly above the box, as Paseo draws its own queue. */}
+            <QueueTrack messages={queued} compacting={compacting} busy={queueBusy} theme={theme} onAction={queueAction} />
             {notice === null ? null : (
               <View style={styles.quick}>
                 <Icon name="AlertTriangle" size={13} color={theme.colors.statusWarning} />
-                <Text style={[styles.lineText, { color: theme.colors.foreground }]}>{notice.text}</Text>
+                <Text style={[styles.lineText, { color: theme.colors.foreground }]}>{notice}</Text>
               </View>
             )}
             <ReplyBox
@@ -679,7 +712,7 @@ export function AgentChat({
               enterHint
               onSend={sendDraft}
               canSend={!nothingToSend}
-              sendLabel={notice?.sendLabel ?? "Send"}
+              sendLabel={sendLabel({ working, requestPending: pending.length > 0 })}
               above={<AttachmentPreviews theme={theme} attachments={attachments} onRemove={(id) => setAttachments(attachments.filter((attachment) => attachment.id !== id))} />}
               leading={attachButton}
               trailing={context === undefined ? null : <ContextMeter theme={theme} used={context.used} max={context.max} ringSize={metrics.ringSize} />}
@@ -724,14 +757,13 @@ interface TranscriptGroupProps {
 }
 
 /** What a pending message's mark offers (TR-084). */
-type MarkAction = "send-now" | "cancel" | "resend" | "dismiss" | "retry" | "edit";
+type MarkAction = "resend" | "dismiss" | "retry" | "edit";
 
 /** The user's words, with the mark of a message the agent has not taken up yet under them. */
 function UserMessage({
   text,
   images,
   mark,
-  holds = null,
   theme,
   styles,
   onMarkAction,
@@ -739,8 +771,6 @@ function UserMessage({
   text: string;
   images: readonly SentImage[] | undefined;
   mark: SendView | undefined;
-  /** Why the chat holds messages, for a held one's mark; only the chat's own rows are held. */
-  holds?: HoldReason | null | undefined;
   theme: PluginTheme;
   styles: ChatStyles;
   onMarkAction: (id: string, action: MarkAction) => void;
@@ -771,7 +801,7 @@ function UserMessage({
             </View>
           )}
         </View>
-        {mark === undefined ? null : <SendMarkLine view={mark} holds={holds} theme={theme} styles={styles} onAction={onMarkAction} />}
+        {mark === undefined ? null : <SendMarkLine view={mark} theme={theme} styles={styles} onAction={onMarkAction} />}
       </View>
     </View>
   );
@@ -785,7 +815,6 @@ const MARK_TEXT: Record<SendMark, string> = {
   behind: "Waits for the message above to be sent",
   failed: "Not sent",
   waiting: "Waiting for the agent's next step",
-  held: "Held until its current step ends",
   unread: "Not read: the agent stopped first",
 };
 
@@ -797,36 +826,24 @@ const MARK_ACTIONS: Record<SendMark, readonly { action: MarkAction; label: strin
     { action: "edit", label: "Edit", icon: "Pencil" },
   ],
   waiting: [],
-  held: [
-    { action: "send-now", label: "Send now and stop it", icon: "Send" },
-    { action: "cancel", label: "Cancel", icon: "X" },
-  ],
   unread: [
     { action: "resend", label: "Resend", icon: "RotateCcw" },
     { action: "dismiss", label: "Dismiss", icon: "X" },
   ],
 };
 
-/** A failed message's mark says why, a held one what it waits for (TR-102). */
-function markText(view: SendView, holds: HoldReason | null): string {
-  if (view.mark === "failed") return `Not sent: ${view.send.error ?? "Paseo did not take it."}`;
-  return view.mark === "held" ? heldMarkText(heldFor(view.send, holds)) : MARK_TEXT[view.mark];
-}
-
-function markActions(view: SendView, holds: HoldReason | null): readonly { action: MarkAction; label: string; icon: string }[] {
-  const actions = MARK_ACTIONS[view.mark];
-  return view.mark === "held" && !offersSendNow(heldFor(view.send, holds)) ? actions.filter((each) => each.action !== "send-now") : actions;
+/** A failed message's mark says why (TR-102). */
+function markText(view: SendView): string {
+  return view.mark === "failed" ? `Not sent: ${view.send.error ?? "Paseo did not take it."}` : MARK_TEXT[view.mark];
 }
 
 function SendMarkLine({
   view,
-  holds,
   theme,
   styles,
   onAction,
 }: {
   view: SendView;
-  holds: HoldReason | null;
   theme: PluginTheme;
   styles: ChatStyles;
   onAction: (id: string, action: MarkAction) => void;
@@ -839,17 +856,17 @@ function SendMarkLine({
           <Spinner size={11} color={colors.foregroundMuted} />
         ) : (
           <Icon
-            name={view.mark === "held" || view.mark === "behind" ? "Timer" : "AlertTriangle"}
+            name={view.mark === "behind" ? "Timer" : "AlertTriangle"}
             size={12}
-            color={view.mark === "held" || view.mark === "behind" ? colors.foregroundMuted : view.mark === "failed" ? colors.statusDanger : colors.statusWarning}
+            color={view.mark === "behind" ? colors.foregroundMuted : view.mark === "failed" ? colors.statusDanger : colors.statusWarning}
           />
         )}
-        <Text style={[styles.markText, view.mark === "failed" ? { color: colors.statusDanger } : null]}>{markText(view, holds)}</Text>
+        <Text style={[styles.markText, view.mark === "failed" ? { color: colors.statusDanger } : null]}>{markText(view)}</Text>
       </View>
       {/* The shared button (Catch up's style), in a row of their own under the words, right-aligned with the bubble. */}
-      {markActions(view, holds).length === 0 ? null : (
+      {MARK_ACTIONS[view.mark].length === 0 ? null : (
         <View style={styles.markActions}>
-          {markActions(view, holds).map((each) => (
+          {MARK_ACTIONS[view.mark].map((each) => (
             <IconButton key={each.action} icon={each.icon} label={each.label} showLabel theme={theme} onPress={() => onAction(view.send.id, each.action)} />
           ))}
         </View>

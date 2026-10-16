@@ -6,6 +6,7 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
+import { useQueryClient } from "@tanstack/react-query";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { Text, View } from "react-native";
@@ -20,6 +21,7 @@ import { controlColors } from "./control-colors";
 import { BUTTON } from "./control-size";
 import { Spinner } from "./ui";
 import { usePressGuards } from "./use-actions";
+import { chatQueueKey } from "./queue-rows";
 
 /** How long a sent suggestion shows "Sent to the manager" before it leaves the row. */
 const SENT_VISIBLE_MS = 2500;
@@ -42,6 +44,7 @@ export function SuggestionPills({
   const toast = useToast();
   const tell = useRpc(tellManager);
   const dismiss = useRpc(dismissSuggestion);
+  const queries = useQueryClient();
   const guardFor = usePressGuards();
   const [sends, setSends] = useState<SuggestionSend[]>([]);
   const { colors } = theme;
@@ -90,6 +93,8 @@ export function SuggestionPills({
     setSend(suggestion, index, "sending");
     void running.then((outcome) => {
       if (outcome.ok) {
+        // Sent to a working manager, it waits in the chat's queue (TR-171): its row shows at once.
+        if (outcome.value.queued) void queries.invalidateQueries({ queryKey: chatQueueKey() });
         setSend(suggestion, index, "sent");
         dismiss({ project, label: suggestion.label, prompt: suggestion.prompt }).catch((caught: unknown) => toast.error(errorText(caught)));
         setTimeout(() => {

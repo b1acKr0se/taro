@@ -1,7 +1,9 @@
 /**
- * The messages each chat sent or holds until the agent takes them up (TR-084), per agent. Kept on a
- * `globalThis` slot like the drafts (`draft.ts`): a held message outlives a reconnect, though not the
- * app. Bump the slot's version when `PendingSend` changes shape.
+ * The messages each chat sent until the agent takes them up (TR-084), per agent. Kept on a
+ * `globalThis` slot like the drafts (`draft.ts`): a message on its way outlives a reconnect, though not
+ * the app. Bump the slot's version when `PendingSend` changes shape, and read the last one
+ * (`migrateKeptSends`). One the daemon queued (the agent works, TR-171) is forgotten at once: the
+ * daemon's queue shows it from then on.
  *
  * It also sends them (TR-102): one at a time per agent, in the order sent, so several can be on their
  * way while the user types on, and none overtakes another. The sending outlives the chat that started
@@ -9,35 +11,19 @@
  * evaluated again (a reconnect, a plugin reload) goes again, under its own id, once a chat or the
  * screen gives the agent a transport, and the plugin skips one Paseo already has (`server/send.ts`).
  */
-import {
-  COMPACTING_RECHECK_MS,
-  failureReason,
-  isCompactingRefusal,
-  isPassingFailure,
-  isWorking,
-  nextToSend,
-  SEND_RETRY_DELAYS_MS,
-  type PendingSend,
-} from "../shared/pending-sends";
+import { failureReason, isPassingFailure, nextToSend, SEND_RETRY_DELAYS_MS, type PendingSend } from "../shared/pending-sends";
 import { keptMap } from "./kept";
 
-/** Hands a message to Paseo; resolves once Paseo has it. */
-export type SendTransport = (send: PendingSend) => Promise<void>;
+/** Hands a message to the plugin; resolves once Paseo has it, or the daemon queued it (`queued`). */
+export type SendTransport = (send: PendingSend) => Promise<{ queued: boolean }>;
 
 export interface PendingSendStore {
   get(agentId: string): readonly PendingSend[];
   add(agentId: string, send: PendingSend): void;
   update(agentId: string, id: string, change: Partial<PendingSend>): void;
   remove(agentId: string, ids: readonly string[]): void;
-  /** The agents with a message here. */
-  agentIds(): string[];
-  /**
-   * Marks these messages sending, of those still held, in one change and returns them in order: a chat
-   * and the screen releasing at once send each once, in order. Sends them when the agent has a transport.
-   */
-  claim(agentId: string, ids: readonly string[], now: number): PendingSend[];
-  /** Replaces a message with a new one of the same words and attachments, held or sending; null when it is gone. */
-  resend(agentId: string, id: string, again: { id: string; at: number; holds: boolean }): PendingSend | null;
+  /** Replaces a message with a new one of the same words and attachments, to send; null when it is gone. */
+  resend(agentId: string, id: string, again: { id: string; at: number }): PendingSend | null;
   /** Sends a failed message again under its own id, and those waiting behind it after it. */
   retry(agentId: string, id: string): void;
   /** How the agent's messages reach Paseo, the latest given; sends what waits for one. */
@@ -48,12 +34,38 @@ export interface PendingSendStore {
 
 const NONE: readonly PendingSend[] = [];
 
+/** The slot's current name, and the last version's (TR-171 dropped "held" and `heldUntil`). */
+const SLOT = "pending-sends.v3";
+const LAST_SLOT = "pending-sends.v2";
+
+/**
+ * The last version's messages as this one keeps them: one held for the turn end is sent now, and the
+ * daemon queues it if the agent still works; anything not shaped as a message is dropped.
+ */
+export function migrateKeptSends(old: unknown): PendingSend[] {
+  if (!Array.isArray(old)) return [];
+  return old.flatMap((each: unknown): PendingSend[] => {
+    if (each === null || typeof each !== "object") return [];
+    const { id, text, attachments, at, state, error } = each as Record<string, unknown>;
+    if (typeof id !== "string" || typeof text !== "string" || !Array.isArray(attachments) || typeof at !== "number") return [];
+    if (state === "held") return [{ id, text, attachments, at, state: "sending" }];
+    if (state !== "sending" && state !== "sent" && state !== "failed") return [];
+    return [typeof error === "string" ? { id, text, attachments, at, state, error } : { id, text, attachments, at, state }];
+  });
+}
+
 export function createPendingSendStore(
   root: object,
   now: () => number = Date.now,
   wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 ): PendingSendStore {
-  const sends = keptMap<string, readonly PendingSend[]>(root, "pending-sends.v2");
+  const sends = keptMap<string, readonly PendingSend[]>(root, SLOT);
+  const last = keptMap<string, unknown>(root, LAST_SLOT);
+  last.forEach((old, agentId) => {
+    const moved = migrateKeptSends(old);
+    if (moved.length > 0) sends.set(agentId, [...(sends.get(agentId) ?? NONE), ...moved]);
+  });
+  last.clear();
   const listeners = new Set<() => void>();
   // Not kept: a fresh bundle starts with no transport and no send under way.
   const transports = new Map<string, SendTransport>();
@@ -90,14 +102,15 @@ export function createPendingSendStore(
         const next = nextToSend(sends.get(agentId) ?? NONE);
         if (transport === undefined || next === null || !owns(agentId)) return;
         try {
-          await sendWithRetries(agentId, next);
+          const answer = await sendWithRetries(agentId, next);
           if (!owns(agentId)) return;
-          update(agentId, next.id, (send) => (send.state === "sending" ? { state: "sent", at: now() } : null));
+          // Queued on the daemon: its row above the composer shows it, not a mark here.
+          if (answer?.queued === true) forget(agentId, [next.id]);
+          else update(agentId, next.id, (send) => (send.state === "sending" ? { state: "sent", at: now() } : null));
         } catch (error) {
           if (!owns(agentId)) return;
           // Seen in the timeline meanwhile, it was marked sent: the answer, not the message, was lost.
-          if (isCompactingRefusal(error)) holdForCompaction(agentId, next.id);
-          else update(agentId, next.id, (send) => (send.state === "sending" ? { state: "failed", error: failureReason(error) } : null));
+          update(agentId, next.id, (send) => (send.state === "sending" ? { state: "failed", error: failureReason(error) } : null));
         }
         // Marked sent or failed while it was on its way, or neither (forgotten): either way, on to the next.
         if ((sends.get(agentId) ?? NONE).some((send) => send.id === next.id && send.state === "sending")) return;
@@ -106,8 +119,11 @@ export function createPendingSendStore(
       draining.delete(agentId);
     }
   }
-  /** Sends one message, trying again after a failure that passes, with the latest transport, while it is still to send. */
-  async function sendWithRetries(agentId: string, pending: PendingSend): Promise<void> {
+  /**
+   * Sends one message, trying again after a failure that passes, with the latest transport, while it is
+   * still to send; the plugin's answer, or null when it stopped trying.
+   */
+  async function sendWithRetries(agentId: string, pending: PendingSend): Promise<{ queued: boolean } | null> {
     for (let attempt = 0; ; attempt += 1) {
       const transport = transports.get(agentId);
       if (transport === undefined) throw new Error("Not connected");
@@ -117,23 +133,15 @@ export function createPendingSendStore(
         const delay = SEND_RETRY_DELAYS_MS[attempt];
         if (delay === undefined || !isPassingFailure(error)) throw error;
         await wait(delay);
-        if (!owns(agentId)) return;
+        if (!owns(agentId)) return null;
         const still = (sends.get(agentId) ?? NONE).find((send) => send.id === pending.id);
-        if (still?.state !== "sending") return;
+        if (still?.state !== "sending") return null;
       }
     }
   }
-  /**
-   * Handed back as the agent compacts: holds it and those sending after it until the compaction ends,
-   * as the chat holds one sent then; for a while at least, so a chat yet to see the compaction does not
-   * send it straight back.
-   */
-  function holdForCompaction(agentId: string, id: string): void {
+  function forget(agentId: string, ids: readonly string[]): void {
     const current = sends.get(agentId) ?? NONE;
-    const from = current.findIndex((send) => send.id === id && send.state === "sending");
-    if (from === -1) return;
-    const at = now();
-    put(agentId, current.map((send, index) => (index >= from && send.state === "sending" ? { ...send, state: "held", at, heldUntil: at + COMPACTING_RECHECK_MS } : send)));
+    if (current.some((send) => ids.includes(send.id))) put(agentId, current.filter((send) => !ids.includes(send.id)));
   }
   function startSending(agentId: string): void {
     void drain(agentId);
@@ -150,28 +158,18 @@ export function createPendingSendStore(
       startSending(agentId);
     },
     remove: (agentId, ids) => {
-      const current = sends.get(agentId) ?? NONE;
-      if (!current.some((send) => ids.includes(send.id))) return;
-      put(agentId, current.filter((send) => !ids.includes(send.id)));
+      if (!(sends.get(agentId) ?? NONE).some((send) => ids.includes(send.id))) return;
+      forget(agentId, ids);
       // A failed message taken back no longer holds up those after it.
       startSending(agentId);
-    },
-    agentIds: () => [...sends.keys()],
-    claim: (agentId, ids, now) => {
-      const current = sends.get(agentId) ?? NONE;
-      const claimed = current.filter((send) => send.state === "held" && ids.includes(send.id)).map((send): PendingSend => ({ ...send, state: "sending", at: now, heldUntil: undefined }));
-      if (claimed.length === 0) return [];
-      put(agentId, current.map((send) => claimed.find((each) => each.id === send.id) ?? send));
-      startSending(agentId);
-      return claimed;
     },
     resend: (agentId, id, again) => {
       const current = sends.get(agentId) ?? NONE;
       const old = current.find((send) => send.id === id);
       if (old === undefined) return null;
-      const next: PendingSend = { ...old, id: again.id, at: again.at, state: again.holds ? "held" : "sending", error: undefined };
+      const next: PendingSend = { ...old, id: again.id, at: again.at, state: "sending", error: undefined };
       put(agentId, [...current.filter((send) => send.id !== id), next]);
-      if (next.state === "sending") startSending(agentId);
+      startSending(agentId);
       return next;
     },
     retry: (agentId, id) => {
@@ -191,18 +189,3 @@ export function createPendingSendStore(
 }
 
 export const pendingSends = createPendingSendStore(globalThis);
-
-/**
- * Sends the held messages of each agent seen stopped, oldest first (`claim`). An agent's status counts
- * only when it was read after the message was held (`updatedAt`, ms): a status read before is from the
- * turn the message waits for, or older. An agent not in `agents` keeps its own.
- */
-export function releaseHeld(store: PendingSendStore, agents: ReadonlyMap<string, { status: string; updatedAt: number }>, now: number): void {
-  store.agentIds().forEach((agentId) => {
-    const agent = agents.get(agentId);
-    if (agent === undefined || isWorking(agent.status)) return;
-    const due = store.get(agentId).filter((send) => send.state === "held" && send.at <= agent.updatedAt);
-    if (due.length === 0) return;
-    store.claim(agentId, due.map((send) => send.id), now);
-  });
-}

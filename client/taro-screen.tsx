@@ -57,7 +57,7 @@ import { IconButton, Segmented } from "./ui";
 import { useActions } from "./use-actions";
 import { useNow } from "./use-now";
 import { useBackStep, useScreenBack } from "./use-back";
-import { useReleaseHeld } from "./use-release-held";
+import { useChatTransports } from "./use-chat-transports";
 import { chooseMove, planShown, screenBackStep, ticketBackMove, ticketBackTarget, ticketShown, viewPlanMove, type OpenPlan, type PhoneTab, type ScreenMove, type ScreenNow, type ScreenView } from "./back-steps";
 
 type View_ = ScreenView;
@@ -462,7 +462,7 @@ function ProjectView({
   const project = summary.config.project;
   const board = useBoard(project);
   const refreshBoard = useRefreshBoard(project);
-  useReleaseHeld(project, board.data?.cards, summary.manager);
+  useChatTransports(project, board.data?.cards, summary.manager);
   // The phone's Inbox lists this project alone (TR-137); one array per summary keeps the memoised Inbox still.
   const inboxProjects = useMemo(() => [summary], [summary]);
   const [rightPane, setRightPane] = useState<RightPane>(remembered.rightPane);
@@ -787,7 +787,7 @@ function ManagerPane({
       <AgentChat
         // A restarted manager is another agent: a fresh chat, not the last one's words for a frame.
         key={manager.id}
-        agent={{ id: manager.id, updatedAt: manager.updatedAt, pendingPermissions: manager.pendingPermissions, status: manager.status, steers: manager.steers }}
+        agent={{ id: manager.id, updatedAt: manager.updatedAt, pendingPermissions: manager.pendingPermissions, status: manager.status }}
         asker={{ kind: "manager" }}
         theme={theme}
         compact={compact}
@@ -795,9 +795,7 @@ function ManagerPane({
         transformText={withoutDecisionBlocks}
         asks={{ decisions, onAnswered: onChanged }}
         suggestions={<SuggestionPills project={project} suggestions={suggestions} theme={theme} onChanged={onChanged} beforeSend={replaceTip === null ? undefined : (send) => replaceFirst("suggestion", send)} />}
-        onSend={async (text, attachments, messageId) => {
-          await tell({ project, text, ...attachments, messageId });
-        }}
+        onSend={async (text, attachments, messageId, answersRequest) => ({ queued: (await tell({ project, text, ...attachments, messageId, answersRequest })).queued })}
         beforeSend={beforeSend}
         actions={
           <>
