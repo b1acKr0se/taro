@@ -35,7 +35,6 @@ import { projectPaths, readProjectConfig } from "./projects";
 import { serialized } from "./serialize";
 import { pastPlan, previousPlan } from "./plan-history";
 import type { PluginState } from "./state";
-import { readReplacingProviders } from "./provider-steering";
 import { agentBrief } from "./summaries";
 import { listTickets, ticketProblems, viewTicket } from "./tickets";
 
@@ -182,7 +181,6 @@ function groupByTicket(agents: readonly PaseoAgent[]): Map<string, PaseoAgent[]>
 
 async function readBoard(paseo: PaseoApi, state: PluginState, project: string, paging: BoardPaging): Promise<Board> {
   const paths = await projectPaths(project);
-  const replacing = await readReplacingProviders();
   // Live agents come from their own list, so a long archive can never push a live owner past its page limit.
   const [tickets, problems, agents, archived, decisions, agentStates, headroom] = await Promise.all([
     listTickets(paths.tracker),
@@ -246,7 +244,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
     page.kept.map(async ({ ticket, column, owner, liveSubagents, askers, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere, pausing }) => {
       const subagents = liveSubagents.flatMap((agent) => {
         const role = roleFromLabel(agent.labels[TARO_LABELS.role]);
-        return role !== null && isSubagentRole(role) ? [{ ...agentBrief(agent, replacing), role }] : [];
+        return role !== null && isSubagentRole(role) ? [{ ...agentBrief(agent), role }] : [];
       });
       const investigation = ticket.labels.includes("investigation");
       // A Done card shows its PR (TR-114), a Queued one what it waits on (TR-138): read only for the cards on the page.
@@ -270,7 +268,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         archivedAgents.map((agent) => ({ id: agent.id, role: agent.labels[TARO_LABELS.role] ?? "", archivedAt: agent.archivedAt, updatedAt: agent.updatedAt })),
       ).flatMap((entry) => {
         const agent = pastById.get(entry.id);
-        return agent === undefined ? [] : [{ ...agentBrief(agent, replacing), role: entry.role, archivedAt: entry.archivedAt }];
+        return agent === undefined ? [] : [{ ...agentBrief(agent), role: entry.role, archivedAt: entry.archivedAt }];
       });
       return {
         id: ticket.id,
@@ -285,7 +283,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         acceptanceDone: ticket.acceptanceCriteriaCompleted,
         acceptanceTotal: ticket.acceptanceCriteriaCount,
         updatedAt: ticket.updatedAt,
-        owner: owner === null ? null : agentBrief(owner, replacing),
+        owner: owner === null ? null : agentBrief(owner),
         ownerElsewhere: elsewhere,
         pullRequest,
         pullRequestMerged: pullRequestFacts?.pullRequestMerged ?? false,

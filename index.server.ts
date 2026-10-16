@@ -83,7 +83,6 @@ import { allowedMergeMethods } from "./server/merge-methods";
 import { checkPrerequisites } from "./server/prerequisites";
 import { listProjectConfigs, projectPaths, readProjectConfig, requireProjectConfig, taroHome, updateProjectConfig } from "./server/projects";
 import { sentImagesOf } from "./server/sent-images";
-import { readReplacingProviders } from "./server/provider-steering";
 import { agentBrief, listModelOptions } from "./server/summaries";
 import { TrackerWatch } from "./server/tracker-watch";
 import { stopCommands } from "./server/process";
@@ -245,7 +244,7 @@ export default function contribute(server: PluginServerContext) {
         const trackerSyncProblem = config.trackerSync === "remote" ? trackers.syncProblem(config.project) : null;
         const needsYou = inboxCount(board, trackerSyncProblem !== null);
         const managerLastTurnEndedAt = manager === null ? null : ((await state.agent(manager.id))?.lastTurnEndedAt ?? null);
-        return { config, manager: manager === null ? null : agentBrief(manager, await readReplacingProviders()), managerLastTurnEndedAt, trackerSyncProblem, needsYou };
+        return { config, manager: manager === null ? null : agentBrief(manager), managerLastTurnEndedAt, trackerSyncProblem, needsYou };
       }),
     );
     return { taroHome: await taroHome(), projects };

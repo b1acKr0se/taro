@@ -19,51 +19,6 @@ export function newChatMessageId(now: number = Date.now(), random: () => number 
   return `${CHAT_MESSAGE_PREFIX}${now.toString(36)}-${Math.floor(random() * 36 ** 8).toString(36)}`;
 }
 
-/**
- * Providers whose Paseo session cannot take a message mid-turn, so Paseo replaces the running turn
- * (Paseo 0.11.2: the ACP ones, which lack `steerActiveTurn`). Paseo exposes this neither in an
- * agent's capabilities nor in what a send returns, so it is listed here: the built-in `copilot`, and
- * the ids Paseo itself runs as ACP agents. Any other id steers: the built-in claude, codex, opencode,
- * pi and omp, a plugin's provider, and a custom one extending one of those under its own id. A custom
- * provider extending one of these is found in Paseo's config (`replacingProviders`).
- */
-export const REPLACING_PROVIDERS: ReadonlySet<string> = new Set(["copilot", "acp", "cursor", "kimi", "kiro", "traecli"]);
-
-/** Whether a message sent now joins the running turn; an unknown provider (none read yet) is taken to. */
-export function steersMidTurn(provider: string | null | undefined, replacing: ReadonlySet<string> = REPLACING_PROVIDERS): boolean {
-  return provider === null || provider === undefined || !replacing.has(provider);
-}
-
-/**
- * The replacing providers given Paseo's config (`agents.providers`): the built-in list, plus each
- * custom provider whose `extends` chain reaches one of them (`"gemini": { "extends": "acp" }`).
- */
-export function replacingProviders(config: unknown): ReadonlySet<string> {
-  const providers = recordAt(recordAt(config, "agents"), "providers");
-  const extendsOf = (id: string): string | null => {
-    const base = recordAt(providers, id)?.["extends"];
-    return typeof base === "string" ? base : null;
-  };
-  const replacing = new Set(REPLACING_PROVIDERS);
-  Object.keys(providers ?? {}).forEach((id) => {
-    // A chain longer than the providers configured has a loop: Paseo refuses it, so nothing replaces.
-    let base = extendsOf(id);
-    let steps = 0;
-    while (base !== null && !REPLACING_PROVIDERS.has(base) && steps < Object.keys(providers ?? {}).length) {
-      base = extendsOf(base);
-      steps += 1;
-    }
-    if (base !== null && REPLACING_PROVIDERS.has(base)) replacing.add(id);
-  });
-  return replacing;
-}
-
-function recordAt(value: unknown, key: string): Record<string, unknown> | null {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
-  const inner = (value as Record<string, unknown>)[key];
-  return inner !== null && typeof inner === "object" && !Array.isArray(inner) ? (inner as Record<string, unknown>) : null;
-}
-
 /** Whether an agent in this Paseo status has a turn under way. */
 export function isWorking(status: string | null | undefined): boolean {
   return status === "running" || status === "initializing";
