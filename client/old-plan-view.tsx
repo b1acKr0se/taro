@@ -97,7 +97,7 @@ export function OldPlanSheet({
   } else if (found.error !== null) {
     body = <Text style={[small, { color: colors.statusDanger }]}>{errorText(found.error)}</Text>;
   } else if (source === null) {
-    body = message("This plan is not in the tracker’s history: it was answered before the tracker kept one, or its record has not been committed yet. The current plan is in the ticket.");
+    body = message("This plan is not in the tracker’s history: it is older than the history the tracker keeps. The current plan is in the ticket.");
   } else if (plan === null) {
     body = <Markdown source={source} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={(url) => void openExternalUrl(url).catch((caught: unknown) => toast.error(errorText(caught)))} />;
   } else {
@@ -137,7 +137,8 @@ export function OldPlanSheet({
         </View>
         {view.words === null ? null : <Text style={[small, { color: colors.foregroundMuted, fontStyle: "italic" }]}>{`“${view.words}”`}</Text>}
         <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: SPACE.sm }}>
-          <Text style={[small, { flexShrink: 1, color: colors.foregroundMuted }]}>{view.answeredAt === null ? "The plan as it stood when it was asked." : "The plan as it stood when you answered it."}</Text>
+          {/* Said only of a plan found: a missing one says so below instead. */}
+          {source === null ? null : <Text style={[small, { flexShrink: 1, color: colors.foregroundMuted }]}>{view.answeredAt === null ? "The plan as it stood when it was asked." : "The plan as it stood when you answered it."}</Text>}
           {onOpenCurrent === null ? null : <IconButton icon="Map" label="Open current plan" showLabel theme={theme} onPress={onOpenCurrent} />}
         </View>
       </View>
