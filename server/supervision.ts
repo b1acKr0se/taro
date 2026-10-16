@@ -414,9 +414,9 @@ export class Supervisor {
       for (const block of inOrder) {
         const key = `${agent.id}:${block.id}`;
         const index = stored.findIndex((existing) => existing.key === key);
-        // Still open from the planning phase: a later read (failed, or the ticket moved on) does not unblock it.
-        const stillPlanning = stored[index]?.status === "open" && stored[index]?.planning === true;
-        const decision = asPlanningQuestion(block, planning || stillPlanning);
+        // Made blocking and still open: a later read (failed, or the ticket moved on) does not unblock it.
+        const stillBlocking = stored[index]?.status === "open" && stored[index]?.madeBlocking === true;
+        const decision = asPlanningQuestion(block, planning || stillBlocking);
         if (decision.withdrawn) {
           const existing = stored[index];
           if (existing !== undefined) {
@@ -466,7 +466,7 @@ export class Supervisor {
       }
       return problems;
     });
-    const madeBlocking = opened.filter((decision) => decision.planning === true);
+    const madeBlocking = opened.filter((decision) => decision.madeBlocking === true);
     for (const ticket of newlyAsked) await this.stats.count(identity.project, ticket, "decisions").catch(() => undefined);
     const ending = identity.role === "owner" ? questionEndingDelivery(opened) : null;
     if (ending !== null && identity.ticket !== null) await this.endDeliveryOn(identity, identity.ticket, ending.id);
@@ -509,6 +509,11 @@ export class Supervisor {
       console.warn(`[taro] taking back ${identity.ticket}'s delivery: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
+    // The owner now waits for it: shown blocking, without the default it would have gone on with.
+    await this.state.updateDecisions((stored) => {
+      const decision = stored.find((each) => each.key === open.key && each.status === "open");
+      if (decision !== undefined && !decision.blocking) Object.assign(decision, { blocking: true, madeBlocking: true });
+    });
     await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.deliveryWithOpenQuestion, { ticket: identity.ticket, question: `\`${open.id}\`` }));
     return true;
   }

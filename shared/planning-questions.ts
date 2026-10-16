@@ -17,11 +17,11 @@ export function planningTicket(ticket: { status: string; notes: string | null })
 }
 
 /** The decision as the plugin stores it: blocking while planning, marked so the chat still matches its block. */
-export function asPlanningQuestion<D extends { blocking: boolean }>(decision: D, planning: boolean): D & { planning?: true } {
-  return planning && !decision.blocking ? { ...decision, blocking: true, planning: true } : decision;
+export function asPlanningQuestion<D extends { blocking: boolean }>(decision: D, planning: boolean): D & { madeBlocking?: true } {
+  return planning && !decision.blocking ? { ...decision, blocking: true, madeBlocking: true } : decision;
 }
 
 /** The block as the plugin stored it, for comparing an agent's block with its stored decision. */
-export function asStored<D extends { blocking: boolean }>(block: D, stored: { planning?: boolean | undefined }): D {
-  return stored.planning === true ? { ...block, blocking: true } : block;
+export function asStored<D extends { blocking: boolean }>(block: D, stored: { madeBlocking?: boolean | undefined }): D {
+  return stored.madeBlocking === true ? { ...block, blocking: true } : block;
 }

@@ -593,7 +593,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       ticket("Planning", "MILESTONE 2026-10-16T02:40Z — oriented");
       const { state, decisions } = fakeState();
       await run(supervisor(state), human("start"), lightly("naming", "working"));
-      expect(decisions.map((decision) => [decision.id, decision.status, decision.blocking, decision.planning])).toEqual([["naming", "open", true, true]]);
+      expect(decisions.map((decision) => [decision.id, decision.status, decision.blocking, decision.madeBlocking])).toEqual([["naming", "open", true, true]]);
       expect(told()).toEqual(["planning-question:`naming`"]);
     });
 
@@ -631,7 +631,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       await run(taro, ...first);
       ticket("In Progress", "APPROVAL 2026-10-16T02:45Z — Approve");
       await run(taro, ...first);
-      expect(decisions.map((decision) => [decision.status, decision.blocking, decision.planning])).toEqual([["open", true, true]]);
+      expect(decisions.map((decision) => [decision.status, decision.blocking, decision.madeBlocking])).toEqual([["open", true, true]]);
     });
 
     it("leaves the flag as asked after APPROVAL, once building, or when the ticket cannot be read", async () => {
@@ -639,7 +639,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
         ticket(status, notes);
         const { state, decisions } = fakeState();
         await run(supervisor(state), human("start"), lightly("tone", "working"));
-        expect(decisions.map((decision) => [decision.blocking, decision.planning])).toEqual([[false, undefined]]);
+        expect(decisions.map((decision) => [decision.blocking, decision.madeBlocking])).toEqual([[false, undefined]]);
       }
       vi.mocked(viewTicket).mockRejectedValue(new Error("tracker locked"));
       const { state, decisions } = fakeState();
@@ -712,15 +712,18 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     });
 
     // TR-146: the user answers every question before Accept.
-    it("takes back a delivery made with a non-blocking question still open, and tells the owner once", async () => {
-      const { state } = fakeState();
+    it("takes back a delivery made with a non-blocking question still open, shows it blocking, and tells the owner once", async () => {
+      const { state, decisions } = fakeState();
       const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
       const first = [human("start"), lightly("tone")];
       await run(taro, ...first);
       expect(ended()).toEqual([["/tracker", "TR-9", "DELIVERY-ENDED <at> — the owner delivered with `tone` still open: back to In Progress until it is answered and the owner delivers again"]]);
       expect(takenBack()).toEqual(["delivery-open-question:TR-9:`tone`"]);
-      // Back in In Progress: the next turn with the question still open writes and says nothing.
+      expect(decisions.map((decision) => [decision.status, decision.blocking, decision.madeBlocking])).toEqual([["open", true, true]]);
+      // The same turn seen again keeps it blocking; back in In Progress, nothing is written or said again.
+      await run(taro, ...first);
       await run(taro, ...first, plugin("carry on"), reply);
+      expect(decisions.map((decision) => [decision.status, decision.blocking, decision.madeBlocking])).toEqual([["open", true, true]]);
       expect(ended()).toHaveLength(1);
       expect(takenBack()).toHaveLength(1);
     });

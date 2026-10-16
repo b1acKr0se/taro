@@ -113,7 +113,7 @@ describe("decisionBlockView", () => {
 
   it("is the open card for a planning question the plugin made blocking (TR-146), and replaced when its flag really changed", () => {
     const lightly = parseDecisionBody("id: a\nquestion: Approve?\nblocking: false\noptions:\n  - label: Yes\n    prompt: Yes please");
-    const decision = stored({ ...lightly, blocking: true }, { planning: true });
+    const decision = stored({ ...lightly, blocking: true }, { madeBlocking: true });
     expect(decisionBlockView(lightly, done(decision))).toEqual({ kind: "open", decision });
     expect(decisionBlockView(lightly, done(stored(asked)))).toEqual({ kind: "replaced" });
   });

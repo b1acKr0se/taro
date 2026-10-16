@@ -29,7 +29,7 @@ describe("planningTicket (TR-146)", () => {
 
 describe("asPlanningQuestion", () => {
   it("makes a non-blocking question blocking while planning, and marks it", () => {
-    expect(asPlanningQuestion({ id: "a", blocking: false }, true)).toEqual({ id: "a", blocking: true, planning: true });
+    expect(asPlanningQuestion({ id: "a", blocking: false }, true)).toEqual({ id: "a", blocking: true, madeBlocking: true });
   });
 
   it("leaves a blocking question, and any question after planning, as asked", () => {
@@ -40,8 +40,8 @@ describe("asPlanningQuestion", () => {
 
 describe("asStored", () => {
   it("reads the agent's block as blocking only when its stored decision was made so", () => {
-    expect(asStored({ blocking: false }, { planning: true })).toEqual({ blocking: true });
+    expect(asStored({ blocking: false }, { madeBlocking: true })).toEqual({ blocking: true });
     expect(asStored({ blocking: false }, {})).toEqual({ blocking: false });
-    expect(asStored({ blocking: false }, { planning: undefined })).toEqual({ blocking: false });
+    expect(asStored({ blocking: false }, { madeBlocking: undefined })).toEqual({ blocking: false });
   });
 });
