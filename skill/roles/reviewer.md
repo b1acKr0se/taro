@@ -23,6 +23,9 @@ Give each area a one-line verdict: **pass**, **findings** or **not applicable**,
      markup; leftover debug text; states (empty, long text, many items, errors); phone and desktop.
      On a phone, a full-screen view (modal, sheet, viewer) starts below the status bar's clock and
      icons on Android and iOS; a web screenshot cannot show this, so check how the code clears it.
+   - **Both themes:** when the change adds or restyles something drawn, each screen it touches is
+     shown in dark and in light theme, and every text reads in both (no near-black on a dark card);
+     a missing theme is a blocker. A change of wording only needs one.
    Content too short or too tidy to prove anything is a finding. Your verdict names what you
    checked, e.g. "values start at one x in Goal/Result/Size rows; no placeholder text; Children
    shown with 3 children".

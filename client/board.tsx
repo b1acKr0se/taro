@@ -232,7 +232,7 @@ export function ProjectBoard({
           onPress={toggleParked}
         >
           <Icon name={meta.icon} size={16} color={colors.foregroundMuted} />
-          <Text style={styles.columnTitle}>{COLUMN_TITLES.parked}</Text>
+          <Text style={[styles.columnTitle, { color: colors.foreground }]}>{COLUMN_TITLES.parked}</Text>
           <Text style={styles.count}>{page.total}</Text>
           <Text style={styles.hint} numberOfLines={1}>
             {meta.hint}

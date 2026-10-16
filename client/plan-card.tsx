@@ -518,6 +518,7 @@ export function PlanBody({ plan, marks = null, theme, proof = null }: { plan: Pa
     return (
       <>
         {inline(choice.choice)}
+        {/* inherits colour: inside the bullet's Text, green when changed */}
         <Text style={changed ? null : styles.muted}>
           {" — "}
           {inline(choice.why)}

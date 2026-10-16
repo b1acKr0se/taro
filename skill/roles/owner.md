@@ -174,6 +174,10 @@ full re-review or fix check, and the reviewer's verdict.
     carries (a delivery summary with Markdown and HTML, not "Lorem"), long names, many items, the
     empty state; plus **at least one stress case per screen touched** (the longest, the most, the
     emptiest). Names in it stay neutral (SKILL.md rule 8).
+  - **Both themes** (TR-170): a change that adds or restyles something drawn (a new element, a
+    style, a colour, an icon) shows each screen it touches at least once in dark theme and once in
+    light; text drawn in the platform's default colour vanishes in one of them. A change of wording
+    only needs one theme. Name the theme in the file name (`after-desktop-dark-board.png`).
   - **Coverage map:** list each screen section or state the diff renders, changes, moves or re-wraps
     (only those, not the whole app; when unsure, include it) and the screenshot that shows it, as EVIDENCE `coverage:` lines. Capture each
     with data that exercises it: a parent with children for a children section, a long value for a
