@@ -21,6 +21,7 @@ import { questionHoldingAccept } from "../shared/delivery-end";
 import { decisionBlocksAsText, withoutDecisionBlocks } from "../shared/reports";
 import { offersSpecChange } from "../shared/spec-change";
 import { AgentChat } from "./agent-chat";
+import type { DeliveryRecord } from "./finished-cards";
 import { AcceptanceCard, AcceptNow } from "./acceptance-card";
 import { acceptanceReady } from "./card-calls";
 import { rowButtonStyle } from "./control-colors";
@@ -28,7 +29,7 @@ import { Pressable } from "./focus";
 import { askedElsewhere, openingPaneAgent, paneAgents, paneAgentJob, paneOpening, roleIcon, type PaneOpening } from "./pane-agents";
 import { KeyboardScrollView } from "./keyboard";
 import { PaneHeader } from "./pane-header";
-import { useTicketPlanAnswers } from "./plan-card";
+import { useTicketRecords } from "./plan-card";
 import { SpecChangeBox } from "./spec-change-box";
 import { paneGutter, SPACE } from "./spacing";
 import { TicketView } from "./ticket-view";
@@ -39,6 +40,8 @@ import { KeptPane, useVisited } from "./kept-pane";
 import { useNow } from "./use-now";
 
 const ARCHIVED_NOTE = "Finished — this agent is archived; its conversation is read-only.";
+
+const NO_RECORDS: readonly DeliveryRecord[] = [];
 
 export function OwnerPane({
   card,
@@ -76,7 +79,7 @@ export function OwnerPane({
   opening?: number;
 }) {
   const tell = useRpc(tellAgent);
-  const planAnswers = useTicketPlanAnswers(project, card.id);
+  const records = useTicketRecords(project, card.id);
   const queries = useQueryClient();
   // A plan answered anywhere (its card here, the board, the Ticket tab, Paseo's tab) leaves the open
   // decisions: its record is on the ticket by then, so the ticket is read at once, and until it is the
@@ -203,7 +206,7 @@ export function OwnerPane({
                 }}
                 transformText={withoutDecisionBlocks}
                 asks={{ decisions: shownAsks, onAnswered: onChanged }}
-                planAnswers={shown.role === "owner" ? { answers: planAnswers, settling } : undefined}
+                records={shown.role === "owner" ? { project, ticket: card.id, plans: records?.plans ?? null, deliveries: records?.deliveries ?? NO_RECORDS, settling } : undefined}
                 delivery={
                   accepting && shown.id === card.owner?.id
                     ? {

@@ -24,6 +24,7 @@ import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { useRevealFocused } from "./keyboard";
 import { Markdown, MarkdownInline } from "./markdown";
+import { deliveryRecords, type DeliveryRecord } from "./finished-cards";
 import { planAnswers, type PlanAnswer } from "./plan-lines";
 import { useViewPlan } from "./plan-navigation";
 import { SPACE } from "./spacing";
@@ -63,11 +64,17 @@ export function useTicketPlan(project: string, ticket: string | null, enabled = 
   return useMemo(() => parsePlan(source), [source]);
 }
 
-/** The ticket's plan answers, for the lines past plans leave in the owner's chat (TR-135); null while it loads. */
-export function useTicketPlanAnswers(project: string, ticket: string): readonly PlanAnswer[] | null {
+/** What the ticket's notes say of finished cards (TR-135, TR-149): plan answers and acceptance records. */
+export interface TicketRecords {
+  plans: readonly PlanAnswer[];
+  deliveries: readonly DeliveryRecord[];
+}
+
+/** The ticket's records, for the finished cards in the owner's chat; null while it loads. */
+export function useTicketRecords(project: string, ticket: string): TicketRecords | null {
   const detail = useTicketDetail(project, ticket, true);
   const notes = detail === undefined ? undefined : detail.notes;
-  return useMemo(() => (notes === undefined ? null : planAnswers(notes)), [notes]);
+  return useMemo(() => (notes === undefined ? null : { plans: planAnswers(notes), deliveries: deliveryRecords(notes) }), [notes]);
 }
 
 /**
