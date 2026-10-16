@@ -16,7 +16,7 @@ import { memo, useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 
 import { catchUp, compactManager, restartManager, resumeManager, tellManager, type Card, type ProjectSummary } from "../shared/contracts";
-import { MANAGER_ACTION_LABELS, MANAGER_ACTION_SUCCESS, managerPaneNotice, offersReplaceManager, REPLACE_MANAGER_LABEL, replaceManagerNotice } from "../shared/manager-actions";
+import { MANAGER_ACTION_LABELS, MANAGER_ACTION_SUCCESS, managerPaneNotice, offersReplaceManager, REPLACE_MANAGER_LABEL, replaceManagerNotice, type ReplaceFirstAction } from "../shared/manager-actions";
 import { withoutDecisionBlocks } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import type { Suggestion } from "../shared/suggestions";
@@ -40,10 +40,14 @@ import { projectLayout } from "./pane-layout";
 import { CreationProgress, NewProject, resetNewProject, returnToNewProject, useCreation } from "./new-project";
 import { afterCreation, resetCreation } from "./project-creation";
 import { ProjectSetup } from "./project-setup";
+import { ReplaceFirstDialog } from "./replace-first-dialog";
 import { useProjects, useRefreshProjects } from "./queries";
 import { paneGutter, SPACE } from "./spacing";
 import { StatsView } from "./stats-view";
 import { CrashCard } from "./crash-card";
+import { drafts } from "./draft";
+import { draftAttachments } from "./draft-attachments";
+import { carryDraft } from "./draft-carry";
 import { crashStep } from "./crash-trail";
 import { SuggestionPills } from "./suggestion-pills";
 import { TicketView } from "./ticket-view";
@@ -699,6 +703,8 @@ function ManagerPane({
   const refreshProjects = useRefreshProjects();
   const actions = useActions();
   const [tipOpen, setTipOpen] = useState(false);
+  // The press held by the replace-first dialog (TR-161), and how to go ahead with it.
+  const [asked, setAsked] = useState<{ action: ReplaceFirstAction; goAhead: () => void } | null>(null);
   // The offer appears as the cache hour passes, not only at the next poll that changes something.
   const now = useNow(60_000);
   const project = summary.config.project;
@@ -721,8 +727,27 @@ function ManagerPane({
   }
   const running = manager.status === "running" || manager.status === "initializing";
   const notice = managerPaneNotice(manager);
-  const replaceTip =
-    manager.contextUsedTokens !== null && offersReplaceManager(manager, summary.managerLastTurnEndedAt, now) ? replaceManagerNotice(formatTokenCount(manager.contextUsedTokens)) : null;
+  const tokens = manager.contextUsedTokens === null ? null : formatTokenCount(manager.contextUsedTokens);
+  const replaceTip = tokens !== null && offersReplaceManager(manager, summary.managerLastTurnEndedAt, now) ? replaceManagerNotice(tokens) : null;
+  const managerId = manager.id;
+  /** While Replace manager is offered, a press first asks to replace (TR-161); otherwise it goes ahead. */
+  function replaceFirst(action: ReplaceFirstAction, goAhead: () => void): void {
+    if (replaceTip === null) goAhead();
+    else setAsked({ action, goAhead });
+  }
+  const beforeSend = replaceTip === null ? undefined : (send: () => void) => replaceFirst("send", send);
+  function replaceManager(): void {
+    actions.press("replace", () => replace({ project }), {
+      success: MANAGER_ACTION_SUCCESS.fresh,
+      onSuccess: (started) => {
+        // What was typed for the old manager waits in the fresh one's box.
+        carryDraft({ text: drafts, attachments: draftAttachments }, managerId, started.agentId);
+        setTipOpen(false);
+        refreshProjects();
+        onChanged();
+      },
+    });
+  }
   return (
     <View style={{ flex: 1 }}>
       {header}
@@ -765,12 +790,27 @@ function ManagerPane({
         placeholder="Tell the manager what you need…"
         transformText={withoutDecisionBlocks}
         asks={{ decisions, onAnswered: onChanged }}
-        suggestions={<SuggestionPills project={project} suggestions={suggestions} theme={theme} onChanged={onChanged} />}
+        suggestions={<SuggestionPills project={project} suggestions={suggestions} theme={theme} onChanged={onChanged} beforeSend={replaceTip === null ? undefined : (send) => replaceFirst("suggestion", send)} />}
         onSend={async (text, attachments, messageId) => {
           await tell({ project, text, ...attachments, messageId });
         }}
+        beforeSend={beforeSend}
         actions={
           <>
+            {/* Offered, it leads the row filled as the recommended press (TR-161). */}
+            {replaceTip === null ? null : (
+              <IconButton
+                icon="RefreshCw"
+                label={REPLACE_MANAGER_LABEL}
+                showLabel
+                tone="accent"
+                theme={theme}
+                disabled={actions.busy}
+                state={actions.stateOf("replace")}
+                tip={{ text: replaceTip, onShow: setTipOpen }}
+                onPress={replaceManager}
+              />
+            )}
             <IconButton
               icon="Newspaper"
               label="Catch up"
@@ -778,29 +818,8 @@ function ManagerPane({
               theme={theme}
               disabled={actions.busy}
               state={actions.stateOf("catch-up")}
-              onPress={() => actions.press("catch-up", () => askCatchUp({ project }))}
+              onPress={() => replaceFirst("catch-up", () => actions.press("catch-up", () => askCatchUp({ project })))}
             />
-            {replaceTip === null ? null : (
-              <IconButton
-                icon="RefreshCw"
-                label={REPLACE_MANAGER_LABEL}
-                showLabel
-                theme={theme}
-                disabled={actions.busy}
-                state={actions.stateOf("replace")}
-                tip={{ text: replaceTip, onShow: setTipOpen }}
-                onPress={() =>
-                  actions.press("replace", () => replace({ project }), {
-                    success: MANAGER_ACTION_SUCCESS.fresh,
-                    onSuccess: () => {
-                      setTipOpen(false);
-                      refreshProjects();
-                      onChanged();
-                    },
-                  })
-                }
-              />
-            )}
             <IconButton
               icon="Minimize2"
               label="Compact"
@@ -808,12 +827,27 @@ function ManagerPane({
               theme={theme}
               disabled={running || actions.busy}
               state={actions.stateOf("compact")}
-              onPress={() => actions.press("compact", () => compactRpc({ project }))}
+              onPress={() => replaceFirst("compact", () => actions.press("compact", () => compactRpc({ project })))}
             />
           </>
         }
         context={{ used: manager.contextUsedTokens, max: manager.contextMaxTokens }}
         actionsTip={replaceTip !== null && tipOpen ? replaceTip : null}
+      />
+      <ReplaceFirstDialog
+        asked={asked?.action ?? null}
+        tokens={tokens ?? ""}
+        theme={theme}
+        onReplace={() => {
+          setAsked(null);
+          replaceManager();
+        }}
+        onGoAhead={() => {
+          const goAhead = asked?.goAhead;
+          setAsked(null);
+          goAhead?.();
+        }}
+        onClose={() => setAsked(null)}
       />
     </View>
   );

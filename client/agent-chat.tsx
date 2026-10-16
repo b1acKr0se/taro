@@ -74,6 +74,8 @@ type ChatComposer =
        * own message id (TR-084); rejects with a sentence on failure.
        */
       onSend: ChatSend;
+      /** Given each send before it leaves the box (TR-161): it calls `send` to go ahead, or later, or never; the words wait in the box meanwhile. */
+      beforeSend?: ((send: () => void) => void) | undefined;
       /** Buttons above the composer (Catch up, Compact, …), first in one sideways-scrolling line with the suggestions. */
       actions?: ReactNode;
       /** The agent's context window, drawn as a ring inside the composer beside the send button. */
@@ -87,6 +89,7 @@ type ChatComposer =
       readOnly: { note: string };
       placeholder?: undefined;
       onSend?: undefined;
+      beforeSend?: undefined;
       actions?: undefined;
       /** How full its context window was, drawn at the footer's end (TR-156). */
       context?: { used: number | null | undefined; max: number | null | undefined };
@@ -100,6 +103,7 @@ export function AgentChat({
   compact,
   placeholder,
   onSend,
+  beforeSend,
   actions,
   context,
   actionsTip,
@@ -417,6 +421,15 @@ export function AgentChat({
    * in the same frame finds the box already empty.
    */
   function sendDraft(): void {
+    if (beforeSend === undefined) sendKeptDraft();
+    else if (!draftIsEmpty()) beforeSend(sendKeptDraft);
+  }
+
+  function draftIsEmpty(): boolean {
+    return drafts.get(agent.id).trim() === "" && draftAttachments.get(agent.id).length === 0;
+  }
+
+  function sendKeptDraft(): void {
     const text = drafts.get(agent.id).trim();
     const sent = draftAttachments.get(agent.id);
     if (onSend === undefined || (text === "" && sent.length === 0)) return;

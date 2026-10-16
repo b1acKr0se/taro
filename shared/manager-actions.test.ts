@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { MANAGER_ACTION_LABELS, managerPaneNotice, managerSettingsActions, offersReplaceManager, PROMPT_CACHE_MS, replaceManagerNotice } from "./manager-actions";
+import { MANAGER_ACTION_LABELS, managerPaneNotice, managerSettingsActions, offersReplaceManager, PROMPT_CACHE_MS, replaceFirstDialog, replaceManagerNotice } from "./manager-actions";
 
 describe("managerSettingsActions", () => {
   it("offers only Start manager when there is none", () => {
@@ -72,5 +72,23 @@ describe("offersReplaceManager (TR-128)", () => {
     expect(text).toContain("142k tokens");
     expect(text).toContain("uncached");
     expect(text).toContain("tickets are kept");
+  });
+});
+
+describe("replaceFirstDialog", () => {
+  it("explains the cold cache with the context's size and recommends replacing, whatever was pressed", () => {
+    for (const action of ["catch-up", "compact", "suggestion", "send"] as const) {
+      const { title, body } = replaceFirstDialog(action, "142k");
+      expect(title).toBe("Replace the manager first?");
+      expect(body).toContain(replaceManagerNotice("142k"));
+      expect(body).toMatch(/Replacing it first is recommended\.$/);
+    }
+  });
+
+  it("names going ahead after the press it stands for", () => {
+    expect(replaceFirstDialog("catch-up", "142k").goAhead).toBe("Catch up anyway");
+    expect(replaceFirstDialog("compact", "142k").goAhead).toBe("Compact anyway");
+    expect(replaceFirstDialog("suggestion", "142k").goAhead).toBe("Send suggestion anyway");
+    expect(replaceFirstDialog("send", "142k").goAhead).toBe("Send anyway");
   });
 });
