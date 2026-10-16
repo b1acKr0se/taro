@@ -46,7 +46,8 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
    with no free slot) keep their status and have no live owner. Never dispatch, relaunch or RELEASE
    one yourself; the plugin starts a fresh owner when the user resumes it and a slot frees. Such a
    ticket does not count until its fresh owner runs. A ticket parked before it started comes back
-   with a RELEASE "back in the queue": dispatch it like any other Queued ticket.
+   with a RELEASE "back in the queue": dispatch it like any other Queued ticket. If you held it before
+   the park, it comes back with your HOLD again and the plugin tells you: RELEASE it if the reason is gone.
    **Check thread headroom too:** every agent, subagent and test daemon costs threads, idle owners
    waiting for acceptance included, and the host crashes agents at its limit. Read `cat /sys/fs/cgroup/pids.current
    /sys/fs/cgroup/pids.max` (skip the check where the files are missing or the max is `max`); above

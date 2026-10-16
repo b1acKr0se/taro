@@ -182,7 +182,7 @@ export function questionContext(decision: Pick<StoredDecision, "blocking" | "ask
 
 /** The phase a badge shows: the ticket's status, except that one parked before it started is not queued (TR-166). */
 export function phaseOf(ticket: { status: string; pause: PauseView | null }): string {
-  return ticket.status === "Queued" && ticket.pause?.state === "paused" ? "Not started" : ticket.status;
+  return ticket.pause?.state === "paused" && ticket.pause.notStarted ? "Not started" : ticket.status;
 }
 
 /** Parking, parked or queued to resume (TR-088, TR-166): what happens next, and since when. */

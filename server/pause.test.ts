@@ -7,7 +7,7 @@ import { PAUSE_HANDOFF_TIMEOUT_MS } from "../shared/pause";
 import { Actions } from "./actions";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import type { Recovery } from "./recovery";
-import { sendFromPlugin } from "./send";
+import { sendFromPlugin, sendWithoutInterrupting } from "./send";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
 import type { Supervisor } from "./supervision";
@@ -40,11 +40,11 @@ vi.mock("./agents", () => ({
   isMidTurn: (agent: { status: string }) => agent.status === "running",
 }));
 vi.mock("./send", () => ({ sendFromPlugin: vi.fn(async () => undefined), sendWithoutInterrupting: vi.fn(async () => undefined), sendCommand: vi.fn() }));
-vi.mock("./package-files", () => ({ TEMPLATES: { pause: "pause", relaunchOwner: "relaunch" }, skillDirectory: async () => "/skill", message: async (path: string) => path }));
+vi.mock("./package-files", () => ({ TEMPLATES: { pause: "pause", relaunchOwner: "relaunch", unparkedHeld: "unparked-held" }, skillDirectory: async () => "/skill", message: async (path: string) => path }));
 vi.mock("./projects", () => ({
   projectPaths: async () => ({ tracker: "/tracker" }),
   listProjectConfigs: async () => [],
-  requireProjectConfig: async () => ({ owner: { model: "claude/haiku", thinking: "" }, maxParallelOwners: 2 }),
+  requireProjectConfig: async () => ({ owner: { model: "claude/haiku", thinking: "" }, maxParallelOwners: 2, managerAgentId: "manager-1" }),
 }));
 vi.mock("./headroom", () => ({ readHeadroom: async () => null }));
 vi.mock("./models", () => ({ bypassModeId: async () => null }));
@@ -111,6 +111,7 @@ beforeEach(() => {
   created.length = 0;
   withdrawn.length = 0;
   vi.mocked(sendFromPlugin).mockClear();
+  vi.mocked(sendWithoutInterrupting).mockClear();
   actions = new Actions(state, supervisor, {} as TrackerWatch, {} as Stats, {} as Recovery);
 });
 
@@ -214,6 +215,23 @@ describe("Pause", () => {
     await actions.pause(paseo, "notes", "NA-1");
     expect((await actions.resume(paseo, "notes", "NA-1")).message).toBe("NA-1 is back in Queued, still held by the manager: overlaps NA-2; start once NA-2 is Done.");
     expect(find("NA-1").notes).toMatch(/\nHOLD \S+ — overlaps NA-2; start once NA-2 is Done\.$/);
+    // No manager running: nobody to tell, and Resume still answers.
+    expect(sendWithoutInterrupting).not.toHaveBeenCalled();
+  });
+
+  it("asks the running manager to look at a hold Resume put back, as held tickets never wake it", async () => {
+    tickets = [ticket("NA-1", "Queued", "\n\nHOLD 2026-01-05T09:00Z — overlaps NA-2; start once NA-2 is Done.")];
+    live = [agent("manager-1", "", "manager")];
+    await actions.pause(paseo, "notes", "NA-1");
+    await actions.resume(paseo, "notes", "NA-1");
+    expect(sendWithoutInterrupting).toHaveBeenCalledWith(paseo, "manager-1", "unparked-held");
+  });
+
+  it("refuses to park a Queued ticket whose owner the manager is starting right now", async () => {
+    const intent = `DISPATCH-INTENT ${new Date(Date.now() - 60_000).toISOString().slice(0, 16)}Z — ticket NA-1, token na1-1, branch taro/na-1`;
+    tickets = [ticket("NA-1", "Queued", `\n\n${intent}`)];
+    await expect(actions.pause(paseo, "notes", "NA-1")).rejects.toThrow("The manager is starting NA-1's owner right now: park it in a minute, once the owner runs.");
+    expect(find("NA-1").notes).not.toContain("HOLD");
   });
 
   it("asks a Queued ticket's just-dispatched owner for a handoff like any other", async () => {

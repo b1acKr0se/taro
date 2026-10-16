@@ -1,0 +1,2 @@
+<!-- Sent to the manager when the user resumes a ticket parked before it started that the manager held before the park, so the plugin put that HOLD back (TR-166): held tickets never wake the manager. Placeholders: ticket, reason. -->
+The user resumed {{ticket}}, which they had parked before it started. You held it before that, so it is held again: "{{reason}}". Check whether that reason still holds: if it does, leave the HOLD; if it is gone, append a RELEASE record and dispatch {{ticket}} like any other Queued ticket.

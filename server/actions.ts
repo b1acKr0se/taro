@@ -23,6 +23,7 @@ import {
   pausedHoldText,
   parkedUnstartedHoldText,
   parksBeforeStart,
+  dispatchPending,
   pauseProgress,
   pauseRefusal,
   pauseRequestedAt,
@@ -425,6 +426,7 @@ export class Actions {
     }
     // Nobody has started it (TR-166): nothing to hand off, so it is held at once and the manager passes it by.
     if (parksBeforeStart(detail.status, owner !== null)) {
+      if (dispatchPending(notes, Date.now())) throw new Error(`The manager is starting ${detail.id}'s owner right now: park it in a minute, once the owner runs.`);
       await appendTicketNote(paths.tracker, detail.id, parkedUnstartedHoldText(at));
       return `${detail.id} is parked: it stays out of the queue until you resume it.`;
     }
@@ -483,8 +485,12 @@ export class Actions {
     if (pausedHold(notes)?.notStarted === true) {
       const record = unparkedRecordText(at, notes);
       await appendTicketNote(paths.tracker, detail.id, record);
-      const held = record.startsWith("HOLD");
-      return { message: held ? `${detail.id} is back in Queued, still held by the manager: ${holdReason(record) ?? ""}` : `${detail.id} is back in Queued: the manager starts it when a slot frees.`, agentId: null };
+      const reason = record.startsWith("HOLD") ? holdReason(record) : null;
+      if (reason === null) return { message: `${detail.id} is back in Queued: the manager starts it when a slot frees.`, agentId: null };
+      // Held tickets never wake the manager, and the hold's reason may have gone while it was parked: ask it to look again.
+      const manager = await fetchLiveAgent(paseo, config.managerAgentId);
+      if (manager !== null) await sendWithoutInterrupting(paseo, manager.id, await message(TEMPLATES.unparkedHeld, { ticket: detail.id, reason }));
+      return { message: `${detail.id} is back in Queued, still held by the manager: ${reason}`, agentId: null };
     }
     const tickets = await listTickets(paths.tracker);
     const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners, true);

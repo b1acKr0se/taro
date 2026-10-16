@@ -121,7 +121,8 @@ export function TicketView({
   const compactRpc = useRpc(compactAgent);
   // One owner of the Park, Resume and Compact presses: while one is in flight the others are disabled.
   const pausePresses = useActions();
-  // What Park and Resume did is the server's to say (TR-088).
+  // What Park and Resume did is the server's to say (TR-088). Each may put the other in its place
+  // (a ticket parked before it started, TR-166), so neither holds the presses until it leaves.
   const told = (result: { message: string }) => {
     toast.show(result.message, { variant: "success" });
     void detail.refetch();
@@ -242,9 +243,9 @@ export function TicketView({
         pause={data.pause}
         pauseAction={
           data.pausable
-            ? { kind: "pause", run: () => pausePresses.press("pause", () => pauseRpc({ project, ticket }), { after: "hold", onSuccess: told }), state: pausePresses.stateOf("pause"), busy: pausePresses.busy }
+            ? { kind: "pause", run: () => pausePresses.press("pause", () => pauseRpc({ project, ticket }), { after: "check", onSuccess: told }), state: pausePresses.stateOf("pause"), busy: pausePresses.busy }
             : data.pause?.state === "paused"
-              ? { kind: "resume", run: () => pausePresses.press("resume", () => resumeRpc({ project, ticket }), { after: "hold", onSuccess: told }), state: pausePresses.stateOf("resume"), busy: pausePresses.busy }
+              ? { kind: "resume", run: () => pausePresses.press("resume", () => resumeRpc({ project, ticket }), { after: "check", onSuccess: told }), state: pausePresses.stateOf("resume"), busy: pausePresses.busy }
               : null
         }
         compactAction={

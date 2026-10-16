@@ -351,6 +351,8 @@ describe("park lines (TR-088, TR-166)", () => {
     expect(phaseOf({ status: "Queued", pause: parked })).toBe("Not started");
     expect(phaseOf({ status: "In Progress", pause: { ...parked, notStarted: false } })).toBe("In Progress");
     expect(phaseOf({ status: "Queued", pause: null })).toBe("Queued");
+    // A just-dispatched owner parked through its handoff: started, so its status, Queued, stays.
+    expect(phaseOf({ status: "Queued", pause: { ...parked, notStarted: false } })).toBe("Queued");
     // Resumed with no free slot, it starts next: Queued again.
     expect(phaseOf({ status: "Queued", pause: { ...parked, state: "queued-to-resume" } })).toBe("Queued");
   });

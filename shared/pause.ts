@@ -196,6 +196,27 @@ export function pauseRefusal(ticket: PauseTicket, merging: boolean): string | nu
   return null;
 }
 
+/** How long a DISPATCH-INTENT with no EXECUTION after it counts as the manager starting the owner now. */
+export const DISPATCH_PENDING_MS = 10 * 60_000;
+
+/**
+ * Whether the manager is starting this ticket's owner right now: its newest DISPATCH-INTENT has no
+ * EXECUTION after it and is recent. Parking then would hold a ticket its owner is about to work under,
+ * never told (TR-166); an older intent is a launch that failed, and parking is safe.
+ */
+export function dispatchPending(notes: string | null, now: number): boolean {
+  const records = noteRecords(notes);
+  for (let index = records.length - 1; index >= 0; index--) {
+    const record = records[index] ?? "";
+    if (/^EXECUTION\b/.test(record)) return false;
+    if (/^DISPATCH-INTENT\b/.test(record)) {
+      const at = Date.parse(recordTime(record) ?? "");
+      return Number.isFinite(at) && now - at < DISPATCH_PENDING_MS;
+    }
+  }
+  return false;
+}
+
 /** Whether Park holds this ticket at once, with no handoff to wait for: Queued, and nobody has started it. */
 export function parksBeforeStart(status: string, ownerAlive: boolean): boolean {
   return status === QUEUED_STATUS && !ownerAlive;

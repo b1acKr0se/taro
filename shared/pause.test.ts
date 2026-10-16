@@ -10,6 +10,7 @@ import {
   isParkReason,
   parkedUnstartedHoldText,
   parksBeforeStart,
+  dispatchPending,
   pauseProgress,
   pauseView,
   pauseRefusal,
@@ -209,6 +210,23 @@ describe("unparkedRecordText", () => {
     expect(record).toBe("HOLD 2026-01-05T11:00Z — overlaps NA-2; start once NA-2 is Done.");
     expect(holdReason(notes(held, record))).toBe("overlaps NA-2; start once NA-2 is Done.");
     expect(pausedHold(notes(held, record))).toBeNull();
+  });
+});
+
+describe("dispatchPending", () => {
+  const intent = "DISPATCH-INTENT 2026-01-05T10:00Z — ticket NA-1, token na1-1, branch taro/na-1";
+  const at = (minutes: number) => Date.parse("2026-01-05T10:00:00Z") + minutes * 60_000;
+
+  it("is true while the manager's dispatch has no EXECUTION yet, for a while", () => {
+    expect(dispatchPending(intent, at(2))).toBe(true);
+    expect(dispatchPending(notes(EXECUTION, "RELEASE 2026-01-05T09:59Z — resumed", intent), at(9))).toBe(true);
+  });
+
+  it("is false once the owner recorded its EXECUTION, for a stale intent, and with no intent", () => {
+    expect(dispatchPending(notes(intent, EXECUTION.replace("09:00:00Z", "10:01:00Z")), at(2))).toBe(false);
+    expect(dispatchPending(intent, at(10))).toBe(false);
+    expect(dispatchPending(notes(EXECUTION), at(2))).toBe(false);
+    expect(dispatchPending(null, at(2))).toBe(false);
   });
 });
 
