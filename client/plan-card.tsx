@@ -187,7 +187,6 @@ function PlanCard({
       head: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
       headRow: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.xs },
       headText: { flexShrink: 1 },
-      waiting: { color: colors.statusWarning, fontSize: FONT_SIZE.micro, fontWeight: "700" as const, letterSpacing: 0.5 },
       question: { color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" as const, lineHeight: lineHeightFor(FONT_SIZE.body) },
       titles: { gap: SPACE.xxs },
       // In a grid row the buttons sit at the bottom, level with the cards beside it (TR-105).
@@ -206,7 +205,6 @@ function PlanCard({
           {onOpen === null ? null : <Icon name="ArrowRight" size={12} color={colors.foregroundMuted} />}
         </View>
       )}
-      {decision.blocking ? <Text style={styles.waiting}>WAITING FOR YOU</Text> : null}
       <Text style={styles.question}>{decision.question}</Text>
     </View>
   );

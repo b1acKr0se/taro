@@ -94,7 +94,6 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
         backgroundColor: colors.surface1,
       },
       who: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
-      blocking: { color: colors.statusWarning, fontSize: FONT_SIZE.micro, fontWeight: "700" as const, letterSpacing: 0.5 },
       more: { color: colors.accent, fontSize: FONT_SIZE.caption },
       question: { color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" as const, lineHeight: lineHeightFor(FONT_SIZE.body) },
       why: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
@@ -135,7 +134,6 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
   return (
     <View style={styles.card}>
       {showAgent ? <Text style={styles.who}>{askedBy(decision)}</Text> : null}
-      {waiting ? <Text style={styles.blocking}>WAITING FOR YOU</Text> : null}
       <Text style={styles.question}>{decision.question}</Text>
       {decision.why === "" ? null : (
         <Pressable onPress={() => setWhyOpen((open) => !open)} disabled={decision.why.length < WHY_FOLD_CHARACTERS}>
