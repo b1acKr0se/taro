@@ -189,7 +189,13 @@ own assumption. A missing or empty test for a changed behaviour is a blocker.
   and when nothing needs to change, deliver again as it was (Awaiting acceptance, the same review
   head). Either way the turn that delivers again ends with `done: …`, which brings the card back
   under it.
-- **Accept:** if the message says to merge (accept-also-merges), merge only what the user reviewed.
+- **Accept:** the plugin runs the steps below itself when the user presses Accept (TR-141): it
+  merges, records ACCEPTANCE (or NOT-MERGED / NOT-SYNCED) and sets Done, and you hear nothing; the
+  plugin archives you after Done. Only when it stops on something that needs judgement (a moved
+  head, a conflict, a base branch that moved under a local branch, an unexpected gh or git answer)
+  does a message reach you, or a fresh owner after a long idle: it says what the plugin found, and
+  the ticket's ACCEPT-HANDOFF record says so too. Take it from that step; the steps are safe to
+  repeat. If the message says to merge (accept-also-merges), merge only what the user reviewed.
   - **Pull request** (TR-110), in this order:
     1. The PR is already `MERGED` (an earlier Accept merged it, then recorded NOT-SYNCED) → go to 3.
     2. Merge only when the PR's `headRefOid` still equals the recorded review head, with the merge

@@ -9,7 +9,7 @@ import { foldList } from "../shared/ticket-summary";
 import { formatClock, formatDay } from "./format";
 
 /** Records the reader looks for; the rest (dispatch, execution, answers, routine milestones) stay grey. */
-const KEY_KINDS: ReadonlySet<string> = new Set(["APPROVAL", "REVIEW", "FINAL", "ACCEPTANCE", "RECOVERY"]);
+const KEY_KINDS: ReadonlySet<string> = new Set(["APPROVAL", "REVIEW", "FINAL", "ACCEPTANCE", "RECOVERY", "ACCEPT-HANDOFF"]);
 
 export interface MilestoneRow {
   /**

@@ -35,12 +35,12 @@ describe("milestoneRows", () => {
   });
 
   it("colours only the records a reader looks for", () => {
-    const kinds = ["APPROVAL", "REVIEW", "FINAL", "ACCEPTANCE", "RECOVERY", "MILESTONE", "EXECUTION", "ANSWER", "HANDOFF", "DISPATCH-INTENT", "ODD"];
+    const kinds = ["APPROVAL", "REVIEW", "FINAL", "ACCEPTANCE", "RECOVERY", "ACCEPT-HANDOFF", "MILESTONE", "EXECUTION", "ANSWER", "HANDOFF", "DISPATCH-INTENT", "ODD"];
     const rows = milestoneRows(
       kinds.map((kind) => ({ kind, time: null, text: "" })),
       now,
     );
-    expect(rows.filter((row) => row.key).map((row) => row.kind)).toEqual(["APPROVAL", "REVIEW", "FINAL", "ACCEPTANCE", "RECOVERY"]);
+    expect(rows.filter((row) => row.key).map((row) => row.kind)).toEqual(["APPROVAL", "REVIEW", "FINAL", "ACCEPTANCE", "RECOVERY", "ACCEPT-HANDOFF"]);
   });
 
   it("has no rows for no records", () => {
