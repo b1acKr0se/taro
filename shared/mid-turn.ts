@@ -91,12 +91,25 @@ export function unansweredMessages(timeline: readonly MidTurnItem[], messages: r
       if (same) index = at;
     }
     if (index === -1) return [];
-    const after = timeline
-      .slice(index + 1)
-      .flatMap((item) => (item.type === "assistant_message" ? [item.text ?? ""] : []))
-      .join("");
-    return quotesMessage(after, text) ? [] : [text];
+    return quotesMessage(assistantTextAfter(timeline.slice(index + 1)), text) ? [] : [text];
   });
+}
+
+/**
+ * What the agent wrote: a streamed message's pieces joined as they came, and messages apart from one
+ * another on their own lines, so a quote opening a message after a tool call starts a line.
+ */
+function assistantTextAfter(items: readonly MidTurnItem[]): string {
+  let text = "";
+  let previous: string | null = null;
+  for (const item of items) {
+    if (item.type === "assistant_message") {
+      if (previous !== null && previous !== "assistant_message") text += "\n";
+      text += item.text ?? "";
+    }
+    if (item.type !== "reasoning") previous = item.type;
+  }
+  return text;
 }
 
 /** The messages as the reminder quotes them back: each a Markdown quote, apart. */

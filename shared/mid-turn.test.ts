@@ -106,6 +106,11 @@ describe("unansweredMessages", () => {
     expect(unansweredMessages(timeline, [user(QUESTION, "chat-1")])).toEqual([QUESTION]);
   });
 
+  it("finds a quote opening a message after narration and a tool call (the noted-then-answered shape)", () => {
+    const timeline = [user("Plan"), user(QUESTION, "chat-1"), said("Noted, I'll answer after the schema check."), tool, said(`> ${QUESTION}\n\nNo.\n\nwaiting: approval`)];
+    expect(unansweredMessages(timeline, [user(QUESTION, "chat-1")])).toEqual([]);
+  });
+
   it("finds a quote split over streamed pieces", () => {
     const timeline = [user("Plan"), user(QUESTION), said("> Would we need to "), said("migrate old pause tickets?\n\nNo.")];
     expect(unansweredMessages(timeline, [user(QUESTION)])).toEqual([]);
