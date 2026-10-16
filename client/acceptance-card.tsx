@@ -24,12 +24,28 @@ import { mergedPurple } from "./github-colors";
 import { useRevealFocused } from "./keyboard";
 import { Markdown } from "./markdown";
 import { SPACE } from "./spacing";
-import { FONT_SIZE, lineHeightFor } from "./type-scale";
-import { AcceptancePair } from "./ui";
+import { rowButtonStyle } from "./control-colors";
+import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
+import { AcceptancePair, Spinner } from "./ui";
 import { useActions } from "./use-actions";
 import { polled } from "./polling";
 
-export function AcceptanceCard({ card, project, theme, compact, onChanged }: { card: Card; project: string; theme: PluginTheme; compact: boolean; onChanged: () => void }) {
+export function AcceptanceCard({
+  card,
+  project,
+  theme,
+  compact,
+  onChanged,
+  onChangesSent,
+}: {
+  card: Card;
+  project: string;
+  theme: PluginTheme;
+  compact: boolean;
+  onChanged: () => void;
+  /** The changes went to the owner: the delivery is over (TR-131), so the card and its Accept row leave the chat at once. */
+  onChangesSent?: () => void;
+}) {
   const toast = useToast();
   // The buttons are revealed with the box, so they stay above the keyboard while the reader types.
   const foot = useRef<View>(null);
@@ -121,6 +137,7 @@ export function AcceptanceCard({ card, project, theme, compact, onChanged }: { c
                   onSuccess: () => {
                     setTyped("");
                     setWriting(false);
+                    onChangesSent?.();
                     onChanged();
                   },
                 })
@@ -141,5 +158,30 @@ export function AcceptanceCard({ card, project, theme, compact, onChanged }: { c
         )}
       </View>
     </View>
+  );
+}
+
+/**
+ * Accept in the row at the composer while the card is scrolled away (TR-131): the card's Accept, drawn
+ * as the row's Show beside it is, so the two match.
+ */
+export function AcceptNow({ card, project, theme, onChanged }: { card: Card; project: string; theme: PluginTheme; onChanged: () => void }) {
+  const accept = useRpc(acceptTicket);
+  const actions = useActions();
+  const { colors } = theme;
+  const state = actions.stateOf("accept");
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Accept ${card.id}`}
+      accessibilityState={{ disabled: actions.busy, busy: state === "busy" }}
+      disabled={actions.busy}
+      // The accepted ticket leaves this row, so Accept stays busy until it does.
+      onPress={() => actions.press("accept", () => accept({ project, ticket: card.id }), { after: "hold", success: `Accepted ${card.id}.`, onSuccess: onChanged })}
+      style={[rowButtonStyle(colors), { flexDirection: "row", alignItems: "center", gap: SPACE.xs }]}
+    >
+      {state === "busy" ? <Spinner size={11} color={colors.accent} /> : <Icon name="Check" size={11} color={colors.accent} />}
+      <Text style={{ color: colors.accent, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" }}>Accept</Text>
+    </Pressable>
   );
 }

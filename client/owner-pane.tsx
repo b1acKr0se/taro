@@ -18,7 +18,7 @@ import { tellAgent, type Card } from "../shared/contracts";
 import { decisionBlocksAsText, withoutDecisionBlocks } from "../shared/reports";
 import { offersSpecChange } from "../shared/spec-change";
 import { AgentChat } from "./agent-chat";
-import { AcceptanceCard } from "./acceptance-card";
+import { AcceptanceCard, AcceptNow } from "./acceptance-card";
 import { acceptanceReady } from "./card-calls";
 import { rowButtonStyle } from "./control-colors";
 import { Pressable } from "./focus";
@@ -93,8 +93,11 @@ export function OwnerPane({
   if (current !== openedOn) setOpenedOn(current);
   const shown = agents.find((agent) => agent.id === chosenId) ?? openingPaneAgent(agents, current.asker) ?? agents[0] ?? null;
   const inset = paneGutter(compact);
+  // Changes sent end the delivery at once (TR-131), before the board reads the ticket back In Progress: kept for the card as it was then.
+  const [changesSentOn, setChangesSentOn] = useState<string | null>(null);
+  const deliveryEnded = changesSentOn === `${card.id}@${card.updatedAt ?? ""}`;
   // Once accepted the owner is merging: nothing is left to accept (TR-031).
-  const accepting = card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null;
+  const accepting = card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null && !deliveryEnded;
   // A Queued ticket nobody owns yet takes a change of spec through the manager (TR-129).
   const specChangeable = offersSpecChange({ status: card.status, parent: card.parent, ownerRunning: card.owner !== null || card.ownerElsewhere !== null, paused: card.pause !== null });
   const shownAsks = useMemo(() => card.decisions.filter((decision) => decision.agentId === shown?.id), [card.decisions, shown?.id]);
@@ -180,9 +183,19 @@ export function OwnerPane({
                 delivery={
                   accepting && shown.id === card.owner?.id
                     ? {
-                        card: <AcceptanceCard card={card} project={project} theme={theme} compact={compact} onChanged={onChanged} />,
+                        card: (
+                          <AcceptanceCard
+                            card={card}
+                            project={project}
+                            theme={theme}
+                            compact={compact}
+                            onChanged={onChanged}
+                            onChangesSent={() => setChangesSentOn(`${card.id}@${card.updatedAt ?? ""}`)}
+                          />
+                        ),
                         label: acceptanceReady(card) ? `${card.id} is ready to accept` : `${card.id} is not ready to accept`,
                         ready: acceptanceReady(card),
+                        accept: <AcceptNow card={card} project={project} theme={theme} onChanged={onChanged} />,
                       }
                     : undefined
                 }

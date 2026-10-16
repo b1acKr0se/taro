@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { StoredDecision } from "../shared/state";
-import { cardFits, cardOnScreen, offsetShowingCard, placeDecisions } from "./inline-decisions";
+import { cardFits, cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
 
 function decision(id: string, parts: Partial<StoredDecision> = {}): StoredDecision {
   return {
@@ -134,5 +134,33 @@ describe("cardFits", () => {
     expect(cardFits(537, 600)).toBe(false);
     expect(cardFits(0, 64)).toBe(true);
     expect(cardFits(0, 0)).toBe(false);
+  });
+});
+
+describe("deliveryRowKey (TR-131)", () => {
+  const delivered = (summary: string) => `Delivered.\n\n${summary}\n\ndone: PR https://example.test/o/r/pull/7 ready for acceptance`;
+
+  it("is the newest message that ends on done:, so a second delivery takes the one card", () => {
+    const rows = [
+      { key: "r1", text: delivered("First go.") },
+      { key: "r2", text: "Yes, the button keeps its label.\n\nwaiting: acceptance" },
+      { key: "r3", text: delivered("Second go.") },
+      { key: "r4", text: "Anything else?" },
+    ];
+    expect(deliveryRowKey(rows)).toBe("r3");
+  });
+
+  it("is the delivery when only later messages that are not deliveries follow it", () => {
+    expect(deliveryRowKey([{ key: "r1", text: delivered("Done.") }, { key: "r2", text: "waiting: the user" }])).toBe("r1");
+  });
+
+  it("reads the status line however it is marked up, and not a done: earlier in the message", () => {
+    expect(deliveryRowKey([{ key: "r1", text: "Shipped.\n\n**done**: ready" }])).toBe("r1");
+    expect(deliveryRowKey([{ key: "r1", text: "The build is\ndone: earlier\none\ntwo\nthree\nwaiting: review" }])).toBeNull();
+  });
+
+  it("is null with no messages or no delivery loaded", () => {
+    expect(deliveryRowKey([])).toBeNull();
+    expect(deliveryRowKey([{ key: "r1", text: "Working on it.\n\nwaiting: implementer" }])).toBeNull();
   });
 });

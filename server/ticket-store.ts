@@ -50,6 +50,8 @@ export interface CreateTicketInput {
 export interface TicketChanges {
   title?: string;
   status?: TicketStatus;
+  /** `status` applies only while the ticket has this one, checked under the lock (TR-131); the other changes apply either way. */
+  statusFrom?: TicketStatus;
   description?: string;
   plan?: string;
   finalSummary?: string;
@@ -463,7 +465,7 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
       validateTitle(changes.title);
       ticket.title = changes.title;
     }
-    if (changes.status !== undefined) {
+    if (changes.status !== undefined && (changes.statusFrom === undefined || ticket.status === changes.statusFrom)) {
       validateStatus(changes.status);
       ticket.status = changes.status;
     }

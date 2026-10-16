@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { serializeTicket, type Ticket } from "../shared/ticket-format";
-import { appendTicketNote, forgetTicketFile, listTickets, ticketProblems, viewTicket } from "./tickets";
+import { appendTicketNote, forgetTicketFile, listTickets, recordChangesRequested, ticketProblems, viewTicket } from "./tickets";
 
 vi.mock("node:child_process", () => ({
   spawn: () => {
@@ -141,6 +141,26 @@ describe("appendTicketNote", () => {
     const detail = await viewTicket(tracker, "NA-001");
     expect(detail.implementationNotes).toBe(`EXECUTION 2026-10-14T15:50:00Z — owner o\n\n${record}`);
     expect(readFileSync(join(tracker, "tickets", "NA-001.md"), "utf8")).toContain(record);
+  });
+});
+
+describe("recordChangesRequested (TR-131)", () => {
+  const record = 'CHANGES-REQUESTED 2026-10-14T16:00:00Z — the user: "Rename the button"';
+
+  it("moves a ticket Awaiting acceptance to In Progress and lands the record, in one write", async () => {
+    write(ticket({ id: "NA-003", title: "Delivered", status: "Awaiting acceptance", notes: "EVIDENCE 2026-10-14T15:55:00Z — check: npm test — passed" }));
+    await recordChangesRequested(tracker, "NA-003", record);
+    const detail = await viewTicket(tracker, "NA-003");
+    expect(detail.status).toBe("In Progress");
+    expect(detail.implementationNotes).toBe(`EVIDENCE 2026-10-14T15:55:00Z — check: npm test — passed\n\n${record}`);
+  });
+
+  it.each(["In Progress", "Reviewing", "Done", "Blocked", "Queued"] as const)("leaves a %s ticket's status alone and still lands the record", async (status) => {
+    write(ticket({ id: "NA-003", title: "Elsewhere", status }));
+    await recordChangesRequested(tracker, "NA-003", record);
+    const detail = await viewTicket(tracker, "NA-003");
+    expect(detail.status).toBe(status);
+    expect(detail.implementationNotes).toBe(record);
   });
 });
 
