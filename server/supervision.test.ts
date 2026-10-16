@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentState, StoredDecision } from "../shared/state";
 import { fetchLiveAgent, listTaroAgents } from "./agents";
@@ -13,9 +13,9 @@ import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, huma
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", decisionCorrection: "decision-correction" },
+  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", decisionCorrection: "decision-correction", planningQuestion: "planning-question" },
   skillDirectory: async () => "/skill",
-  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : `${path}:${values.ticket ?? ""}`),
+  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : `${path}:${values.ticket ?? ""}`),
 }));
 vi.mock("./projects", () => ({ readProjectConfig: async () => null, projectPaths: async () => ({ tracker: "/tracker" }) }));
 vi.mock("./tickets", () => ({ viewTicket: vi.fn(), endDelivery: vi.fn(async () => true) }));
@@ -569,6 +569,82 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       await run(taro, human("start"), both("start-TR-1", "start-TR-2"));
       expect(decisions.map((decision) => decision.status)).toEqual(["open", "open"]);
       expect(held()).toEqual([]);
+    });
+  });
+
+  // TR-146: every question an owner asks before its plan is approved waits for the user.
+  describe("a question asked while the ticket is planning", () => {
+    const lightly = (id: string, status = "waiting") => ({ type: "assistant_message", text: (ask(id, `${id}?`) as { text: string }).text.replace("blocking: true", "blocking: false").replace(/waiting: .*$/, `${status}: ${id}`) });
+    const told = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("planning-question:"));
+    const ticket = (status: string, implementationNotes: string | null) =>
+      vi.mocked(viewTicket).mockResolvedValue({ status, implementationNotes } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+    const supervisor = (state: PluginState) => new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+
+    beforeEach(() => {
+      vi.mocked(sendFromPlugin).mockClear();
+      vi.mocked(viewTicket).mockReset();
+    });
+
+    afterEach(() => {
+      vi.mocked(viewTicket).mockReset();
+    });
+
+    it("stores a non-blocking question as blocking before APPROVAL, and tells an owner that went on", async () => {
+      ticket("Planning", "MILESTONE 2026-10-16T02:40Z — oriented");
+      const { state, decisions } = fakeState();
+      await run(supervisor(state), human("start"), lightly("naming", "working"));
+      expect(decisions.map((decision) => [decision.id, decision.status, decision.blocking, decision.planning])).toEqual([["naming", "open", true, true]]);
+      expect(told()).toEqual(["planning-question:`naming`"]);
+    });
+
+    it("says nothing to an owner that already stopped, nor when the same turn is seen again", async () => {
+      ticket("Queued", null);
+      const { state, decisions } = fakeState();
+      const taro = supervisor(state);
+      const first = [human("start"), lightly("naming")];
+      await run(taro, ...first);
+      await run(taro, ...first);
+      expect(decisions.map((decision) => [decision.status, decision.blocking])).toEqual([["open", true]]);
+      expect(told()).toEqual([]);
+    });
+
+    it("keeps the question answered when its turn is seen again after approval", async () => {
+      ticket("Planning", null);
+      const { state, decisions } = fakeState();
+      const taro = supervisor(state);
+      const first = [human("start"), lightly("naming")];
+      await run(taro, ...first);
+      decisions[0]!.status = "answered";
+      decisions[0]!.turn = null;
+      ticket("In Progress", "APPROVAL 2026-10-16T02:45Z — Approve");
+      await run(taro, ...first);
+      expect(decisions.map((decision) => decision.status)).toEqual(["answered"]);
+    });
+
+    it("leaves the flag as asked after APPROVAL, once building, or when the ticket cannot be read", async () => {
+      for (const [status, notes] of [["Planning", "APPROVAL 2026-10-16T02:45Z — Approve"], ["In Progress", null]] as const) {
+        ticket(status, notes);
+        const { state, decisions } = fakeState();
+        await run(supervisor(state), human("start"), lightly("tone", "working"));
+        expect(decisions.map((decision) => [decision.blocking, decision.planning])).toEqual([[false, undefined]]);
+      }
+      vi.mocked(viewTicket).mockRejectedValue(new Error("tracker locked"));
+      const { state, decisions } = fakeState();
+      await run(supervisor(state), human("start"), lightly("tone", "working"));
+      expect(decisions.map((decision) => decision.blocking)).toEqual([false]);
+      expect(told()).toEqual([]);
+    });
+
+    it("leaves the manager's and a subagent's questions as asked, and reads no ticket for them", async () => {
+      ticket("Planning", null);
+      asManager();
+      const managed = fakeState();
+      await run(supervisor(managed.state), human("start"), lightly("start-TR-1", "working"));
+      vi.mocked(fetchLiveAgent).mockResolvedValue({ ...owner, id: "implementer-1", labels: { "taro.project": "taro", "taro.role": "implementer", "taro.ticket": "TR-9" } } as unknown as PaseoAgent);
+      const implementing = fakeState();
+      await run(supervisor(implementing.state), human("start"), lightly("schema", "working"));
+      expect([...managed.decisions, ...implementing.decisions].map((decision) => decision.blocking)).toEqual([false, false]);
+      expect(viewTicket).not.toHaveBeenCalled();
     });
   });
 

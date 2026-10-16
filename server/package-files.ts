@@ -23,6 +23,7 @@ export const TEMPLATES = {
   nudge: "messages/nudge.md",
   decisionCorrection: "messages/decision-correction.md",
   decisionHeld: "messages/decision-held.md",
+  planningQuestion: "messages/planning-question.md",
   subagentReport: "messages/subagent-report.md",
   handoffRequest: "messages/handoff-request.md",
   compactInstructions: "messages/compact-instructions.md",

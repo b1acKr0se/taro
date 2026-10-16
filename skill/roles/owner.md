@@ -13,10 +13,12 @@ too, test-daemon and scratch-repository cleanup most of all. Then follow the flo
 
 1. **Orient** — the relevant code and instructions only, about ten files at most. Past that, asking
    is cheaper than reading.
-2. **Ask** only questions whose answers would change the implementation: one at a time, as decision
-   blocks with a recommendation and its reason. One decision open at a time: ask the next only after
-   the user answered the last, in a later turn (`reference/formats.md`; the plugin holds back a
-   second). Zero questions is normal for a clear ask. Decide everything else yourself and state it
+2. **Ask** only questions whose answers would change the implementation: one at a time, as
+   **blocking** decision blocks with a recommendation and its reason. Every question before your
+   plan is approved is blocking (TR-146): stop and wait for the answer, never go on with a default
+   (the plugin shows it as blocking whatever its flag, and tells you if you did not stop). One
+   decision open at a time: ask the next only after the user answered the last, in a later turn
+   (`reference/formats.md`; the plugin holds back a second). Zero questions is normal for a clear ask. Decide everything else yourself and state it
    as an assumption.
 3. **Rate complexity** and write the **proposal** into the ticket (`-d`, `--plan`, `--add-label
    complexity-<level>`), sized to the level. The plan follows `templates/plan.md`: its six sections

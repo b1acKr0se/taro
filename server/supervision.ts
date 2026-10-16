@@ -10,6 +10,7 @@ import { deliveryEndedRecord, questionEndingDelivery } from "../shared/delivery-
 import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compaction";
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
+import { asPlanningQuestion, asStored, planningTicket } from "../shared/planning-questions";
 import { isCrash } from "../shared/recovery";
 import { hashText, parseDecisionBlocks, parseStatusLine, seenAgain, withImagePaths, type ParsedDecision } from "../shared/reports";
 import { openQuestionHolding, withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDecision } from "../shared/state";
@@ -227,7 +228,7 @@ export class Supervisor {
     // like words the user typed, and it closed the owner's open cards (TR-134).
     const userWords = identity.role === "manager" ? tabMessages(turn) : [];
     if (userWords.length > 0) await this.closeAnsweredInTab(live.id, userWords, decisions, now);
-    if (decisions.length > 0) await this.storeDecisions(paseo, live, identity, decisions, turnIdentity(turn), now);
+    if (decisions.length > 0) await this.storeDecisions(paseo, live, identity, decisions, turnIdentity(turn), now, status?.state === "waiting");
 
     const openBlocking = (await this.state.allDecisions()).some(
       (decision) => decision.agentId === live.id && decision.status === "open" && decision.blocking,
@@ -333,7 +334,7 @@ export class Supervisor {
           if (status !== null) record.lastStatus = { ...status, at: agent.updatedAt };
         });
         const decisions = parseDecisionBlocks(allAssistantText(turn));
-        if (decisions.length > 0) await this.storeDecisions(paseo, agent, identity, decisions, turnIdentity(turn), agent.updatedAt);
+        if (decisions.length > 0) await this.storeDecisions(paseo, agent, identity, decisions, turnIdentity(turn), agent.updatedAt, status?.state === "waiting");
         if (isSubagentRole(identity.role)) {
           await this.deliverReport(paseo, agent, identity, closing, hashText(closing), agent.labels["paseo.parent-agent-id"] ?? null);
         }
@@ -399,7 +400,9 @@ export class Supervisor {
     });
   }
 
-  private async storeDecisions(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, decisions: readonly ParsedDecision[], turn: string | null, now: string): Promise<void> {
+  private async storeDecisions(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, decisions: readonly ParsedDecision[], turn: string | null, now: string, waiting: boolean): Promise<void> {
+    // Read only when a question would go on without the user: everything else keeps its own flag.
+    const planning = identity.role === "owner" && decisions.some((decision) => !decision.withdrawn && !decision.blocking) && (await this.ticketPlanning(identity));
     const newlyAsked: string[] = [];
     const opened: StoredDecision[] = [];
     const held: { id: string; open: string }[] = [];
@@ -407,7 +410,8 @@ export class Supervisor {
       const problems: string[] = [];
       // Withdrawals first: an owner may withdraw its open question below the block that asks the next one.
       const inOrder = [...decisions.filter((decision) => decision.withdrawn), ...decisions.filter((decision) => !decision.withdrawn)];
-      for (const decision of inOrder) {
+      for (const block of inOrder) {
+        const decision = asPlanningQuestion(block, planning);
         const key = `${agent.id}:${decision.id}`;
         const index = stored.findIndex((existing) => existing.key === key);
         if (decision.withdrawn) {
@@ -434,7 +438,7 @@ export class Supervisor {
           answer: null,
         };
         const existing = stored[index];
-        if (existing !== undefined && existing.status !== "open" && seenAgain(existing, decision, turn)) {
+        if (existing !== undefined && existing.status !== "open" && seenAgain(existing, asStored(decision, existing), turn)) {
           // The same block seen again (a repeated hook, a replayed turn) does not reopen an answered decision; asked in a later turn, it does.
           continue;
         }
@@ -459,6 +463,7 @@ export class Supervisor {
       }
       return problems;
     });
+    const madeBlocking = opened.filter((decision) => decision.planning === true);
     for (const ticket of newlyAsked) await this.stats.count(identity.project, ticket, "decisions").catch(() => undefined);
     const ending = identity.role === "owner" ? questionEndingDelivery(opened) : null;
     if (ending !== null && identity.ticket !== null) await this.endDeliveryOn(identity, identity.ticket, ending.id);
@@ -467,6 +472,21 @@ export class Supervisor {
     }
     if (held.length > 0) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.decisionHeld, { held: held.map((each) => `\`${each.id}\``).join(", "), open: held[0]!.open }));
+    }
+    // A turn that already stopped for the user needs no reminder to.
+    if (madeBlocking.length > 0 && !waiting) {
+      await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.planningQuestion, { question: `\`${madeBlocking[0]!.id}\`` }));
+    }
+  }
+
+  /** Whether the owner's ticket is still being planned (TR-146); unreadable counts as not, keeping the block's own flag. */
+  private async ticketPlanning(identity: TaroIdentity): Promise<boolean> {
+    if (identity.ticket === null) return false;
+    try {
+      const detail = await viewTicket((await projectPaths(identity.project)).tracker, identity.ticket);
+      return planningTicket({ status: detail.status, notes: detail.implementationNotes });
+    } catch {
+      return false;
     }
   }
 
