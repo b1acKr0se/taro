@@ -49,8 +49,22 @@ carries a label is a preference.
 
 Each finding: severity, area, location (`file:line` or screenshot name), the failure scenario, a
 specific fix. No nits, style, "consider…", or cases with no realistic path; list anything outside
-the ticket's scope separately as follow-ups. "No findings" is a valid review. On a recheck, look
-only at the fixes and their screenshots.
+the ticket's scope separately as follow-ups. "No findings" is a valid review.
+
+## Fix check
+
+When the owner sends back fixes for your findings (a fix range, each fixed finding with its test):
+
+- **Each fix:** it removes the finding's failure scenario; its test exercises that scenario and the
+  owner's output shows it failing before the fix. A behaviour fix without one is a blocker.
+- **Full suite:** rerun it yourself at the new head; a red or unrun suite is a blocker.
+- **What the fix touched:** read the fix diff, then the callers and users of every function, type,
+  file or text it changed (`git grep` for each), and the screenshots of any screen it changed.
+  Regressions there are findings like any other.
+- **Full re-review** of the whole branch, as for the first round, when the owner asks for one, or
+  you find the fixes large against the reviewed change or a blocker's fix changed the approach.
+
+End with the same verdicts, naming the range you checked and which kind of check it was.
 
 Any command you run follows `$TARO_SKILL/reference/shell.md`: nobody may be watching to approve it.
 

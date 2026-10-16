@@ -83,7 +83,8 @@ rather than exceed it.
 - **DELIVERY-ENDED**: written by the plugin when an owner asks a blocking question while its ticket
   awaits acceptance; it moves the ticket to In Progress in the same write (`roles/owner.md`).
 - **REVIEW**: reviewer, revision, verdict, every finding answered (fixed, or rejected with the
-  reason).
+  reason); after fixes, what the fix check re-checked: its range, fix check or full re-review, and
+  its verdict (`roles/owner.md`, Review).
 - **EVIDENCE**: what the user sees before Accept; the newest record counts. One fact per line,
   label in any case, separator ` — ` (` -- ` and ` - ` also work):
   `check: <command> — <result>` (one or more), `review: <outcome>`,
@@ -100,7 +101,7 @@ rather than exceed it.
 
       EVIDENCE 2026-01-05T10:00Z — before FINAL
       check: npm test — 37 files, 360 passed
-      review: one independent round (Sonnet) — 1 blocker, fixed
+      review: one independent round (Sonnet) — 1 blocker, fixed; fix check by the same reviewer (fix range, callers, suite) — pass
       ux: list rows: titles and dates start at one x on both; no placeholder text; own pass fixed a clipped Save button; reviewer agrees
       coverage: notes list, 40 notes with long titles — notes-list-desktop.png, notes-list-phone.png
       coverage: empty list — notes-empty-phone.png

@@ -86,7 +86,7 @@ one a "helper".
   contradicts, everything traces to the approved spec.
 - **Threads are finite:** before starting a subagent or a test daemon, read `cat
   /sys/fs/cgroup/pids.current /sys/fs/cgroup/pids.max` and wait while usage is above 85% (skip where
-  the files are missing). Stop test daemons and finished subagents promptly. Before you finish,
+  the files are missing). Stop test daemons and finished subagents promptly (a reviewer once its fix check is done). Before you finish,
   stop every test daemon you started (`paseo daemon stop --home <its home>`, or kill its pid) and
   check `ps -eo pid,ppid,etime,args` for what it left: its plugin's processes, a `git`
   under PID 1 from its home or tracker. Kill those by pid and delete the home.
@@ -120,8 +120,8 @@ decisions to the user.
   `taro.role=reviewer` and the strongest model for risky code. For a visible change, capture the
   screenshots first and give it their absolute paths, the user's words and the criteria: it looks at
   them before the code, in the same round.
-- **high:** a reviewer over the combined diff; a second round only if the first found a blocker;
-  then escalate with a `review-dispute` decision rather than loop.
+- **high:** a reviewer over the combined diff; its fixes get a fix check (below), which is the
+  second round; then escalate with a `review-dispute` decision rather than loop.
 
 You verify every finding against the code yourself (valid / partially valid / invalid, with
 evidence), fix the valid blockers and should-fix findings yourself, and record a REVIEW note that
@@ -134,6 +134,19 @@ Question too. **Every** review checks test
 sufficiency: each changed behaviour has a test that would fail if it regressed; a bug fix keeps its
 reproduction; tests cover the input space (empty, zero, maximum, rounding, ordering), not the code's
 own assumption. A missing or empty test for a changed behaviour is a blocker.
+
+**Fix check (TR-148):** once you fixed an independent round's valid blockers or should-fix findings
+(medium or high), a reviewer checks the fixes before delivery; fixes alone can break what was
+reviewed. Send it to the same reviewer (`paseo send`; it still holds the context), so archive it
+only after its fix check; start a fresh one with the findings only when it is gone. Send the fix
+range (`<reviewed head>..HEAD`), each fixed finding with its test and that test's failing output
+from before the fix (run it at the reviewed head, or with the fix reverted), and the full suite's
+result after the last fix. Ask for a **full re-review** of the whole branch instead when the fix
+diff changes more than half as many lines as the reviewed change (`git diff --shortstat`), or a
+blocker's fix changed the approach. Findings rejected as invalid and Questions are not sent. The
+check is part of its round: new blockers or should-fix it finds are fixed and checked once more;
+still failing after that → `review-dispute`. The REVIEW record says what was re-checked: the range,
+full re-review or fix check, and the reviewer's verdict.
 
 ## Delivery (decisions 26, 34)
 
