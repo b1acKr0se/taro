@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { StoredDecisionSchema, type StoredDecision } from "../shared/state";
 import type { PermissionAsk } from "../shared/permission-asks";
-import { deliveryCards, deliveryCardView, deliveryRecords, permissionCards, permissionCardView, planCardView, questionCards, type DeliveryRecord } from "./finished-cards";
+import { blockCardSubject, deliveryCards, deliveryCardView, deliveryRecords, permissionCards, permissionCardView, planCardView, questionCards, type DeliveryRecord } from "./finished-cards";
 import type { PlanLine } from "./plan-lines";
 
 const clock = (iso: string) => iso.slice(11, 16);
@@ -144,6 +144,13 @@ describe("questionCards", () => {
     expect(out?.map((card) => [card.outcome, card.tone, card.time])).toEqual([["Withdrawn", "neutral", null], ["Withdrawn: its agent went away", "neutral", null]]);
   });
 
+  it("dates a withdrawal by the agent's withdrawing message, and one the plugin made not at all", () => {
+    const withdrawing = "```decision\nid: one\nstatus: withdrawn\n```";
+    const rows = [message("a", [block("one"), block("two")]), message("b", [withdrawing], "2026-01-19T10:20:00Z")];
+    const out = cards(rows, [stored("one", { status: "withdrawn", answer: null }), stored("two", { status: "withdrawn", answer: null, withdrawnWithAgent: true })]).get("a");
+    expect(out?.map((card) => [card.outcome, card.time])).toEqual([["Withdrawn", "10:20"], ["Withdrawn: its agent went away", null]]);
+  });
+
   it("draws nothing for an open decision that is not live", () => {
     expect(cards([message("a", [block("one")])], [stored("one", { status: "open", answer: null })]).size).toBe(0);
   });
@@ -158,7 +165,7 @@ describe("questionCards", () => {
 
   it("has no card for a new message without a record, and 'No record kept' for an old one", () => {
     expect(cards([message("a", [block("one")])], []).size).toBe(0);
-    expect(cards([message("a", [block("one")], undefined)], []).size).toBe(0);
+    expect(cards([{ key: "a", text: block("one") }], []).size).toBe(0);
     const old = cards([message("a", [block("one")], "2025-12-01T10:00:00Z")], []).get("a");
     expect(old).toEqual([{ id: "one", subject: "Question one?", outcome: "No record kept", tone: "neutral", time: null, words: null }]);
   });
@@ -169,6 +176,14 @@ describe("questionCards", () => {
     expect(out.get("a")?.[0]?.outcome).toBe("Asked again below");
     expect(out.get("b")?.[0]?.outcome).toBe("Asked again below");
     expect(out.get("c")?.[0]?.outcome).toBe("Answered: Yes");
+  });
+
+  it("dates an asked-again card by the message that asked it again, not a withdrawing one", () => {
+    const withdrawing = "```decision\nid: one\nstatus: withdrawn\n```";
+    const rows = [message("a", [block("one")]), message("w", [withdrawing], "2026-01-19T10:10:00Z"), message("b", [block("one")], "2026-01-19T10:30:00Z"), { key: "c", text: block("one") }];
+    const out = cards(rows, [stored("one")]);
+    expect(out.get("a")?.[0]).toMatchObject({ outcome: "Asked again below", time: "10:30" });
+    expect(out.get("b")?.[0]).toMatchObject({ outcome: "Asked again below", time: null });
   });
 
   it("leaves the last asking to the live card", () => {
@@ -236,6 +251,13 @@ describe("permissionCards", () => {
     expect(keys(places.after.get("1"))).toEqual(["p"]);
     expect(keys(permissionCards([message("1"), message("2")], [permissionAsk("p", time(12))]).before)).toEqual(["p"]);
   });
+
+  it("drops asks made before the first loaded group while older entries are not loaded, and places the rest", () => {
+    const places = permissionCards([message("1", 10), tools("2", 20)], [permissionAsk("p", time(1)), permissionAsk("q", time(12))], true);
+    expect(places.before).toEqual([]);
+    expect(keys(places.after.get("1"))).toEqual(["q"]);
+    expect(permissionCards([], [permissionAsk("p", time(1))], true).before).toEqual([]);
+  });
 });
 
 describe("permissionCardView", () => {
@@ -251,5 +273,19 @@ describe("permissionCardView", () => {
     const question = { kind: "question", subject: "Which database?" };
     expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z", { ...question, words: "Database: Postgres" }), clock)).toMatchObject({ kind: "Question", outcome: "Answered by you", tone: "positive", words: "Database: Postgres" });
     expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z", { ...question, outcome: "denied" }), clock)).toMatchObject({ kind: "Question", outcome: "Dismissed by you", tone: "neutral" });
+  });
+
+  it("says a cancelled ask was cancelled, by nobody and without words", () => {
+    const cancelled = { outcome: "cancelled", by: null } as const;
+    expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z", cancelled), clock)).toEqual({ kind: "Permission", subject: "rm -rf /tmp/x", outcome: "Cancelled: the turn stopped", tone: "neutral", time: "10:05", words: null });
+    expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z", { ...cancelled, kind: "question" }), clock)).toMatchObject({ kind: "Question", outcome: "Cancelled: the turn stopped" });
+  });
+});
+
+describe("blockCardSubject", () => {
+  it("names a plan's ticket, has no subject for a plan without one, and gives a question its question", () => {
+    expect(blockCardSubject({ id: "scope-approval", question: "Approve the plan for TR-7?" }, "TR-7")).toBe("Plan for TR-7");
+    expect(blockCardSubject({ id: "scope-approval", question: "Approve the plan for TR-7?" }, null)).toBeNull();
+    expect(blockCardSubject({ id: "storage", question: "Store fees per trade?" }, "TR-7")).toBe("Store fees per trade?");
   });
 });

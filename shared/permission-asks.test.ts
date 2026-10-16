@@ -61,6 +61,18 @@ describe("resolveAsk", () => {
     expect(resolveAsk(bash, { behavior: "deny" }, LATER, null).words).toBeNull();
   });
 
+  it("does not quote Paseo's own Deny button as the user's words", () => {
+    expect(resolveAsk(bash, { behavior: "deny", message: "Denied by user" }, LATER, null)).toMatchObject({ outcome: "denied", by: "you", words: null });
+  });
+
+  it("records an ask Paseo turned down as its turn ended as cancelled, by nobody", () => {
+    ["Permission request canceled", "Interrupted", "Removed by rewind"].forEach((message) => {
+      expect(resolveAsk(bash, { behavior: "deny", message }, LATER, null)).toMatchObject({ answeredAt: LATER, outcome: "cancelled", by: null, rule: null, words: null });
+    });
+    expect(resolveAsk(bash, { behavior: "deny", message: "Interrupted twice" }, LATER, null)).toMatchObject({ outcome: "denied", words: "Interrupted twice" });
+    expect(PermissionAskSchema.parse(resolveAsk(bash, { behavior: "deny", message: "Interrupted" }, LATER, null)).outcome).toBe("cancelled");
+  });
+
   it("records a denial by the rules with its rule, without their long message", () => {
     expect(resolveAsk(bash, { behavior: "deny", message: "The plugin denied … rule `top-level` …" }, LATER, { rule: "top-level" })).toMatchObject({ outcome: "denied", by: "rules", rule: "top-level", words: null });
     expect(resolveAsk(bash, { behavior: "allow" }, LATER, { rule: "scratch-or-worktree" })).toMatchObject({ outcome: "allowed", by: "rules", rule: "scratch-or-worktree" });

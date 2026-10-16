@@ -18,8 +18,9 @@ import { Text, View } from "react-native";
 import { tellAgent, type Card } from "../shared/contracts";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { questionHoldingAccept } from "../shared/delivery-end";
-import { decisionBlocksAsText, withoutDecisionBlocks } from "../shared/reports";
+import { withoutDecisionBlocks } from "../shared/reports";
 import { offersSpecChange } from "../shared/spec-change";
+import type { StoredDecision } from "../shared/state";
 import { AgentChat } from "./agent-chat";
 import type { DeliveryRecord } from "./finished-cards";
 import { AcceptanceCard, AcceptNow } from "./acceptance-card";
@@ -42,6 +43,8 @@ import { useNow } from "./use-now";
 const ARCHIVED_NOTE = "Finished — this agent is archived; its conversation is read-only.";
 
 const NO_RECORDS: readonly DeliveryRecord[] = [];
+
+const NO_DECISIONS: readonly StoredDecision[] = [];
 
 export function OwnerPane({
   card,
@@ -255,8 +258,10 @@ export function OwnerPane({
                 agent={{ id: shown.id, updatedAt: shown.brief.updatedAt, pendingPermissions: 0, status: shown.brief.status }}
                 theme={theme}
                 compact={compact}
-                // No cards for a finished agent's questions: each block reads as a quote of what it asked.
-                transformText={decisionBlocksAsText}
+                // Nothing is open on a finished agent, but what it asked and delivered keeps its finished cards (TR-149).
+                transformText={withoutDecisionBlocks}
+                asks={{ decisions: NO_DECISIONS, onAnswered: onChanged }}
+                records={shown.role === "owner" ? { project, ticket: card.id, plans: records?.plans ?? null, deliveries: records?.deliveries ?? NO_RECORDS, settling } : undefined}
                 readOnly={{ note: ARCHIVED_NOTE }}
               />
             )}

@@ -16,7 +16,7 @@ import { decisionBlockView, SCOPE_APPROVAL, untrackedDecision } from "../shared/
 import { ParsedDecisionSchema, type ParsedDecision } from "../shared/reports";
 import { DecisionCard } from "./decision-card";
 import { FinishedCard } from "./finished-card";
-import { storedDecisionView, type FinishedView } from "./finished-cards";
+import { blockCardSubject, storedDecisionView, type FinishedView } from "./finished-cards";
 import { errorText, formatClock } from "./format";
 import { Markdown } from "./markdown";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
@@ -63,7 +63,7 @@ export function DecisionBlockItem({ agentId, item, theme, layout }: PluginTimeli
           compact={layout.compact}
           icon={plan ? "Map" : "MessageCircleQuestion"}
           kind={plan ? "Plan" : "Question"}
-          subject={plan ? "Plan" : block.question}
+          subject={blockCardSubject(block, stored?.ticket ?? null)}
           outcome={outcome.outcome}
           tone={outcome.tone}
           time={outcome.time}

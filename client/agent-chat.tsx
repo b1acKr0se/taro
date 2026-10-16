@@ -194,8 +194,8 @@ export function AgentChat({
   /** The message the acceptance card is drawn under; null draws it at the end. */
   const deliveryRow = useMemo(() => (delivery === undefined ? null : deliveryRowKey(agentRows)), [delivery === undefined, agentRows]);
   /** The record that closed each past delivery, by the message that delivered (TR-149). */
-  const storedDecisions = useAgentDecisions(agent.id, asks?.decisions, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0, asks !== undefined && readOnly === undefined);
-  /** The questions answered, withdrawn or asked again, left under their message (TR-149); a read-only chat quotes them in its text instead. */
+  const storedDecisions = useAgentDecisions(agent.id, asks?.decisions, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0, asks !== undefined);
+  /** The questions answered, withdrawn or asked again, left under their message (TR-149). */
   const pastQuestions = useMemo(
     () => (storedDecisions === null ? null : questionCards(agentRows, storedDecisions, new Set((asks?.decisions ?? []).map((decision) => decision.key)), formatClock)),
     [agentRows, storedDecisions, asks?.decisions],
@@ -307,8 +307,8 @@ export function AgentChat({
   /** Answered permission asks, each left where it was asked (TR-149); one still waiting is the live card below. */
   const permissionPlaces = useMemo(() => {
     const open = new Set(pendingIds.split("\n"));
-    return permissionCards(groups, answeredAsks.filter((ask) => !open.has(ask.requestId)));
-  }, [groups, answeredAsks, pendingIds]);
+    return permissionCards(groups, answeredAsks.filter((ask) => !open.has(ask.requestId)), timeline.hasOlder);
+  }, [groups, answeredAsks, pendingIds, timeline.hasOlder]);
   function permissionCardsOf(asks: readonly PermissionAsk[] | undefined) {
     if (asks === undefined || asks.length === 0) return null;
     return (

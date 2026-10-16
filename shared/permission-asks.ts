@@ -14,7 +14,8 @@ export const PermissionAskSchema = z.object({
   subject: z.string(),
   askedAt: z.string(),
   answeredAt: z.string().nullable(),
-  outcome: z.enum(["allowed", "denied"]).nullable(),
+  /** Cancelled: Paseo turned the ask down itself, as its turn was stopped or replaced; nobody answered it. */
+  outcome: z.enum(["allowed", "denied", "cancelled"]).nullable(),
   by: z.enum(["you", "rules"]).nullable(),
   /** The rule that answered it; on an open ask, the rules are answering it now (set before they respond). */
   rule: z.string().nullable(),
@@ -45,8 +46,11 @@ const SUBJECT_LENGTH = 200;
 /** Answers kept for the record this long, like decisions; an ask never answered is dropped as long after it was made. */
 export const ASK_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 
-/** What Taro's own Deny and Dismiss buttons send: no words of the user's. */
-const CANNED_DENIALS = new Set(["Dismissed by user", "Denied by the user from the Taro panel."]);
+/** What the Deny and Dismiss buttons send, Taro's and Paseo's: no words of the user's. */
+const CANNED_DENIALS = new Set(["Dismissed by user", "Denied by user", "Denied by the user from the Taro panel."]);
+
+/** What Paseo answers an ask with when the turn ends under it: a stop, a message sent over it, a rewind. */
+const CANCELLATIONS = new Set(["Permission request canceled", "Interrupted", "Removed by rewind"]);
 
 function oneLine(text: string): string {
   const line = text.replace(/\s+/g, " ").trim();
@@ -83,6 +87,9 @@ function answersText(input: Record<string, unknown> | undefined): string | null 
 
 /** The ask answered at `at`; `byRules` when Taro's rules answered it, whose own message is not the user's words. */
 export function resolveAsk(ask: PermissionAsk, resolution: AskResolution, at: string, byRules: { rule: string } | null): PermissionAsk {
+  if (byRules === null && resolution.behavior === "deny" && CANCELLATIONS.has(text(resolution.message))) {
+    return { ...ask, answeredAt: at, outcome: "cancelled", by: null, rule: null, words: null };
+  }
   const outcome = resolution.behavior === "allow" ? "allowed" : "denied";
   let words: string | null = null;
   if (byRules === null && outcome === "denied") {

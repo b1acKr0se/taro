@@ -149,7 +149,12 @@ function typedBeside(typed: string, label: string, prompt: string): string | nul
   return lead !== "" && typed.startsWith(`${lead}: `) ? typed.slice(lead.length + 2).trim() || null : typed;
 }
 
-const ASKED_AGAIN: FinishedView = { outcome: "Asked again below", tone: "neutral", time: null, words: null };
+/** A finished block's subject in Paseo's own tab: a plan names its ticket as the chat's card does, or has none; a question is its question. */
+export function blockCardSubject(block: { id: string; question: string }, ticket: string | null): string | null {
+  if (block.id !== SCOPE_APPROVAL) return block.question;
+  return ticket === null ? null : `Plan for ${ticket}`;
+}
+
 
 /**
  * The finished cards under each agent message (TR-149): every question block it holds that is not
@@ -165,14 +170,23 @@ export function questionCards(
   now: number = Date.now(),
 ): Map<string, QuestionCardView[]> {
   const cards = new Map<string, QuestionCardView[]>();
-  const asked = rows.map((row) => parseDecisionBlocks(row.text).filter((block) => !block.withdrawn));
+  const blocks = rows.map((row) => parseDecisionBlocks(row.text));
+  const asked = blocks.map((each) => each.filter((block) => !block.withdrawn));
+  /** The time of the first message after `index` holding a block with `id` that `matches`, formatted. */
+  const laterTime = (index: number, id: string, matches: (block: { withdrawn: boolean }) => boolean): string | null => {
+    const later = rows.findIndex((row, each) => each > index && (blocks[each] ?? []).some((block) => block.id === id && matches(block)));
+    const at = later === -1 ? undefined : rows[later]?.at;
+    return at === undefined ? null : clock(at);
+  };
   rows.forEach((row, index) => {
     const seen = new Set<string>();
     const here = (asked[index] ?? []).flatMap((block): QuestionCardView[] => {
       if (block.id === SCOPE_APPROVAL || seen.has(block.id)) return [];
       seen.add(block.id);
       const base = { subject: block.question, id: block.id };
-      if (asked.slice(index + 1).some((later) => later.some((each) => each.id === block.id))) return [{ ...base, ...ASKED_AGAIN }];
+      if (asked.slice(index + 1).some((later) => later.some((each) => each.id === block.id))) {
+        return [{ ...base, outcome: "Asked again below", tone: "neutral", time: laterTime(index, block.id, (each) => !each.withdrawn), words: null }];
+      }
       if ([...liveKeys].some((key) => key.endsWith(`:${block.id}`))) return [];
       const stored = decisions.find((decision) => decision.id === block.id);
       if (stored === undefined) {
@@ -182,7 +196,9 @@ export function questionCards(
         return [{ ...base, outcome: "No record kept", tone: "neutral", time: null, words: null }];
       }
       const view = storedDecisionView(stored, clock);
-      return view === null ? [] : [{ ...base, ...view }];
+      if (view === null) return [];
+      // The store keeps no withdrawal time; the agent's withdrawing message has one.
+      return [{ ...base, ...view, time: view.time ?? (stored.status === "withdrawn" ? laterTime(index, block.id, (each) => each.withdrawn) : null) }];
     });
     if (here.length > 0) cards.set(row.key, here);
   });
@@ -212,15 +228,18 @@ function groupTime(group: TimedGroup): number {
 /**
  * Where each answered ask's finished card goes (TR-149): after the last group dated at or before
  * it was asked. One asked before every dated group, or in a chat with none, goes before the first
- * group. Asks keep their order in each place.
+ * group, unless the timeline has older entries not loaded (`hasOlder`): it was asked among those,
+ * so it waits until they load rather than piling up at the top. Asks keep their order in each place.
  */
-export function permissionCards(groups: readonly TimedGroup[], asks: readonly PermissionAsk[]): PermissionPlaces {
+export function permissionCards(groups: readonly TimedGroup[], asks: readonly PermissionAsk[], hasOlder = false): PermissionPlaces {
   const places: PermissionPlaces = { before: [], after: new Map() };
   const times = groups.map(groupTime);
   asks.forEach((ask) => {
     const asked = Date.parse(ask.askedAt);
     const place = times.reduce<string | null>((found, time, index) => (!Number.isNaN(time) && time <= asked ? (groups[index]?.key ?? found) : found), null);
-    if (place === null) places.before.push(ask);
+    if (place === null) {
+      if (!hasOlder) places.before.push(ask);
+    }
     else places.after.set(place, [...(places.after.get(place) ?? []), ask]);
   });
   return places;
@@ -234,6 +253,10 @@ export interface PermissionCardView extends FinishedView {
 
 export function permissionCardView(ask: PermissionAsk, clock: (iso: string) => string | null): PermissionCardView {
   const question = ask.kind === "question";
+  const time = ask.answeredAt === null ? null : clock(ask.answeredAt);
+  if (ask.outcome === "cancelled") {
+    return { kind: question ? "Question" : "Permission", subject: ask.subject, outcome: "Cancelled: the turn stopped", tone: "neutral", time, words: null };
+  }
   const allowed = ask.outcome === "allowed";
   const what = question ? (allowed ? "Answered" : "Dismissed") : allowed ? "Allowed" : "Denied";
   const who = ask.by === "rules" ? `by Taro's rules${ask.rule === null ? "" : ` (${ask.rule})`}` : "by you";
@@ -242,7 +265,7 @@ export function permissionCardView(ask: PermissionAsk, clock: (iso: string) => s
     subject: ask.subject,
     outcome: `${what} ${who}`,
     tone: allowed ? "positive" : question ? "neutral" : "negative",
-    time: ask.answeredAt === null ? null : clock(ask.answeredAt),
+    time,
     words: ask.words,
   };
 }
