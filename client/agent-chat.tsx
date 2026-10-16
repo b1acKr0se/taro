@@ -500,7 +500,8 @@ export function AgentChat({
                 onMarkAction={markActionLatest}
               />
             ))}
-            {places === null || places.unplaced.length === 0 ? null : (
+            {/* Not during the first read, when no message is in yet: the opening scroll would go to the empty transcript's end, clamped, and read as the reader's (TR-133). */}
+            {places === null || places.unplaced.length === 0 || (groups.length === 0 && timeline.loading) ? null : (
               <View style={styles.agentRow} onLayout={(event) => noteLayout(places.unplaced.map((decision) => decision.key), event.nativeEvent.layout)}>
                 {decisionCards(places.unplaced)}
               </View>
