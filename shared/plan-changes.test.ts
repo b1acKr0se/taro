@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parsePlan, type ParsedPlan } from "./plan";
-import { lastPlanAnswer, noPlanChanges, planChanges, planChangesCaption } from "./plan-changes";
+import { lastPlanAnswer, markedAgainst, noPlanChanges, planChanges, planChangesCaption } from "./plan-changes";
 
 const FIRST = `## Goal
 Notes sort by the date they were last edited.
@@ -139,5 +139,25 @@ describe("planChangesCaption", () => {
     expect(planChangesCaption("approved", "02:41")).toBe("Green: new or changed since the plan you approved at 02:41");
     expect(planChangesCaption("changes requested", "02:54")).toBe("Green: new or changed since the plan you asked to change at 02:54");
     expect(planChangesCaption("answered", null)).toBe("Green: new or changed since the plan you answered");
+  });
+});
+
+describe("markedAgainst", () => {
+  it("marks against the earlier plan only while a plan is asked again", () => {
+    const previous = { plan: FIRST, at: "2026-10-16T02:41Z", kind: "approved" as const };
+    expect(markedAgainst(previous, true)).toBe(previous);
+    // Approved, then edited inside its scope: the Ticket tab's plan looks as before.
+    expect(markedAgainst(previous, false)).toBeNull();
+    expect(markedAgainst(undefined, true)).toBeNull();
+    expect(markedAgainst(null, false)).toBeNull();
+  });
+});
+
+describe("planChangesCaption with a day", () => {
+  it("names the day only when the answer was not today", () => {
+    expect(planChangesCaption("approved", "02:41", "Today")).toBe("Green: new or changed since the plan you approved at 02:41");
+    expect(planChangesCaption("approved", "02:41", "Yesterday")).toBe("Green: new or changed since the plan you approved yesterday at 02:41");
+    expect(planChangesCaption("changes requested", "02:54", "Oct 12")).toBe("Green: new or changed since the plan you asked to change on Oct 12 at 02:54");
+    expect(planChangesCaption("answered", null, null)).toBe("Green: new or changed since the plan you answered");
   });
 });

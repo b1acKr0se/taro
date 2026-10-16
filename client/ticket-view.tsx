@@ -20,6 +20,7 @@ import { FINAL_SECTIONS, finalSections, type FinalSections } from "../shared/fin
 import { ticketMilestones, type Milestone } from "../shared/milestones";
 import type { PauseView } from "../shared/pause";
 import { parsePlan } from "../shared/plan";
+import { markedAgainst } from "../shared/plan-changes";
 import type { StoredDecision } from "../shared/state";
 import { foldList, ticketSections, ticketSummary, type TicketSectionKey, type TicketSummary } from "../shared/ticket-summary";
 import { PhaseBadge } from "./badges";
@@ -78,12 +79,12 @@ export function TicketView({ project, ticket, theme, answeredFrom = "screen" }: 
   const [specOpen, setSpecOpen] = useState(false);
   const planSource = detail.data?.plan ?? null;
   const plan = useMemo(() => parsePlan(planSource), [planSource]);
-  // What changed since the plan the user last answered shows in green (TR-151).
-  const planMarks = usePlanMarks(plan, detail.data?.previousPlan);
   const allDecisions = decisions.data?.decisions;
   const open = useMemo(() => (allDecisions ?? []).filter((decision) => decision.ticket === ticket && decision.status === "open"), [allDecisions, ticket]);
   // The open scope approval is answered here (beside Needs you, and at the end of the plan after reading it), plan template or not.
   const approving = useMemo(() => ticketViewApproval(open, ticket), [open, ticket]);
+  // What changed since the plan the user last answered shows in green while it is asked again (TR-151).
+  const planMarks = usePlanMarks(plan, markedAgainst(detail.data?.previousPlan, approving !== null));
   // One owner of both Approve presses: while one is in flight the other is disabled.
   const approvePresses = useActions();
   const pauseRpc = useRpc(pauseTicket);

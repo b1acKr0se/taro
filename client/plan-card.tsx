@@ -24,7 +24,7 @@ import { noPlanChanges, planChanges, planChangesCaption, type PlanChanges } from
 import type { StoredDecision } from "../shared/state";
 import { ChangeBox } from "./change-box";
 import { Pressable } from "./focus";
-import { errorText, formatClock } from "./format";
+import { errorText, formatClock, formatDay } from "./format";
 import { useRevealFocused } from "./keyboard";
 import { Markdown, MarkdownInline } from "./markdown";
 import { planAnswers, type PlanAnswer } from "./plan-lines";
@@ -80,7 +80,7 @@ export function usePlanMarks(plan: ParsedPlan | null, previous: TicketDetailView
   return useMemo(() => {
     if (plan === null) return null;
     const changes = previousSource === null ? noPlanChanges(plan) : planChanges(parsePlan(previousSource), plan);
-    return { changes, caption: changes.any && kind !== null ? planChangesCaption(kind, formatClock(at)) : null };
+    return { changes, caption: changes.any && kind !== null ? planChangesCaption(kind, formatClock(at), formatDay(at)) : null };
   }, [plan, previousSource, at, kind]);
 }
 

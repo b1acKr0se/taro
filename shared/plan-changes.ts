@@ -114,8 +114,20 @@ export function planChanges(previous: ParsedPlan | null, current: ParsedPlan): P
   return { sections, goal, size, choices, any: goal || size || sections.some((section) => section.prose || section.items.some(Boolean)) };
 }
 
-/** The line above a plan with changes, saying what green means; `clock` is the answer's time ("02:41"), null when unreadable. */
-export function planChangesCaption(kind: PlanAnswerKind, clock: string | null): string {
+/**
+ * The earlier plan to mark against, only while a plan is asked again (`asking`: a scope approval is
+ * open): once approved, later edits inside the scope are the owner's and the plan looks as before.
+ */
+export function markedAgainst<Previous>(previous: Previous | null | undefined, asking: boolean): Previous | null {
+  return asking ? previous ?? null : null;
+}
+
+/**
+ * The line above a plan with changes, saying what green means; `clock` is the answer's time
+ * ("02:41"), `day` its day ("Today", "Yesterday", "Oct 12"), each null when unreadable.
+ */
+export function planChangesCaption(kind: PlanAnswerKind, clock: string | null, day: string | null = null): string {
   const what = kind === "approved" ? "you approved" : kind === "changes requested" ? "you asked to change" : "you answered";
-  return `Green: new or changed since the plan ${what}${clock === null ? "" : ` at ${clock}`}`;
+  const on = day === null || day === "Today" ? "" : day === "Yesterday" ? " yesterday" : ` on ${day}`;
+  return `Green: new or changed since the plan ${what}${on}${clock === null ? "" : ` at ${clock}`}`;
 }
