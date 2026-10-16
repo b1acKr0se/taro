@@ -1,7 +1,7 @@
 /**
- * Which agents a ticket's pane can show: the live owner, its live subagents, then
- * the ticket's archived agents, so a finished ticket still shows the work its
- * agents did rather than "no owner".
+ * Which agents a ticket's pane can show: the owner, its live subagents, then the
+ * ticket's archived agents, so a finished ticket still shows the work its agents
+ * did rather than "no owner".
  */
 import type { AgentBrief, Card } from "../shared/contracts";
 import type { SubagentRole } from "../shared/project";
@@ -51,38 +51,60 @@ export function taskOfTitle(title: string | null): string {
     .trim();
 }
 
-/** The first owner listed (live, else the newest archived) is the owner; any other was replaced by it. */
-function labelFor(role: PaneAgentRole, firstOwner: boolean, brief: AgentBrief): string {
-  if (role === "owner") return firstOwner ? "Owner" : "Owner (earlier)";
+/** A replaced owner's name: "Previous owner", numbered by start when the ticket had several (TR-162). */
+function previousOwnerLabel(number: number, count: number): string {
+  return count === 1 ? "Previous owner" : `Previous owner ${number}`;
+}
+
+function subagentLabel(role: PaneAgentRole, brief: AgentBrief): string {
   const task = taskOfTitle(brief.title);
   return task === "" ? `${capitalised(paneAgentJob(role))} · ${brief.id.slice(0, SHORT_ID_LENGTH)}` : doingText(role, task);
 }
 
+/** When an agent started, for numbering previous owners; an unknown start counts as its archive time. */
+function startedAt(agent: { brief: AgentBrief; archivedAt?: string }): string {
+  return agent.brief.createdAt ?? agent.archivedAt ?? "";
+}
+
+/**
+ * The owner first (live, else the newest archived) on every ticket (TR-162): a live reviewer or a
+ * subagent archived after the owner came before it once no owner was live. Then the live subagents,
+ * then the other archived agents newest first, replaced owners among them.
+ */
 export function paneAgents(card: Pick<Card, "owner" | "subagents" | "pastAgents">): PaneAgent[] {
-  const candidates: { role: PaneAgentRole; live: boolean; brief: AgentBrief; archivedAt?: string }[] = [
+  const listed: { role: PaneAgentRole; live: boolean; brief: AgentBrief; archivedAt?: string }[] = [
     ...(card.owner === null ? [] : [{ role: "owner" as const, live: true, brief: card.owner }]),
     ...card.subagents.map(({ role, ...brief }) => ({ role, live: true, brief })),
     ...card.pastAgents.map(({ role, archivedAt, ...brief }) => ({ role, live: false, brief, archivedAt })),
   ];
   // The board can list a just-archived agent both live and archived; the first (live) entry wins.
   const seen = new Set<string>();
-  let ownerLabelled = false;
-  return candidates.flatMap((candidate) => {
-    if (seen.has(candidate.brief.id)) return [];
+  const candidates = listed.filter((candidate) => {
+    if (seen.has(candidate.brief.id)) return false;
     seen.add(candidate.brief.id);
-    const firstOwner = candidate.role === "owner" && !ownerLabelled;
-    if (firstOwner) ownerLabelled = true;
-    return [
-      {
-        id: candidate.brief.id,
-        label: labelFor(candidate.role, firstOwner, candidate.brief),
-        role: candidate.role,
-        live: candidate.live,
-        brief: candidate.brief,
-        archivedAt: candidate.archivedAt ?? null,
-      },
-    ];
+    return true;
   });
+  const owner = candidates.find((candidate) => candidate.role === "owner");
+  const previousOwners = candidates
+    .filter((candidate) => candidate.role === "owner" && candidate !== owner)
+    .map((candidate, archiveIndex) => ({ candidate, archiveIndex }))
+    // Oldest start first; archived agents come newest first, so a tie falls back to the archive order reversed.
+    .sort((left, right) => startedAt(left.candidate).localeCompare(startedAt(right.candidate)) || right.archiveIndex - left.archiveIndex)
+    .map(({ candidate }) => candidate);
+  const ordered = owner === undefined ? candidates : [owner, ...candidates.filter((candidate) => candidate !== owner)];
+  return ordered.map((candidate) => ({
+    id: candidate.brief.id,
+    label:
+      candidate === owner
+        ? "Owner"
+        : candidate.role === "owner"
+          ? previousOwnerLabel(previousOwners.indexOf(candidate) + 1, previousOwners.length)
+          : subagentLabel(candidate.role, candidate.brief),
+    role: candidate.role,
+    live: candidate.live,
+    brief: candidate.brief,
+    archivedAt: candidate.archivedAt ?? null,
+  }));
 }
 
 /** The live owner, else the newest archived owner (archived agents come newest first), else null. */
