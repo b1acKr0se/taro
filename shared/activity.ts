@@ -4,6 +4,8 @@
  */
 import { z } from "zod";
 
+import { commandsRun, type CommandRun } from "./shell-command";
+
 export const ActivitySchema = z.object({
   text: z.string(),
   /** When the tool call was recorded. */
@@ -87,9 +89,82 @@ function shellActivity(command: string): string {
   // `cd dir && …` and `FOO=1 …` say nothing about the purpose.
   const core = command.trim().replace(/^(cd\s+\S+\s*(&&|;)\s*)+/, "").replace(/^(\w+=\S*\s+)+/, "");
   const purpose = SHELL_PURPOSES.find(([pattern]) => pattern.test(core));
+  return purpose !== undefined ? purpose[1] : commandActivity(command);
+}
+
+// Commands that only set the stage (TR-160): the card names the next one, which does the work.
+// When there is none, a step that makes something (a folder, a pause) says more than an `echo`.
+const QUIET_SET_UP = new Set(["cd", "pushd", "popd", "export", "local", "declare", "readonly", "unset", "set", "shopt", "trap", "source", ".", "echo", "printf", "true", "false", ":", "date", "mktemp", "test", "[", "[[", "read", "shift", "wait", "break", "continue", "return", "exit"]);
+const MINOR_SET_UP = new Set(["mkdir", "touch", "chmod", "tee", "sleep"]);
+/** A wait this long or longer is what the agent is doing, not a pause between steps. */
+const LONG_SLEEP_SECONDS = 10;
+
+// Words for a command no purpose above matched: by kind, never by the script's file name.
+const COMMAND_PURPOSES: readonly [RegExp, string][] = [
+  [/^taro ticket (view|list|show)\b/, "reading the ticket"],
+  [/^paseo (agent|run|send|archive|wait|stop|ls|inspect)\b/, "managing agents"],
+  [/^paseo logs\b/, "reading an agent's log"],
+  ...SHELL_PURPOSES,
+  [/^paseo\b/, "calling paseo"],
+  [/^(rm|rmdir|unlink)\b/, "removing files"],
+  [/^(cp|rsync|install)\b/, "copying files"],
+  [/^mv\b/, "moving files"],
+  [/^mkdir\b/, "making a folder"],
+  [/^sleep\b/, "waiting"],
+  [/^(wc|awk|cut|tail|stat|readlink|realpath|jq|file|du|diff|sort|uniq|tr|xxd|od|tree)\b/, "reading files"],
+  [/^(which|type|whereis)\b|^command -[vV]\b/, "looking up a program"],
+  [/^(curl|wget)\b/, "calling a URL"],
+  [/^(ps|pgrep)\b/, "checking processes"],
+  [/^(kill|pkill|killall)\b/, "stopping processes"],
+  [/^(echo|printf)\b/, "printing a value"],
+  [/^cd\b/, "changing folder"],
+  [/^(export|set|unset|local|declare)\b/, "setting variables"],
+  [/^date\b/, "reading the time"],
+];
+
+const SCRIPT_KINDS: readonly [RegExp, string][] = [
+  [/^python[0-9.]*$|\.py$/, "running a Python script"],
+  [/^(node|tsx|ts-node|deno)$|\.(m|c)?(j|t)s$/, "running a Node script"],
+  [/^(bash|sh|zsh|dash)$|\.(ba|z)?sh$/, "running a shell script"],
+];
+
+/** Programs whose first argument says what they do: `git worktree`, `gh api`, `docker compose`. */
+const SUBCOMMAND_PROGRAMS = new Set(["git", "gh", "npm", "pnpm", "yarn", "bun", "cargo", "go", "docker", "kubectl", "brew", "apt", "apt-get", "pip", "pip3", "systemctl", "taro", "claude"]);
+
+/** A command line no purpose matched as a whole, worded by the first command that does the work. */
+function commandActivity(command: string): string {
+  const runs = commandsRun(command).filter((run) => !run.program.startsWith("$") && run.program !== "");
+  // `until [ -f out.png ]; do sleep 2; done` polls: it is waiting, whatever its condition runs.
+  if (runs.some((run) => run.inWaitLoop && run.program === "sleep")) return "waiting";
+  const setUp = (run: CommandRun): boolean =>
+    (QUIET_SET_UP.has(run.program) && !(/^(echo|printf)$/.test(run.program) && run.writesFile)) ||
+    (MINOR_SET_UP.has(run.program) && !(run.program === "sleep" && Number.parseFloat(run.args[0] ?? "0") >= LONG_SLEEP_SECONDS));
+  const chosen = runs.find((run) => !setUp(run)) ?? runs.find((run) => MINOR_SET_UP.has(run.program)) ?? runs[0];
+  return chosen === undefined ? "running a command" : runActivity(chosen);
+}
+
+function runActivity(run: CommandRun): string {
+  const program = fileName(run.program);
+  // `npx vitest`, `npx tsx script.ts`: the package run is the program.
+  if ((program === "npx" || program === "bunx") && run.args.length > 0) {
+    const index = run.args.findIndex((arg) => !arg.startsWith("-"));
+    if (index !== -1) return runActivity({ ...run, program: run.args[index] ?? "", args: run.args.slice(index + 1) });
+  }
+  if ((program === "cat" && run.args.every((arg) => arg.startsWith("-"))) || program === "echo" || program === "printf") {
+    if (run.writesFile) return "writing a file";
+  }
+  if (run.args.length === 1 && /^(--version|-v|-V)$/.test(run.args[0] ?? "")) return `checking ${program.slice(0, 24)}'s version`;
+  const line = [program, ...run.args].join(" ");
+  const purpose = COMMAND_PURPOSES.find(([pattern]) => pattern.test(line));
   if (purpose !== undefined) return purpose[1];
-  const program = fileName(core.split(/\s+/)[0] ?? "");
-  return program === "" ? "running a command" : `running ${program.slice(0, 24)}`;
+  const script = SCRIPT_KINDS.find(([pattern]) => pattern.test(program));
+  if (script !== undefined) return script[1];
+  const runScript = /^(npm|pnpm|yarn|bun) run$/.test(`${program} ${run.args[0] ?? ""}`) ? run.args[1] : undefined;
+  if (runScript !== undefined && /^[\w:.-]+$/.test(runScript)) return `running the ${runScript.slice(0, 24)} script`;
+  // `git -C dir worktree add`: git's options before its subcommand take a value.
+  const optionsTaken = program === "git" ? (/^((-[Cc]) \S+ )*/.exec(`${run.args.join(" ")} `)?.[0].split(" ").length ?? 1) - 1 : 0;
+  const subcommand = run.args[optionsTaken] ?? "";
+  return SUBCOMMAND_PROGRAMS.has(program) && /^[a-z][a-z-]*$/.test(subcommand) ? `running ${program} ${subcommand.slice(0, 24)}` : `running ${program.slice(0, 24)}`;
 }
 
 function fileName(path: string): string {
