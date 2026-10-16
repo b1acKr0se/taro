@@ -4,6 +4,7 @@
  */
 import { imageFileName, type DraftAttachment, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
 import type { QueuedMessageSummary } from "../shared/chat-queue";
+import type { SendView } from "../shared/pending-sends";
 
 export type QueueRowMessage = QueuedMessageSummary;
 
@@ -79,4 +80,28 @@ export function takenAttachments(messageId: string, taken: { images: readonly Ou
     ...taken.images.map((image, index): DraftAttachment => ({ id: `${messageId}-image-${index}`, kind: "image", fileName: imageFileName(image.mimeType, index), mimeType: image.mimeType, data: image.data })),
     ...taken.files.map((file, index): DraftAttachment => ({ id: `${messageId}-file-${index}`, kind: "file", fileName: file.fileName, mimeType: file.mimeType, data: file.data })),
   ];
+}
+
+/**
+ * The chat's messages on their way to a working agent, drawn as rows of the queue (a spinner, no
+ * buttons) rather than in the transcript: the daemon will queue them, and a row that first showed in
+ * the transcript would jump to the track once it answered. One answered "sent at once" (the turn had
+ * just ended) moves to the transcript as any sent message.
+ */
+export function sendingToQueue(views: readonly SendView[], working: boolean): QueueRowMessage[] {
+  if (!working) return [];
+  return views.flatMap((view) =>
+    view.rowKey === null && (view.mark === "sending" || view.mark === "behind")
+      ? [
+          {
+            id: view.send.id,
+            text: view.send.text,
+            at: new Date(view.send.at).toISOString(),
+            imageCount: view.send.attachments.filter((attachment) => attachment.kind === "image").length,
+            fileNames: view.send.attachments.flatMap((attachment) => (attachment.kind === "file" ? [attachment.fileName] : [])),
+            failed: null,
+          },
+        ]
+      : [],
+  );
 }

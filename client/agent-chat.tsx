@@ -49,7 +49,7 @@ import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from
 import { composerNotice, sendLabel } from "./composer-notice";
 import { usePendingSends, type ChatSend } from "./use-pending-sends";
 import { isCompacting, isWorking, takeBack, type SendMark, type SendView } from "../shared/pending-sends";
-import { chatQueueKey, editRefusal, takenAttachments, type QueueRowAction, type QueueRowMessage } from "./queue-rows";
+import { chatQueueKey, editRefusal, sendingToQueue, takenAttachments, type QueueRowAction, type QueueRowMessage } from "./queue-rows";
 import { QueueTrack, useChatQueue } from "./queue-track";
 import { COMPOSER_CONTROL_SIZE, composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
@@ -191,7 +191,9 @@ export function AgentChat({
   const queued = useChatQueue(agent.id, working, readOnly === undefined);
   const compacting = useMemo(() => isCompacting(timeline.entries), [timeline.entries]);
   const marksByRow = useMemo(() => new Map(sends.views.flatMap((view) => (view.rowKey === null ? [] : [[view.rowKey, view] as const]))), [sends.views]);
-  const echoes = sends.views.filter((view) => view.rowKey === null);
+  // On their way to a working agent: drawn in the queue track, where the daemon will put them (TR-171).
+  const sendingRows = useMemo(() => sendingToQueue(sends.views, working), [sends.views, working]);
+  const echoes = sends.views.filter((view) => view.rowKey === null && !sendingRows.some((row) => row.id === view.send.id));
   const places = useMemo(() => (asks === undefined || asks.decisions.length === 0 ? null : placeDecisions(agentRows, asks.decisions)), [agentRows, asks?.decisions]);
   /** The message whose plan is the live card; every other plan asking gets its line. */
   const livePlanRow = useMemo(() => (places === null ? null : ([...places.byRow].find(([, decisions]) => decisions.some((decision) => decision.id === SCOPE_APPROVAL))?.[0] ?? null)), [places]);
@@ -694,7 +696,7 @@ export function AgentChat({
               </View>
             )}
             {/* Directly above the box, as Paseo draws its own queue. */}
-            <QueueTrack messages={queued} compacting={compacting} busy={queueBusy} theme={theme} onAction={queueAction} />
+            <QueueTrack messages={queued} sending={sendingRows} compacting={compacting} busy={queueBusy} theme={theme} onAction={queueAction} />
             {notice === null ? null : (
               <View style={styles.quick}>
                 <Icon name="AlertTriangle" size={13} color={theme.colors.statusWarning} />

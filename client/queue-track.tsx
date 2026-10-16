@@ -41,12 +41,15 @@ const BUTTON_SIZE = 32;
 
 export function QueueTrack({
   messages,
+  sending,
   compacting,
   busy,
   theme,
   onAction,
 }: {
   messages: readonly QueueRowMessage[];
+  /** Messages on their way to the daemon, which will queue them: after the queued ones, with a spinner and no buttons. */
+  sending: readonly QueueRowMessage[];
   /** The agent compacts: no Send now, which the daemon would refuse. */
   compacting: boolean;
   /** The row whose action is under way, which takes no other press meanwhile. */
@@ -80,10 +83,12 @@ export function QueueTrack({
     }),
     [colors],
   );
-  if (messages.length === 0) return null;
+  // One already in the daemon's queue (its answer still on the way) is drawn once.
+  const rows = [...messages.map((message) => ({ message, arriving: false })), ...sending.filter((each) => !messages.some((message) => message.id === each.id)).map((message) => ({ message, arriving: true }))];
+  if (rows.length === 0) return null;
   return (
     <View style={styles.track}>
-      {messages.map((message) => {
+      {rows.map(({ message, arriving }) => {
         const text = queueRowText(message);
         const rowBusy = busy?.id === message.id;
         return (
@@ -102,7 +107,12 @@ export function QueueTrack({
               {text.failed === null ? null : <Text style={styles.failed}>{text.failed}</Text>}
             </View>
             <View style={styles.actions}>
-              {queueRowActions(message, compacting).map((button) => {
+              {arriving ? (
+                <View accessibilityLabel="Adding to the queue" style={styles.button}>
+                  <Spinner size={14} color={colors.foregroundMuted} />
+                </View>
+              ) : null}
+              {(arriving ? [] : queueRowActions(message, compacting)).map((button) => {
                 const tint = button.accent ? colors.accentForeground : colors.foreground;
                 return (
                   <Pressable

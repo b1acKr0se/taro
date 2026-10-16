@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { chatQueueKey, EDIT_REFUSAL, editRefusal, takenAttachments, queuePollMs, queueRowActions, queueRowText, QUEUE_POLL_BUSY_MS, QUEUE_POLL_QUIET_MS, type QueueRowMessage } from "./queue-rows";
+import { chatQueueKey, EDIT_REFUSAL, editRefusal, takenAttachments, queuePollMs, queueRowActions, queueRowText, QUEUE_POLL_BUSY_MS, QUEUE_POLL_QUIET_MS, type QueueRowMessage, sendingToQueue } from "./queue-rows";
+import type { PendingSend, SendView } from "../shared/pending-sends";
 
 function queued(change: Partial<QueueRowMessage> = {}): QueueRowMessage {
   return { id: "chat-a", text: "Also check the footer", at: "2026-10-16T14:00:00Z", imageCount: 0, fileNames: [], failed: null, ...change };
@@ -115,5 +116,31 @@ describe("takenAttachments (TR-171)", () => {
 describe("chatQueueKey", () => {
   it("is one agent's queue under every agent's, so one refresh can reach them all", () => {
     expect(chatQueueKey("agent-1").slice(0, 2)).toEqual(chatQueueKey());
+  });
+});
+
+describe("messages on their way to a working agent (TR-171)", () => {
+  const at = Date.parse("2026-10-16T10:00:00.000Z");
+  const view = (id: string, mark: SendView["mark"], rowKey: string | null = null, attachments: PendingSend["attachments"] = []): SendView => ({
+    send: { id, text: `words ${id}`, attachments, at, state: mark === "failed" ? "failed" : "sending" },
+    mark,
+    rowKey,
+  });
+
+  it("go to the queue track while the agent works, with their attachments counted", () => {
+    const attachments = [
+      { id: "a", kind: "image" as const, fileName: "shot.png", mimeType: "image/png", data: "x" },
+      { id: "b", kind: "file" as const, fileName: "notes.txt", mimeType: "text/plain", data: "y" },
+    ];
+    expect(sendingToQueue([view("chat-a", "sending", null, attachments), view("chat-b", "behind")], true)).toEqual([
+      { id: "chat-a", text: "words chat-a", at: "2026-10-16T10:00:00.000Z", imageCount: 1, fileNames: ["notes.txt"], failed: null },
+      { id: "chat-b", text: "words chat-b", at: "2026-10-16T10:00:00.000Z", imageCount: 0, fileNames: [], failed: null },
+    ]);
+  });
+
+  it("stay in the transcript when the agent is idle, failed, waiting, or already in the timeline", () => {
+    expect(sendingToQueue([view("chat-a", "sending")], false)).toEqual([]);
+    expect(sendingToQueue([view("chat-a", "failed"), view("chat-b", "waiting"), view("chat-c", "unread"), view("chat-d", "sending", "12")], true)).toEqual([]);
+    expect(sendingToQueue([], true)).toEqual([]);
   });
 });

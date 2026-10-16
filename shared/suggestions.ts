@@ -68,7 +68,13 @@ export function withoutFixedActions(suggestions: readonly Suggestion[]): Suggest
 }
 
 /** Where sending one suggestion to the manager stands, as the board draws it (TR-032). */
-export type SendState = "sending" | "sent" | "failed";
+/** "queued": sent to a working manager, it waits in the chat's queue for the turn to end (TR-171). */
+export type SendState = "sending" | "sent" | "queued" | "failed";
+
+/** What a pill says once the manager has it, or once it waits in its queue. */
+export function deliveredWording(state: "sent" | "queued"): string {
+  return state === "queued" ? "Queued for the manager" : "Sent to the manager";
+}
 
 export interface SuggestionSend {
   suggestion: Suggestion;
