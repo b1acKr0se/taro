@@ -14,12 +14,13 @@ import { useViewPlan } from "./plan-navigation";
 import type { PlanLine } from "./plan-lines";
 
 /** A past plan; View plan opens it in the Taro screen (TR-061) and is left out elsewhere. */
-export function PastPlanCard({ line, project, ticket, theme }: { line: PlanLine; project: string; ticket: string; theme: PluginTheme }) {
+export function PastPlanCard({ line, project, ticket, theme, compact }: { line: PlanLine; project: string; ticket: string; theme: PluginTheme; compact: boolean }) {
   const viewPlan = useViewPlan();
   const view = planCardView(line, formatClock);
   return (
     <FinishedCard
       theme={theme}
+      compact={compact}
       subject={`Plan for ${ticket}`}
       outcome={view.outcome}
       tone={view.tone}

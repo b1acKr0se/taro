@@ -896,7 +896,7 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, pastA
           <Markdown source={transformText === undefined ? row.text : transformText(row.text)} theme={theme} onOpenLink={onOpenLink} />
           {row.asking === true ? <Text style={styles.asking}>{WRITING_A_QUESTION}</Text> : null}
           {decorateRow === undefined ? null : decorateRow(row.text, row.key)}
-          {pastPlan === undefined || project === undefined || ticketId === undefined ? null : <PastPlanCard line={pastPlan} project={project} ticket={ticketId} theme={theme} />}
+          {pastPlan === undefined || project === undefined || ticketId === undefined ? null : <PastPlanCard line={pastPlan} project={project} ticket={ticketId} theme={theme} compact={compact} />}
           {pastAcceptance === undefined || ticketId === undefined ? null : <PastAcceptanceCard record={pastAcceptance} ticket={ticketId} theme={theme} />}
           {pastQuestions === undefined ? null : pastQuestions.map((card) => <PastQuestionCard key={card.id} card={card} theme={theme} />)}
           {targets.length === 0 ? null : (

@@ -24,6 +24,7 @@ const LINE_HEIGHT = lineHeightFor(FONT_SIZE.small);
 
 export function FinishedCard({
   theme,
+  compact = false,
   lead = null,
   subject = null,
   code = false,
@@ -34,6 +35,8 @@ export function FinishedCard({
   action = null,
 }: {
   theme: PluginTheme;
+  /** A narrow window: the link goes on its own row under the line, which then keeps its width. */
+  compact?: boolean;
   /** Named before the subject, telling a question from a permission ask: "Question", "Permission". */
   lead?: string | null;
   /** The thing asked: a plan's ticket, the question, the command. */
@@ -52,6 +55,13 @@ export function FinishedCard({
   const toneColor = tone === "positive" ? colors.statusSuccess : tone === "warning" ? colors.statusWarning : tone === "negative" ? colors.statusDanger : colors.foregroundMuted;
   const hasSubject = subject !== null && subject !== "";
   const label = [outcome, time, lead, subject].filter((part) => part !== null && part !== "").join(", ");
+  const link =
+    action === null ? null : (
+      <Pressable accessibilityRole="link" accessibilityLabel={action.label} onPress={action.onPress} hitSlop={8} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xxs, height: LINE_HEIGHT }}>
+        <Text style={{ color: colors.accent, fontSize: FONT_SIZE.small, lineHeight: LINE_HEIGHT, fontWeight: "600" }}>{action.label}</Text>
+        <Icon name="ChevronRight" size={12} color={colors.accent} />
+      </Pressable>
+    );
   return (
     <View style={{ alignSelf: "stretch", gap: SPACE.xs }}>
       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm }}>
@@ -67,13 +77,9 @@ export function FinishedCard({
             {hasSubject ? <Text style={code ? { fontFamily: MONOSPACE, fontSize: FONT_SIZE.code - 1, color: colors.foreground } : undefined}>{subject}</Text> : null}
           </Text>
         </View>
-        {action === null ? null : (
-          <Pressable accessibilityRole="link" accessibilityLabel={action.label} onPress={action.onPress} hitSlop={8} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xxs, height: LINE_HEIGHT }}>
-            <Text style={{ color: colors.accent, fontSize: FONT_SIZE.small, lineHeight: LINE_HEIGHT }}>{action.label}</Text>
-            <Icon name="ChevronRight" size={12} color={colors.accent} />
-          </Pressable>
-        )}
+        {compact ? null : link}
       </View>
+      {compact && link !== null ? <View style={{ flexDirection: "row", marginLeft: MARK_SIZE + SPACE.sm }}>{link}</View> : null}
       {words === null || words === "" ? null : (
         <View style={{ marginLeft: MARK_SIZE + SPACE.sm, paddingLeft: SPACE.md - 2, borderLeftWidth: 2, borderLeftColor: colors.border }}>
           <Text numberOfLines={WORDS_LINES} style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: LINE_HEIGHT }}>
