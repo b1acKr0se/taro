@@ -31,7 +31,6 @@ import {
   Keyboard,
   LayoutAnimation,
   Platform,
-  StatusBar,
   TextInput,
   View,
   type KeyboardEvent,
@@ -43,6 +42,7 @@ import {
 } from "react-native";
 
 import { createFieldClaims, holds, keyboardRoom, revealOffset, revealSpan, roomNeeded, visibleSpan, type Span } from "./keyboard-reveal";
+import { statusBarInset } from "./safe-area";
 
 /** The keyboard's top edge in window coordinates (null once it hides), and how long its move takes. */
 type KeyboardListener = (top: number | null, duration: number) => void;
@@ -110,7 +110,7 @@ function listenToKeyboard(listener: KeyboardListener): () => void {
   }
   // Android reports the keyboard's top in screen coordinates, but `measureInWindow` there counts
   // from below the status bar (React Native's RootViewUtil.getViewportOffset): bring it across.
-  const origin = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
+  const origin = statusBarInset();
   const shown = (event: KeyboardEvent) => listener(event.endCoordinates.screenY - origin, event.duration);
   const hidden = (event: KeyboardEvent) => listener(null, event.duration);
   // iOS announces every frame change before it happens, show and hide

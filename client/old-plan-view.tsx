@@ -11,7 +11,7 @@ import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef } from "react";
-import { Modal, Platform, SafeAreaView, ScrollView, Text, View } from "react-native";
+import { Platform, ScrollView, Text, View } from "react-native";
 
 import { loadPastPlan } from "../shared/contracts";
 import { parsePlan } from "../shared/plan";
@@ -20,6 +20,7 @@ import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { Markdown } from "./markdown";
 import { PlanBody } from "./plan-card";
+import { FullScreenModal, SafeArea } from "./safe-area";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
@@ -154,9 +155,9 @@ export function OldPlanSheet({
   );
 
   return (
-    <Modal visible={open} transparent={!compact} animationType={compact ? "slide" : "fade"} onRequestClose={onClose}>
+    <FullScreenModal visible={open} transparent={!compact} animationType={compact ? "slide" : "fade"} onRequestClose={onClose}>
       {!open ? null : compact ? (
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.surface0 }}>{sheet}</SafeAreaView>
+        <SafeArea style={{ flex: 1, backgroundColor: colors.surface0 }}>{sheet}</SafeArea>
       ) : (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: PANEL_MARGIN, paddingHorizontal: SPACE.xl }}>
           {/* The dimmed page behind closes it, as a click outside a dialog does. */}
@@ -169,6 +170,6 @@ export function OldPlanSheet({
           {sheet}
         </View>
       )}
-    </Modal>
+    </FullScreenModal>
   );
 }

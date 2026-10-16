@@ -10,12 +10,13 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Image, Modal, PanResponder, Platform, SafeAreaView, StatusBar, Text, View, type GestureResponderEvent, type ViewStyle } from "react-native";
+import { Animated, Image, PanResponder, Platform, Text, View, type GestureResponderEvent, type ViewStyle } from "react-native";
 
 import { readImageRpc } from "../shared/contracts";
 import { watchFullScreen } from "./desktop-window";
 import { ErrorBoundary } from "./error-boundary";
 import { Pressable } from "./focus";
+import { FullScreenModal, SafeArea } from "./safe-area";
 import { SPACE } from "./spacing";
 import { thumbnailFrame } from "./thumbnail-size";
 import { withAlpha } from "./tint";
@@ -184,16 +185,15 @@ export function ImageGallery({ images, start, onClose }: { images: readonly Gall
   }, [start]);
   const shown = images[index];
   return (
-    // Drawn under Android's status and navigation bars, as the app's edge-to-edge screens are, so the
-    // top bar can pad by the status bar's height itself.
-    <Modal visible={start !== null} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
+    // Drawn under Android's navigation bar too, so the image fills the whole screen; the top bar clears the status bar in SafeArea.
+    <FullScreenModal visible={start !== null} transparent animationType="fade" navigationBarTranslucent onRequestClose={onClose}>
       {start === null || shown === undefined ? null : (
         // Keyed by position, so each image starts at fit with its own gesture state. A failure inside stays in the viewer, not the whole plugin (TR-054).
         <ErrorBoundary key={index} label="image viewer" fallback={<ViewerFailed onClose={onClose} />}>
           <GalleryPage image={shown} index={index} count={images.length} onIndex={setIndex} onClose={onClose} />
         </ErrorBoundary>
       )}
-    </Modal>
+    </FullScreenModal>
   );
 }
 
@@ -468,9 +468,6 @@ function GalleryPage({
     });
   }
 
-  // Android draws the modal under its status bar (statusBarTranslucent); iOS pads in SafeAreaView; the web needs neither.
-  const statusBarHeight = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
-  const SafeArea = Platform.OS === "ios" ? SafeAreaView : View;
   // The macOS desktop app's traffic lights sit over the window's top-left corner: the bar goes below their strip, which drags the window as the title bar would.
   const windowControls = useWindowControlsInset();
   const control = { minWidth: 44, height: 44, alignItems: "center" as const, justifyContent: "center" as const, borderRadius: 22 };
@@ -512,7 +509,7 @@ function GalleryPage({
           {windowControls === 0 ? null : <View style={[{ height: windowControls }, WINDOW_DRAG]} />}
           <View
             pointerEvents="box-none"
-            style={[{ marginTop: statusBarHeight, height: BAR_HEIGHT, flexDirection: "row", alignItems: "center", paddingHorizontal: SPACE.xs }, windowControls === 0 ? null : WINDOW_NO_DRAG]}
+            style={[{ height: BAR_HEIGHT, flexDirection: "row", alignItems: "center", paddingHorizontal: SPACE.xs }, windowControls === 0 ? null : WINDOW_NO_DRAG]}
           >
             <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} hitSlop={SPACE.xs} style={control}>
               <Text style={{ color: VIEWER.text, fontSize: FONT_SIZE.subtitle + 4 }}>✕</Text>
