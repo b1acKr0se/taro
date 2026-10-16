@@ -24,6 +24,7 @@ import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { useRevealFocused } from "./keyboard";
 import { Markdown, MarkdownInline } from "./markdown";
+import { planAnswers, type PlanAnswer } from "./plan-lines";
 import { useViewPlan } from "./plan-navigation";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
@@ -45,17 +46,28 @@ const NARROW_ROW_WIDTH = 2 * BUTTON_MIN_WIDTH + SPACE.sm;
 
 export type PlanCardOptions = NonNullable<ReturnType<typeof planCardOptions>>;
 
-/** The ticket's plan, parsed; null while it loads, without a ticket, or when it does not follow the template. */
-export function useTicketPlan(project: string, ticket: string | null, enabled = true): ParsedPlan | null {
+/** The ticket, shared with the Ticket tab; undefined while it loads or without a ticket. */
+function useTicketDetail(project: string, ticket: string | null, enabled: boolean) {
   const load = useRpc(loadTicket);
-  const detail = useQuery({
+  return useQuery({
     queryKey: ["taro", "ticket", project, ticket ?? ""],
     queryFn: () => load({ project, ticket: ticket ?? "" }),
     enabled: enabled && ticket !== null && project !== "",
     ...polled(6_000),
-  });
-  const source = detail.data?.plan ?? null;
+  }).data;
+}
+
+/** The ticket's plan, parsed; null while it loads, without a ticket, or when it does not follow the template. */
+export function useTicketPlan(project: string, ticket: string | null, enabled = true): ParsedPlan | null {
+  const source = useTicketDetail(project, ticket, enabled)?.plan ?? null;
   return useMemo(() => parsePlan(source), [source]);
+}
+
+/** The ticket's plan answers, for the lines past plans leave in the owner's chat (TR-135); null while it loads. */
+export function useTicketPlanAnswers(project: string, ticket: string): readonly PlanAnswer[] | null {
+  const detail = useTicketDetail(project, ticket, true);
+  const notes = detail === undefined ? undefined : detail.notes;
+  return useMemo(() => (notes === undefined ? null : planAnswers(notes)), [notes]);
 }
 
 /**

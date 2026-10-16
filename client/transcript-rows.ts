@@ -22,7 +22,8 @@ type ToolCallItem = Extract<TimelineItem, { type: "tool_call" }>;
 
 export type TranscriptRow =
   | { key: string; kind: "user"; text: string }
-  | { key: string; kind: "agent"; text: string }
+  /** `at`: when the message started, for matching what was answered after it (TR-135). */
+  | { key: string; kind: "agent"; text: string; at?: string }
   | { key: string; kind: "event"; text: string }
   | { key: string; kind: "tool"; text: string; status: ToolCallItem["status"] }
   | { key: string; kind: "error"; text: string };
@@ -177,7 +178,7 @@ export function transcriptRows(entries: readonly TimelineEntry[]): TranscriptRow
       }
       case "assistant_message": {
         const last = rows[rows.length - 1];
-        if (last === undefined || last.kind !== "agent") rows.push({ key, kind: "agent", text: appendAssistantText("", item.text) });
+        if (last === undefined || last.kind !== "agent") rows.push({ key, kind: "agent", text: appendAssistantText("", item.text), at: entry.timestamp });
         else if (startsNewReply(previousReply, entry)) last.text = appendReply(last.text, item.text);
         else last.text = appendAssistantText(last.text, item.text);
         previousReply = entry;
