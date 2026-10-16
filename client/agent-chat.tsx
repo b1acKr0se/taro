@@ -11,7 +11,8 @@ import { Fragment, memo, useEffect, useMemo, useRef, useState, type ReactNode } 
 import { Keyboard, Platform, SafeAreaView, ScrollView, Text, useWindowDimensions, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
 
 import { attachmentProblem, refuseOversizedImages, type DraftAttachment } from "../shared/attachments";
-import { listAgentDecisions, listSentImages, type SentImagesMessage } from "../shared/contracts";
+import { answeredPermissionAsks, listAgentDecisions, listSentImages, type SentImagesMessage } from "../shared/contracts";
+import type { PermissionAsk } from "../shared/permission-asks";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { ActionRow } from "./action-row";
 import { droppedFilesAsAttachments, imagesFromPaste, pickAttachments } from "./attachment-pickers";
@@ -33,8 +34,8 @@ import { KeyboardRevealProvider, useKeyboardOverlap, useKeyboardScroll, useRevea
 import { formatClock } from "./format";
 import { Markdown } from "./markdown";
 import { PermissionCard, usePendingRequests } from "./permission-card";
-import { deliveryCards, questionCards, sameAcceptanceRecord, sameQuestionCards, type DeliveryRecord, type QuestionCardView } from "./finished-cards";
-import { PastAcceptanceCard, PastPlanCard, PastQuestionCard } from "./past-cards";
+import { deliveryCards, permissionCards, questionCards, sameAcceptanceRecord, sameQuestionCards, type DeliveryRecord, type QuestionCardView } from "./finished-cards";
+import { PastAcceptanceCard, PastPermissionCard, PastPlanCard, PastQuestionCard } from "./past-cards";
 import { planLines, type PlanAnswer, type PlanLine } from "./plan-lines";
 import { ReplyBox } from "./reply-box";
 import type { Asker } from "./permission-heading";
@@ -301,6 +302,23 @@ export function AgentChat({
     ));
   }
   const { pending, respond } = usePendingRequests(agent.id, timeline.agent?.pendingPermissions, follow.pin);
+  const answeredAsks = useAnsweredPermissionAsks(agent.id, `${agent.pendingPermissions}:${timeline.agent?.pendingPermissions?.length ?? 0}`, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0);
+  const pendingIds = pending.map((request) => request.id).join("\n");
+  /** Answered permission asks, each left where it was asked (TR-149); one still waiting is the live card below. */
+  const permissionPlaces = useMemo(() => {
+    const open = new Set(pendingIds.split("\n"));
+    return permissionCards(groups, answeredAsks.filter((ask) => !open.has(ask.requestId)));
+  }, [groups, answeredAsks, pendingIds]);
+  function permissionCardsOf(asks: readonly PermissionAsk[] | undefined) {
+    if (asks === undefined || asks.length === 0) return null;
+    return (
+      <View style={styles.agentRow}>
+        {asks.map((ask) => (
+          <PastPermissionCard key={ask.requestId} ask={ask} theme={theme} compact={compact} />
+        ))}
+      </View>
+    );
+  }
   const notice = composerNotice(sends.holds, pending.length > 0);
   const [draft, setDraftState] = useState(() => drafts.get(agent.id));
   const [attachments, setAttachmentsState] = useState(() => draftAttachments.get(agent.id));
@@ -488,7 +506,9 @@ export function AgentChat({
             {groups.length === 0 && pending.length === 0 ? (
               <Text style={styles.hint}>{timeline.loading ? "Loading the conversation…" : "Nothing said yet."}</Text>
             ) : (
-              groups.map((group) => {
+              <>
+              {permissionCardsOf(permissionPlaces.before)}
+              {groups.map((group) => {
                 const row = "row" in group ? group.row : null;
                 return (
                   <Fragment key={group.key}>
@@ -517,9 +537,11 @@ export function AgentChat({
                   />
                   {/* Beside the message, not inside it: a direct child of the transcript, measured on screen like before (TR-091). */}
                   {row?.key === deliveryRow ? deliveryCard : null}
+                  {permissionCardsOf(permissionPlaces.after.get(group.key))}
                   </Fragment>
                 );
-              })
+              })}
+              </>
             )}
             {/* Sent but not in the timeline yet, or held: drawn here until the timeline shows them. */}
             {echoes.map((view) => (
@@ -1069,6 +1091,23 @@ function useAgentDecisions(agentId: string, open: readonly StoredDecision[] | un
   });
   return enabled ? (query.data?.decisions ?? null) : null;
 }
+
+/**
+ * The agent's answered permission asks, oldest first (TR-149). Read again when its pending count
+ * changes (`pendingKey`) and as the conversation grows, since the answer is stored a moment after it
+ * is given; the last answer stays meanwhile.
+ */
+function useAnsweredPermissionAsks(agentId: string, pendingKey: string, newestEntry: number): readonly PermissionAsk[] {
+  const list = useRpc(answeredPermissionAsks);
+  const query = useQuery({
+    queryKey: ["taro", "answered-permissions", agentId, pendingKey, newestEntry] as const,
+    queryFn: () => list({ agentId }),
+    placeholderData: (previous) => previous,
+  });
+  return query.data?.asks ?? NO_ASKS;
+}
+
+const NO_ASKS: readonly PermissionAsk[] = [];
 
 const EMPTY_SENT: readonly SentImagesMessage[] = [];
 

@@ -11,6 +11,7 @@ import { ChatMessageIdSchema } from "./pending-sends";
 import { ColumnIdSchema } from "./board";
 import { MilestoneSchema } from "./milestones";
 import { PauseViewSchema } from "./pause";
+import { PermissionAskSchema } from "./permission-asks";
 import { QueuedWaitSchema } from "./queued-wait";
 import { PaseoProjectCandidateSchema, SettingsTemplateSchema } from "./project-candidates";
 import { ProjectConfigSchema, ProjectNameSchema, ProjectSettingsSchema, ROLES, SUBAGENT_ROLES } from "./project";
@@ -338,6 +339,13 @@ export const listAgentDecisions = defineRpc({
   name: "taro.decisions.agent",
   input: z.object({ agentId: z.string() }),
   output: z.object({ decisions: z.array(StoredDecisionSchema) }),
+});
+
+/** One agent's answered permission asks, oldest first, for the finished cards in its chat (TR-149). */
+export const answeredPermissionAsks = defineRpc({
+  name: "taro.permissions.answered",
+  input: z.object({ agentId: z.string() }),
+  output: z.object({ asks: z.array(PermissionAskSchema) }),
 });
 
 const AgentInput = z.object({ agentId: z.string() });

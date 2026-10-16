@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { StoredDecisionSchema, type StoredDecision } from "../shared/state";
-import { deliveryCards, deliveryCardView, deliveryRecords, planCardView, questionCards, type DeliveryRecord } from "./finished-cards";
+import type { PermissionAsk } from "../shared/permission-asks";
+import { deliveryCards, deliveryCardView, deliveryRecords, permissionCards, permissionCardView, planCardView, questionCards, type DeliveryRecord } from "./finished-cards";
 import type { PlanLine } from "./plan-lines";
 
 const clock = (iso: string) => iso.slice(11, 16);
@@ -175,5 +176,68 @@ describe("questionCards", () => {
   it("is empty without rows or decisions", () => {
     expect(cards([], [stored("one")]).size).toBe(0);
     expect(cards([{ key: "a", text: "No blocks here", at: "2025-01-01T00:00:00Z" }], []).size).toBe(0);
+  });
+});
+
+function permissionAsk(requestId: string, askedAt: string, change: Partial<PermissionAsk> = {}): PermissionAsk {
+  return { agentId: "a", requestId, kind: "tool", name: "Bash", subject: "rm -rf /tmp/x", askedAt, answeredAt: askedAt, outcome: "allowed", by: "you", rule: null, words: null, ...change };
+}
+
+describe("permissionCards", () => {
+  const time = (minute: number) => `2026-10-16T10:${String(minute).padStart(2, "0")}:00.000Z`;
+  const message = (key: string, minute?: number) => ({ key, row: minute === undefined ? { key } : { key, at: time(minute) } });
+  const tools = (key: string, minute: number) => ({ key, tools: [{ key, at: time(minute) }, { key: `${key}-2`, at: time(minute + 5) }] });
+  const keys = (asks: readonly PermissionAsk[] | undefined) => (asks ?? []).map((ask) => ask.requestId);
+
+  it("places nothing without asks, and every ask before the first group without groups", () => {
+    const empty = permissionCards([message("1", 1)], []);
+    expect(empty.before).toEqual([]);
+    expect(empty.after.size).toBe(0);
+    expect(keys(permissionCards([], [permissionAsk("p", time(1))]).before)).toEqual(["p"]);
+  });
+
+  it("puts asks made before every group before the first", () => {
+    const places = permissionCards([message("1", 10), tools("2", 20)], [permissionAsk("p", time(1)), permissionAsk("q", time(2))]);
+    expect(keys(places.before)).toEqual(["p", "q"]);
+    expect(places.after.size).toBe(0);
+  });
+
+  it("puts asks made after every group after the last, in order", () => {
+    const places = permissionCards([message("1", 1), tools("2", 2)], [permissionAsk("p", time(30)), permissionAsk("q", time(31)), permissionAsk("r", time(32))]);
+    expect(places.before).toEqual([]);
+    expect(keys(places.after.get("2"))).toEqual(["p", "q", "r"]);
+  });
+
+  it("puts an ask between two groups after the earlier, dating a tool run by its first call", () => {
+    const places = permissionCards([message("1", 1), tools("2", 10), message("3", 20)], [permissionAsk("p", time(12)), permissionAsk("q", time(5))]);
+    expect(keys(places.after.get("2"))).toEqual(["p"]);
+    expect(keys(places.after.get("1"))).toEqual(["q"]);
+  });
+
+  it("puts an ask made at a group's very time after that group", () => {
+    const places = permissionCards([message("1", 1), tools("2", 10), message("3", 20)], [permissionAsk("p", time(10))]);
+    expect(keys(places.after.get("2"))).toEqual(["p"]);
+  });
+
+  it("skips groups without a time, and puts every ask first when none has one", () => {
+    const places = permissionCards([message("1", 1), message("2"), message("3", 20)], [permissionAsk("p", time(12))]);
+    expect(keys(places.after.get("1"))).toEqual(["p"]);
+    expect(keys(permissionCards([message("1"), message("2")], [permissionAsk("p", time(12))]).before)).toEqual(["p"]);
+  });
+});
+
+describe("permissionCardView", () => {
+  const clock = (iso: string) => iso.slice(11, 16);
+
+  it("says who allowed or denied a tool, with its time and the user's words", () => {
+    expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z"), clock)).toEqual({ kind: "Permission", subject: "rm -rf /tmp/x", outcome: "Allowed by you", tone: "positive", time: "10:05", words: null });
+    expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z", { outcome: "denied", words: "not there" }), clock)).toMatchObject({ outcome: "Denied by you", tone: "negative", words: "not there" });
+    expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z", { outcome: "denied", by: "rules", rule: "top-level" }), clock)).toMatchObject({ outcome: "Denied by Taro's rules (top-level)", tone: "negative" });
+  });
+
+  it("says a question was answered or dismissed", () => {
+    const question = { kind: "question", subject: "Which database?" };
+    expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z", { ...question, words: "Database: Postgres" }), clock)).toMatchObject({ kind: "Question", outcome: "Answered by you", tone: "positive", words: "Database: Postgres" });
+    expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z", { ...question, outcome: "denied" }), clock)).toMatchObject({ kind: "Question", outcome: "Dismissed by you", tone: "neutral" });
   });
 });

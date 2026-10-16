@@ -7,7 +7,7 @@ import { DENY_RULES, ruleReasons } from "../shared/permission-triage";
 import { fetchLiveAgent } from "./agents";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import { withoutNotes } from "./package-files";
-import { allInsideOnDisk, triageAsk } from "./permission-triage";
+import { allInsideOnDisk, isTaroAsker, triageAsk } from "./permission-triage";
 import type { Stats } from "./stats";
 import { appendTicketNote } from "./tickets";
 
@@ -88,12 +88,54 @@ describe("triageAsk", () => {
     expect(counted).toEqual([]);
   });
 
+  it("marks the ask as the rules' before it responds, and takes the mark back when responding fails", async () => {
+    const { stats } = setUp();
+    const order: string[] = [];
+    const rulesMark = { mark: vi.fn(async (id: string, rule: string) => void order.push(`mark ${id} ${rule}`)), clear: vi.fn(async (id: string) => void order.push(`clear ${id}`)) };
+    respond.mockImplementationOnce(async () => void order.push("respond"));
+    expect(await triageAsk(paseo, stats, asker, bash("rm -rf -- /TR-140"), rulesMark)).toBe("deny");
+    expect(order).toEqual(["mark permission-1 top-level", "respond"]);
+
+    order.length = 0;
+    respond.mockImplementationOnce(async () => {
+      order.push("respond");
+      throw new Error("no pending permission");
+    });
+    expect(await triageAsk(paseo, stats, asker, bash("rm -rf -- /TR-140"), rulesMark)).toBeNull();
+    expect(order).toEqual(["mark permission-1 top-level", "respond", "clear permission-1"]);
+  });
+
+  it("marks nothing when the rules leave the ask to the user, and still answers when the mark fails", async () => {
+    const { stats } = setUp();
+    const rulesMark = { mark: vi.fn(async () => Promise.reject(new Error("disk full"))), clear: vi.fn(async () => undefined) };
+    expect(await triageAsk(paseo, stats, asker, bash("cd /tmp/x && rm -rf sub/*"), rulesMark)).toBeNull();
+    expect(rulesMark.mark).not.toHaveBeenCalled();
+    expect(await triageAsk(paseo, stats, asker, bash("rm -rf -- /tmp/notes-app.Ab12Cd"), rulesMark)).toBe("allow");
+    expect(rulesMark.mark).toHaveBeenCalledWith("permission-1", "scratch-or-worktree");
+    expect(respond).toHaveBeenCalledTimes(1);
+  });
+
   it("logs a ticketless agent's decision without a ticket note", async () => {
     const { stats, counted } = setUp();
     vi.mocked(fetchLiveAgent).mockResolvedValueOnce(liveAgent({ "taro.project": "taro", "taro.role": "manager" }));
     expect(await triageAsk(paseo, stats, asker, bash("rm -rf /"))).toBe("deny");
     expect(appendTicketNote).not.toHaveBeenCalled();
     expect(counted).toEqual([]);
+  });
+});
+
+describe("isTaroAsker", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("knows an agent with a stored record without a call, and reads labels otherwise", async () => {
+    expect(await isTaroAsker(paseo, async () => ({ project: "taro" }), "agent-1")).toBe(true);
+    expect(fetchLiveAgent).not.toHaveBeenCalled();
+    vi.mocked(fetchLiveAgent).mockResolvedValueOnce(liveAgent(owner));
+    expect(await isTaroAsker(paseo, async () => null, "agent-1")).toBe(true);
+    vi.mocked(fetchLiveAgent).mockResolvedValueOnce(liveAgent({}));
+    expect(await isTaroAsker(paseo, async () => null, "agent-1")).toBe(false);
+    vi.mocked(fetchLiveAgent).mockResolvedValueOnce(null);
+    expect(await isTaroAsker(paseo, async () => null, "agent-1")).toBe(false);
   });
 });
 

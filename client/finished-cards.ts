@@ -3,6 +3,7 @@
  * past plan and a past delivery. Parts for questions and permission asks add theirs beside. Pure.
  */
 import { SCOPE_APPROVAL } from "../shared/decision-view";
+import type { PermissionAsk } from "../shared/permission-asks";
 import { parseDecisionBlocks, parseStatusLine } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import type { PlanLine } from "./plan-lines";
@@ -182,4 +183,62 @@ export function questionCards(
 export function sameQuestionCards(left: readonly QuestionCardView[] | undefined, right: readonly QuestionCardView[] | undefined): boolean {
   if (left === undefined || right === undefined) return left === right;
   return left.length === right.length && left.every((card, index) => JSON.stringify(card) === JSON.stringify(right[index]));
+}
+
+/** A transcript group as placing reads it: a message row, or a run of tool rows dated by its first. */
+type TimedGroup = { key: string; row: { key: string; at?: string | undefined } } | { key: string; tools: readonly { key: string; at?: string | undefined }[] };
+
+/** Answered permission asks by where they go: before the first group, or after the group with that key. */
+export interface PermissionPlaces {
+  before: PermissionAsk[];
+  after: Map<string, PermissionAsk[]>;
+}
+
+function groupTime(group: TimedGroup): number {
+  const at = "tools" in group ? group.tools[0]?.at : group.row.at;
+  return at === undefined ? Number.NaN : Date.parse(at);
+}
+
+/**
+ * Where each answered ask's finished card goes (TR-149): after the last group dated at or before
+ * it was asked. One asked before every dated group, or in a chat with none, goes before the first
+ * group. Asks keep their order in each place.
+ */
+export function permissionCards(groups: readonly TimedGroup[], asks: readonly PermissionAsk[]): PermissionPlaces {
+  const places: PermissionPlaces = { before: [], after: new Map() };
+  const times = groups.map(groupTime);
+  asks.forEach((ask) => {
+    const asked = Date.parse(ask.askedAt);
+    const place = times.reduce<string | null>((found, time, index) => (!Number.isNaN(time) && time <= asked ? (groups[index]?.key ?? found) : found), null);
+    if (place === null) places.before.push(ask);
+    else places.after.set(place, [...(places.after.get(place) ?? []), ask]);
+  });
+  return places;
+}
+
+/** A finished permission ask's card: what was asked and who answered it how. */
+export interface PermissionCardView extends FinishedView {
+  kind: "Permission" | "Question";
+  subject: string;
+}
+
+export function permissionCardView(ask: PermissionAsk, clock: (iso: string) => string | null): PermissionCardView {
+  const question = ask.kind === "question";
+  const allowed = ask.outcome === "allowed";
+  const what = question ? (allowed ? "Answered" : "Dismissed") : allowed ? "Allowed" : "Denied";
+  const who = ask.by === "rules" ? `by Taro's rules${ask.rule === null ? "" : ` (${ask.rule})`}` : "by you";
+  return {
+    kind: question ? "Question" : "Permission",
+    subject: ask.subject,
+    outcome: `${what} ${who}`,
+    tone: allowed ? "positive" : question ? "neutral" : "negative",
+    time: ask.answeredAt === null ? null : clock(ask.answeredAt),
+    words: ask.words,
+  };
+}
+
+/** Whether two places' asks say the same, for a memoised row. */
+export function samePermissionAsks(left: readonly PermissionAsk[] | undefined, right: readonly PermissionAsk[] | undefined): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  return left.length === right.length && left.every((ask, index) => JSON.stringify(ask) === JSON.stringify(right[index]));
 }

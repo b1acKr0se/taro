@@ -34,8 +34,9 @@ export type TranscriptRow =
   /**
    * A tool call as Paseo shows it (TR-150): its label, detail and icon (`text` is both, for what reads
    * every row's words), what it adds to its run's counts, and `alone` for a call Paseo never puts in a run.
+   * `at`: when the call started, to place a permission ask it raised after it (TR-149).
    */
-  | { key: string; kind: "tool"; text: string; label: string; summary?: string; icon: string; tally: ToolTally; alone: boolean; status: ToolCallItem["status"] }
+  | { key: string; kind: "tool"; text: string; label: string; summary?: string; icon: string; tally: ToolTally; alone: boolean; status: ToolCallItem["status"]; at?: string }
   | { key: string; kind: "error"; text: string };
 
 /** A user row's text when the message had attachments and no words. */
@@ -160,7 +161,8 @@ export function transcriptRows(entries: readonly TimelineEntry[], cwd?: string |
       case "tool_call": {
         const detail = item.detail as ToolDetail;
         const display = toolDisplay(detail, item.name, cwd, "metadata" in item ? item.metadata : undefined);
-        rows.push({ key, kind: "tool", text: display.summary === undefined ? display.label : `${display.label} ${display.summary}`, ...display, tally: toolTally(detail, item.name), alone: !joinsRuns(detail, item.name), status: item.status });
+        const row: TranscriptRow = { key, kind: "tool", text: display.summary === undefined ? display.label : `${display.label} ${display.summary}`, ...display, tally: toolTally(detail, item.name), alone: !joinsRuns(detail, item.name), status: item.status };
+        rows.push(entry.timestamp === undefined ? row : { ...row, at: entry.timestamp });
         break;
       }
       case "error":

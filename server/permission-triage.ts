@@ -27,8 +27,25 @@ export interface PermissionRequest extends ShellAsk {
   id: string;
 }
 
+/**
+ * Whether the plugin records this agent's asks (TR-149): Taro's agents only. Its stored supervision
+ * record is read first, without a call; an agent before its first turn end has none yet, so its
+ * labels are read then.
+ */
+export async function isTaroAsker(paseo: PaseoApi, known: (agentId: string) => Promise<unknown>, agentId: string): Promise<boolean> {
+  if ((await known(agentId)) !== null) return true;
+  const agent = await fetchLiveAgent(paseo, agentId);
+  return agent !== null && identityFromLabels(agent.labels, agent.title ?? null) !== null;
+}
+
+/** Marks the recorded ask as answered by the rules, and takes the mark back (TR-149). */
+export interface RulesMark {
+  mark(requestId: string, rule: string): Promise<unknown>;
+  clear(requestId: string): Promise<unknown>;
+}
+
 /** What the rules did with the ask: answered it, or left it to the user (`null`). */
-export async function triageAsk(paseo: PaseoApi, stats: Stats, asker: PermissionAsker, request: PermissionRequest): Promise<"allow" | "deny" | null> {
+export async function triageAsk(paseo: PaseoApi, stats: Stats, asker: PermissionAsker, request: PermissionRequest, rulesMark: RulesMark | null = null): Promise<"allow" | "deny" | null> {
   // Cheap first: most asks are not shell commands and need no lookup.
   if (request.kind !== "tool" || request.name !== "Bash") return null;
   const triage = triagePermission(request, { cwd: asker.cwd, home: homedir() });
@@ -52,10 +69,14 @@ export async function triageAsk(paseo: PaseoApi, stats: Stats, asker: Permission
             skill: await skillDirectory(),
           }),
         } as const);
+  // Before responding: Paseo reports the answer as soon as it is given, and it must read as the rules'.
+  // A mark that fails to save leaves the record wrong, which is no reason to keep the agent waiting.
+  await rulesMark?.mark(request.id, triage.rule).catch((error: unknown) => console.warn(`[taro] could not mark permission ${request.id} as the rules': ${String(error)}`));
   try {
     await paseo.agents.ref(asker.id).respondToPermission({ requestId: request.id, response });
   } catch (error) {
     // The user answered first, or the turn ended: nothing was decided here.
+    await rulesMark?.clear(request.id).catch(() => undefined);
     console.log(`[taro] ${asker.id}: could not answer permission ${request.id}: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }

@@ -88,6 +88,13 @@ describe("transcriptRows times", () => {
     const rows = transcriptRows([at(1, "Hel", "2026-01-05T10:00:00Z"), at(2, "lo", "2026-01-05T10:00:05Z")]);
     expect(rows).toEqual([{ key: "1", kind: "agent", text: "Hello", at: "2026-01-05T10:00:00Z" }]);
   });
+
+  it("dates a tool call by its entry, so a permission ask it raised is placed after it (TR-149)", () => {
+    const call = (seq: number, timestamp?: string) =>
+      ({ seqStart: seq, seqEnd: seq, ...(timestamp === undefined ? {} : { timestamp }), item: { type: "tool_call", name: "Bash", status: "completed", detail: { type: "shell", command: "ls" } } }) as unknown as TimelineEntry;
+    const rows = transcriptRows([call(1, "2026-01-05T10:00:00Z"), call(2)]);
+    expect(rows.map((row) => (row.kind === "tool" ? row.at : null))).toEqual(["2026-01-05T10:00:00Z", undefined]);
+  });
 });
 
 function toolCall(seq: number, name: string, detail: object, status = "completed"): TimelineEntry {

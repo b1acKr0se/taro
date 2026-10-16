@@ -1,11 +1,14 @@
 /**
- * The finished cards an owner's chat leaves (TR-149): a past plan and a past acceptance, drawn from
- * the pure views in finished-cards.ts with the one FinishedCard.
+ * The finished cards an owner's chat leaves (TR-149): a past plan, a past acceptance, a past question
+ * and an answered permission ask, drawn from the pure views in finished-cards.ts with the one FinishedCard.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
+import { memo } from "react";
+
+import type { PermissionAsk } from "../shared/permission-asks";
 
 import { FinishedCard } from "./finished-card";
-import { deliveryCardView, planCardView, type DeliveryRecord, type QuestionCardView } from "./finished-cards";
+import { deliveryCardView, permissionCardView, planCardView, samePermissionAsks, type DeliveryRecord, type QuestionCardView } from "./finished-cards";
 import { formatClock } from "./format";
 import { useViewPlan } from "./plan-navigation";
 import type { PlanLine } from "./plan-lines";
@@ -41,3 +44,27 @@ export function PastAcceptanceCard({ record, ticket, theme, compact }: { record:
 export function PastQuestionCard({ card, theme, compact }: { card: QuestionCardView; theme: PluginTheme; compact: boolean }) {
   return <FinishedCard theme={theme} compact={compact} icon="MessageCircleQuestion" kind="Question" subject={card.subject} outcome={card.outcome} tone={card.tone} time={card.time} words={card.words} />;
 }
+
+/** An answered permission ask or tool question, where it was asked: who answered it how, and when. */
+function PastPermissionCardView({ ask, theme, compact }: { ask: PermissionAsk; theme: PluginTheme; compact: boolean }) {
+  const view = permissionCardView(ask, formatClock);
+  return (
+    <FinishedCard
+      theme={theme}
+      compact={compact}
+      icon={view.kind === "Question" ? "MessageCircleQuestion" : "KeyRound"}
+      kind={view.kind}
+      subject={view.subject}
+      outcome={view.outcome}
+      tone={view.tone}
+      time={view.time}
+      words={view.words}
+    />
+  );
+}
+
+/** Drawn between messages, outside their memoised rows: drawn again only when its ask changes. */
+export const PastPermissionCard = memo(
+  PastPermissionCardView,
+  (previous, next) => samePermissionAsks([previous.ask], [next.ask]) && previous.theme === next.theme && previous.compact === next.compact,
+);
