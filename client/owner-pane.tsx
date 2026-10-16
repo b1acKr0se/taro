@@ -51,6 +51,7 @@ export function OwnerPane({
   ticketBeside,
   backTo,
   planOpen = false,
+  planRequest = 0,
   onBack,
   onLeavePlan = () => undefined,
   onOpenAgent,
@@ -68,6 +69,8 @@ export function OwnerPane({
   backTo: string;
   /** Opened by View plan: the Ticket tab shows, and Back returns to where it was pressed. */
   planOpen?: boolean;
+  /** View plan presses so far: each unfolds the Plan in the Ticket tab, as a past plan's ticket keeps it folded (TR-149). */
+  planRequest?: number;
   onBack: () => void;
   /** The user switched from the plan to the chat. */
   onLeavePlan?: () => void;
@@ -177,7 +180,7 @@ export function OwnerPane({
       <View style={{ flex: 1 }}>
         {tabsVisited.has(`${card.id}:ticket`) ? (
           <KeptPane key={`ticket:${card.id}`} shown={tab === "ticket"}>
-            <TicketView project={project} ticket={card.id} theme={theme} />
+            <TicketView project={project} ticket={card.id} theme={theme} planRequest={planOpen ? planRequest : 0} />
           </KeptPane>
         ) : null}
         {!tabsVisited.has(`${card.id}:chat`) ? null : (

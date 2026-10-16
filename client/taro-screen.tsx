@@ -532,6 +532,7 @@ function ProjectView({
         ticketBeside={layout.ticketBeside}
         backTo={backTo(phoneTab)}
         planOpen={planOpen}
+        planRequest={planRequest}
         onBack={ticketBackLatest}
         onLeavePlan={leavePlan}
         onOpenAgent={openAgent}
