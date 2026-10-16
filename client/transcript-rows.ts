@@ -12,6 +12,7 @@
  */
 import type { usePaseo } from "@getpaseo/plugin/client";
 
+import { stripInterruptNote } from "../shared/chat-queue";
 import { heldWhileWriting } from "../shared/streaming-text";
 
 import { imageLineOf } from "./markdown-parse";
@@ -146,8 +147,10 @@ export function transcriptRows(entries: readonly TimelineEntry[], cwd?: string |
     switch (item.type) {
       case "user_message": {
         const summary = injectedSummary(item.text, item.clientMessageId);
+        // A Send now's note to the agent is not the user's words (TR-171).
+        const words = stripInterruptNote(item.text);
         // A message of attachments alone has no words; the row still says the user sent something.
-        const text = item.text.trim() === "" ? ATTACHMENTS_ONLY : item.text;
+        const text = words.trim() === "" ? ATTACHMENTS_ONLY : words;
         rows.push(summary === null ? (entry.timestamp === undefined ? { key, kind: "user", text } : { key, kind: "user", text, at: entry.timestamp }) : { key, kind: "event", text: summary });
         break;
       }

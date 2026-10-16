@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { INTERRUPT_NOTE_END, INTERRUPT_NOTE_START } from "../shared/chat-queue";
 import { transcriptRows, type TimelineEntry } from "./transcript-rows";
 
 const IMAGE = "![Image](file:///tmp/paseo-attachments-x1/ab.png)";
@@ -123,5 +124,22 @@ describe("transcriptRows tool calls (TR-150)", () => {
       { key: "2", kind: "tool", text: "Read client/notes.ts", label: "Read", summary: "client/notes.ts", icon: "Eye", tally: { kind: "read", filePath: "/home/user/notes-app/client/notes.ts" }, alone: false, status: "failed" },
       { key: "3", kind: "tool", text: "Plan", label: "Plan", icon: "Brain", tally: { kind: "other" }, alone: true, status: "completed" },
     ]);
+  });
+});
+
+describe("transcriptRows Send now messages (TR-171)", () => {
+  const note = `${INTERRUPT_NOTE_START}\nThe user cut your last step off; check what it left.\n${INTERRUPT_NOTE_END}`;
+
+  it("never shows the note a Send now puts before the user's words", () => {
+    const words = "Stop, **use the other branch**:\n\n- `main`\n- not `dev`";
+    expect(transcriptRows([user(1, `${note}\n\n${words}`)])).toEqual([{ key: "1", kind: "user", text: words }]);
+  });
+
+  it("says attachments for a Send now of attachments alone", () => {
+    expect(transcriptRows([user(1, note)]).map((row) => row.text)).toEqual(["(attachments)"]);
+  });
+
+  it("keeps a message of words only as it is", () => {
+    expect(transcriptRows([user(1, "Plain words")])).toEqual([{ key: "1", kind: "user", text: "Plain words" }]);
   });
 });
