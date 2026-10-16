@@ -7,6 +7,8 @@
  * template, the usual decision card shows. The full plan, with its sections
  * folded past their limits, is `PlanBody`, shown in the Ticket tab. Given `onOpen`, the whole card opens
  * the ticket's chat, where it lands on the plan's message, as the other cards that wait for the user do (TR-126).
+ * A plan asked again shows what is new or changed since the plan the user last answered in green, under a
+ * caption saying so (TR-151), on the card and in `PlanBody`.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
@@ -15,13 +17,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 
-import { answerDecision, loadTicket } from "../shared/contracts";
+import { answerDecision, loadTicket, type TicketDetailView } from "../shared/contracts";
 import { SCOPE_APPROVAL, planCardOptions, planChangeBox, type PlanActionsPlace } from "../shared/decision-view";
 import { parsePlan, splitChoice, type ParsedPlan, type PlanSection } from "../shared/plan";
+import { noPlanChanges, planChanges, planChangesCaption, type PlanChanges } from "../shared/plan-changes";
 import type { StoredDecision } from "../shared/state";
 import { ChangeBox } from "./change-box";
 import { Pressable } from "./focus";
-import { errorText } from "./format";
+import { errorText, formatClock, formatDay } from "./format";
 import { useRevealFocused } from "./keyboard";
 import { Markdown, MarkdownInline } from "./markdown";
 import { planAnswers, type PlanAnswer } from "./plan-lines";
@@ -61,6 +64,24 @@ function useTicketDetail(project: string, ticket: string | null, enabled: boolea
 export function useTicketPlan(project: string, ticket: string | null, enabled = true): ParsedPlan | null {
   const source = useTicketDetail(project, ticket, enabled)?.plan ?? null;
   return useMemo(() => parsePlan(source), [source]);
+}
+
+/** What the plan marks green, and the caption saying since when; null caption when nothing changed. */
+export interface PlanMarks {
+  changes: PlanChanges;
+  caption: string | null;
+}
+
+/** The marks of `plan` against the plan the user last answered (TR-151); none for a first plan. */
+export function usePlanMarks(plan: ParsedPlan | null, previous: TicketDetailView["previousPlan"] | undefined): PlanMarks | null {
+  const previousSource = previous?.plan ?? null;
+  const at = previous?.at ?? null;
+  const kind = previous?.kind ?? null;
+  return useMemo(() => {
+    if (plan === null) return null;
+    const changes = previousSource === null ? noPlanChanges(plan) : planChanges(parsePlan(previousSource), plan);
+    return { changes, caption: changes.any && kind !== null ? planChangesCaption(kind, formatClock(at), formatDay(at)) : null };
+  }, [plan, previousSource, at, kind]);
 }
 
 /** The ticket's plan answers, for the lines past plans leave in the owner's chat (TR-135); null while it loads. */
@@ -103,14 +124,18 @@ export function PlanDecision({
 }) {
   const options = useMemo(() => planCardOptions(decision), [decision]);
   const eligible = decision.id === SCOPE_APPROVAL && decision.ticket !== null && options !== null;
-  const plan = useTicketPlan(decision.project, decision.ticket, eligible);
-  if (!eligible || options === null || plan === null) return <>{children}</>;
-  return <PlanCard decision={decision} plan={plan} options={options} theme={theme} compact={compact} head={head} onOpen={onOpen} brief={brief} answeredFrom={answeredFrom} onAnswered={onAnswered} fill={fill} />;
+  const detail = useTicketDetail(decision.project, decision.ticket, eligible);
+  const source = detail?.plan ?? null;
+  const plan = useMemo(() => parsePlan(source), [source]);
+  const marks = usePlanMarks(plan, detail?.previousPlan);
+  if (!eligible || options === null || plan === null || marks === null) return <>{children}</>;
+  return <PlanCard decision={decision} plan={plan} marks={marks} options={options} theme={theme} compact={compact} head={head} onOpen={onOpen} brief={brief} answeredFrom={answeredFrom} onAnswered={onAnswered} fill={fill} />;
 }
 
 function PlanCard({
   decision,
   plan,
+  marks,
   options,
   theme,
   compact,
@@ -123,6 +148,7 @@ function PlanCard({
 }: {
   decision: StoredDecision;
   plan: ParsedPlan;
+  marks: PlanMarks;
   options: PlanCardOptions;
   theme: PluginTheme;
   compact: boolean;
@@ -180,7 +206,7 @@ function PlanCard({
   const body = (
     <>
       {titles}
-      {unfolded ? <PlanBody plan={plan} theme={theme} /> : <PlanSummary plan={plan} theme={theme} compact={compact} brief={brief} />}
+      {unfolded ? <PlanBody plan={plan} marks={marks} theme={theme} /> : <PlanSummary plan={plan} marks={marks} theme={theme} compact={compact} brief={brief} />}
       <View style={styles.buttons}>
         <PlanActions
           decision={decision}
@@ -204,8 +230,18 @@ function PlanCard({
   );
 }
 
+/** The line above a plan with changes saying what its green means (TR-151). */
+function ChangesCaption({ caption, theme, lines }: { caption: string | null; theme: PluginTheme; lines?: number | undefined }) {
+  if (caption === null) return null;
+  return (
+    <Text style={{ color: theme.colors.statusSuccess, fontSize: FONT_SIZE.caption, fontWeight: "600" }} numberOfLines={lines}>
+      {caption}
+    </Text>
+  );
+}
+
 /** Goal, the choices and Size as labelled rows in a tinted box; labels above their text where the box is narrow. */
-function PlanSummary({ plan, theme, compact, brief }: { plan: ParsedPlan; theme: PluginTheme; compact: boolean; brief: boolean }) {
+function PlanSummary({ plan, marks, theme, compact, brief }: { plan: ParsedPlan; marks: PlanMarks; theme: PluginTheme; compact: boolean; brief: boolean }) {
   const [width, setWidth] = useState<number | null>(null);
   const stacked = width === null ? compact : width < STACK_BELOW_WIDTH;
   const openLink = useOpenLink();
@@ -233,15 +269,19 @@ function PlanSummary({ plan, theme, compact, brief }: { plan: ParsedPlan; theme:
       marker: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
       bulletText: { flex: 1, minWidth: 0 },
       more: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
+      changed: { color: colors.statusSuccess },
+      outer: { gap: SPACE.sm },
     }),
     [colors, stacked],
   );
+  const { changes } = marks;
   const shownChoices = plan.choices.slice(0, 4);
+  const hiddenNew = changes.choices.slice(shownChoices.length).filter(Boolean).length;
   const rows: { label: string; content: ReactNode }[] = [];
   rows.push({
     label: "GOAL",
     content: (
-      <Text style={styles.goal} numberOfLines={brief ? BRIEF_LINES.goal : undefined}>
+      <Text style={[styles.goal, changes.goal ? styles.changed : null]} numberOfLines={brief ? BRIEF_LINES.goal : undefined}>
         <MarkdownInline text={plan.goal} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
       </Text>
     ),
@@ -253,11 +293,11 @@ function PlanSummary({ plan, theme, compact, brief }: { plan: ParsedPlan; theme:
         <>
           {shownChoices.map((choice, index) => (
             <View key={`${index}:${choice.choice}`} style={styles.bullet}>
-              <Text style={styles.marker}>•</Text>
-              <Text style={[styles.text, styles.bulletText]} numberOfLines={brief ? BRIEF_LINES.choice : undefined}>
+              <Text style={[styles.marker, changes.choices[index] === true ? styles.changed : null]}>•</Text>
+              <Text style={[styles.text, styles.bulletText, changes.choices[index] === true ? styles.changed : null]} numberOfLines={brief ? BRIEF_LINES.choice : undefined}>
                 <MarkdownInline text={choice.choice} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
                 {brief || choice.why === "" ? null : (
-                  <Text style={styles.muted}>
+                  <Text style={changes.choices[index] === true ? null : styles.muted}>
                     {" — "}
                     <MarkdownInline text={choice.why} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
                   </Text>
@@ -265,7 +305,12 @@ function PlanSummary({ plan, theme, compact, brief }: { plan: ParsedPlan; theme:
               </Text>
             </View>
           ))}
-          {plan.choices.length > shownChoices.length ? <Text style={styles.more}>+{plan.choices.length - shownChoices.length} more in the plan</Text> : null}
+          {plan.choices.length > shownChoices.length ? (
+            <Text style={styles.more}>
+              +{plan.choices.length - shownChoices.length} more in the plan
+              {hiddenNew === 0 ? null : <Text style={styles.changed}>{` (${hiddenNew} new or changed)`}</Text>}
+            </Text>
+          ) : null}
         </>
       ),
     });
@@ -274,20 +319,23 @@ function PlanSummary({ plan, theme, compact, brief }: { plan: ParsedPlan; theme:
     rows.push({
       label: "SIZE",
       content: (
-        <Text style={[styles.text, styles.muted]} numberOfLines={brief ? BRIEF_LINES.size : undefined}>
+        <Text style={[styles.text, changes.size ? styles.changed : styles.muted]} numberOfLines={brief ? BRIEF_LINES.size : undefined}>
           <MarkdownInline text={plan.size} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
         </Text>
       ),
     });
   }
   return (
-    <View style={styles.box} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
-      {rows.map((row, index) => (
-        <View key={row.label} style={[styles.row, index === 0 ? null : styles.divider]}>
-          <Text style={styles.label}>{row.label}</Text>
-          <View style={styles.content}>{row.content}</View>
-        </View>
-      ))}
+    <View style={styles.outer}>
+      <ChangesCaption caption={marks.caption} theme={theme} lines={brief ? 3 : undefined} />
+      <View style={styles.box} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
+        {rows.map((row, index) => (
+          <View key={row.label} style={[styles.row, index === 0 ? null : styles.divider]}>
+            <Text style={styles.label}>{row.label}</Text>
+            <View style={styles.content}>{row.content}</View>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -435,7 +483,7 @@ function useOpenLink(): (url: string) => void {
  * choice's why muted), and a "+N more" fold past the section's limit. `proof` goes under How I'll
  * prove it (an older ticket's criteria), in a section of its own when the plan has none.
  */
-export function PlanBody({ plan, theme, proof = null }: { plan: ParsedPlan; theme: PluginTheme; proof?: ReactNode }) {
+export function PlanBody({ plan, marks = null, theme, proof = null }: { plan: ParsedPlan; marks?: PlanMarks | null; theme: PluginTheme; proof?: ReactNode }) {
   const openLink = useOpenLink();
   const [unfolded, setUnfolded] = useState<ReadonlySet<number>>(new Set());
   const { colors } = theme;
@@ -450,19 +498,22 @@ export function PlanBody({ plan, theme, proof = null }: { plan: ParsedPlan; them
       marker: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
       bulletText: { flex: 1, minWidth: 0 },
       more: { color: colors.accent, fontSize: FONT_SIZE.caption, fontWeight: "600" as const, paddingVertical: SPACE.xxs },
+      changed: { color: colors.statusSuccess },
+      // Markdown keeps its own text colour: changed prose of more than one line gets a green rule beside it.
+      changedBlock: { borderLeftWidth: 2, borderLeftColor: colors.statusSuccess, paddingLeft: SPACE.sm },
     }),
     [colors],
   );
   const inline = (text: string) => <MarkdownInline text={text} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />;
 
-  function bulletText(section: PlanSection, item: string): ReactNode {
+  function bulletText(section: PlanSection, item: string, changed: boolean): ReactNode {
     if (section.key !== "choices") return inline(item);
     const choice = splitChoice(item);
     if (choice.why === "") return inline(item);
     return (
       <>
         {inline(choice.choice)}
-        <Text style={styles.muted}>
+        <Text style={changed ? null : styles.muted}>
           {" — "}
           {inline(choice.why)}
         </Text>
@@ -483,8 +534,10 @@ export function PlanBody({ plan, theme, proof = null }: { plan: ParsedPlan; them
   return (
     <View style={styles.body}>
       {plan.intro === "" ? null : <Markdown source={plan.intro} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />}
+      <ChangesCaption caption={marks?.caption ?? null} theme={theme} />
       {plan.sections.map((section, sectionIndex) => {
         const open = unfolded.has(sectionIndex);
+        const changes = marks?.changes.sections[sectionIndex];
         // Goal and Size are lines: a long one is shown whole, and the template's limit is the owner's to keep.
         const foldable = section.limit !== null && section.key !== "goal" && section.key !== "size" && section.items.length > section.limit;
         const shown = foldable && !open ? section.items.slice(0, section.limit ?? undefined) : section.items;
@@ -493,13 +546,24 @@ export function PlanBody({ plan, theme, proof = null }: { plan: ParsedPlan; them
             <Text accessibilityRole="header" style={styles.heading}>
               {section.heading}
             </Text>
-            {section.prose === "" ? null : <Markdown source={section.prose} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />}
-            {shown.map((item, index) => (
-              <View key={`${index}:${item}`} style={styles.bullet}>
-                <Text style={styles.marker}>•</Text>
-                <Text style={[styles.text, styles.bulletText]}>{bulletText(section, item)}</Text>
+            {section.prose === "" ? null : changes?.prose === true && !section.prose.includes("\n") ? (
+              <Text style={[styles.text, styles.changed]}>{inline(section.prose)}</Text>
+            ) : changes?.prose === true ? (
+              <View style={styles.changedBlock}>
+                <Markdown source={section.prose} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
               </View>
-            ))}
+            ) : (
+              <Markdown source={section.prose} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
+            )}
+            {shown.map((item, index) => {
+              const changed = changes?.items[index] === true;
+              return (
+                <View key={`${index}:${item}`} style={styles.bullet}>
+                  <Text style={[styles.marker, changed ? styles.changed : null]}>•</Text>
+                  <Text style={[styles.text, styles.bulletText, changed ? styles.changed : null]}>{bulletText(section, item, changed)}</Text>
+                </View>
+              );
+            })}
             {foldable ? (
               <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => toggle(sectionIndex)}>
                 <Text style={styles.more}>{open ? "Show less" : `+${section.items.length - shown.length} more`}</Text>

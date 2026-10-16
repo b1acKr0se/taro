@@ -11,6 +11,7 @@ import { ChatMessageIdSchema } from "./pending-sends";
 import { ColumnIdSchema } from "./board";
 import { MilestoneSchema } from "./milestones";
 import { PauseViewSchema } from "./pause";
+import { PlanAnswerKindSchema } from "./plan-changes";
 import { PULL_REQUEST_STATES } from "./pull-request-state";
 import { QueuedWaitSchema } from "./queued-wait";
 import { PaseoProjectCandidateSchema, SettingsTemplateSchema } from "./project-candidates";
@@ -300,6 +301,8 @@ export const TicketDetailSchema = z.object({
   compactOwner: z.string().nullable().default(null),
   /** Change spec… is offered: Queued with no owner (`shared/spec-change.ts`, TR-129). */
   specChangeable: z.boolean().default(false),
+  /** The plan the user last answered, when and how (TR-151), so a plan asked again marks what changed since; null before any answer. */
+  previousPlan: z.object({ plan: z.string(), at: z.string(), kind: PlanAnswerKindSchema }).nullable().default(null),
 });
 export type TicketDetailView = z.infer<typeof TicketDetailSchema>;
 
