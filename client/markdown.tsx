@@ -174,6 +174,7 @@ function renderInline(text: string, styles: MarkdownStyles, context: InlineConte
         );
       case "bold":
         return (
+          // inherits colour: renderInline's pieces sit inside the paragraph's Text (raw strings need one)
           <Text key={index} style={styles.bold}>
             {token.text}
           </Text>

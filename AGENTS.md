@@ -15,6 +15,10 @@ EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
 - RPC wire names match `/^[a-z][a-z0-9._-]*$/`. Colours only from `theme.colors`, except the
   image viewer's opaque black backdrop and white controls (`VIEWER` in `client/image-view.tsx`) and
   GitHub's merged purple on a Done card's PR (`GITHUB_MERGED` in `client/github-colors.ts`).
+  Every `Text`, `TextInput` and `CentredLabel` sets a theme colour or sits inside a `Text` that does:
+  the platform default is black, unreadable in dark theme (TR-170). `client/text-colour.test.ts`
+  fails on one; a piece of inline text built in another function says so with an
+  `inherits colour` comment on the line above.
 - Client code reaches the phone's Hermes from source, without Metro: no classes (use a factory
   function returning an object), and never capture a `for…of` loop variable in a closure (use
   `.map`). `server/client-bundle.test.ts` compiles the client as Paseo does and fails on either;
@@ -117,6 +121,8 @@ daemon with its own home and port, unique to your ticket:
   find one with `find / -path '*/node_modules/playwright/package.json' 2>/dev/null` and pass its
   directory. A text field with a phone keyboard open (simulated): `node tools/keyboard.cjs
   <playwright module> http://127.0.0.1:$PORT/ out "<placeholder>" [click text…]` (usage in its header).
+  `COLOR_SCHEME=dark` draws Paseo's dark theme with `shot.cjs` and `phone.cjs`: a change that adds
+  or restyles something drawn shows each screen it touches in dark and in light (TR-170).
 - Onboard a scratch git repository (not this one) with cheap models (Sonnet/Haiku) for end-to-end
   runs; agents on a throwaway daemon cost real money, so keep runs short. Make the repository the
   `mktemp -d` directory itself and print its path: `R=$(mktemp -d /tmp/notes-app.XXXXXX); git -C
