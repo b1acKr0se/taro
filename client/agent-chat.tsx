@@ -785,10 +785,15 @@ function ToolLine({ tool, theme, styles }: { tool: ToolRow; theme: PluginTheme; 
       ) : (
         <Icon name={tool.status === "failed" ? "TriangleAlert" : tool.icon} size={13} color={tool.status === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
       )}
-      <Text style={styles.toolText} numberOfLines={1}>
-        <Text style={styles.toolLabel}>{tool.label}</Text>
-        {tool.summary === undefined ? null : `  ${tool.summary}`}
+      {/* Apart, not one text with spaces: the web build collapses the spaces Paseo's gap stands for. */}
+      <Text style={styles.toolLabel} numberOfLines={1}>
+        {tool.label}
       </Text>
+      {tool.summary === undefined ? null : (
+        <Text style={styles.toolText} numberOfLines={1}>
+          {tool.summary}
+        </Text>
+      )}
     </View>
   );
 }
@@ -961,7 +966,7 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
     lineTextHeight: { lineHeight: lineHeightFor(FONT_SIZE.caption) },
     lineIcon: { height: lineHeightFor(FONT_SIZE.caption), justifyContent: "center" as const },
     toolText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body) },
-    toolLabel: { color: colors.foreground },
+    toolLabel: { flexShrink: 0, maxWidth: "50%" as const, color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body) },
     toolTitle: { flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body) },
     toolTitleOpen: { color: colors.foreground },
     // Not the agent's words: the chat saying a question is on its way (TR-144).
