@@ -7,7 +7,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
-import { Fragment, memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Keyboard, Platform, ScrollView, Text, useWindowDimensions, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
 
 import { attachmentProblem, refuseOversizedImages, type DraftAttachment } from "../shared/attachments";
@@ -28,7 +28,7 @@ import { watchFileDrops } from "./file-drop";
 import { draftAttachments } from "./draft-attachments";
 import { rowButtonStyle } from "./control-colors";
 import { Pressable } from "./focus";
-import { useFollowEnd } from "./follow-end";
+import { nearTheTop, useFollowEnd } from "./follow-end";
 import { ImageThumbnail } from "./image-view";
 import { KeyboardRevealProvider, useKeyboardOverlap, useKeyboardScroll, useRevealFocused } from "./keyboard";
 import { formatClock } from "./format";
@@ -255,6 +255,16 @@ export function AgentChat({
 
   // Answering the first makes another first, whose row may not lay out again: the jump link needs to know.
   useEffect(placeFirst, [firstKey]);
+
+  /** The first entry drawn, to tell an earlier page put above the reader (TR-169) from any other change. */
+  const firstSeq = timeline.entries[0]?.seqStart;
+  const drawnFirst = useRef<{ agentId: string; seq: number | undefined }>({ agentId: agent.id, seq: firstSeq });
+  // As the rows are committed, before the scroll view reports the taller content.
+  useLayoutEffect(() => {
+    const before = drawnFirst.current;
+    if (before.agentId === agent.id && before.seq !== undefined && firstSeq !== undefined && firstSeq < before.seq) follow.holdPosition();
+    drawnFirst.current = { agentId: agent.id, seq: firstSeq };
+  }, [agent.id, firstSeq]);
 
   function jumpToFirst(): void {
     const scroll = () => {
@@ -501,6 +511,8 @@ export function AgentChat({
           onScroll={(event) => {
             follow.scrollProps.onScroll(event);
             keyboardScroll.onScroll(event);
+            // The reader scrolled up near the start of what is read: the page before it, ahead of them (TR-169).
+            if (timeline.hasOlder && nearTheTop(event.nativeEvent)) timeline.loadOlder();
           }}
           onContentSizeChange={(width, height) => {
             follow.scrollProps.onContentSizeChange(width, height);
@@ -522,6 +534,7 @@ export function AgentChat({
               <Text style={styles.hint}>{timeline.loading ? "Loading the conversation…" : "Nothing said yet."}</Text>
             ) : (
               <>
+              <EarlierMessages hasOlder={timeline.hasOlder} loading={timeline.loadingOlder} theme={theme} styles={styles} onLoad={timeline.loadOlder} />
               {permissionCardsOf(permissionPlaces.before)}
               {groups.map((group) => {
                 const row = "row" in group ? group.row : null;
@@ -971,6 +984,27 @@ function samePlanLine(left: PlanLine | undefined, right: PlanLine | undefined): 
 }
 
 /** The chat's styles, built once per theme, width and composer size. */
+/**
+ * The transcript's first line (TR-169): earlier messages being read, a link to read them (a chat too
+ * short to scroll up), or the conversation's start.
+ */
+function EarlierMessages({ hasOlder, loading, theme, styles, onLoad }: { hasOlder: boolean; loading: boolean; theme: PluginTheme; styles: ChatStyles; onLoad: () => void }) {
+  if (!hasOlder) return <Text style={[styles.earlier, styles.earlierStart]}>Start of the conversation</Text>;
+  if (loading) {
+    return (
+      <View style={styles.earlierLoading}>
+        <Spinner size={12} color={theme.colors.foregroundMuted} />
+        <Text style={styles.earlier}>Loading earlier messages…</Text>
+      </View>
+    );
+  }
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel="Load earlier messages" style={styles.earlierLink} onPress={onLoad}>
+      <Text style={[styles.earlier, styles.earlierLinkText]}>Load earlier messages</Text>
+    </Pressable>
+  );
+}
+
 function chatStyles(theme: PluginTheme, compact: boolean) {
   const { colors } = theme;
   return {
@@ -1030,6 +1064,12 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
     toolFailed: { flexShrink: 0, color: colors.statusDanger, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body) },
     error: { color: colors.statusDanger, fontSize: FONT_SIZE.small },
     hint: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center" as const, padding: SPACE.lg },
+    // The transcript's first line (TR-169), each state the same height so swapping them moves nothing.
+    earlier: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), textAlign: "center" as const },
+    earlierLoading: { flexDirection: "row" as const, alignItems: "center" as const, justifyContent: "center" as const, gap: SPACE.sm, paddingVertical: SPACE.xs },
+    earlierLink: { alignSelf: "center" as const, paddingVertical: SPACE.xs, paddingHorizontal: SPACE.sm, borderRadius: 6 },
+    earlierLinkText: { color: colors.accent },
+    earlierStart: { paddingVertical: SPACE.xs },
     composerFrame: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface0 },
     // The transcript's side padding, so the box lines up with the messages above it.
     composer: {

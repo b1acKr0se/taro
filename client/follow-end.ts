@@ -57,6 +57,17 @@ export function layoutShown(chatHidden: boolean, layout: { height: number }): bo
   return !chatHidden && layout.height > 0;
 }
 
+/**
+ * Whether a scroll leaves the reader within a screen of the transcript's top, scrolled up from its end
+ * (TR-169): time to read the page before it. At the end means a chat too short to scroll, or one
+ * opening, where nothing was scrolled up to.
+ */
+export function nearTheTop(scroll: Pick<NativeScrollEvent, "contentOffset" | "contentSize" | "layoutMeasurement">): boolean {
+  const viewportHeight = scroll.layoutMeasurement.height;
+  if (viewportHeight === 0) return false;
+  return scroll.contentOffset.y < viewportHeight && !isAtEnd(scroll.contentOffset.y, viewportHeight, scroll.contentSize.height, 0);
+}
+
 /** How far a scroll may land from the offset asked for and still be the one asked for, in points. */
 const OFFSET_SLACK = 2;
 
@@ -103,6 +114,8 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
   const hidden = useRef(false);
   /** Whether the reader is away from the end, for the button that brings them back. */
   const [away, setAway] = useState(false);
+  /** The content height before rows were put above the reader (TR-169): the next growth is theirs. */
+  const heldAt = useRef<number | null>(null);
 
   /** Follow the end again — the reader just sent something, or answered something. */
   function pin(): void {
@@ -170,6 +183,16 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
     }, 0);
   }
 
+  /**
+   * Keeps what the reader sees in place while rows are put above it (an earlier page, TR-169): the
+   * next content growth is theirs, and the view moves down by as much. Called as the rows are
+   * committed, before the scroll view reports its new size. React Native's
+   * `maintainVisibleContentPosition` would do it on a phone, but does nothing on the web.
+   */
+  function holdPosition(): void {
+    if (!pinnedToEnd.current) heldAt.current = knownHeight.current;
+  }
+
   /** Scrolls to an offset the reader asked for (a jump link), leaving the end unfollowed. */
   function scrollTo(y: number): void {
     pinnedToEnd.current = false;
@@ -207,6 +230,13 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
     onScrollEndDrag: scrolled,
     onMomentumScrollEnd: scrolled,
     onContentSizeChange(_width: number, height: number): void {
+      const held = heldAt.current;
+      heldAt.current = null;
+      if (held !== null && held > 0 && height > held && !pinnedToEnd.current) {
+        const y = offset.current + height - held;
+        offset.current = y;
+        scroller.current?.scrollTo({ y, animated: false });
+      }
       knownHeight.current = height;
       // Content that shrank under a reader scrolled up can bring the end into view with no scroll event.
       if (!pinnedToEnd.current && !hidden.current && height > 0 && pendingReveals.current === 0 && isAtEnd(offset.current, viewport.current, height, height)) {
@@ -236,5 +266,5 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
     },
   };
 
-  return { pin, keepAtEnd, reveal, revealRow, scrollTo, away, jumpToEnd, scrollProps, offset, viewport };
+  return { pin, keepAtEnd, reveal, revealRow, scrollTo, holdPosition, away, jumpToEnd, scrollProps, offset, viewport };
 }

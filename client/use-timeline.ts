@@ -2,6 +2,7 @@ import { usePaseo } from "@getpaseo/plugin/client";
 import { useEffect, useRef, useState } from "react";
 
 import { keptMap } from "./kept";
+import { addOlderPage, joinTail, withOlder, type OlderPages } from "./older-pages";
 import { drawnWithPieces, MAX_PIECES, streamedPiece, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
 import { CACHED_AGENTS, cacheable, createTimelineCache } from "./timeline-cache";
 import type { TimelinePage, TimelineEntry } from "./transcript-rows";
@@ -12,6 +13,8 @@ const QUIET_MS = 300;
 const CEILING_MS = 1500;
 /** A reply being written is drawn at most this often: about ten times a second keeps a phone smooth (TR-069). */
 const DRAW_MS = 100;
+/** Entries read in one earlier page as the reader scrolls up (TR-169). */
+const OLDER_PAGE = 100;
 
 export interface AgentTimeline {
   entries: TimelineEntry[];
@@ -21,13 +24,18 @@ export interface AgentTimeline {
    * how a question the agent just asked reaches the pane without a poll.
    */
   agent: TimelinePage["agent"];
-  /** Whether the daemon has entries before the ones read — the tail is `limit` long. */
+  /** Whether the daemon has entries before the ones read: the tail is `limit` long, and earlier pages are read on demand. */
   hasOlder: boolean;
+  /** Reads the page before the first entry drawn (TR-169); nothing while one is read or none is left. */
+  loadOlder: () => void;
+  /** An earlier page is being read. */
+  loadingOlder: boolean;
   error: string | null;
   /** A read is in flight; `entries` may still hold the cached conversation meanwhile. */
   loading: boolean;
 }
 
+/** The tail alone: earlier pages are kept only while the chat is open. */
 type CachedRead = Pick<AgentTimeline, "entries" | "agent" | "hasOlder">;
 
 /**
@@ -49,11 +57,18 @@ const cache = createTimelineCache<CachedRead>(CACHED_AGENTS, keptMap(globalThis,
  * The one exception is the reply's own text (TR-144): its pieces are drawn after
  * the last read as they arrive, so the reply grows as it is written, and the
  * next read takes their place (`stream-pieces.ts`).
+ *
+ * Earlier pages (TR-169) are read before the first entry when the chat asks, and every tail read is
+ * joined to them, so a chat scrolled up keeps the whole conversation from there (`older-pages.ts`).
  */
 export function useAgentTimeline(agentId: string | null, revision = "", limit = 150): AgentTimeline {
   const paseo = usePaseo();
   /** The current subscription's re-read, for the revision effect below. */
   const reread = useRef<() => void>(() => {});
+  /** The current subscription's read of an earlier page. */
+  const readOlder = useRef<() => void>(() => {});
+  const [loadOlder] = useState(() => () => readOlder.current());
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [initial] = useState(() => (agentId === null ? undefined : cache.get(agentId)));
   const [entries, setEntries] = useState<TimelineEntry[]>(initial?.entries ?? []);
   const [agent, setAgent] = useState<TimelinePage["agent"]>(initial?.agent ?? null);
@@ -68,6 +83,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
       setHasOlder(false);
       setError(null);
       setLoading(false);
+      setLoadingOlder(false);
       return;
     }
     const id = agentId;
@@ -82,6 +98,10 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     let read: readonly TimelineEntry[] = [];
     let epoch: string | null = null;
     let pieces: StreamedPiece[] = [];
+    /** Earlier pages read, joined to every tail read after them; the last tail read's `hasOlder`. */
+    let older: OlderPages<TimelineEntry> | null = null;
+    let tailHasOlder = cache.get(id)?.hasOlder ?? false;
+    let olderInFlight = false;
     // Another agent in the same mount: its cached read, or a blank pane rather than the last agent's words.
     const cached = cache.get(id);
     setEntries(cached?.entries ?? []);
@@ -89,6 +109,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     setHasOlder(cached?.hasOlder ?? false);
     setError(null);
     setLoading(true);
+    setLoadingOlder(false);
 
     function clearTimers(): void {
       clearTimeout(quiet);
@@ -102,7 +123,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     function drawPieces(): void {
       draw = undefined;
       const drawn = drawnWithPieces(read, epoch, pieces);
-      if (alive && drawn !== null) setEntries(drawn as TimelineEntry[]);
+      if (alive && drawn !== null) setEntries(withOlder(older, drawn as TimelineEntry[]) as TimelineEntry[]);
     }
 
     // An async function, not an async arrow: Hermes evaluates an async arrow
@@ -117,12 +138,14 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
         const page = await timeline.refetch({ direction: "tail", limit, projection: "projected" });
         if (!alive) return;
         if (cacheable(page)) cache.set(id, { entries: page.entries, agent: page.agent ?? cache.get(id)?.agent ?? null, hasOlder: page.hasOlder });
+        older = joinTail(older, read, page);
         read = page.entries;
         epoch = page.epoch;
+        tailHasOlder = page.hasOlder;
         pieces = unreadPieces(pieces, epoch, read);
-        setEntries(withStreamed(read, epoch, pieces) as TimelineEntry[]);
+        setEntries(withOlder(older, withStreamed(read, epoch, pieces) as TimelineEntry[]) as TimelineEntry[]);
         if (page.agent !== null) setAgent(page.agent);
-        setHasOlder(page.hasOlder);
+        setHasOlder(older?.hasOlder ?? tailHasOlder);
         setError(page.error ?? null);
       } catch (cause) {
         if (alive) setError(cause instanceof Error ? cause.message : String(cause));
@@ -135,6 +158,28 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
             void load();
           }
         }
+      }
+    }
+
+    /** The page before the first entry drawn, put in front of it. */
+    async function loadOlderPage(): Promise<void> {
+      const first = older?.entries[0] ?? read[0];
+      const at = epoch;
+      if (olderInFlight || at === null || first === undefined || !(older?.hasOlder ?? tailHasOlder)) return;
+      olderInFlight = true;
+      setLoadingOlder(true);
+      try {
+        const page = await timeline.refetch({ direction: "before", cursor: { epoch: at, seq: first.seqStart }, limit: OLDER_PAGE, projection: "projected" });
+        // A tail read in the meantime may have started over (a new epoch): the page belongs to the old one.
+        if (!alive || epoch !== at) return;
+        older = addOlderPage(older, first, at, page);
+        setEntries(withOlder(older, withStreamed(read, epoch, pieces) as TimelineEntry[]) as TimelineEntry[]);
+        setHasOlder(older?.hasOlder ?? tailHasOlder);
+      } catch (cause) {
+        if (alive) setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        olderInFlight = false;
+        if (alive) setLoadingOlder(false);
       }
     }
 
@@ -160,6 +205,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     }
 
     reread.current = schedule;
+    readOlder.current = () => void loadOlderPage();
     void load();
     const unsubscribe = timeline.subscribe(onEvent);
     return () => {
@@ -179,5 +225,5 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     if (revision !== "") reread.current();
   }, [revision]);
 
-  return { entries, agent, hasOlder, error, loading };
+  return { entries, agent, hasOlder, loadOlder, loadingOlder, error, loading };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { layoutShown, revealsAgain, scrollEventKind, viewportChange } from "./follow-end";
+import { layoutShown, nearTheTop, revealsAgain, scrollEventKind, viewportChange } from "./follow-end";
 
 describe("revealsAgain", () => {
   it("scrolls to a revealed row again while the transcript settles", () => {
@@ -79,5 +79,24 @@ describe("scrollEventKind (TR-131)", () => {
   it("is free before anything was revealed", () => {
     expect(scrollEventKind(0, 0, [], 0)).toBe("free");
     expect(scrollEventKind(1200, 3017, [], 0)).toBe("free");
+  });
+});
+
+describe("nearTheTop (TR-169)", () => {
+  const at = (y: number, content: number, viewport = 600) => ({ contentOffset: { x: 0, y }, contentSize: { width: 400, height: content }, layoutMeasurement: { width: 400, height: viewport } });
+
+  it("is within a screen of the top, scrolled up", () => {
+    expect(nearTheTop(at(0, 3000))).toBe(true);
+    expect(nearTheTop(at(599, 3000))).toBe(true);
+    expect(nearTheTop(at(600, 3000))).toBe(false);
+  });
+
+  it("is never at the end: a chat too short to scroll, or opening at its end", () => {
+    expect(nearTheTop(at(0, 500))).toBe(false);
+    expect(nearTheTop(at(300, 900))).toBe(false);
+  });
+
+  it("is never in a hidden pane", () => {
+    expect(nearTheTop(at(0, 3000, 0))).toBe(false);
   });
 });

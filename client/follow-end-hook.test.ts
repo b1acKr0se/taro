@@ -122,3 +122,50 @@ describe("the button back to the end (TR-167)", () => {
     expect(scroller.scrollToEnd).not.toHaveBeenCalled();
   });
 });
+
+describe("an earlier page put above the reader (TR-169)", () => {
+  it("moves the view down by the height it adds, so the same line stays on screen", () => {
+    const { follow, scroller } = transcript();
+    follow.scrollProps.onScroll(scrollEvent(120, 3000));
+    follow.holdPosition();
+    follow.scrollProps.onContentSizeChange(400, 4500);
+    expect(scroller.scrollTo).toHaveBeenCalledWith({ y: 1620, animated: false });
+    expect(follow.offset.current).toBe(1620);
+  });
+
+  it("counts from where the reader scrolled to while the page was read", () => {
+    const { follow, scroller } = transcript();
+    follow.scrollProps.onScroll(scrollEvent(300, 3000));
+    follow.holdPosition();
+    follow.scrollProps.onScroll(scrollEvent(40, 3000));
+    follow.scrollProps.onContentSizeChange(400, 3800);
+    expect(scroller.scrollTo).toHaveBeenCalledWith({ y: 840, animated: false });
+  });
+
+  it("holds only the next growth: later growth at the end leaves the reader be", () => {
+    const { follow, scroller } = transcript();
+    follow.scrollProps.onScroll(scrollEvent(120, 3000));
+    follow.holdPosition();
+    follow.scrollProps.onContentSizeChange(400, 4500);
+    scroller.scrollTo.mockClear();
+    follow.scrollProps.onContentSizeChange(400, 4600);
+    expect(scroller.scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("does nothing for a reader following the end", () => {
+    const { follow, scroller } = transcript();
+    follow.holdPosition();
+    follow.scrollProps.onContentSizeChange(400, 4500);
+    expect(scroller.scrollTo).not.toHaveBeenCalled();
+    expect(scroller.scrollToEnd).toHaveBeenCalled();
+  });
+
+  it("leaves the button back to the end showing", () => {
+    const { follow } = transcript();
+    follow.scrollProps.onScroll(scrollEvent(120, 3000));
+    follow.holdPosition();
+    follow.scrollProps.onContentSizeChange(400, 4500);
+    follow.scrollProps.onScroll(scrollEvent(1620, 4500));
+    expect(state.away).toBe(true);
+  });
+});
