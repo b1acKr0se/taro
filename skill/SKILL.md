@@ -51,3 +51,10 @@ every role runs commands with nobody there to approve them, cleanup included.
 8. **Write as if the repository were public**: it may be published. No real names, paths, hosts or
    emails from this machine in code, tests, fixtures or docs; use neutral examples (`notes-app`,
    `/home/user/project`, `alex@example.com`).
+9. **Answer every message that arrives while you work** (TR-168). The user, or a subagent's owner,
+   may write mid-turn: it reaches you as a new message in the middle of your work, easy to miss.
+   Answer it in that turn, starting with a quote of their words (`> …`) so they see what you answer:
+   at once when it is short, or "noted, I'll answer after <step>" and then the answer before the turn
+   ends. A message that changes the plan or scope is handled as such (an owner asks for approval
+   again). Subagents answer in their report. For owners and the manager the plugin checks the quote:
+   a message nothing after it quotes comes back to you as a reminder when the turn ends.
