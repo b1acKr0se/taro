@@ -48,7 +48,7 @@ import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from
 import { composerNotice, heldFor, heldMarkText, offersSendNow } from "./composer-notice";
 import { usePendingSends, type ChatSend } from "./use-pending-sends";
 import { handBack, steersMidTurn, takeBack, type HoldReason, type PendingSend, type SendMark, type SendView } from "../shared/pending-sends";
-import { composerMetrics } from "./composer-height";
+import { COMPOSER_CONTROL_SIZE, composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
 import { useLatestCallback } from "./latest-callback";
@@ -582,7 +582,11 @@ export function AgentChat({
             <View style={styles.readOnly}>
               <Icon name="Archive" size={14} color={theme.colors.foregroundMuted} />
               <Text style={styles.readOnlyText}>{readOnly.note}</Text>
-              {context === undefined ? null : <ContextMeter theme={theme} used={context.used} max={context.max} ringSize={metrics.ringSize} />}
+              {context === undefined ? null : (
+                <View style={styles.readOnlyMeter}>
+                  <ContextMeter theme={theme} used={context.used} max={context.max} ringSize={metrics.ringSize} />
+                </View>
+              )}
             </View>
           </View>
         ) : (
@@ -1057,6 +1061,8 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
     },
     // The band spans the pane; only its note is held to the reading width.
     readOnlyBand: { backgroundColor: colors.surface1 },
+    // Into the band's padding, so an agent with a ring has the same band as one without.
+    readOnlyMeter: { marginVertical: Math.min(0, (lineHeightFor(FONT_SIZE.small) - COMPOSER_CONTROL_SIZE) / 2) },
     readOnlyText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) },
   };
 }
