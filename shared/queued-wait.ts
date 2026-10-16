@@ -20,6 +20,8 @@ export const QueuedSlotSchema = z.object({
   startable: z.number(),
   /** Threads in use and the limit, or null where the host publishes none. */
   threads: z.object({ current: z.number(), max: z.number() }).nullable(),
+  /** A live manager to start it once a slot is free: without one, nothing does. */
+  managerRunning: z.boolean().default(true),
 });
 export type QueuedSlot = z.infer<typeof QueuedSlotSchema>;
 
@@ -67,7 +69,7 @@ export function queuedWait(input: {
  * The slot a ticket waits for, when the recount finds it startable; a held, waiting, owned (paused back
  * to Queued) or child ticket waits for something else, so it gets none.
  */
-export function queuedSlot(count: Recount, id: string): QueuedSlot | null {
+export function queuedSlot(count: Recount, id: string, managerRunning: boolean): QueuedSlot | null {
   if (!count.startable.includes(id)) return null;
-  return { running: count.counting, cap: count.cap, startable: count.startable.length, threads: count.threads };
+  return { running: count.counting, cap: count.cap, startable: count.startable.length, threads: count.threads, managerRunning };
 }

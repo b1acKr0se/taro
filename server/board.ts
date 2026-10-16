@@ -230,6 +230,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
   );
   const page = pageColumns(placed, paging.limits, paging.include);
   const count = page.kept.some((entry) => entry.column === "queued") ? await queueRecount(project, paths.tracker, tickets, agents, headroom) : null;
+  const managerRunning = agents.some((agent) => agent.labels[TARO_LABELS.role] === "manager" && agent.status !== "closed");
 
   const childrenOf = new Map<string, { id: string; title: string; status: string }[]>();
   for (const ticket of tickets) {
@@ -253,7 +254,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
               dependencies: ticket.dependencies,
               holdReason: holdReason(pageFacts?.notes ?? null),
               tickets,
-              slot: count === null ? null : queuedSlot(count, ticket.id),
+              slot: count === null ? null : queuedSlot(count, ticket.id, managerRunning),
             })
           : null;
       const evidence = ticket.status === "Awaiting acceptance" && facts !== null ? await judgeTicketEvidence(project, ticket.id, facts.evidenceRecord, investigation) : null;

@@ -213,13 +213,26 @@ describe("loadBoard", () => {
     vi.mocked(viewTicket).mockImplementation(
       async (_tracker: string, id: string) => ({ implementationNotes: id === "TR-5" ? "HOLD 2026-10-13T14:59Z — one rewrite at a time" : null, finalSummary: "" }) as unknown as Awaited<ReturnType<typeof viewTicket>>,
     );
-    vi.mocked(projectAgents).mockResolvedValue([agent("owner-1", "owner", "TR-1", "2026-10-13T14:50:00Z"), agent("owner-2", "owner", "TR-2", "2026-10-13T14:50:00Z"), agent("reviewer-2", "reviewer", "TR-2", "2026-10-13T14:55:00Z")]);
+    vi.mocked(projectAgents).mockResolvedValue([
+      agent("owner-1", "owner", "TR-1", "2026-10-13T14:50:00Z"),
+      agent("owner-2", "owner", "TR-2", "2026-10-13T14:50:00Z"),
+      agent("reviewer-2", "reviewer", "TR-2", "2026-10-13T14:55:00Z"),
+      agent("manager", "manager", "TR-0", "2026-10-13T14:40:00Z"),
+    ]);
     const board = await loadBoard({} as PaseoApi, state([]), "taro");
     const waits = Object.fromEntries(board.cards.map((card) => [card.id, card.queuedWait]));
-    expect(waits["TR-3"]).toEqual({ on: [], dependencies: [], hold: null, slot: { running: ["TR-1", "TR-2"], cap: 2, startable: 1, threads: { current: 900, max: 2048 } } });
+    expect(waits["TR-3"]).toEqual({ on: [], dependencies: [], hold: null, slot: { running: ["TR-1", "TR-2"], cap: 2, startable: 1, threads: { current: 900, max: 2048 }, managerRunning: true } });
     expect(waits["TR-4"]?.slot).toBeNull();
     expect(waits["TR-5"]?.slot).toBeNull();
     expect(waits["TR-1"]).toBeNull();
+  });
+
+  it("says whether a live manager is there to fill a free slot", async () => {
+    vi.mocked(readProjectConfig).mockResolvedValue({ maxParallelOwners: 3 } as unknown as Awaited<ReturnType<typeof readProjectConfig>>);
+    vi.mocked(listTickets).mockResolvedValue([ticket("TR-3", "Queued")] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    vi.mocked(projectAgents).mockResolvedValue([{ ...agent("manager", "manager", "TR-0", "2026-10-13T14:40:00Z"), status: "closed" } as PaseoAgent]);
+    const board = await loadBoard({} as PaseoApi, state([]), "taro");
+    expect(board.cards[0]?.queuedWait?.slot).toEqual({ running: [], cap: 3, startable: 1, threads: null, managerRunning: false });
   });
 
   it("gives no slot without a project config", async () => {

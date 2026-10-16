@@ -141,7 +141,8 @@ export function queuedWaitLines(wait: QueuedWait): Lines {
 
 /**
  * A startable ticket's wait (TR-142): every slot taken, else threads too high to start an owner, else a
- * free slot. With more startable tickets than free slots it says so rather than guess the manager's pick.
+ * free slot, which only a live manager fills. With more startable tickets than free slots it says so
+ * rather than guess the manager's pick.
  */
 function queuedSlotLines(slot: QueuedSlot): Lines {
   const running = slot.running.length;
@@ -151,6 +152,7 @@ function queuedSlotLines(slot: QueuedSlot): Lines {
   if (running >= slot.cap) return { headline: "Waits for an owner slot", detail: joined([running === 0 ? owners : `${owners}: ${slot.running.join(", ")}`, threadsHigh ? threads : null]) };
   if (threadsHigh) return { headline: "Waits for host threads to free up", detail: joined([threads, owners]) };
   const free = slot.cap - running;
+  if (!slot.managerRunning) return { headline: "An owner slot is free: no manager is running to start it", detail: joined([owners, slot.startable > free ? `${slot.startable} ready for ${free} slot${free === 1 ? "" : "s"}` : null]) };
   if (slot.startable <= free) return { headline: "An owner slot is free: the manager starts it next", detail: owners };
   return { headline: "An owner slot is free", detail: joined([owners, `${slot.startable} ready for ${free} slot${free === 1 ? "" : "s"}`]) };
 }

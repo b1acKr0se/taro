@@ -91,15 +91,16 @@ describe("queued slot (TR-142)", () => {
   });
 
   it("gives a startable ticket the recount's owners, cap, startable count and threads", () => {
-    expect(queuedSlot(count, "TR-4")).toEqual({ running: ["TR-1", "TR-2", "TR-3", "TR-8"], cap: 3, startable: 1, threads: { current: 900, max: 2048 } });
+    expect(queuedSlot(count, "TR-4", true)).toEqual({ running: ["TR-1", "TR-2", "TR-3", "TR-8"], cap: 3, startable: 1, threads: { current: 900, max: 2048 }, managerRunning: true });
+    expect(queuedSlot(count, "TR-4", false)?.managerRunning).toBe(false);
   });
 
   it("gives none to a ticket waiting on a dependency, held, paused, already owned, a child, or unknown", () => {
-    for (const id of ["TR-5", "TR-6", "TR-7", "TR-8", "TR-3.01", "TR-99"]) expect(queuedSlot(count, id)).toBeNull();
+    for (const id of ["TR-5", "TR-6", "TR-7", "TR-8", "TR-3.01", "TR-99"]) expect(queuedSlot(count, id, true)).toBeNull();
   });
 
   it("is the wait only when no dependency or hold stands first", () => {
-    const slot = queuedSlot(count, "TR-4");
+    const slot = queuedSlot(count, "TR-4", true);
     const at = (dependencies: string[], notes: string | null) => queuedWait({ id: "TR-4", dependencies, holdReason: holdReason(notes), tickets: board, slot });
     expect(at([], null)).toEqual({ on: [], dependencies: [], hold: null, slot });
     expect(at(["TR-1"], null)).toEqual({ on: [{ id: "TR-1", status: "In Progress" }], dependencies: ["TR-1"], hold: null, slot: null });
