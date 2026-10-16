@@ -131,9 +131,10 @@ export function AgentChat({
   delivery?: { card: ReactNode; label: string; ready: boolean; accept: ReactNode } | undefined;
   /**
    * The ticket's plan answers (TR-135): a plan answered or asked again leaves one labelled line under
-   * its message. Null while the ticket loads (no lines yet), undefined for a chat without plans.
+   * its message. `answers` is null while the ticket loads (no lines yet); `settling` while a plan just
+   * answered has its record read. Undefined for a chat without plans.
    */
-  planAnswers?: readonly PlanAnswer[] | null | undefined;
+  planAnswers?: { answers: readonly PlanAnswer[] | null; settling: boolean } | undefined;
   /** Things to send (the manager's suggestions, TR-045), after the buttons in their sideways-scrolling line. */
   suggestions?: ReactNode;
 } & ChatComposer) {
@@ -179,7 +180,7 @@ export function AgentChat({
   const places = useMemo(() => (asks === undefined || asks.decisions.length === 0 ? null : placeDecisions(agentRows, asks.decisions)), [agentRows, asks?.decisions]);
   /** The message whose plan is the live card; every other plan asking gets its line. */
   const livePlanRow = useMemo(() => (places === null ? null : ([...places.byRow].find(([, decisions]) => decisions.some((decision) => decision.id === SCOPE_APPROVAL))?.[0] ?? null)), [places]);
-  const pastPlans = useMemo(() => (planAnswers === undefined || planAnswers === null ? null : planLines(rows, planAnswers, livePlanRow)), [rows, planAnswers, livePlanRow]);
+  const pastPlans = useMemo(() => (planAnswers?.answers == null ? null : planLines(rows, planAnswers.answers, livePlanRow, planAnswers.settling)), [rows, planAnswers?.answers, planAnswers?.settling, livePlanRow]);
   /** The acceptance card's place in the layouts, beside the decisions' keys. */
   const deliveryTarget = `delivery:${agent.id}`;
   /** The message the acceptance card is drawn under; null draws it at the end. */
@@ -879,6 +880,8 @@ const TranscriptGroup = memo(
 
 const NO_DECISIONS: readonly StoredDecision[] = [];
 
+const PLAN_ICON = 12;
+
 function samePlanLine(left: PlanLine | undefined, right: PlanLine | undefined): boolean {
   if (left === undefined || right === undefined) return left === right;
   return left.outcome === right.outcome && left.at === right.at && left.replaced === right.replaced && left.closed === right.closed;
@@ -889,9 +892,12 @@ function PastPlanLine({ line, theme, styles }: { line: PlanLine; theme: PluginTh
   const approved = line.outcome === "approved";
   const text = planLineText(line, formatClock);
   return (
-    <View style={styles.line} accessibilityLabel={text}>
-      <Icon name={approved ? "CircleCheck" : line.replaced ? "RotateCw" : line.closed === "withdrawn" ? "X" : "MessageSquare"} size={12} color={approved ? theme.colors.accent : theme.colors.foregroundMuted} />
-      <Text style={styles.lineText}>{text}</Text>
+    // Beside the first line when it wraps on a phone, not between the two.
+    <View style={[styles.line, styles.lineTop]} accessibilityLabel={text}>
+      <View style={styles.lineIcon}>
+        <Icon name={approved ? "CircleCheck" : line.replaced ? "RotateCw" : line.closed === "withdrawn" ? "X" : "MessageSquare"} size={PLAN_ICON} color={approved ? theme.colors.accent : theme.colors.foregroundMuted} />
+      </View>
+      <Text style={[styles.lineText, styles.lineTextHeight]}>{text}</Text>
     </View>
   );
 }
@@ -944,6 +950,9 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
     toolList: { gap: SPACE.xs, marginLeft: SPACE.md, paddingLeft: SPACE.sm, borderLeftWidth: 1, borderLeftColor: colors.border },
     toolLatest: { flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontFamily: MONOSPACE },
     lineText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
+    lineTop: { alignItems: "flex-start" as const },
+    lineTextHeight: { lineHeight: lineHeightFor(FONT_SIZE.caption) },
+    lineIcon: { height: lineHeightFor(FONT_SIZE.caption), justifyContent: "center" as const },
     toolText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontFamily: MONOSPACE },
     toolTitle: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
     error: { color: colors.statusDanger, fontSize: FONT_SIZE.small },

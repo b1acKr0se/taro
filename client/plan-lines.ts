@@ -52,9 +52,16 @@ function answerOutcome(answer: string): string {
 /**
  * The line under each past plan, by row key. `liveRow` is the message whose plan is drawn as the
  * live card (none). Rows without a time are left alone. The newest asking with nothing after it
- * gets no line: its card may simply not be stored yet while the owner's turn ends.
+ * gets no line: its card may simply not be stored yet while the owner's turn ends. `settling`: a
+ * plan was just answered and its record is still being read, so the newest asking waits for it
+ * rather than read as answered in chat.
  */
-export function planLines(rows: readonly { key: string; kind: string; text: string; at?: string | undefined }[], answers: readonly PlanAnswer[], liveRow: string | null): Map<string, PlanLine> {
+export function planLines(
+  rows: readonly { key: string; kind: string; text: string; at?: string | undefined }[],
+  answers: readonly PlanAnswer[],
+  liveRow: string | null,
+  settling = false,
+): Map<string, PlanLine> {
   const askings: { index: number; at: number }[] = [];
   const withdrawals: number[] = [];
   rows.forEach((row, index) => {
@@ -75,7 +82,7 @@ export function planLines(rows: readonly { key: string; kind: string; text: stri
     const between = rows.slice(asking.index + 1, endIndex);
     const userSpoke = between.some((each) => each.kind === "user");
     const withdrawn = withdrawals.some((index) => index > asking.index && index < endIndex);
-    if (answer === undefined && next === undefined && !withdrawn && !userSpoke) return;
+    if (answer === undefined && next === undefined && (settling || (!withdrawn && !userSpoke))) return;
     lines.set(row.key, {
       outcome: answer?.outcome ?? null,
       at: answer?.at ?? null,

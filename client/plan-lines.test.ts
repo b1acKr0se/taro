@@ -89,6 +89,15 @@ describe("planLines", () => {
     expect(planLines([asking("1", "2026-01-05T10:00:00Z")], [], "1").size).toBe(0);
   });
 
+  it("holds the newest plan's line while its answer's record is read, never reading it as answered in chat", () => {
+    const rows = [asking("1", "2026-01-05T10:00:00Z"), asking("2", "2026-01-05T10:12:00Z"), user("3", "Approve")];
+    const settling = planLines(rows, [changes], null, true);
+    expect(settling.has("2")).toBe(false);
+    expect(text(settling.get("1"))).toBe("Plan · changes requested 10:10 — replaced by the plan below");
+    expect(text(planLines(rows, [changes, approved], null, true).get("2"))).toBe("Plan · approved 10:20");
+    expect(text(planLines(rows, [changes], null, false).get("2"))).toBe("Plan · answered in chat");
+  });
+
   it("ignores an answer from before the plan was asked (an earlier asking past the timeline's tail)", () => {
     const rows = [asking("1", "2026-01-05T10:15:00Z"), asking("2", "2026-01-05T10:30:00Z")];
     expect(text(planLines(rows, [changes], "2").get("1"))).toBe("Plan · replaced by the plan below");
