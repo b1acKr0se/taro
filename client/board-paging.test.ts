@@ -123,7 +123,7 @@ describe("columnPage", () => {
 
   it("has nothing left once every card is loaded, and never anything left in an unpaged column", async () => {
     expect(columnPage(await daemon(5).load({}), "done").remaining).toBe(0);
-    const working = { cards: [card("NA-1", "working", "2026-01-01")], totals: { "needs-you": 0, working: 3, stalled: 0, queued: 0, done: 0 }, offPage: [] };
+    const working = { cards: [card("NA-1", "working", "2026-01-01")], totals: { "needs-you": 0, working: 3, stalled: 0, queued: 0, parked: 0, done: 0 }, offPage: [] };
     expect(columnPage(working, "working").remaining).toBe(0);
   });
 
@@ -137,7 +137,7 @@ describe("columnPage", () => {
     expect(columnPage(await daemon(6).load({ limits: { done: 25 } }), "done").foldable).toBe(true);
     // A card sent only because it is open does not count as shown.
     expect(columnPage(await daemon(8).load({ include: ["NA-1"] }), "done").foldable).toBe(false);
-    const working = { cards: Array.from({ length: 9 }, (_, index) => card(`NA-${index}`, "working", "2026-01-01")), totals: { "needs-you": 0, working: 9, stalled: 0, queued: 0, done: 0 }, offPage: [] };
+    const working = { cards: Array.from({ length: 9 }, (_, index) => card(`NA-${index}`, "working", "2026-01-01")), totals: { "needs-you": 0, working: 9, stalled: 0, queued: 0, parked: 0, done: 0 }, offPage: [] };
     expect(columnPage(working, "working").foldable).toBe(false);
   });
 });

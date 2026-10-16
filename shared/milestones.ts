@@ -62,8 +62,13 @@ export function latestMilestone(notes: string | null): Milestone | null {
   return latest.text.length > MAX_TEXT ? { ...latest, text: `${latest.text.slice(0, MAX_TEXT - 1)}…` } : latest;
 }
 
+/** Records whose name kept a button's old word: Pause is Park since TR-166, and the record stays as written. */
+const KIND_LABELS: Readonly<Record<string, string>> = { "PAUSE-REQUESTED": "Park requested" };
+
 /** A record's kind in plain words: "Dispatch intent" for DISPATCH-INTENT. */
 export function kindLabel(kind: string): string {
+  const named = KIND_LABELS[kind];
+  if (named !== undefined) return named;
   const words = kind.toLowerCase().replace(/[-_]+/g, " ").trim();
   return words === "" ? kind : `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
 }

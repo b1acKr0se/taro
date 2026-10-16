@@ -24,7 +24,7 @@ import { markedAgainst } from "../shared/plan-changes";
 import type { StoredDecision } from "../shared/state";
 import { foldList, ticketSections, ticketSummary, type TicketSectionKey, type TicketSummary } from "../shared/ticket-summary";
 import { PhaseBadge } from "./badges";
-import { pauseRow } from "./card-now";
+import { pauseRow, phaseOf } from "./card-now";
 import { EvidenceBlock } from "./evidence-view";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
@@ -119,9 +119,10 @@ export function TicketView({
   const pauseRpc = useRpc(pauseTicket);
   const resumeRpc = useRpc(resumeTicket);
   const compactRpc = useRpc(compactAgent);
-  // One owner of the Pause, Resume and Compact presses: while one is in flight the others are disabled.
+  // One owner of the Park, Resume and Compact presses: while one is in flight the others are disabled.
   const pausePresses = useActions();
-  // What Pause and Resume did is the server's to say (TR-088).
+  // What Park and Resume did is the server's to say (TR-088). Each may put the other in its place
+  // (a ticket parked before it started, TR-166), so neither holds the presses until it leaves.
   const told = (result: { message: string }) => {
     toast.show(result.message, { variant: "success" });
     void detail.refetch();
@@ -242,9 +243,9 @@ export function TicketView({
         pause={data.pause}
         pauseAction={
           data.pausable
-            ? { kind: "pause", run: () => pausePresses.press("pause", () => pauseRpc({ project, ticket }), { after: "hold", onSuccess: told }), state: pausePresses.stateOf("pause"), busy: pausePresses.busy }
+            ? { kind: "pause", run: () => pausePresses.press("pause", () => pauseRpc({ project, ticket }), { after: "check", onSuccess: told }), state: pausePresses.stateOf("pause"), busy: pausePresses.busy }
             : data.pause?.state === "paused"
-              ? { kind: "resume", run: () => pausePresses.press("resume", () => resumeRpc({ project, ticket }), { after: "hold", onSuccess: told }), state: pausePresses.stateOf("resume"), busy: pausePresses.busy }
+              ? { kind: "resume", run: () => pausePresses.press("resume", () => resumeRpc({ project, ticket }), { after: "check", onSuccess: told }), state: pausePresses.stateOf("resume"), busy: pausePresses.busy }
               : null
         }
         compactAction={
@@ -323,9 +324,9 @@ function SummaryBlock({
   status: string;
   labels: readonly string[];
   pause: PauseView | null;
-  /** Pause for a ticket under way, Resume for a paused one (TR-088). */
+  /** Park for a queued or under-way ticket, Resume for a parked one (TR-088, TR-166). */
   pauseAction: { kind: "pause" | "resume"; run: () => void; state: "busy" | "done" | undefined; busy: boolean } | null;
-  /** Compact beside Pause, for an idle owner with a large context (TR-095). */
+  /** Compact beside Park, for an idle owner with a large context (TR-095). */
   compactAction: { run: () => void; state: "busy" | "done" | undefined; busy: boolean } | null;
   /** Opens Change spec…'s box under the block, on a Queued ticket with no owner (TR-129). */
   specChange: (() => void) | null;
@@ -357,7 +358,7 @@ function SummaryBlock({
   return (
     <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface1, padding: SPACE.md, gap: SPACE.sm }}>
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: SPACE.sm }}>
-        <PhaseBadge theme={theme} status={status} />
+        <PhaseBadge theme={theme} status={phaseOf({ status, pause })} />
         {labels.map((each) => (
           <Chip key={each} theme={theme} icon="Tag" text={each} color={colors.foregroundMuted} />
         ))}
@@ -365,8 +366,8 @@ function SummaryBlock({
           <View style={{ marginLeft: "auto", flexDirection: "row", flexWrap: "wrap", gap: SPACE.sm }}>
             {pauseAction === null ? null : (
               <IconButton
-                icon={pauseAction.kind === "pause" ? "Pause" : "Play"}
-                label={pauseAction.kind === "pause" ? "Pause" : "Resume"}
+                icon={pauseAction.kind === "pause" ? "SquareParking" : "Play"}
+                label={pauseAction.kind === "pause" ? "Park" : "Resume"}
                 showLabel
                 theme={theme}
                 disabled={pauseAction.busy}
@@ -392,7 +393,7 @@ function SummaryBlock({
       {pause === null
         ? null
         : row(
-            pause.state === "queued-to-resume" ? "Clock" : "Pause",
+            pause.state === "queued-to-resume" ? "Clock" : "SquareParking",
             colors.foregroundMuted,
             pauseRow(pause, now).label,
             <Text style={text}>{pauseRow(pause, now).value}</Text>,

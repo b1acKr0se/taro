@@ -274,7 +274,9 @@ export type Board = z.infer<typeof BoardSchema>;
 
 /** How many cards each paged column sends (the first page when left out), and tickets wanted whatever their page (TR-082). */
 export const BoardPagingSchema = z.object({
-  limits: z.object({ queued: z.number().int().min(0).max(10_000).optional(), done: z.number().int().min(0).max(10_000).optional() }).optional(),
+  limits: z
+    .object({ queued: z.number().int().min(0).max(10_000).optional(), parked: z.number().int().min(0).max(10_000).optional(), done: z.number().int().min(0).max(10_000).optional() })
+    .optional(),
   include: z.array(z.string()).max(20).optional(),
 });
 export type BoardPaging = z.infer<typeof BoardPagingSchema>;

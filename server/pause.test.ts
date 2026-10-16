@@ -1,12 +1,13 @@
-// TR-088: Pause asks the owner for a HANDOFF, then archives the ticket's agents and holds it; Resume
-// starts a fresh owner with a free slot, or queues it to start when one frees, oldest first.
+// TR-088: Park (Pause before TR-166) asks the owner for a HANDOFF, then archives the ticket's agents
+// and holds it; Resume starts a fresh owner with a free slot, or queues it to start when one frees,
+// oldest first. A Queued ticket nobody started is parked at once and resumed back into the queue.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PAUSE_HANDOFF_TIMEOUT_MS } from "../shared/pause";
 import { Actions } from "./actions";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import type { Recovery } from "./recovery";
-import { sendFromPlugin } from "./send";
+import { sendFromPlugin, sendWithoutInterrupting } from "./send";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
 import type { Supervisor } from "./supervision";
@@ -39,11 +40,11 @@ vi.mock("./agents", () => ({
   isMidTurn: (agent: { status: string }) => agent.status === "running",
 }));
 vi.mock("./send", () => ({ sendFromPlugin: vi.fn(async () => undefined), sendWithoutInterrupting: vi.fn(async () => undefined), sendCommand: vi.fn() }));
-vi.mock("./package-files", () => ({ TEMPLATES: { pause: "pause", relaunchOwner: "relaunch" }, skillDirectory: async () => "/skill", message: async (path: string) => path }));
+vi.mock("./package-files", () => ({ TEMPLATES: { pause: "pause", relaunchOwner: "relaunch", unparkedHeld: "unparked-held" }, skillDirectory: async () => "/skill", message: async (path: string) => path }));
 vi.mock("./projects", () => ({
   projectPaths: async () => ({ tracker: "/tracker" }),
   listProjectConfigs: async () => [],
-  requireProjectConfig: async () => ({ owner: { model: "claude/haiku", thinking: "" }, maxParallelOwners: 2 }),
+  requireProjectConfig: async () => ({ owner: { model: "claude/haiku", thinking: "" }, maxParallelOwners: 2, managerAgentId: "manager-1" }),
 }));
 vi.mock("./headroom", () => ({ readHeadroom: async () => null }));
 vi.mock("./models", () => ({ bypassModeId: async () => null }));
@@ -110,6 +111,7 @@ beforeEach(() => {
   created.length = 0;
   withdrawn.length = 0;
   vi.mocked(sendFromPlugin).mockClear();
+  vi.mocked(sendWithoutInterrupting).mockClear();
   actions = new Actions(state, supervisor, {} as TrackerWatch, {} as Stats, {} as Recovery);
 });
 
@@ -117,20 +119,20 @@ describe("Pause", () => {
   it("asks the owner for a handoff, then archives it and its subagents and holds the ticket", async () => {
     tickets = [ticket("NA-1", "In Progress")];
     live = [agent("owner-1", "NA-1"), agent("reviewer-1", "NA-1", "reviewer"), agent("other", "NA-2")];
-    expect(await actions.pause(paseo, "notes", "NA-1")).toBe("Pausing NA-1: its owner is writing a handoff (at most 10 minutes).");
+    expect(await actions.pause(paseo, "notes", "NA-1")).toBe("Parking NA-1: its owner is writing a handoff (at most 10 minutes).");
     expect(sendFromPlugin).toHaveBeenCalledWith(paseo, "owner-1", "pause");
-    expect(find("NA-1").notes).toMatch(/\nPAUSE-REQUESTED \S+ — the user pressed Pause/);
+    expect(find("NA-1").notes).toMatch(/\nPAUSE-REQUESTED \S+ — the user pressed Park/);
     // Before the handoff nothing is archived.
     await actions.advancePauses(paseo, "notes", Date.now());
     expect(archived).toEqual([]);
-    await expect(actions.pause(paseo, "notes", "NA-1")).rejects.toThrow("NA-1 is already pausing");
+    await expect(actions.pause(paseo, "notes", "NA-1")).rejects.toThrow("NA-1 is already being parked");
 
     find("NA-1").notes += "\n\nHANDOFF 2026-01-05T10:03Z\n- Phase: In Progress — list built";
     find("NA-1").updatedAt = "2026-01-05T10:03:00Z";
     expect(await actions.advancePauses(paseo, "notes", Date.now())).toBe(true);
     expect(archived).toEqual(["owner-1", "reviewer-1"]);
     expect(withdrawn).toEqual(["owner-1", "reviewer-1"]);
-    expect(find("NA-1").notes).toMatch(/\nHOLD \S+ — paused by the user; resume from the latest HANDOFF$/);
+    expect(find("NA-1").notes).toMatch(/\nHOLD \S+ — parked by the user; resume from the latest HANDOFF$/);
     expect(find("NA-1").status).toBe("In Progress");
   });
 
@@ -154,12 +156,12 @@ describe("Pause", () => {
     expect(await actions.advancePauses(paseo, "notes", Date.now() + PAUSE_HANDOFF_TIMEOUT_MS - 60_000)).toBe(false);
     expect(await actions.advancePauses(paseo, "notes", Date.now() + PAUSE_HANDOFF_TIMEOUT_MS + 1_000)).toBe(true);
     expect(archived).toEqual(["owner-1"]);
-    expect(find("NA-1").notes).toContain("paused by the user; no handoff (the owner did not write one within 10 minutes): resume from the latest milestone");
+    expect(find("NA-1").notes).toContain("parked by the user; no handoff (the owner did not write one within 10 minutes): resume from the latest milestone");
   });
 
   it("pauses at once a ticket whose owner is gone", async () => {
     tickets = [ticket("NA-1", "In Progress")];
-    expect(await actions.pause(paseo, "notes", "NA-1")).toContain("NA-1 is paused. It had no live owner");
+    expect(await actions.pause(paseo, "notes", "NA-1")).toContain("NA-1 is parked. It had no live owner");
     expect(sendFromPlugin).not.toHaveBeenCalled();
     expect(find("NA-1").notes).toContain("no handoff (the owner had already stopped)");
   });
@@ -174,7 +176,7 @@ describe("Pause", () => {
     find("NA-1").updatedAt = "2026-01-05T10:03:00Z";
     await actions.onAgentTurnEnded(paseo, "owner-1");
     expect(archived).toEqual(["owner-1"]);
-    expect(find("NA-1").notes).toMatch(/\nHOLD \S+ — paused by the user; resume from the latest HANDOFF$/);
+    expect(find("NA-1").notes).toMatch(/\nHOLD \S+ — parked by the user; resume from the latest HANDOFF$/);
   });
 
   it("archives the agents a pause cut short left alive, but not under a hold written by hand", async () => {
@@ -188,6 +190,63 @@ describe("Pause", () => {
     expect(await actions.advancePauses(paseo, "notes", Date.now())).toBe(false);
     expect(archived).toEqual(["owner-1", "implementer-1"]);
     expect((await actions.resume(paseo, "notes", "NA-1")).message).toBe("A fresh owner is starting on NA-1.");
+  });
+
+  it("parks a Queued ticket nobody started at once, and Resume puts it back in the queue without starting an owner (TR-166)", async () => {
+    tickets = [ticket("NA-1", "Queued", ""), ticket("NA-2", "In Progress")];
+    expect(await actions.pause(paseo, "notes", "NA-1")).toBe("NA-1 is parked: it stays out of the queue until you resume it.");
+    expect(sendFromPlugin).not.toHaveBeenCalled();
+    expect(find("NA-1").notes).toMatch(/^\n\nHOLD \S+ — parked by the user before it started: never start it until the user resumes it$/);
+    expect(find("NA-1").notes).not.toContain("PAUSE-REQUESTED");
+    expect(find("NA-1").status).toBe("Queued");
+    await expect(actions.pause(paseo, "notes", "NA-1")).rejects.toThrow("NA-1 is already parked.");
+    // The minute check neither archives nor relaunches anything for it.
+    await actions.advancePauses(paseo, "notes", Date.now());
+    expect([archived, created]).toEqual([[], []]);
+
+    expect((await actions.resume(paseo, "notes", "NA-1")).message).toBe("NA-1 is back in Queued: the manager starts it when a slot frees.");
+    expect(find("NA-1").notes).toMatch(/\nRELEASE \S+ — resumed by the user: back in the queue, for the manager to start$/);
+    expect(created).toEqual([]);
+    await expect(actions.resume(paseo, "notes", "NA-1")).rejects.toThrow("NA-1 is not parked.");
+  });
+
+  it("keeps the manager's hold on a ticket parked and resumed (TR-166)", async () => {
+    tickets = [ticket("NA-1", "Queued", "\n\nHOLD 2026-01-05T09:00Z — overlaps NA-2; start once NA-2 is Done.")];
+    await actions.pause(paseo, "notes", "NA-1");
+    expect((await actions.resume(paseo, "notes", "NA-1")).message).toBe("NA-1 is back in Queued, still held by the manager: overlaps NA-2; start once NA-2 is Done.");
+    expect(find("NA-1").notes).toMatch(/\nHOLD \S+ — overlaps NA-2; start once NA-2 is Done\.$/);
+    // No manager running: nobody to tell, and Resume still answers.
+    expect(sendWithoutInterrupting).not.toHaveBeenCalled();
+  });
+
+  it("asks the running manager to look at a hold Resume put back, as held tickets never wake it", async () => {
+    tickets = [ticket("NA-1", "Queued", "\n\nHOLD 2026-01-05T09:00Z — overlaps NA-2; start once NA-2 is Done.")];
+    live = [agent("manager-1", "", "manager")];
+    await actions.pause(paseo, "notes", "NA-1");
+    await actions.resume(paseo, "notes", "NA-1");
+    expect(sendWithoutInterrupting).toHaveBeenCalledWith(paseo, "manager-1", "unparked-held");
+  });
+
+  it("still answers Resume when telling the manager about a hold it put back fails", async () => {
+    tickets = [ticket("NA-1", "Queued", "\n\nHOLD 2026-01-05T09:00Z — overlaps NA-2; start once NA-2 is Done.")];
+    live = [agent("manager-1", "", "manager")];
+    vi.mocked(sendWithoutInterrupting).mockRejectedValueOnce(new Error("socket closed"));
+    await actions.pause(paseo, "notes", "NA-1");
+    expect((await actions.resume(paseo, "notes", "NA-1")).message).toBe("NA-1 is back in Queued, still held by the manager: overlaps NA-2; start once NA-2 is Done.");
+  });
+
+  it("refuses to park a Queued ticket whose owner the manager is starting right now", async () => {
+    const intent = `DISPATCH-INTENT ${new Date(Date.now() - 60_000).toISOString().slice(0, 16)}Z — ticket NA-1, token na1-1, branch taro/na-1`;
+    tickets = [ticket("NA-1", "Queued", `\n\n${intent}`)];
+    await expect(actions.pause(paseo, "notes", "NA-1")).rejects.toThrow("The manager is starting NA-1's owner right now: park it in a minute, once the owner runs.");
+    expect(find("NA-1").notes).not.toContain("HOLD");
+  });
+
+  it("asks a Queued ticket's just-dispatched owner for a handoff like any other", async () => {
+    tickets = [ticket("NA-1", "Queued", EXECUTION("NA-1"))];
+    live = [agent("owner-1", "NA-1")];
+    expect(await actions.pause(paseo, "notes", "NA-1")).toContain("Parking NA-1");
+    expect(sendFromPlugin).toHaveBeenCalledWith(paseo, "owner-1", "pause");
   });
 
   it("is refused while awaiting acceptance or merging, and the owner hears nothing", async () => {
@@ -220,8 +279,8 @@ describe("Resume", () => {
     expect(created).toEqual([]);
     await expect(actions.resume(paseo, "notes", "NA-3")).rejects.toThrow("NA-3 is already queued to resume.");
     // Pause takes it back to Paused before it starts, and Resume queues it again.
-    expect(await actions.pause(paseo, "notes", "NA-3")).toBe("NA-3 is paused again: it will not start until you resume it.");
-    expect(find("NA-3").notes).toMatch(/\nHOLD \S+ — paused by the user again before it resumed; resume from the latest HANDOFF$/);
+    expect(await actions.pause(paseo, "notes", "NA-3")).toBe("NA-3 is parked again: it will not start until you resume it.");
+    expect(find("NA-3").notes).toMatch(/\nHOLD \S+ — parked by the user again before it resumed; resume from the latest HANDOFF$/);
     expect(sendFromPlugin).not.toHaveBeenCalled();
     await actions.advancePauses(paseo, "notes", Date.now());
     find("NA-2").status = "Awaiting acceptance";
@@ -277,7 +336,7 @@ describe("Resume", () => {
 
   it("is refused for a ticket not paused or awaiting acceptance", async () => {
     tickets = [ticket("NA-1", "In Progress"), { ...paused("NA-2"), status: "Awaiting acceptance" }];
-    await expect(actions.resume(paseo, "notes", "NA-1")).rejects.toThrow("NA-1 is not paused.");
+    await expect(actions.resume(paseo, "notes", "NA-1")).rejects.toThrow("NA-1 is not parked.");
     await expect(actions.resume(paseo, "notes", "NA-2")).rejects.toThrow("NA-2 is awaiting your acceptance");
     expect(created).toEqual([]);
   });

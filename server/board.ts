@@ -213,8 +213,8 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
       const ticketDecisions = finished ? [] : openDecisions.filter((decision) => decision.ticket === ticket.id);
       const needsHost = owner === null && UNDER_WAY.has(ticket.status);
       // Reading a ticket reads its whole file: only under-way cards show what it holds, and only once per change.
-      // A Ready ticket is read too, as it may be paused (TR-088).
-      const facts = UNDER_WAY.has(ticket.status) || ticket.status === "Ready" ? await cachedRecordedFacts(paths.tracker, ticket.id, ticket.updatedAt) : null;
+      // A Ready or Queued ticket is read too, as it may be parked (TR-088, TR-166).
+      const facts = UNDER_WAY.has(ticket.status) || ticket.status === "Ready" || ticket.status === "Queued" ? await cachedRecordedFacts(paths.tracker, ticket.id, ticket.updatedAt) : null;
       // The record is cached with the other facts; whether its screenshot files exist is read each time.
       const accepted = ticket.status === "Awaiting acceptance" ? facts?.accepted ?? null : null;
       const elsewhere = needsHost ? facts?.hostElsewhere ?? null : null;
@@ -228,7 +228,8 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         stalledAfterNudge: ownerState?.stalled ?? false,
         crashedOut: ownLine && ownerState?.stalled === true && ownerState.stalledReason !== null,
         accepted: accepted !== null,
-        paused: pausing.pause !== null && pausing.pause.state !== "pausing",
+        parked: pausing.pause?.state === "paused",
+        queuedToResume: pausing.pause?.state === "queued-to-resume",
       });
       return { id: ticket.id, updatedAt: ticket.updatedAt, column, ticket, owner, liveSubagents, askers, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere, pausing };
     }),

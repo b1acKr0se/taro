@@ -19,13 +19,18 @@ import {
   PAUSE_HANDOFF_TIMEOUT_MS,
   pausedAgainHoldText,
   pausedByTaro,
+  pausedHold,
   pausedHoldText,
+  parkedUnstartedHoldText,
+  parksBeforeStart,
+  dispatchPending,
   pauseProgress,
   pauseRefusal,
   pauseRequestedAt,
   pauseView,
   queuedToResume,
   resumedReleaseText,
+  unparkedRecordText,
   resumeRefusal,
   resumesNow,
   type PauseProgress,
@@ -34,6 +39,7 @@ import {
   emptyQueueWatch,
   managerCondition,
   type ManagerCondition,
+  holdReason,
   markRestarted,
   alertRaisedAt,
   markWoken,
@@ -412,19 +418,26 @@ export class Actions {
     const refusal = pauseRefusal({ id: detail.id, status: detail.status, parentTaskId: detail.parentTaskId, notes }, merging);
     if (refusal !== null) throw new Error(refusal);
     const owner = await this.liveOwner(paseo, project, detail.id);
-    // Queued to resume and not started yet: back to Paused at once, from what the earlier pause left.
+    const at = new Date().toISOString().slice(0, 16) + "Z";
+    // Queued to resume and not started yet: back to Parked at once, from what the earlier park left.
     if (owner === null && queuedToResume(notes)) {
-      await appendTicketNote(paths.tracker, detail.id, pausedAgainHoldText(new Date().toISOString().slice(0, 16) + "Z", notes));
-      return `${detail.id} is paused again: it will not start until you resume it.`;
+      await appendTicketNote(paths.tracker, detail.id, pausedAgainHoldText(at, notes));
+      return `${detail.id} is parked again: it will not start until you resume it.`;
+    }
+    // Nobody has started it (TR-166): nothing to hand off, so it is held at once and the manager passes it by.
+    if (parksBeforeStart(detail.status, owner !== null)) {
+      if (dispatchPending(notes, Date.now())) throw new Error(`The manager is starting ${detail.id}'s owner right now: park it in a minute, once the owner runs.`);
+      await appendTicketNote(paths.tracker, detail.id, parkedUnstartedHoldText(at));
+      return `${detail.id} is parked: it stays out of the queue until you resume it.`;
     }
     const minutes = PAUSE_HANDOFF_TIMEOUT_MS / 60_000;
-    await appendTicketNote(paths.tracker, detail.id, `PAUSE-REQUESTED ${new Date().toISOString()} — the user pressed Pause; waiting up to ${minutes} minutes for the owner's HANDOFF`);
+    await appendTicketNote(paths.tracker, detail.id, `PAUSE-REQUESTED ${new Date().toISOString()} — the user pressed Park; waiting up to ${minutes} minutes for the owner's HANDOFF`);
     if (owner === null) {
       await this.finishPause(paseo, project, detail.id, "owner-gone", false);
-      return `${detail.id} is paused. It had no live owner, so there is no handoff: a fresh owner resumes from the latest milestone.`;
+      return `${detail.id} is parked. It had no live owner, so there is no handoff: a fresh owner resumes from the latest milestone.`;
     }
     await sendFromPlugin(paseo, owner.id, await message(TEMPLATES.pause, { ticket: detail.id, skill: await skillDirectory(), timeoutMinutes: String(minutes) }));
-    return `Pausing ${detail.id}: its owner is writing a handoff (at most ${minutes} minutes).`;
+    return `Parking ${detail.id}: its owner is writing a handoff (at most ${minutes} minutes).`;
   }
 
   /** Archives the ticket's agents after recording the pause, so the board never sees it without an owner and unpaused. */
@@ -467,9 +480,25 @@ export class Actions {
     const owner = await this.liveOwner(paseo, project, detail.id);
     const refusal = resumeRefusal({ id: detail.id, status: detail.status, parentTaskId: detail.parentTaskId, notes }, merging, owner !== null);
     if (refusal !== null) throw new Error(refusal);
+    const at = new Date().toISOString().slice(0, 16) + "Z";
+    // Parked before it started (TR-166): no handoff to resume from, so it rejoins the queue and the manager starts it.
+    if (pausedHold(notes)?.notStarted === true) {
+      const record = unparkedRecordText(at, notes);
+      await appendTicketNote(paths.tracker, detail.id, record);
+      const reason = record.startsWith("HOLD") ? holdReason(record) : null;
+      if (reason === null) return { message: `${detail.id} is back in Queued: the manager starts it when a slot frees.`, agentId: null };
+      // Held tickets never wake the manager, and the hold's reason may have gone while it was parked: ask it to look again.
+      const manager = await fetchLiveAgent(paseo, config.managerAgentId);
+      // Only a reminder: the ticket is back in Queued already, so a failed send must not fail the Resume.
+      if (manager !== null) {
+        await sendWithoutInterrupting(paseo, manager.id, await message(TEMPLATES.unparkedHeld, { ticket: detail.id, reason })).catch((error: unknown) =>
+          reportFailure(`[taro] ${project}: could not tell the manager ${detail.id} is held again:`, error),
+        );
+      }
+      return { message: `${detail.id} is back in Queued, still held by the manager: ${reason}`, agentId: null };
+    }
     const tickets = await listTickets(paths.tracker);
     const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners, true);
-    const at = new Date().toISOString().slice(0, 16) + "Z";
     if (this.resumesNow(detail.id, tickets, count)) {
       const agentId = await this.relaunchOwner(paseo, project, detail.id);
       await appendTicketNote(paths.tracker, detail.id, resumedReleaseText(at, null));

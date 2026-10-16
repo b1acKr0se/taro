@@ -4,14 +4,15 @@
  * phone one column at a time behind chips. Queued and Done show their newest cards, load more on
  * request (TR-082) and fold back to their newest with Show less (TR-117). The manager's open questions are cards in Needs you,
  * blocking first, ahead of the tickets, and count there (TR-045); its suggestions sit above its
- * composer, not here. Done cards carry their ticket's key stats.
+ * composer, not here. Done cards carry their ticket's key stats. Parked tickets (TR-166) end the
+ * Queued column in a section folded under its "Parked · N" head, so Queued itself means "starts next".
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { memo, useMemo, useRef, useState } from "react";
 import { ScrollView, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 
-import { boardCounts, COLUMN_IDS, COLUMN_META, COLUMN_TITLES, isPagedColumn, needsYouExtras, type ColumnId, type PagedColumn } from "../shared/board";
+import { BOARD_COLUMNS, boardCounts, COLUMN_IDS, COLUMN_META, COLUMN_TITLES, emptyTotals, isPagedColumn, needsYouExtras, type BoardColumn, type ColumnId, type PagedColumn } from "../shared/board";
 import type { Card, ProjectSummary } from "../shared/contracts";
 import { AlertCard } from "./alert-card";
 import { SectionHeading } from "./badges";
@@ -38,7 +39,9 @@ import { walkOrder } from "./walk-order";
 import { MIN_COLUMN_WIDTH, columnWidths } from "./column-widths";
 
 /** The column the phone shows, kept across remounts and reconnects (TR-038). */
-const phoneColumn = keptObject(globalThis, "board-phone-column", { current: "needs-you" as ColumnId });
+const phoneColumn = keptObject(globalThis, "board-phone-column", { current: "needs-you" as BoardColumn });
+/** The projects whose Parked section is open; folded by default, as parked tickets wait on no date (TR-166). */
+const parkedOpen = keptObject<Record<string, boolean>>(globalThis, "board-parked-open-v1", {});
 
 export function ProjectBoard({
   summary,
@@ -82,7 +85,12 @@ export function ProjectBoard({
   // Stable, so a card whose ticket did not change is not drawn again on each refresh (TR-069).
   const changed = useLatestCallback(refresh);
   const openCard = useLatestCallback(onOpenTicket);
-  const [column, setColumn] = useState<ColumnId>(phoneColumn.current);
+  const [column, setColumn] = useState<BoardColumn>(phoneColumn.current);
+  const [showParked, setShowParked] = useState(parkedOpen[project] === true);
+  const toggleParked = () => {
+    parkedOpen[project] = !showParked;
+    setShowParked(!showParked);
+  };
   const [paneWidth, setPaneWidth] = useState(0);
   const { colors } = theme;
   const control = useMemo(() => controlColors(colors), [colors]);
@@ -98,6 +106,9 @@ export function ProjectBoard({
       columnTitle: { fontSize: FONT_SIZE.body, fontWeight: "700" as const },
       count: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, fontWeight: "600" as const },
       hint: { flex: 1, textAlign: "right" as const, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
+      // Parked sits under Queued's cards, set off by a rule so it does not read as more of them (TR-166).
+      parked: { gap: SPACE.md, borderTopWidth: 1, borderColor: colors.border, paddingTop: SPACE.md },
+      parkedHead: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm, minHeight: 32 },
       empty: { alignItems: "center" as const, gap: SPACE.sm, paddingVertical: SPACE.xl },
       emptyText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small },
       // A ScrollView shrinks by default, by its share of the overflow: under a long column (Done) the cards'
@@ -125,7 +136,7 @@ export function ProjectBoard({
 
   const cards = board.data?.cards ?? [];
   const byColumn = useMemo(() => {
-    const content = board.data ?? { cards: [], totals: { "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 }, offPage: [] };
+    const content = board.data ?? { cards: [], totals: emptyTotals(), offPage: [] };
     return new Map<ColumnId, ColumnPage>(COLUMN_IDS.map((id) => [id, columnPage(content, id)]));
   }, [board.data?.cards, board.data?.totals, board.data?.offPage]);
 
@@ -140,7 +151,7 @@ export function ProjectBoard({
   const alerts = board.data?.alerts ?? [];
   // Alerts and a paused sync wait on the user too, above the columns (TR-064).
   // True totals: a paged column carries only its loaded cards (TR-082).
-  const counts = boardCounts(board.data?.totals ?? { "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 }, needsYouExtras({ managerDecisions: managerQuestions, managerPermission: managerAsk, alerts }, syncProblem !== null));
+  const counts = boardCounts(board.data?.totals ?? emptyTotals(), needsYouExtras({ managerDecisions: managerQuestions, managerPermission: managerAsk, alerts }, syncProblem !== null));
   const waitingAbove = alerts.length > 0 || syncProblem !== null;
 
   const statsByTicket = useMemo(() => new Map((stats.data?.tickets ?? []).map((summary) => [summary.ticket, summary])), [stats.data]);
@@ -173,7 +184,8 @@ export function ProjectBoard({
             )),
           ]
         : [];
-    if (questions.length === 0 && group.length === 0) return empty(id, id === "needs-you" && waitingAbove ? "See above" : "Nothing here");
+    const parked = id === "queued" ? parkedSection() : null;
+    if (questions.length === 0 && group.length === 0) return [empty(id, id === "needs-you" && waitingAbove ? "See above" : parked === null ? "Nothing here" : "Nothing queued"), parked];
     const end =
       page !== undefined && (page.remaining > 0 || page.foldable) && isPagedColumn(id) ? (
         <ColumnEnd
@@ -188,7 +200,48 @@ export function ProjectBoard({
           onShowLess={fold}
         />
       ) : null;
-    return [...questions, ...group.map(renderCard), end];
+    return [...questions, ...group.map(renderCard), end, parked];
+  }
+
+  /** The end of Queued (TR-166): a "Parked · N" head that folds and opens its cards; null with nothing parked. */
+  function parkedSection() {
+    const page = byColumn.get("parked");
+    if (page === undefined || page.total === 0) return null;
+    const meta = COLUMN_META.parked;
+    const end =
+      page.remaining > 0 || page.foldable ? (
+        <ColumnEnd
+          key="parked-end"
+          column="parked"
+          shown={page.cards.length}
+          total={page.total}
+          canLoadMore={page.remaining > 0}
+          canShowLess={page.foldable}
+          theme={theme}
+          onLoadMore={loadMore}
+          onShowLess={fold}
+        />
+      ) : null;
+    return (
+      <View key="parked" style={styles.parked}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showParked }}
+          accessibilityLabel={`${COLUMN_TITLES.parked}: ${page.total}, ${showParked ? "hide" : "show"}`}
+          style={styles.parkedHead}
+          onPress={toggleParked}
+        >
+          <Icon name={meta.icon} size={16} color={colors.foregroundMuted} />
+          <Text style={styles.columnTitle}>{COLUMN_TITLES.parked}</Text>
+          <Text style={styles.count}>{page.total}</Text>
+          <Text style={styles.hint} numberOfLines={1}>
+            {meta.hint}
+          </Text>
+          <Icon name={showParked ? "ChevronUp" : "ChevronDown"} size={16} color={colors.foregroundMuted} />
+        </Pressable>
+        {showParked ? [...page.cards.map(renderCard), end] : null}
+      </View>
+    );
   }
 
   function empty(id: ColumnId, text: string) {
@@ -235,7 +288,7 @@ export function ProjectBoard({
     return (
       <View style={styles.root}>
         <ScrollView horizontal style={styles.chipRow} contentContainerStyle={styles.chips} showsHorizontalScrollIndicator={false}>
-          {COLUMN_IDS.map((id) => {
+          {BOARD_COLUMNS.map((id) => {
             const active = id === column;
             const color = toneColor(theme, COLUMN_META[id].tone);
             return (
@@ -267,8 +320,9 @@ export function ProjectBoard({
   }
 
   const widths = columnWidths(
-    paneWidth - 2 * SPACE.lg - (COLUMN_IDS.length - 1) * SPACE.md,
-    COLUMN_IDS.map((id) => counts[id]),
+    paneWidth - 2 * SPACE.lg - (BOARD_COLUMNS.length - 1) * SPACE.md,
+    // Queued is as wide as its cards and, open, its parked ones; folded, the Parked head needs a card's room.
+    BOARD_COLUMNS.map((id) => (id === "queued" ? counts.queued + (showParked ? counts.parked : Math.min(1, counts.parked)) : counts[id])),
   );
 
   return (
@@ -281,7 +335,7 @@ export function ProjectBoard({
     >
       {top}
       <ScrollView horizontal contentContainerStyle={styles.columns} onLayout={(event) => (columnsTop.current = event.nativeEvent.layout.y)}>
-        {COLUMN_IDS.map((id, index) => {
+        {BOARD_COLUMNS.map((id, index) => {
           const group = byColumn.get(id);
           const columnWidth = widths[index] ?? MIN_COLUMN_WIDTH;
           const meta = COLUMN_META[id];

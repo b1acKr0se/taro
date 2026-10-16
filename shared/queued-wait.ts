@@ -8,7 +8,7 @@
 import { z } from "zod";
 
 import { dependsOn } from "./owner-cap";
-import { PAUSED_REASON } from "./pause";
+import { isParkReason } from "./pause";
 import { unmetDependencies, type Recount } from "./queue-check";
 
 /** What a startable ticket (no unmet dependency, no hold) waits for: a free owner slot and thread headroom. */
@@ -51,7 +51,7 @@ export function queuedWait(input: {
   /** `queuedSlot` of the plugin's recount: null when the recount does not find it startable. */
   slot?: QueuedSlot | null;
 }): QueuedWait | null {
-  const hold = input.holdReason !== null && !input.holdReason.toLowerCase().startsWith(PAUSED_REASON) ? input.holdReason : null;
+  const hold = input.holdReason !== null && !isParkReason(input.holdReason) ? input.holdReason : null;
   // Ids as the tracker writes them, so a dependency written "tr-131" and a HOLD naming TR-131 are one ticket.
   const ticketOf = (id: string) => input.tickets.find((ticket) => dependsOn([id], ticket.id)) ?? null;
   const tracked = (id: string) => ticketOf(id)?.id ?? id;

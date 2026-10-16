@@ -8,15 +8,23 @@ import { z } from "zod";
 import { isSubagentRole, roleFromLabel, TARO_LABELS } from "./project";
 import type { StatusState } from "./reports";
 
-export const COLUMN_IDS = ["needs-you", "working", "stalled", "queued", "done"] as const;
+/**
+ * Where a card is placed. Parked tickets (TR-166) are placed apart from Queued, so Queued means
+ * "starts next", but the board draws them as a folded section at the end of the Queued column, not
+ * as a column of their own: `BOARD_COLUMNS` are the columns it draws.
+ */
+export const COLUMN_IDS = ["needs-you", "working", "stalled", "queued", "parked", "done"] as const;
 export const ColumnIdSchema = z.enum(COLUMN_IDS);
 export type ColumnId = z.infer<typeof ColumnIdSchema>;
+export const BOARD_COLUMNS = ["needs-you", "working", "stalled", "queued", "done"] as const satisfies readonly ColumnId[];
+export type BoardColumn = (typeof BOARD_COLUMNS)[number];
 
 export const COLUMN_TITLES: Readonly<Record<ColumnId, string>> = {
   "needs-you": "Needs you",
   working: "Working",
   stalled: "Stalled",
   queued: "Queued",
+  parked: "Parked",
   done: "Done",
 };
 
@@ -31,7 +39,8 @@ export const COLUMN_META: Readonly<Record<ColumnId, ColumnMeta>> = {
   "needs-you": { icon: "Hand", tone: "warning", hint: "your move" },
   working: { icon: "Activity", tone: "success", hint: "agent running" },
   stalled: { icon: "CircleAlert", tone: "danger", hint: "idle, no reason" },
-  queued: { icon: "Clock", tone: "muted", hint: "not started" },
+  queued: { icon: "Clock", tone: "muted", hint: "starts next" },
+  parked: { icon: "SquareParking", tone: "muted", hint: "until you resume" },
   done: { icon: "CircleCheck", tone: "success", hint: "accepted" },
 };
 
@@ -48,8 +57,10 @@ export interface CardInputs {
   crashedOut?: boolean;
   /** The user pressed Accept and the owner has not set Done yet (TR-031): it is merging, not waiting on the user. */
   accepted?: boolean;
-  /** Paused by the user or queued to resume (TR-088): queued again, never Stalled. */
-  paused?: boolean;
+  /** Parked by the user (TR-088, TR-166): apart from Queued until Resume, never Stalled. */
+  parked?: boolean;
+  /** Resumed with no free slot (TR-088): queued again, never Stalled. */
+  queuedToResume?: boolean;
 }
 
 const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing"]);
@@ -59,8 +70,10 @@ export function boardColumn(card: CardInputs): ColumnId {
   // Accepted, the delivery is the owner's to finish (TR-031): it no longer waits on the user, and is placed like work under way.
   const accepted = card.accepted === true && card.status === "Awaiting acceptance";
   const agent = card.agent;
-  // A pause is in the tracker, so it holds on every machine; a live agent here means it was started again.
-  if (card.paused === true && (agent === null || agent.status === "closed")) return "queued";
+  // A park is in the tracker, so it holds on every machine; a live agent here means it was started again.
+  const idle = agent === null || agent.status === "closed";
+  if (card.parked === true && idle) return "parked";
+  if (card.queuedToResume === true && idle) return "queued";
   if (card.ownerElsewhere) return recordedColumn(card.status, accepted);
 
   if (agent !== null && agent.pendingPermissions > 0) return "needs-you";
@@ -68,7 +81,8 @@ export function boardColumn(card: CardInputs): ColumnId {
   // An open question stays the user's move while its owner replies to other messages (TR-134).
   if (running && card.openBlockingDecisions > 0) return "needs-you";
   if (running) return "working";
-  if (card.paused === true) return "queued";
+  if (card.parked === true) return "parked";
+  if (card.queuedToResume === true) return "queued";
   if (card.crashedOut === true) return "stalled";
 
   if (card.openBlockingDecisions > 0) return "needs-you";
@@ -185,7 +199,7 @@ export function complexityOf(labels: readonly string[]): string | null {
 
 /** How many cards each column shows: its tickets, and in Needs you the manager's open questions too (TR-045). */
 export function columnCounts(cards: readonly { column: ColumnId }[], managerQuestions: number): Record<ColumnId, number> {
-  const counts: Record<ColumnId, number> = { "needs-you": managerQuestions, working: 0, stalled: 0, queued: 0, done: 0 };
+  const counts: Record<ColumnId, number> = { "needs-you": managerQuestions, working: 0, stalled: 0, queued: 0, parked: 0, done: 0 };
   for (const card of cards) counts[card.column] += 1;
   return counts;
 }
@@ -226,10 +240,10 @@ export function inboxCount(
 }
 
 /**
- * The columns that grow without end and are paged (TR-082): finished and not-started tickets.
+ * The columns that grow without end and are paged (TR-082): finished, not-started and parked tickets.
  * Needs you, Working and Stalled are small by design and never hide a card.
  */
-export const PAGED_COLUMNS = ["queued", "done"] as const satisfies readonly ColumnId[];
+export const PAGED_COLUMNS = ["queued", "parked", "done"] as const satisfies readonly ColumnId[];
 export type PagedColumn = (typeof PAGED_COLUMNS)[number];
 /** Cards a paged column shows at first, and how many more each Load more adds (the user's sizes, TR-082). */
 export const FIRST_PAGE = 5;
@@ -261,7 +275,7 @@ export function pageColumns<Placed extends { id: string; column: ColumnId; updat
   limits: ColumnLimits = {},
   include: readonly string[] = [],
 ): ColumnPage<Placed> {
-  const totals: Record<ColumnId, number> = { "needs-you": 0, working: 0, stalled: 0, queued: 0, done: 0 };
+  const totals: Record<ColumnId, number> = emptyTotals();
   for (const ticket of placed) totals[ticket.column] += 1;
   const onPage = new Set<string>();
   for (const column of PAGED_COLUMNS) {
@@ -282,4 +296,9 @@ export function pageColumns<Placed extends { id: string; column: ColumnId; updat
 /** The board's head counts: each column's true total, and in Needs you what else waits on the user (TR-045, TR-064). */
 export function boardCounts(totals: Readonly<Record<ColumnId, number>>, needsYouExtra: number): Record<ColumnId, number> {
   return { ...totals, "needs-you": totals["needs-you"] + needsYouExtra };
+}
+
+/** Every placement at zero: a board read before its first answer, or a server that sends no parked total. */
+export function emptyTotals(): Record<ColumnId, number> {
+  return { "needs-you": 0, working: 0, stalled: 0, queued: 0, parked: 0, done: 0 };
 }
