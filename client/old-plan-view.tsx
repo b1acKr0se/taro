@@ -120,12 +120,15 @@ export function OldPlanSheet({
       }}
     >
       <View style={{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.md, paddingBottom: SPACE.md, gap: SPACE.sm, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface1 }}>
+        {/* Close sits in a row of its own above the title, as the user asked. */}
+        <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
+          <IconButton icon="X" label="Close" theme={theme} onPress={onClose} />
+        </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm }}>
           <Icon name="History" size={15} color={colors.foregroundMuted} />
           <Text accessibilityRole="header" style={{ flex: 1, color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body), fontWeight: "600" }}>
             {`Old plan for ${ticket}`}
           </Text>
-          <IconButton icon="X" label="Close" theme={theme} onPress={onClose} />
         </View>
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm }}>
           <View style={{ height: lineHeightFor(FONT_SIZE.small), justifyContent: "center" }}>
