@@ -84,7 +84,7 @@ describe("whileWriting", () => {
   const rows = transcriptRows([...read, entry(4, 4, { type: "assistant_message", text: "app.\n\n```decision\nid: a" })]);
 
   it("holds the newest reply's unfinished block only while the agent writes", () => {
-    expect(whileWriting(rows, true)[1]?.text).toBe("The notes app.\n\n*Writing a question…*");
+    expect(whileWriting(rows, true)[1]?.text).toBe("The notes app.\n\nWriting a question…");
     expect(whileWriting(rows, false)).toBe(rows);
   });
 

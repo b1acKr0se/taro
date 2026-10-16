@@ -793,8 +793,9 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, trans
           )}
           <Text style={styles.toolTitle} numberOfLines={1}>
             {summary.title}
-            {summary.failed > 0 && group.tools.length > 1 ? ` · ${summary.failed} failed` : ""}
           </Text>
+          {/* Its own text, so a long summary is cut before the failure is. */}
+          {summary.failed > 0 && group.tools.length > 1 ? <Text style={styles.toolFailed}>{`· ${summary.failed} failed`}</Text> : null}
           <Icon name={open ? "ChevronDown" : "ChevronRight"} size={12} color={theme.colors.foregroundMuted} />
         </Pressable>
         {open ? (
@@ -948,6 +949,7 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
     lineIcon: { height: lineHeightFor(FONT_SIZE.caption), justifyContent: "center" as const },
     toolText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontFamily: MONOSPACE },
     toolTitle: { flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
+    toolFailed: { flexShrink: 0, color: colors.statusDanger, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
     error: { color: colors.statusDanger, fontSize: FONT_SIZE.small },
     hint: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center" as const, padding: SPACE.lg },
     composerFrame: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface0 },

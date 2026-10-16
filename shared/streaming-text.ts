@@ -5,7 +5,7 @@
  * The finished turn is read as before: this changes only the drawing.
  */
 
-export const WRITING_A_QUESTION = "*Writing a question…*";
+export const WRITING_A_QUESTION = "Writing a question…";
 
 const OPENER = "```decision";
 const CLOSED = /^```decision[^\n]*\n[\s\S]*?```/;
