@@ -17,7 +17,7 @@ const EMPTY: TicketFacts = {
   evidence: null,
 };
 
-const APPROVAL = { id: "scope-approval", question: "Approve the plan for NA-056?", blocking: true };
+const APPROVAL = { id: "scope-approval", question: "Approve the plan for NA-056?", blocking: true, agentRole: "owner", status: "open" };
 
 describe("ticketSummary", () => {
   it("reads a new-format ticket: nothing needed once Done, the plan's Goal, the first What changed bullet", () => {
@@ -47,14 +47,21 @@ describe("ticketSummary", () => {
 
   it("shows another blocking question as asked, and counts the rest", () => {
     const decisions = [
-      { id: "design", question: "Which design?", blocking: true },
-      { id: "late", question: "Keep the old link?", blocking: true },
+      { id: "design", question: "Which design?", blocking: true, agentRole: "owner", status: "open" },
+      { id: "late", question: "Keep the old link?", blocking: true, agentRole: "owner", status: "open" },
     ];
     expect(ticketSummary(EMPTY, decisions).needText).toBe("Which design? (+1 more)");
   });
 
   it("ignores a decision that does not block", () => {
-    expect(ticketSummary(EMPTY, [{ id: "naming", question: "Rename it?", blocking: false }]).need).toBe("nothing");
+    expect(ticketSummary(EMPTY, [{ id: "naming", question: "Rename it?", blocking: false, agentRole: "owner", status: "open" }]).need).toBe("nothing");
+  });
+
+  it("asks the owner's open question instead of acceptance while it holds Accept back (TR-146)", () => {
+    const tone = { id: "tone", question: "Warm or cool tone?", blocking: false, agentRole: "owner", status: "open" };
+    expect(ticketSummary({ ...SHORT, status: "Awaiting acceptance" }, [tone])).toMatchObject({ need: "decision", needText: "Warm or cool tone?" });
+    expect(ticketSummary({ ...SHORT, status: "Awaiting acceptance" }, [{ ...tone, id: "investigation-done" }])).toMatchObject({ need: "acceptance" });
+    expect(ticketSummary({ ...SHORT, status: "Awaiting acceptance" }, [{ ...tone, agentRole: "implementer" }])).toMatchObject({ need: "acceptance" });
   });
 
   it("asks for acceptance while the delivery waits", () => {
@@ -65,7 +72,7 @@ describe("ticketSummary", () => {
     expect(ticketSummary({ ...EMPTY, status: "In Progress", pause: { state: "paused" } }, [])).toMatchObject({ need: "nothing", needText: "Resume when you want it continued" });
     expect(ticketSummary({ ...EMPTY, status: "In Progress", pause: { state: "pausing" } }, []).needText).toBe("nothing, In Progress");
     expect(ticketSummary({ ...EMPTY, status: "In Progress", pause: { state: "queued-to-resume" } }, []).needText).toBe("nothing, In Progress");
-    expect(ticketSummary({ ...EMPTY, status: "In Progress", pause: { state: "paused" } }, [{ id: "naming", question: "Rename it?", blocking: true }]).needText).toBe("Rename it?");
+    expect(ticketSummary({ ...EMPTY, status: "In Progress", pause: { state: "paused" } }, [{ id: "naming", question: "Rename it?", blocking: true, agentRole: "owner", status: "open" }]).needText).toBe("Rename it?");
   });
 });
 
