@@ -1,115 +1,115 @@
 import { describe, expect, it } from "vitest";
 
-import { fileName, shellWords, toolAction, toolTally } from "./tool-wording";
+import { humanizeToolName, isPaseoToolName, joinsRuns, stripCwdPrefix, toolDisplay, toolRunTitle, toolTally, type ToolDetail } from "./tool-wording";
 
-const shell = (command: string) => toolAction({ type: "shell", command }, "Bash");
+const CWD = "/home/user/notes-app";
+const shell = (command: string) => toolDisplay({ type: "shell", command }, "Bash", CWD);
+const title = (calls: [ToolDetail, string][]) => toolRunTitle(calls.map(([detail, name]) => toolTally(detail, name)));
 
-describe("fileName", () => {
-  it("keeps the name of a path, whatever its separators", () => {
-    expect(fileName("/home/user/project/src/notes.ts")).toBe("notes.ts");
-    expect(fileName("C:\\project\\notes.ts")).toBe("notes.ts");
-    expect(fileName("notes.ts")).toBe("notes.ts");
-    expect(fileName("/home/user/project/src/")).toBe("src");
-    expect(fileName("/")).toBe("/");
-    expect(fileName("")).toBe("");
+describe("toolDisplay", () => {
+  it("shows a command whole under Shell, never one word of it (TR-150: it read “Ran -u”)", () => {
+    const command = "T=$(date -u +%Y-%m-%dT%H:%MZ); taro ticket edit NA-12 --append-notes \"MILESTONE $T — tests pass\"";
+    expect(shell(command)).toEqual({ label: "Shell", summary: command, icon: "SquareTerminal" });
+    expect(shell("env -u AGENT_ID paseo archive 3f2a --home /tmp/paseo-test").summary).toBe("env -u AGENT_ID paseo archive 3f2a --home /tmp/paseo-test");
+    expect(shell("cd /home/user/notes-app; for f in a.ts b.ts; do grep -n x $f; done").summary).toContain("for f in a.ts b.ts");
+    expect(shell("python3 - <<'EOF'\np='notes.ts'\nEOF").summary).toBe("python3 - <<'EOF'\np='notes.ts'\nEOF");
+  });
+
+  it("shows a file's path, inside the agent's folder from there, elsewhere whole", () => {
+    expect(toolDisplay({ type: "read", filePath: `${CWD}/client/notes.ts` }, "Read", CWD)).toEqual({ label: "Read", summary: "client/notes.ts", icon: "Eye" });
+    expect(toolDisplay({ type: "read", filePath: "/tmp/evidence/NA-12/after-phone-board.png" }, "Read", CWD)).toEqual({ label: "Read", summary: "/tmp/evidence/NA-12/after-phone-board.png", icon: "Eye" });
+    expect(toolDisplay({ type: "edit", filePath: `${CWD}/README.md` }, "Edit", CWD)).toEqual({ label: "Edit", summary: "README.md", icon: "Pencil" });
+    expect(toolDisplay({ type: "write", filePath: `${CWD}/a.ts` }, "Write", null)).toEqual({ label: "Write", summary: `${CWD}/a.ts`, icon: "Pencil" });
+  });
+
+  it("labels searches, pages, subagents and plans as Paseo does", () => {
+    expect(toolDisplay({ type: "search", query: "toolRunSummary", toolName: "grep" }, "Grep")).toEqual({ label: "Search", summary: "toolRunSummary", icon: "Search" });
+    expect(toolDisplay({ type: "fetch", url: "https://docs.example.com/guide" }, "WebFetch")).toEqual({ label: "Fetch", summary: "https://docs.example.com/guide", icon: "Search" });
+    expect(toolDisplay({ type: "sub_agent", subAgentType: "Explore", description: "Find the board code" }, "Task")).toEqual({ label: "Explore", summary: "Find the board code", icon: "Bot" });
+    expect(toolDisplay({ type: "sub_agent" }, "Task")).toEqual({ label: "Task", icon: "Bot" });
+    expect(toolDisplay({ type: "plan" }, "ExitPlanMode")).toEqual({ label: "Plan", icon: "Brain" });
+    expect(toolDisplay({ type: "worktree_setup", branchName: "feature/notes" }, "worktree_setup")).toEqual({ label: "Worktree setup", summary: "feature/notes", icon: "SquareTerminal" });
+  });
+
+  it("names any other tool by its name, made readable, with what it said", () => {
+    expect(toolDisplay({ type: "plain_text", label: "Monitor event: \"board changes\"" }, "task_notification")).toEqual({ label: "Task notification", summary: "Monitor event: \"board changes\"", icon: "Wrench" });
+    expect(toolDisplay({ type: "plain_text", label: "taro", icon: "sparkles" }, "Skill")).toEqual({ label: "Skill", summary: "taro", icon: "Sparkles" });
+    expect(toolDisplay({ type: "unknown" }, "mcp__paseo__get_agent_activity")).toEqual({ label: "Get agent activity", icon: "Wrench" });
+    expect(toolDisplay({ type: "unknown" }, "TaskStop")).toEqual({ label: "Taskstop", icon: "Wrench" });
+    expect(toolDisplay({ type: "unknown" }, "task", null, { subAgentActivity: "Reading files" })).toEqual({ label: "Task", summary: "Reading files", icon: "Bot" });
+    expect(toolDisplay({ type: "unknown" }, "thinking")).toEqual({ label: "Thinking", icon: "Brain" });
+    expect(toolDisplay({ type: "plain_text", label: "npm run dev" }, "terminal")).toEqual({ label: "Terminal", summary: "npm run dev", icon: "Wrench" });
+    expect(toolDisplay({ type: "unknown" }, "speak")).toEqual({ label: "Speak", icon: "MicVocal" });
+  });
+
+  it("never leaves an empty summary", () => {
+    expect(shell("")).toEqual({ label: "Shell", icon: "SquareTerminal" });
+    expect(toolDisplay({ type: "sub_agent", subAgentType: "", description: "" }, "Task")).toEqual({ label: "Task", icon: "Bot" });
   });
 });
 
-describe("shellWords", () => {
-  it("skips cd steps, assignments, comments and prefixes that only run the next word", () => {
-    expect(shellWords("cd /home/user/project && npm test")).toEqual(["npm", "test"]);
-    expect(shellWords("CI=1 NODE_ENV=test sudo /usr/bin/git status")).toEqual(["git", "status"]);
-    expect(shellWords("# look first\nls -la")).toEqual(["ls", "-la"]);
-    expect(shellWords("   ")).toEqual([]);
-    expect(shellWords("cd /home/user/project")).toEqual(["cd", "/home/user/project"]);
+describe("humanizeToolName and isPaseoToolName", () => {
+  it("reads Paseo's MCP tools by their own name and leaves other namespaced names alone", () => {
+    expect(isPaseoToolName("mcp__paseo__create_agent")).toBe(true);
+    expect(isPaseoToolName("paseo.create_agent")).toBe(true);
+    expect(isPaseoToolName("mcp__paseo_dev__list_agents")).toBe(true);
+    expect(isPaseoToolName("mcp__github__create_issue")).toBe(false);
+    expect(isPaseoToolName("paseo__speak")).toBe(false);
+    expect(humanizeToolName("mcp__paseo__create_agent")).toBe("Create agent");
+    expect(humanizeToolName("mcp__github__create_issue")).toBe("mcp__github__create_issue");
+    expect(humanizeToolName("web-search.v2")).toBe("web-search.v2");
+    expect(humanizeToolName("  ")).toBe("  ");
   });
 });
 
-describe("toolAction", () => {
-  it("names a file by its name, never its path", () => {
-    expect(toolAction({ type: "read", filePath: "/home/user/project/README.md" }, "Read")).toEqual({ text: "Read README.md", category: "read" });
-    expect(toolAction({ type: "edit", filePath: "/home/user/project/notes.ts" }, "Edit")).toEqual({ text: "Edited notes.ts", category: "edit" });
-    expect(toolAction({ type: "write", filePath: "/home/user/project/new.ts" }, "Write")).toEqual({ text: "Wrote new.ts", category: "edit" });
-  });
-
-  it("says what a shell command did instead of the command", () => {
-    expect(shell("ls -la")).toEqual({ text: "Listed files", category: "search" });
-    expect(shell("grep -r 'notes' --include='*.ts' .")).toEqual({ text: "Searched the code", category: "search" });
-    expect(shell("git log --oneline -5")).toEqual({ text: "Looked at the history", category: "git" });
-    expect(shell("cd /home/user/project && npm test")).toEqual({ text: "Ran the tests", category: "run" });
-    expect(shell("wc -l README.md notes.ts")).toEqual({ text: "Counted lines", category: "search" });
-  });
-
-  it("names the file a reading command reads, and only a file", () => {
-    expect(shell("cat /home/user/project/README.md")).toEqual({ text: "Read README.md", category: "read" });
-    expect(shell("sed -n 1,40p client/notes.ts")).toEqual({ text: "Read notes.ts", category: "read" });
-    expect(shell("cat")).toEqual({ text: "Read a file", category: "read" });
-    expect(shell("tail -f /var/log/app")).toEqual({ text: "Read a file", category: "read" });
-  });
-
-  it("reads git's subcommand past its own options, and counts looking at git apart from reading files", () => {
-    expect(shell("git -C /home/user/project log --oneline")).toEqual({ text: "Looked at the history", category: "git" });
-    expect(shell("git --no-pager -c color.ui=never diff")).toEqual({ text: "Looked at the changes", category: "git" });
-    expect(shell("git -C /home/user/project status --short")).toEqual({ text: "Checked the changes", category: "git" });
-    expect(shell("git -C")).toEqual({ text: "Ran git", category: "run" });
-  });
-
-  it("says a file was written or edited when a command writes it, not read", () => {
-    expect(shell("sed -i 's/a/b/' client/notes.ts")).toEqual({ text: "Edited notes.ts", category: "edit" });
-    expect(shell("sed -i.bak -e 's/a/b/' notes.ts")).toEqual({ text: "Edited notes.ts", category: "edit" });
-    expect(shell("cat > /home/user/project/plan.md <<'EOF'\n# Plan\nEOF")).toEqual({ text: "Wrote plan.md", category: "edit" });
-    expect(shell("echo done >> /tmp/log.txt")).toEqual({ text: "Wrote log.txt", category: "edit" });
-    expect(shell("printf '%s' x > out.json")).toEqual({ text: "Wrote out.json", category: "edit" });
-    expect(shell("tee /home/user/project/notes.md")).toEqual({ text: "Wrote notes.md", category: "edit" });
-  });
-
-  it("still reads a file whose errors go elsewhere, and runs a command whose output is saved", () => {
-    expect(shell("echo hi 2> /tmp/err")).toEqual({ text: "Ran echo", category: "run" });
-    expect(shell("cat README.md 2>&1")).toEqual({ text: "Read a file", category: "read" });
-    expect(shell("npm test > /tmp/test.log 2>&1")).toEqual({ text: "Ran the tests", category: "run" });
-  });
-
-  it("names an unknown program with its subcommand, and a script by its name", () => {
-    expect(shell("git push origin main")).toEqual({ text: "Ran git push", category: "run" });
-    expect(shell("npm run typecheck > /tmp/log 2>&1")).toEqual({ text: "Ran the typecheck script", category: "run" });
-    expect(shell("python3 -I tools/check.py")).toEqual({ text: "Ran python3", category: "run" });
-    expect(shell("git")).toEqual({ text: "Ran git", category: "run" });
-    expect(shell("")).toEqual({ text: "Ran a command", category: "run" });
-  });
-
-  it("quotes searched words, clipped, and tells a web search and a file pattern apart", () => {
-    expect(toolAction({ type: "search", query: "toolRunSummary" }, "Grep")).toEqual({ text: "Searched for “toolRunSummary”", category: "search" });
-    expect(toolAction({ type: "search", query: "**/*.ts", toolName: "glob" }, "Glob")).toEqual({ text: "Looked for files", category: "search" });
-    expect(toolAction({ type: "search", query: "paseo plugin api", toolName: "web_search" }, "WebSearch")).toEqual({ text: "Searched the web for “paseo plugin api”", category: "web" });
-    expect(toolAction({ type: "search", query: "x".repeat(60) }, "Grep").text).toBe(`Searched for “${"x".repeat(39)}…”`);
-  });
-
-  it("names a fetched page by its host, a subagent by its job, and anything else by its tool", () => {
-    expect(toolAction({ type: "fetch", url: "https://docs.example.com/guide?page=2" }, "WebFetch")).toEqual({ text: "Opened docs.example.com", category: "web" });
-    expect(toolAction({ type: "fetch", url: "not a url" }, "WebFetch").text).toBe("Opened not a url");
-    expect(toolAction({ type: "sub_agent", description: "Review the diff" }, "Task")).toEqual({ text: "Started a subagent: Review the diff", category: "agent" });
-    expect(toolAction({ type: "sub_agent" }, "Task").text).toBe("Started a subagent");
-    expect(toolAction({ type: "plain_text", label: "Thinking about it" }, "x")).toEqual({ text: "Thinking about it", category: "other" });
-    expect(toolAction({ type: "plan" }, "ExitPlanMode")).toEqual({ text: "Wrote a plan", category: "other" });
-    expect(toolAction({ type: "unknown" }, "mcp__paseo__create_agent")).toEqual({ text: "create agent", category: "other" });
+describe("stripCwdPrefix", () => {
+  it("cuts the folder only at a path boundary", () => {
+    expect(stripCwdPrefix("/home/user/notes-app/a.ts", "/home/user/notes-app/")).toBe("a.ts");
+    expect(stripCwdPrefix("/home/user/notes-app", "/home/user/notes-app")).toBe(".");
+    expect(stripCwdPrefix("/home/user/notes-app-2/a.ts", "/home/user/notes-app")).toBe("/home/user/notes-app-2/a.ts");
+    expect(stripCwdPrefix("C:\\notes\\a.ts", "C:\\notes")).toBe("a.ts");
+    expect(stripCwdPrefix("", "/home/user")).toBe("");
   });
 });
 
-describe("toolTally", () => {
-  it("counts each kind once, in the order the agent first did it", () => {
-    expect(toolTally(["search", "read", "read", "search", "read", "read"])).toBe("Searched twice, read 4 files");
-    expect(toolTally(["run", "edit", "run", "run"])).toBe("Ran 3 commands, changed a file");
+describe("toolRunTitle", () => {
+  it("reads like Paseo's: kinds in its order, joined with a serial “and”", () => {
+    expect(
+      title([
+        [{ type: "plain_text", label: "Monitor event" }, "task_notification"],
+        [{ type: "shell", command: "taro ticket view NA-12" }, "Bash"],
+        [{ type: "shell", command: "git fetch origin -q" }, "Bash"],
+        [{ type: "read", filePath: "/tmp/after-phone-owner.png" }, "Read"],
+      ]),
+    ).toBe("Ran 2 commands, read 1 file, and used 1 other tool");
+    expect(title([[{ type: "shell", command: "ls" }, "Bash"], [{ type: "read", filePath: "/a" }, "Read"]])).toBe("Ran 1 command and read 1 file");
+    expect(title([[{ type: "shell", command: "ls" }, "Bash"]])).toBe("Ran 1 command");
+    expect(title([])).toBe("");
   });
 
-  it("says one of a kind in words and counts the rest", () => {
-    expect(toolTally(["read"])).toBe("Read a file");
-    expect(toolTally(["search", "search", "search"])).toBe("Searched 3 times");
-    expect(toolTally(["web", "web", "agent", "other", "other"])).toBe("Looked online twice, started a subagent, 2 other steps");
-    expect(toolTally(["agent", "agent", "other"])).toBe("Started 2 subagents, one other step");
-    expect(toolTally(["git", "read", "git", "git"])).toBe("Checked git 3 times, read a file");
+  it("counts a file once however often it was read or changed", () => {
+    const read = (filePath: string): [ToolDetail, string] => [{ type: "read", filePath }, "Read"];
+    expect(title([read("/a.ts"), read("/a.ts"), read("/b.ts"), [{ type: "edit", filePath: "/a.ts" }, "Edit"], [{ type: "write", filePath: "/a.ts" }, "Write"]])).toBe("Edited 1 file and read 2 files");
   });
 
-  it("is empty for no calls", () => {
-    expect(toolTally([])).toBe("");
+  it("counts searches, web searches, other tools and Paseo calls apart", () => {
+    expect(
+      title([
+        [{ type: "search", query: "x" }, "Grep"],
+        [{ type: "unknown" }, "mcp__exa__web_search"],
+        [{ type: "unknown" }, "TodoWrite"],
+        [{ type: "unknown" }, "mcp__paseo__list_agents"],
+        [{ type: "unknown" }, "paseo_send"],
+        [{ type: "sub_agent", description: "Review" }, "Task"],
+      ]),
+    ).toBe("Searched 2 times, used 2 other tools, and called Paseo 2 times");
+  });
+});
+
+describe("joinsRuns", () => {
+  it("keeps a plan and a spoken reply out of a run", () => {
+    expect(joinsRuns({ type: "plan" }, "ExitPlanMode")).toBe(false);
+    expect(joinsRuns({ type: "unknown" }, "speak")).toBe(false);
+    expect(joinsRuns({ type: "shell", command: "ls" }, "Bash")).toBe(true);
   });
 });

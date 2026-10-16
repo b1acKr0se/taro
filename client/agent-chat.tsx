@@ -38,7 +38,7 @@ import { ReplyBox } from "./reply-box";
 import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
 import { cardFits, cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
-import { groupRows, toolRunSummary, type Group } from "./tool-runs";
+import { groupRows, toolRunSummary, type Group, type ToolRow } from "./tool-runs";
 import { ATTACHMENTS_ONLY, transcriptRows, whileWriting } from "./transcript-rows";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
@@ -144,7 +144,9 @@ export function AgentChat({
   // The timeline's read of the agent when it is newer than the board's: it follows the stream.
   const live = timeline.agent !== null && timeline.agent.updatedAt >= agent.updatedAt ? timeline.agent : null;
   const writing = (live?.status ?? agent.status) === "running";
-  const rows = useMemo(() => whileWriting(transcriptRows(timeline.entries), writing), [timeline.entries, writing]);
+  // The agent's folder, so a tool call's path inside it reads as Paseo shows it.
+  const cwd = timeline.agent?.cwd ?? null;
+  const rows = useMemo(() => whileWriting(transcriptRows(timeline.entries, cwd), writing), [timeline.entries, cwd, writing]);
   const groups = useMemo(() => groupRows(rows), [rows]);
   // The newest entry's position, not the count: the timeline is a tail and stops growing in length.
   const sentImages = useSentImages(agent.id, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0);
@@ -774,8 +776,27 @@ function SendMarkLine({
   );
 }
 
+/** One tool call as Paseo lists it: its icon, its label and, quieter, the command or path, on one line. */
+function ToolLine({ tool, theme, styles }: { tool: ToolRow; theme: PluginTheme; styles: ChatStyles }) {
+  return (
+    <View style={styles.toolLine}>
+      {tool.status === "running" ? (
+        <Spinner size={13} color={theme.colors.foregroundMuted} />
+      ) : (
+        <Icon name={tool.status === "failed" ? "X" : tool.icon} size={13} color={tool.status === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
+      )}
+      <Text style={styles.toolText} numberOfLines={1}>
+        <Text style={styles.toolLabel}>{tool.label}</Text>
+        {tool.summary === undefined ? null : `  ${tool.summary}`}
+      </Text>
+    </View>
+  );
+}
+
 function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, transformText, decorateRow, theme, styles, onToggle, onRowLayout, onOpenLink, renderCards, onMarkAction }: TranscriptGroupProps) {
   if ("tools" in group) {
+    const [only] = group.tools;
+    if (group.tools.length === 1 && only !== undefined) return <ToolLine key={group.key} tool={only} theme={theme} styles={styles} />;
     const summary = toolRunSummary(group.tools);
     const toggle = () => onToggle(group.key);
     return (
@@ -784,35 +805,27 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, trans
           accessibilityRole="button"
           accessibilityState={{ expanded: open }}
           accessibilityLabel={`${summary.title}${summary.failed > 0 ? `, ${summary.failed} failed` : ""}${summary.state === "running" ? ", running" : ""}, ${open ? "fold" : "show"}`}
-          style={[styles.toolHead, summary.state === "failed" ? { borderColor: theme.colors.statusDanger } : null]}
+          style={[styles.toolHead, open ? styles.toolHeadOpen : null]}
           onPress={toggle}
         >
           {summary.state === "running" ? (
-            <Spinner size={11} color={theme.colors.foregroundMuted} />
+            <Spinner size={13} color={theme.colors.foregroundMuted} />
           ) : (
-            <Icon name={summary.state === "failed" ? "X" : "Wrench"} size={11} color={summary.state === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
+            <Icon
+              name={open ? "ChevronDown" : summary.state === "failed" ? "X" : "Wrench"}
+              size={13}
+              color={summary.state === "failed" && !open ? theme.colors.statusDanger : open ? theme.colors.foreground : theme.colors.foregroundMuted}
+            />
           )}
-          {/* Never cut: the counts are what the reader wants, and one kind of step each keeps it short. */}
-          <Text style={styles.toolTitle}>
-            {summary.title}
-          </Text>
+          {/* Never cut: the counts are what the reader wants. */}
+          <Text style={[styles.toolTitle, open ? styles.toolTitleOpen : null]}>{summary.title}</Text>
           {/* Its own text, so a long summary is cut before the failure is. */}
-          {summary.failed > 0 && group.tools.length > 1 ? <Text style={styles.toolFailed}>{`· ${summary.failed} failed`}</Text> : null}
-          <Icon name={open ? "ChevronDown" : "ChevronRight"} size={12} color={theme.colors.foregroundMuted} />
+          {summary.failed > 0 ? <Text style={styles.toolFailed}>{`· ${summary.failed} failed`}</Text> : null}
         </Pressable>
         {open ? (
           <View style={styles.toolList}>
             {group.tools.map((tool) => (
-              <View key={tool.key} style={styles.line}>
-                {tool.status === "running" ? (
-                  <Spinner size={11} color={theme.colors.foregroundMuted} />
-                ) : (
-                  <Icon name={tool.status === "failed" ? "X" : "Dot"} size={11} color={tool.status === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
-                )}
-                <Text style={styles.toolText} numberOfLines={1}>
-                  {tool.text}
-                </Text>
-              </View>
+              <ToolLine key={tool.key} tool={tool} theme={theme} styles={styles} />
             ))}
           </View>
         ) : null}
@@ -933,28 +946,31 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
     userText: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) },
     agentRow: { alignSelf: "stretch" as const, gap: SPACE.sm },
     line: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm - 2 },
-    // A run of tool calls is the agent working, not talking: one quiet line until the reader opens it.
-    toolRun: { alignSelf: "flex-start" as const, maxWidth: "100%" as const, gap: SPACE.xs },
+    // A run of tool calls is the agent working, not talking: one quiet line until the reader opens it, as in Paseo.
+    toolRun: { alignSelf: "stretch" as const, gap: SPACE.xs },
     toolHead: {
       flexDirection: "row" as const,
       alignItems: "center" as const,
-      gap: SPACE.sm - 2,
-      paddingHorizontal: SPACE.sm,
+      alignSelf: "flex-start" as const,
+      maxWidth: "100%" as const,
+      gap: SPACE.sm,
       paddingVertical: SPACE.xs,
-      borderRadius: 6,
-      borderWidth: 1,
-      borderColor: colors.border,
+      borderRadius: 8,
     },
-    toolList: { gap: SPACE.xs, marginLeft: SPACE.md, paddingLeft: SPACE.sm, borderLeftWidth: 1, borderLeftColor: colors.border },
+    toolHeadOpen: { alignSelf: "stretch" as const, paddingHorizontal: SPACE.sm, backgroundColor: colors.surface2 },
+    toolList: { gap: SPACE.xs, paddingHorizontal: SPACE.sm },
+    toolLine: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm, paddingVertical: 2 },
     lineText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
     lineTop: { alignItems: "flex-start" as const },
     lineTextHeight: { lineHeight: lineHeightFor(FONT_SIZE.caption) },
     lineIcon: { height: lineHeightFor(FONT_SIZE.caption), justifyContent: "center" as const },
-    toolText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontFamily: MONOSPACE },
-    toolTitle: { flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
+    toolText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: labelLineHeightFor(FONT_SIZE.small) },
+    toolLabel: { color: colors.foreground },
+    toolTitle: { flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: labelLineHeightFor(FONT_SIZE.small) },
+    toolTitleOpen: { color: colors.foreground },
     // Not the agent's words: the chat saying a question is on its way (TR-144).
     asking: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, fontStyle: "italic" as const },
-    toolFailed: { flexShrink: 0, color: colors.statusDanger, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
+    toolFailed: { flexShrink: 0, color: colors.statusDanger, fontSize: FONT_SIZE.small, lineHeight: labelLineHeightFor(FONT_SIZE.small) },
     error: { color: colors.statusDanger, fontSize: FONT_SIZE.small },
     hint: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center" as const, padding: SPACE.lg },
     composerFrame: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface0 },

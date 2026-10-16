@@ -89,3 +89,25 @@ describe("transcriptRows times", () => {
     expect(rows).toEqual([{ key: "1", kind: "agent", text: "Hello", at: "2026-01-05T10:00:00Z" }]);
   });
 });
+
+function toolCall(seq: number, name: string, detail: object, status = "completed"): TimelineEntry {
+  return { seqStart: seq, seqEnd: seq, item: { type: "tool_call", callId: `c${seq}`, name, status, detail, error: null } } as unknown as TimelineEntry;
+}
+
+describe("transcriptRows tool calls (TR-150)", () => {
+  it("keeps each call as Paseo shows it, its path from the agent's folder, and what it counts as", () => {
+    const rows = transcriptRows(
+      [
+        toolCall(1, "Bash", { type: "shell", command: "T=$(date -u +%Y-%m-%dT%H:%MZ); taro ticket edit NA-12 -s Done" }),
+        toolCall(2, "Read", { type: "read", filePath: "/home/user/notes-app/client/notes.ts" }, "failed"),
+        toolCall(3, "ExitPlanMode", { type: "plan", text: "Plan" }),
+      ],
+      "/home/user/notes-app",
+    );
+    expect(rows).toEqual([
+      { key: "1", kind: "tool", text: "Shell T=$(date -u +%Y-%m-%dT%H:%MZ); taro ticket edit NA-12 -s Done", label: "Shell", summary: "T=$(date -u +%Y-%m-%dT%H:%MZ); taro ticket edit NA-12 -s Done", icon: "SquareTerminal", tally: { kind: "command" }, alone: false, status: "completed" },
+      { key: "2", kind: "tool", text: "Read client/notes.ts", label: "Read", summary: "client/notes.ts", icon: "Eye", tally: { kind: "read", filePath: "/home/user/notes-app/client/notes.ts" }, alone: false, status: "failed" },
+      { key: "3", kind: "tool", text: "Plan", label: "Plan", icon: "Brain", tally: { kind: "other" }, alone: true, status: "completed" },
+    ]);
+  });
+});
