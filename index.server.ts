@@ -60,6 +60,7 @@ import { idleCompactAfterMs } from "./shared/idle-compaction";
 import { Supervisor, identityFromLabels } from "./server/supervision";
 import { sessionEnvironment } from "./server/environment";
 import { readTextIfPresent, writeTextAtomically } from "./server/files";
+import { trimAgentLaunch } from "./server/agent-trim";
 import { ensureCompactHook, installCompactHook, removeReloadFile } from "./server/compact-hook";
 import { catchUpText, compactManager, launchManager, restartManager, resumeManager, tellManager, writeManagerInstructions } from "./server/manager";
 import { onboardProject, onboardingProblems } from "./server/onboard";
@@ -424,6 +425,15 @@ export default function contribute(server: PluginServerContext) {
     return { ...request, env: { ...request.env, ...environment } };
   });
 
+  // A Taro owner or subagent on Claude starts without the tools, MCP server and skills no role uses (TR-139).
+  const removeCreateHook = server.before("agent.create", async ({ request }) => {
+    const trimmed = await trimAgentLaunch(request).catch((error: unknown) => {
+      reportFailure(`[taro] trimming a launch in ${request.config.cwd}:`, error);
+      return null;
+    });
+    return trimmed ?? undefined;
+  });
+
   // Paseo has already disposed the API when this runs: stop everything that could start a pass first,
   // so nothing new calls it, and keep what was in flight from logging the stop as errors (TR-067).
   return async () => {
@@ -437,6 +447,7 @@ export default function contribute(server: PluginServerContext) {
     removeTurnStartHook();
     removeArchiveHook();
     removeSessionHook();
+    removeCreateHook();
     // Last: commands under way get a moment to finish, then are killed with their children (TR-073).
     await stopCommands();
   };

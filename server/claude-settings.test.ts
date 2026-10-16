@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
-import { TARO_HOOK_MARKER, reloadHookCommand, taroHookEntry, withTaroHook } from "../shared/claude-settings";
+import { TARO_HOOK_MARKER, reloadHookCommand, taroHookEntry, withSkillsOff, withTaroHook } from "../shared/claude-settings";
 
 const command = reloadHookCommand("/home/user/.paseo/plugin-data/taro/reload", "/home/user/.paseo/plugins/taro/skill");
 
@@ -95,6 +95,42 @@ describe("withTaroHook", () => {
     const after = withTaroHook(before, command) ?? "";
     inserted(before, after);
     expect(JSON.parse(after)).toMatchObject({ 'a]"}': "x{[\\", b: [1, -2500, true, null, { c: "]" }] });
+  });
+});
+
+describe("withSkillsOff", () => {
+  const names = ["paseo", "loop"];
+  const overrides = (text: string): unknown => (JSON.parse(text) as { skillOverrides: unknown }).skillOverrides;
+
+  it("writes a new file when there is none, or only whitespace", () => {
+    for (const text of [null, "", "  \n"]) expect(withSkillsOff(text, names)).toBe('{\n  "skillOverrides": {\n    "paseo": "off",\n    "loop": "off"\n  }\n}\n');
+  });
+
+  it("adds the overrides beside Taro's hook and the user's settings, byte for byte", () => {
+    const before = withTaroHook('{\n    "permissions": {"allow": ["Bash(npm test:*)"]}\n}\n', command) ?? "";
+    const after = withSkillsOff(before, names) ?? "";
+    inserted(before, after);
+    expect(overrides(after)).toEqual({ paseo: "off", loop: "off" });
+    expect(sessionStart(after)).toHaveLength(1);
+    expect(withTaroHook(after, command)).toBe(after);
+  });
+
+  it("keeps the user's own value for a name, \"on\" included, and adds only the missing ones", () => {
+    const before = '{"skillOverrides": {"paseo": "on", "deploy": "name-only"}}';
+    const after = withSkillsOff(before, names) ?? "";
+    inserted(before, after);
+    expect(overrides(after)).toEqual({ paseo: "on", deploy: "name-only", loop: "off" });
+  });
+
+  it("fills an empty overrides object and is idempotent", () => {
+    const once = withSkillsOff('{"skillOverrides": {}}', names) ?? "";
+    expect(overrides(once)).toEqual({ paseo: "off", loop: "off" });
+    expect(withSkillsOff(once, names)).toBe(once);
+    expect(withSkillsOff("{}", [])).toBe("{}");
+  });
+
+  it("leaves alone a file it cannot merge without rewriting it", () => {
+    for (const text of ["{ not json", "[]", '{"skillOverrides": []}', '{"skillOverrides": "off"}']) expect(withSkillsOff(text, names)).toBeNull();
   });
 });
 

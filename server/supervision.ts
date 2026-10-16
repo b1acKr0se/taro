@@ -12,6 +12,7 @@ import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
 import { isCrash } from "../shared/recovery";
 import { hashText, parseDecisionBlocks, parseStatusLine, seenAgain, withImagePaths, type ParsedDecision } from "../shared/reports";
 import { openQuestionHolding, withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDecision } from "../shared/state";
+import { watchTrimmedTurn } from "./agent-trim";
 import { fetchLiveAgent, isMidTurn, listTaroAgents } from "./agents";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
 import { ticketEvidence, ticketEvidenceDirectory } from "./evidence";
@@ -209,6 +210,10 @@ export class Supervisor {
     // The hook passes the agent's whole stored timeline: earlier turns' blocks would reopen answered
     // decisions, their user words would close new ones, and a turn without text would reuse their reply.
     const turn = currentTurn(timeline);
+    // What a trimmed owner or subagent reached for that Taro removed, and what it started with (TR-139).
+    await watchTrimmedTurn(this.stats, live, identity, turn).catch((error: unknown) => {
+      console.warn(`[taro] watching ${live.id}'s tools: ${error instanceof Error ? error.message : String(error)}`);
+    });
     const closing = closingText(turn);
     // Reports are deduplicated by their text: turn ids ("foreground-turn-1") may repeat, and the
     // reconcile after a restart must recognise a report the hook already delivered.

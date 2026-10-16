@@ -244,7 +244,7 @@ export class Stats {
     if (ticket === null) return;
     for (const target of ticketAndParent(ticket)) {
       await this.update(project, target, (stats) => {
-        const record = stats.agents[agent.id] ?? { agentId: agent.id, role: agent.role, model: agent.model, title: agent.title, turns: 0, activeMs: 0, costUsd: null, contextTokens: null };
+        const record = stats.agents[agent.id] ?? { agentId: agent.id, role: agent.role, model: agent.model, title: agent.title, turns: 0, activeMs: 0, costUsd: null, contextTokens: null, startingContextTokens: null };
         record.turns += 1;
         if (activeMs !== undefined) record.activeMs += activeMs;
         applyUsage(record, usage);
@@ -265,6 +265,29 @@ export class Stats {
       }
       return changed;
     });
+  }
+
+  /** Whether an agent on `ticket` has its starting context recorded; false when the agent is not recorded there. */
+  async hasStartingContext(project: string, ticket: string, agentId: string): Promise<boolean> {
+    const record = (await this.load()).tickets[keyFor(project, ticket)]?.agents[agentId];
+    return record !== undefined && record.startingContextTokens !== null;
+  }
+
+  /** Records an agent's starting context once, on the parent too; true when `ticket`'s record took it now. */
+  async startingContext(project: string, ticket: string, agentId: string, tokens: number): Promise<boolean> {
+    let taken = false;
+    await this.modify((file) => {
+      let changed = false;
+      for (const target of ticketAndParent(ticket)) {
+        const record = file.tickets[keyFor(project, target)]?.agents[agentId];
+        if (record === undefined || record.startingContextTokens !== null) continue;
+        record.startingContextTokens = tokens;
+        changed = true;
+        if (target === ticket) taken = true;
+      }
+      return changed;
+    });
+    return taken;
   }
 
   /**

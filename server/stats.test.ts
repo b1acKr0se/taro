@@ -459,3 +459,20 @@ describe("waiting on the user (TR-100)", () => {
     expect(summary?.waitingOnUserMs).toBe(12 * 60_000);
   });
 });
+
+describe("starting context (TR-139)", () => {
+  it("is taken once per agent, on a child's parent too, and only for an agent already recorded", async () => {
+    const stats = new Stats();
+    expect(await stats.startingContext("taro", "TR-1.2", agent.id, 18_000)).toBe(false);
+    await stats.turnEnded("taro", "TR-1.2", agent, 1_000);
+    expect(await stats.hasStartingContext("taro", "TR-1.2", agent.id)).toBe(false);
+    expect(await stats.startingContext("taro", "TR-1.2", agent.id, 18_000)).toBe(true);
+    expect(await stats.startingContext("taro", "TR-1.2", agent.id, 52_000)).toBe(false);
+    expect(await stats.hasStartingContext("taro", "TR-1.2", agent.id)).toBe(true);
+    const tickets = (await stats.all("taro")).map((ticket) => [ticket.ticket, ticket.agents[agent.id]?.startingContextTokens]);
+    expect(tickets.sort()).toEqual([
+      ["TR-1", 18_000],
+      ["TR-1.2", 18_000],
+    ]);
+  });
+});
