@@ -19,7 +19,7 @@ export interface PlanAnswer {
 export interface PlanLine {
   /** What the user answered; null when it was not answered on the card. */
   outcome: string | null;
-  /** When it was answered; null without an answer record. */
+  /** When it was answered, or withdrawn (the withdrawing message's time); null without either. */
   at: string | null;
   /** The words typed with the answer; null without any. */
   words: string | null;
@@ -90,16 +90,18 @@ export function planLines(
     const end = next?.at ?? Number.POSITIVE_INFINITY;
     const endIndex = next?.index ?? rows.length;
     const answer = answers.find((each) => Date.parse(each.at) >= asking.at && Date.parse(each.at) < end);
-    const between = rows.slice(asking.index + 1, endIndex);
-    const userSpoke = between.some((each) => each.kind === "user");
-    const withdrawn = withdrawals.some((index) => index > asking.index && index < endIndex);
+    const firstWithdrawal = withdrawals.find((index) => index > asking.index && index < endIndex);
+    const withdrawn = firstWithdrawal !== undefined;
+    // The user's words answered it only when the owner had not already withdrawn it.
+    const userSpoke = rows.slice(asking.index + 1, firstWithdrawal ?? endIndex).some((each) => each.kind === "user");
     if (answer === undefined && next === undefined && (settling || (!withdrawn && !userSpoke))) return;
+    const closed = answer !== undefined ? null : userSpoke ? "answered in chat" : withdrawn ? "withdrawn" : null;
     lines.set(row.key, {
       outcome: answer?.outcome ?? null,
-      at: answer?.at ?? null,
+      at: answer?.at ?? (closed === "withdrawn" && firstWithdrawal !== undefined ? (rows[firstWithdrawal]?.at ?? null) : null),
       words: answer?.words ?? null,
       replaced: next !== undefined,
-      closed: answer !== undefined ? null : userSpoke ? "answered in chat" : withdrawn ? "withdrawn" : null,
+      closed,
     });
   });
   return lines;

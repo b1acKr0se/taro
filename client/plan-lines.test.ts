@@ -85,8 +85,13 @@ describe("planLines", () => {
   it("says a plan the owner withdrew was withdrawn", () => {
     const rows = [asking("1", "2026-01-05T10:00:00Z"), agent("2", "2026-01-05T10:05:00Z", `Dropping it.\n\n${withdrawn}`)];
     const lines = planLines(rows, [], null);
-    expect(text(lines.get("1"))).toBe("Withdrawn");
+    expect(text(lines.get("1"))).toBe("Withdrawn (10:05)");
     expect(lines.has("2")).toBe(false);
+  });
+
+  it("says a plan the owner withdrew before the user wrote was withdrawn, though it was asked again after their message", () => {
+    const rows = [asking("1", "2026-01-05T10:00:00Z"), agent("2", "2026-01-05T10:01:00Z", `Wrong plan.\n\n${withdrawn}`), user("3", "Go on."), asking("4", "2026-01-05T10:05:00Z")];
+    expect(text(planLines(rows, [], "4").get("1"))).toBe("Withdrawn · replaced by the plan below (10:01)");
   });
 
   it("says a plan answered in words in the chat was answered there, with no time", () => {
