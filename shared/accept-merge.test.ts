@@ -29,23 +29,23 @@ describe("handoffText (the timeline shows who took over first)", () => {
 
   it("leads with the fresh owner and how long the old one had been idle, overnight included", () => {
     expect(handoffText("2026-01-02T08:00Z", found, { kind: "fresh", owner, fresh, idleMs: (9 * 60 + 12) * 60_000 })).toBe(
-      "ACCEPT-HANDOFF 2026-01-02T08:00Z — Handed to a fresh owner f8078033: the owner ecb53427 had been idle 9 h 12 min, past the 5 min its context stays cached. The plugin stopped: the pull request's head moved to a4d0a9f3 since the review head 7fe26f7c; present it again",
+      "ACCEPT-HANDOFF 2026-01-02T08:00Z — Fresh owner, idle 9 h 12 min: the owner ecb53427 was idle past the 5 min its context stays cached, so f8078033 took over. The plugin stopped: the pull request's head moved to a4d0a9f3 since the review head 7fe26f7c; present it again",
     );
   });
 
   it("says when the old owner's idle time is unknown", () => {
-    expect(handoffText("2026-01-02T08:00Z", "x", { kind: "fresh", owner, fresh, idleMs: null })).toContain("the owner ecb53427 had been idle for an unknown time, past");
+    expect(handoffText("2026-01-02T08:00Z", "x", { kind: "fresh", owner, fresh, idleMs: null })).toContain("— Fresh owner, idle time unknown: the owner ecb53427 was idle past the 5 min");
   });
 
   it("names the warm owner with how long ago it was active, or mid-turn", () => {
-    expect(handoffText("2026-01-02T08:00Z", "x", { kind: "owner", owner, idleMs: 4 * 60_000 + 59_000 })).toBe("ACCEPT-HANDOFF 2026-01-02T08:00Z — Handed to the owner ecb53427, active 4 min ago. The plugin stopped: x");
-    expect(handoffText("2026-01-02T08:00Z", "x", { kind: "owner", owner, idleMs: 20_000 })).toContain("active under a minute ago.");
-    expect(handoffText("2026-01-02T08:00Z", "x", { kind: "owner", owner, idleMs: null })).toContain("Handed to the owner ecb53427, mid-turn.");
+    expect(handoffText("2026-01-02T08:00Z", "x", { kind: "owner", owner, idleMs: 4 * 60_000 + 59_000 })).toBe("ACCEPT-HANDOFF 2026-01-02T08:00Z — Same owner, active 4 min ago: ecb53427 took it. The plugin stopped: x");
+    expect(handoffText("2026-01-02T08:00Z", "x", { kind: "owner", owner, idleMs: 20_000 })).toContain("— Same owner, active under a minute ago:");
+    expect(handoffText("2026-01-02T08:00Z", "x", { kind: "owner", owner, idleMs: null })).toContain("— Same owner, mid-turn: ecb53427 took it.");
   });
 
   it("keeps short ids and non-hex words as they are", () => {
     expect(handoffText("2026-01-02T08:00Z", "main moved to c since taro/dm-1", { kind: "owner", owner: "owner-1", idleMs: 60_000 })).toBe(
-      "ACCEPT-HANDOFF 2026-01-02T08:00Z — Handed to the owner owner-1, active 1 min ago. The plugin stopped: main moved to c since taro/dm-1",
+      "ACCEPT-HANDOFF 2026-01-02T08:00Z — Same owner, active 1 min ago: owner-1 took it. The plugin stopped: main moved to c since taro/dm-1",
     );
   });
 });

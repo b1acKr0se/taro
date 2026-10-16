@@ -210,7 +210,7 @@ describe("a surprise goes to a warm owner or a fresh one", () => {
     expect(sent?.[2]).toContain(found);
     expect(sent?.[2]).toContain(`still the recorded review head ${head}`);
     expect(created).toEqual([]);
-    expect(written()[1]).toMatch(/^ACCEPT-HANDOFF \S+ — Handed to the owner owner-1, active 4 min ago\. The plugin stopped: main moved to c since taro\/dm-1; rebase onto it$/);
+    expect(written()[1]).toMatch(/^ACCEPT-HANDOFF \S+ — Same owner, active 4 min ago: owner-1 took it\. The plugin stopped: main moved to c since taro\/dm-1; rebase onto it$/);
   });
 
   it("tells a mid-turn owner, however long ago its last turn ended", async () => {
@@ -221,7 +221,7 @@ describe("a surprise goes to a warm owner or a fresh one", () => {
     await accept();
     expect(vi.mocked(sendWithoutInterrupting)).toHaveBeenCalledOnce();
     expect(created).toEqual([]);
-    expect(written()[1]).toMatch(/ — Handed to the owner owner-1, mid-turn\. The plugin stopped: main moved/);
+    expect(written()[1]).toMatch(/ — Same owner, mid-turn: owner-1 took it\. The plugin stopped: main moved/);
   });
 
   it("starts a fresh owner with the found problem when the owner has been idle longer, archiving the old one", async () => {
@@ -238,7 +238,7 @@ describe("a surprise goes to a warm owner or a fresh one", () => {
     expect(created[0]?.prompt).toContain("messages/accept-fresh-owner.md");
     expect(created[0]?.prompt).toContain("gh pr merge failed: conflict");
     expect(created[0]?.prompt).toContain(`--match-head-commit ${head}`);
-    expect(written()[1]).toMatch(/^ACCEPT-HANDOFF \S+ — Handed to a fresh owner \S+: the owner owner-1 had been idle 6 min, past the 5 min its context stays cached\. The plugin stopped: gh pr merge failed: conflict$/);
+    expect(written()[1]).toMatch(/^ACCEPT-HANDOFF \S+ — Fresh owner, idle 6 min: the owner owner-1 was idle past the 5 min its context stays cached, so \S+ took over\. The plugin stopped: gh pr merge failed: conflict$/);
   });
 
   it("hands a ticket without a review head to an owner before recording ACCEPTED, so the card keeps Accept", async () => {

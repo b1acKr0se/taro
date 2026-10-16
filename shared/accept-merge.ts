@@ -71,7 +71,7 @@ export function acceptanceText(at: string, ticket: string, prose: string, merge:
   return `ACCEPTANCE ${at} — user: "I accept ${ticket}." ${prose}; accepted and closed by the plugin; merge: ${merge}`;
 }
 
-/** Who took a surprise over: the current owner (idle for `idleMs`, or mid-turn when null), or a fresh one. */
+/** Who took a surprise over: the current owner (`idleMs` null when mid-turn), or a fresh one (`idleMs` null when unknown). */
 export type Handover = { kind: "owner"; owner: string; idleMs: number | null } | { kind: "fresh"; owner: string; fresh: string; idleMs: number | null };
 
 /** "under a minute", "42 min", "9 h 5 min". */
@@ -96,9 +96,10 @@ function shortIds(text: string): string {
 export function handoffText(at: string, found: string, handover: Handover): string {
   const owner = handover.owner.slice(0, 8);
   const idle = handover.idleMs === null || !Number.isFinite(handover.idleMs) ? null : idleText(Math.max(0, handover.idleMs));
+  // The row shows about forty characters on a narrow panel: the choice and the idle time come first.
   const who =
     handover.kind === "fresh"
-      ? `Handed to a fresh owner ${handover.fresh.slice(0, 8)}: the owner ${owner} had been idle ${idle ?? "for an unknown time"}, past the ${idleText(WARM_OWNER_MS)} its context stays cached`
-      : `Handed to the owner ${owner}, ${idle === null ? "mid-turn" : `active ${idle} ago`}`;
+      ? `Fresh owner, ${idle === null ? "idle time unknown" : `idle ${idle}`}: the owner ${owner} was idle past the ${idleText(WARM_OWNER_MS)} its context stays cached, so ${handover.fresh.slice(0, 8)} took over`
+      : `Same owner, ${idle === null ? "mid-turn" : `active ${idle} ago`}: ${owner} took it`;
   return shortIds(`ACCEPT-HANDOFF ${at} — ${who}. The plugin stopped: ${found}`);
 }

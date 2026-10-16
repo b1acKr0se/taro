@@ -29,8 +29,8 @@ describe("ticketMilestones", () => {
   });
 
   it("reads the plugin's Accept hand-off as one record, its label in plain words", () => {
-    const notes = "ACCEPT-HANDOFF — Handed to a fresh owner f8078033: the owner ecb53427 had been idle 9 h. The plugin stopped: x";
-    expect(ticketMilestones(notes)).toEqual([{ kind: "ACCEPT-HANDOFF", time: null, text: "Handed to a fresh owner f8078033: the owner ecb53427 had been idle 9 h. The plugin stopped: x" }]);
+    const notes = "ACCEPT-HANDOFF — Fresh owner, idle 9 h: f8078033 took over. The plugin stopped: x";
+    expect(ticketMilestones(notes)).toEqual([{ kind: "ACCEPT-HANDOFF", time: null, text: "Fresh owner, idle 9 h: f8078033 took over. The plugin stopped: x" }]);
     expect(kindLabel("ACCEPT-HANDOFF")).toBe("Accept handoff");
   });
 
