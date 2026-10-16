@@ -54,3 +54,17 @@ describe("the pull-request accept path (TR-110)", () => {
     expect(tickets).toMatch(/- \*\*NOT-SYNCED\*\*: [\s\S]*`NOT-SYNCED \d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z — /);
   });
 });
+
+describe("where the acceptance card goes (TR-131)", () => {
+  const template = readFileSync(join(__dirname, "..", "templates", "messages", "request-changes.md"), "utf8");
+
+  it("is under the delivering turn, so that turn ends with done: and later replies with waiting:", () => {
+    expect(owner).toMatch(/end the delivering turn with `done: …`\s+and any later reply while you await acceptance with `waiting: acceptance of <ID>`/);
+    expect(owner).toMatch(/the turn that delivers again ends with `done: …`/);
+    expect(template).toContain("End the turn that delivers again with `done: …`");
+  });
+
+  it("tells the owner to move the ticket itself when the plugin's write failed", () => {
+    expect(owner).toMatch(/if\s+the ticket still reads Awaiting acceptance, the plugin's write failed: move it yourself/);
+  });
+});
