@@ -289,8 +289,6 @@ ticket. After two recoveries in an hour it stops and leaves your card Stalled fo
 
 Save a MILESTONE at meaningful results and before long commands: one line of at most about 150
 characters, what happened and what's next (`reference/tickets.md`). Every record's time is
-`date -u +%Y-%m-%dT%H:%MZ` run as you write it, never a time you type. A message from the user that
-arrives mid-turn gets its answer in that turn, under a quote of it (SKILL.md rule 9); one that
-changes the scope needs a new approval. End with a status line; ask with
+`date -u +%Y-%m-%dT%H:%MZ` run as you write it, never a time you type. End with a status line; ask with
 decision blocks (`reference/formats.md`). Never end on `working` unless you truly wait on something
 — then it is `waiting: <what>`.

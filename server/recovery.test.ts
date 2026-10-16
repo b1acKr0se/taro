@@ -27,7 +27,7 @@ vi.mock("./projects", () => ({
   readProjectConfig: async () => null,
 }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { crashRecovery: "crash", subagentCrashed: "subagent-crashed", headroomRecovered: "recovered", midTurnUnanswered: "mid-turn" },
+  TEMPLATES: { crashRecovery: "crash", subagentCrashed: "subagent-crashed", headroomRecovered: "recovered" },
   skillDirectory: async () => "/skill",
   message: async (path: string, values: Record<string, string> = {}) => `${path}:${JSON.stringify(values)}`,
 }));
@@ -176,19 +176,6 @@ describe("Recovery", () => {
     await vi.advanceTimersByTimeAsync(5_000);
     expect(reloads()).toEqual(["owner-1"]);
     expect(agents["owner-1"]?.compaction).toBe("none");
-  });
-
-  it("sends the user's words a cut-short handoff carried with the recovery, and keeps them no longer (TR-168)", async () => {
-    const owner = agent("owner-1", "owner", "TR-5");
-    vi.mocked(fetchLiveAgent).mockResolvedValue(owner);
-    const { recovery, agents } = setUp();
-    agents["owner-1"] = AgentStateSchema.parse({ project: "taro", role: "owner", ticket: "TR-5", compaction: "compacting", unansweredMidTurn: ["Is the label final?"] });
-    await crashed(recovery, owner);
-    await vi.advanceTimersByTimeAsync(5_000);
-    const sent = vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("crash:"));
-    expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatch(/\n\nmid-turn:\{"messages":"> Is the label final\?"\}$/);
-    expect(agents["owner-1"]?.unansweredMidTurn).toEqual([]);
   });
 
   it("allows two recoveries an hour, then leaves the agent stalled with the reason", async () => {

@@ -8,7 +8,6 @@ import { join } from "node:path";
 
 import { deliveryEndedRecord, deliveryTakenBackRecord, questionEndingDelivery, questionOpenAtDelivery } from "../shared/delivery-end";
 import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compaction";
-import { midTurnMessages, quotedForReminder, turnEntries, unansweredMessages, type MidTurnEntry } from "../shared/mid-turn";
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
 import { asPlanningQuestion, asStored, planningTicket } from "../shared/planning-questions";
@@ -130,47 +129,6 @@ async function latestTurnItems(paseo: PaseoApi, agentId: string): Promise<Timeli
 }
 
 /**
- * The entries of turn `turnId`, from Paseo's projected timeline (the hook's items carry no turn ids),
- * paging back while the turn reaches a page's start; bounded like `latestTurnItems`. Null when unread.
- */
-async function readTurn(paseo: PaseoApi, agentId: string, turnId: string): Promise<MidTurnEntry[] | null> {
-  const timeline = paseo.agents.ref(agentId).timeline;
-  let page = await timeline.refetch({ direction: "tail", limit: 60, projection: "projected" }).catch(() => null);
-  if (page === null) return null;
-  // Only the fields read here; some timeline items type their text otherwise.
-  const asEntries = (from: readonly unknown[]): MidTurnEntry[] => from as MidTurnEntry[];
-  let entries = asEntries(page.entries);
-  let turn = turnEntries(entries, turnId);
-  for (let older = 0; older < 10 && !turn.complete; older++) {
-    if (!page.hasOlder || page.startCursor === null) break;
-    page = await timeline.refetch({ direction: "before", cursor: page.startCursor, limit: 60, projection: "projected" }).catch(() => null);
-    if (page === null) return null;
-    entries = [...asEntries(page.entries), ...entries];
-    turn = turnEntries(entries, turnId);
-  }
-  return turn.entries;
-}
-
-/**
- * The user's messages that reached the agent while it worked and that nothing it wrote after quotes
- * (TR-168). Asked only for owners and the manager: a reminder would start a subagent's next turn and
- * deliver its report again. Empty when the turn cannot be read.
- */
-async function unansweredMidTurn(paseo: PaseoApi, agentId: string, timeline: readonly TimelineItem[], turnId: string | null): Promise<string[]> {
-  if (turnId === null) return [];
-  const turn = await readTurn(paseo, agentId, turnId);
-  if (turn === null) return [];
-  return unansweredMessages(timeline, midTurnMessages(turn, (item) => humanMessages([item as TimelineItem]).length > 0));
-}
-
-/** The words shown back once, as the next turn no longer holds them; after the reload text when there is one. */
-export async function withMidTurnReminder(before: string | null, unanswered: readonly string[]): Promise<string> {
-  if (unanswered.length === 0) return before ?? "";
-  const reminder = await message(TEMPLATES.midTurnUnanswered, { messages: quotedForReminder(unanswered) });
-  return before === null ? reminder : `${before}\n\n${reminder}`;
-}
-
-/**
  * Whether the provider compacted this turn on its own. The hook passes the whole stored timeline,
  * so only the current turn counts, or every later turn (the reload included) would reload again.
  * Claude marks it `trigger: "auto"`; Codex sets only "manual", so its automatic ones carry none.
@@ -215,7 +173,6 @@ export function freshState(identity: TaroIdentity): AgentState {
     idleCompaction: "none",
     lastTurnEndedAt: null,
     evidenceReminded: null,
-    unansweredMidTurn: [],
   };
 }
 
@@ -304,40 +261,22 @@ export class Supervisor {
     }
     if (identity.role !== "owner" && identity.role !== "manager") return;
 
-    // The user's words from mid-turn that nothing quotes (TR-168), read before compaction's turns return:
-    // a compaction is when the agent most likely lost them, so they ride along to the reload.
-    const unanswered = await unansweredMidTurn(paseo, live.id, timeline, turnId);
-
     // Compaction pipeline (decision 35): handoff → /compact → reload. The manager gets it only when idle (TR-015).
     if (stage === "handoff") {
-      await this.state.updateAgent(live.id, () => freshState(identity), (record) => {
-        record.compaction = "compacting";
-        record.unansweredMidTurn = [...record.unansweredMidTurn, ...unanswered];
-      });
+      await this.setStage(live.id, identity, "compacting");
       await sendCommand(paseo, live.id, `/compact ${await compactInstructions(identity)}`);
       return;
     }
     if (stage === "compacting") {
-      const carried = await this.state.updateAgent(live.id, () => freshState(identity), (record) => {
-        record.compaction = "none";
-        const held = record.unansweredMidTurn;
-        record.unansweredMidTurn = [];
-        return held;
-      });
-      await sendFromPlugin(paseo, live.id, await withMidTurnReminder(await reloadText(identity), [...carried, ...unanswered]));
-      return;
-    }
-    if (identity.role === "owner" && autoCompactedThisTurn(timeline)) {
-      await sendFromPlugin(paseo, live.id, await withMidTurnReminder(await reloadText(identity), unanswered));
-      return;
-    }
-    // Before the stall nudge: the reminder asks for a status line too, and the next turn no longer holds the message.
-    if (unanswered.length > 0) {
-      console.log(`[taro] ${live.id}: reminding it of ${unanswered.length} message(s) from mid-turn`);
-      await sendFromPlugin(paseo, live.id, await withMidTurnReminder(null, unanswered));
+      await this.setStage(live.id, identity, "none");
+      await sendFromPlugin(paseo, live.id, await reloadText(identity));
       return;
     }
     if (identity.role !== "owner") return;
+    if (autoCompactedThisTurn(timeline)) {
+      await sendFromPlugin(paseo, live.id, await reloadText(identity));
+      return;
+    }
 
     if (outcome.kind === "completed") {
       const stalled = (status === null || status.state === "working") && !openBlocking;
