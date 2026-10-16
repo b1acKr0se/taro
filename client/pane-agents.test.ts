@@ -57,19 +57,49 @@ describe("paneAgents", () => {
     const list = paneAgents(card({ owner: brief("owner-2"), pastAgents: [past("owner-1", "owner")] }));
     expect(list.map((agent) => [agent.id, agent.label, agent.live])).toEqual([
       ["owner-2", "Owner", true],
-      ["owner-1", "Owner (earlier)", false],
+      ["owner-1", "Previous owner", false],
     ]);
     expect(defaultPaneAgent(list)?.id).toBe("owner-2");
   });
 
-  it("picks the newest past owner when none is live", () => {
+  // TR-162: an implementer archived after the owner came before it.
+  it("puts the newest past owner first when none is live, before subagents archived after it", () => {
     const list = paneAgents(card({ pastAgents: [past("implementer-1", "implementer"), past("owner-new", "owner"), past("owner-old", "owner")] }));
     expect(list.map((agent) => [agent.id, agent.label])).toEqual([
-      ["implementer-1", "Implementer · implemen"],
       ["owner-new", "Owner"],
-      ["owner-old", "Owner (earlier)"],
+      ["implementer-1", "Implementer · implemen"],
+      ["owner-old", "Previous owner"],
     ]);
     expect(defaultPaneAgent(list)?.id).toBe("owner-new");
+  });
+
+  // TR-162: a still-live reviewer came before the archived owner.
+  it("puts the archived owner before a live reviewer", () => {
+    const list = paneAgents(
+      card({ subagents: [sub("reviewer-1", "TR-1 · reviewer: reviewing the branch", "reviewer")], pastAgents: [past("owner-2", "owner"), past("implementer-1", "implementer"), past("owner-1", "owner")] }),
+    );
+    expect(list.map((agent) => [agent.id, agent.label, agent.live])).toEqual([
+      ["owner-2", "Owner", false],
+      ["reviewer-1", "Reviewer reviewing the branch", true],
+      ["implementer-1", "Implementer · implemen", false],
+      ["owner-1", "Previous owner", false],
+    ]);
+  });
+
+  it("numbers several previous owners by start, oldest first, after the live owner", () => {
+    const started = (id: string, createdAt: string | null) => ({ ...past(id, "owner"), createdAt });
+    const list = paneAgents(
+      card({ owner: brief("owner-4"), subagents: [sub("reviewer-1", null, "reviewer")], pastAgents: [started("owner-3", "2026-10-13T12:00:00Z"), past("researcher-1", "researcher"), started("owner-1", "2026-10-13T08:00:00Z"), { ...started("owner-2", null), archivedAt: "2026-10-13T10:00:00Z" }] }),
+    );
+    expect(list.map((agent) => [agent.id, agent.label])).toEqual([
+      ["owner-4", "Owner"],
+      ["reviewer-1", "Reviewer · reviewer"],
+      ["owner-3", "Previous owner 3"],
+      ["researcher-1", "Researcher · research"],
+      ["owner-1", "Previous owner 1"],
+      // No known start: its archive time (10:00) places it between the two.
+      ["owner-2", "Previous owner 2"],
+    ]);
   });
 
   it("has no default when only subagents are known", () => {
