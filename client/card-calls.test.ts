@@ -110,6 +110,15 @@ describe("cardCalls", () => {
     expect(cardCalls(card({ status: "Awaiting acceptance", accepted: { at: "2026-01-01T00:00:00Z", merging: "into main" } }))).toEqual([]);
   });
 
+  it("holds acceptance back while the owner's question is open, whatever its flag (TR-146)", () => {
+    for (const blocking of [false, true]) {
+      expect(cardCalls(card({ status: "Awaiting acceptance", decisions: [decision({ blocking })] })).map((call) => call.kind)).toEqual(["decision"]);
+    }
+    // A subagent's question, or one answered, holds nothing back.
+    const settled = [decision({ agentRole: "implementer" }), decision({ status: "answered" })];
+    expect(cardCalls(card({ status: "Awaiting acceptance", decisions: settled })).map((call) => call.kind)).toEqual(["decision", "acceptance"]);
+  });
+
   it("offers acceptance again after a merge the owner could not make, with why (TR-109)", () => {
     const notMerged = { at: "2026-01-01T00:10Z", reason: "the main checkout has uncommitted changes in src/app.ts", merged: false };
     expect(cardCalls(card({ status: "Awaiting acceptance", notMerged }))).toEqual([
@@ -149,7 +158,8 @@ describe("cardCalls", () => {
 
   it("lists every kind at once in a fixed order: decision, acceptance, permission", () => {
     const permission = { title: "Edit", detail: null, id: null, agentId: "agent-1", role: "owner" as const, workspaceId: null, count: 1 };
-    const calls = cardCalls(card({ status: "Awaiting acceptance", decisions: [decision({})], owner: { ...owner, pendingPermissions: 1 }, permission }));
+    // An investigation delivers with its question open, so both show (TR-146 holds Accept back for any other).
+    const calls = cardCalls(card({ status: "Awaiting acceptance", decisions: [decision({ id: "investigation-done" })], owner: { ...owner, pendingPermissions: 1 }, permission }));
     expect(calls.map((call) => call.kind)).toEqual(["decision", "acceptance", "permission"]);
     expect(calls.map(callAction)).toEqual(["Answer", "Request changes", "Review"]);
   });

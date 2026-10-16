@@ -54,7 +54,8 @@ default: Per trade         # what you do if the user does not answer (non-blocki
 
 - **Non-blocking** (`blocking: false`): carry on at once with `default`; the card says so and the
   user may override later. This is the normal case once a plan is approved: decide, state the
-  assumption, keep going.
+  assumption, keep going. An owner still settles it before delivering: answered, or withdrawn when
+  the user answered it in words or it no longer applies (Accept waits until then).
 - **Blocking** (`blocking: true`): stop and wait. Only for real gates: an owner's question before
   its plan is approved (every one: the plugin shows it as blocking whatever its flag), a reviewer's
   Question (asked and answered before the owner delivers), scope approval when you made a choice the

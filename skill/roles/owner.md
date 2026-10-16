@@ -190,8 +190,9 @@ full re-review or fix check, and the reviewer's verdict.
   - Record the result as the EVIDENCE `ux:` line (`reference/tickets.md`), naming the alignment and
     placeholder result per changed screen; a reviewer's visual verdict goes on it too. Accept is
     refused without it when there are screenshots.
-- Deliver with none of your questions open: each one answered, or withdrawn when the user answered
-  it in words (`investigation-done` is the exception: it is the delivery).
+- Deliver with none of your questions open, non-blocking ones included: each one answered, or
+  withdrawn when the user answered it in words or it no longer applies (`investigation-done` is the
+  exception: it is the delivery). Accept waits until then.
 - Before FINAL, write an EVIDENCE record (`reference/tickets.md`): checks with results, the review
   outcome, the `ux:` line, and screenshots in `$TARO_EVIDENCE/<ID>/` (desktop and phone for visible changes), each
   named for what it shows and captioned (`reference/formats.md`, Images), or `screenshots: none`

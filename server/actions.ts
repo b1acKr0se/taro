@@ -9,6 +9,7 @@
 import { randomUUID } from "node:crypto";
 
 import { SCOPE_APPROVAL } from "../shared/decision-view";
+import { questionHoldingAccept } from "../shared/delivery-end";
 import { doneTicketOf, planRelease } from "../shared/done-release";
 import { acceptanceText, handoffText, ownerIsWarm, type AcceptOutcome, type Handover } from "../shared/accept-merge";
 import { acceptanceMerge, acceptedRecord, acceptedRecordText, executionBranch, executionWorkspace, localMergeInstruction, pluginAcceptPending, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
@@ -208,6 +209,9 @@ export class Actions {
     const detail = await viewTicket(paths.tracker, ticket);
     // Nothing happens while the evidence is incomplete.
     await requireCompleteEvidence(project, ticket, detail.implementationNotes, detail.labels);
+    // Nor while the owner waits on a question (TR-146): its answer may change what merges.
+    const holding = questionHoldingAccept((await this.state.allDecisions()).filter((decision) => decision.project === project && decision.ticket === ticket));
+    if (holding !== null) throw new Error(`${ticket}'s owner still waits on its question \`${holding.id}\`: answer it first.`);
     if (this.accepting.has(acceptKey(project, ticket))) throw new Error(`${ticket} is already being accepted.`);
     const plan = acceptPlan(config, detail);
     // Without the reviewed head (or the PR), nothing can merge: an owner presents it again, and the card keeps offering Accept.

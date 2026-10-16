@@ -23,6 +23,11 @@ export function questionOpenAtDelivery<D extends { id: string; agentId: string; 
   return decisions.find((decision) => decision.agentId === agentId && decision.status === "open" && decision.id !== DELIVERING_QUESTION) ?? null;
 }
 
+/** The owner's open question that holds Accept back (TR-146): the user answers it first. Pass one ticket's decisions. */
+export function questionHoldingAccept<D extends { id: string; agentRole: string; status: string }>(decisions: readonly D[]): D | null {
+  return decisions.find((decision) => decision.agentRole === "owner" && decision.status === "open" && decision.id !== DELIVERING_QUESTION) ?? null;
+}
+
 /**
  * Whether a ticket's delivery is still on offer: Awaiting acceptance, not accepted (once accepted, the
  * owner is merging), and its pull request not already merged (NOT-SYNCED: only the local base branch is behind).

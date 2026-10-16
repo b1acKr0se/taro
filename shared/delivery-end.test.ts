@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deliveryEndedRecord, deliveryOnOffer, deliveryTakenBackRecord, questionEndingDelivery, questionOpenAtDelivery } from "./delivery-end";
+import { deliveryEndedRecord, deliveryOnOffer, deliveryTakenBackRecord, questionEndingDelivery, questionHoldingAccept, questionOpenAtDelivery } from "./delivery-end";
 
 const asked = (id: string, blocking: boolean) => ({ id, blocking });
 
@@ -79,5 +79,15 @@ describe("deliveryTakenBackRecord", () => {
     expect(deliveryTakenBackRecord("2026-10-16T03:10:00.000Z", "tone")).toBe(
       "DELIVERY-ENDED 2026-10-16T03:10:00.000Z — the owner delivered with `tone` still open: back to In Progress until it is answered and the owner delivers again",
     );
+  });
+});
+
+describe("questionHoldingAccept (TR-146)", () => {
+  const stored = (id: string, agentRole: string, status: string) => ({ id, agentRole, status });
+
+  it("is the owner's open question, not a subagent's, an answered one or investigation-done", () => {
+    expect(questionHoldingAccept([stored("schema", "implementer", "open"), stored("tone", "owner", "answered"), stored("investigation-done", "owner", "open")])).toBeNull();
+    expect(questionHoldingAccept([stored("schema", "implementer", "open"), stored("count-style", "owner", "open")])).toEqual(stored("count-style", "owner", "open"));
+    expect(questionHoldingAccept([])).toBeNull();
   });
 });
