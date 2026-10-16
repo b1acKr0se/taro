@@ -43,6 +43,8 @@ export const TicketStatsSchema = z.object({
   recoveries: z.number().int().default(0),
   /** Owners compacted after an hour idle (TR-015). */
   idleCompactions: z.number().int().default(0),
+  /** Shell permission asks the plugin denied by its rules (TR-143): commands that broke shell.md. */
+  permissionDenials: z.number().int().default(0),
 });
 export type TicketStats = z.infer<typeof TicketStatsSchema>;
 
@@ -78,6 +80,7 @@ export interface TicketSummary {
   decisions: number;
   recoveries: number;
   idleCompactions: number;
+  permissionDenials: number;
 }
 
 /**
@@ -154,6 +157,7 @@ export function summarize(stats: TicketStats, now: number = Date.now()): TicketS
     decisions: stats.decisions,
     recoveries: stats.recoveries,
     idleCompactions: stats.idleCompactions,
+    permissionDenials: stats.permissionDenials,
   };
 }
 
@@ -171,6 +175,7 @@ export interface ProjectTotals {
   decisions: number;
   recoveries: number;
   idleCompactions: number;
+  permissionDenials: number;
 }
 
 /** A child ticket (`TR-3.1`) whose parent is `TR-3`, or null. */
@@ -202,6 +207,7 @@ export function projectTotals(summaries: readonly TicketSummary[], managerIdleCo
     decisions: sum(summaries, (summary) => summary.decisions),
     recoveries: sum(summaries, (summary) => summary.recoveries),
     idleCompactions: managerIdleCompactions + sum(summaries, (summary) => summary.idleCompactions),
+    permissionDenials: sum(summaries, (summary) => summary.permissionDenials),
   };
 }
 

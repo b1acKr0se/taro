@@ -1,4 +1,5 @@
 /** Provider and model ids, and the provider's bypass permission mode. */
+import { isBypassMode } from "../shared/permission-triage";
 import type { PaseoApi } from "./host-types";
 
 export function providerOf(model: string): string {
@@ -15,7 +16,7 @@ export async function bypassModeId(paseo: PaseoApi, model: string): Promise<stri
     const ids = modes
       .map((mode: unknown) => (typeof mode === "object" && mode !== null ? Reflect.get(mode, "id") : null))
       .filter((id): id is string => typeof id === "string");
-    return ids.find((id) => id === "bypassPermissions") ?? ids.find((id) => /bypass|full-access|yolo/i.test(id)) ?? null;
+    return ids.find((id) => id === "bypassPermissions") ?? ids.find(isBypassMode) ?? null;
   } catch {
     return null;
   }

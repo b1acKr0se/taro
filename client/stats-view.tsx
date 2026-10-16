@@ -39,6 +39,7 @@ const NUMBER_COLUMNS: ReadonlyArray<{ key: string; label: string; width: number;
   { key: "decisions", label: "Decisions", width: 72, value: (counted) => String(counted.decisions) },
   { key: "recoveries", label: "Recoveries", width: 88, value: (counted) => String(counted.recoveries) },
   { key: "idle-compactions", label: "Idle\ncompactions", width: 100, value: (counted) => String(counted.idleCompactions) },
+  { key: "permission-denials", label: "Shell\ndenials", width: 64, value: (counted) => String(counted.permissionDenials) },
 ];
 
 /** A cost that leaves out agents whose cost could not be recovered carries a mark; none at all reads "—". */

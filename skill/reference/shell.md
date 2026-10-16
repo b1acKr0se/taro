@@ -21,6 +21,21 @@ Write removals so they pass instead:
 - **Guard any variable you remove under**: `"${NAME:?}/sub"`, never `$NAME/` or `$NAME/*`.
 - Never remove a worktree or directory you are working in; leave that to the plugin or the user.
 
+## When Taro answers the ask for you
+
+In bypass mode the plugin answers some of these asks by fixed rules, without asking the user, and
+notes each answer on your ticket as a PERMISSION record:
+
+- **Allowed:** every removal in the command targets a literal absolute path (or a variable the same
+  command set to one) inside `/tmp/<name>` or inside your working directory, and the rest of the
+  command only reads (`ls`, `echo`, `test`…).
+- **Denied:** a removal of `/`, a folder directly under `/`, a system folder, your home or a folder
+  directly in it, your working directory or a folder that contains it, or a path that one of those
+  becomes when a variable in it is empty. The denial names the rule; it counts as a breach of these
+  rules on your ticket. Do not retry the removal in another form: leave a folder you made by mistake
+  and name it in your report, or rewrite the command as above.
+- Everything else waits for the user, as before.
+
 ## Scratch trackers
 
 `$TARO_TRACKER` in your environment is the live tracker. To try `taro ticket` commands, make a
