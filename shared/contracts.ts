@@ -408,6 +408,7 @@ export const StatsSummarySchema = z.object({
   decisions: z.number(),
   recoveries: z.number(),
   idleCompactions: z.number(),
+  permissionDenials: z.number(),
 });
 export type StatsSummary = z.infer<typeof StatsSummarySchema>;
 

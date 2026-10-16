@@ -335,7 +335,7 @@ export class Stats {
     return marker;
   }
 
-  count(project: string, ticket: string, field: "nudges" | "decisions" | "recoveries" | "idleCompactions"): Promise<void> {
+  count(project: string, ticket: string, field: "nudges" | "decisions" | "recoveries" | "idleCompactions" | "permissionDenials"): Promise<void> {
     return this.update(project, ticket, (stats) => {
       stats[field] += 1;
     });

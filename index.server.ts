@@ -65,6 +65,7 @@ import { ensureCompactHook, installCompactHook, removeReloadFile } from "./serve
 import { catchUpText, compactManager, launchManager, restartManager, resumeManager, tellManager, writeManagerInstructions } from "./server/manager";
 import { onboardProject, onboardingProblems } from "./server/onboard";
 import { listPaseoProjects, settingsTemplate } from "./server/paseo-projects";
+import { triageAsk } from "./server/permission-triage";
 import { readImage } from "./server/images";
 import { Notifier } from "./server/notifications";
 import { allowedMergeMethods } from "./server/merge-methods";
@@ -414,6 +415,15 @@ export default function contribute(server: PluginServerContext) {
     }
   });
 
+  // A bypass-mode agent's shell ask is answered by fixed rules when they decide it; the rest wait for the user (TR-143).
+  const removePermissionHook = server.on("agent.permission_requested", async ({ agent, request }, { paseo }) => {
+    const decided = await triageAsk(paseo, stats, agent, request).catch((error: unknown) => {
+      reportFailure(`[taro] triaging ${agent.id}'s permission ask:`, error);
+      return null;
+    });
+    if (decided !== null) invalidateBoards();
+  });
+
   // Every Taro agent knows where its tracker and skill are, and has `taro` on PATH, on create and on resume (decision 38).
   // A Claude manager or owner also gets the SessionStart hook that reloads its rules after any compaction (TR-101).
   const removeSessionHook = server.before("agent.session_open", async ({ request }, { paseo }) => {
@@ -448,6 +458,7 @@ export default function contribute(server: PluginServerContext) {
     removeArchiveHook();
     removeSessionHook();
     removeCreateHook();
+    removePermissionHook();
     // Last: commands under way get a moment to finish, then are killed with their children (TR-073).
     await stopCommands();
   };
