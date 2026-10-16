@@ -489,7 +489,12 @@ export class Actions {
       if (reason === null) return { message: `${detail.id} is back in Queued: the manager starts it when a slot frees.`, agentId: null };
       // Held tickets never wake the manager, and the hold's reason may have gone while it was parked: ask it to look again.
       const manager = await fetchLiveAgent(paseo, config.managerAgentId);
-      if (manager !== null) await sendWithoutInterrupting(paseo, manager.id, await message(TEMPLATES.unparkedHeld, { ticket: detail.id, reason }));
+      // Only a reminder: the ticket is back in Queued already, so a failed send must not fail the Resume.
+      if (manager !== null) {
+        await sendWithoutInterrupting(paseo, manager.id, await message(TEMPLATES.unparkedHeld, { ticket: detail.id, reason })).catch((error: unknown) =>
+          reportFailure(`[taro] ${project}: could not tell the manager ${detail.id} is held again:`, error),
+        );
+      }
       return { message: `${detail.id} is back in Queued, still held by the manager: ${reason}`, agentId: null };
     }
     const tickets = await listTickets(paths.tracker);

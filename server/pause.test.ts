@@ -227,6 +227,14 @@ describe("Pause", () => {
     expect(sendWithoutInterrupting).toHaveBeenCalledWith(paseo, "manager-1", "unparked-held");
   });
 
+  it("still answers Resume when telling the manager about a hold it put back fails", async () => {
+    tickets = [ticket("NA-1", "Queued", "\n\nHOLD 2026-01-05T09:00Z — overlaps NA-2; start once NA-2 is Done.")];
+    live = [agent("manager-1", "", "manager")];
+    vi.mocked(sendWithoutInterrupting).mockRejectedValueOnce(new Error("socket closed"));
+    await actions.pause(paseo, "notes", "NA-1");
+    expect((await actions.resume(paseo, "notes", "NA-1")).message).toBe("NA-1 is back in Queued, still held by the manager: overlaps NA-2; start once NA-2 is Done.");
+  });
+
   it("refuses to park a Queued ticket whose owner the manager is starting right now", async () => {
     const intent = `DISPATCH-INTENT ${new Date(Date.now() - 60_000).toISOString().slice(0, 16)}Z — ticket NA-1, token na1-1, branch taro/na-1`;
     tickets = [ticket("NA-1", "Queued", `\n\n${intent}`)];
