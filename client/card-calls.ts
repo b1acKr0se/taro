@@ -4,7 +4,7 @@
  * first; answering in full happens where its context is, in the owner's chat. Pure.
  */
 import type { Card } from "../shared/contracts";
-import { questionHoldingAccept } from "../shared/delivery-end";
+import { questionHoldingAccept, stillDelivering } from "../shared/delivery-end";
 import { evidenceSummary } from "../shared/evidence";
 import { askerPrefix } from "../shared/needs-you";
 import type { StoredDecision } from "../shared/state";
@@ -29,14 +29,22 @@ export function cardCalls(card: Card): CardCall[] {
   const open = walkOrder(card.decisions.filter((decision) => decision.status === "open"));
   const first = open[0];
   if (first !== undefined) calls.push({ kind: "decision", decision: first, more: open.length - 1 });
-  // Accepting messages the owner, so without one there is nothing to press; once accepted, nothing is left to press.
-  // An owner question still open is answered before Accept is offered (TR-146).
-  if (card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null && questionHoldingAccept(card.decisions) === null) {
+  if (offersAcceptance(card)) {
     calls.push({ kind: "acceptance", ready: acceptanceReady(card), delivered: card.delivered, evidence: card.evidence === null ? null : evidenceSummary(card.evidence), notMerged: card.notMerged === null ? null : { reason: card.notMerged.reason, merged: card.notMerged.merged } });
   }
   const ask = card.permission;
   if (ask !== null) calls.push({ kind: "permission", asker: askerPrefix(ask.role), title: ask.title, detail: ask.detail, count: Math.max(ask.count, 1) });
   return calls;
+}
+
+/**
+ * Whether the delivery is offered for Accept or Request changes: one test for the board card and the
+ * owner's chat, so they cannot disagree. Accepting messages the owner, so without one there is nothing
+ * to press; once accepted, nothing is left to press. An owner question still open is answered first
+ * (TR-146), and an owner still in its turn finishes it first (TR-153).
+ */
+export function offersAcceptance(card: Pick<Card, "status" | "owner" | "accepted" | "decisions">): boolean {
+  return card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null && questionHoldingAccept(card.decisions) === null && !stillDelivering(card.status, card.owner.status);
 }
 
 /** An acceptance's readiness in words. */

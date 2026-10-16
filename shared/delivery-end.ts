@@ -36,6 +36,14 @@ export function deliveryOnOffer(ticket: { status: string; notes: string | null }
   return ticket.status === "Awaiting acceptance" && acceptedRecord(ticket.notes) === null && notMergedRecord(ticket.notes)?.merged !== true;
 }
 
+/**
+ * The owner is still in a turn on a delivered ticket (TR-153): its delivery message, or its reply to the
+ * user, is not written yet. The board places it in Working, so nothing offers Accept until the turn ends.
+ */
+export function stillDelivering(status: string, ownerStatus: string | null): boolean {
+  return status === "Awaiting acceptance" && (ownerStatus === "running" || ownerStatus === "initializing");
+}
+
 export function deliveryEndedRecord(at: string, question: string): string {
   return `DELIVERY-ENDED ${at} — the owner asked \`${question}\` while awaiting acceptance: back to In Progress until it delivers again`;
 }

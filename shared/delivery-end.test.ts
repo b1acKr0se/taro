@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deliveryEndedRecord, deliveryOnOffer, deliveryTakenBackRecord, questionEndingDelivery, questionHoldingAccept, questionOpenAtDelivery } from "./delivery-end";
+import { deliveryEndedRecord, deliveryOnOffer, deliveryTakenBackRecord, questionEndingDelivery, questionHoldingAccept, questionOpenAtDelivery, stillDelivering } from "./delivery-end";
 
 const asked = (id: string, blocking: boolean) => ({ id, blocking });
 
@@ -89,5 +89,17 @@ describe("questionHoldingAccept (TR-146)", () => {
     expect(questionHoldingAccept([stored("schema", "implementer", "open"), stored("tone", "owner", "answered"), stored("investigation-done", "owner", "open")])).toBeNull();
     expect(questionHoldingAccept([stored("schema", "implementer", "open"), stored("count-style", "owner", "open")])).toEqual(stored("count-style", "owner", "open"));
     expect(questionHoldingAccept([])).toBeNull();
+  });
+});
+
+describe("stillDelivering (TR-153)", () => {
+  it("holds while the owner of a delivered ticket is in a turn here", () => {
+    expect(stillDelivering("Awaiting acceptance", "running")).toBe(true);
+    expect(stillDelivering("Awaiting acceptance", "initializing")).toBe(true);
+  });
+
+  it("is over once the turn ends, the owner is gone or the ticket is not delivered", () => {
+    for (const owner of ["idle", "error", "closed", null]) expect(stillDelivering("Awaiting acceptance", owner)).toBe(false);
+    for (const status of ["In Progress", "Reviewing", "Done", "Blocked"]) expect(stillDelivering(status, "running")).toBe(false);
   });
 });

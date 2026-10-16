@@ -304,6 +304,8 @@ export const TicketDetailSchema = z.object({
   specChangeable: z.boolean().default(false),
   /** The plan the user last answered, when and how (TR-151), so a plan asked again marks what changed since; null before any answer. */
   previousPlan: z.object({ plan: z.string(), at: z.string(), kind: PlanAnswerKindSchema }).nullable().default(null),
+  /** The owner is in a turn here (TR-153): a delivered ticket's Accept waits until it ends. */
+  ownerRunning: z.boolean().default(false),
 });
 export type TicketDetailView = z.infer<typeof TicketDetailSchema>;
 

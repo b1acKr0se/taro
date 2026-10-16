@@ -14,9 +14,8 @@ const follow = readFileSync(join(__dirname, "follow-end.ts"), "utf8");
 describe("ending a delivery when changes are sent", () => {
   it("stops accepting for the card as it was when the changes went, and only for that one", () => {
     expect(pane).toMatch(/const deliveryEnded = changesSentOn === `\$\{card\.id\}@\$\{card\.updatedAt \?\? ""\}`;/);
-    expect(pane).toMatch(/const accepting = card\.status === "Awaiting acceptance" && [^;]*&& !deliveryEnded;/);
-    // Nor while the owner's question is open (TR-146).
-    expect(pane).toMatch(/const accepting = card\.status === "Awaiting acceptance" && [^;]*&& questionHoldingAccept\(card\.decisions\) === null && [^;]*;/)
+    // The card's own test otherwise (`offersAcceptance`): no owner question open (TR-146), no owner turn running (TR-153).
+    expect(pane).toMatch(/const accepting = offersAcceptance\(card\) && !deliveryEnded;/);
     expect(pane).toMatch(/onChangesSent=\{\(\) => setChangesSentOn\(`\$\{card\.id\}@\$\{card\.updatedAt \?\? ""\}`\)\}/);
   });
 

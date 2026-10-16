@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Card } from "../shared/contracts";
 import type { StoredDecision } from "../shared/state";
-import { acceptanceReady, callAction, cardCalls } from "./card-calls";
+import { acceptanceReady, callAction, cardCalls, offersAcceptance } from "./card-calls";
 
 const owner = {
   id: "agent-1",
@@ -109,6 +109,27 @@ describe("cardCalls", () => {
     expect(cardCalls(card({ status: "Awaiting acceptance", delivered: "Drafts work offline." }))).toEqual([{ kind: "acceptance", ready: true, delivered: "Drafts work offline.", evidence: null, notMerged: null }]);
     expect(cardCalls(card({ status: "Awaiting acceptance", owner: null }))).toEqual([]);
     expect(cardCalls(card({ status: "Awaiting acceptance", accepted: { at: "2026-01-01T00:00:00Z", merging: "into main" } }))).toEqual([]);
+  });
+
+  it("holds acceptance back until the owner's turn ends, whether it delivers or replies (TR-153)", () => {
+    for (const status of ["running", "initializing"]) {
+      const delivering = card({ status: "Awaiting acceptance", column: "working", owner: { ...owner, status }, delivered: "Drafts work offline." });
+      expect(cardCalls(delivering)).toEqual([]);
+      expect(offersAcceptance(delivering)).toBe(false);
+    }
+    for (const status of ["idle", "error"]) expect(offersAcceptance(card({ status: "Awaiting acceptance", column: "needs-you", owner: { ...owner, status } }))).toBe(true);
+    // A permission asked mid-turn is the card's call; the delivery still waits for the turn.
+    const permission = { title: "Allow Bash?", detail: "npm install", id: "p1", agentId: null, role: null, workspaceId: null, count: 1 };
+    const asking = card({ status: "Awaiting acceptance", column: "needs-you", owner: { ...owner, status: "running", pendingPermissions: 1 }, permission });
+    expect(cardCalls(asking).map((call) => call.kind)).toEqual(["permission"]);
+  });
+
+  it("offers acceptance in the chat by the card's own test (TR-153)", () => {
+    expect(offersAcceptance(card({ status: "Awaiting acceptance" }))).toBe(true);
+    expect(offersAcceptance(card({ status: "Reviewing" }))).toBe(false);
+    expect(offersAcceptance(card({ status: "Awaiting acceptance", owner: null }))).toBe(false);
+    expect(offersAcceptance(card({ status: "Awaiting acceptance", accepted: { at: "2026-01-01T00:00:00Z", merging: "into main" } }))).toBe(false);
+    expect(offersAcceptance(card({ status: "Awaiting acceptance", decisions: [decision({})] }))).toBe(false);
   });
 
   it("holds acceptance back while the owner's question is open, whatever its flag (TR-146)", () => {
