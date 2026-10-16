@@ -966,7 +966,7 @@ const NO_DECISIONS: readonly StoredDecision[] = [];
 
 function samePlanLine(left: PlanLine | undefined, right: PlanLine | undefined): boolean {
   if (left === undefined || right === undefined) return left === right;
-  return left.outcome === right.outcome && left.at === right.at && left.words === right.words && left.replaced === right.replaced && left.closed === right.closed;
+  return left.outcome === right.outcome && left.at === right.at && left.words === right.words && left.askedAt === right.askedAt && left.replaced === right.replaced && left.closed === right.closed;
 }
 
 /** The chat's styles, built once per theme, width and composer size. */

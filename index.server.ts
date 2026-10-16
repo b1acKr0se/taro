@@ -14,6 +14,7 @@ import {
   listAgentDecisions,
   listOpenDecisions,
   loadBoard as loadBoardRpc,
+  loadPastPlan,
   loadTicket,
   nudgeAgent,
   pauseTicket,
@@ -54,7 +55,7 @@ import { createCrashTrail } from "./server/crash-trail";
 import { backfillCosts, recordArchivedUsage } from "./server/cost-recording";
 import { decisionsOfAgent } from "./server/agent-decisions";
 import { fetchLiveAgent, isAgentLive } from "./server/agents";
-import { dismissSuggestion, invalidateBoards, liveOpenDecisions, loadBoard, loadTicketDetail } from "./server/board";
+import { dismissSuggestion, invalidateBoards, liveOpenDecisions, loadBoard, loadTicketDetail, loadTicketPastPlan } from "./server/board";
 import type { PaseoApi } from "./server/host-types";
 import { Recovery } from "./server/recovery";
 import { PluginState } from "./server/state";
@@ -294,6 +295,7 @@ export default function contribute(server: PluginServerContext) {
     void trackers.pullIfDue(project);
     return loadTicketDetail(keep(paseo), project, ticket);
   });
+  server.handle(loadPastPlan, async ({ project, ticket, answeredAt, askedAt }) => ({ plan: await loadTicketPastPlan(project, ticket, { answeredAt, askedAt }) }));
   server.handle(findAgentTicket, async ({ agentId }, { paseo }) => {
     const agent = await fetchLiveAgent(paseo, agentId);
     const identity = agent === null ? null : identityFromLabels(agent.labels, agent.title ?? null);

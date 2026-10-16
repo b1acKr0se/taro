@@ -3,31 +3,55 @@
  * and an answered permission ask, drawn from the pure views in finished-cards.ts with the one FinishedCard.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
-import { memo } from "react";
+import { memo, useState } from "react";
 
 import type { PermissionAsk } from "../shared/permission-asks";
 
 import { FinishedCard } from "./finished-card";
-import { deliveryCardView, permissionCardView, planCardView, samePermissionAsks, type DeliveryRecord, type QuestionCardView } from "./finished-cards";
-import { formatClock } from "./format";
+import { deliveryCardView, oldPlanView, permissionCardView, planCardView, samePermissionAsks, type DeliveryRecord, type QuestionCardView } from "./finished-cards";
+import { formatClock, formatDay } from "./format";
+import { OldPlanSheet } from "./old-plan-view";
 import { useViewPlan } from "./plan-navigation";
 import type { PlanLine } from "./plan-lines";
 
-/** A past plan; View plan opens it in the Taro screen (TR-061) and is left out elsewhere. */
+/**
+ * A past plan; View plan opens that plan as it was answered in the Old plan view (TR-157), from where
+ * Open current plan reaches the Ticket tab in the Taro screen (TR-061).
+ */
 export function PastPlanCard({ line, project, ticket, theme, compact }: { line: PlanLine; project: string; ticket: string; theme: PluginTheme; compact: boolean }) {
   const viewPlan = useViewPlan();
+  const [open, setOpen] = useState(false);
   const view = planCardView(line, formatClock);
   return (
-    <FinishedCard
-      theme={theme}
-      compact={compact}
-      subject={`Plan for ${ticket}`}
-      outcome={view.outcome}
-      tone={view.tone}
-      time={view.time}
-      words={view.words}
-      action={viewPlan === null ? null : { label: "View plan", onPress: () => viewPlan(project, ticket) }}
-    />
+    <>
+      <FinishedCard
+        theme={theme}
+        compact={compact}
+        subject={`Plan for ${ticket}`}
+        outcome={view.outcome}
+        tone={view.tone}
+        time={view.time}
+        words={view.words}
+        action={{ label: "View plan", onPress: () => setOpen(true) }}
+      />
+      <OldPlanSheet
+        open={open}
+        view={oldPlanView(line, formatClock, formatDay)}
+        project={project}
+        ticket={ticket}
+        theme={theme}
+        compact={compact}
+        onClose={() => setOpen(false)}
+        onOpenCurrent={
+          viewPlan === null
+            ? null
+            : () => {
+                setOpen(false);
+                viewPlan(project, ticket);
+              }
+        }
+      />
+    </>
   );
 }
 

@@ -33,21 +33,22 @@ function answerKind(answer: string): PlanAnswerKind {
   return "answered";
 }
 
-/** The notes' newest plan answer or APPROVAL record; null when the user has not answered a plan yet. */
-export function lastPlanAnswer(notes: string | null): PlanAnswerRecord | null {
-  if (notes === null) return null;
-  let last: PlanAnswerRecord | null = null;
-  notes.split("\n").forEach((raw) => {
+/** The notes' plan answers and APPROVAL records, in the notes' order. */
+export function planAnswerRecords(notes: string | null): PlanAnswerRecord[] {
+  if (notes === null) return [];
+  return notes.split("\n").flatMap((raw): PlanAnswerRecord[] => {
     const line = raw.trim();
     const answer = ANSWER.exec(line);
-    if (answer !== null && answer[1] !== undefined && answer[2] !== undefined) {
-      last = { line, at: answer[1], kind: answerKind(answer[2]) };
-      return;
-    }
+    if (answer !== null && answer[1] !== undefined && answer[2] !== undefined) return [{ line, at: answer[1], kind: answerKind(answer[2]) }];
     const approval = APPROVAL.exec(line);
-    if (approval !== null && approval[1] !== undefined) last = { line, at: approval[1], kind: "approved" };
+    return approval !== null && approval[1] !== undefined ? [{ line, at: approval[1], kind: "approved" }] : [];
   });
-  return last;
+}
+
+/** The notes' newest plan answer or APPROVAL record; null when the user has not answered a plan yet. */
+export function lastPlanAnswer(notes: string | null): PlanAnswerRecord | null {
+  const records = planAnswerRecords(notes);
+  return records[records.length - 1] ?? null;
 }
 
 export interface SectionChanges {
