@@ -39,6 +39,8 @@ export const TEMPLATES = {
   requestChanges: "messages/request-changes.md",
   specChange: "messages/spec-change.md",
   dependencyCleared: "messages/dependency-cleared.md",
+  ticketDone: "messages/ticket-done.md",
+  afterDone: "messages/after-done.md",
   ticketQueued: "messages/ticket-queued.md",
   queueIdle: "messages/queue-idle.md",
   recount: "messages/recount.md",

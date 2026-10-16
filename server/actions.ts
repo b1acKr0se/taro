@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { doneTicketOf, planRelease } from "../shared/done-release";
 import { acceptanceText, handoffText, ownerIsWarm, type AcceptOutcome, type Handover } from "../shared/accept-merge";
-import { acceptedRecord, acceptedRecordText, executionBranch, executionWorkspace, localMergeInstruction, pluginAcceptPending, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
+import { acceptanceMerge, acceptedRecord, acceptedRecordText, executionBranch, executionWorkspace, localMergeInstruction, pluginAcceptPending, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
 import { dependsOn, holdsSlot, shouldWakeManager, statusChanges, withRecordedStatuses, type StatusChange } from "../shared/owner-cap";
 import {
   handoffSincePauseRequest,
@@ -80,6 +80,11 @@ import type { TrackerWatch } from "./tracker-watch";
 export class Actions {
   /** Last seen status per project and ticket, to notice transitions to Done; on disk once acted on (TR-043). */
   private readonly lastStatuses = new Map<string, Map<string, string>>();
+  /**
+   * Per project, the tickets the last pass found Done, whether or not their wake-up went out: a
+   * wake-up retried later (no live manager) must not hold up the release of their agents (TR-147).
+   */
+  private readonly doneTickets = new Map<string, ReadonlySet<string>>();
   /**
    * Per project, the tickets whose wake-up is held until threads allow, with the status each had
    * before: stored in place of the new one until the wake-up went out, so a reload repeats it.
@@ -592,6 +597,7 @@ export class Actions {
     const previous = lastLook ?? new Map<string, string>();
     const current = new Map(tickets.map((ticket) => [ticket.id, ticket.status]));
     this.lastStatuses.set(project, current);
+    this.doneTickets.set(project, new Set(tickets.filter((ticket) => ticket.status === "Done").map((ticket) => ticket.id)));
     const at = new Date().toISOString();
     for (const ticket of tickets) {
       const before = previous.get(ticket.id) ?? null;
@@ -655,6 +661,12 @@ export class Actions {
     await this.state.saveTicketStatuses(project, statuses);
   }
 
+  /** The project's Done tickets: those acted on, and those the last pass found Done whose wake-up is retried. */
+  private doneIn(project: string): Set<string> {
+    const statuses = this.lastStatuses.get(project) ?? new Map<string, string>();
+    return new Set([...[...statuses].filter(([, status]) => status === "Done").map(([ticket]) => ticket), ...(this.doneTickets.get(project) ?? [])]);
+  }
+
   /** An agent's turn ended: if its ticket is Done (it was mid-turn when Done landed), release it now. */
   async onAgentTurnEnded(paseo: PaseoApi, agentId: string): Promise<void> {
     const agent = await fetchLiveAgent(paseo, agentId);
@@ -665,10 +677,8 @@ export class Actions {
       // A failed pause check must not hold up the Done release below; the minute check tries again.
       await serialized(`tracker-changed:${project}`, () => this.advancePauses(paseo, project)).catch((error: unknown) => reportFailure(`[taro] pause check for ${project} failed:`, error));
     }
-    const statuses = this.lastStatuses.get(project);
-    if (statuses === undefined) return;
-    const done = new Set([...statuses].filter(([, status]) => status === "Done").map(([ticket]) => ticket));
-    if (doneTicketOf(agent.labels[TARO_LABELS.ticket], done) !== null) await this.releaseDoneTickets(paseo, project, []);
+    if (!this.lastStatuses.has(project)) return;
+    if (doneTicketOf(agent.labels[TARO_LABELS.ticket], this.doneIn(project)) !== null) await this.releaseDoneTickets(paseo, project, []);
   }
 
   /**
@@ -700,8 +710,7 @@ export class Actions {
   }
 
   private async release(paseo: PaseoApi, project: string, newlyDone: readonly string[]): Promise<void> {
-    const statuses = this.lastStatuses.get(project) ?? new Map<string, string>();
-    const done = new Set([...statuses].filter(([, status]) => status === "Done").map(([ticket]) => ticket));
+    const done = this.doneIn(project);
     if (done.size === 0) return;
     const agents = (await projectAgents(paseo, project)).filter((agent) => !this.released.has(agent.id));
     const config = await requireProjectConfig(project);
@@ -773,8 +782,9 @@ export class Actions {
    * (Awaiting acceptance counts as free, TR-029), unless nothing could start: no dependents cleared
    * by a Done, and no queued ticket or no room under the cap. The dependents are listed either way
    * (TR-043); they wake the manager only once the ticket is Done. The message carries the plugin's
-   * recount (TR-062). False when it was due but no manager is live (one being replaced and failed to
-   * start, or none started): the caller retries it at the next pass.
+   * recount (TR-062). A ticket with no parent that is Done wakes it all the same, once, with what
+   * merged, so it can do its after-Done duties (TR-147). False when it was due but no manager is live
+   * (one being replaced and failed to start, or none started): the caller retries it at the next pass.
    */
   private async wakeManager(paseo: PaseoApi, project: string, change: StatusChange, tickets: readonly TicketSummary[], whenHeld: () => () => void): Promise<boolean> {
     const queued = queuedTickets(tickets).map((candidate) => candidate.id);
@@ -788,17 +798,26 @@ export class Actions {
       if (detail !== null && dependsOn(detail.dependencies, change.ticket)) dependents.push(candidate.id);
     }
     const dependentsCleared = cleared ? dependents.length : 0;
-    // Only the cap comparison needs the owners, and listing them is a round trip to the daemon.
-    if (dependentsCleared === 0 && (!change.freesSlot || queued.length === 0)) return true;
+    // A child's Done is its owner's business; the manager hears of it only for its dependents.
+    const announcesDone = cleared && tickets.find((candidate) => candidate.id === change.ticket)?.parentTaskId === null;
     const config = await requireProjectConfig(project);
-    const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners);
-    if (!shouldWakeManager({ dependents: dependentsCleared, queued: queued.length, freesSlot: change.freesSlot, counting: count.counting.length, cap: config.maxParallelOwners })) return true;
-    const text = await message(TEMPLATES.dependencyCleared, {
-      ticket: change.ticket,
-      status: change.status,
-      dependents: dependents.length === 0 ? "none" : dependents.join(", "),
-      recount: await recountText(count),
-    });
+    // Only the cap comparison needs the owners, and listing them is a round trip to the daemon.
+    const count = dependentsCleared > 0 || (change.freesSlot && queued.length > 0) ? await this.recountQueue(paseo, project, tickets, config.maxParallelOwners) : null;
+    const dispatch = count !== null && shouldWakeManager({ dependents: dependentsCleared, queued: queued.length, freesSlot: change.freesSlot, counting: count.counting.length, cap: config.maxParallelOwners });
+    if (!dispatch && !announcesDone) return true;
+    const afterDone = announcesDone ? await message(TEMPLATES.afterDone, { merge: await mergeText(paths.tracker, change.ticket) }) : "";
+    const text =
+      dispatch && count !== null
+        ? withoutEmptyParagraphs(
+            await message(TEMPLATES.dependencyCleared, {
+              ticket: change.ticket,
+              status: change.status,
+              dependents: dependents.length === 0 ? "none" : dependents.join(", "),
+              afterDone,
+              recount: await recountText(count),
+            }),
+          )
+        : await message(TEMPLATES.ticketDone, { ticket: change.ticket, afterDone });
     // Under the restart's lock (TR-128): a wake-up sent mid-replacement waits, then reads the new
     // manager's id, rather than going to the one being archived.
     return serialized(`manager:${project}`, async () => {
@@ -810,7 +829,8 @@ export class Actions {
       await this.recovery.tellManagerWhenHeadroom(paseo, project, manager.id, text, () => {
         sent = true;
         delivered?.();
-        this.woken(project, count, "a slot freed or a dependency cleared");
+        if (dispatch && count !== null) this.woken(project, count, "a slot freed or a dependency cleared");
+        else console.log(`[taro] ${project}: told the manager ${change.ticket} is Done`);
       });
       if (!sent) delivered = whenHeld();
       return true;
@@ -1076,6 +1096,17 @@ export class Actions {
 
 async function recountText(count: Recount): Promise<string> {
   return message(TEMPLATES.recount, recountFields(count));
+}
+
+/** What merged for a Done ticket (TR-147): its newest ACCEPTANCE record's merge field. */
+async function mergeText(tracker: string, ticket: string): Promise<string> {
+  const detail = await viewTicket(tracker, ticket).catch(() => null);
+  return acceptanceMerge(detail?.implementationNotes ?? null) ?? "no ACCEPTANCE record";
+}
+
+/** A message with an empty optional paragraph (an unfilled `{{afterDone}}`) left out. */
+function withoutEmptyParagraphs(text: string): string {
+  return text.replace(/\n{3,}/g, "\n\n");
 }
 
 /** What of the ladder is kept on disk, to tell whether it changed. */

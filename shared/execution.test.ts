@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { boardColumn } from "./board";
-import { acceptedRecord, acceptedRecordText, executionMachine, executionWorkspace, finalSummaryBody, localMergeInstruction, noteRecords, notMergedRecord, pullRequestMergeInstruction, pullRequestMerged, pullRequestUrl, reviewHead } from "./execution";
+import { acceptanceMerge, acceptedRecord, acceptedRecordText, executionMachine, executionWorkspace, finalSummaryBody, localMergeInstruction, noteRecords, notMergedRecord, pullRequestMergeInstruction, pullRequestMerged, pullRequestUrl, reviewHead } from "./execution";
 
 const managerRecord = "EXECUTION 2026-10-13T11:22Z — owner agent d86f, workspace wks_67ddffd9312aa95a, machine devbox, worktree /w/tr-001";
 // As a Haiku owner wrote it on the throwaway daemon: the relaunch could not find its workspace (TR-001).
@@ -365,5 +365,35 @@ describe("NOT-SYNCED (TR-110)", () => {
   it("clears the merging state, and is stale once the user accepts again", () => {
     expect(acceptedRecord(`${accepted}\n${notSynced}`)).toBeNull();
     expect(notMergedRecord(`${notSynced}\n${acceptedRecordText("2026-01-05T11:30Z", "the pull request")}`)).toBeNull();
+  });
+});
+
+describe("acceptanceMerge", () => {
+  it("gives the merge field of the newest ACCEPTANCE record, as the plugin and owners write it", () => {
+    expect(acceptanceMerge(`ACCEPTANCE 2026-10-16T03:01Z — user: "I accept TR-1." squash; accepted and closed by the plugin; merge: merged 0a1b2c3`)).toBe("merged 0a1b2c3");
+    expect(acceptanceMerge(`ACCEPTANCE 2026-10-16T03:01Z — local base 1111111 → 2222222\nmerge: Merged 1111111 → 2222222\nmore prose`)).toBe("Merged 1111111 → 2222222");
+    expect(acceptanceMerge(`ACCEPTANCE 2026-10-16T03:01Z — merge: not merged — GitHub refused the squash`)).toBe("not merged — GitHub refused the squash");
+    expect(acceptanceMerge(`ACCEPTANCE 2026-10-16T03:01Z — investigation, no code; merge: none`)).toBe("none");
+  });
+
+  it("reads the newest ACCEPTANCE record, not an older one or a later record of another kind", () => {
+    const notes = [
+      "ACCEPTANCE 2026-10-16T03:01Z — merge: not merged — the head moved",
+      "ACCEPTANCE 2026-10-16T04:01Z — merge: merged 0a1b2c3",
+      "MILESTONE 2026-10-16T04:02Z — merge: none of this matters",
+    ].join("\n\n");
+    expect(acceptanceMerge(notes)).toBe("merged 0a1b2c3");
+  });
+
+  it("gives the prose of a record written before the field, clipped", () => {
+    expect(acceptanceMerge(MERGED_BEFORE_THE_FIELD["TR-113"] ?? "")).toMatch(/^user: "I accept TR-113\. .*…$/);
+    expect((acceptanceMerge(MERGED_BEFORE_THE_FIELD["TR-113"] ?? "") ?? "").length).toBeLessThanOrEqual(200);
+    expect(acceptanceMerge("ACCEPTANCE 2026-10-14T10:23Z — Main fast-forwarded bee2749..aac6288, clean.")).toBe("Main fast-forwarded bee2749..aac6288, clean.");
+  });
+
+  it("is null with no ACCEPTANCE record", () => {
+    expect(acceptanceMerge(null)).toBeNull();
+    expect(acceptanceMerge("")).toBeNull();
+    expect(acceptanceMerge("ACCEPTED 2026-10-16T03:00:00.000Z — the user accepted; merging: the pull request")).toBeNull();
   });
 });

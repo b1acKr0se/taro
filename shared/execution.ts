@@ -253,3 +253,31 @@ export function pullRequestMerged(notes: string | null): boolean {
 }
 
 const PULL_REQUEST_URL_ONCE = new RegExp(PULL_REQUEST_URL.source);
+
+/**
+ * What the newest ACCEPTANCE record says merged, for the manager's Done wake-up (TR-147): its merge
+ * field's value (`merged 0a1b2c3`, `not merged — <reason>`, `none`), or for a record written before
+ * the field, its prose, clipped. Null with no ACCEPTANCE record (a ticket set Done by hand).
+ */
+export function acceptanceMerge(notes: string | null): string | null {
+  const records = noteRecords(notes);
+  for (let index = records.length - 1; index >= 0; index--) {
+    const record = records[index] ?? "";
+    if (!/^ACCEPTANCE\b/.test(record)) continue;
+    const field = [...record.matchAll(MERGE_FIELD)].pop();
+    if (field !== undefined) {
+      const start = (field.index ?? 0) + field[0].toLowerCase().indexOf("merge:") + "merge:".length;
+      return clip(record.slice(start).split("\n")[0] ?? "");
+    }
+    return clip(record.replace(/^ACCEPTANCE\s+\S+\s*(?:—|--|-)?\s*/, ""));
+  }
+  return null;
+}
+
+const MERGE_TEXT_LIMIT = 200;
+
+function clip(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length <= MERGE_TEXT_LIMIT ? flat : `${flat.slice(0, MERGE_TEXT_LIMIT - 1).trimEnd()}…`;
+}
+

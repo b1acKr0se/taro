@@ -73,6 +73,10 @@ You are not told about owners' turns; the plugin supervises them. You are woken 
   acceptance and which tickets depend on it (they start only once it is Done), with its recount —
   dispatch what the cap and dependencies allow; a change made while the plugin was reloading
   reaches you once it is back, possibly twice;
+- **a Done ticket**: every ticket with no parent that becomes Done reaches you once, with its
+  ACCEPTANCE record's merge field (`merged <sha>`, `not merged — <reason>`, `none`), inside the
+  wake-up above when that is due, else alone. Do what your standing orders ask after a Done (a
+  merge, for example), then end your turn; the alone message means nothing new can start;
 - **a queued ticket with a free slot**: a ticket filed while a slot is free, or tickets that could
   start while you sat idle for a few minutes. The plugin's recount lists owners counting, the cap,
   threads, and the queue as startable, waiting on dependencies and held: dispatch the startable
