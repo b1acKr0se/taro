@@ -175,14 +175,14 @@ export interface NotMergedRecord {
 }
 
 /**
- * The newest NOT-MERGED or NOT-SYNCED record, until the user presses Accept again or asks for changes, or the
- * owner presents again (EVIDENCE, or a new review head): each makes the reason stale.
+ * The newest NOT-MERGED or NOT-SYNCED record, until the user presses Accept again or asks for changes, the
+ * owner asks a question that ends the delivery (DELIVERY-ENDED, TR-130), or the owner presents again (EVIDENCE, or a new review head): each makes the reason stale.
  */
 export function notMergedRecord(notes: string | null): NotMergedRecord | null {
   const records = noteRecords(notes);
   for (let index = records.length - 1; index >= 0; index--) {
     const record = records[index] ?? "";
-    if (/^(?:EVIDENCE|CHANGES-REQUESTED|ACCEPTED)\b/.test(record)) return null;
+    if (/^(?:EVIDENCE|CHANGES-REQUESTED|DELIVERY-ENDED|ACCEPTED)\b/.test(record)) return null;
     if (/^EXECUTION\b/.test(record) && REVIEW_HEAD.test(record)) return null;
     const match = /^NOT-(MERGED|SYNCED)\s+(\S+)[ \t]*(?:[\u2014\u2013:-]+[ \t]*)?([^\n]*)/.exec(record);
     if (match !== null) {

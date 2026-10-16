@@ -4,7 +4,7 @@
  * (TR-131), so the board and the chat show the question alone; the owner's next delivery brings the
  * acceptance card back. Pure.
  */
-import { acceptedRecord } from "./execution";
+import { acceptedRecord, notMergedRecord } from "./execution";
 
 /** An investigation delivers by asking this (roles/owner.md): its question is the delivery itself. */
 const DELIVERING_QUESTION = "investigation-done";
@@ -14,9 +14,12 @@ export function questionEndingDelivery<D extends { id: string; blocking: boolean
   return opened.find((decision) => decision.blocking && decision.id !== DELIVERING_QUESTION) ?? null;
 }
 
-/** Whether a ticket's delivery is still on offer: Awaiting acceptance and not accepted (once accepted, the owner is merging). */
+/**
+ * Whether a ticket's delivery is still on offer: Awaiting acceptance, not accepted (once accepted, the
+ * owner is merging), and its pull request not already merged (NOT-SYNCED: only the local base branch is behind).
+ */
 export function deliveryOnOffer(ticket: { status: string; notes: string | null }): boolean {
-  return ticket.status === "Awaiting acceptance" && acceptedRecord(ticket.notes) === null;
+  return ticket.status === "Awaiting acceptance" && acceptedRecord(ticket.notes) === null && notMergedRecord(ticket.notes)?.merged !== true;
 }
 
 export function deliveryEndedRecord(at: string, question: string): string {

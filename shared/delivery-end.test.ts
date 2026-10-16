@@ -41,6 +41,11 @@ describe("deliveryOnOffer", () => {
     expect(deliveryOnOffer({ status: "Awaiting acceptance", notes: notMerged })).toBe(true);
   });
 
+  it("ends once the pull request merged and only the local base branch is behind (NOT-SYNCED)", () => {
+    const notSynced = `${delivered}\n\nACCEPTED 2026-10-16T00:10Z — the user accepted; merging: the pull request\n\nNOT-SYNCED 2026-10-16T00:11Z — the main checkout has uncommitted changes`;
+    expect(deliveryOnOffer({ status: "Awaiting acceptance", notes: notSynced })).toBe(false);
+  });
+
   it("is off for every other status", () => {
     for (const status of ["Planning", "In Progress", "Reviewing", "Blocked", "Done", "Cancelled"]) expect(deliveryOnOffer({ status, notes: delivered })).toBe(false);
   });
