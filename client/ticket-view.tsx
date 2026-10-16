@@ -20,6 +20,7 @@ import { FINAL_SECTIONS, finalSections, type FinalSections } from "../shared/fin
 import { ticketMilestones, type Milestone } from "../shared/milestones";
 import type { PauseView } from "../shared/pause";
 import { parsePlan } from "../shared/plan";
+import { markedAgainst } from "../shared/plan-changes";
 import type { StoredDecision } from "../shared/state";
 import { foldList, ticketSections, ticketSummary, type TicketSectionKey, type TicketSummary } from "../shared/ticket-summary";
 import { PhaseBadge } from "./badges";
@@ -29,7 +30,7 @@ import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { KeyboardScrollView } from "./keyboard";
 import { Markdown, MarkdownInline } from "./markdown";
-import { PlanActions, PlanBody, type PlanCardOptions } from "./plan-card";
+import { PlanActions, PlanBody, usePlanMarks, type PlanCardOptions } from "./plan-card";
 import { SpecChangeBox } from "./spec-change-box";
 import { withAlpha } from "./tint";
 import { recentMilestoneRows } from "./milestone-rows";
@@ -111,6 +112,8 @@ export function TicketView({
   const open = useMemo(() => (allDecisions ?? []).filter((decision) => decision.ticket === ticket && decision.status === "open"), [allDecisions, ticket]);
   // The open scope approval is answered here (beside Needs you, and at the end of the plan after reading it), plan template or not.
   const approving = useMemo(() => ticketViewApproval(open, ticket), [open, ticket]);
+  // What changed since the plan the user last answered shows in green while it is asked again (TR-151).
+  const planMarks = usePlanMarks(plan, markedAgainst(detail.data?.previousPlan, approving !== null));
   // One owner of both Approve presses: while one is in flight the other is disabled.
   const approvePresses = useActions();
   const pauseRpc = useRpc(pauseTicket);
@@ -173,7 +176,7 @@ export function TicketView({
         return (
           <View style={{ gap: SPACE.sm }}>
             {plan !== null ? (
-              <PlanBody plan={plan} theme={theme} proof={criteria} />
+              <PlanBody plan={plan} marks={planMarks} theme={theme} proof={criteria} />
             ) : (
               <View style={{ gap: SPACE.md }}>
                 {/* A plan in no template shape stays Markdown, as written. */}

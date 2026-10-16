@@ -14,13 +14,14 @@ import { Text, View } from "react-native";
 import { acceptTicket, loadTicket, requestChanges, type Card } from "../shared/contracts";
 import { evidenceSummary } from "../shared/evidence";
 import { finalSummaryBody } from "../shared/execution";
+import { pullRequestMark } from "../shared/pull-request-state";
 import { acceptanceReady } from "./card-calls";
 import { notMergedText } from "./card-now";
 import { ChangeBox } from "./change-box";
 import { EvidenceBlock } from "./evidence-view";
 import { Pressable } from "./focus";
 import { errorText, pullRequestLabel, pullRequestNumberLabel } from "./format";
-import { mergedPurple } from "./github-colors";
+import { pullRequestColor } from "./github-colors";
 import { useRevealFocused } from "./keyboard";
 import { Markdown } from "./markdown";
 import { SPACE } from "./spacing";
@@ -63,6 +64,7 @@ export function AcceptanceCard({
   const summary = detail.data?.finalSummary === null || detail.data?.finalSummary === undefined ? null : finalSummaryBody(detail.data.finalSummary);
   const evidence = detail.data?.evidence ?? null;
   const ready = acceptanceReady(card);
+  const pullRequestLook = pullRequestMark(card.pullRequestState, card.pullRequestMerged);
   const openLink = (url: string) => void openExternalUrl(url).catch((caught: unknown) => toast.error(errorText(caught)));
   const styles = useMemo(
     () => ({
@@ -84,14 +86,14 @@ export function AcceptanceCard({
         <Icon name={ready ? "PackageCheck" : "PackageX"} size={14} color={ready ? colors.accent : colors.statusWarning} />
         <Text style={styles.state}>{ready ? `${card.id} IS READY TO ACCEPT` : `${card.id} IS NOT READY TO ACCEPT`}</Text>
         {card.pullRequest === null ? null : (
-          // The board's PR mark (TR-119, TR-127): a grey icon, purple once merged, and plain "PR #42" without the repository.
+          // The board's PR mark (TR-119, TR-127, TR-152): its icon and colour say the PR's state on GitHub, and plain "PR #42" without the repository.
           <Pressable
             accessibilityRole="link"
-            accessibilityLabel={`Open ${pullRequestLabel(card.pullRequest)}${card.pullRequestMerged ? ", merged" : ""}`}
+            accessibilityLabel={`Open ${pullRequestLabel(card.pullRequest)}${pullRequestLook.spoken}`}
             onPress={() => openLink(card.pullRequest ?? "")}
             style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs }}
           >
-            <Icon name={card.pullRequestMerged ? "GitMerge" : "GitPullRequest"} size={12} color={card.pullRequestMerged ? mergedPurple(colors) : colors.foregroundMuted} />
+            <Icon name={pullRequestLook.icon} size={12} color={pullRequestColor(pullRequestLook.tone, colors)} />
             <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption }}>{pullRequestNumberLabel(card.pullRequest)}</Text>
           </Pressable>
         )}

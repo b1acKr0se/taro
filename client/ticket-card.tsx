@@ -16,13 +16,14 @@ import { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 
 import { acceptTicket, nudgeAgent, relaunchOwner, resumeTicket, type Card, type StatsSummary } from "../shared/contracts";
+import { pullRequestMark } from "../shared/pull-request-state";
 import { PhaseBadge } from "./badges";
 import { cardFooterLine, cardNowLine, type NowLine } from "./card-now";
 import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
 import { cardStatsText, errorText, formatCost, pullRequestLabel, pullRequestNumberLabel } from "./format";
-import { mergedPurple } from "./github-colors";
+import { pullRequestColor } from "./github-colors";
 import { SPACE } from "./spacing";
 import { OptionChips } from "./option-chips";
 import { PlanDecision } from "./plan-card";
@@ -144,20 +145,21 @@ export function TicketCard({
       <PhaseBadge theme={theme} status={card.status} />
     </View>
   );
-  // One PR mark on every card: a Done card's sits on its stats line, GitHub's purple merged icon when it merged
-  // (TR-114), any other card's ends its footer. "PR #128" is plain like the text beside it, without the repository,
+  // One PR mark on every card: a Done card's sits on its stats line, any other card's ends its footer. Its icon
+  // and colour are the PR's state on GitHub (TR-152), GitHub's purple merged icon once merged (TR-114). "PR #128" is plain like the text beside it, without the repository,
   // as an accent-coloured link clashed with the purple (TR-119, TR-127).
-  const pullRequestMark =
+  const pullRequestLook = pullRequestMark(card.pullRequestState, card.pullRequestMerged);
+  const pullRequestMarkView =
     card.pullRequest === null ? null : (
       // A button to the web app: it takes Enter and Space only from a button, and a link let them reach the card.
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Open ${pullRequestLabel(card.pullRequest)}${card.pullRequestMerged ? ", merged" : ""}`}
+        accessibilityLabel={`Open ${pullRequestLabel(card.pullRequest)}${pullRequestLook.spoken}`}
         onPress={() => void openExternalUrl(card.pullRequest ?? "").catch((caught: unknown) => toast.error(errorText(caught)))}
         style={styles.stat}
       >
         <View style={styles.statIcon}>
-          <Icon name={card.pullRequestMerged ? "GitMerge" : "GitPullRequest"} size={12} color={card.pullRequestMerged ? mergedPurple(colors) : colors.foregroundMuted} />
+          <Icon name={pullRequestLook.icon} size={12} color={pullRequestColor(pullRequestLook.tone, colors)} />
         </View>
         <Text style={[styles.muted, styles.statText]} numberOfLines={1}>
           {pullRequestNumberLabel(card.pullRequest)}
@@ -166,7 +168,7 @@ export function TicketCard({
     );
   const statsLine =
     stats === null ? (
-      pullRequestMark === null ? null : <View style={styles.row}>{pullRequestMark}</View>
+      pullRequestMarkView === null ? null : <View style={styles.row}>{pullRequestMarkView}</View>
     ) : (
       <View style={styles.row}>
         {/* Each icon stays beside its text: a narrow card wraps the text beside the icon, not under it (TR-103). */}
@@ -187,7 +189,7 @@ export function TicketCard({
             <Text style={[styles.muted, styles.statText]}>{formatCost(stats.costUsd)}</Text>
           </View>
         )}
-        {pullRequestMark}
+        {pullRequestMarkView}
       </View>
     );
 
@@ -367,7 +369,7 @@ export function TicketCard({
         // the meta line's last dot or wraps under it (TR-095).
         <View style={styles.footer}>
           {footer.meta === "" ? null : <Text style={[styles.muted, styles.footerText]}>{footer.meta}</Text>}
-          {footer.pullRequest === null ? null : pullRequestMark}
+          {footer.pullRequest === null ? null : pullRequestMarkView}
         </View>
       ) : null}
     </Pressable>
