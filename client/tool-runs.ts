@@ -1,9 +1,10 @@
 /**
  * Tool calls between the agent's words (TR-018). A run of consecutive calls is the agent working,
- * not talking, so the chat folds it to one line — how many calls, the latest, whether one runs or
- * failed — and the reader opens it only when they want the detail.
+ * not talking, so the chat folds it to one line — what it did in plain words, whether one runs or
+ * failed — and the reader opens it for the raw calls, one line each (TR-144).
  */
 import type { TranscriptRow } from "./transcript-rows";
+import { toolTally } from "./tool-wording";
 
 export type ToolRow = Extract<TranscriptRow, { kind: "tool" }>;
 
@@ -22,10 +23,8 @@ export function groupRows(rows: readonly TranscriptRow[]): Group[] {
 }
 
 export interface ToolRunSummary {
-  /** "3 tool calls", or the one call's own line when the run holds one. */
+  /** What the run did in plain words (TR-144): "Searched twice, read 4 files", or a lone call's own words. */
   title: string;
-  /** The latest call, shown after the count; null when the title already is it. */
-  latest: string | null;
   /** A running call wins over a failed one: the run is still going. */
   state: "running" | "failed" | "done";
   failed: number;
@@ -34,7 +33,6 @@ export interface ToolRunSummary {
 export function toolRunSummary(tools: readonly ToolRow[]): ToolRunSummary {
   const failed = tools.filter((tool) => tool.status === "failed").length;
   const state = tools.some((tool) => tool.status === "running") ? "running" : failed > 0 ? "failed" : "done";
-  const last = tools[tools.length - 1];
-  if (tools.length === 1 && last !== undefined) return { title: last.text, latest: null, state, failed };
-  return { title: `${tools.length} tool calls`, latest: last?.text ?? null, state, failed };
+  const only = tools.length === 1 ? tools[0] : undefined;
+  return { title: only !== undefined ? only.plain : toolTally(tools.map((tool) => tool.category)), state, failed };
 }

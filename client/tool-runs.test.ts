@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { groupRows, toolRunSummary, type ToolRow } from "./tool-runs";
 import type { TranscriptRow } from "./transcript-rows";
 
-function tool(key: string, text: string, status: ToolRow["status"] = "completed"): ToolRow {
-  return { key, kind: "tool", text, status };
+function tool(key: string, text: string, status: ToolRow["status"] = "completed", category: ToolRow["category"] = "other"): ToolRow {
+  return { key, kind: "tool", text, plain: `plain ${text}`, category, status };
 }
 
 describe("groupRows", () => {
@@ -27,17 +27,13 @@ describe("groupRows", () => {
 });
 
 describe("toolRunSummary", () => {
-  it("shows a lone call as itself", () => {
-    expect(toolRunSummary([tool("1", "$ ls")])).toEqual({ title: "$ ls", latest: null, state: "done", failed: 0 });
+  it("shows a lone call in its plain words, not its raw call", () => {
+    expect(toolRunSummary([tool("1", "$ ls", "completed", "search")])).toEqual({ title: "plain $ ls", state: "done", failed: 0 });
   });
 
-  it("counts a run and names its latest call", () => {
-    expect(toolRunSummary([tool("1", "Read a"), tool("2", "Read b"), tool("3", "$ npm test")])).toEqual({
-      title: "3 tool calls",
-      latest: "$ npm test",
-      state: "done",
-      failed: 0,
-    });
+  it("counts a run by what it did, in plain words", () => {
+    const run = [tool("1", "Read /a/x.ts", "completed", "read"), tool("2", "$ grep -r x .", "completed", "search"), tool("3", "Read /a/y.ts", "completed", "read")];
+    expect(toolRunSummary(run)).toEqual({ title: "Read 2 files, searched once", state: "done", failed: 0 });
   });
 
   it("says a run with a running call is running, even when another failed", () => {

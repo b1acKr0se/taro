@@ -775,15 +775,13 @@ function SendMarkLine({
 function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, transformText, decorateRow, theme, styles, onToggle, onRowLayout, onOpenLink, renderCards, onMarkAction }: TranscriptGroupProps) {
   if ("tools" in group) {
     const summary = toolRunSummary(group.tools);
-    const lone = group.tools.length === 1;
     const toggle = () => onToggle(group.key);
     return (
       <View key={group.key} style={styles.toolRun}>
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ expanded: open }}
-          accessibilityLabel={lone ? summary.title : `${summary.title}, ${open ? "fold" : "show"}`}
-          disabled={lone}
+          accessibilityLabel={`${summary.title}, ${open ? "fold" : "show"}`}
           style={[styles.toolHead, summary.state === "failed" ? { borderColor: theme.colors.statusDanger } : null]}
           onPress={toggle}
         >
@@ -792,18 +790,13 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, trans
           ) : (
             <Icon name={summary.state === "failed" ? "X" : "Wrench"} size={11} color={summary.state === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
           )}
-          <Text style={lone ? styles.toolLatest : styles.toolTitle} numberOfLines={1}>
+          <Text style={styles.toolTitle} numberOfLines={1}>
             {summary.title}
-            {summary.failed > 0 && !lone ? ` · ${summary.failed} failed` : ""}
+            {summary.failed > 0 && group.tools.length > 1 ? ` · ${summary.failed} failed` : ""}
           </Text>
-          {summary.latest === null || open ? null : (
-            <Text style={styles.toolLatest} numberOfLines={1}>
-              {summary.latest}
-            </Text>
-          )}
-          {lone ? null : <Icon name={open ? "ChevronDown" : "ChevronRight"} size={12} color={theme.colors.foregroundMuted} />}
+          <Icon name={open ? "ChevronDown" : "ChevronRight"} size={12} color={theme.colors.foregroundMuted} />
         </Pressable>
-        {open && !lone ? (
+        {open ? (
           <View style={styles.toolList}>
             {group.tools.map((tool) => (
               <View key={tool.key} style={styles.line}>
@@ -948,13 +941,12 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
       borderColor: colors.border,
     },
     toolList: { gap: SPACE.xs, marginLeft: SPACE.md, paddingLeft: SPACE.sm, borderLeftWidth: 1, borderLeftColor: colors.border },
-    toolLatest: { flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontFamily: MONOSPACE },
     lineText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
     lineTop: { alignItems: "flex-start" as const },
     lineTextHeight: { lineHeight: lineHeightFor(FONT_SIZE.caption) },
     lineIcon: { height: lineHeightFor(FONT_SIZE.caption), justifyContent: "center" as const },
     toolText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontFamily: MONOSPACE },
-    toolTitle: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
+    toolTitle: { flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
     error: { color: colors.statusDanger, fontSize: FONT_SIZE.small },
     hint: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center" as const, padding: SPACE.lg },
     composerFrame: { borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface0 },

@@ -13,7 +13,7 @@ export function sameGroup(left: Group, right: Group): boolean {
     if (!("tools" in left) || !("tools" in right) || left.tools.length !== right.tools.length) return false;
     return left.tools.every((tool, index) => {
       const other = right.tools[index];
-      return other !== undefined && tool.key === other.key && tool.text === other.text && tool.status === other.status;
+      return other !== undefined && tool.key === other.key && tool.text === other.text && tool.plain === other.plain && tool.status === other.status;
     });
   }
   return left.row.kind === right.row.kind && left.row.key === right.row.key && left.row.text === right.row.text;

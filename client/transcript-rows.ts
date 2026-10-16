@@ -13,6 +13,7 @@
 import type { usePaseo } from "@getpaseo/plugin/client";
 
 import { imageLineOf } from "./markdown-parse";
+import { toolAction, type ToolCategory, type ToolDetail } from "./tool-wording";
 
 type PaseoApi = ReturnType<typeof usePaseo>;
 export type TimelinePage = Awaited<ReturnType<ReturnType<PaseoApi["agents"]["ref"]>["timeline"]["refetch"]>>;
@@ -25,7 +26,8 @@ export type TranscriptRow =
   /** `at`: when the message started, for matching what was answered after it (TR-135). */
   | { key: string; kind: "agent"; text: string; at?: string }
   | { key: string; kind: "event"; text: string }
-  | { key: string; kind: "tool"; text: string; status: ToolCallItem["status"] }
+  /** A tool call: `text` is the raw call the opened run lists, `plain` its plain words for a folded one (TR-144). */
+  | { key: string; kind: "tool"; text: string; plain: string; category: ToolCategory; status: ToolCallItem["status"] }
   | { key: string; kind: "error"; text: string };
 
 /** A user row's text when the message had attachments and no words. */
@@ -184,8 +186,11 @@ export function transcriptRows(entries: readonly TimelineEntry[]): TranscriptRow
         previousReply = entry;
         break;
       }
-      case "tool_call":
-        rows.push({ key, kind: "tool", text: toolSummary(item), status: item.status });
+      case "tool_call": {
+        const action = toolAction(item.detail as ToolDetail, item.name);
+        rows.push({ key, kind: "tool", text: toolSummary(item), plain: action.text, category: action.category, status: item.status });
+        break;
+      }
         break;
       case "error":
         rows.push({ key, kind: "error", text: item.message });
