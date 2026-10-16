@@ -1,0 +1,2 @@
+<!-- Appended to a fresh owner's first message when the user pressed Accept, the plugin's own merge stopped on something that needs an owner, and the previous owner had been idle too long to reread its context cheaply (TR-141). -->
+The user has pressed Accept on {{ticket}} ("I accept {{ticket}}."); the ticket's ACCEPTED record says so. The plugin ran Accept's steps itself and stopped: {{found}}. Once you have read in, take it from there as roles/owner.md says (Accept): {{mergeInstruction}}

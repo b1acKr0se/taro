@@ -10,7 +10,8 @@ import { randomUUID } from "node:crypto";
 
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { doneTicketOf, planRelease } from "../shared/done-release";
-import { acceptedRecord, acceptedRecordText, executionWorkspace, localMergeInstruction, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
+import { acceptanceText, handoffText, ownerIsWarm, type AcceptOutcome, type Handover } from "../shared/accept-merge";
+import { acceptedRecord, acceptedRecordText, executionBranch, executionWorkspace, localMergeInstruction, pluginAcceptPending, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
 import { dependsOn, holdsSlot, shouldWakeManager, statusChanges, withRecordedStatuses, type StatusChange } from "../shared/owner-cap";
 import {
   handoffSincePauseRequest,
@@ -53,7 +54,8 @@ import {
 import { hasHeadroom, type BoardAlert } from "../shared/recovery";
 import { specChangeRefusal } from "../shared/spec-change";
 import { carriedQuestionLines, questionsToCarry } from "../shared/state";
-import { TARO_LABELS, TICKET_STATUSES } from "../shared/project";
+import { TARO_LABELS, TICKET_STATUSES, type ProjectConfig } from "../shared/project";
+import { acceptLocalBranch, acceptPullRequest } from "./accept-merge";
 import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
 import { taroEnvironment } from "./environment";
 import { requireCompleteEvidence } from "./evidence";
@@ -63,13 +65,14 @@ import { restartManager, tellManager } from "./manager";
 import { bypassModeId } from "./models";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { listProjectConfigs, projectPaths, requireProjectConfig } from "./projects";
+import { runCommand } from "./process";
 import { serialized } from "./serialize";
 import { sendFromPlugin, sendWithoutInterrupting } from "./send";
 import { hasAttachments, sendWithAttachments, type Attachments } from "./uploads";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import { identityFromLabels, lastHumanMessageAt, managerHandoffPath, type Supervisor } from "./supervision";
-import { appendTicketNote, listTickets, recordChangesRequested, viewTicket, type TicketSummary } from "./tickets";
+import { appendTicketNote, closeTicket, listTickets, recordChangesRequested, viewTicket, type TicketDetail, type TicketSummary } from "./tickets";
 import { usageReading, type Stats } from "./stats";
 import { isStopping, reportFailure } from "./stopping";
 import type { TrackerWatch } from "./tracker-watch";
@@ -97,6 +100,8 @@ export class Actions {
   private checkingQueues = false;
   /** Under-way tickets' notes, read again only when the ticket changes, for pauses and queued resumes (TR-088). */
   private readonly pauseNotes = new Map<string, { updatedAt: string; notes: string | null }>();
+  /** Accepts the plugin is running (TR-141), by project and ticket. */
+  private readonly accepting = new Map<string, Promise<void>>();
   /** Projects whose stored ladder was merged in since the start. */
   private readonly ladderLoaded = new Set<string>();
 
@@ -186,30 +191,113 @@ export class Actions {
     return owner;
   }
 
+  /**
+   * Accept (TR-141): the plugin runs the merge's fixed steps itself, so an owner idle for hours is
+   * not woken to reread its whole context for a few commands. It records ACCEPTED (the card says it
+   * merges) and runs the steps after answering; a surprise goes to an owner (`handOffAccept`).
+   */
   async accept(paseo: PaseoApi, project: string, ticket: string): Promise<void> {
     const config = await requireProjectConfig(project);
-    const owner = await this.requireOwner(paseo, project, ticket);
+    await this.requireOwner(paseo, project, ticket);
     const paths = await projectPaths(project);
     const detail = await viewTicket(paths.tracker, ticket);
-    // Nothing reaches the owner while the evidence is incomplete.
+    // Nothing happens while the evidence is incomplete.
     await requireCompleteEvidence(project, ticket, detail.implementationNotes, detail.labels);
-    const investigation = detail.labels.includes("investigation");
-    let mergeInstruction: string;
-    // What the card says while the owner finishes (TR-031): what it merges, null for nothing, undefined
-    // when the owner is told to present again instead, so the card keeps offering Accept.
-    let merging: string | null | undefined = null;
-    if (investigation) mergeInstruction = "Record ACCEPTANCE with my words and set the ticket Done.";
-    else if (!config.acceptAlsoMerges) mergeInstruction = "Do not merge; record ACCEPTANCE with my words and set the ticket Done.";
-    else if (config.delivery === "pull-request") {
-      mergeInstruction = pullRequestMergeInstruction(detail.implementationNotes, detail.finalSummary, { method: config.mergeMethod, baseBranch: config.baseBranch, repoPath: config.repoPath });
-      const mergeable = reviewHead(detail.implementationNotes) !== null && pullRequestUrl(detail.implementationNotes, detail.finalSummary) !== null;
-      merging = mergeable ? "the pull request" : undefined;
-    } else {
-      mergeInstruction = localMergeInstruction(detail.implementationNotes, config.baseBranch, config.repoPath);
-      merging = reviewHead(detail.implementationNotes) !== null ? `into ${config.baseBranch}` : undefined;
+    if (this.accepting.has(acceptKey(project, ticket))) throw new Error(`${ticket} is already being accepted.`);
+    const plan = acceptPlan(config, detail);
+    // Without the reviewed head (or the PR), nothing can merge: an owner presents it again, and the card keeps offering Accept.
+    if (plan.missing !== null) {
+      await this.handOffAccept(paseo, project, ticket, plan.missing, plan.instruction);
+      return;
     }
-    await sendWithoutInterrupting(paseo, owner.id, await message(TEMPLATES.accept, { ticket, mergeInstruction }));
-    if (merging !== undefined) await appendTicketNote(paths.tracker, ticket, acceptedRecordText(new Date().toISOString(), merging)).catch(() => undefined);
+    await appendTicketNote(paths.tracker, ticket, acceptedRecordText(new Date().toISOString(), plan.merging, true));
+    this.startAccept(paseo, project, ticket);
+  }
+
+  /** Runs Accept's steps in the background; the card follows the records. Only one per ticket at a time. */
+  private startAccept(paseo: PaseoApi, project: string, ticket: string): void {
+    const key = acceptKey(project, ticket);
+    if (this.accepting.has(key)) return;
+    const run = this.runAccept(paseo, project, ticket)
+      .catch((error: unknown) => reportFailure(`[taro] ${project}: accepting ${ticket} failed:`, error))
+      .finally(() => this.accepting.delete(key));
+    this.accepting.set(key, run);
+  }
+
+  /** For tests: the Accept running for the ticket, if any. */
+  acceptRunning(project: string, ticket: string): Promise<void> | undefined {
+    return this.accepting.get(acceptKey(project, ticket));
+  }
+
+  private async runAccept(paseo: PaseoApi, project: string, ticket: string): Promise<void> {
+    const config = await requireProjectConfig(project);
+    const paths = await projectPaths(project);
+    const detail = await viewTicket(paths.tracker, ticket);
+    const plan = acceptPlan(config, detail);
+    const at = () => new Date().toISOString();
+    const common = { run: runCommand, ticket, at, baseBranch: config.baseBranch, repoPath: config.repoPath };
+    const head = reviewHead(detail.implementationNotes);
+    const url = pullRequestUrl(detail.implementationNotes, detail.finalSummary);
+    let outcome: AcceptOutcome;
+    try {
+      if (plan.merging === null) outcome = { kind: "done", acceptance: acceptanceText(at(), ticket, detail.labels.includes("investigation") ? "An investigation: nothing to merge" : "Not merged: the project does not merge on Accept", "none") };
+      else if (head === null) outcome = { kind: "surprise", found: "the ticket records no review-head" };
+      else if (config.delivery === "pull-request")
+        outcome = url === null ? { kind: "surprise", found: "the ticket records no PR URL" } : await acceptPullRequest({ ...common, url, head, method: config.mergeMethod });
+      else {
+        const recorded = executionBranch(detail.implementationNotes);
+        const fallback = `taro/${ticket.toLowerCase()}`;
+        outcome = await acceptLocalBranch({ ...common, head, branches: recorded === null || recorded === fallback ? [fallback] : [recorded, fallback] });
+      }
+    } catch (error) {
+      outcome = { kind: "surprise", found: error instanceof Error ? error.message : String(error) };
+    }
+    // A stop refuses new commands, which would read as failures: record nothing, so the next start resumes the steps.
+    if (isStopping()) {
+      console.log(`[taro] ${project}: Accept on ${ticket} cut off by the stop; it resumes at start`);
+      return;
+    }
+    if (outcome.kind === "done") await closeTicket(paths.tracker, ticket, outcome.acceptance);
+    else if (outcome.kind === "not-merged") await appendTicketNote(paths.tracker, ticket, `NOT-MERGED ${at()} — ${outcome.reason}`);
+    else if (outcome.kind === "not-synced") await appendTicketNote(paths.tracker, ticket, `NOT-SYNCED ${at()} — ${outcome.reason}`);
+    else await this.handOffAccept(paseo, project, ticket, outcome.found, plan.instruction);
+    console.log(`[taro] ${project}: Accept on ${ticket} ended ${outcome.kind}`);
+  }
+
+  /**
+   * A surprise on Accept goes to an owner with today's instruction. The current owner takes it while
+   * its prompt cache is surely warm (mid-turn, or its last turn ended under five minutes ago);
+   * otherwise a fresh owner starts in the same worktree and reads the ticket, not the old chat.
+   */
+  private async handOffAccept(paseo: PaseoApi, project: string, ticket: string, found: string, mergeInstruction: string): Promise<void> {
+    const owner = await this.requireOwner(paseo, project, ticket);
+    const lastTurnEndedAt = (await this.state.agent(owner.id))?.lastTurnEndedAt ?? owner.updatedAt;
+    const now = Date.now();
+    const midTurn = isMidTurn(owner);
+    const ended = lastTurnEndedAt === null ? Number.NaN : Date.parse(lastTurnEndedAt);
+    const idleMs = midTurn || !Number.isFinite(ended) ? null : now - ended;
+    let handover: Handover;
+    if (ownerIsWarm(lastTurnEndedAt, midTurn, now)) {
+      await sendWithoutInterrupting(paseo, owner.id, await message(TEMPLATES.accept, { ticket, found, mergeInstruction }));
+      handover = { kind: "owner", owner: owner.id, idleMs };
+    } else {
+      const fresh = await this.relaunchOwner(paseo, project, ticket, await message(TEMPLATES.acceptFreshOwner, { ticket, found, mergeInstruction }));
+      handover = { kind: "fresh", owner: owner.id, fresh, idleMs };
+    }
+    const paths = await projectPaths(project);
+    await appendTicketNote(paths.tracker, ticket, handoffText(new Date().toISOString(), found, handover)).catch(() => undefined);
+  }
+
+  /** Accept steps a reload cut off (TR-043: merging into the main checkout can reload the plugin) run again; each is safe to repeat. */
+  private async resumeAccepts(paseo: PaseoApi, project: string): Promise<void> {
+    const paths = await projectPaths(project);
+    for (const summary of await listTickets(paths.tracker)) {
+      if (summary.status !== "Awaiting acceptance") continue;
+      const detail = await viewTicket(paths.tracker, summary.id).catch(() => null);
+      if (detail === null || !pluginAcceptPending(detail.implementationNotes)) continue;
+      console.log(`[taro] ${project}: resuming Accept on ${summary.id}`);
+      this.startAccept(paseo, project, summary.id);
+    }
   }
 
   async requestChanges(paseo: PaseoApi, project: string, ticket: string, text: string): Promise<void> {
@@ -238,7 +326,8 @@ export class Actions {
   }
 
   /** A fresh owner in the same workspace, from the ticket's latest handoff or milestone (decision 30). */
-  async relaunchOwner(paseo: PaseoApi, project: string, ticket: string): Promise<string> {
+  /** `then`: what the new owner does first, after reading in (a hand-off on Accept, TR-141). */
+  async relaunchOwner(paseo: PaseoApi, project: string, ticket: string, then = ""): Promise<string> {
     const config = await requireProjectConfig(project);
     const paths = await projectPaths(project);
     const previous = (await this.owners(paseo, project, ticket)).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
@@ -285,7 +374,7 @@ export class Actions {
           previousAgentId: previous?.id ?? "(none)",
           carriedQuestions: carried === "" ? "" : await message(TEMPLATES.carriedQuestions, { questions: carried }),
         })
-      ).trim(),
+      ).trim() + (then.trim() === "" ? "" : `\n\n${then.trim()}`),
     });
     if (previous !== null) await this.state.forgetAgent(previous.id);
     return agentId;
@@ -592,6 +681,9 @@ export class Actions {
       if (!this.lastStatuses.has(config.project)) continue;
       await this.onTrackerChanged(paseo, config.project).catch((error: unknown) => {
         reportFailure(`[taro] catching up on ${config.project}'s tracker after start:`, error);
+      });
+      await this.resumeAccepts(paseo, config.project).catch((error: unknown) => {
+        reportFailure(`[taro] resuming ${config.project}'s Accepts after start:`, error);
       });
     }
   }
@@ -989,4 +1081,27 @@ async function recountText(count: Recount): Promise<string> {
 /** What of the ladder is kept on disk, to tell whether it changed. */
 function ladderSnapshot(watch: QueueWatch): string {
   return JSON.stringify([watch.restarts, [...watch.dismissed].sort()]);
+}
+
+function acceptKey(project: string, ticket: string): string {
+  return `${project}\n${ticket}`;
+}
+
+/**
+ * What Accept merges (`merging`, the card's words; null for nothing), the instruction an owner gets
+ * if the plugin hands it over, and `missing`: why nothing can merge at all (no reviewed head or PR).
+ */
+function acceptPlan(config: ProjectConfig, detail: TicketDetail): { merging: string | null; instruction: string; missing: string | null } {
+  const notes = detail.implementationNotes;
+  if (detail.labels.includes("investigation")) return { merging: null, instruction: "Record ACCEPTANCE with my words and set the ticket Done.", missing: null };
+  if (!config.acceptAlsoMerges) return { merging: null, instruction: "Do not merge; record ACCEPTANCE with my words and set the ticket Done.", missing: null };
+  const head = reviewHead(notes);
+  if (config.delivery === "pull-request") {
+    const url = pullRequestUrl(notes, detail.finalSummary);
+    const instruction = pullRequestMergeInstruction(notes, detail.finalSummary, { method: config.mergeMethod, baseBranch: config.baseBranch, repoPath: config.repoPath });
+    const missing = head === null ? "the ticket records no review-head" : url === null ? "the ticket records no PR URL" : null;
+    return { merging: "the pull request", instruction, missing };
+  }
+  const instruction = localMergeInstruction(notes, config.baseBranch, config.repoPath);
+  return { merging: `into ${config.baseBranch}`, instruction, missing: head === null ? "the ticket records no review-head" : null };
 }

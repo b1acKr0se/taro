@@ -129,6 +129,11 @@ rather than exceed it.
   fetch failed): the reason and what the user does first, in one short line. Like NOT-MERGED, it
   puts the card back in Needs you; the next Accept only brings the base branch up:
   `NOT-SYNCED 2026-01-06T09:00Z — main has 2 commits origin lacks; push or drop them, then Accept again`.
+- **ACCEPTED**, **ACCEPT-HANDOFF**: written by the plugin when the user presses Accept (the card
+  says it merges), and when its own merge stops on something that needs an owner: who took over
+  and why (the owner, or a fresh owner when the owner had been idle 5 minutes or more), then what
+  it found. The plugin itself writes ACCEPTANCE, NOT-MERGED and NOT-SYNCED on the routine
+  path; an owner writes them only after a hand-off.
 - **ANSWER**: written by the plugin when the user answers a decision.
 - **ESCAPE**: on a delivered ticket, when a later ticket fixes a defect it shipped; written by the
   later ticket's owner. What escaped, the fixing ticket, and the check that should have caught it

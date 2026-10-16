@@ -67,6 +67,7 @@ const RECORD_KINDS: Readonly<Record<string, Look>> = {
   EXECUTION: { icon: "Play", tone: "muted" },
   ANSWER: { icon: "MessageSquare", tone: "muted" },
   HANDOFF: { icon: "ArrowRightLeft", tone: "muted" },
+  "ACCEPT-HANDOFF": { icon: "ArrowRightLeft", tone: "warning" },
   "DISPATCH-INTENT": { icon: "Send", tone: "muted" },
   "SCOPE-CHANGE": { icon: "Pencil", tone: "accent" },
   "TOOL-MISS": { icon: "CircleAlert", tone: "warning" },

@@ -10,6 +10,8 @@ describe("recordKindLook", () => {
     expect(recordKindLook("RECOVERY")).toEqual({ icon: "LifeBuoy", tone: "warning" });
     expect(recordKindLook("DISPATCH-INTENT").icon).toBe("Send");
     expect(recordKindLook("HANDOFF").icon).toBe("ArrowRightLeft");
+    // An Accept handed to an owner stands out from the routine records (TR-141).
+    expect(recordKindLook("ACCEPT-HANDOFF")).toEqual({ icon: "ArrowRightLeft", tone: "warning" });
   });
 
   it("falls back to a muted dot for any other kind", () => {

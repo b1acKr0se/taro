@@ -32,6 +32,7 @@ export const RECORD_KINDS: ReadonlySet<string> = new Set([
   "RECOVERY",
   "ANSWER",
   "HANDOFF",
+  "ACCEPT-HANDOFF",
   "DISPATCH-INTENT",
   "TOOL-MISS",
   "CONTEXT",

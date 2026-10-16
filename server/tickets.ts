@@ -117,6 +117,11 @@ export async function endDelivery(trackerPath: string, ticketId: string, record:
   return ticket !== null;
 }
 
+/** Appends the record and sets the ticket Done in one write: Accept run by the plugin (TR-141). */
+export async function closeTicket(trackerPath: string, ticketId: string, record: string): Promise<void> {
+  await storeFor(trackerPath).edit(ticketId, { status: "Done", appendNotes: [record] });
+}
+
 /** The watcher saw `file` (a name under `tickets/`; every file when undefined) change: the next list reads it again. */
 export function forgetTicketFile(trackerPath: string, file: string | undefined): void {
   stores.get(trackerPath)?.forget(file);

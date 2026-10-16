@@ -227,7 +227,7 @@ export const CardSchema = z.object({
   activity: ActivitySchema.nullable().default(null),
   /** The judged evidence, set only while the ticket is Awaiting acceptance. */
   evidence: EvidenceViewSchema.nullable().default(null),
-  /** Set from the ACCEPTED record while the ticket is still Awaiting acceptance: the owner is merging (TR-031). */
+  /** Set from the ACCEPTED record while the ticket is still Awaiting acceptance: the ticket is merging (TR-031, the plugin merges since TR-141). */
   accepted: z.object({ at: z.string(), merging: z.string().nullable() }).nullable().default(null),
   /**
    * Set from a NOT-MERGED record while the ticket is Awaiting acceptance: why the owner did not merge after Accept (TR-109);
