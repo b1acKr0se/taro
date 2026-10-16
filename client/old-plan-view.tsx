@@ -1,8 +1,8 @@
 /**
  * The Old plan view (TR-157): View plan on a finished plan card opens that plan as it stood when the
  * user answered it, read from the tracker's history, in a sheet of its own over the chat rather than
- * the ticket's Ticket tab, which shows the current plan. Its header says it is an old plan, how it
- * was answered and when; Open current plan leads to the Ticket tab where the Taro screen offers it.
+ * the ticket's Ticket tab, which shows the current plan. Its fixed header says it is an old plan;
+ * above the plan, scrolling with it, how it was answered and when, and Open current plan, which leads to the Ticket tab where the Taro screen offers it.
  * Full screen on a phone; on a wide screen a centred panel, kept clear of the macOS window controls.
  * A plan the history does not reach is said to be missing, never replaced by the current one.
  */
@@ -119,39 +119,36 @@ export function OldPlanSheet({
         overflow: "hidden",
       }}
     >
-      <View style={{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.md, paddingBottom: SPACE.md, gap: SPACE.sm, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface1 }}>
-        {/* Close sits in a row of its own above the title, as the user asked. */}
-        <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
-          <IconButton icon="X" label="Close" theme={theme} onPress={onClose} />
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm }}>
-          <Icon name="History" size={15} color={colors.foregroundMuted} />
-          <Text accessibilityRole="header" style={{ flex: 1, color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body), fontWeight: "600" }}>
-            {`Old plan for ${ticket}`}
-          </Text>
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm }}>
-          <View style={{ height: lineHeightFor(FONT_SIZE.small), justifyContent: "center" }}>
-            <Icon name={OUTCOME_ICON[view.tone]} size={13} color={toneColor} />
-          </View>
-          <Text style={[small, { flex: 1, color: toneColor, fontWeight: "600" }]}>
-            {view.outcome}
-            {view.time === null ? null : <Text style={{ color: colors.foregroundMuted, fontWeight: "400" }}>{`  ${view.time}`}</Text>}
-          </Text>
-        </View>
-        {view.words === null ? null : <Text style={[small, { color: colors.foregroundMuted, fontStyle: "italic" }]}>{`“${view.words}”`}</Text>}
-        <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: SPACE.sm }}>
-          {caption === null ? null : <Text style={[small, { flexShrink: 1, color: colors.foregroundMuted }]}>{caption}</Text>}
-          {/* On the right in every case: beside the caption, under it when it wraps, alone when there is none. */}
-          {onOpenCurrent === null ? null : (
-            <View style={{ marginLeft: "auto" }}>
-              <IconButton icon="Map" label="Open current plan" showLabel theme={theme} onPress={onOpenCurrent} />
-            </View>
-          )}
-        </View>
+      {/* Only the title and ✕ stay put; the answer and Open current plan scroll away with the plan. */}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm, paddingLeft: SPACE.lg, paddingRight: SPACE.md, paddingVertical: SPACE.sm, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface1 }}>
+        <Text accessibilityRole="header" numberOfLines={1} style={{ flex: 1, color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body), fontWeight: "600" }}>
+          {`Old plan for ${ticket}`}
+        </Text>
+        <IconButton icon="X" label="Close" theme={theme} onPress={onClose} />
       </View>
-      <ScrollView style={{ flexGrow: 0, flexShrink: 1 }} contentContainerStyle={{ padding: SPACE.lg }}>
-        {body}
+      <ScrollView style={{ flexGrow: 0, flexShrink: 1 }}>
+        <View style={{ paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md, gap: SPACE.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm }}>
+            <View style={{ height: lineHeightFor(FONT_SIZE.small), justifyContent: "center" }}>
+              <Icon name={OUTCOME_ICON[view.tone]} size={13} color={toneColor} />
+            </View>
+            <Text style={[small, { flex: 1, color: toneColor, fontWeight: "600" }]}>
+              {view.outcome}
+              {view.time === null ? null : <Text style={{ color: colors.foregroundMuted, fontWeight: "400" }}>{`  ${view.time}`}</Text>}
+            </Text>
+          </View>
+          {view.words === null ? null : <Text style={[small, { color: colors.foregroundMuted, fontStyle: "italic" }]}>{`“${view.words}”`}</Text>}
+          <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: SPACE.sm }}>
+            {caption === null ? null : <Text style={[small, { flexShrink: 1, color: colors.foregroundMuted }]}>{caption}</Text>}
+            {/* On the right in every case: beside the caption, under it when it wraps, alone when there is none. */}
+            {onOpenCurrent === null ? null : (
+              <View style={{ marginLeft: "auto" }}>
+                <IconButton icon="Map" label="Open current plan" showLabel theme={theme} onPress={onOpenCurrent} />
+              </View>
+            )}
+          </View>
+        </View>
+        <View style={{ padding: SPACE.lg }}>{body}</View>
       </ScrollView>
     </View>
   );
