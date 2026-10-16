@@ -23,7 +23,7 @@ import { serialized } from "./serialize";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
 import { isSubagentRole } from "../shared/project";
-import { currentOwner, freshState, identityFromLabels, type TaroIdentity } from "./supervision";
+import { currentOwner, freshState, identityFromLabels, withMidTurnReminder, type TaroIdentity } from "./supervision";
 import { reportFailure } from "./stopping";
 import { appendTicketNote } from "./tickets";
 
@@ -167,18 +167,21 @@ export class Recovery {
     const identity = identityFromLabels(agent.labels, agent.title ?? null);
     if (identity === null) return;
     const at = new Date().toISOString();
-    const attempt = await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
+    const { attempt, unanswered } = await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
       record.recoveries = [...recentRecoveries(record.recoveries, Date.parse(at)), at];
-      // A handoff or /compact the crash cut short: its next turn answers the recovery, not the pipeline.
+      // A handoff or /compact the crash cut short: its next turn answers the recovery, not the pipeline,
+      // so the user's words it carried for the reload go with the recovery instead (TR-168).
       record.compaction = "none";
-      return record.recoveries.length;
+      const carried = record.unansweredMidTurn;
+      record.unansweredMidTurn = [];
+      return { attempt: record.recoveries.length, unanswered: carried };
     });
     if (identity.ticket !== null) await this.stats.count(identity.project, identity.ticket, "recoveries").catch(() => undefined);
 
     let outcome: string;
     try {
       await runPaseoJson(["agent", "reload", agent.id], "a crashed agent cannot be reloaded");
-      await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.crashRecovery, { error: oneLine(crash.error), skill: await skillDirectory() }));
+      await sendFromPlugin(paseo, agent.id, await withMidTurnReminder(await message(TEMPLATES.crashRecovery, { error: oneLine(crash.error), skill: await skillDirectory() }), unanswered));
       outcome = `reloaded ${agent.id} in place (its conversation kept) and told it to check its checkout and continue`;
     } catch (error: unknown) {
       const reloadError = error instanceof Error ? error.message : String(error);

@@ -76,6 +76,8 @@ export const AgentStateSchema = z.object({
   lastTurnEndedAt: z.string().nullable().default(null),
   /** The missing-evidence set the owner was last told about, so each distinct set is sent once. */
   evidenceReminded: z.string().nullable().default(null),
+  /** The user's words from mid-turn left unanswered in a handoff turn, shown with the reload after /compact (TR-168). */
+  unansweredMidTurn: z.array(z.string()).default([]),
 });
 export type AgentState = z.infer<typeof AgentStateSchema>;
 
