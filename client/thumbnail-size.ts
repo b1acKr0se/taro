@@ -34,3 +34,15 @@ export function thumbnailFrame(size: FrameSize | null, height: number, room?: nu
 export function bubbleImageRoom(chatWidth: number, paddingHorizontal: number, borderWidth: number): number {
   return Math.max(0, chatWidth * USER_BUBBLE_SHARE - 2 * (paddingHorizontal + borderWidth));
 }
+
+/**
+ * The size in device pixels of a copy small enough to draw a thumbnail of `frame` (layout units) at
+ * `pixelRatio`, covering it, for an image of `natural` pixels (TR-164); null when the image is no
+ * larger than that, so it is drawn as it is.
+ */
+export function thumbnailCopySize(natural: FrameSize, frame: FrameSize, pixelRatio: number): FrameSize | null {
+  if (natural.width <= 0 || natural.height <= 0 || frame.width <= 0 || frame.height <= 0) return null;
+  const scale = Math.max((frame.width * pixelRatio) / natural.width, (frame.height * pixelRatio) / natural.height);
+  if (scale >= 1) return null;
+  return { width: Math.max(1, Math.ceil(natural.width * scale)), height: Math.max(1, Math.ceil(natural.height * scale)) };
+}

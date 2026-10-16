@@ -41,6 +41,20 @@ describe("readImage", () => {
     }
   });
 
+  it("sends the size from the image's header, and none when the header is unreadable", async () => {
+    const header = Buffer.alloc(24);
+    PNG.copy(header, 0, 0, 8);
+    header.writeUInt32BE(1440, 16);
+    header.writeUInt32BE(900, 20);
+    await writeFile(join(evidence, "sized.png"), header);
+    expect(await readImage(join(evidence, "sized.png"), roots)).toMatchObject({ mimeType: "image/png", width: 1440, height: 900 });
+    await writeFile(join(evidence, "shot.png"), PNG);
+    const unsized = await readImage(join(evidence, "shot.png"), roots);
+    expect(unsized).not.toBeNull();
+    expect(unsized).not.toHaveProperty("width");
+    expect(unsized).not.toHaveProperty("height");
+  });
+
   it("refuses a path outside the allowed roots, including a tmp directory not named paseo-attachments-*", async () => {
     await writeFile(join(outside, "shot.png"), PNG);
     await writeFile(join(base, "tmp", "other", "shot.png"), PNG);

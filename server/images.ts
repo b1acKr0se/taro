@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { imagePixelSize } from "../shared/image-size";
 import { evidenceDirectory, sentImagesDirectory } from "./data-dir";
 
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -60,6 +61,13 @@ async function realOrNull(path: string): Promise<string | null> {
   }
 }
 
+export interface ServedImage {
+  mimeType: string;
+  data: string;
+  width?: number;
+  height?: number;
+}
+
 /** Every allowed root, resolved through symlinks, so a link inside one cannot lead out of it. */
 async function allowedRoots(roots: ImageRoots): Promise<string[]> {
   const attachments = await readdir(roots.attachmentsParent, { withFileTypes: true })
@@ -69,8 +77,8 @@ async function allowedRoots(roots: ImageRoots): Promise<string[]> {
   return resolved.filter((root): root is string => root !== null);
 }
 
-/** The image at `source`, base64, or null when it is not an image Taro may serve. */
-export async function readImage(source: string, roots: ImageRoots = defaultImageRoots()): Promise<{ mimeType: string; data: string } | null> {
+/** The image at `source`, base64 with its size in pixels when its header shows it (TR-164), or null when it is not an image Taro may serve. */
+export async function readImage(source: string, roots: ImageRoots = defaultImageRoots()): Promise<ServedImage | null> {
   const path = localPathOf(source);
   if (path === null) return null;
   const mimeType = mimeTypeFor(path);
@@ -82,7 +90,9 @@ export async function readImage(source: string, roots: ImageRoots = defaultImage
   try {
     const info = await stat(real);
     if (!info.isFile() || info.size > MAX_IMAGE_BYTES) return null;
-    return { mimeType, data: (await readFile(real)).toString("base64") };
+    const bytes = await readFile(real);
+    const size = imagePixelSize(bytes);
+    return { mimeType, data: bytes.toString("base64"), ...(size === null ? {} : size) };
   } catch {
     return null;
   }

@@ -10,7 +10,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Image, PanResponder, Platform, Text, View, type GestureResponderEvent, type ViewStyle } from "react-native";
+import { Animated, Image, PanResponder, PixelRatio, Platform, Text, View, type GestureResponderEvent, type ViewStyle } from "react-native";
 
 import { readImageRpc } from "../shared/contracts";
 import { watchFullScreen } from "./desktop-window";
@@ -18,6 +18,7 @@ import { ErrorBoundary } from "./error-boundary";
 import { Pressable } from "./focus";
 import { FullScreenModal, SafeArea } from "./safe-area";
 import { SPACE } from "./spacing";
+import { canCopyThumbnails, copyKey, copySizeFor, drawnUri, settledCopy, thumbnailCopy } from "./thumbnail-copy";
 import { thumbnailFrame } from "./thumbnail-size";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
@@ -56,8 +57,8 @@ function sourceOf(source: string): ImageSource {
   return { kind: "none" };
 }
 
-/** The image as a URI the `Image` component can draw: undefined while loading, null when it cannot be had. */
-function useImageUri(source: ImageSource): string | null | undefined {
+/** The image as a URI the `Image` component can draw: undefined while loading, null when it cannot be had; with its size when the daemon read it from the file (TR-164). */
+function useImageUri(source: ImageSource): { uri: string | null | undefined; mimeType: string; size: Size | null } {
   const read = useRpc(readImageRpc);
   const path = source.kind === "local" ? source.path : "";
   const query = useQuery({
@@ -68,31 +69,68 @@ function useImageUri(source: ImageSource): string | null | undefined {
     staleTime: Infinity,
     retry: 1,
   });
-  if (source.kind === "remote") return source.uri;
-  if (source.kind === "none") return null;
-  if (query.isError) return null;
-  if (query.data === undefined) return undefined;
-  return query.data.image === null ? null : `data:${query.data.image.mimeType};base64,${query.data.image.data}`;
+  const image = query.data?.image ?? null;
+  // Built once per image: the string is the whole file.
+  const uri = useMemo(() => (image === null ? null : `data:${image.mimeType};base64,${image.data}`), [image]);
+  const width = image?.width;
+  const height = image?.height;
+  const size = useMemo(() => (width === undefined || height === undefined ? null : { width, height }), [width, height]);
+  if (source.kind === "remote") return { uri: source.uri, mimeType: "", size: null };
+  if (source.kind === "none" || query.isError) return { uri: null, mimeType: "", size: null };
+  if (query.data === undefined) return { uri: undefined, mimeType: "", size: null };
+  return { uri, mimeType: image?.mimeType ?? "", size };
 }
 
-/** The image's size in pixels once known: the thumbnail keeps its shape, the gallery fits and zooms it. */
-function useImageSize(uri: string | null | undefined): Size | null {
-  const [size, setSize] = useState<Size | null>(null);
+/**
+ * The image's size in pixels once known: the thumbnail keeps its shape, the gallery fits and zooms it.
+ * `known` is the size the daemon sent; only without it is the image measured, which on Android
+ * decodes it whole.
+ */
+function useImageSize(uri: string | null | undefined, known: Size | null): Size | null {
+  const [measured, setMeasured] = useState<Size | null>(null);
+  const measure = known === null ? uri : null;
   useEffect(() => {
-    if (typeof uri !== "string") return;
+    if (typeof measure !== "string") return;
     let current = true;
     Image.getSize(
-      uri,
+      measure,
       (width, height) => {
-        if (current && width > 0 && height > 0) setSize({ width, height });
+        if (current && width > 0 && height > 0) setMeasured({ width, height });
       },
       () => undefined,
     );
     return () => {
       current = false;
     };
-  }, [uri]);
-  return size;
+  }, [measure]);
+  return known ?? measured;
+}
+
+/**
+ * What the thumbnail draws: on the phone, a copy at its own device pixels (`./thumbnail-copy`), so a
+ * screenshot is not decoded whole for a small box; undefined while the copy is made. The full image
+ * where no copy is needed or one could not be made, and always on the web, which scrolls past full
+ * images smoothly.
+ */
+function useThumbnailUri(source: string, uri: string | null | undefined, mimeType: string, size: Size | null, frame: Size): string | null | undefined {
+  const copySize = useMemo(
+    () => copySizeFor(uri, size, frame, canCopyThumbnails(globalThis, Platform.OS), PixelRatio.get()),
+    [uri, size, frame.width, frame.height],
+  );
+  const [copy, setCopy] = useState<{ key: string; uri: string | null } | null>(null);
+  const key = copySize === null ? "" : copyKey(source, copySize);
+  useEffect(() => {
+    if (copySize === null || typeof uri !== "string" || settledCopy(globalThis, source, copySize) !== undefined) return;
+    let current = true;
+    void thumbnailCopy(globalThis, source, uri, mimeType, copySize).then((made) => {
+      if (current) setCopy({ key, uri: made });
+    });
+    return () => {
+      current = false;
+    };
+  }, [key]);
+  const made = copySize === null ? undefined : copy?.key === key ? copy.uri : settledCopy(globalThis, source, copySize);
+  return drawnUri(uri, copySize !== null, made);
 }
 
 /** One image of a gallery: what `ImageThumbnail` takes as `source` and `alt`, and the decision option it shows, if any (TR-055). */
@@ -128,12 +166,13 @@ export function ImageThumbnail({
   index?: number;
 }) {
   const kind = useMemo(() => sourceOf(source), [source]);
-  const uri = useImageUri(kind);
-  const size = useImageSize(uri);
+  const { uri, mimeType, size: sent } = useImageUri(kind);
+  const size = useImageSize(uri, sent);
   const [open, setOpen] = useState(false);
   const { colors } = theme;
   const label = labelOf(alt);
   const fitted = thumbnailFrame(size, height, room);
+  const drawn = useThumbnailUri(source, uri, mimeType, size, fitted);
   const frame = {
     height: fitted.height,
     width: fitted.width,
@@ -151,7 +190,7 @@ export function ImageThumbnail({
 
   if (kind.kind === "none") return <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small }}>[{label}]</Text>;
   const shown =
-    uri === undefined ? (
+    uri === undefined || (uri !== null && drawn === undefined) ? (
       <View accessibilityLabel={`${label}, loading`} style={frame} />
     ) : uri === null ? (
       <View accessibilityLabel={`${label}: image not available`} style={frame}>
@@ -160,7 +199,7 @@ export function ImageThumbnail({
     ) : (
       <>
         <Pressable accessibilityRole="imagebutton" accessibilityLabel={`${label}, open full size`} style={frame} onPress={() => setOpen(true)}>
-          <Image source={{ uri }} accessibilityLabel={label} resizeMode={room === undefined ? "cover" : "contain"} style={{ width: "100%", height: "100%" }} />
+          <Image source={{ uri: drawn ?? uri }} accessibilityLabel={label} resizeMode={room === undefined ? "cover" : "contain"} resizeMethod={Platform.OS === "android" ? "resize" : undefined} style={{ width: "100%", height: "100%" }} />
         </Pressable>
         <ImageGallery images={images} start={open ? Math.min(Math.max(0, index), images.length - 1) : null} onClose={() => setOpen(false)} />
       </>
@@ -285,8 +324,8 @@ function GalleryPage({
   onClose: () => void;
 }) {
   const kind = useMemo(() => sourceOf(image.source), [image.source]);
-  const uri = useImageUri(kind);
-  const natural = useImageSize(uri);
+  const { uri, size: sent } = useImageUri(kind);
+  const natural = useImageSize(uri, sent);
   const label = labelOf(image.alt);
   const bar = viewerBarText({ title: image.title, alt: image.alt, index, count });
   const [stage, setStage] = useState<Size>({ width: 0, height: 0 });
