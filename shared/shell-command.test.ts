@@ -55,6 +55,20 @@ describe("commandsRun", () => {
     expect(wait("for i in 1 2; do sleep 1; done")).toEqual(["sleep:false"]);
   });
 
+  it("returns on odd and unfinished input (TR-160 review)", () => {
+    const inputs = ["echo a\r\nb", "a\u00a0b", "x\u000bb", "x\fy", "echo 'open", 'echo "open', "echo $(date", "echo `date", "echo a \\", "cat <<", "cat <<EOF\nno end", "f() ", "&", ">", "2>", "a | | b"];
+    inputs.forEach((input) => expect(Array.isArray(commandsRun(input))).toBe(true));
+    expect(programs("npm test\r\nls\r\n")).toEqual(["npm test", "ls"]);
+  });
+
+  it("takes the options of sudo, time and command off with them", () => {
+    expect(programs("sudo -u bob -E node a.js")).toEqual(["node a.js"]);
+    expect(programs("time -p node a.js")).toEqual(["node a.js"]);
+    expect(programs("command -p node a.js")).toEqual(["node a.js"]);
+    expect(programs("command -v node")).toEqual(["command -v node"]);
+    expect(programs("[[ -f a ]] && node b.js")).toEqual(["[[ -f a ]]", "node b.js"]);
+  });
+
   it("reads nothing from an empty or blank line", () => {
     expect(commandsRun("")).toEqual([]);
     expect(commandsRun("  \n ; ")).toEqual([]);

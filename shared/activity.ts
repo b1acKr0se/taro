@@ -112,7 +112,7 @@ const COMMAND_PURPOSES: readonly [RegExp, string][] = [
   [/^mkdir\b/, "making a folder"],
   [/^sleep\b/, "waiting"],
   [/^(wc|awk|cut|tail|stat|readlink|realpath|jq|file|du|diff|sort|uniq|tr|xxd|od|tree)\b/, "reading files"],
-  [/^(which|type|whereis)\b/, "looking up a program"],
+  [/^(which|type|whereis)\b|^command -[vV]\b/, "looking up a program"],
   [/^(curl|wget)\b/, "calling a URL"],
   [/^(ps|pgrep)\b/, "checking processes"],
   [/^(kill|pkill|killall)\b/, "stopping processes"],

@@ -23,7 +23,8 @@ interface SimpleCommand {
   defines?: string;
 }
 
-const BLANK = /[ \t]/;
+// Any whitespace but a new line separates words: `\r`, a form feed or a no-break space too.
+const BLANK = /[^\S\n]/;
 const ENDS_WORD = /[\s;&|<>()]/;
 
 /** The index just past the `$(…)`, `${…}` or backticks starting at `start`. */
@@ -151,6 +152,11 @@ function simpleCommands(text: string): SimpleCommand[] {
       else if (/>/.test(operator) && operator !== ">&" && target.word !== "/dev/null") current.writesFile = true;
     } else {
       const { word, end } = readWord(text, index);
+      // A character no branch above takes would stop the reader where it stands.
+      if (end === index) {
+        index += 1;
+        continue;
+      }
       index = end;
       // `2>&1`: a file descriptor number belongs to the redirection after it.
       if (!(/^\d+$/.test(word) && (text[end] === ">" || text[end] === "<"))) current.words.push(word);
@@ -162,7 +168,7 @@ function simpleCommands(text: string): SimpleCommand[] {
 
 const ASSIGNMENT = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s;
 /** Shell words that start a command line without being the program. */
-const LEADING_KEYWORDS = new Set(["if", "then", "else", "elif", "while", "until", "do", "!", "{", "[[", "time", "nohup", "exec", "command", "builtin", "sudo"]);
+const LEADING_KEYWORDS = new Set(["if", "then", "else", "elif", "while", "until", "do", "!", "{", "nohup", "exec", "builtin"]);
 /** Shell words whose whole command runs nothing: `for f in a b`, `case $x in`, `done`, `fi`. */
 const CLAUSES = new Set(["for", "select", "case", "done", "fi", "esac", "}"]);
 
@@ -172,6 +178,15 @@ function withoutWrapper(words: string[]): string[] | null {
   if (first === "env") {
     let index = 0;
     while (index < rest.length && /^-|=/.test(rest[index] ?? "")) index += rest[index] === "-u" || rest[index] === "-C" || rest[index] === "-S" ? 2 : 1;
+    return rest.slice(index);
+  }
+  // `command -v node` looks a program up rather than running it, so it stays.
+  if (first === "command" && rest[0] !== "-v" && rest[0] !== "-V") return rest[0] === "-p" ? rest.slice(1) : rest;
+  if (first === "sudo" || first === "time") {
+    // The options that take a value: `sudo -u bob`, `time -o out.txt`.
+    const takesValue = first === "sudo" ? /^-[ughCDprtU]$/ : /^-[fo]$/;
+    let index = 0;
+    while (index < rest.length && (rest[index] ?? "").startsWith("-")) index += takesValue.test(rest[index] ?? "") ? 2 : 1;
     return rest.slice(index);
   }
   if (first === "timeout" || first === "nice" || first === "stdbuf" || first === "xargs") {

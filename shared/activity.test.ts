@@ -80,6 +80,10 @@ describe("toolActivity", () => {
     expect(shell("git checkout -- server/a.test.ts; sed -n 1,34p server/b.ts")).toBe("running git checkout");
     expect(shell("npm run format")).toBe("running the format script");
     expect(shell("echo $PASEO_AGENT_ID")).toBe("printing a value");
+    expect(shell("[[ -f /tmp/a ]] && node b.js")).toBe("running a Node script");
+    expect(shell("command -v node")).toBe("looking up a program");
+    expect(shell("sudo -u bob node a.js")).toBe("running a Node script");
+    expect(shell("time -p node a.js")).toBe("running a Node script");
   });
 
   it("names files by their base name", () => {
