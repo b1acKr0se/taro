@@ -24,6 +24,8 @@ export const AgentStatsSchema = z.object({
   activeMs: z.number().default(0),
   costUsd: z.number().nullable().default(null),
   contextTokens: z.number().nullable().default(null),
+  /** The context window `contextTokens` was out of (TR-156): an archived agent's chat draws its meter from the pair. */
+  contextMaxTokens: z.number().nullable().default(null),
   /** A trimmed agent's first request, from its transcript (TR-139): what it started with. */
   startingContextTokens: z.number().nullable().default(null),
 });

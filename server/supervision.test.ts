@@ -1020,12 +1020,12 @@ describe("Supervisor.onTurnEnded records the agent's cost (TR-097)", () => {
   }
 
   it("passes Paseo's usage at the turn end, so a subagent archived before Done keeps its cost", async () => {
-    const call = await endTurn({ ...subagent, lastUsage: { totalCostUsd: 1.2, contextWindowUsedTokens: 9 } });
-    expect(call).toEqual(["taro", "TR-9.1", { id: subagent.id, role: "implementer", model: "claude/sonnet", title: subagent.title }, 4_000, { costUsd: 1.2, contextTokens: 9 }]);
+    const call = await endTurn({ ...subagent, lastUsage: { totalCostUsd: 1.2, contextWindowUsedTokens: 9, contextWindowMaxTokens: 200_000 } });
+    expect(call).toEqual(["taro", "TR-9.1", { id: subagent.id, role: "implementer", model: "claude/sonnet", title: subagent.title }, 4_000, { costUsd: 1.2, contextTokens: 9, contextMaxTokens: 200_000 }]);
   });
 
   it("passes an empty reading when Paseo has no usage (after a daemon restart)", async () => {
     const call = await endTurn(subagent);
-    expect(call[4]).toEqual({ costUsd: null, contextTokens: null });
+    expect(call[4]).toEqual({ costUsd: null, contextTokens: null, contextMaxTokens: null });
   });
 });

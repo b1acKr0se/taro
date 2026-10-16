@@ -260,6 +260,7 @@ export function OwnerPane({
                 asks={{ decisions: NO_DECISIONS, onAnswered: onChanged }}
                 records={shown.role === "owner" ? { project, ticket: card.id, plans: records?.plans ?? null, deliveries: records?.deliveries ?? NO_RECORDS, settling } : undefined}
                 readOnly={{ note: ARCHIVED_NOTE }}
+                context={{ used: shown.brief.contextUsedTokens, max: shown.brief.contextMaxTokens }}
               />
             )}
           </KeptPane>
