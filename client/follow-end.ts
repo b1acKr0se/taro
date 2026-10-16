@@ -68,6 +68,23 @@ export function nearTheTop(scroll: Pick<NativeScrollEvent, "contentOffset" | "co
   return scroll.contentOffset.y < viewportHeight && !isAtEnd(scroll.contentOffset.y, viewportHeight, scroll.contentSize.height, 0);
 }
 
+/** A web scroll view's DOM node: what a browser lays out. */
+export interface WebScrollNode {
+  scrollHeight: number;
+  scrollTop: number;
+  style: { overflowAnchor?: string };
+}
+
+/** The DOM node behind a scroll view on the web, or null on a phone, whose scroll view has none. */
+export function webScrollNode(scroller: unknown): WebScrollNode | null {
+  const getNode = (scroller as { getScrollableNode?: unknown } | null)?.getScrollableNode;
+  if (typeof getNode !== "function") return null;
+  const node: unknown = getNode.call(scroller);
+  if (typeof node !== "object" || node === null) return null;
+  const { scrollHeight, style } = node as { scrollHeight?: unknown; style?: unknown };
+  return typeof scrollHeight === "number" && typeof style === "object" && style !== null ? (node as WebScrollNode) : null;
+}
+
 /** How far a scroll may land from the offset asked for and still be the one asked for, in points. */
 const OFFSET_SLACK = 2;
 
@@ -114,8 +131,8 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
   const hidden = useRef(false);
   /** Whether the reader is away from the end, for the button that brings them back. */
   const [away, setAway] = useState(false);
-  /** The content height before rows were put above the reader (TR-169): the next growth is theirs. */
-  const heldAt = useRef<number | null>(null);
+  /** The web content's height and scroll before rows were put above the reader (TR-169). */
+  const heldAt = useRef<{ height: number; top: number } | null>(null);
 
   /** Follow the end again — the reader just sent something, or answered something. */
   function pin(): void {
@@ -184,13 +201,31 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
   }
 
   /**
-   * Keeps what the reader sees in place while rows are put above it (an earlier page, TR-169): the
-   * next content growth is theirs, and the view moves down by as much. Called as the rows are
-   * committed, before the scroll view reports its new size. React Native's
-   * `maintainVisibleContentPosition` would do it on a phone, but does nothing on the web.
+   * Keeps what the reader sees in place while rows are put above it (an earlier page, TR-169), on the
+   * web: `holdBefore` as the rows are rendered (the page still shows the old ones), `holdAfter` as
+   * they are committed, before the browser paints, so the view moves down by the height they add in
+   * the same frame. `onContentSizeChange` comes a frame later. A browser's own scroll anchoring may
+   * already have moved the view for the new rows, and for some insertions not others, so the view
+   * is put where it was plus the height added, never moved by it. A phone keeps its place natively
+   * (`maintainVisibleContentPosition`).
    */
-  function holdPosition(): void {
-    if (!pinnedToEnd.current) heldAt.current = knownHeight.current;
+  function holdBefore(): void {
+    const node = pinnedToEnd.current ? null : webScrollNode(scroller.current);
+    heldAt.current = node === null ? null : { height: node.scrollHeight, top: node.scrollTop };
+  }
+
+  function holdAfter(): void {
+    const held = heldAt.current;
+    heldAt.current = null;
+    const node = webScrollNode(scroller.current);
+    if (held === null || node === null || pinnedToEnd.current) return;
+    const added = node.scrollHeight - held.height;
+    if (added <= 0) return;
+    // Off while the view is put back, so the browser does not move it again on the next layout.
+    node.style.overflowAnchor = "none";
+    node.scrollTop = held.top + added;
+    offset.current = node.scrollTop;
+    node.style.overflowAnchor = "";
   }
 
   /** Scrolls to an offset the reader asked for (a jump link), leaving the end unfollowed. */
@@ -230,13 +265,6 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
     onScrollEndDrag: scrolled,
     onMomentumScrollEnd: scrolled,
     onContentSizeChange(_width: number, height: number): void {
-      const held = heldAt.current;
-      heldAt.current = null;
-      if (held !== null && held > 0 && height > held && !pinnedToEnd.current) {
-        const y = offset.current + height - held;
-        offset.current = y;
-        scroller.current?.scrollTo({ y, animated: false });
-      }
       knownHeight.current = height;
       // Content that shrank under a reader scrolled up can bring the end into view with no scroll event.
       if (!pinnedToEnd.current && !hidden.current && height > 0 && pendingReveals.current === 0 && isAtEnd(offset.current, viewport.current, height, height)) {
@@ -266,5 +294,5 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
     },
   };
 
-  return { pin, keepAtEnd, reveal, revealRow, scrollTo, holdPosition, away, jumpToEnd, scrollProps, offset, viewport };
+  return { pin, keepAtEnd, reveal, revealRow, scrollTo, holdBefore, holdAfter, away, jumpToEnd, scrollProps, offset, viewport };
 }

@@ -30,6 +30,8 @@ export interface AgentTimeline {
   loadOlder: () => void;
   /** An earlier page is being read. */
   loadingOlder: boolean;
+  /** An earlier page was asked for in this chat: from then on, rows may go in above the reader. */
+  olderAsked: boolean;
   error: string | null;
   /** A read is in flight; `entries` may still hold the cached conversation meanwhile. */
   loading: boolean;
@@ -69,6 +71,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
   const readOlder = useRef<() => void>(() => {});
   const [loadOlder] = useState(() => () => readOlder.current());
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderAsked, setOlderAsked] = useState(false);
   const [initial] = useState(() => (agentId === null ? undefined : cache.get(agentId)));
   const [entries, setEntries] = useState<TimelineEntry[]>(initial?.entries ?? []);
   const [agent, setAgent] = useState<TimelinePage["agent"]>(initial?.agent ?? null);
@@ -84,6 +87,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
       setError(null);
       setLoading(false);
       setLoadingOlder(false);
+      setOlderAsked(false);
       return;
     }
     const id = agentId;
@@ -110,6 +114,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     setError(null);
     setLoading(true);
     setLoadingOlder(false);
+    setOlderAsked(false);
 
     function clearTimers(): void {
       clearTimeout(quiet);
@@ -168,6 +173,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
       if (olderInFlight || at === null || first === undefined || !(older?.hasOlder ?? tailHasOlder)) return;
       olderInFlight = true;
       setLoadingOlder(true);
+      setOlderAsked(true);
       // Kept from now, so entries the tail moves past while the page is read are not lost between them.
       if (older === null) older = { epoch: at, entries: [], hasOlder: tailHasOlder };
       try {
@@ -227,5 +233,5 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     if (revision !== "") reread.current();
   }, [revision]);
 
-  return { entries, agent, hasOlder, loadOlder, loadingOlder, error, loading };
+  return { entries, agent, hasOlder, loadOlder, loadingOlder, olderAsked, error, loading };
 }

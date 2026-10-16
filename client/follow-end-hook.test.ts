@@ -124,47 +124,95 @@ describe("the button back to the end (TR-167)", () => {
 });
 
 describe("an earlier page put above the reader (TR-169)", () => {
-  it("moves the view down by the height it adds, so the same line stays on screen", () => {
+  /** A transcript on the web, its DOM node standing in for what the browser lays out. */
+  function webTranscript() {
     const { follow, scroller } = transcript();
-    follow.scrollProps.onScroll(scrollEvent(120, 3000));
-    follow.holdPosition();
-    follow.scrollProps.onContentSizeChange(400, 4500);
-    expect(scroller.scrollTo).toHaveBeenCalledWith({ y: 1620, animated: false });
+    const node = { scrollHeight: 3000, scrollTop: 2400, style: { overflowAnchor: "" } };
+    Object.assign(scroller, { getScrollableNode: () => node });
+    return { follow, scroller, node };
+  }
+
+  /** The reader scrolls to `y`, then a page `added` high goes in above them. */
+  function pageIn(follow: ReturnType<typeof useFollowEnd>, node: { scrollHeight: number; scrollTop: number; style: { overflowAnchor: string } }, y: number, added: number) {
+    follow.scrollProps.onScroll(scrollEvent(y, node.scrollHeight));
+    node.scrollTop = y;
+    follow.holdBefore();
+    node.scrollHeight += added;
+    let anchoringWhileMeasured: string | undefined;
+    Object.defineProperty(node, "scrollTop", {
+      configurable: true,
+      get: () => y,
+      set: (value: number) => {
+        anchoringWhileMeasured = node.style.overflowAnchor;
+        Object.defineProperty(node, "scrollTop", { configurable: true, writable: true, value });
+      },
+    });
+    follow.holdAfter();
+    return () => anchoringWhileMeasured;
+  }
+
+  it("moves the view down by the height it adds, in the same frame, so the same line stays on screen", () => {
+    const { follow, node } = webTranscript();
+    pageIn(follow, node, 120, 1500);
+    expect(node.scrollTop).toBe(1620);
     expect(follow.offset.current).toBe(1620);
   });
 
-  it("counts from where the reader scrolled to while the page was read", () => {
-    const { follow, scroller } = transcript();
-    follow.scrollProps.onScroll(scrollEvent(300, 3000));
-    follow.holdPosition();
-    follow.scrollProps.onScroll(scrollEvent(40, 3000));
-    follow.scrollProps.onContentSizeChange(400, 3800);
-    expect(scroller.scrollTo).toHaveBeenCalledWith({ y: 840, animated: false });
+  it("measures from where the reader is as the rows go in", () => {
+    const { follow, node } = webTranscript();
+    pageIn(follow, node, 40, 800);
+    expect(node.scrollTop).toBe(840);
   });
 
-  it("holds only the next growth: later growth at the end leaves the reader be", () => {
-    const { follow, scroller } = transcript();
+  it("puts the view at the same place when the browser's scroll anchoring already moved it", () => {
+    const { follow, node } = webTranscript();
     follow.scrollProps.onScroll(scrollEvent(120, 3000));
-    follow.holdPosition();
+    node.scrollTop = 120;
+    follow.holdBefore();
+    node.scrollHeight += 1500;
+    // The browser laid the rows out before the layout effect and anchored the view itself.
+    node.scrollTop = 1620;
+    follow.holdAfter();
+    expect(node.scrollTop).toBe(1620);
+  });
+
+  it("turns the browser's scroll anchoring off while it moves the view, and back on after", () => {
+    const { follow, node } = webTranscript();
+    const anchoring = pageIn(follow, node, 120, 1500);
+    expect(anchoring()).toBe("none");
+    expect(node.style.overflowAnchor).toBe("");
+  });
+
+  it("holds only the rows it was told of: later growth at the end leaves the reader be", () => {
+    const { follow, node, scroller } = webTranscript();
+    pageIn(follow, node, 120, 1500);
     follow.scrollProps.onContentSizeChange(400, 4500);
-    scroller.scrollTo.mockClear();
     follow.scrollProps.onContentSizeChange(400, 4600);
+    follow.holdAfter();
+    expect(node.scrollTop).toBe(1620);
     expect(scroller.scrollTo).not.toHaveBeenCalled();
   });
 
   it("does nothing for a reader following the end", () => {
+    const { follow, node } = webTranscript();
+    follow.holdBefore();
+    node.scrollHeight += 1500;
+    follow.holdAfter();
+    expect(node.scrollTop).toBe(2400);
+  });
+
+  it("does nothing on a phone, which keeps the place natively", () => {
     const { follow, scroller } = transcript();
-    follow.holdPosition();
-    follow.scrollProps.onContentSizeChange(400, 4500);
+    Object.assign(scroller, { getScrollableNode: () => 42 });
+    follow.scrollProps.onScroll(scrollEvent(120, 3000));
+    follow.holdBefore();
+    follow.holdAfter();
     expect(scroller.scrollTo).not.toHaveBeenCalled();
-    expect(scroller.scrollToEnd).toHaveBeenCalled();
   });
 
   it("leaves the button back to the end showing", () => {
-    const { follow } = transcript();
-    follow.scrollProps.onScroll(scrollEvent(120, 3000));
-    follow.holdPosition();
-    follow.scrollProps.onContentSizeChange(400, 4500);
+    const { follow, node } = webTranscript();
+    pageIn(follow, node, 120, 1500);
     follow.scrollProps.onScroll(scrollEvent(1620, 4500));
     expect(state.away).toBe(true);
   });

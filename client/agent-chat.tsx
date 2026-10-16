@@ -259,10 +259,11 @@ export function AgentChat({
   /** The first entry drawn, to tell an earlier page put above the reader (TR-169) from any other change. */
   const firstSeq = timeline.entries[0]?.seqStart;
   const drawnFirst = useRef<{ agentId: string; seq: number | undefined }>({ agentId: agent.id, seq: firstSeq });
-  // As the rows are committed, before the scroll view reports the taller content.
+  const rowsAbove = drawnFirst.current.agentId === agent.id && drawnFirst.current.seq !== undefined && firstSeq !== undefined && firstSeq < drawnFirst.current.seq;
+  // Measured while rendering, as the page still shows the rows before them; it only reads.
+  if (rowsAbove) follow.holdBefore();
   useLayoutEffect(() => {
-    const before = drawnFirst.current;
-    if (before.agentId === agent.id && before.seq !== undefined && firstSeq !== undefined && firstSeq < before.seq) follow.holdPosition();
+    if (rowsAbove) follow.holdAfter();
     drawnFirst.current = { agentId: agent.id, seq: firstSeq };
   }, [agent.id, firstSeq]);
 
@@ -508,6 +509,8 @@ export function AgentChat({
       <View style={styles.transcript}>
         <ScrollView
           {...follow.scrollProps}
+          // A phone keeps the reader's place as earlier pages go in above them (TR-169); the web does it in `holdAfter`.
+          maintainVisibleContentPosition={Platform.OS !== "web" && timeline.olderAsked ? KEEP_VISIBLE : undefined}
           onScroll={(event) => {
             follow.scrollProps.onScroll(event);
             keyboardScroll.onScroll(event);
@@ -984,6 +987,9 @@ function samePlanLine(left: PlanLine | undefined, right: PlanLine | undefined): 
 }
 
 /** The chat's styles, built once per theme, width and composer size. */
+/** What the phone keeps in place when earlier pages go in: the first row on screen (TR-169). */
+const KEEP_VISIBLE = { minIndexForVisible: 0 };
+
 /**
  * The transcript's first line (TR-169): earlier messages being read, a link to read them (a chat too
  * short to scroll up), or the conversation's start.

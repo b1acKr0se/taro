@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { layoutShown, nearTheTop, revealsAgain, scrollEventKind, viewportChange } from "./follow-end";
+import { layoutShown, nearTheTop, revealsAgain, scrollEventKind, viewportChange, webScrollNode } from "./follow-end";
 
 describe("revealsAgain", () => {
   it("scrolls to a revealed row again while the transcript settles", () => {
@@ -98,5 +98,18 @@ describe("nearTheTop (TR-169)", () => {
 
   it("is never in a hidden pane", () => {
     expect(nearTheTop(at(0, 3000, 0))).toBe(false);
+  });
+});
+
+describe("webScrollNode (TR-169)", () => {
+  it("is the web's scroll node", () => {
+    const node = { scrollHeight: 10, scrollTop: 0, style: {} };
+    expect(webScrollNode({ getScrollableNode: () => node })).toBe(node);
+  });
+
+  it("is null on a phone, whose scrollable node is a number, or with no scroll view", () => {
+    expect(webScrollNode({ getScrollableNode: () => 42 })).toBeNull();
+    expect(webScrollNode(null)).toBeNull();
+    expect(webScrollNode({})).toBeNull();
   });
 });
