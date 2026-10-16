@@ -327,7 +327,7 @@ function PlanSummary({ plan, marks, theme, compact, brief }: { plan: ParsedPlan;
   }
   return (
     <View style={styles.outer}>
-      <ChangesCaption caption={marks.caption} theme={theme} lines={brief ? 2 : undefined} />
+      <ChangesCaption caption={marks.caption} theme={theme} lines={brief ? 3 : undefined} />
       <View style={styles.box} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
         {rows.map((row, index) => (
           <View key={row.label} style={[styles.row, index === 0 ? null : styles.divider]}>
