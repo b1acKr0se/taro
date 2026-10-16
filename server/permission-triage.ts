@@ -5,7 +5,9 @@
  * permission, shown in Needs you as before (TR-096). Every decision is recorded on the agent's
  * ticket; a denial also counts in its stats.
  */
+import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
+import { dirname, relative } from "node:path";
 
 import { isBypassMode, permissionRecord, ruleReasons, triagePermission, type ShellAsk } from "../shared/permission-triage";
 import { fetchLiveAgent } from "./agents";
@@ -31,6 +33,7 @@ export async function triageAsk(paseo: PaseoApi, stats: Stats, asker: Permission
   if (request.kind !== "tool" || request.name !== "Bash") return null;
   const triage = triagePermission(request, { cwd: asker.cwd, home: homedir() });
   if (triage.verdict === "ask") return null;
+  if (triage.verdict === "allow" && !(await allInsideOnDisk(triage.paths, asker.cwd))) return null;
   const agent = await fetchLiveAgent(paseo, asker.id);
   if (agent === null) return null;
   const identity = identityFromLabels(agent.labels, agent.title ?? null);
@@ -69,4 +72,42 @@ export async function triageAsk(paseo: PaseoApi, stats: Stats, asker: Permission
     if (triage.verdict === "deny") await stats.count(identity.project, ticket, "permissionDenials").catch(() => undefined);
   }
   return triage.verdict;
+}
+
+/**
+ * Whether each path's folder really lies inside /tmp or the working directory: the rules read paths
+ * as text, and a symbolic link on the way (`/tmp/x` → `/`) would take a removal elsewhere. The
+ * removed path itself may be a link, which `rm` removes rather than follows.
+ */
+export async function allInsideOnDisk(paths: readonly string[], cwd: string): Promise<boolean> {
+  const roots = await Promise.all(["/tmp", cwd].map((root) => realpath(root).catch(() => null)));
+  for (const path of paths) {
+    const folder = await realFolder(dirname(path));
+    if (folder === null) return false;
+    const inside = roots.some((root) => root !== null && (folder === root || isWithin(root, folder)));
+    if (!inside) return false;
+  }
+  return true;
+}
+
+/** The real path of the folder, or of its nearest existing ancestor with the missing rest appended. */
+async function realFolder(folder: string): Promise<string | null> {
+  let existing = folder;
+  let rest = "";
+  for (;;) {
+    try {
+      const real = await realpath(existing);
+      return rest === "" ? real : `${real === "/" ? "" : real}/${rest}`;
+    } catch {
+      const parent = dirname(existing);
+      if (parent === existing) return null;
+      rest = rest === "" ? existing.slice(parent.length).replace(/^\//, "") : `${existing.slice(parent.length).replace(/^\//, "")}/${rest}`;
+      existing = parent;
+    }
+  }
+}
+
+function isWithin(root: string, path: string): boolean {
+  const way = relative(root, path);
+  return way !== "" && !way.startsWith("..") && !way.startsWith("/");
 }

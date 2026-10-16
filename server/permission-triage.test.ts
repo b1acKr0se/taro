@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,7 +7,7 @@ import { DENY_RULES, ruleReasons } from "../shared/permission-triage";
 import { fetchLiveAgent } from "./agents";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import { withoutNotes } from "./package-files";
-import { triageAsk } from "./permission-triage";
+import { allInsideOnDisk, triageAsk } from "./permission-triage";
 import type { Stats } from "./stats";
 import { appendTicketNote } from "./tickets";
 
@@ -94,6 +94,22 @@ describe("triageAsk", () => {
     expect(await triageAsk(paseo, stats, asker, bash("rm -rf /"))).toBe("deny");
     expect(appendTicketNote).not.toHaveBeenCalled();
     expect(counted).toEqual([]);
+  });
+});
+
+describe("allInsideOnDisk", () => {
+  it("accepts real folders under /tmp or the working directory, missing ones too, and refuses a link out", async () => {
+    const scratch = await mkdtemp("/tmp/tr-triage-");
+    try {
+      await mkdir(join(scratch, "real"));
+      await symlink("/", join(scratch, "out"));
+      expect(await allInsideOnDisk([join(scratch, "real", "x"), join(scratch, "missing", "deeper", "x"), join(scratch, "out")], "/nowhere")).toBe(true);
+      expect(await allInsideOnDisk([join(scratch, "out", "usr")], "/nowhere")).toBe(false);
+      expect(await allInsideOnDisk([join(scratch, "real", "x")], scratch)).toBe(true);
+      expect(await allInsideOnDisk(["/home/user/elsewhere/x"], scratch)).toBe(false);
+    } finally {
+      await rm(scratch, { recursive: true, force: true });
+    }
   });
 });
 

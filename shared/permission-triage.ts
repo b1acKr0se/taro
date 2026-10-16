@@ -324,6 +324,8 @@ function deniedTarget(target: Word, context: TriageContext): Triage | null {
 /** The literal absolute path the target removes when it is safe to remove unattended; null otherwise. */
 function safeTarget(target: Word, context: TriageContext): string | null {
   if (!target.literal || target.glob) return null;
+  // `a/..` is not the folder above `a` when `a` is a symbolic link: never read lexically for an allow.
+  if (target.text.split("/").includes("..")) return null;
   const path = resolvePath(target.text, context.home);
   if (path === null) return null;
   if (path.split("/").includes(".git")) return null;

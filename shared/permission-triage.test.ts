@@ -27,7 +27,6 @@ describe("allowed: literal paths in scratch space or the worktree", () => {
     ["export S=/tmp/x; rm -rf \"$S/sub\"", ["/tmp/x/sub"]],
     ["rmdir /tmp/empty && echo done 2>&1 >/dev/null", ["/tmp/empty"]],
     ["cd /tmp && rm -rf /tmp/old # cleanup", ["/tmp/old"]],
-    ["rm -rf /tmp/a/../b", ["/tmp/b"]],
   ])("%s", (command, paths) => {
     expect(verdict(command)).toEqual({ verdict: "allow", rule: "scratch-or-worktree", paths });
   });
@@ -76,6 +75,7 @@ describe("left to the user", () => {
     "rm -rf /home/user/work/other-project",
     "rm -rf /home/user/.paseo/worktrees/abc/tr-1/.git",
     "rm -rf /var/tmp/x",
+    "rm -rf /tmp/a/../b",
     "rm -rf /tmp/x; echo hi > /home/user/.bashrc",
     "rm -rf /tmp/x && git push --force",
     "rm -rf /tmp/x | sh",
