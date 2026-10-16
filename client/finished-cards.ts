@@ -2,7 +2,9 @@
  * What a finished card says (TR-149): the outcome, its tone, its time and the user's words, for a
  * past plan and a past delivery. Parts for questions and permission asks add theirs beside. Pure.
  */
-import { parseStatusLine } from "../shared/reports";
+import { SCOPE_APPROVAL } from "../shared/decision-view";
+import { parseDecisionBlocks, parseStatusLine } from "../shared/reports";
+import type { StoredDecision } from "../shared/state";
 import type { PlanLine } from "./plan-lines";
 
 /** How the outcome reads: positive (accepted), warning (changes asked for), negative (denied), neutral (closed). */
@@ -110,4 +112,74 @@ export function deliveryCardView(record: DeliveryRecord, clock: (iso: string) =>
 export function sameAcceptanceRecord(left: DeliveryRecord | undefined, right: DeliveryRecord | undefined): boolean {
   if (left === undefined || right === undefined) return left === right;
   return left.at === right.at && left.kind === right.kind && left.words === right.words;
+}
+
+/** A question's card: what was asked and how it ended. */
+export interface QuestionCardView extends FinishedView {
+  subject: string;
+  /** The block's id, to tell a plan (`scope-approval`) from a question. */
+  id: string;
+}
+
+/** The store keeps a closed decision 14 days (`CLOSED_RETENTION_MS`); older messages have no record to find. */
+const RECORD_KEPT_MS = 14 * 24 * 60 * 60 * 1000;
+
+/** How a stored decision ended; null while it is open. A typed answer reads "Answered: “words”", a picked option's typed words come beside it. */
+export function storedDecisionView(decision: StoredDecision, clock: (iso: string) => string | null): FinishedView | null {
+  if (decision.status === "withdrawn") {
+    return { outcome: decision.withdrawnWithAgent === true ? "Withdrawn: its agent went away" : "Withdrawn", tone: "neutral", time: null, words: null };
+  }
+  if (decision.status !== "answered") return null;
+  const answer = decision.answer;
+  const label = answer?.label ?? null;
+  const typed = answer?.text.trim() ?? "";
+  const time = answer === null ? null : clock(answer.at);
+  if (label === null) return { outcome: typed === "" ? "Answered" : `Answered: “${typed}”`, tone: "positive", time, words: null };
+  return { outcome: `Answered: ${label}`, tone: "positive", time, words: typed === "" || typed === label.trim() ? null : typed };
+}
+
+const ASKED_AGAIN: FinishedView = { outcome: "Asked again below", tone: "neutral", time: null, words: null };
+
+/**
+ * The finished cards under each agent message (TR-149): every question block it holds that is not
+ * the live card (`liveKeys`), with how it ended. A plan is part of the plan cards. A block a later
+ * message asks again reads "Asked again below"; otherwise the agent's stored decision says. Without
+ * a stored one the message may be too new to be stored (no card) or older than the store keeps.
+ */
+export function questionCards(
+  rows: readonly { key: string; text: string; at?: string | undefined }[],
+  decisions: readonly StoredDecision[],
+  liveKeys: ReadonlySet<string>,
+  clock: (iso: string) => string | null = () => null,
+  now: number = Date.now(),
+): Map<string, QuestionCardView[]> {
+  const cards = new Map<string, QuestionCardView[]>();
+  const asked = rows.map((row) => parseDecisionBlocks(row.text).filter((block) => !block.withdrawn));
+  rows.forEach((row, index) => {
+    const seen = new Set<string>();
+    const here = (asked[index] ?? []).flatMap((block): QuestionCardView[] => {
+      if (block.id === SCOPE_APPROVAL || seen.has(block.id)) return [];
+      seen.add(block.id);
+      const base = { subject: block.question, id: block.id };
+      if (asked.slice(index + 1).some((later) => later.some((each) => each.id === block.id))) return [{ ...base, ...ASKED_AGAIN }];
+      if ([...liveKeys].some((key) => key.endsWith(`:${block.id}`))) return [];
+      const stored = decisions.find((decision) => decision.id === block.id);
+      if (stored === undefined) {
+        const at = row.at === undefined ? Number.NaN : Date.parse(row.at);
+        // No time, or a recent one: the decision may not be stored yet.
+        if (Number.isNaN(at) || now - at < RECORD_KEPT_MS) return [];
+        return [{ ...base, outcome: "No record kept", tone: "neutral", time: null, words: null }];
+      }
+      const view = storedDecisionView(stored, clock);
+      return view === null ? [] : [{ ...base, ...view }];
+    });
+    if (here.length > 0) cards.set(row.key, here);
+  });
+  return cards;
+}
+
+/** Whether two rows' question cards say the same, for a memoised row. */
+export function sameQuestionCards(left: readonly QuestionCardView[] | undefined, right: readonly QuestionCardView[] | undefined): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  return left.length === right.length && left.every((card, index) => JSON.stringify(card) === JSON.stringify(right[index]));
 }

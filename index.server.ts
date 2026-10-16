@@ -10,6 +10,7 @@ import {
   dismissSuggestion as dismissSuggestionRpc,
   dismissQueueAlert,
   findAgentTicket,
+  listAgentDecisions,
   listOpenDecisions,
   loadBoard as loadBoardRpc,
   loadTicket,
@@ -49,6 +50,7 @@ import { ProjectSettingsSchema } from "./shared/project";
 import { Actions } from "./server/actions";
 import { createCrashTrail } from "./server/crash-trail";
 import { backfillCosts, recordArchivedUsage } from "./server/cost-recording";
+import { decisionsOfAgent } from "./server/agent-decisions";
 import { fetchLiveAgent, isAgentLive } from "./server/agents";
 import { dismissSuggestion, invalidateBoards, liveOpenDecisions, loadBoard, loadTicketDetail } from "./server/board";
 import type { PaseoApi } from "./server/host-types";
@@ -304,6 +306,7 @@ export default function contribute(server: PluginServerContext) {
     return { decision, agentLive: decision?.status === "open" ? await isAgentLive(keep(paseo), agentId) : true };
   });
   server.handle(listOpenDecisions, async ({ project }, { paseo }) => ({ decisions: await liveOpenDecisions(keep(paseo), state, project) }));
+  server.handle(listAgentDecisions, async ({ agentId }) => ({ decisions: decisionsOfAgent(await state.allDecisions(), agentId) }));
   server.handle(tellAgent, async ({ agentId, text, images, files, messageId }, { paseo }) => {
     await actions.tellAgent(keep(paseo), agentId, text, { images, files, messageId });
     return {};

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { deliveryCards, deliveryCardView, deliveryRecords, planCardView, type DeliveryRecord } from "./finished-cards";
+import { StoredDecisionSchema, type StoredDecision } from "../shared/state";
+import { deliveryCards, deliveryCardView, deliveryRecords, planCardView, questionCards, type DeliveryRecord } from "./finished-cards";
 import type { PlanLine } from "./plan-lines";
 
 const clock = (iso: string) => iso.slice(11, 16);
@@ -98,5 +99,81 @@ describe("deliveryCardView", () => {
     expect(deliveryCardView(record("2026-01-05T10:30:00Z", "changes requested", "Rename it"), clock)).toEqual({ outcome: "Changes requested", tone: "warning", time: "10:30", words: "Rename it" });
     expect(deliveryCardView(record("2026-01-05T10:30:00Z", "accepted"), clock)).toMatchObject({ outcome: "Accepted", tone: "positive" });
     expect(deliveryCardView(record("2026-01-05T10:30:00Z", "ended"), clock)).toMatchObject({ outcome: "Delivery ended: the owner asked a question", tone: "neutral" });
+  });
+});
+
+describe("questionCards", () => {
+  const now = Date.parse("2026-01-20T12:00:00Z");
+  const block = (id: string, question = `Question ${id}?`) => "```decision\n" + `id: ${id}\nquestion: ${question}\n` + "```";
+  const message = (key: string, blocks: string[], at: string | undefined = "2026-01-19T10:00:00Z") => ({ key, text: `Text\n\n${blocks.join("\n\n")}`, at });
+  const stored = (id: string, over: Partial<StoredDecision> = {}): StoredDecision =>
+    StoredDecisionSchema.parse({ id, question: `Question ${id}?`, key: `agent:${id}`, project: "p", ticket: null, agentId: "agent", agentRole: "owner", agentTitle: null, askedAt: "2026-01-19T10:00:00Z", status: "answered", answer: { text: "", label: "Yes", at: "2026-01-19T10:05:00Z" }, ...over });
+  const cards = (rows: Parameters<typeof questionCards>[0], decisions: StoredDecision[], live: string[] = []) => questionCards(rows, decisions, new Set(live), clock, now);
+
+  it("says a picked option, with the typed words beside it only when they differ", () => {
+    const rows = [message("a", [block("one"), block("two")])];
+    const picked = stored("one", { answer: { text: "Yes", label: "Yes", at: "2026-01-19T10:05:00Z" } });
+    const noted = stored("two", { answer: { text: "but later", label: "Yes", at: "2026-01-19T10:06:00Z" } });
+    expect(cards(rows, [picked, noted]).get("a")).toEqual([
+      { id: "one", subject: "Question one?", outcome: "Answered: Yes", tone: "positive", time: "10:05", words: null },
+      { id: "two", subject: "Question two?", outcome: "Answered: Yes", tone: "positive", time: "10:06", words: "but later" },
+    ]);
+  });
+
+  it("quotes a typed answer without a label", () => {
+    const typed = stored("one", { answer: { text: "Use SQLite", label: null, at: "2026-01-19T10:05:00Z" } });
+    expect(cards([message("a", [block("one")])], [typed]).get("a")).toEqual([{ id: "one", subject: "Question one?", outcome: "Answered: “Use SQLite”", tone: "positive", time: "10:05", words: null }]);
+  });
+
+  it("says withdrawn, and that its agent went away", () => {
+    const rows = [message("a", [block("one"), block("two")])];
+    const out = cards(rows, [stored("one", { status: "withdrawn", answer: null }), stored("two", { status: "withdrawn", answer: null, withdrawnWithAgent: true })]).get("a");
+    expect(out?.map((card) => [card.outcome, card.tone, card.time])).toEqual([["Withdrawn", "neutral", null], ["Withdrawn: its agent went away", "neutral", null]]);
+  });
+
+  it("draws nothing for an open decision that is not live", () => {
+    expect(cards([message("a", [block("one")])], [stored("one", { status: "open", answer: null })]).size).toBe(0);
+  });
+
+  it("draws nothing for a live key", () => {
+    expect(cards([message("a", [block("one")])], [stored("one")], ["agent:one"]).size).toBe(0);
+  });
+
+  it("skips the scope approval", () => {
+    expect(cards([message("a", [block("scope-approval")])], [stored("scope-approval")]).size).toBe(0);
+  });
+
+  it("has no card for a new message without a record, and 'No record kept' for an old one", () => {
+    expect(cards([message("a", [block("one")])], []).size).toBe(0);
+    expect(cards([message("a", [block("one")], undefined)], []).size).toBe(0);
+    const old = cards([message("a", [block("one")], "2025-12-01T10:00:00Z")], []).get("a");
+    expect(old).toEqual([{ id: "one", subject: "Question one?", outcome: "No record kept", tone: "neutral", time: null, words: null }]);
+  });
+
+  it("marks every asking but the last as asked again, across three messages", () => {
+    const rows = [message("a", [block("one")]), message("b", [block("one")]), message("c", [block("one")])];
+    const out = cards(rows, [stored("one")]);
+    expect(out.get("a")?.[0]?.outcome).toBe("Asked again below");
+    expect(out.get("b")?.[0]?.outcome).toBe("Asked again below");
+    expect(out.get("c")?.[0]?.outcome).toBe("Answered: Yes");
+  });
+
+  it("leaves the last asking to the live card", () => {
+    const rows = [message("a", [block("one")]), message("b", [block("one")])];
+    const out = cards(rows, [stored("one", { status: "open", answer: null })], ["agent:one"]);
+    expect(out.get("a")?.[0]?.outcome).toBe("Asked again below");
+    expect(out.has("b")).toBe(false);
+  });
+
+  it("does not count a withdrawing block as an asking, and draws a repeated block once", () => {
+    const withdrawing = "```decision\nid: one\nstatus: withdrawn\n```";
+    const rows = [message("a", [block("one"), block("one")]), message("b", [withdrawing])];
+    const out = cards(rows, [stored("one")]).get("a");
+    expect(out?.map((card) => card.outcome)).toEqual(["Answered: Yes"]);
+  });
+
+  it("is empty without rows or decisions", () => {
+    expect(cards([], [stored("one")]).size).toBe(0);
+    expect(cards([{ key: "a", text: "No blocks here", at: "2025-01-01T00:00:00Z" }], []).size).toBe(0);
   });
 });

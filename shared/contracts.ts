@@ -333,6 +333,13 @@ export const listOpenDecisions = defineRpc({
   output: z.object({ decisions: z.array(StoredDecisionSchema) }),
 });
 
+/** Every decision Taro still holds for one agent, any status, for the finished cards in its chat (TR-149). */
+export const listAgentDecisions = defineRpc({
+  name: "taro.decisions.agent",
+  input: z.object({ agentId: z.string() }),
+  output: z.object({ decisions: z.array(StoredDecisionSchema) }),
+});
+
 const AgentInput = z.object({ agentId: z.string() });
 
 export const tellAgent = defineRpc({

@@ -5,7 +5,7 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 
 import { FinishedCard } from "./finished-card";
-import { deliveryCardView, planCardView, type DeliveryRecord } from "./finished-cards";
+import { deliveryCardView, planCardView, type DeliveryRecord, type QuestionCardView } from "./finished-cards";
 import { formatClock } from "./format";
 import { useViewPlan } from "./plan-navigation";
 import type { PlanLine } from "./plan-lines";
@@ -35,4 +35,9 @@ export function PastPlanCard({ line, project, ticket, theme, compact }: { line: 
 export function PastAcceptanceCard({ record, ticket, theme, compact }: { record: DeliveryRecord; ticket: string; theme: PluginTheme; compact: boolean }) {
   const view = deliveryCardView(record, formatClock);
   return <FinishedCard theme={theme} compact={compact} icon="PackageCheck" kind="Acceptance" subject={`${ticket} delivered`} outcome={view.outcome} tone={view.tone} time={view.time} words={view.words} />;
+}
+
+/** A question that was answered, withdrawn or asked again, left where its block was. */
+export function PastQuestionCard({ card, theme, compact }: { card: QuestionCardView; theme: PluginTheme; compact: boolean }) {
+  return <FinishedCard theme={theme} compact={compact} icon="MessageCircleQuestion" kind="Question" subject={card.subject} outcome={card.outcome} tone={card.tone} time={card.time} words={card.words} />;
 }

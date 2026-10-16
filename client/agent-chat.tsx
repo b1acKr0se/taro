@@ -11,7 +11,7 @@ import { Fragment, memo, useEffect, useMemo, useRef, useState, type ReactNode } 
 import { Keyboard, Platform, SafeAreaView, ScrollView, Text, useWindowDimensions, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
 
 import { attachmentProblem, refuseOversizedImages, type DraftAttachment } from "../shared/attachments";
-import { listSentImages, type SentImagesMessage } from "../shared/contracts";
+import { listAgentDecisions, listSentImages, type SentImagesMessage } from "../shared/contracts";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { ActionRow } from "./action-row";
 import { droppedFilesAsAttachments, imagesFromPaste, pickAttachments } from "./attachment-pickers";
@@ -33,8 +33,8 @@ import { KeyboardRevealProvider, useKeyboardOverlap, useKeyboardScroll, useRevea
 import { formatClock } from "./format";
 import { Markdown } from "./markdown";
 import { PermissionCard, usePendingRequests } from "./permission-card";
-import { deliveryCards, sameAcceptanceRecord, type DeliveryRecord } from "./finished-cards";
-import { PastAcceptanceCard, PastPlanCard } from "./past-cards";
+import { deliveryCards, questionCards, sameAcceptanceRecord, sameQuestionCards, type DeliveryRecord, type QuestionCardView } from "./finished-cards";
+import { PastAcceptanceCard, PastPlanCard, PastQuestionCard } from "./past-cards";
 import { planLines, type PlanAnswer, type PlanLine } from "./plan-lines";
 import { ReplyBox } from "./reply-box";
 import type { Asker } from "./permission-heading";
@@ -193,6 +193,12 @@ export function AgentChat({
   /** The message the acceptance card is drawn under; null draws it at the end. */
   const deliveryRow = useMemo(() => (delivery === undefined ? null : deliveryRowKey(agentRows)), [delivery === undefined, agentRows]);
   /** The record that closed each past delivery, by the message that delivered (TR-149). */
+  const storedDecisions = useAgentDecisions(agent.id, asks?.decisions, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0, asks !== undefined && readOnly === undefined);
+  /** The questions answered, withdrawn or asked again, left under their message (TR-149); a read-only chat quotes them in its text instead. */
+  const pastQuestions = useMemo(
+    () => (storedDecisions === null ? null : questionCards(agentRows, storedDecisions, new Set((asks?.decisions ?? []).map((decision) => decision.key)), formatClock)),
+    [agentRows, storedDecisions, asks?.decisions],
+  );
   const pastAcceptances = useMemo(() => (records === undefined ? null : deliveryCards(agentRows, records.deliveries, deliveryRow)), [agentRows, records?.deliveries, deliveryRow]);
   /** Nothing is drawn after the card but what arrives later: it is shown by following the end, as before TR-131. */
   const deliveryLast = deliveryRow === null || groups[groups.length - 1]?.key === deliveryRow;
@@ -496,6 +502,7 @@ export function AgentChat({
                     asked={row?.kind === "agent" ? (places?.byRow.get(row.key) ?? NO_DECISIONS) : NO_DECISIONS}
                     pastPlan={row?.kind === "agent" ? pastPlans?.get(row.key) : undefined}
                     pastAcceptance={row?.kind === "agent" ? pastAcceptances?.get(row.key) : undefined}
+                    pastQuestions={row?.kind === "agent" ? pastQuestions?.get(row.key) : undefined}
                     project={records?.project}
                     ticketId={records?.ticket}
                     transformText={transformText}
@@ -642,6 +649,8 @@ interface TranscriptGroupProps {
   pastPlan: PlanLine | undefined;
   /** The record that closed this delivery, once answered (TR-149). */
   pastAcceptance: DeliveryRecord | undefined;
+  /** The questions of this message that are over, as finished cards (TR-149). */
+  pastQuestions: readonly QuestionCardView[] | undefined;
   /** The ticket the finished cards belong to, for View plan. */
   project: string | undefined;
   ticketId: string | undefined;
@@ -813,7 +822,7 @@ function ToolLine({ tool, theme, styles }: { tool: ToolRow; theme: PluginTheme; 
   );
 }
 
-function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, pastAcceptance, project, ticketId, transformText, decorateRow, theme, compact, styles, onToggle, onRowLayout, onOpenLink, renderCards, onMarkAction }: TranscriptGroupProps) {
+function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, pastAcceptance, pastQuestions, project, ticketId, transformText, decorateRow, theme, compact, styles, onToggle, onRowLayout, onOpenLink, renderCards, onMarkAction }: TranscriptGroupProps) {
   if ("tools" in group) {
     const [only] = group.tools;
     if (group.tools.length === 1 && only !== undefined) return <ToolLine key={group.key} tool={only} theme={theme} styles={styles} />;
@@ -861,6 +870,7 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, pastA
           {decorateRow === undefined ? null : decorateRow(row.text, row.key)}
           {pastPlan === undefined || project === undefined || ticketId === undefined ? null : <PastPlanCard line={pastPlan} project={project} ticket={ticketId} theme={theme} compact={compact} />}
           {pastAcceptance === undefined || ticketId === undefined ? null : <PastAcceptanceCard record={pastAcceptance} ticket={ticketId} theme={theme} compact={compact} />}
+          {pastQuestions === undefined ? null : pastQuestions.map((card) => <PastQuestionCard key={card.id} card={card} theme={theme} compact={compact} />)}
           {targets.length === 0 ? null : (
             <View style={styles.agentRow} onLayout={(event) => onRowLayout(row.key, targets, "cards", event.nativeEvent.layout)}>
               {renderCards(asked)}
@@ -896,6 +906,7 @@ const TranscriptGroup = memo(
     sameItems(previous.asked, next.asked) &&
     samePlanLine(previous.pastPlan, next.pastPlan) &&
     sameAcceptanceRecord(previous.pastAcceptance, next.pastAcceptance) &&
+    sameQuestionCards(previous.pastQuestions, next.pastQuestions) &&
     previous.project === next.project &&
     previous.ticketId === next.ticketId &&
     previous.compact === next.compact &&
@@ -1040,6 +1051,23 @@ function useSentImages(agentId: string, newestEntry: number) {
     placeholderData: (previous) => previous,
   });
   return query.data?.messages ?? EMPTY_SENT;
+}
+
+/**
+ * Every decision Taro holds for this agent, for its finished question cards (TR-149). Read again when
+ * an open one closes (`open` changes) and as the conversation grows; the last answer stays meanwhile.
+ * Null while off or not yet read.
+ */
+function useAgentDecisions(agentId: string, open: readonly StoredDecision[] | undefined, newestEntry: number, enabled: boolean): readonly StoredDecision[] | null {
+  const list = useRpc(listAgentDecisions);
+  const openKeys = (open ?? []).map((decision) => decision.key).join(",");
+  const query = useQuery({
+    queryKey: ["taro", "agent-decisions", agentId, openKeys, newestEntry] as const,
+    queryFn: () => list({ agentId }),
+    enabled,
+    placeholderData: (previous) => previous,
+  });
+  return enabled ? (query.data?.decisions ?? null) : null;
 }
 
 const EMPTY_SENT: readonly SentImagesMessage[] = [];
