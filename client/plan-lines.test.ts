@@ -75,6 +75,9 @@ describe("planLines", () => {
     const lines = planLines(rows, [changes, approved], null);
     expect(text(lines.get("1"))).toBe("Changes requested · replaced by the plan below (10:10)");
     expect(text(lines.get("2"))).toBe("Approved (10:20)");
+    // Each card keeps its own asking's time, for View plan to find that plan (TR-157).
+    expect(lines.get("1")?.askedAt).toBe("2026-01-05T10:00:00Z");
+    expect(lines.get("2")?.askedAt).toBe("2026-01-05T10:12:00Z");
   });
 
   it("says a plan asked again without an answer was replaced", () => {

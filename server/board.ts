@@ -33,7 +33,7 @@ import { readJsonIfPresent, readTextIfPresent, writeJsonAtomically } from "./fil
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import { projectPaths, readProjectConfig } from "./projects";
 import { serialized } from "./serialize";
-import { previousPlan } from "./plan-history";
+import { pastPlan, previousPlan } from "./plan-history";
 import type { PluginState } from "./state";
 import { readReplacingProviders } from "./provider-steering";
 import { agentBrief } from "./summaries";
@@ -370,6 +370,13 @@ export async function liveOpenDecisions(paseo: PaseoApi, state: PluginState, pro
   const projects = [...new Set(open.map((decision) => decision.project))];
   const live = new Set((await Promise.all(projects.map((name) => projectAgents(paseo, name)))).flat().map((agent) => agent.id));
   return decisionsOfLiveAgents(open, live);
+}
+
+/** A finished plan card's plan (TR-157), from the ticket's tracker history. */
+export async function loadTicketPastPlan(project: string, ticketId: string, card: { answeredAt: string | null; askedAt: string | null }): Promise<string | null> {
+  const tracker = (await projectPaths(project)).tracker;
+  const detail = await viewTicket(tracker, ticketId);
+  return pastPlan(tracker, detail.id, detail.implementationNotes, card);
 }
 
 export async function loadTicketDetail(paseo: PaseoApi, project: string, ticketId: string): Promise<TicketDetailView> {

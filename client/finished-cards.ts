@@ -39,6 +39,25 @@ export function planCardView(line: PlanLine, clock: (iso: string) => string | nu
   };
 }
 
+/** What the Old plan view (TR-157) says above a past plan: how it ended and when, the user's words, and which card to ask the history for. */
+export interface OldPlanView extends FinishedView {
+  /** The answer's time as the ANSWER record has it; null for a plan not answered on its card. */
+  answeredAt: string | null;
+  askedAt: string;
+}
+
+/**
+ * The Old plan view's heading line, "Changes requested · replaced by a later plan", its time with
+ * the day ("Oct 15, 08:12"; the clock alone today), and the words. `clock` and `day` format a time.
+ */
+export function oldPlanView(line: PlanLine, clock: (iso: string) => string | null, day: (iso: string) => string | null): OldPlanView {
+  const card = planCardView(line, clock);
+  const parts = [line.outcome ?? line.closed, line.replaced ? "replaced by a later plan" : null].filter((part) => part !== null);
+  const on = line.at === null ? null : day(line.at);
+  const time = card.time === null || on === null || on === "Today" ? card.time : `${on}, ${card.time}`;
+  return { ...card, outcome: capitalized(parts.length === 0 ? "closed" : parts.join(" · ")), time, answeredAt: line.outcome === null ? null : line.at, askedAt: line.askedAt };
+}
+
 /** One record of a delivered ticket's acceptance, from its notes. */
 export interface DeliveryRecord {
   at: string;

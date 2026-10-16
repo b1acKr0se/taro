@@ -23,6 +23,8 @@ export interface PlanLine {
   at: string | null;
   /** The words typed with the answer; null without any. */
   words: string | null;
+  /** When the plan was asked: its message's time, to find the plan in the tracker's history (TR-157). */
+  askedAt: string;
   /** Asked again further down. */
   replaced: boolean;
   /** Without an answer: withdrawn by the owner, or answered in words in the chat (the owner then withdraws it). */
@@ -73,13 +75,13 @@ export function planLines(
   liveRow: string | null,
   settling = false,
 ): Map<string, PlanLine> {
-  const askings: { index: number; at: number }[] = [];
+  const askings: { index: number; at: number; iso: string }[] = [];
   const withdrawals: number[] = [];
   rows.forEach((row, index) => {
     if (row.kind !== "agent") return;
     const plans = parseDecisionBlocks(row.text).filter((block) => block.id === SCOPE_APPROVAL);
     const at = row.at === undefined ? Number.NaN : Date.parse(row.at);
-    if (plans.some((block) => !block.withdrawn) && !Number.isNaN(at)) askings.push({ index, at });
+    if (plans.some((block) => !block.withdrawn) && row.at !== undefined && !Number.isNaN(at)) askings.push({ index, at, iso: row.at });
     else if (plans.some((block) => block.withdrawn)) withdrawals.push(index);
   });
   const lines = new Map<string, PlanLine>();
@@ -100,6 +102,7 @@ export function planLines(
       outcome: answer?.outcome ?? null,
       at: answer?.at ?? (closed === "withdrawn" && firstWithdrawal !== undefined ? (rows[firstWithdrawal]?.at ?? null) : null),
       words: answer?.words ?? null,
+      askedAt: asking.iso,
       replaced: next !== undefined,
       closed,
     });
