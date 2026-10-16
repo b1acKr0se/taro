@@ -1,9 +1,9 @@
 /**
  * A tool call in the user's words (TR-144): what the agent did, not the command it typed. The chat
- * names a file by its name, never its path, and a shell command by what it does; the raw call stays
- * one tap away in Paseo's own agent tab.
+ * names a file by its name, never its path, and a shell command by what it does; opening the run
+ * lists the raw calls.
  */
-export type ToolCategory = "read" | "search" | "edit" | "run" | "web" | "agent" | "other";
+export type ToolCategory = "read" | "search" | "git" | "edit" | "run" | "web" | "agent" | "other";
 
 export interface ToolAction {
   text: string;
@@ -51,11 +51,11 @@ const SHELL_WORDS: Record<string, ToolAction> = {
   head: { text: "Read a file", category: "read" },
   tail: { text: "Read a file", category: "read" },
   sed: { text: "Read a file", category: "read" },
-  wc: { text: "Counted lines", category: "read" },
-  "git log": { text: "Looked at the history", category: "read" },
-  "git show": { text: "Looked at a commit", category: "read" },
-  "git diff": { text: "Looked at the changes", category: "read" },
-  "git status": { text: "Checked the changes", category: "read" },
+  wc: { text: "Counted lines", category: "search" },
+  "git log": { text: "Looked at the history", category: "git" },
+  "git show": { text: "Looked at a commit", category: "git" },
+  "git diff": { text: "Looked at the changes", category: "git" },
+  "git status": { text: "Checked the changes", category: "git" },
   "git commit": { text: "Committed", category: "edit" },
   "npm test": { text: "Ran the tests", category: "run" },
   "npm install": { text: "Installed packages", category: "run" },
@@ -70,18 +70,39 @@ export function shellWords(command: string): string[] {
   const step = steps.find((each) => !/^(cd|export|set|source)\b/.test(each)) ?? steps[0] ?? "";
   const words = step.split(/\s+/).filter((word) => word !== "" && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(word));
   while (words.length > 1 && PREFIXES.has(words[0] ?? "")) words.shift();
-  return words.length === 0 ? [] : [fileName(words[0] ?? ""), ...words.slice(1)];
+  if (words.length === 0) return [];
+  const program = fileName(words[0] ?? "");
+  return program === "git" ? [program, ...gitArguments(words.slice(1))] : [program, ...words.slice(1)];
+}
+
+/** Git's own options before its subcommand (`git -C <dir> log`, `git --no-pager diff`), left out. */
+function gitArguments(words: string[]): string[] {
+  let index = 0;
+  while (index < words.length && (words[index] ?? "").startsWith("-")) index += /^-[Cc]$/.test(words[index] ?? "") ? 2 : 1;
+  return words.slice(index);
+}
+
+/** Where a line writes with `>` or `>>` (not `2>` or `>&`), or null. */
+function redirectTarget(words: readonly string[]): string | null {
+  const match = /(?:^|[^\d&>])>>?\s*([^\s&|;<>]+)/.exec(words.join(" "));
+  return match?.[1] ?? null;
 }
 
 const READS_A_FILE = new Set(["cat", "head", "tail", "sed", "less"]);
 
 const RUNS_SCRIPTS = new Set(["npm", "pnpm", "yarn"]);
+/** Programs whose output, sent to a file, is that file's new text. */
+const WRITES_WITH_REDIRECT = new Set(["cat", "echo", "printf"]);
 
 function shellAction(command: string): ToolAction {
   const words = shellWords(command);
   const [program = "", next = "", third = ""] = words;
   if (program === "") return { text: "Ran a command", category: "run" };
   const last = words[words.length - 1] ?? "";
+  const written = redirectTarget(words);
+  if (WRITES_WITH_REDIRECT.has(program) && written !== null) return { text: `Wrote ${fileName(written)}`, category: "edit" };
+  if (program === "tee" && words.length > 1 && !last.startsWith("-")) return { text: `Wrote ${fileName(last)}`, category: "edit" };
+  if (program === "sed" && words.some((word) => /^-[a-zA-Z]*i/.test(word)) && words.length > 1) return { text: `Edited ${fileName(last)}`, category: "edit" };
   if (READS_A_FILE.has(program) && words.length > 1 && /^[\w./~-]+\.\w+$/.test(last)) return { text: `Read ${fileName(last)}`, category: "read" };
   if (RUNS_SCRIPTS.has(program) && next === "run" && /^[\w:.-]+$/.test(third)) return { text: `Ran the ${third} script`, category: "run" };
   const named = WITH_SUBCOMMAND.has(program) && /^[a-z][a-z-]*$/.test(next) ? `${program} ${next}` : program;
@@ -125,6 +146,7 @@ export function toolAction(detail: ToolDetail, name: string): ToolAction {
 const TALLY: Record<ToolCategory, (count: number) => string> = {
   read: (count) => `read ${count === 1 ? "a file" : `${count} files`}`,
   search: (count) => `searched ${count === 1 ? "once" : count === 2 ? "twice" : `${count} times`}`,
+  git: (count) => `checked git ${count === 1 ? "once" : count === 2 ? "twice" : `${count} times`}`,
   edit: (count) => `changed ${count === 1 ? "a file" : `${count} files`}`,
   run: (count) => `ran ${count === 1 ? "a command" : `${count} commands`}`,
   web: (count) => `looked online ${count === 1 ? "once" : count === 2 ? "twice" : `${count} times`}`,

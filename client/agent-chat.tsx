@@ -18,6 +18,7 @@ import { droppedFilesAsAttachments, imagesFromPaste, pickAttachments } from "./a
 import { availableSources, type AttachmentSource } from "./attachment-sources";
 import { AttachButton, AttachmentPreviews, DropBackdrop } from "./composer-attachments";
 import type { StoredDecision } from "../shared/state";
+import { WRITING_A_QUESTION } from "../shared/streaming-text";
 import { ContextMeter } from "./context-meter";
 import { useOnPaneHidden } from "./pane-visibility";
 import { DecisionCard } from "./decision-card";
@@ -782,7 +783,7 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, trans
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ expanded: open }}
-          accessibilityLabel={`${summary.title}, ${open ? "fold" : "show"}`}
+          accessibilityLabel={`${summary.title}${summary.failed > 0 ? `, ${summary.failed} failed` : ""}${summary.state === "running" ? ", running" : ""}, ${open ? "fold" : "show"}`}
           style={[styles.toolHead, summary.state === "failed" ? { borderColor: theme.colors.statusDanger } : null]}
           onPress={toggle}
         >
@@ -791,7 +792,7 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, trans
           ) : (
             <Icon name={summary.state === "failed" ? "X" : "Wrench"} size={11} color={summary.state === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
           )}
-          <Text style={styles.toolTitle} numberOfLines={1}>
+          <Text style={styles.toolTitle} numberOfLines={2}>
             {summary.title}
           </Text>
           {/* Its own text, so a long summary is cut before the failure is. */}
@@ -826,6 +827,7 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, trans
       return (
         <View key={row.key} style={styles.agentRow} onLayout={targets.length === 0 ? undefined : (event) => onRowLayout(row.key, targets, "row", event.nativeEvent.layout)}>
           <Markdown source={transformText === undefined ? row.text : transformText(row.text)} theme={theme} onOpenLink={onOpenLink} />
+          {row.asking === true ? <Text style={styles.asking}>{WRITING_A_QUESTION}</Text> : null}
           {decorateRow === undefined ? null : decorateRow(row.text, row.key)}
           {pastPlan === undefined ? null : <PastPlanLine line={pastPlan} theme={theme} styles={styles} />}
           {targets.length === 0 ? null : (
@@ -949,6 +951,8 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
     lineIcon: { height: lineHeightFor(FONT_SIZE.caption), justifyContent: "center" as const },
     toolText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontFamily: MONOSPACE },
     toolTitle: { flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
+    // Not the agent's words: the chat saying a question is on its way (TR-144).
+    asking: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, fontStyle: "italic" as const },
     toolFailed: { flexShrink: 0, color: colors.statusDanger, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" as const },
     error: { color: colors.statusDanger, fontSize: FONT_SIZE.small },
     hint: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small, textAlign: "center" as const, padding: SPACE.lg },

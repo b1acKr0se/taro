@@ -2,7 +2,7 @@ import { usePaseo } from "@getpaseo/plugin/client";
 import { useEffect, useRef, useState } from "react";
 
 import { keptMap } from "./kept";
-import { MAX_PIECES, streamedPiece, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
+import { drawnWithPieces, MAX_PIECES, streamedPiece, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
 import { CACHED_AGENTS, cacheable, createTimelineCache } from "./timeline-cache";
 import type { TimelinePage, TimelineEntry } from "./transcript-rows";
 
@@ -101,7 +101,8 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
 
     function drawPieces(): void {
       draw = undefined;
-      if (alive) setEntries(withStreamed(read, epoch, pieces) as TimelineEntry[]);
+      const drawn = drawnWithPieces(read, epoch, pieces);
+      if (alive && drawn !== null) setEntries(drawn as TimelineEntry[]);
     }
 
     // An async function, not an async arrow: Hermes evaluates an async arrow

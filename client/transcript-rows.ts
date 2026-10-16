@@ -25,8 +25,11 @@ type ToolCallItem = Extract<TimelineItem, { type: "tool_call" }>;
 
 export type TranscriptRow =
   | { key: string; kind: "user"; text: string }
-  /** `at`: when the message started, for matching what was answered after it (TR-135). */
-  | { key: string; kind: "agent"; text: string; at?: string }
+  /**
+   * `at`: when the message started, for matching what was answered after it (TR-135). `asking`: the
+   * reply is writing a decision block, not drawn until it closes (TR-144).
+   */
+  | { key: string; kind: "agent"; text: string; at?: string; asking?: boolean }
   | { key: string; kind: "event"; text: string }
   /** A tool call: `text` is the raw call the opened run lists, `plain` its plain words for a folded one (TR-144). */
   | { key: string; kind: "tool"; text: string; plain: string; category: ToolCategory; status: ToolCallItem["status"] }
@@ -193,7 +196,6 @@ export function transcriptRows(entries: readonly TimelineEntry[]): TranscriptRow
         rows.push({ key, kind: "tool", text: toolSummary(item), plain: action.text, category: action.category, status: item.status });
         break;
       }
-        break;
       case "error":
         rows.push({ key, kind: "error", text: item.message });
         break;
@@ -227,6 +229,6 @@ export function endStoppedCompactions<Row extends { kind: string; text?: string 
 export function whileWriting(rows: TranscriptRow[], writing: boolean): TranscriptRow[] {
   const last = rows[rows.length - 1];
   if (!writing || last === undefined || last.kind !== "agent") return rows;
-  const text = heldWhileWriting(last.text);
-  return text === last.text ? rows : [...rows.slice(0, -1), { ...last, text }];
+  const held = heldWhileWriting(last.text);
+  return held.text === last.text && !held.asking ? rows : [...rows.slice(0, -1), { ...last, text: held.text, asking: held.asking }];
 }

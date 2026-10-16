@@ -35,9 +35,9 @@ describe("toolAction", () => {
   it("says what a shell command did instead of the command", () => {
     expect(shell("ls -la")).toEqual({ text: "Listed files", category: "search" });
     expect(shell("grep -r 'notes' --include='*.ts' .")).toEqual({ text: "Searched the code", category: "search" });
-    expect(shell("git log --oneline -5")).toEqual({ text: "Looked at the history", category: "read" });
+    expect(shell("git log --oneline -5")).toEqual({ text: "Looked at the history", category: "git" });
     expect(shell("cd /home/user/project && npm test")).toEqual({ text: "Ran the tests", category: "run" });
-    expect(shell("wc -l README.md notes.ts")).toEqual({ text: "Counted lines", category: "read" });
+    expect(shell("wc -l README.md notes.ts")).toEqual({ text: "Counted lines", category: "search" });
   });
 
   it("names the file a reading command reads, and only a file", () => {
@@ -47,11 +47,33 @@ describe("toolAction", () => {
     expect(shell("tail -f /var/log/app")).toEqual({ text: "Read a file", category: "read" });
   });
 
+  it("reads git's subcommand past its own options, and counts looking at git apart from reading files", () => {
+    expect(shell("git -C /home/user/project log --oneline")).toEqual({ text: "Looked at the history", category: "git" });
+    expect(shell("git --no-pager -c color.ui=never diff")).toEqual({ text: "Looked at the changes", category: "git" });
+    expect(shell("git -C /home/user/project status --short")).toEqual({ text: "Checked the changes", category: "git" });
+    expect(shell("git -C")).toEqual({ text: "Ran git", category: "run" });
+  });
+
+  it("says a file was written or edited when a command writes it, not read", () => {
+    expect(shell("sed -i 's/a/b/' client/notes.ts")).toEqual({ text: "Edited notes.ts", category: "edit" });
+    expect(shell("sed -i.bak -e 's/a/b/' notes.ts")).toEqual({ text: "Edited notes.ts", category: "edit" });
+    expect(shell("cat > /home/user/project/plan.md <<'EOF'\n# Plan\nEOF")).toEqual({ text: "Wrote plan.md", category: "edit" });
+    expect(shell("echo done >> /tmp/log.txt")).toEqual({ text: "Wrote log.txt", category: "edit" });
+    expect(shell("printf '%s' x > out.json")).toEqual({ text: "Wrote out.json", category: "edit" });
+    expect(shell("tee /home/user/project/notes.md")).toEqual({ text: "Wrote notes.md", category: "edit" });
+  });
+
+  it("still reads a file whose errors go elsewhere, and runs a command whose output is saved", () => {
+    expect(shell("echo hi 2> /tmp/err")).toEqual({ text: "Ran echo", category: "run" });
+    expect(shell("cat README.md 2>&1")).toEqual({ text: "Read a file", category: "read" });
+    expect(shell("npm test > /tmp/test.log 2>&1")).toEqual({ text: "Ran the tests", category: "run" });
+  });
+
   it("names an unknown program with its subcommand, and a script by its name", () => {
     expect(shell("git push origin main")).toEqual({ text: "Ran git push", category: "run" });
     expect(shell("npm run typecheck > /tmp/log 2>&1")).toEqual({ text: "Ran the typecheck script", category: "run" });
     expect(shell("python3 -I tools/check.py")).toEqual({ text: "Ran python3", category: "run" });
-    expect(shell("git --no-pager log")).toEqual({ text: "Ran git", category: "run" });
+    expect(shell("git")).toEqual({ text: "Ran git", category: "run" });
     expect(shell("")).toEqual({ text: "Ran a command", category: "run" });
   });
 
@@ -84,6 +106,7 @@ describe("toolTally", () => {
     expect(toolTally(["search", "search", "search"])).toBe("Searched 3 times");
     expect(toolTally(["web", "web", "agent", "other", "other"])).toBe("Looked online twice, started a subagent, 2 other steps");
     expect(toolTally(["agent", "agent", "other"])).toBe("Started 2 subagents, one other step");
+    expect(toolTally(["git", "read", "git", "git"])).toBe("Checked git 3 times, read a file");
   });
 
   it("is empty for no calls", () => {

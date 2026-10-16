@@ -55,6 +55,17 @@ export function withStreamed(entries: readonly TimelineEntry[], epoch: string | 
   return added.length === 0 ? entries : [...entries, ...added];
 }
 
+/**
+ * What to draw when pieces arrive between reads: the read with them after it, or null to leave the
+ * chat as it is — before the first read (the pane shows the cached conversation then, and a blank
+ * read would wipe it) or when no piece continues the read.
+ */
+export function drawnWithPieces(read: readonly TimelineEntry[], epoch: string | null, pieces: readonly StreamedPiece[]): readonly TimelineEntry[] | null {
+  if (epoch === null) return null;
+  const drawn = withStreamed(read, epoch, pieces);
+  return drawn === read ? null : drawn;
+}
+
 /** The pieces a new read does not hold yet, to add after it; the rest are dropped. */
 export function unreadPieces(pieces: readonly StreamedPiece[], epoch: string | null, entries: readonly TimelineEntry[]): StreamedPiece[] {
   const lastSeq = entries[entries.length - 1]?.seqEnd;

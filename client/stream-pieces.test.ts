@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { streamedPiece, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
+import { drawnWithPieces, streamedPiece, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
 import { transcriptRows, whileWriting, type TimelineEntry } from "./transcript-rows";
 
 const EPOCH = "epoch-1";
@@ -70,6 +70,18 @@ describe("withStreamed", () => {
   });
 });
 
+describe("drawnWithPieces", () => {
+  it("leaves the chat as it is when a piece arrives before the first read, so the cached conversation stays", () => {
+    expect(drawnWithPieces([], null, [piece(4, "app")])).toBeNull();
+  });
+
+  it("leaves it as it is when no piece continues the read, and draws the read with them otherwise", () => {
+    expect(drawnWithPieces(read, EPOCH, [piece(6, "after a gap")])).toBeNull();
+    expect(drawnWithPieces(read, EPOCH, [])).toBeNull();
+    expect(drawnWithPieces(read, EPOCH, [piece(4, "app")])?.map((each) => each.seqStart)).toEqual([1, 2, 4]);
+  });
+});
+
 describe("unreadPieces", () => {
   it("keeps only the pieces after the new read, of its epoch", () => {
     const pieces = [piece(3, "a"), piece(4, "b"), piece(5, "c", "epoch-0")];
@@ -84,7 +96,7 @@ describe("whileWriting", () => {
   const rows = transcriptRows([...read, entry(4, 4, { type: "assistant_message", text: "app.\n\n```decision\nid: a" })]);
 
   it("holds the newest reply's unfinished block only while the agent writes", () => {
-    expect(whileWriting(rows, true)[1]?.text).toBe("The notes app.\n\nWriting a question…");
+    expect(whileWriting(rows, true)[1]).toMatchObject({ text: "The notes app.", asking: true });
     expect(whileWriting(rows, false)).toBe(rows);
   });
 
