@@ -7,7 +7,8 @@
  */
 import type { Card } from "../shared/contracts";
 import { PAUSE_HANDOFF_TIMEOUT_MS, type PauseView } from "../shared/pause";
-import type { QueuedWait } from "../shared/queued-wait";
+import type { QueuedSlot, QueuedWait } from "../shared/queued-wait";
+import { isHigh } from "../shared/recovery";
 import type { StatusState } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import { callAction, cardCalls, readinessText, waitingOnPermissions, type CardCall } from "./card-calls";
@@ -127,13 +128,31 @@ function callLines(call: CardCall, others: readonly CardCall[], now: number): Li
 
 /**
  * What a Queued ticket waits on (TR-138): the tickets first, each with its status, so cards queued behind
- * the same one read alike whether by a dependency or by the manager's HOLD; why under it.
+ * the same one read alike whether by a dependency or by the manager's HOLD; why under it. With neither,
+ * the owner slot or threads it waits for (TR-142).
  */
 export function queuedWaitLines(wait: QueuedWait): Lines {
+  if (wait.slot !== null && wait.dependencies.length === 0 && wait.hold === null) return queuedSlotLines(wait.slot);
   const on = wait.on.map((ticket) => (ticket.status === null ? ticket.id : `${ticket.id} (${ticket.status})`));
   const why = joined([wait.dependencies.length === 0 ? null : `Depends on ${wait.dependencies.join(", ")}`, wait.hold === null ? null : `Held: ${wait.hold}`]);
   if (on.length === 0) return { headline: "Held by the manager", detail: wait.hold === null ? null : capitalised(wait.hold) };
   return { headline: `Waits on ${on.join(", ")}`, detail: why };
+}
+
+/**
+ * A startable ticket's wait (TR-142): every slot taken, else threads too high to start an owner, else a
+ * free slot. With more startable tickets than free slots it says so rather than guess the manager's pick.
+ */
+function queuedSlotLines(slot: QueuedSlot): Lines {
+  const running = slot.running.length;
+  const owners = `${running} of ${slot.cap} owner${slot.cap === 1 ? "" : "s"} running`;
+  const threadsHigh = slot.threads !== null && isHigh(slot.threads);
+  const threads = slot.threads === null ? null : `${slot.threads.current} of ${slot.threads.max} threads in use`;
+  if (running >= slot.cap) return { headline: "Waits for an owner slot", detail: joined([running === 0 ? owners : `${owners}: ${slot.running.join(", ")}`, threadsHigh ? threads : null]) };
+  if (threadsHigh) return { headline: "Waits for host threads to free up", detail: joined([threads, owners]) };
+  const free = slot.cap - running;
+  if (slot.startable <= free) return { headline: "An owner slot is free: the manager starts it next", detail: owners };
+  return { headline: "An owner slot is free", detail: joined([owners, `${slot.startable} ready for ${free} slot${free === 1 ? "" : "s"}`]) };
 }
 
 /** Why an accepted delivery did not merge (TR-109), or merged without the local base branch following it (TR-110), as the card's headline. */

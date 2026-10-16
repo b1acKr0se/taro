@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { holdReason } from "./queue-check";
-import { namedTicketIds, queuedWait } from "./queued-wait";
+import { holdReason, recount } from "./queue-check";
+import { namedTicketIds, queuedSlot, queuedWait } from "./queued-wait";
 
 const tickets = [
   { id: "NA-024", status: "Done", parentTaskId: null },
@@ -29,7 +29,7 @@ describe("queuedWait", () => {
   });
 
   it("names unfinished dependencies with their status and leaves Done ones out", () => {
-    expect(wait(["NA-024", "NA-031"], null)).toEqual({ on: [{ id: "NA-031", status: "Planning" }], dependencies: ["NA-031"], hold: null });
+    expect(wait(["NA-024", "NA-031"], null)).toEqual({ on: [{ id: "NA-031", status: "Planning" }], dependencies: ["NA-031"], hold: null, slot: null });
   });
 
   it("names the tickets a manager's HOLD names, its own id left out", () => {
@@ -38,6 +38,7 @@ describe("queuedWait", () => {
       on: [{ id: "NA-031", status: "Planning" }],
       dependencies: [],
       hold: "overlaps NA-031, which reworks the card NA-035 changes; start NA-035 once NA-031 is Done.",
+      slot: null,
     });
   });
 
@@ -56,8 +57,53 @@ describe("queuedWait", () => {
   });
 
   it("keeps a hold that names no ticket, and ignores a user's pause", () => {
-    expect(wait([], "HOLD 2026-01-01T10:00Z — one rewrite at a time")).toEqual({ on: [], dependencies: [], hold: "one rewrite at a time" });
+    expect(wait([], "HOLD 2026-01-01T10:00Z — one rewrite at a time")).toEqual({ on: [], dependencies: [], hold: "one rewrite at a time", slot: null });
     expect(wait([], "HOLD 2026-01-01T10:00Z — paused by the user; see NA-031")).toBeNull();
-    expect(wait(["NA-031"], "HOLD 2026-01-01T10:00Z — paused by the user")).toEqual({ on: [{ id: "NA-031", status: "Planning" }], dependencies: ["NA-031"], hold: null });
+    expect(wait(["NA-031"], "HOLD 2026-01-01T10:00Z — paused by the user")).toEqual({ on: [{ id: "NA-031", status: "Planning" }], dependencies: ["NA-031"], hold: null, slot: null });
+  });
+});
+
+describe("queued slot (TR-142)", () => {
+  const owner = (ticket: string, status = "idle") => ({ status, labels: { "taro.role": "owner", "taro.ticket": ticket } });
+  const board = [
+    { id: "TR-1", status: "In Progress", parentTaskId: null },
+    { id: "TR-2", status: "Reviewing", parentTaskId: null },
+    { id: "TR-3", status: "Planning", parentTaskId: null },
+    { id: "TR-4", status: "Queued", parentTaskId: null },
+    { id: "TR-5", status: "Queued", parentTaskId: null },
+    { id: "TR-6", status: "Queued", parentTaskId: null },
+    { id: "TR-7", status: "Queued", parentTaskId: null },
+    { id: "TR-8", status: "Queued", parentTaskId: null },
+    { id: "TR-3.01", status: "Queued", parentTaskId: "TR-3" },
+  ];
+  const count = recount({
+    owners: [owner("TR-1"), owner("TR-2"), owner("TR-3"), owner("TR-8"), owner("TR-9", "closed")],
+    tickets: board,
+    queued: [
+      { id: "TR-4", dependencies: [], notes: null },
+      { id: "TR-5", dependencies: ["TR-1"], notes: null },
+      { id: "TR-6", dependencies: [], notes: "HOLD 2026-01-01T10:00Z — after TR-2" },
+      { id: "TR-7", dependencies: [], notes: "HOLD 2026-01-01T10:00Z — paused by the user" },
+      { id: "TR-8", dependencies: [], notes: null },
+    ],
+    cap: 3,
+    threads: { current: 900, max: 2048 },
+  });
+
+  it("gives a startable ticket the recount's owners, cap, startable count and threads", () => {
+    expect(queuedSlot(count, "TR-4")).toEqual({ running: ["TR-1", "TR-2", "TR-3", "TR-8"], cap: 3, startable: 1, threads: { current: 900, max: 2048 } });
+  });
+
+  it("gives none to a ticket waiting on a dependency, held, paused, already owned, a child, or unknown", () => {
+    for (const id of ["TR-5", "TR-6", "TR-7", "TR-8", "TR-3.01", "TR-99"]) expect(queuedSlot(count, id)).toBeNull();
+  });
+
+  it("is the wait only when no dependency or hold stands first", () => {
+    const slot = queuedSlot(count, "TR-4");
+    const at = (dependencies: string[], notes: string | null) => queuedWait({ id: "TR-4", dependencies, holdReason: holdReason(notes), tickets: board, slot });
+    expect(at([], null)).toEqual({ on: [], dependencies: [], hold: null, slot });
+    expect(at(["TR-1"], null)).toEqual({ on: [{ id: "TR-1", status: "In Progress" }], dependencies: ["TR-1"], hold: null, slot: null });
+    expect(queuedWait({ id: "TR-4", dependencies: [], holdReason: null, tickets: board, slot: null })).toBeNull();
+    expect(queuedWait({ id: "TR-4", dependencies: [], holdReason: null, tickets: board })).toBeNull();
   });
 });
