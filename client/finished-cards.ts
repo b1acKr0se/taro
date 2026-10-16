@@ -125,7 +125,7 @@ export interface QuestionCardView extends FinishedView {
 /** The store keeps a closed decision 14 days (`CLOSED_RETENTION_MS`); older messages have no record to find. */
 const RECORD_KEPT_MS = 14 * 24 * 60 * 60 * 1000;
 
-/** How a stored decision ended; null while it is open. A typed answer reads "Answered: “words”", a picked option's typed words come beside it. */
+/** How a stored decision ended; null while it is open. A typed answer reads "Answered" with the words quoted under it (TR-159), as do words typed with a picked option. */
 export function storedDecisionView(decision: StoredDecision, clock: (iso: string) => string | null): FinishedView | null {
   if (decision.status === "withdrawn") {
     return { outcome: decision.withdrawnWithAgent === true ? "Withdrawn: its agent went away" : "Withdrawn", tone: "neutral", time: null, words: null };
@@ -135,7 +135,7 @@ export function storedDecisionView(decision: StoredDecision, clock: (iso: string
   const label = answer?.label ?? null;
   const typed = answer?.text.trim() ?? "";
   const time = answer === null ? null : clock(answer.at);
-  if (label === null) return { outcome: typed === "" ? "Answered" : `Answered: “${typed}”`, tone: "positive", time, words: null };
+  if (label === null) return { outcome: "Answered", tone: "positive", time, words: typed === "" ? null : typed };
   return { outcome: `Answered: ${label}`, tone: "positive", time, words: typedBeside(typed, label, decision.options.find((option) => option.label === label)?.prompt ?? "") };
 }
 

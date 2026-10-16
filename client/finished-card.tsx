@@ -1,83 +1,92 @@
 /**
- * A card that has been dealt with (TR-149), left in the chat where the live card was: what was
- * asked, how it ended, when, and the user's own words. One style for plans, deliveries, questions
- * and permission asks. Bordered like a live card but without its accent, so it reads as a record.
+ * A card that has been dealt with (TR-149), left in the chat where the live card was. TR-159 drew it as
+ * one quiet line rather than a card, so it reads as a record between messages: a toned mark, how it
+ * ended, when, and what was asked; the user's own words quoted under it. One style for plans,
+ * deliveries, questions and permission asks.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
-import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 
 import type { FinishedTone } from "./finished-cards";
+import { Pressable } from "./focus";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { SPACE } from "./spacing";
+import { MONOSPACE } from "./ui";
 
 export type { FinishedTone };
 
 /** The most lines of the user's words shown; the rest is in the ticket. */
 const WORDS_LINES = 6;
-const OUTCOME_ICON = { positive: "CircleCheck", warning: "TriangleAlert", negative: "CircleX", neutral: "Circle" } as const;
+const MARK_SIZE = 13;
+const TONE_MARK = { positive: "Check", warning: "Pencil", negative: "X", neutral: "Minus" } as const;
+const LINE_HEIGHT = lineHeightFor(FONT_SIZE.small);
 
 export function FinishedCard({
   theme,
-  compact,
-  icon,
-  kind,
+  compact = false,
+  lead = null,
   subject = null,
+  code = false,
   outcome,
   tone,
   time = null,
   words = null,
-  actions = null,
-  accessibilityLabel,
+  action = null,
 }: {
   theme: PluginTheme;
-  compact: boolean;
-  /** The kind's icon, beside its label. */
-  icon: string;
-  /** "Plan", "Acceptance", "Question", "Permission". */
-  kind: string;
+  /** A narrow window: the link goes on its own row under the line, which then keeps its width. */
+  compact?: boolean;
+  /** Named before the subject, telling a question from a permission ask: "Question", "Permission". */
+  lead?: string | null;
   /** The thing asked: a plan's ticket, the question, the command. */
   subject?: string | null;
+  /** The subject is a command, drawn in monospace. */
+  code?: boolean;
   outcome: string;
   tone: FinishedTone;
   time?: string | null;
-  /** What the user typed with the answer. */
+  /** What the user typed with the answer, quoted under the line with its line breaks. */
   words?: string | null;
-  /** Buttons at the foot (View plan). */
-  actions?: ReactNode;
-  accessibilityLabel?: string;
+  /** A link at the line's end (View plan). */
+  action?: { label: string; onPress: () => void } | null;
 }) {
   const { colors } = theme;
-  const toneColor = tone === "positive" ? colors.accent : tone === "warning" ? colors.statusWarning : tone === "negative" ? colors.statusDanger : colors.foregroundMuted;
-  const label = accessibilityLabel ?? [kind, subject, outcome, time].filter((part) => part !== null && part !== "").join(", ");
+  const toneColor = tone === "positive" ? colors.statusSuccess : tone === "warning" ? colors.statusWarning : tone === "negative" ? colors.statusDanger : colors.foregroundMuted;
+  const hasSubject = subject !== null && subject !== "";
+  const label = [outcome, time, lead, subject].filter((part) => part !== null && part !== "").join(", ");
+  const link =
+    action === null ? null : (
+      <Pressable accessibilityRole="link" accessibilityLabel={action.label} onPress={action.onPress} hitSlop={8} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xxs, height: LINE_HEIGHT }}>
+        <Text style={{ color: colors.accent, fontSize: FONT_SIZE.small, lineHeight: LINE_HEIGHT, fontWeight: "600" }}>{action.label}</Text>
+        <Icon name="ChevronRight" size={12} color={colors.accent} />
+      </Pressable>
+    );
   return (
-    <View
-      // Grouped for a screen reader only without buttons, which must stay reachable.
-      accessible={actions === null}
-      accessibilityLabel={actions === null ? label : undefined}
-      style={{ alignSelf: "stretch", borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface1, padding: compact ? 10 : 12, gap: SPACE.sm }}
-    >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm }}>
-        <Icon name={icon} size={13} color={colors.foregroundMuted} />
-        <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small), fontWeight: "600" }}>{kind}</Text>
-      </View>
-      {subject === null || subject === "" ? null : <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) }}>{subject}</Text>}
+    <View style={{ alignSelf: "stretch", gap: SPACE.xs }}>
       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm }}>
-        <View style={{ height: lineHeightFor(FONT_SIZE.small), justifyContent: "center" }}>
-          <Icon name={OUTCOME_ICON[tone]} size={13} color={toneColor} />
+        {/* Grouped for a screen reader apart from the link, which must stay reachable. */}
+        <View accessible accessibilityLabel={label} style={{ flex: 1, flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm }}>
+          <View style={{ height: LINE_HEIGHT, justifyContent: "center" }}>
+            <Icon name={TONE_MARK[tone]} size={MARK_SIZE} color={toneColor} />
+          </View>
+          <Text style={{ flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: LINE_HEIGHT }}>
+            <Text style={{ color: toneColor, fontWeight: "600" }}>{outcome}</Text>
+            {time === null ? null : ` · ${time}`}
+            {hasSubject ? ` — ${lead === null ? "" : `${lead}: `}` : null}
+            {hasSubject ? <Text style={code ? { fontFamily: MONOSPACE, fontSize: FONT_SIZE.code - 1, color: colors.foreground } : undefined}>{subject}</Text> : null}
+          </Text>
         </View>
-        <Text style={{ flex: 1, color: toneColor, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small), fontWeight: "600" }}>
-          {outcome}
-          {time === null ? null : <Text style={{ color: colors.foregroundMuted, fontWeight: "400" }}>{`  ${time}`}</Text>}
-        </Text>
+        {compact ? null : link}
       </View>
+      {compact && link !== null ? <View style={{ flexDirection: "row", marginLeft: MARK_SIZE + SPACE.sm }}>{link}</View> : null}
       {words === null || words === "" ? null : (
-        <Text numberOfLines={WORDS_LINES} style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small), fontStyle: "italic" }}>
-          {`“${words}”`}
-        </Text>
+        <View style={{ marginLeft: MARK_SIZE + SPACE.sm, paddingLeft: SPACE.md - 2, borderLeftWidth: 2, borderLeftColor: colors.border }}>
+          <Text numberOfLines={WORDS_LINES} style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: LINE_HEIGHT }}>
+            {`“${words}”`}
+          </Text>
+        </View>
       )}
-      {actions === null ? null : <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: SPACE.sm }}>{actions}</View>}
     </View>
   );
 }
