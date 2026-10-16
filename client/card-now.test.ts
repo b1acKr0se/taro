@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Card } from "../shared/contracts";
 import type { StoredDecision } from "../shared/state";
-import { cardFooterLine, cardFooterParts, cardNowLine, pauseRow, questionContext } from "./card-now";
+import { cardFooterLine, cardFooterParts, cardNowLine, pauseRow, phaseOf, questionContext } from "./card-now";
 
 const NOW = Date.parse("2026-01-01T12:00:00Z");
 
@@ -346,6 +346,15 @@ describe("cardNowLine", () => {
 });
 
 describe("park lines (TR-088, TR-166)", () => {
+  it("badges a ticket parked before it started as not started, never Queued", () => {
+    const parked = { state: "paused" as const, since: null, withoutHandoff: false, notStarted: true };
+    expect(phaseOf({ status: "Queued", pause: parked })).toBe("Not started");
+    expect(phaseOf({ status: "In Progress", pause: { ...parked, notStarted: false } })).toBe("In Progress");
+    expect(phaseOf({ status: "Queued", pause: null })).toBe("Queued");
+    // Resumed with no free slot, it starts next: Queued again.
+    expect(phaseOf({ status: "Queued", pause: { ...parked, state: "queued-to-resume" } })).toBe("Queued");
+  });
+
   it("says parking over the owner's own line and questions", () => {
     const line = cardNowLine(card({ pause: { state: "pausing", since: "2026-01-01T11:58:00Z", withoutHandoff: false, notStarted: false }, lastStatus: status, decisions: [decision({})] }), NOW);
     expect(line).toEqual({ kind: "pause", state: "pausing", headline: "Parking: the owner is writing its handoff", detail: "asked 2m ago · parks without one after 10 min" });

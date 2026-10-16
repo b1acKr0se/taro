@@ -209,6 +209,13 @@ describe("Pause", () => {
     await expect(actions.resume(paseo, "notes", "NA-1")).rejects.toThrow("NA-1 is not parked.");
   });
 
+  it("keeps the manager's hold on a ticket parked and resumed (TR-166)", async () => {
+    tickets = [ticket("NA-1", "Queued", "\n\nHOLD 2026-01-05T09:00Z — overlaps NA-2; start once NA-2 is Done.")];
+    await actions.pause(paseo, "notes", "NA-1");
+    expect((await actions.resume(paseo, "notes", "NA-1")).message).toBe("NA-1 is back in Queued, still held by the manager: overlaps NA-2; start once NA-2 is Done.");
+    expect(find("NA-1").notes).toMatch(/\nHOLD \S+ — overlaps NA-2; start once NA-2 is Done\.$/);
+  });
+
   it("asks a Queued ticket's just-dispatched owner for a handoff like any other", async () => {
     tickets = [ticket("NA-1", "Queued", EXECUTION("NA-1"))];
     live = [agent("owner-1", "NA-1")];

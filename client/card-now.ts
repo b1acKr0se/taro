@@ -180,6 +180,11 @@ export function questionContext(decision: Pick<StoredDecision, "blocking" | "ask
   return joined([decision.blocking ? "Blocking" : null, asked === null ? null : `asked ${asked}`]);
 }
 
+/** The phase a badge shows: the ticket's status, except that one parked before it started is not queued (TR-166). */
+export function phaseOf(ticket: { status: string; pause: PauseView | null }): string {
+  return ticket.status === "Queued" && ticket.pause?.state === "paused" ? "Not started" : ticket.status;
+}
+
 /** Parking, parked or queued to resume (TR-088, TR-166): what happens next, and since when. */
 function pauseLines(pause: PauseView, now: number): Lines {
   const since = pause.since === null ? null : ago(pause.since, now);

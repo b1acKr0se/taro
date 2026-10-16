@@ -18,7 +18,7 @@ import { Text, View } from "react-native";
 import { acceptTicket, nudgeAgent, relaunchOwner, resumeTicket, type Card, type StatsSummary } from "../shared/contracts";
 import { pullRequestMark } from "../shared/pull-request-state";
 import { PhaseBadge } from "./badges";
-import { cardFooterLine, cardNowLine, type NowLine } from "./card-now";
+import { cardFooterLine, cardNowLine, phaseOf, type NowLine } from "./card-now";
 import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
@@ -142,7 +142,7 @@ export function TicketCard({
         {card.id}
         {card.parent === null ? "" : `  ↳ ${card.parent}`}
       </Text>
-      <PhaseBadge theme={theme} status={card.status} />
+      <PhaseBadge theme={theme} status={phaseOf(card)} />
     </View>
   );
   // One PR mark on every card: a Done card's sits on its stats line, any other card's ends its footer. Its icon

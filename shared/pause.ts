@@ -150,6 +150,17 @@ export function unparkedReleaseText(at: string): string {
 }
 
 /**
+ * What Resume appends to a ticket parked before it started: the RELEASE above, or, when the manager
+ * held it before the park (a HOLD of its own, not released), that hold again, so Resume never lifts it.
+ */
+export function unparkedRecordText(at: string, notes: string | null): string {
+  const records = noteRecords(notes).filter((record) => /^(?:HOLD|RELEASE)\b/.test(record));
+  const before = records.slice(0, -1);
+  const earlier = holdReason(before.join("\n\n"));
+  return earlier === null || isParkReason(earlier) ? unparkedReleaseText(at) : `HOLD ${at} — ${earlier}`;
+}
+
+/**
  * The HOLD that puts a ticket queued to resume back to Paused, before any owner started: it resumes
  * from what the earlier pause left, a HANDOFF or, without one, the latest milestone.
  */

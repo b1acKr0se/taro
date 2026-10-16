@@ -24,7 +24,7 @@ import { markedAgainst } from "../shared/plan-changes";
 import type { StoredDecision } from "../shared/state";
 import { foldList, ticketSections, ticketSummary, type TicketSectionKey, type TicketSummary } from "../shared/ticket-summary";
 import { PhaseBadge } from "./badges";
-import { pauseRow } from "./card-now";
+import { pauseRow, phaseOf } from "./card-now";
 import { EvidenceBlock } from "./evidence-view";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
@@ -357,7 +357,7 @@ function SummaryBlock({
   return (
     <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface1, padding: SPACE.md, gap: SPACE.sm }}>
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: SPACE.sm }}>
-        <PhaseBadge theme={theme} status={status} />
+        <PhaseBadge theme={theme} status={phaseOf({ status, pause })} />
         {labels.map((each) => (
           <Chip key={each} theme={theme} icon="Tag" text={each} color={colors.foregroundMuted} />
         ))}

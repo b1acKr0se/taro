@@ -18,6 +18,7 @@ import {
   resumedReleaseText,
   resumeRefusal,
   resumesNow,
+  unparkedRecordText,
   unparkedReleaseText,
 } from "./pause";
 import { holdReason } from "./queue-check";
@@ -189,6 +190,25 @@ describe("resumeRefusal", () => {
       "NA-1 is already queued to resume.",
     );
     expect(resumeRefusal(paused, false, true)).toContain("live owner");
+  });
+});
+
+describe("unparkedRecordText", () => {
+  const parked = parkedUnstartedHoldText("2026-01-05T10:04Z");
+
+  it("releases a ticket parked before it started back into the queue", () => {
+    expect(unparkedRecordText("2026-01-05T11:00Z", parked)).toBe(unparkedReleaseText("2026-01-05T11:00Z"));
+    expect(unparkedRecordText("2026-01-05T11:00Z", notes("HOLD 2026-01-05T09:00Z — one rewrite at a time", "RELEASE 2026-01-05T09:30Z — rewrite landed", parked))).toBe(
+      unparkedReleaseText("2026-01-05T11:00Z"),
+    );
+  });
+
+  it("puts back the manager's own hold from before the park, so Resume never lifts it", () => {
+    const held = notes("HOLD 2026-01-05T09:00Z — overlaps NA-2; start once NA-2 is Done.", parked);
+    const record = unparkedRecordText("2026-01-05T11:00Z", held);
+    expect(record).toBe("HOLD 2026-01-05T11:00Z — overlaps NA-2; start once NA-2 is Done.");
+    expect(holdReason(notes(held, record))).toBe("overlaps NA-2; start once NA-2 is Done.");
+    expect(pausedHold(notes(held, record))).toBeNull();
   });
 });
 

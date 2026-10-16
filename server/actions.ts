@@ -29,7 +29,7 @@ import {
   pauseView,
   queuedToResume,
   resumedReleaseText,
-  unparkedReleaseText,
+  unparkedRecordText,
   resumeRefusal,
   resumesNow,
   type PauseProgress,
@@ -38,6 +38,7 @@ import {
   emptyQueueWatch,
   managerCondition,
   type ManagerCondition,
+  holdReason,
   markRestarted,
   alertRaisedAt,
   markWoken,
@@ -480,8 +481,10 @@ export class Actions {
     const at = new Date().toISOString().slice(0, 16) + "Z";
     // Parked before it started (TR-166): no handoff to resume from, so it rejoins the queue and the manager starts it.
     if (pausedHold(notes)?.notStarted === true) {
-      await appendTicketNote(paths.tracker, detail.id, unparkedReleaseText(at));
-      return { message: `${detail.id} is back in Queued: the manager starts it when a slot frees.`, agentId: null };
+      const record = unparkedRecordText(at, notes);
+      await appendTicketNote(paths.tracker, detail.id, record);
+      const held = record.startsWith("HOLD");
+      return { message: held ? `${detail.id} is back in Queued, still held by the manager: ${holdReason(record) ?? ""}` : `${detail.id} is back in Queued: the manager starts it when a slot frees.`, agentId: null };
     }
     const tickets = await listTickets(paths.tracker);
     const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners, true);
