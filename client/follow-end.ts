@@ -165,6 +165,7 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
     pendingReveals.current += 1;
     setTimeout(() => {
       pendingReveals.current -= 1;
+      offset.current = y;
       scroller.current?.scrollTo({ y, animated: false });
     }, 0);
   }
@@ -172,29 +173,46 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
   /** Scrolls to an offset the reader asked for (a jump link), leaving the end unfollowed. */
   function scrollTo(y: number): void {
     pinnedToEnd.current = false;
+    // Where it is heading, so content changing during the animation is not judged from the end it left.
+    offset.current = y;
     scroller.current?.scrollTo({ y, animated: true });
+  }
+
+  /**
+   * Where a scroll event puts the reader. The phone's scroll events are throttled with no last one
+   * (React Native drops one within `scrollEventThrottle` of the one before), so a drag or fling that
+   * stops at the end is reported short of it, sometimes past the slack (TR-167): the end of the drag
+   * and of the fling, always sent, are judged too.
+   */
+  function scrolled(event: NativeSyntheticEvent<NativeScrollEvent>): void {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    // A hidden pane's scroll view reports nothing about where the reader was.
+    if (hidden.current || layoutMeasurement.height === 0) return;
+    const kind = scrollEventKind(contentOffset.y, Math.max(0, contentSize.height - layoutMeasurement.height), revealOffsets.current, pendingReveals.current);
+    // A stale event still says where the view is, as a reveal to the same offset fires none; it only must not decide following.
+    if (kind !== "stale") {
+      if (kind === "reader") readerScrolled.current = true;
+      pinnedToEnd.current = isAtEnd(contentOffset.y, layoutMeasurement.height, contentSize.height, knownHeight.current);
+      setAway(!pinnedToEnd.current);
+    }
+    offset.current = contentOffset.y;
+    onScrolled?.(contentOffset.y, layoutMeasurement.height);
   }
 
   /** Spread onto the transcript's `ScrollView`. */
   const scrollProps = {
     ref: scroller,
     scrollEventThrottle: 100,
-    onScroll(event: NativeSyntheticEvent<NativeScrollEvent>): void {
-      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-      // A hidden pane's scroll view reports nothing about where the reader was.
-      if (hidden.current || layoutMeasurement.height === 0) return;
-      const kind = scrollEventKind(contentOffset.y, Math.max(0, contentSize.height - layoutMeasurement.height), revealOffsets.current, pendingReveals.current);
-      // A stale event still says where the view is, as a reveal to the same offset fires none; it only must not decide following.
-      if (kind !== "stale") {
-        if (kind === "reader") readerScrolled.current = true;
-        pinnedToEnd.current = isAtEnd(contentOffset.y, layoutMeasurement.height, contentSize.height, knownHeight.current);
-        setAway(!pinnedToEnd.current);
-      }
-      offset.current = contentOffset.y;
-      onScrolled?.(contentOffset.y, layoutMeasurement.height);
-    },
+    onScroll: scrolled,
+    onScrollEndDrag: scrolled,
+    onMomentumScrollEnd: scrolled,
     onContentSizeChange(_width: number, height: number): void {
       knownHeight.current = height;
+      // Content that shrank under a reader scrolled up can bring the end into view with no scroll event.
+      if (!pinnedToEnd.current && !hidden.current && height > 0 && pendingReveals.current === 0 && isAtEnd(offset.current, viewport.current, height, height)) {
+        pinnedToEnd.current = true;
+        setAway(false);
+      }
       keepAtEnd();
     },
     onLayout(event: LayoutChangeEvent): void {

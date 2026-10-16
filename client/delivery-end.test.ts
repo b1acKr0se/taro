@@ -35,7 +35,7 @@ describe("ending a delivery when changes are sent", () => {
 
 describe("a scroll reported while a reveal is pending (TR-131)", () => {
   it("still records where the view is, and only leaves following alone", () => {
-    const handler = follow.slice(follow.indexOf("onScroll(event"), follow.indexOf("onContentSizeChange("));
+    const handler = follow.slice(follow.indexOf("function scrolled(event"), follow.indexOf("/** Spread onto the transcript"));
     expect(handler).not.toMatch(/kind === "stale"\) return/);
     const decides = handler.slice(handler.indexOf('if (kind !== "stale") {'), handler.indexOf("offset.current = contentOffset.y;"));
     expect(decides).toContain("pinnedToEnd.current = isAtEnd(");
