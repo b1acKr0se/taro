@@ -131,15 +131,16 @@ export function localMergeInstruction(notes: string | null, baseBranch: string, 
   );
 }
 
-/** What the plugin records when the user presses Accept (TR-031): when, and what the owner merges, if anything. */
+/** What the plugin records when the user presses Accept (TR-031): when, and what merges, if anything. */
 export interface AcceptedRecord {
   at: string;
   /** "into main", "the pull request", or null when the owner only closes the ticket. */
   merging: string | null;
 }
 
-export function acceptedRecordText(at: string, merging: string | null): string {
-  return `ACCEPTED ${at} — the user accepted; merging: ${merging ?? "none"}`;
+/** `byPlugin`: the plugin runs Accept's steps itself (TR-141), so a restart picks them up again. */
+export function acceptedRecordText(at: string, merging: string | null, byPlugin = false): string {
+  return `ACCEPTED ${at} — the user accepted; merging: ${merging ?? "none"}${byPlugin ? "; by: the plugin" : ""}`;
 }
 
 /**
@@ -154,13 +155,33 @@ export function acceptedRecord(notes: string | null): AcceptedRecord | null {
     const record = records[index] ?? "";
     if (/^(?:EVIDENCE|CHANGES-REQUESTED|NOT-MERGED|NOT-SYNCED)\b/.test(record)) return null;
     if (/^EXECUTION\b/.test(record) && REVIEW_HEAD.test(record)) return null;
-    const match = /^ACCEPTED\s+(\S+)[^\n]*?merging:\s*([^\n]+)/.exec(record);
+    const match = /^ACCEPTED\s+(\S+)[^\n]*?merging:\s*([^;\n]+)/.exec(record);
     if (match !== null) {
       const merging = (match[2] ?? "").trim();
       return { at: match[1] ?? "", merging: merging === "none" || merging === "" ? null : merging };
     }
   }
   return null;
+}
+
+/**
+ * Whether the plugin's own Accept steps (TR-141) were cut off: the ticket still merges after an
+ * ACCEPTED record the plugin runs, and neither an outcome nor a hand-off to an owner followed it.
+ */
+export function pluginAcceptPending(notes: string | null): boolean {
+  if (acceptedRecord(notes) === null) return false;
+  const records = noteRecords(notes);
+  for (let index = records.length - 1; index >= 0; index--) {
+    const record = records[index] ?? "";
+    if (/^(?:ACCEPT-HANDOFF|ACCEPTANCE)\b/.test(record)) return false;
+    if (/^ACCEPTED\b/.test(record)) return /;\s*by:\s*the plugin\s*$/.test(record.split("\n")[0] ?? "");
+  }
+  return false;
+}
+
+/** The ticket's branch from the newest EXECUTION record that names one (`branch taro/sh-12`). */
+export function executionBranch(notes: string | null): string | null {
+  return newestExecutionMatch(notes, /\bbranch\b[\s:=`*"']*([A-Za-z0-9][A-Za-z0-9._/-]*[A-Za-z0-9_])/i);
 }
 
 /**

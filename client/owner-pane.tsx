@@ -96,7 +96,7 @@ export function OwnerPane({
   // Changes sent end the delivery at once (TR-131), before the board reads the ticket back In Progress: kept for the card as it was then.
   const [changesSentOn, setChangesSentOn] = useState<string | null>(null);
   const deliveryEnded = changesSentOn === `${card.id}@${card.updatedAt ?? ""}`;
-  // Once accepted the owner is merging: nothing is left to accept (TR-031).
+  // Once accepted the ticket is merging: nothing is left to accept (TR-031).
   const accepting = card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null && !deliveryEnded;
   // A Queued ticket nobody owns yet takes a change of spec through the manager (TR-129).
   const specChangeable = offersSpecChange({ status: card.status, parent: card.parent, ownerRunning: card.owner !== null || card.ownerElsewhere !== null, paused: card.pause !== null });

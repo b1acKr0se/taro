@@ -365,7 +365,7 @@ export function ProjectSetup({
             value={draft.acceptAlsoMerges ? "on-accept" : "manual"}
             onChange={(value) => update("acceptAlsoMerges", value === "on-accept")}
             options={[
-              { value: "on-accept", title: "Merge when accepted", description: "After you press Accept, the owner merges once it has checked the reviewed head is unchanged." },
+              { value: "on-accept", title: "Merge when accepted", description: "After you press Accept, Taro merges once it has checked the reviewed head is unchanged." },
               { value: "manual", title: "You merge", description: "Accept closes the ticket; merging stays with you." },
             ]}
           />

@@ -1,99 +1,259 @@
-// TR-031: Accept records ACCEPTED on the ticket so the card says it is merging, except when the owner
-// is told not to merge and to present again (a pull request without a recorded head or URL).
+// TR-031: Accept records ACCEPTED on the ticket so the card says it is merging. TR-141: the plugin
+// runs the merge itself and wakes no owner; a surprise goes to the owner while its cache is warm
+// (last turn under five minutes ago), else to a fresh owner that reads the ticket.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { AcceptOutcome } from "../shared/accept-merge";
+import { acceptLocalBranch, acceptPullRequest } from "./accept-merge";
 import { Actions } from "./actions";
 import { listTaroAgents } from "./agents";
 import type { PaseoAgent, PaseoApi } from "./host-types";
-import { requireProjectConfig } from "./projects";
+import { listProjectConfigs, requireProjectConfig } from "./projects";
 import type { Recovery } from "./recovery";
 import { sendWithoutInterrupting } from "./send";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
 import type { Supervisor } from "./supervision";
-import { appendTicketNote, recordChangesRequested, viewTicket } from "./tickets";
+import { appendTicketNote, closeTicket, listTickets, recordChangesRequested, viewTicket } from "./tickets";
 import type { TrackerWatch } from "./tracker-watch";
 
 vi.mock("./agents", async (original) => ({ ...(await original<typeof import("./agents")>()), listTaroAgents: vi.fn() }));
-vi.mock("./projects", () => ({ listProjectConfigs: async () => [], projectPaths: async () => ({ tracker: "/tracker" }), requireProjectConfig: vi.fn() }));
-vi.mock("./tickets", () => ({ listTickets: vi.fn(), viewTicket: vi.fn(), appendTicketNote: vi.fn(async () => undefined), recordChangesRequested: vi.fn(async () => undefined) }));
+vi.mock("./projects", () => ({ listProjectConfigs: vi.fn(async () => []), projectPaths: async () => ({ tracker: "/tracker" }), requireProjectConfig: vi.fn() }));
+vi.mock("./tickets", () => ({
+  listTickets: vi.fn(async () => []),
+  viewTicket: vi.fn(),
+  appendTicketNote: vi.fn(async () => undefined),
+  closeTicket: vi.fn(async () => undefined),
+  recordChangesRequested: vi.fn(async () => undefined),
+}));
 vi.mock("./evidence", () => ({ requireCompleteEvidence: async () => undefined }));
 vi.mock("./send", () => ({ sendWithoutInterrupting: vi.fn(async () => undefined), sendFromPlugin: vi.fn(async () => undefined) }));
-vi.mock("./package-files", async (original) => ({ ...(await original<typeof import("./package-files")>()), message: async (_template: string, values: Record<string, string>) => values.mergeInstruction ?? "" }));
+vi.mock("./accept-merge", () => ({ acceptPullRequest: vi.fn(), acceptLocalBranch: vi.fn() }));
+vi.mock("./models", () => ({ bypassModeId: async () => null }));
+vi.mock("./environment", () => ({ taroEnvironment: async () => ({}) }));
+vi.mock("./package-files", async (original) => ({
+  ...(await original<typeof import("./package-files")>()),
+  skillDirectory: async () => "/skill",
+  message: async (template: string, values: Record<string, string>) => `${template} ${JSON.stringify(values)}`,
+}));
 
-const owner = { id: "owner-1", status: "idle", updatedAt: "2026-01-01T00:00:00Z", labels: { "taro.project": "demo", "taro.role": "owner", "taro.ticket": "DM-1" } } as unknown as PaseoAgent;
 const head = "b".repeat(40);
+const url = "https://example.test/o/r/pull/7";
+const now = Date.now();
 let actions: Actions;
+let lastTurnEndedAt: string | null;
+let ownerStatus: string;
+const archived: string[] = [];
+const created: { prompt: string; labels: Record<string, string> }[] = [];
+
+const paseo = {
+  agents: { ref: (id: string) => ({ archive: async () => void archived.push(id) }) },
+  workspaces: { ref: () => ({ agents: { create: async (input: { prompt: string; labels: Record<string, string> }) => void created.push(input) } }) },
+} as unknown as PaseoApi;
+
+function owner(): PaseoAgent {
+  return { id: "owner-1", status: ownerStatus, workspaceId: "wks_1", updatedAt: new Date(now - 3_600_000).toISOString(), labels: { "taro.project": "demo", "taro.role": "owner", "taro.ticket": "DM-1" } } as unknown as PaseoAgent;
+}
 
 function config(parts: Record<string, unknown>) {
-  vi.mocked(requireProjectConfig).mockResolvedValue({ project: "demo", baseBranch: "main", repoPath: "/repo", acceptAlsoMerges: true, delivery: "local-only", ...parts } as never);
+  vi.mocked(requireProjectConfig).mockResolvedValue({ project: "demo", baseBranch: "main", repoPath: "/repo", acceptAlsoMerges: true, delivery: "local-only", mergeMethod: "merge", owner: { model: "claude/sonnet", thinking: "" }, ...parts } as never);
 }
 
 function ticket(notes: string, labels: string[] = []) {
-  vi.mocked(viewTicket).mockResolvedValue({ implementationNotes: notes, finalSummary: null, labels } as never);
+  vi.mocked(viewTicket).mockResolvedValue({ title: "Demo", status: "Awaiting acceptance", implementationNotes: notes, finalSummary: null, labels } as never);
+}
+
+function outcome(result: AcceptOutcome) {
+  vi.mocked(acceptLocalBranch).mockResolvedValue(result);
+  vi.mocked(acceptPullRequest).mockResolvedValue(result);
 }
 
 function written(): string[] {
   return vi.mocked(appendTicketNote).mock.calls.map((call) => call[2]);
 }
 
+async function accept(): Promise<void> {
+  await actions.accept(paseo, "demo", "DM-1");
+  await actions.acceptRunning("demo", "DM-1");
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(listTaroAgents).mockResolvedValue([owner]);
-  actions = new Actions({} as PluginState, {} as Supervisor, {} as TrackerWatch, {} as Stats, {} as Recovery);
+  archived.length = 0;
+  created.length = 0;
+  lastTurnEndedAt = new Date(now - 3 * 3_600_000).toISOString();
+  ownerStatus = "idle";
+  vi.mocked(listTaroAgents).mockImplementation(async () => [owner()]);
+  const state = { agent: async () => ({ lastTurnEndedAt }), updateDecisions: async (change: (decisions: never[]) => unknown) => change([]), forgetAgent: async () => undefined } as unknown as PluginState;
+  const supervisor = { withdrawDecisionsOf: async () => undefined } as unknown as Supervisor;
+  actions = new Actions(state, supervisor, {} as TrackerWatch, {} as Stats, {} as Recovery);
 });
 
-describe("accept", () => {
-  it("records ACCEPTED merging into the base branch for local-only delivery, after telling the owner", async () => {
+describe("accept run by the plugin", () => {
+  it("fast-forwards a local branch and sets Done without messaging the owner", async () => {
+    config({});
+    ticket(`EXECUTION 2026-01-01T00:00Z — branch taro/dm-1, review-head: ${head}`);
+    outcome({ kind: "done", acceptance: "ACCEPTANCE x — merge: merged a → b" });
+    await accept();
+    expect(written()).toHaveLength(1);
+    expect(written()[0]).toMatch(/^ACCEPTED \S+ — the user accepted; merging: into main; by: the plugin$/);
+    expect(vi.mocked(acceptLocalBranch).mock.calls[0]?.[0]).toMatchObject({ branch: "taro/dm-1", head, baseBranch: "main", repoPath: "/repo", ticket: "DM-1" });
+    expect(vi.mocked(closeTicket)).toHaveBeenCalledWith("/tracker", "DM-1", "ACCEPTANCE x — merge: merged a → b");
+    expect(vi.mocked(sendWithoutInterrupting)).not.toHaveBeenCalled();
+    expect(created).toEqual([]);
+  });
+
+  it("falls back to the taro branch name when EXECUTION names none", async () => {
     config({});
     ticket(`EXECUTION 2026-01-01T00:00Z — review-head: ${head}`);
-    await actions.accept({} as PaseoApi, "demo", "DM-1");
-    expect(vi.mocked(sendWithoutInterrupting)).toHaveBeenCalledOnce();
-    expect(vi.mocked(sendWithoutInterrupting).mock.calls[0]?.[2]).toContain(`still the recorded review head ${head}`);
-    expect(written()).toHaveLength(1);
-    expect(written()[0]).toMatch(/^ACCEPTED \S+ — the user accepted; merging: into main$/);
+    outcome({ kind: "done", acceptance: "ACCEPTANCE x" });
+    await accept();
+    expect(vi.mocked(acceptLocalBranch).mock.calls[0]?.[0]).toMatchObject({ branch: "taro/dm-1" });
   });
 
-  it("records nothing for local-only delivery without a review head, telling the owner to present again (TR-109)", async () => {
-    config({});
-    ticket("");
-    await actions.accept({} as PaseoApi, "demo", "DM-1");
-    expect(vi.mocked(sendWithoutInterrupting).mock.calls[0]?.[2]).toMatch(/Do not merge: the ticket records no review-head/);
-    expect(written()).toEqual([]);
+  it("merges a pull request with the project's method", async () => {
+    config({ delivery: "pull-request", mergeMethod: "squash", baseBranch: "develop" });
+    ticket(`EXECUTION 2026-01-01T00:00Z — pr: ${url}, review-head: ${head}`);
+    outcome({ kind: "done", acceptance: "ACCEPTANCE x — merge: merged c" });
+    await accept();
+    expect(written()[0]).toMatch(/merging: the pull request; by: the plugin$/);
+    expect(vi.mocked(acceptPullRequest).mock.calls[0]?.[0]).toMatchObject({ url, head, method: "squash", baseBranch: "develop" });
+    expect(vi.mocked(closeTicket)).toHaveBeenCalledOnce();
+    expect(vi.mocked(sendWithoutInterrupting)).not.toHaveBeenCalled();
   });
 
-  it("records the pull request when its head and URL are recorded", async () => {
-    config({ delivery: "pull-request", mergeMethod: "merge" });
-    ticket(`EXECUTION 2026-01-01T00:00Z — pr: https://example.test/o/r/pull/7, review-head: ${head}`);
-    await actions.accept({} as PaseoApi, "demo", "DM-1");
-    expect(written()[0]).toMatch(/merging: the pull request$/);
-  });
-
-  it("tells the owner the project's merge method and the main checkout to bring up to origin (TR-110)", async () => {
-    config({ delivery: "pull-request", mergeMethod: "squash", baseBranch: "develop", repoPath: "/home/user/notes-app" });
-    ticket(`EXECUTION 2026-01-01T00:00Z — pr: https://example.test/o/r/pull/7, review-head: ${head}`);
-    await actions.accept({} as PaseoApi, "demo", "DM-1");
-    const sent = vi.mocked(sendWithoutInterrupting).mock.calls[0]?.[2];
-    expect(sent).toContain(`gh pr merge https://example.test/o/r/pull/7 --squash --match-head-commit ${head}`);
-    expect(sent).toContain("git -C /home/user/notes-app merge --ff-only origin/develop");
-  });
-
-  it("records nothing when the owner is told not to merge and to present again", async () => {
-    config({ delivery: "pull-request" });
-    ticket("EXECUTION 2026-01-01T00:00Z — pr: https://example.test/o/r/pull/7");
-    await actions.accept({} as PaseoApi, "demo", "DM-1");
-    expect(vi.mocked(sendWithoutInterrupting).mock.calls[0]?.[2]).toMatch(/^Do not merge/);
-    expect(written()).toEqual([]);
-  });
-
-  it("records a plain acceptance for an investigation and when accepting does not merge", async () => {
+  it("closes an investigation, and a project that does not merge, with merge: none and nothing run", async () => {
     config({});
     ticket("", ["investigation"]);
-    await actions.accept({} as PaseoApi, "demo", "DM-1");
+    await accept();
     config({ acceptAlsoMerges: false });
     ticket("");
-    await actions.accept({} as PaseoApi, "demo", "DM-1");
-    expect(written().map((text) => text.replace(/^ACCEPTED \S+/, "ACCEPTED"))).toEqual(["ACCEPTED — the user accepted; merging: none", "ACCEPTED — the user accepted; merging: none"]);
+    await accept();
+    expect(written().map((text) => text.replace(/^ACCEPTED \S+/, "ACCEPTED"))).toEqual(["ACCEPTED — the user accepted; merging: none; by: the plugin", "ACCEPTED — the user accepted; merging: none; by: the plugin"]);
+    const closed = vi.mocked(closeTicket).mock.calls.map((call) => call[2]);
+    expect(closed).toHaveLength(2);
+    expect(closed[0]).toMatch(/^ACCEPTANCE \S+ — user: "I accept DM-1\." An investigation: nothing to merge;.*merge: none$/);
+    expect(closed[1]).toMatch(/does not merge on Accept;.*merge: none$/);
+    expect(vi.mocked(acceptLocalBranch)).not.toHaveBeenCalled();
+    expect(vi.mocked(sendWithoutInterrupting)).not.toHaveBeenCalled();
+  });
+
+  it("records NOT-MERGED and NOT-SYNCED itself, waking no owner", async () => {
+    config({});
+    ticket(`EXECUTION 2026-01-01T00:00Z — review-head: ${head}`);
+    outcome({ kind: "not-merged", reason: "the main checkout is dirty; clean it, then Accept again" });
+    await accept();
+    config({ delivery: "pull-request" });
+    ticket(`EXECUTION 2026-01-01T00:00Z — pr: ${url}, review-head: ${head}`);
+    outcome({ kind: "not-synced", reason: "main has commits origin lacks" });
+    await accept();
+    expect(written()[1]).toMatch(/^NOT-MERGED \S+ — the main checkout is dirty; clean it, then Accept again$/);
+    expect(written()[3]).toMatch(/^NOT-SYNCED \S+ — main has commits origin lacks$/);
+    expect(vi.mocked(closeTicket)).not.toHaveBeenCalled();
+    expect(vi.mocked(sendWithoutInterrupting)).not.toHaveBeenCalled();
+    expect(created).toEqual([]);
+  });
+
+  it("refuses a second Accept while the first runs", async () => {
+    config({});
+    ticket(`EXECUTION 2026-01-01T00:00Z — review-head: ${head}`);
+    let finish: (value: AcceptOutcome) => void = () => undefined;
+    vi.mocked(acceptLocalBranch).mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    await actions.accept(paseo, "demo", "DM-1");
+    await expect(actions.accept(paseo, "demo", "DM-1")).rejects.toThrow(/already being accepted/);
+    finish({ kind: "done", acceptance: "ACCEPTANCE x" });
+    await actions.acceptRunning("demo", "DM-1");
+    expect(actions.acceptRunning("demo", "DM-1")).toBeUndefined();
+  });
+});
+
+describe("a surprise goes to a warm owner or a fresh one", () => {
+  const found = "main moved to c since taro/dm-1; rebase onto it";
+
+  it("tells the owner when its last turn ended under five minutes ago", async () => {
+    config({});
+    ticket(`EXECUTION 2026-01-01T00:00Z — review-head: ${head}`);
+    lastTurnEndedAt = new Date(now - 4 * 60_000).toISOString();
+    outcome({ kind: "surprise", found });
+    await accept();
+    const sent = vi.mocked(sendWithoutInterrupting).mock.calls[0];
+    expect(sent?.[1]).toBe("owner-1");
+    expect(sent?.[2]).toContain("messages/accept.md");
+    expect(sent?.[2]).toContain(found);
+    expect(sent?.[2]).toContain(`still the recorded review head ${head}`);
+    expect(created).toEqual([]);
+    expect(written()[1]).toMatch(/^ACCEPT-HANDOFF \S+ — the plugin stopped: main moved .*; handed to the owner owner-1$/);
+  });
+
+  it("tells a mid-turn owner, however long ago its last turn ended", async () => {
+    config({});
+    ticket(`EXECUTION 2026-01-01T00:00Z — review-head: ${head}`);
+    ownerStatus = "running";
+    outcome({ kind: "surprise", found });
+    await accept();
+    expect(vi.mocked(sendWithoutInterrupting)).toHaveBeenCalledOnce();
+    expect(created).toEqual([]);
+  });
+
+  it("starts a fresh owner with the found problem when the owner has been idle longer, archiving the old one", async () => {
+    config({ delivery: "pull-request" });
+    ticket(`EXECUTION 2026-01-01T00:00Z — workspace wks_1, pr: ${url}, review-head: ${head}`);
+    lastTurnEndedAt = new Date(now - 6 * 60_000).toISOString();
+    outcome({ kind: "surprise", found: "gh pr merge failed: conflict" });
+    await accept();
+    expect(vi.mocked(sendWithoutInterrupting)).not.toHaveBeenCalled();
+    expect(archived).toEqual(["owner-1"]);
+    expect(created).toHaveLength(1);
+    expect(created[0]?.labels).toMatchObject({ "taro.role": "owner", "taro.ticket": "DM-1" });
+    expect(created[0]?.prompt).toContain("messages/relaunch-owner.md");
+    expect(created[0]?.prompt).toContain("messages/accept-fresh-owner.md");
+    expect(created[0]?.prompt).toContain("gh pr merge failed: conflict");
+    expect(created[0]?.prompt).toContain(`--match-head-commit ${head}`);
+    expect(written()[1]).toMatch(/handed to a fresh owner \S+ \(the owner owner-1 was idle\)$/);
+  });
+
+  it("hands a ticket without a review head to an owner before recording ACCEPTED, so the card keeps Accept", async () => {
+    config({});
+    ticket("EXECUTION 2026-01-01T00:00Z — workspace wks_1");
+    await actions.accept(paseo, "demo", "DM-1");
+    expect(written().some((text) => text.startsWith("ACCEPTED"))).toBe(false);
+    expect(created[0]?.prompt).toContain("Do not merge: the ticket records no review-head");
+    expect(vi.mocked(acceptLocalBranch)).not.toHaveBeenCalled();
+  });
+
+  it("hands over a pull request without a recorded URL the same way", async () => {
+    config({ delivery: "pull-request" });
+    ticket(`EXECUTION 2026-01-01T00:00Z — review-head: ${head}`);
+    lastTurnEndedAt = new Date(now - 60_000).toISOString();
+    await actions.accept(paseo, "demo", "DM-1");
+    expect(written().some((text) => text.startsWith("ACCEPTED"))).toBe(false);
+    expect(vi.mocked(sendWithoutInterrupting).mock.calls[0]?.[2]).toContain("the ticket records no PR URL");
+  });
+});
+
+describe("resuming after a restart", () => {
+  it("runs the steps again for a ticket whose plugin Accept was cut off, and only for it", async () => {
+    config({});
+    vi.mocked(listProjectConfigs).mockResolvedValue([{ project: "demo" }] as never);
+    vi.mocked(listTickets).mockResolvedValue([
+      { id: "DM-1", status: "Awaiting acceptance" },
+      { id: "DM-2", status: "Awaiting acceptance" },
+      { id: "DM-3", status: "Done" },
+    ] as never);
+    const notes: Record<string, string> = {
+      "DM-1": `EXECUTION 2026-01-01T00:00Z — review-head: ${head}\nACCEPTED 2026-01-02T00:00Z — the user accepted; merging: into main; by: the plugin`,
+      // An owner-run Accept from before TR-141: the owner is on it.
+      "DM-2": `EXECUTION 2026-01-01T00:00Z — review-head: ${head}\nACCEPTED 2026-01-02T00:00Z — the user accepted; merging: into main`,
+    };
+    vi.mocked(viewTicket).mockImplementation(async (_tracker, id) => ({ status: "Awaiting acceptance", implementationNotes: notes[id] ?? "", finalSummary: null, labels: [] }) as never);
+    outcome({ kind: "done", acceptance: "ACCEPTANCE x" });
+    const restarted = actions as unknown as { lastStatuses: Map<string, Map<string, string>>; state: PluginState };
+    Object.assign(restarted.state, { ticketStatuses: async () => [], saveTicketStatuses: async () => undefined });
+    vi.spyOn(actions, "onTrackerChanged").mockResolvedValue(undefined as never);
+    await actions.catchUpAfterStart(paseo);
+    await actions.acceptRunning("demo", "DM-1");
+    expect(vi.mocked(acceptLocalBranch)).toHaveBeenCalledOnce();
+    expect(vi.mocked(closeTicket)).toHaveBeenCalledWith("/tracker", "DM-1", "ACCEPTANCE x");
   });
 });
 
