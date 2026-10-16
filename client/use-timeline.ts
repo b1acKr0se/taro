@@ -168,6 +168,8 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
       if (olderInFlight || at === null || first === undefined || !(older?.hasOlder ?? tailHasOlder)) return;
       olderInFlight = true;
       setLoadingOlder(true);
+      // Kept from now, so entries the tail moves past while the page is read are not lost between them.
+      if (older === null) older = { epoch: at, entries: [], hasOlder: tailHasOlder };
       try {
         const page = await timeline.refetch({ direction: "before", cursor: { epoch: at, seq: first.seqStart }, limit: OLDER_PAGE, projection: "projected" });
         // A tail read in the meantime may have started over (a new epoch): the page belongs to the old one.

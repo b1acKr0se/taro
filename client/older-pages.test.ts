@@ -65,6 +65,13 @@ describe("joinTail", () => {
     expect(joined?.hasOlder).toBe(true);
   });
 
+  it("keeps them while the first page is still being read", () => {
+    const reading: OlderPages<Placed> = { epoch: "e1", entries: [], hasOlder: true };
+    const joined = joinTail(reading, entries(100, 249), { epoch: "e1", entries: entries(110, 259), hasOlder: true });
+    const paged = addOlderPage(joined, { seqStart: 100, seqEnd: 100 }, "e1", { epoch: "e1", entries: entries(0, 99), hasOlder: false });
+    expect(seqs(withOlder(paged, entries(110, 259)))).toEqual(seqs(entries(0, 259)));
+  });
+
   it("keeps them over many reads, each moving the tail a little", () => {
     let kept: OlderPages<Placed> | null = older;
     let previous = entries(100, 249);
