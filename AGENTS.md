@@ -40,6 +40,13 @@ EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
   again on reconnect. Change a kept field's type and it starts over; version the slot.
 - Text fields on the phone use `KeyboardScrollView` or `useRevealFocused()` (`client/keyboard.tsx`);
   a plugin cannot import `react-native-keyboard-controller`.
+- Full-screen views (modals, sheets, viewers) clear the phone's status bar through
+  `client/safe-area.tsx` (TR-165): `FullScreenModal` draws under Android's status bar, and `SafeArea`
+  (top), `BottomSafeArea` (a bottom sheet) or `statusBarInset()` keeps content clear of it. React
+  Native's `SafeAreaView` pads only on iOS, and the web shows no status bar, so a header drawn under
+  Android's clock passes every desktop check (TR-042, TR-165). `client/safe-area.test.ts` fails on
+  `Modal`, `SafeAreaView` or `StatusBar` taken from react-native elsewhere. For a plain titled sheet,
+  prefer the host's `Modal` (`@getpaseo/plugin/client/react-native`): it owns the safe area.
 - After any compaction a Claude manager or owner rereads its rules through a SessionStart hook
   (matcher `compact`) the plugin merges into `.claude/settings.local.json` in its working directory
   when its session opens (`server/compact-hook.ts`; Paseo lets a plugin change only a session's env).

@@ -8,7 +8,7 @@ import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { Fragment, memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Keyboard, Platform, SafeAreaView, ScrollView, Text, useWindowDimensions, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
+import { Keyboard, Platform, ScrollView, Text, useWindowDimensions, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
 
 import { attachmentProblem, refuseOversizedImages, type DraftAttachment } from "../shared/attachments";
 import { answeredPermissionAsks, listAgentDecisions, listSentImages, type SentImagesMessage } from "../shared/contracts";
@@ -38,6 +38,7 @@ import { deliveryCards, permissionCards, questionCards, sameAcceptanceRecord, sa
 import { PastAcceptanceCard, PastPermissionCard, PastPlanCard, PastQuestionCard } from "./past-cards";
 import { planLines, type PlanAnswer, type PlanLine } from "./plan-lines";
 import { ReplyBox } from "./reply-box";
+import { BottomSafeArea } from "./safe-area";
 import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
 import { cardFits, cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
@@ -589,7 +590,7 @@ export function AgentChat({
         </ScrollView>
         {follow.away ? <JumpToEnd theme={theme} onPress={follow.jumpToEnd} /> : null}
       </View>
-      <SafeAreaView style={styles.composerFrame}>
+      <BottomSafeArea style={styles.composerFrame}>
         {readOnly !== undefined ? (
           <View style={styles.readOnlyBand}>
             <View style={styles.readOnly}>
@@ -669,7 +670,7 @@ export function AgentChat({
             />
           </View>
         )}
-      </SafeAreaView>
+      </BottomSafeArea>
     </View>
   );
 }

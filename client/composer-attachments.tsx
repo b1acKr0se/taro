@@ -6,12 +6,13 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useRef, useState } from "react";
-import { Image, Modal, SafeAreaView, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { Image, ScrollView, Text, View, useWindowDimensions } from "react-native";
 
 import { base64ByteLength, formatBytes, type DraftAttachment } from "../shared/attachments";
 import { ATTACHMENT_SOURCES, type AttachmentSource } from "./attachment-sources";
 import { COMPOSER_CONTROL_SIZE } from "./composer-height";
 import { Pressable } from "./focus";
+import { BottomSafeArea, FullScreenModal } from "./safe-area";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE } from "./type-scale";
@@ -157,16 +158,16 @@ function AttachmentSheet({
       ))
     );
   return (
-    <Modal visible transparent animationType={anchor === null ? "slide" : "fade"} onRequestClose={onClose}>
+    <FullScreenModal visible transparent animationType={anchor === null ? "slide" : "fade"} onRequestClose={onClose}>
       <Pressable accessibilityLabel="Close" style={styles.backdrop} onPress={onClose}>
         {anchor === null ? (
           // A press on the sheet itself must not reach the backdrop behind it.
           <Pressable onPress={() => undefined} style={styles.sheet}>
-            <SafeAreaView>
+            <BottomSafeArea>
               <View style={styles.handle} />
               <Text style={styles.title}>Add attachment</Text>
               {rows(52, FONT_SIZE.content, 20)}
-            </SafeAreaView>
+            </BottomSafeArea>
           </Pressable>
         ) : (
           <Pressable
@@ -178,7 +179,7 @@ function AttachmentSheet({
           </Pressable>
         )}
       </Pressable>
-    </Modal>
+    </FullScreenModal>
   );
 }
 
