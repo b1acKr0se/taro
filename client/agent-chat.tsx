@@ -792,7 +792,8 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, trans
           ) : (
             <Icon name={summary.state === "failed" ? "X" : "Wrench"} size={11} color={summary.state === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
           )}
-          <Text style={styles.toolTitle} numberOfLines={2}>
+          {/* Never cut: the counts are what the reader wants, and one kind of step each keeps it short. */}
+          <Text style={styles.toolTitle}>
             {summary.title}
           </Text>
           {/* Its own text, so a long summary is cut before the failure is. */}
