@@ -403,7 +403,7 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
           <View style={{ width: content, paddingRight: SIDE }}>
             <View style={[styles.row, { height: HEADER_HEIGHT, alignItems: "flex-end", zIndex: 3 }, stickyStyle({ top: 0 })]}>
               {ticketCell(<Text style={styles.header}>TICKET</Text>, HEADER_HEIGHT - 1, "flex-end", 0, { ...stickyStyle({ left: 0 }), zIndex: 2 })}
-              <View style={{ flexDirection: "row", paddingBottom: SPACE.sm }}>{headerCells}</View>
+              <View style={{ flexDirection: "row", alignItems: "flex-end", paddingBottom: SPACE.sm }}>{headerCells}</View>
             </View>
             {rows.map((row) =>
               row.kind === "detail" ? (
