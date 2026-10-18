@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SHIMMER_GRADIENT } from "./shimmer";
-import { startWebShimmer, webShimmerSupported, type ShimmerElement } from "./web-shimmer";
+import { startWebShimmer, watchWebShimmer, webShimmerSupported, type ShimmerElement } from "./web-shimmer";
 
 /**
  * An element at `left`–`right` in the page drawing `text` itself (or only holding other elements),
@@ -106,5 +106,60 @@ describe("webShimmerSupported", () => {
   it("is false where there is no CSS, as on a phone", () => {
     vi.stubGlobal("CSS", undefined);
     expect(webShimmerSupported()).toBe(false);
+  });
+});
+
+describe("watchWebShimmer (TR-184)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** A browser's MutationObserver, fired by hand; its callback runs before the browser paints. */
+  function mutations() {
+    const made: { callback: () => void; options: unknown; disconnect: ReturnType<typeof vi.fn> }[] = [];
+    vi.stubGlobal("MutationObserver", function MutationObserver(this: unknown, callback: () => void) {
+      const observer = { callback, options: undefined as unknown, disconnect: vi.fn() };
+      made.push(observer);
+      return { observe: (_target: unknown, options: unknown) => (observer.options = options), disconnect: observer.disconnect };
+    });
+    return made;
+  }
+
+  it("styles words that appear in the copy after it started, such as a sub-agent's activity arriving", () => {
+    const made = mutations();
+    const label = element(100, 140, "Task");
+    const children = [label];
+    const copy = { getBoundingClientRect: () => ({ left: 100, right: 700 }), querySelectorAll: () => children.map((child) => child.node) };
+    watchWebShimmer(copy, 1000);
+    const activity = element(150, 400, "Reading the notes list");
+    children.push(activity);
+    made[0]?.callback();
+    expect(activity.styles.get("-webkit-text-fill-color")).toBe("transparent");
+    expect(activity.animate).toHaveBeenCalledTimes(1);
+    // The band now ends at the activity's last letter, and the label's old slide is stopped.
+    expect(label.cancel).toHaveBeenCalledTimes(1);
+    expect(label.animate).toHaveBeenLastCalledWith([{ backgroundPosition: "-66px 0" }, { backgroundPosition: "300px 0" }], expect.anything());
+  });
+
+  it("watches the words, never the attributes its own styles change", () => {
+    const made = mutations();
+    watchWebShimmer(row(element(100, 140, "Shell")), 1000);
+    expect(made[0]?.options).toEqual({ childList: true, subtree: true, characterData: true });
+  });
+
+  it("stops watching and sliding when stopped", () => {
+    const made = mutations();
+    const label = element(100, 140, "Shell");
+    const stop = watchWebShimmer(row(label), 1000);
+    stop();
+    expect(made[0]?.disconnect).toHaveBeenCalledTimes(1);
+    expect(label.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("still shimmers where there is no MutationObserver, and does nothing on a phone", () => {
+    vi.stubGlobal("MutationObserver", undefined);
+    const label = element(100, 140, "Shell");
+    watchWebShimmer(row(label), 1000)();
+    expect(label.animate).toHaveBeenCalledTimes(1);
+    expect(label.cancel).toHaveBeenCalledTimes(1);
+    expect(() => watchWebShimmer(null, 1000)()).not.toThrow();
   });
 });

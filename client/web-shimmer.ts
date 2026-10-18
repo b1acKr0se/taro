@@ -87,3 +87,25 @@ export function startWebShimmer(container: unknown, durationMs: number): () => v
   });
   return () => animations.forEach((animation) => animation?.cancel());
 }
+
+/**
+ * The shimmer over `container`, started again whenever its words change: a text that appears in the
+ * copy while the call runs (a sub-agent's activity arriving as the command) is drawn in the phone's
+ * white until it is styled, and a longer text moves the band's end. A MutationObserver's callback
+ * runs before the browser paints, so the new words never show unstyled. Returns what stops it.
+ */
+export function watchWebShimmer(container: unknown, durationMs: number): () => void {
+  let stop = startWebShimmer(container, durationMs);
+  const Observer = (globalThis as { MutationObserver?: new (callback: () => void) => { observe(target: unknown, options: object): void; disconnect(): void } }).MutationObserver;
+  if (Observer === undefined || typeof container !== "object" || container === null) return () => stop();
+  // Not attributes: the shimmer's own styles would start it again forever.
+  const observer = new Observer(() => {
+    stop();
+    stop = startWebShimmer(container, durationMs);
+  });
+  observer.observe(container, { childList: true, subtree: true, characterData: true });
+  return () => {
+    observer.disconnect();
+    stop();
+  };
+}

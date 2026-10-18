@@ -12,7 +12,7 @@
  * and the time redraws when its text changes (`working-time.ts`), not every second.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AccessibilityInfo, Animated, Easing, Platform, Text, View, type LayoutChangeEvent } from "react-native";
 
 import { isWorking } from "../shared/pending-sends";
@@ -21,7 +21,7 @@ import { SPACE } from "./spacing";
 import { SYNCED_LOADER_DOT_COUNT, SYNCED_LOADER_DURATION_MS, syncedLoaderDotSteps } from "./synced-loader-state";
 import { FONT_SIZE } from "./type-scale";
 import { useWorkingElapsed } from "./use-working-elapsed";
-import { startWebShimmer, webShimmerSupported } from "./web-shimmer";
+import { watchWebShimmer, webShimmerSupported } from "./web-shimmer";
 
 const WEB = Platform.OS === "web";
 // The web has no native animation driver and warns when asked for one.
@@ -145,8 +145,9 @@ function ShimmerBand({
 /** The web's copy of the words, laid over them, with Paseo's gradient clipped to its letters (`web-shimmer.ts`). */
 function WebShimmerCopy({ durationMs, size, style, children }: { durationMs: number; size: { width: number; height: number }; style: object | undefined; children: ReactNode }) {
   const copy = useRef<View>(null);
-  // Again when the words' row changes size: where each word starts sets its part of the band.
-  useEffect(() => startWebShimmer(copy.current, durationMs), [durationMs, size.width, size.height]);
+  // Before the browser paints, so the copy never shows as plain white words for a frame; again when the
+  // words' row changes size, as where each word starts sets its part of the band (new words: `watchWebShimmer`).
+  useLayoutEffect(() => watchWebShimmer(copy.current, durationMs), [durationMs, size.width, size.height]);
   return (
     // Hidden from readers and touches: a copy of the words above, for the light only; `aria-hidden` is the web's.
     <View

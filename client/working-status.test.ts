@@ -41,6 +41,10 @@ describe("the loader and the shimmer", () => {
     expect(loading).toMatch(/if \(moving && WEB\) \{/);
   });
 
+  it("styles the web's copy before the browser paints it, and again when its words change (TR-184)", () => {
+    expect(loading).toMatch(/useLayoutEffect\(\(\) => watchWebShimmer\(copy\.current, durationMs\), \[durationMs, size\.width, size\.height\]\);/);
+  });
+
   it("hides the shimmer's copies of the words from screen readers, on the web too", () => {
     const body = (name: string) => loading.slice(loading.indexOf(`function ${name}(`), loading.indexOf("\n}\n", loading.indexOf(`function ${name}(`)));
     expect(body("WebShimmerCopy")).toMatch(/^\s+aria-hidden$/m);
