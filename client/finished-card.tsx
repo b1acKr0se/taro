@@ -2,7 +2,8 @@
  * A card that has been dealt with (TR-149), left in the chat where the live card was. TR-159 drew it as
  * one quiet line rather than a card, so it reads as a record between messages: a toned mark, how it
  * ended, when, and what was asked; the user's own words quoted under it. TR-163 put it in a grey dashed
- * box. One style for plans, deliveries, questions and permission asks.
+ * box. TR-172 put a picked answer under the line too, so every answer sits in one place. One style for
+ * plans, deliveries, questions and permission asks.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
@@ -31,6 +32,7 @@ export function FinishedCard({
   outcome,
   tone,
   time = null,
+  answer = null,
   words = null,
   action = null,
 }: {
@@ -46,6 +48,8 @@ export function FinishedCard({
   outcome: string;
   tone: FinishedTone;
   time?: string | null;
+  /** The option picked, in bold under the line, above the words. */
+  answer?: string | null;
   /** What the user typed with the answer, quoted under the line with its line breaks. */
   words?: string | null;
   /** A link at the line's end (View plan). */
@@ -54,6 +58,8 @@ export function FinishedCard({
   const { colors } = theme;
   const toneColor = tone === "positive" ? colors.statusSuccess : tone === "warning" ? colors.statusWarning : tone === "negative" ? colors.statusDanger : colors.foregroundMuted;
   const hasSubject = subject !== null && subject !== "";
+  const hasAnswer = answer !== null && answer !== "";
+  const hasWords = words !== null && words !== "";
   const label = [outcome, time, lead, subject].filter((part) => part !== null && part !== "").join(", ");
   const link =
     action === null ? null : (
@@ -82,11 +88,18 @@ export function FinishedCard({
         {compact ? null : link}
       </View>
       {compact && link !== null ? <View style={{ flexDirection: "row", marginLeft: MARK_SIZE + SPACE.sm }}>{link}</View> : null}
-      {words === null || words === "" ? null : (
+      {!hasAnswer && !hasWords ? null : (
         <View style={{ marginLeft: MARK_SIZE + SPACE.sm, paddingLeft: SPACE.md - 2, borderLeftWidth: 2, borderLeftColor: colors.border }}>
-          <Text numberOfLines={WORDS_LINES} style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: LINE_HEIGHT }}>
-            {`“${words}”`}
-          </Text>
+          {hasAnswer ? (
+            <Text numberOfLines={WORDS_LINES} style={{ color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: LINE_HEIGHT, fontWeight: "600" }}>
+              {answer}
+            </Text>
+          ) : null}
+          {hasWords ? (
+            <Text numberOfLines={WORDS_LINES} style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: LINE_HEIGHT }}>
+              {`“${words}”`}
+            </Text>
+          ) : null}
         </View>
       )}
     </View>

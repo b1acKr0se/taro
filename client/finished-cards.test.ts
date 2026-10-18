@@ -145,13 +145,13 @@ describe("questionCards", () => {
     StoredDecisionSchema.parse({ id, question: `Question ${id}?`, key: `agent:${id}`, project: "p", ticket: null, agentId: "agent", agentRole: "owner", agentTitle: null, askedAt: "2026-01-19T10:00:00Z", status: "answered", answer: { text: "", label: "Yes", at: "2026-01-19T10:05:00Z" }, ...over });
   const cards = (rows: Parameters<typeof questionCards>[0], decisions: StoredDecision[], live: string[] = []) => questionCards(rows, decisions, new Set(live), clock, now);
 
-  it("says a picked option, with the typed words beside it only when they differ", () => {
+  it("says a picked option under the line, with the typed words beside it only when they differ", () => {
     const rows = [message("a", [block("one"), block("two")])];
     const picked = stored("one", { answer: { text: "Yes", label: "Yes", at: "2026-01-19T10:05:00Z" } });
     const noted = stored("two", { answer: { text: "but later", label: "Yes", at: "2026-01-19T10:06:00Z" } });
     expect(cards(rows, [picked, noted]).get("a")).toEqual([
-      { id: "one", subject: "Question one?", outcome: "Answered: Yes", tone: "positive", time: "10:05", words: null },
-      { id: "two", subject: "Question two?", outcome: "Answered: Yes", tone: "positive", time: "10:06", words: "but later" },
+      { id: "one", subject: "Question one?", outcome: "Answered", tone: "positive", time: "10:05", answer: "Yes", words: null },
+      { id: "two", subject: "Question two?", outcome: "Answered", tone: "positive", time: "10:06", answer: "Yes", words: "but later" },
     ]);
   });
 
@@ -164,16 +164,20 @@ describe("questionCards", () => {
     const pressed = stored("one", { options, answer: { text: "Keep it in memory", label: "In memory", at: "2026-01-19T10:05:00Z" } });
     const withWords = stored("two", { options, answer: { text: "Call it: Notes", label: "Name it…", at: "2026-01-19T10:05:00Z" } });
     const ownWords = stored("three", { options, answer: { text: "Keep it in memory, but cap it at 1 MB", label: "In memory", at: "2026-01-19T10:05:00Z" } });
-    expect(cards(rows, [pressed, withWords, ownWords]).get("a")?.map((card) => card.words)).toEqual([null, "Notes", "Keep it in memory, but cap it at 1 MB"]);
+    expect(cards(rows, [pressed, withWords, ownWords]).get("a")?.map((card) => [card.answer, card.words])).toEqual([
+      ["In memory", null],
+      ["Name it…", "Notes"],
+      ["In memory", "Keep it in memory, but cap it at 1 MB"],
+    ]);
   });
 
-  it("quotes a typed answer without a label", () => {
+  it("quotes a typed answer without a label, with the same outcome as a picked one", () => {
     const typed = stored("one", { answer: { text: "Use SQLite", label: null, at: "2026-01-19T10:05:00Z" } });
-    expect(cards([message("a", [block("one")])], [typed]).get("a")).toEqual([{ id: "one", subject: "Question one?", outcome: "Answered", tone: "positive", time: "10:05", words: "Use SQLite" }]);
+    expect(cards([message("a", [block("one")])], [typed]).get("a")).toEqual([{ id: "one", subject: "Question one?", outcome: "Answered", tone: "positive", time: "10:05", answer: null, words: "Use SQLite" }]);
     const multiline = stored("one", { answer: { text: "Use SQLite.\n\nMove to Postgres later.", label: null, at: "2026-01-19T10:05:00Z" } });
     expect(cards([message("a", [block("one")])], [multiline]).get("a")?.[0]).toMatchObject({ outcome: "Answered", words: "Use SQLite.\n\nMove to Postgres later." });
     const empty = stored("one", { answer: { text: "  ", label: null, at: "2026-01-19T10:05:00Z" } });
-    expect(cards([message("a", [block("one")])], [empty]).get("a")?.[0]).toMatchObject({ outcome: "Answered", words: null });
+    expect(cards([message("a", [block("one")])], [empty]).get("a")?.[0]).toMatchObject({ outcome: "Answered", answer: null, words: null });
   });
 
   it("says withdrawn, and that its agent went away", () => {
@@ -213,7 +217,7 @@ describe("questionCards", () => {
     const out = cards(rows, [stored("one")]);
     expect(out.get("a")?.[0]?.outcome).toBe("Asked again below");
     expect(out.get("b")?.[0]?.outcome).toBe("Asked again below");
-    expect(out.get("c")?.[0]?.outcome).toBe("Answered: Yes");
+    expect(out.get("c")?.[0]).toMatchObject({ outcome: "Answered", answer: "Yes" });
   });
 
   it("dates an asked-again card by the message that asked it again, not a withdrawing one", () => {
@@ -235,7 +239,7 @@ describe("questionCards", () => {
     const withdrawing = "```decision\nid: one\nstatus: withdrawn\n```";
     const rows = [message("a", [block("one"), block("one")]), message("b", [withdrawing])];
     const out = cards(rows, [stored("one")]).get("a");
-    expect(out?.map((card) => card.outcome)).toEqual(["Answered: Yes"]);
+    expect(out?.map((card) => [card.outcome, card.answer])).toEqual([["Answered", "Yes"]]);
   });
 
   it("is empty without rows or decisions", () => {
@@ -302,14 +306,14 @@ describe("permissionCardView", () => {
   const clock = (iso: string) => iso.slice(11, 16);
 
   it("says who allowed or denied a tool, with its time and the user's words", () => {
-    expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z"), clock)).toEqual({ kind: "Permission", subject: "rm -rf /tmp/x", outcome: "Allowed by you", tone: "positive", time: "10:05", words: null });
-    expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z", { outcome: "denied", words: "not there" }), clock)).toMatchObject({ outcome: "Denied by you", tone: "negative", words: "not there" });
+    expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z"), clock)).toEqual({ kind: "Permission", subject: "rm -rf /tmp/x", outcome: "Allowed by you", tone: "positive", time: "10:05", answer: null, words: null });
+    expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z", { outcome: "denied", words: "not there" }), clock)).toMatchObject({ outcome: "Denied by you", tone: "negative", answer: null, words: "not there" });
     expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z", { outcome: "denied", by: "rules", rule: "top-level" }), clock)).toMatchObject({ outcome: "Denied by Taro's rules (top-level)", tone: "negative" });
   });
 
-  it("says a question was answered or dismissed", () => {
+  it("says a question was answered or dismissed, its answers under the line as a picked option's", () => {
     const question = { kind: "question", subject: "Which database?" };
-    expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z", { ...question, words: "Database: Postgres" }), clock)).toMatchObject({ kind: "Question", outcome: "Answered by you", tone: "positive", words: "Database: Postgres" });
+    expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z", { ...question, words: "Postgres" }), clock)).toMatchObject({ kind: "Question", outcome: "Answered by you", tone: "positive", answer: "Postgres", words: null });
     expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z", { ...question, outcome: "denied" }), clock)).toMatchObject({ kind: "Question", outcome: "Dismissed by you", tone: "neutral" });
   });
 

@@ -65,6 +65,7 @@ export function DecisionBlockItem({ agentId, item, theme, layout }: PluginTimeli
           outcome={outcome.outcome}
           tone={outcome.tone}
           time={outcome.time}
+          answer={outcome.answer ?? null}
           words={outcome.words}
         />
       );
