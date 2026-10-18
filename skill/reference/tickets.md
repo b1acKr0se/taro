@@ -32,12 +32,12 @@ prove it. Only an older ticket has a checklist, ticked with `--check-ac <n>`.
 ## Statuses
 
 `Queued → Planning → Ready → In Progress → Reviewing → Awaiting acceptance → Done`, plus `Blocked`
-and `Cancelled`. Trivial tasks go from Queued straight to In Progress.
+and `Cancelled`. Trivial tasks go from Planning straight to In Progress.
 
 | Status | Who sets it | When |
 | --- | --- | --- |
 | Queued | manager | filed |
-| Planning | owner | orienting, asking, proposing |
+| Planning | plugin | the owner started: orienting, asking, proposing |
 | Ready | owner | approved, waiting on dependencies |
 | In Progress | owner | building |
 | Reviewing | owner | draft PR open, review under way |
@@ -83,6 +83,8 @@ rather than exceed it.
   with no owner, with their words; the manager then rewrites the Description to match.
 - **QUEUE-WAKE**, **QUEUE-ALERT**, **QUEUE-RESTART**: written by the plugin as it wakes the manager
   for a queued ticket, alerts the user, and restarts the manager.
+- **OWNER-STARTED**: written by the plugin as an owner's first turn starts on a Queued ticket; it
+  sets Planning in the same write. A ticket already past Queued keeps its status.
 - **DELIVERY-ENDED**: written by the plugin when an owner asks a blocking question while its ticket
   awaits acceptance; it moves the ticket to In Progress in the same write (`roles/owner.md`).
 - **REVIEW**: reviewer, revision, verdict, every finding answered (fixed, or rejected with the

@@ -74,6 +74,7 @@ import { sessionEnvironment } from "./server/environment";
 import { readTextIfPresent, writeTextAtomically } from "./server/files";
 import { trimAgentLaunch } from "./server/agent-trim";
 import { ensureCompactHook, installCompactHook, removeReloadFile } from "./server/compact-hook";
+import { forgetOwnerStart, markOwnerStarted } from "./server/owner-start";
 import { catchUpText, compactManager, launchManager, restartManager, resumeManager, tellManager, writeManagerInstructions } from "./server/manager";
 import { onboardProject, onboardingProblems } from "./server/onboard";
 import { listPaseoProjects, settingsTemplate } from "./server/paseo-projects";
@@ -426,6 +427,14 @@ export default function contribute(server: PluginServerContext) {
     await ensureCompactHook(paseo, agent)
       .then((done) => (done === null ? undefined : console.log(`[taro] ${agent.id}: ${done}`)))
       .catch((error: unknown) => reportFailure(`[taro] compact hook for ${agent.id}:`, error));
+    // An owner's ticket leaves Queued as the owner starts, not once it has read its rules (TR-173).
+    await markOwnerStarted(paseo, agent.id)
+      .then((ticket) => {
+        if (ticket === null) return;
+        console.log(`[taro] ${agent.id} started: ${ticket} is Planning`);
+        invalidateBoards();
+      })
+      .catch((error: unknown) => reportFailure(`[taro] setting ${agent.id}'s ticket Planning:`, error));
   });
 
   // Supervision (decisions 28, 30, 35, 36): every Taro agent's turn end.
@@ -451,6 +460,7 @@ export default function contribute(server: PluginServerContext) {
     await recordArchivedUsage(paseo, stats, agent.id).catch((error: unknown) => reportFailure(`[taro] recording ${agent.id}'s cost at archive:`, error));
     await removeReloadFile(agent.id).catch((error: unknown) => reportFailure(`[taro] removing ${agent.id}'s reload file:`, error));
     await chatQueue.forget(agent.id).catch((error: unknown) => reportFailure(`[taro] removing ${agent.id}'s chat queue:`, error));
+    forgetOwnerStart(agent.id);
     const withdrawn = await supervisor.withdrawDecisionsOf(agent.id).catch((error: unknown) => {
       reportFailure(`[taro] withdrawing ${agent.id}'s decisions:`, error);
       return 0;
