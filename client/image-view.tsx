@@ -10,9 +10,10 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Image, PanResponder, PixelRatio, Platform, Text, View, type GestureResponderEvent, type ViewStyle } from "react-native";
+import { Animated, Image, PanResponder, PixelRatio, Platform, Text, useWindowDimensions, View, type GestureResponderEvent, type ViewStyle } from "react-native";
 
 import { readImageRpc } from "../shared/contracts";
+import { COMPOSER_WIDE_WIDTH } from "./composer-height";
 import { watchFullScreen } from "./desktop-window";
 import { ErrorBoundary } from "./error-boundary";
 import { Pressable } from "./focus";
@@ -25,7 +26,9 @@ import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { captionOf, viewerBarText } from "./viewer-bar";
 import { isMacDesktopShell, windowControlsInset } from "./window-chrome";
 import {
+  DOUBLE_TAP_MS,
   FIT,
+  backdropCloses,
   frameOf,
   gestureEnd,
   gestureMove,
@@ -342,11 +345,13 @@ function GalleryPage({
   const scale = useRef(new Animated.Value(1, VALUE_CONFIG)).current;
   const stageRef = useRef<View>(null);
   // Gesture handlers are made once and read the latest of everything through this.
-  const live = useRef({ frame, index, count, onIndex, onClose, transform: FIT, origin: { x: 0, y: 0 } });
-  live.current = { ...live.current, frame, index, count, onIndex, onClose };
+  const backdropClose = backdropCloses(Platform.OS === "web", useWindowDimensions().width, COMPOSER_WIDE_WIDTH);
+  const live = useRef({ frame, index, count, onIndex, onClose, backdropClose, transform: FIT, origin: { x: 0, y: 0 } });
+  live.current = { ...live.current, frame, index, count, onIndex, onClose, backdropClose };
   const gesture = useRef<Gesture | null>(null);
   const easing = useRef<Ease | null>(null);
   const lastTap = useRef<Tap | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function showFit(transform: Transform): void {
     const fit = isAtFit(transform);
@@ -414,9 +419,13 @@ function GalleryPage({
 
   function onTap(at: Point): void {
     const tap = { at, time: Date.now() };
-    const outcome = tapOutcome(lastTap.current, tap, live.current.transform, live.current.frame);
+    const outcome = tapOutcome(lastTap.current, tap, live.current.transform, live.current.frame, live.current.backdropClose);
+    if (closeTimer.current !== null) clearTimeout(closeTimer.current);
+    closeTimer.current = null;
     lastTap.current = outcome.kind === "zoom" ? null : tap;
     if (outcome.kind === "zoom") settleRef.current(outcome.transform);
+    // Waits to see that this is not the first of a double-tap.
+    else if (outcome.kind === "close") closeTimer.current = setTimeout(() => live.current.onClose(), DOUBLE_TAP_MS);
   }
 
   const responder = useRef(
@@ -456,6 +465,13 @@ function GalleryPage({
       },
     }),
   ).current;
+
+  useEffect(
+    () => () => {
+      if (closeTimer.current !== null) clearTimeout(closeTimer.current);
+    },
+    [],
+  );
 
   // The web's wheel (a trackpad pinch arrives as a wheel with ctrl held) and arrow and Escape keys.
   useEffect(() => {

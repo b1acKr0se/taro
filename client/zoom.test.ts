@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   FIT,
+  backdropCloses,
   clampTransform,
   doubleTapAt,
   frameOf,
@@ -13,6 +14,7 @@ import {
   gestureStart,
   isAtFit,
   isDoubleTap,
+  isOutsideImage,
   isTap,
   isZoomedIn,
   maxScale,
@@ -217,14 +219,45 @@ describe("taps", () => {
     expect(isDoubleTap(first, { at: { x: 50, y: 0 }, time: 1100 })).toBe(false);
   });
 
-  it("zooms on a double-tap and ignores a single tap, on the image or the backdrop", () => {
+  it("knows a tap on the backdrop from a tap on the image", () => {
+    expect(isOutsideImage(CENTRE, FIT, FRAME.fitted)).toBe(false);
+    expect(isOutsideImage({ x: 0, y: 150 }, FIT, FRAME.fitted)).toBe(true);
+    expect(isOutsideImage({ x: 199, y: 99 }, FIT, FRAME.fitted)).toBe(false);
+    expect(isOutsideImage({ x: 201, y: 0 }, FIT, FRAME.fitted)).toBe(true);
+    // Zoomed 2× and moved left, the image covers the stage's width.
+    expect(isOutsideImage({ x: -390, y: 0 }, { scale: 2, x: -200, y: 0 }, FRAME.fitted)).toBe(false);
+    expect(isOutsideImage({ x: 0, y: 250 }, { scale: 2, x: -200, y: 0 }, FRAME.fitted)).toBe(true);
+  });
+
+  it("closes on a backdrop click on desktop only: the web renderer in a wide window (TR-185)", () => {
+    expect(backdropCloses(true, 1280, 720)).toBe(true);
+    expect(backdropCloses(true, 720, 720)).toBe(true);
+    // A phone's browser, or a narrow desktop window, counts as a phone.
+    expect(backdropCloses(true, 719, 720)).toBe(false);
+    // The phone app, even on a tablet's width.
+    expect(backdropCloses(false, 400, 720)).toBe(false);
+    expect(backdropCloses(false, 1280, 720)).toBe(false);
+  });
+
+  it("on desktop, zooms on a double-tap, closes on a backdrop click, and ignores a click on the image", () => {
     const first = { at: CENTRE, time: 1000 };
-    expect(tapOutcome(first, { at: CENTRE, time: 1100 }, FIT, FRAME)).toEqual({ kind: "zoom", transform: { scale: 2.5, x: 0, y: 0 } });
-    expect(tapOutcome(null, first, FIT, FRAME)).toEqual({ kind: "none" });
-    // Only the ✕ and back close the view: a tap on the backdrop, at fit or zoomed, does not (TR-177).
-    expect(tapOutcome(null, { at: { x: 0, y: 300 }, time: 1000 }, FIT, FRAME)).toEqual({ kind: "none" });
-    expect(tapOutcome(null, { at: { x: 0, y: 250 }, time: 1000 }, { scale: 2, x: -200, y: 0 }, FRAME)).toEqual({ kind: "none" });
-    expect(tapOutcome({ at: { x: 0, y: 300 }, time: 1000 }, { at: { x: 0, y: 300 }, time: 1100 }, FIT, FRAME).kind).toBe("zoom");
+    expect(tapOutcome(first, { at: CENTRE, time: 1100 }, FIT, FRAME, true)).toEqual({ kind: "zoom", transform: { scale: 2.5, x: 0, y: 0 } });
+    expect(tapOutcome(null, { at: { x: 0, y: 300 }, time: 1000 }, FIT, FRAME, true)).toEqual({ kind: "close" });
+    expect(tapOutcome(null, first, FIT, FRAME, true)).toEqual({ kind: "none" });
+    // Zoomed so the image covers the click, it is on the image; below it, on the backdrop.
+    expect(tapOutcome(null, { at: { x: -390, y: 0 }, time: 1000 }, { scale: 2, x: -200, y: 0 }, FRAME, true)).toEqual({ kind: "none" });
+    expect(tapOutcome(null, { at: { x: 0, y: 250 }, time: 1000 }, { scale: 2, x: -200, y: 0 }, FRAME, true)).toEqual({ kind: "close" });
+    // A double-click on the backdrop zooms rather than closes.
+    expect(tapOutcome({ at: { x: 0, y: 300 }, time: 1000 }, { at: { x: 0, y: 300 }, time: 1100 }, FIT, FRAME, true).kind).toBe("zoom");
+  });
+
+  it("on a phone, zooms on a double-tap and ignores a single tap, on the image or the backdrop (TR-177)", () => {
+    const first = { at: CENTRE, time: 1000 };
+    expect(tapOutcome(first, { at: CENTRE, time: 1100 }, FIT, FRAME, false)).toEqual({ kind: "zoom", transform: { scale: 2.5, x: 0, y: 0 } });
+    expect(tapOutcome(null, first, FIT, FRAME, false)).toEqual({ kind: "none" });
+    expect(tapOutcome(null, { at: { x: 0, y: 300 }, time: 1000 }, FIT, FRAME, false)).toEqual({ kind: "none" });
+    expect(tapOutcome(null, { at: { x: 0, y: 250 }, time: 1000 }, { scale: 2, x: -200, y: 0 }, FRAME, false)).toEqual({ kind: "none" });
+    expect(tapOutcome({ at: { x: 0, y: 300 }, time: 1000 }, { at: { x: 0, y: 300 }, time: 1100 }, FIT, FRAME, false).kind).toBe("zoom");
   });
 });
 
