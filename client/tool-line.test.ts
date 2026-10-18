@@ -26,6 +26,12 @@ describe("a tool call's line", () => {
     expect(toolLine).toMatch(/<Shimmer\s+active=\{running\}/);
   });
 
+  it("keeps the icon muted while the call runs, as Paseo does: only a failure colours it (TR-184)", () => {
+    expect(toolLine).toMatch(/color=\{tool\.status === "failed" \? theme\.colors\.statusDanger : theme\.colors\.foregroundMuted\}/);
+    const group = between("function TranscriptGroupView(");
+    expect(group).toMatch(/<Icon name=\{open \? "ChevronDown" : "Wrench"\} size=\{13\} color=\{open \? theme\.colors\.foreground : theme\.colors\.foregroundMuted\} \/>/);
+  });
+
   it("shimmers a run of calls' head while one still runs, with no spinner", () => {
     const group = between("function TranscriptGroupView(");
     expect(group).not.toMatch(/<Spinner/);

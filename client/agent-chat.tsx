@@ -920,8 +920,8 @@ function ToolLine({ tool, theme, styles }: { tool: ToolRow; theme: PluginTheme; 
   const running = tool.status === "running";
   return (
     <View style={styles.toolLine}>
-      {/* Its own icon while it runs, as in Paseo: the words shimmer instead (TR-183). */}
-      <Icon name={tool.status === "failed" ? "TriangleAlert" : tool.icon} size={13} color={tool.status === "failed" ? theme.colors.statusDanger : running ? theme.colors.foreground : theme.colors.foregroundMuted} />
+      {/* Its own icon while it runs, muted as in Paseo: the words shimmer instead (TR-183, TR-184). */}
+      <Icon name={tool.status === "failed" ? "TriangleAlert" : tool.icon} size={13} color={tool.status === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
       <Shimmer
         active={running}
         characters={tool.label.length + (tool.summary?.length ?? 0)}
@@ -959,7 +959,7 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, pastA
           style={[styles.toolHead, open ? styles.toolHeadOpen : null]}
           onPress={toggle}
         >
-          <Icon name={open ? "ChevronDown" : "Wrench"} size={13} color={open || summary.state === "running" ? theme.colors.foreground : theme.colors.foregroundMuted} />
+          <Icon name={open ? "ChevronDown" : "Wrench"} size={13} color={open ? theme.colors.foreground : theme.colors.foregroundMuted} />
           <Shimmer
             active={summary.state === "running"}
             characters={summary.title.length}
