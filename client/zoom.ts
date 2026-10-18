@@ -249,14 +249,31 @@ export function gestureEnd(gesture: Gesture, current: Transform, moved: { dx: nu
   return target === index ? { kind: "settle", transform: gesture.start } : { kind: "show", index: target };
 }
 
-export type TapOutcome = { kind: "zoom"; transform: Transform } | { kind: "none" };
+/** Whether a point falls outside the drawn image: a click there is on the backdrop. */
+export function isOutsideImage(point: Point, transform: Transform, fitted: Size): boolean {
+  const halfWidth = (fitted.width * transform.scale) / 2;
+  const halfHeight = (fitted.height * transform.scale) / 2;
+  return Math.abs(point.x - transform.x) > halfWidth || Math.abs(point.y - transform.y) > halfHeight;
+}
 
 /**
- * A tap: the second of a double-tap zooms; a single tap does nothing, on the backdrop too: only the
- * ✕ and back close the view (TR-177).
+ * Whether a click on the backdrop closes the view: on desktop only (TR-185), meaning the web renderer
+ * in a window at least `wideWidth` across, the rule the composer uses for Enter-to-send. On a phone a
+ * tap on the backdrop does nothing (TR-177): only the ✕ and back close the view.
  */
-export function tapOutcome(previous: Tap | null, tap: Tap, current: Transform, frame: Frame): TapOutcome {
-  return isDoubleTap(previous, tap) ? { kind: "zoom", transform: doubleTapAt(current, tap.at, frame) } : { kind: "none" };
+export function backdropCloses(web: boolean, windowWidth: number, wideWidth: number): boolean {
+  return web && windowWidth >= wideWidth;
+}
+
+export type TapOutcome = { kind: "zoom"; transform: Transform } | { kind: "close" } | { kind: "none" };
+
+/**
+ * A tap: the second of a double-tap zooms; a single tap on the backdrop closes where `backdropClose`
+ * allows (the view waits `DOUBLE_TAP_MS` first, in case a second tap follows); any other does nothing.
+ */
+export function tapOutcome(previous: Tap | null, tap: Tap, current: Transform, frame: Frame, backdropClose: boolean): TapOutcome {
+  if (isDoubleTap(previous, tap)) return { kind: "zoom", transform: doubleTapAt(current, tap.at, frame) };
+  return backdropClose && isOutsideImage(tap.at, current, frame.fitted) ? { kind: "close" } : { kind: "none" };
 }
 
 /** How an eased move (a double-tap, the Fit / 1:1 button, a snap back) runs: fast, then slowing to rest. */
