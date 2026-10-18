@@ -6,10 +6,11 @@ directory) is on branch `taro/<id>`; the brief names the tracker, skill and proj
 
 First: verify the ticket's EXECUTION record names you (`$PASEO_AGENT_ID`); if another live owner is
 recorded, stop and ask. The plugin set a Queued ticket to Planning as you started (an OWNER-STARTED
-record); a ticket past that keeps its status, so pick up from it. Read the repository's own
-instructions (AGENTS.md / CLAUDE.md and scoped ones) — they outrank defaults here — and
-`reference/shell.md`: your own commands run unattended too, test-daemon and scratch-repository
-cleanup most of all. Then follow the flow.
+record); if it still reads Queued (the plugin was reloading), set Planning yourself. A ticket past
+that keeps its status, so pick up from it. Read the repository's own instructions (AGENTS.md /
+CLAUDE.md and scoped ones) — they outrank defaults here — and `reference/shell.md`: your own
+commands run unattended too, test-daemon and scratch-repository cleanup most of all. Then follow
+the flow.
 
 ## The flow (decision 27)
 
