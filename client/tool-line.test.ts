@@ -9,13 +9,26 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const chat = readFileSync(join(__dirname, "agent-chat.tsx"), "utf8");
+const between = (start: string) => chat.slice(chat.indexOf(start), chat.indexOf("\nfunction ", chat.indexOf(start) + 1));
 const toolLine = chat.slice(chat.indexOf("function ToolLine("), chat.indexOf("\nfunction ", chat.indexOf("function ToolLine(") + 1));
 
 describe("a tool call's line", () => {
   it("draws the label and the detail as separate texts, never one text spaced apart", () => {
     expect(toolLine).not.toBe("");
-    expect(toolLine).toMatch(/<Text style=\{styles\.toolLabel\}[^>]*>\s*\{tool\.label\}\s*<\/Text>/);
-    expect(toolLine).toMatch(/<Text style=\{styles\.toolText\}[^>]*>\s*\{tool\.summary\}\s*<\/Text>/);
+    expect(toolLine).toMatch(/<Text style=\{\[?styles\.toolLabel\b[^>]*>\s*\{tool\.label\}\s*<\/Text>/);
+    expect(toolLine).toMatch(/<Text style=\{\[?styles\.toolText\b[^>]*>\s*\{tool\.summary\}\s*<\/Text>/);
     expect(toolLine).not.toMatch(/` +\$\{tool\.summary\}`/);
+  });
+
+  it("keeps a running call's icon and shimmers its words, as Paseo does (TR-183)", () => {
+    expect(toolLine).not.toMatch(/<Spinner/);
+    expect(toolLine).toMatch(/<Icon name=\{tool\.status === "failed" \? "TriangleAlert" : tool\.icon\}/);
+    expect(toolLine).toMatch(/<Shimmer\s+active=\{running\}/);
+  });
+
+  it("shimmers a run of calls' head while one still runs, with no spinner", () => {
+    const group = between("function TranscriptGroupView(");
+    expect(group).not.toMatch(/<Spinner/);
+    expect(group).toMatch(/<Shimmer\s+active=\{summary\.state === "running"\}/);
   });
 });

@@ -787,7 +787,7 @@ function ManagerPane({
       <AgentChat
         // A restarted manager is another agent: a fresh chat, not the last one's words for a frame.
         key={manager.id}
-        agent={{ id: manager.id, updatedAt: manager.updatedAt, pendingPermissions: manager.pendingPermissions, status: manager.status }}
+        agent={{ id: manager.id, updatedAt: manager.updatedAt, pendingPermissions: manager.pendingPermissions, status: manager.status, turnStartedAt: manager.turnStartedAt }}
         asker={{ kind: "manager" }}
         theme={theme}
         compact={compact}
