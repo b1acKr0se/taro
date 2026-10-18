@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { boardColumn, columnCounts, complexityOf, inboxCount, isInboxTicket, needsYouExtras, ticketAgents, type CardInputs, type JoinedAgent } from "./board";
+import { boardColumn, columnCounts, complexityOf, inboxCount, isInboxTicket, needsYouExtras, questionsForUser, ticketAgents, type CardInputs, type JoinedAgent } from "./board";
 
-const base: CardInputs = { status: "In Progress", ownerElsewhere: false, agent: { status: "idle", pendingPermissions: 0 }, lastStatus: "waiting", openBlockingDecisions: 0, stalledAfterNudge: false };
+const base: CardInputs = { status: "In Progress", ownerElsewhere: false, agent: { status: "idle", pendingPermissions: 0 }, lastStatus: "waiting", openQuestions: 0, stalledAfterNudge: false };
 
 describe("boardColumn", () => {
   it("places a parked ticket with no owner apart from Queued, never Stalled (TR-088, TR-166)", () => {
@@ -43,13 +43,13 @@ describe("boardColumn", () => {
     expect(boardColumn({ ...accepted, agent: { status: "idle", pendingPermissions: 0 } })).toBe("working");
     expect(boardColumn({ ...accepted, agent: { status: "running", pendingPermissions: 0 } })).toBe("working");
     expect(boardColumn({ ...accepted, agent: null })).toBe("stalled");
-    expect(boardColumn({ ...accepted, agent: { status: "idle", pendingPermissions: 0 }, openBlockingDecisions: 1 })).toBe("needs-you");
+    expect(boardColumn({ ...accepted, agent: { status: "idle", pendingPermissions: 0 }, openQuestions: 1 })).toBe("needs-you");
     expect(boardColumn({ ...accepted, ownerElsewhere: true, agent: null })).toBe("working");
     expect(boardColumn({ ...base, status: "Awaiting acceptance", accepted: false, agent: { status: "idle", pendingPermissions: 0 } })).toBe("needs-you");
   });
 
   it("puts questions, acceptance and blockers under Needs you", () => {
-    expect(boardColumn({ ...base, openBlockingDecisions: 1 })).toBe("needs-you");
+    expect(boardColumn({ ...base, openQuestions: 1 })).toBe("needs-you");
     expect(boardColumn({ ...base, status: "Awaiting acceptance" })).toBe("needs-you");
     expect(boardColumn({ ...base, status: "Blocked" })).toBe("needs-you");
     expect(boardColumn({ ...base, lastStatus: "blocked" })).toBe("needs-you");
@@ -65,7 +65,7 @@ describe("boardColumn", () => {
   it("calls an owner past its crash-recovery limit Stalled whatever the ticket's status, until it runs again", () => {
     const crashed = { ...base, agent: { status: "error", pendingPermissions: 0 }, crashedOut: true };
     expect(boardColumn({ ...crashed, status: "Awaiting acceptance" })).toBe("stalled");
-    expect(boardColumn({ ...crashed, openBlockingDecisions: 1 })).toBe("stalled");
+    expect(boardColumn({ ...crashed, openQuestions: 1 })).toBe("stalled");
     expect(boardColumn({ ...crashed, status: "Queued" })).toBe("stalled");
     expect(boardColumn({ ...crashed, agent: { status: "running", pendingPermissions: 0 } })).toBe("working");
     expect(boardColumn({ ...crashed, status: "Done" })).toBe("done");
@@ -284,8 +284,25 @@ describe("inboxCount counts each card the Inbox lists (TR-123)", () => {
   // An owner's questions arrive as ticketQuestions; their tickets' cards carry them as decisions.
   const owner = (column: "needs-you" | "working" | "queued" | "stalled", decisions: readonly unknown[]) => ({ column, decisions });
 
-  it("counts an owner's non-blocking question, whose ticket stays under way", () => {
-    expect(inboxCount({ ...quiet, cards: [owner("working", [question])], ticketQuestions: 1 }, false)).toBe(1);
+  // TR-186: a question asked after approval is non-blocking, and its idle owner's card sat in Working.
+  it("puts a ticket with an open non-blocking question under Needs you, its owner idle or going on with the default", () => {
+    expect(boardColumn({ ...base, lastStatus: "waiting", openQuestions: 1 })).toBe("needs-you");
+    expect(boardColumn({ ...base, lastStatus: "done", openQuestions: 1 })).toBe("needs-you");
+    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, openQuestions: 1 })).toBe("needs-you");
+    expect(boardColumn({ ...base, status: "Reviewing", openQuestions: 2 })).toBe("needs-you");
+  });
+
+  it("waits on the user for each of the owner's questions, and a subagent's only when blocking (TR-186)", () => {
+    expect(questionsForUser([])).toBe(0);
+    expect(questionsForUser([{ blocking: false, agentRole: "owner" }])).toBe(1);
+    expect(questionsForUser([{ blocking: true, agentRole: "owner" }, { blocking: false, agentRole: "owner" }])).toBe(2);
+    // An implementer or researcher asking its owner is not a question for the user.
+    expect(questionsForUser([{ blocking: false, agentRole: "implementer" }, { blocking: false, agentRole: "researcher" }, { blocking: false, agentRole: "reviewer" }])).toBe(0);
+    expect(questionsForUser([{ blocking: true, agentRole: "implementer" }])).toBe(1);
+  });
+
+  it("counts an owner's non-blocking question once, its ticket drawn as that question in Needs you", () => {
+    expect(inboxCount({ ...quiet, cards: [owner("needs-you", [question])], ticketQuestions: 1 }, false)).toBe(1);
   });
 
   it("counts a blocking question once, not again for its ticket in Needs you", () => {
@@ -293,11 +310,11 @@ describe("inboxCount counts each card the Inbox lists (TR-123)", () => {
   });
 
   it("keeps a blocking question in Needs you while its owner replies to other messages (TR-134)", () => {
-    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, openBlockingDecisions: 1 })).toBe("needs-you");
-    expect(boardColumn({ ...base, agent: { status: "initializing", pendingPermissions: 0 }, openBlockingDecisions: 1 })).toBe("needs-you");
-    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, openBlockingDecisions: 0 })).toBe("working");
+    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, openQuestions: 1 })).toBe("needs-you");
+    expect(boardColumn({ ...base, agent: { status: "initializing", pendingPermissions: 0 }, openQuestions: 1 })).toBe("needs-you");
+    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, openQuestions: 0 })).toBe("working");
     // Pausing: the owner writes its handoff while its question is still open, until it is archived.
-    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, parked: true, openBlockingDecisions: 1 })).toBe("needs-you");
+    expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, parked: true, openQuestions: 1 })).toBe("needs-you");
     expect(inboxCount({ ...quiet, cards: [owner("needs-you", [question])], ticketQuestions: 1 }, false)).toBe(1);
   });
 

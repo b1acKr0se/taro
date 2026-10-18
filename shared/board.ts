@@ -50,7 +50,8 @@ export interface CardInputs {
   ownerElsewhere: boolean;
   agent: { status: string; pendingPermissions: number } | null;
   lastStatus: StatusState | null;
-  openBlockingDecisions: number;
+  /** Its open questions that wait on the user (`questionsForUser`). */
+  openQuestions: number;
   /** Two stalls in a row, the second after the plugin's nudge. */
   stalledAfterNudge: boolean;
   /** The owner crashed past the automatic recovery limit (TR-012): only the user can bring it back. */
@@ -61,6 +62,15 @@ export interface CardInputs {
   parked?: boolean;
   /** Resumed with no free slot (TR-088): queued again, never Stalled. */
   queuedToResume?: boolean;
+}
+
+/**
+ * The open questions on a ticket that wait on the user: every one its owner asks, blocking or not, as
+ * the answer is the user's even while the owner goes on with its default (TR-186); a subagent's only
+ * when blocking, as its owner answers the rest.
+ */
+export function questionsForUser(decisions: readonly { blocking: boolean; agentRole: string }[]): number {
+  return decisions.filter((decision) => decision.blocking || decision.agentRole === "owner").length;
 }
 
 const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing"]);
@@ -78,14 +88,14 @@ export function boardColumn(card: CardInputs): ColumnId {
 
   if (agent !== null && agent.pendingPermissions > 0) return "needs-you";
   const running = agent !== null && (agent.status === "running" || agent.status === "initializing");
-  // An open question stays the user's move while its owner replies to other messages (TR-134).
-  if (running && card.openBlockingDecisions > 0) return "needs-you";
+  // An open question stays the user's move while its owner replies to other messages or goes on with its default (TR-134, TR-186).
+  if (running && card.openQuestions > 0) return "needs-you";
   if (running) return "working";
   if (card.parked === true) return "parked";
   if (card.queuedToResume === true) return "queued";
   if (card.crashedOut === true) return "stalled";
 
-  if (card.openBlockingDecisions > 0) return "needs-you";
+  if (card.openQuestions > 0) return "needs-you";
   if (waitsOnUser(card.status, accepted)) return "needs-you";
   if (card.lastStatus === "blocked") return "needs-you";
 
