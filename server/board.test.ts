@@ -126,6 +126,29 @@ describe("loadBoard", () => {
     expect((await loadBoard({} as PaseoApi, state([]), "taro")).cards.find((card) => card.id === "TR-1.01")?.column).toBe("stalled");
   });
 
+  // TR-186: the parent owner's non-blocking question left both cards in Working; the child has none of its own.
+  it("puts the ticket whose owner asks a non-blocking question under Needs you, and its building child in Working", async () => {
+    vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "In Progress"), { ...ticket("TR-1.07", "In Progress"), parentTaskId: "TR-1" }] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    const implementer = { ...agent("builder", "implementer", "TR-1", "2026-10-13T14:58:00Z"), title: "TR-1.07 · implementer: building the rollout", status: "running" } as PaseoAgent;
+    vi.mocked(projectAgents).mockResolvedValue([agent("owner-live", "owner", "TR-1", "2026-10-13T14:50:00Z"), implementer]);
+    const question = { ...stored("owner-live", "TR-1"), key: "owner-live:suffix-length", id: "suffix-length", blocking: false, agentRole: "owner" } as StoredDecision;
+    const board = await loadBoard({} as PaseoApi, state([question]), "taro");
+    const parent = board.cards.find((card) => card.id === "TR-1");
+    expect(parent?.column).toBe("needs-you");
+    expect(parent?.decisions.map((decision) => decision.id)).toEqual(["suffix-length"]);
+    const child = board.cards.find((card) => card.id === "TR-1.07");
+    expect(child?.column).toBe("working");
+    expect(child?.decisions).toEqual([]);
+  });
+
+  it("keeps a ticket in Working while only its implementer asks its owner a non-blocking question (TR-186)", async () => {
+    const implementer = { ...agent("builder", "implementer", "TR-1", "2026-10-13T14:58:00Z"), status: "running" } as PaseoAgent;
+    vi.mocked(projectAgents).mockResolvedValue([agent("owner-live", "owner", "TR-1", "2026-10-13T14:50:00Z"), implementer]);
+    const question = { ...stored("builder", "TR-1"), key: "builder:fixture-format", id: "fixture-format", blocking: false, agentRole: "implementer" } as StoredDecision;
+    const board = await loadBoard({} as PaseoApi, state([question]), "taro");
+    expect(board.cards.find((card) => card.id === "TR-1")?.column).toBe("working");
+  });
+
   // TR-080: children not started stayed in Working with the parent's status line while the parent's owner ran.
   it("keeps a child not started in Queued with no status line, whatever the parent's owner is doing", async () => {
     const child = (id: string, status: string) => ({ ...ticket(id, status), parentTaskId: "TR-1" });

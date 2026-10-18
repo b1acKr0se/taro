@@ -7,7 +7,7 @@ import { hostname } from "node:os";
 
 import { latestActivity, type Activity } from "../shared/activity";
 import { ticketFileAlerts } from "../shared/alerts";
-import { boardColumn, complexityOf, FIRST_PAGE, hasStarted, newestOwner, PAGED_COLUMNS, pageColumns, ticketAgents } from "../shared/board";
+import { boardColumn, complexityOf, FIRST_PAGE, hasStarted, newestOwner, PAGED_COLUMNS, pageColumns, questionsForUser, ticketAgents } from "../shared/board";
 import { offersCompact } from "../shared/compact";
 import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
 import { acceptedRecord, executionMachine, notMergedRecord, pullRequestMerged, pullRequestUrl, type AcceptedRecord, type NotMergedRecord } from "../shared/execution";
@@ -222,7 +222,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         ownerElsewhere: elsewhere !== null,
         agent: columnAgent === null ? null : { status: columnAgent.status, pendingPermissions: columnAgent.pendingPermissions.length },
         lastStatus: ownLine ? ownerState?.lastStatus?.state ?? null : null,
-        openBlockingDecisions: ticketDecisions.filter((decision) => decision.blocking).length,
+        openQuestions: questionsForUser(ticketDecisions),
         stalledAfterNudge: ownerState?.stalled ?? false,
         crashedOut: ownLine && ownerState?.stalled === true && ownerState.stalledReason !== null,
         accepted: accepted !== null,

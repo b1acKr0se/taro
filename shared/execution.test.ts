@@ -255,7 +255,7 @@ describe("notMergedRecord (TR-109)", () => {
     const notes = `${accepted}\n${notMerged}\nMILESTONE 2026-01-05T11:05Z — waiting for the user`;
     expect(acceptedRecord(notes)).toBeNull();
     expect(notMergedRecord(notes)?.at).toBe("2026-01-05T11:04Z");
-    const column = boardColumn({ status: "Awaiting acceptance", ownerElsewhere: false, agent: { status: "idle", pendingPermissions: 0 }, lastStatus: "waiting", openBlockingDecisions: 0, stalledAfterNudge: false, crashedOut: false, accepted: acceptedRecord(notes) !== null });
+    const column = boardColumn({ status: "Awaiting acceptance", ownerElsewhere: false, agent: { status: "idle", pendingPermissions: 0 }, lastStatus: "waiting", openQuestions: 0, stalledAfterNudge: false, crashedOut: false, accepted: acceptedRecord(notes) !== null });
     expect(column).toBe("needs-you");
   });
 
