@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 /** The hook runs once, outside a component: each ref a plain box, `away` read from its setter. */
 const state = vi.hoisted(() => ({ away: false }));
 vi.mock("react", () => ({
+  useEffect: () => undefined,
   useRef: (initial: unknown) => ({ current: initial }),
   useState: (initial: boolean) => {
     state.away = initial;
@@ -215,5 +216,72 @@ describe("an earlier page put above the reader (TR-169)", () => {
     pageIn(follow, node, 120, 1500);
     follow.scrollProps.onScroll(scrollEvent(1620, 4500));
     expect(state.away).toBe(true);
+  });
+});
+
+describe("following the end on the web (TR-184)", () => {
+  /** A browser's ResizeObserver, fired by hand: its callback runs before the browser paints. */
+  function observers() {
+    const made: { callback: () => void; targets: unknown[] }[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      function ResizeObserver(this: unknown, callback: () => void) {
+        const observer = { callback, targets: [] as unknown[] };
+        made.push(observer);
+        return { observe: (target: unknown) => observer.targets.push(target), disconnect: () => undefined };
+      },
+    );
+    return made;
+  }
+
+  /** A web transcript at its end: 3000 high in a 600 viewport, scrolled to 2400. */
+  function webTranscript() {
+    const content = {};
+    const node = { scrollHeight: 3000, scrollTop: 2400, style: {}, firstElementChild: content };
+    const follow = useFollowEnd();
+    (follow.scrollProps.ref as { current: unknown }).current = { scrollToEnd: vi.fn(), scrollTo: vi.fn(), getScrollableNode: () => node };
+    follow.scrollProps.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width: 400, height: VIEWPORT } } } as never);
+    follow.scrollProps.onContentSizeChange(400, 3000);
+    follow.scrollProps.onScroll(scrollEvent(2400, 3000));
+    return { follow, node, content };
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("scrolls to the new end as the content grows, before onContentSizeChange reports it", () => {
+    const made = observers();
+    const { node, content } = webTranscript();
+    expect(made).toHaveLength(1);
+    expect(made[0]?.targets).toEqual([node, content]);
+    // A new message: the browser laid it out; react-native-web has not reported it yet.
+    node.scrollHeight = 3078;
+    made[0]?.callback();
+    expect(node.scrollTop).toBe(3078);
+  });
+
+  it("leaves a reader who scrolled up where they are", () => {
+    const made = observers();
+    const { follow, node } = webTranscript();
+    follow.scrollProps.onScroll(scrollEvent(1000, 3000));
+    node.scrollTop = 1000;
+    node.scrollHeight = 3078;
+    made[0]?.callback();
+    expect(node.scrollTop).toBe(1000);
+  });
+
+  it("leaves a hidden pane alone", () => {
+    const made = observers();
+    const { follow, node } = webTranscript();
+    follow.scrollProps.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width: 400, height: 0 } } } as never);
+    node.scrollHeight = 3078;
+    made[0]?.callback();
+    expect(node.scrollTop).toBe(2400);
+  });
+
+  it("watches once, however often the transcript lays out", () => {
+    const made = observers();
+    const { follow } = webTranscript();
+    follow.scrollProps.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width: 400, height: 500 } } } as never);
+    expect(made).toHaveLength(1);
   });
 });

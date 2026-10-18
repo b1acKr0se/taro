@@ -55,6 +55,7 @@ import { COMPOSER_CONTROL_SIZE, composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
 import { Shimmer, WorkingStatus } from "./loading";
+import { SHIMMER_LIGHT } from "./shimmer";
 import { useLatestCallback } from "./latest-callback";
 import { bubbleImageRoom, USER_BUBBLE_SHARE } from "./thumbnail-size";
 import { sameGroup, sameItems } from "./transcript-memo";
@@ -919,8 +920,8 @@ function ToolLine({ tool, theme, styles }: { tool: ToolRow; theme: PluginTheme; 
   const running = tool.status === "running";
   return (
     <View style={styles.toolLine}>
-      {/* Its own icon while it runs, as in Paseo: the words shimmer instead (TR-183). */}
-      <Icon name={tool.status === "failed" ? "TriangleAlert" : tool.icon} size={13} color={tool.status === "failed" ? theme.colors.statusDanger : running ? theme.colors.foreground : theme.colors.foregroundMuted} />
+      {/* Its own icon while it runs, muted as in Paseo: the words shimmer instead (TR-183, TR-184). */}
+      <Icon name={tool.status === "failed" ? "TriangleAlert" : tool.icon} size={13} color={tool.status === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
       <Shimmer
         active={running}
         characters={tool.label.length + (tool.summary?.length ?? 0)}
@@ -958,7 +959,7 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, pastA
           style={[styles.toolHead, open ? styles.toolHeadOpen : null]}
           onPress={toggle}
         >
-          <Icon name={open ? "ChevronDown" : "Wrench"} size={13} color={open || summary.state === "running" ? theme.colors.foreground : theme.colors.foregroundMuted} />
+          <Icon name={open ? "ChevronDown" : "Wrench"} size={13} color={open ? theme.colors.foreground : theme.colors.foregroundMuted} />
           <Shimmer
             active={summary.state === "running"}
             characters={summary.title.length}
@@ -968,7 +969,7 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, pastA
                 {/* Never cut: the counts are what the reader wants. */}
                 <Text style={[styles.toolTitle, open ? styles.toolTitleOpen : null, tone === "peak" ? styles.toolPeak : summary.state === "running" ? styles.toolLabelRunning : null]}>{summary.title}</Text>
                 {/* Its own text, so a long summary is cut before the failure is. */}
-                {summary.failed > 0 ? <Text style={styles.toolFailed}>{`· ${summary.failed} failed`}</Text> : null}
+                {summary.failed > 0 ? <Text style={[styles.toolFailed, tone === "peak" ? styles.toolPeak : null]}>{`· ${summary.failed} failed`}</Text> : null}
               </>
             )}
           />
@@ -1131,7 +1132,8 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
     toolTitleWords: { flexShrink: 1, flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm },
     // While it runs, as Paseo: the label a little dim, so the band brightening it shows.
     toolLabelRunning: { color: colors.foreground, opacity: 0.72 },
-    toolPeak: { color: colors.foreground, opacity: 1 },
+    // Paseo's band, white in either theme; the web clips its gradient to these letters instead (TR-184).
+    toolPeak: { color: SHIMMER_LIGHT, opacity: 1 },
     toolText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body) },
     toolLabel: { flexShrink: 0, maxWidth: "50%" as const, color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body) },
     toolTitle: { flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body) },
