@@ -14,7 +14,8 @@ EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
   Paseo types come from `server/host-types.ts`, never `@getpaseo/client` in reachable code.
 - RPC wire names match `/^[a-z][a-z0-9._-]*$/`. Colours only from `theme.colors`, except the
   image viewer's opaque black backdrop and white controls (`VIEWER` in `client/image-view.tsx`) and
-  GitHub's merged purple on a Done card's PR (`GITHUB_MERGED` in `client/github-colors.ts`).
+  GitHub's merged purple on a Done card's PR (`GITHUB_MERGED` in `client/github-colors.ts`) and
+  Paseo's white shimmer band over a running tool call (`SHIMMER_LIGHT` in `client/shimmer.ts`).
   Every `Text`, `TextInput` and `CentredLabel` sets a theme colour or sits inside a `Text` that does:
   the platform default is black, unreadable in dark theme (TR-170). `client/text-colour.test.ts`
   fails on one; a piece of inline text built in another function says so with an

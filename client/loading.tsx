@@ -6,23 +6,26 @@
  * Ported from Paseo (5293dda, Apache-2.0): `SyncedLoader` from
  * `packages/app/src/components/synced-loader.tsx`, `WorkingIndicator` from
  * `src/agent-stream/turn-footer.tsx`, and the tool call's shimmer from `src/components/message.tsx`.
- * Changed: React Native's `Animated` in place of Reanimated; the shimmer is a window that slides over
- * a brighter copy of the words, as a plugin has neither CSS text clipping nor a masked view; and the
- * time redraws when its text changes (`working-time.ts`), not every second.
+ * Changed: React Native's `Animated` in place of Reanimated; on the web the shimmer's styles go on the
+ * copy's elements (`web-shimmer.ts`); on a phone, which has no masked view for a plugin, the gradient
+ * is layers of a white copy of the words, each seen through a window sliding with the band (TR-184);
+ * and the time redraws when its text changes (`working-time.ts`), not every second.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AccessibilityInfo, Animated, Easing, Platform, Text, View, type LayoutChangeEvent } from "react-native";
 
 import { isWorking } from "../shared/pending-sends";
-import { shimmerMetrics } from "./shimmer";
+import { shimmerDurationMs, shimmerLayers, shimmerMetrics } from "./shimmer";
 import { SPACE } from "./spacing";
 import { SYNCED_LOADER_DOT_COUNT, SYNCED_LOADER_DURATION_MS, syncedLoaderDotSteps } from "./synced-loader-state";
 import { FONT_SIZE } from "./type-scale";
 import { useWorkingElapsed } from "./use-working-elapsed";
+import { startWebShimmer, webShimmerSupported } from "./web-shimmer";
 
+const WEB = Platform.OS === "web";
 // The web has no native animation driver and warns when asked for one.
-const NATIVE_DRIVER = Platform.OS !== "web";
+const NATIVE_DRIVER = !WEB;
 const GRID_COLUMNS = 2;
 /** The height of the digits of the time beside it, at `FONT_SIZE.small`. */
 const LOADER_SIZE = 10;
@@ -104,17 +107,10 @@ function WorkingStatusRow({ theme, turnStartedAt }: { theme: PluginTheme; turnSt
   );
 }
 
-/**
- * The band's soft edges, as Paseo's gradient: bands of the bright copy, each narrower and centred in
- * the last, laid over one another so the light builds towards the middle.
- */
-const SHIMMER_BANDS = [
-  { share: 1, opacity: 0.3 },
-  { share: 0.7, opacity: 0.4 },
-  { share: 0.4, opacity: 1 },
-] as const;
+/** The phone's gradient, in layers: enough that its steps read as one soft band, as Paseo's. */
+const SHIMMER_LAYERS = shimmerLayers(8);
 
-/** A window `share` of the band wide sliding with it, over the bright copy held still beneath (the copy moves back as far as the window moves). */
+/** A phone's layer: a window `share` of the band wide sliding with it, over the white copy held still beneath (the copy moves back as far as the window moves). */
 function ShimmerBand({
   band,
   travel,
@@ -123,7 +119,7 @@ function ShimmerBand({
   style,
   children,
 }: {
-  band: (typeof SHIMMER_BANDS)[number];
+  band: (typeof SHIMMER_LAYERS)[number];
   travel: Animated.Value;
   peakWidth: number;
   size: { width: number; height: number };
@@ -134,11 +130,9 @@ function ShimmerBand({
   const left = useMemo(() => Animated.add(travel, offset), [travel, offset]);
   const back = useMemo(() => Animated.multiply(left, -1), [left]);
   return (
-    // Hidden from readers and touches: a copy of the words above, for the light only. `aria-hidden` for
-    // the web, which ignores the two native props.
+    // Hidden from readers and touches: a copy of the words above, for the light only.
     <Animated.View
       pointerEvents="none"
-      aria-hidden
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       style={{ position: "absolute", left: 0, top: 0, width: peakWidth * band.share, height: size.height, overflow: "hidden", opacity: band.opacity, transform: [{ translateX: left }] }}
@@ -148,11 +142,31 @@ function ShimmerBand({
   );
 }
 
+/** The web's copy of the words, laid over them, with Paseo's gradient clipped to its letters (`web-shimmer.ts`). */
+function WebShimmerCopy({ durationMs, size, style, children }: { durationMs: number; size: { width: number; height: number }; style: object | undefined; children: ReactNode }) {
+  const copy = useRef<View>(null);
+  // Again when the words' row changes size: where each word starts sets its part of the band.
+  useEffect(() => startWebShimmer(copy.current, durationMs), [durationMs, size.width, size.height]);
+  return (
+    // Hidden from readers and touches: a copy of the words above, for the light only; `aria-hidden` is the web's.
+    <View
+      ref={copy}
+      pointerEvents="none"
+      aria-hidden
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[style, { position: "absolute", left: 0, top: 0, width: size.width, height: size.height }]}
+    >
+      {children}
+    </View>
+  );
+}
+
 /**
- * Words that shimmer while `active`: `render("base")` draws them as they read, and a brighter copy,
- * `render("peak")`, shows through a band that slides across them. Both copies are laid out at the
- * same width, so the bright one lines up letter for letter, cut where the base is cut. `characters`
- * sets the pace, as in Paseo.
+ * Words that shimmer while `active`: `render("base")` draws them as they read, and a copy,
+ * `render("peak")` (in `SHIMMER_LIGHT` on a phone), carries the light across them. The copy is laid
+ * out at the words' width, so it lines up letter for letter, cut where the words are cut.
+ * `characters` sets the pace, as in Paseo.
  */
 export function Shimmer({ active, characters, style, render }: { active: boolean; characters: number; style?: object; render: (tone: "base" | "peak") => ReactNode }) {
   const reduced = useReducedMotion();
@@ -160,21 +174,30 @@ export function Shimmer({ active, characters, style, render }: { active: boolean
   const moving = active && !reduced && size.width > 0;
   const metrics = shimmerMetrics(characters, size.width);
   const travel = useRef(new Animated.Value(metrics.from)).current;
-  useLoop(travel, metrics.from, metrics.to, metrics.durationMs, !moving);
+  useLoop(travel, metrics.from, metrics.to, metrics.durationMs, !moving || WEB);
   const measure = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
     if (width !== size.width || height !== size.height) setSize({ width, height });
   };
+  let light: ReactNode = null;
+  if (moving && WEB) {
+    light = webShimmerSupported() ? (
+      <WebShimmerCopy durationMs={shimmerDurationMs(characters)} size={size} style={style}>
+        {render("peak")}
+      </WebShimmerCopy>
+    ) : null;
+  } else if (moving) {
+    light = SHIMMER_LAYERS.map((band, index) => (
+      <ShimmerBand key={index} band={band} travel={travel} peakWidth={metrics.peakWidth} size={size} style={style}>
+        {render("peak")}
+      </ShimmerBand>
+    ));
+  }
   return (
-    <View style={style} onLayout={active ? measure : undefined}>
+    // Measured on the web while idle too: react-native-web watches a view's layout only when it has `onLayout` from the start.
+    <View style={style} onLayout={active || WEB ? measure : undefined}>
       {render("base")}
-      {moving
-        ? SHIMMER_BANDS.map((band, index) => (
-            <ShimmerBand key={index} band={band} travel={travel} peakWidth={metrics.peakWidth} size={size} style={style}>
-              {render("peak")}
-            </ShimmerBand>
-          ))
-        : null}
+      {light}
     </View>
   );
 }

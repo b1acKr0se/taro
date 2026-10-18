@@ -53,8 +53,9 @@ ported from Paseo too: `client/tool-wording.ts` (each call's label, detail and i
 `packages/protocol/src/tool-call-display.ts`, `tool-name-normalization.ts` and `path-utils.ts`, and
 a run's counts from the app's overview tool-call group). Its look for work under way is ported at
 commit `5293dda`: `client/synced-loader-state.ts` (from `src/components/synced-loader-state.ts`),
-`client/shimmer.ts` (`computeShimmerMetrics` from `src/components/message.tsx`) and
-`client/loading.tsx` (the loader from `src/components/synced-loader.tsx`, the working indicator from
+`client/shimmer.ts` (`computeShimmerMetrics`, `SHIMMER_GRADIENT` and the native shimmer's track and
+gradient from `src/components/message.tsx`), `client/web-shimmer.ts` (`buildShimmerTextStyle` and its
+keyframes from the same file) and `client/loading.tsx` (the loader from `src/components/synced-loader.tsx`, the working indicator from
 `src/agent-stream/turn-footer.tsx` and the tool call's shimmer from `src/components/message.tsx`). Paseo ships
 no NOTICE file. Its license, with the Apache License 2.0 in full:
 

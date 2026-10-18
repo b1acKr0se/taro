@@ -36,13 +36,17 @@ describe("the loader and the shimmer", () => {
     expect(loop).toMatch(/value\.setValue\(from\);\s*if \(still\) return;\s*const loop = Animated\.loop/);
     expect(loading).toMatch(/useLoop\(step, 0, SYNCED_LOADER_DOT_COUNT, SYNCED_LOADER_DURATION_MS, reduced\)/);
     expect(loading).toMatch(/const moving = active && !reduced && size\.width > 0;/);
-    expect(loading).toMatch(/useLoop\(travel, metrics\.from, metrics\.to, metrics\.durationMs, !moving\)/);
+    expect(loading).toMatch(/useLoop\(travel, metrics\.from, metrics\.to, metrics\.durationMs, !moving \|\| WEB\)/);
+    // The web's copy, whose animation runs in the browser, is drawn only while moving (TR-184).
+    expect(loading).toMatch(/if \(moving && WEB\) \{/);
   });
 
   it("hides the shimmer's copies of the words from screen readers, on the web too", () => {
-    const band = loading.slice(loading.indexOf("function ShimmerBand("), loading.indexOf("\n}\n", loading.indexOf("function ShimmerBand(")));
-    expect(band).toMatch(/^\s+aria-hidden$/m);
-    expect(band).toMatch(/accessibilityElementsHidden/);
-    expect(band).toMatch(/importantForAccessibility="no-hide-descendants"/);
+    const body = (name: string) => loading.slice(loading.indexOf(`function ${name}(`), loading.indexOf("\n}\n", loading.indexOf(`function ${name}(`)));
+    expect(body("WebShimmerCopy")).toMatch(/^\s+aria-hidden$/m);
+    for (const name of ["ShimmerBand", "WebShimmerCopy"]) {
+      expect(body(name)).toMatch(/accessibilityElementsHidden/);
+      expect(body(name)).toMatch(/importantForAccessibility="no-hide-descendants"/);
+    }
   });
 });
