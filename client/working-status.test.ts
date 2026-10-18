@@ -41,7 +41,7 @@ describe("the loader and the shimmer", () => {
 
   it("hides the shimmer's copies of the words from screen readers, on the web too", () => {
     const band = loading.slice(loading.indexOf("function ShimmerBand("), loading.indexOf("\n}\n", loading.indexOf("function ShimmerBand(")));
-    expect(band).toMatch(/aria-hidden/);
+    expect(band).toMatch(/^\s+aria-hidden$/m);
     expect(band).toMatch(/accessibilityElementsHidden/);
     expect(band).toMatch(/importantForAccessibility="no-hide-descendants"/);
   });
