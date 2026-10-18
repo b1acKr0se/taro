@@ -25,7 +25,6 @@ import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { captionOf, viewerBarText } from "./viewer-bar";
 import { isMacDesktopShell, windowControlsInset } from "./window-chrome";
 import {
-  DOUBLE_TAP_MS,
   FIT,
   frameOf,
   gestureEnd,
@@ -348,7 +347,6 @@ function GalleryPage({
   const gesture = useRef<Gesture | null>(null);
   const easing = useRef<Ease | null>(null);
   const lastTap = useRef<Tap | null>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function showFit(transform: Transform): void {
     const fit = isAtFit(transform);
@@ -417,12 +415,8 @@ function GalleryPage({
   function onTap(at: Point): void {
     const tap = { at, time: Date.now() };
     const outcome = tapOutcome(lastTap.current, tap, live.current.transform, live.current.frame);
-    if (closeTimer.current !== null) clearTimeout(closeTimer.current);
-    closeTimer.current = null;
     lastTap.current = outcome.kind === "zoom" ? null : tap;
     if (outcome.kind === "zoom") settleRef.current(outcome.transform);
-    // Waits to see that this is not the first of a double-tap.
-    else if (outcome.kind === "close") closeTimer.current = setTimeout(() => live.current.onClose(), DOUBLE_TAP_MS);
   }
 
   const responder = useRef(
@@ -462,13 +456,6 @@ function GalleryPage({
       },
     }),
   ).current;
-
-  useEffect(
-    () => () => {
-      if (closeTimer.current !== null) clearTimeout(closeTimer.current);
-    },
-    [],
-  );
 
   // The web's wheel (a trackpad pinch arrives as a wheel with ctrl held) and arrow and Escape keys.
   useEffect(() => {
