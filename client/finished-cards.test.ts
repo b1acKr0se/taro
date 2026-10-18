@@ -313,7 +313,7 @@ describe("permissionCardView", () => {
 
   it("says a question was answered or dismissed, its answers under the line as a picked option's", () => {
     const question = { kind: "question", subject: "Which database?" };
-    expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z", { ...question, words: "Database: Postgres" }), clock)).toMatchObject({ kind: "Question", outcome: "Answered by you", tone: "positive", answer: "Database: Postgres", words: null });
+    expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z", { ...question, words: "Postgres" }), clock)).toMatchObject({ kind: "Question", outcome: "Answered by you", tone: "positive", answer: "Postgres", words: null });
     expect(permissionCardView(permissionAsk("p", "2026-10-16T10:05:00.000Z", { ...question, outcome: "denied" }), clock)).toMatchObject({ kind: "Question", outcome: "Dismissed by you", tone: "neutral" });
   });
 

@@ -78,10 +78,16 @@ describe("resolveAsk", () => {
     expect(resolveAsk(bash, { behavior: "allow" }, LATER, { rule: "scratch-or-worktree" })).toMatchObject({ outcome: "allowed", by: "rules", rule: "scratch-or-worktree" });
   });
 
-  it("records a question's answers as header: answer", () => {
+  it("records one answer alone, and several as header: answer", () => {
     const question = ask({ id: "p", name: "AskUserQuestion", kind: "question", input: { questions: [{ question: "Which?", header: "Database" }] } });
-    const answered = resolveAsk(question, { behavior: "allow", updatedInput: { questions: [], answers: { Database: "Postgres", Port: "5432", Empty: "" } } }, LATER, null);
-    expect(answered).toMatchObject({ outcome: "allowed", by: "you", words: "Database: Postgres; Port: 5432" });
+    const questions = [{ question: "Which database?", header: "Database" }, { question: "Which port?", header: "Port" }];
+    const one = resolveAsk(question, { behavior: "allow", updatedInput: { questions, answers: { "Which database?": "Postgres", "Which port?": " " } } }, LATER, null);
+    expect(one).toMatchObject({ outcome: "allowed", by: "you", words: "Postgres" });
+    const several = resolveAsk(question, { behavior: "allow", updatedInput: { questions, answers: { "Which database?": "Postgres", "Which port?": "5432", Empty: "" } } }, LATER, null);
+    expect(several.words).toBe("Database: Postgres; Port: 5432");
+    // A key no question matches names itself.
+    const unmatched = resolveAsk(question, { behavior: "allow", updatedInput: { questions: [], answers: { Database: "Postgres", Port: "5432" } } }, LATER, null);
+    expect(unmatched.words).toBe("Database: Postgres; Port: 5432");
     expect(resolveAsk(question, { behavior: "allow", updatedInput: {} }, LATER, null).words).toBeNull();
     expect(resolveAsk(question, { behavior: "deny", message: "Dismissed by user" }, LATER, null)).toMatchObject({ outcome: "denied", words: null });
   });

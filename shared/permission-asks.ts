@@ -78,11 +78,22 @@ export function askFromRequest(agentId: string, request: AskRequest, at: string)
   return { agentId, requestId: request.id, kind: request.kind, name: request.name, subject: oneLine(subject), askedAt: at, answeredAt: null, outcome: null, by: null, rule: null, words: null };
 }
 
+/**
+ * A question's answers as its card shows them (TR-172): one answer alone, as the card's line already
+ * names its question; several as "header: answer". Claude keys each answer by its question's text,
+ * so a question's short header names it where the input has one.
+ */
 function answersText(input: Record<string, unknown> | undefined): string | null {
   const answers = input?.answers;
   if (typeof answers !== "object" || answers === null) return null;
-  const parts = Object.entries(answers as Record<string, unknown>).flatMap(([header, answer]) => (typeof answer === "string" && answer.trim() !== "" ? [`${header}: ${answer.trim()}`] : []));
-  return parts.length === 0 ? null : parts.join("; ");
+  const questions = Array.isArray(input?.questions) ? (input.questions as unknown[]) : [];
+  const headerOf = (key: string): string => {
+    const asked = questions.find((question): question is Record<string, unknown> => typeof question === "object" && question !== null && text((question as Record<string, unknown>).question) === key);
+    return text(asked?.header) || key;
+  };
+  const given = Object.entries(answers as Record<string, unknown>).flatMap(([key, answer]) => (typeof answer === "string" && answer.trim() !== "" ? [{ key, answer: answer.trim() }] : []));
+  if (given.length === 1) return given[0]?.answer ?? null;
+  return given.length === 0 ? null : given.map(({ key, answer }) => `${headerOf(key)}: ${answer}`).join("; ");
 }
 
 /** The ask answered at `at`; `byRules` when Taro's rules answered it, whose own message is not the user's words. */
