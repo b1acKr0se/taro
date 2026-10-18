@@ -45,3 +45,11 @@ export function enterKeyAction(event: WebKeyPressEvent["nativeEvent"], sendable:
 export function isSaveKey(event: WebKeyPressEvent["nativeEvent"]): boolean {
   return (event.key === "s" || event.key === "S") && (event.metaKey === true || event.ctrlKey === true);
 }
+
+/**
+ * Escape stops the agent's turn, as Paseo's `agent-interrupt` shortcut does (TR-181), whatever the box
+ * holds. Not while an input method is mid-composition: Escape there cancels the word being composed.
+ */
+export function isStopKey(event: WebKeyPressEvent["nativeEvent"]): boolean {
+  return event.key === "Escape" && event.isComposing !== true && event.keyCode !== 229;
+}

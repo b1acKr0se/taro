@@ -401,6 +401,8 @@ export const sendQueuedMessageNow = defineRpc({ name: "taro.queue.send-now", inp
 export const retryQueuedMessage = defineRpc({ name: "taro.queue.retry", input: QueuedMessageInput, output: Empty });
 export const nudgeAgent = defineRpc({ name: "taro.agent.nudge", input: AgentInput, output: Empty });
 export const compactAgent = defineRpc({ name: "taro.agent.compact", input: AgentInput, output: Empty });
+/** The chat's stop button and Escape (TR-181): ends the agent's turn, as Paseo's own composer does; nothing when it is idle. */
+export const stopAgentTurn = defineRpc({ name: "taro.agent.stop", input: AgentInput, output: Empty });
 export const relaunchOwner = defineRpc({
   name: "taro.owner.relaunch",
   input: z.object({ project: ProjectNameSchema, ticket: z.string() }),

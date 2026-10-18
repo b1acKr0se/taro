@@ -17,6 +17,7 @@ import {
   loadPastPlan,
   loadTicket,
   nudgeAgent,
+  stopAgentTurn,
   pauseTicket,
   relaunchOwner,
   resumeTicket,
@@ -360,6 +361,10 @@ export default function contribute(server: PluginServerContext) {
   });
   server.handle(compactAgent, async ({ agentId }, { paseo }) => {
     await actions.compact(keep(paseo), agentId);
+    return {};
+  });
+  server.handle(stopAgentTurn, async ({ agentId }, { paseo }) => {
+    await actions.stop(keep(paseo), agentId);
     return {};
   });
   server.handle(pauseTicket, async ({ project, ticket }, { paseo }) => {

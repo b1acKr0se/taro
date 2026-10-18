@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { enterKeyAction } from "./keys";
+import { enterKeyAction, isStopKey } from "./keys";
 
 describe("enterKeyAction (TR-102)", () => {
   it("sends on Enter when there is something to send", () => {
@@ -17,5 +17,20 @@ describe("enterKeyAction (TR-102)", () => {
     expect(enterKeyAction({ key: "Enter", isComposing: true }, true)).toBeNull();
     expect(enterKeyAction({ key: "Enter", keyCode: 229 }, false)).toBeNull();
     expect(enterKeyAction({ key: "a" }, true)).toBeNull();
+  });
+});
+
+describe("isStopKey (TR-181)", () => {
+  it("is Escape", () => {
+    expect(isStopKey({ key: "Escape" })).toBe(true);
+    expect(isStopKey({ key: "Escape", shiftKey: true })).toBe(true);
+  });
+
+  it("is not Escape cancelling an input method's word, nor any other key", () => {
+    expect(isStopKey({ key: "Escape", isComposing: true })).toBe(false);
+    expect(isStopKey({ key: "Escape", keyCode: 229 })).toBe(false);
+    expect(isStopKey({ key: "Enter" })).toBe(false);
+    expect(isStopKey({ key: "Esc" })).toBe(false);
+    expect(isStopKey({ key: "" })).toBe(false);
   });
 });
