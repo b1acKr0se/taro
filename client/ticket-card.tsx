@@ -234,6 +234,8 @@ export function TicketCard({
         return { icon: "Hourglass", color: colors.statusSuccess, headline: { color: colors.foreground } };
       case "working":
         return { icon: "Activity", color: colors.statusSuccess, headline: { color: colors.foreground } };
+      case "parent-owner":
+        return { icon: "Crown", color: colors.foregroundMuted, headline: null };
       case "milestone":
         return { icon: "Flag", color: colors.foregroundMuted, headline: null };
       case "elsewhere":

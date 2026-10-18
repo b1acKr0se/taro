@@ -110,12 +110,16 @@ one a "helper".
 
 Split only high-complexity work with distinct deliverables. The breakdown is part of your proposal,
 so one approval covers both (a later split needs a `child-breakdown` decision). Create children with
-`taro ticket create … -p <your id>`. Default: children run one at a time in **your** worktree, each
-by an implementer committing onto your branch; you review each child's commits against its definition of
-done and mark it Done. Parallel children (approved in the proposal) get their own worktree and
-branch, merged locally into yours when done. A child touching contracts, money, auth or stored data
-gets its own independent reviewer before it is Done. Children's questions come to you; bring real
-decisions to the user.
+`taro ticket create … -p <your id>`. **Every child is worked by a subagent of its own**, labelled
+with the child's id (`reference/paseo.md`): an implementer to build it, a researcher for an
+investigation child, its model picked by the child's difficulty (Subagents). Never do a child's work
+yourself: a child with no agent of its own borrows your chat and your activity, so its card repeats
+your parent card's (TR-178). Write the child's definition of done into the child ticket, start its
+subagent, verify its report (its commits against that definition of done), and mark the child Done.
+Default: children run one at a time in **your** worktree, each subagent committing onto your branch.
+Parallel children (approved in the proposal) get their own worktree and branch, merged locally into
+yours when done. A child touching contracts, money, auth or stored data gets its own independent
+reviewer before it is Done. Children's questions come to you; bring real decisions to the user.
 
 ## Review (decision 25)
 

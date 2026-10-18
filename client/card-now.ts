@@ -1,9 +1,10 @@
 /**
  * What a board card says is happening now (TR-026, TR-031): the first of why it stalled, what it asks
  * of you, that it was accepted and is merging, where a teammate's owner runs, the subagent the owner
- * waits on, what the running owner is doing (TR-080), what a queued ticket waits on (TR-138), or the
- * idle owner's last status line or newer milestone. Each is a headline read whole (it wraps, never cut
- * mid-fact), a muted detail under it, and for an ask the action that opens it. Pure.
+ * waits on, a child's parent owner (TR-178), what the running owner is doing (TR-080), what a queued
+ * ticket waits on (TR-138), or the idle owner's last status line or newer milestone. Each is a headline
+ * read whole (it wraps, never cut mid-fact), a muted detail under it, and for an ask the action that
+ * opens it. Pure.
  */
 import type { Card } from "../shared/contracts";
 import { stillDelivering } from "../shared/delivery-end";
@@ -30,6 +31,7 @@ export type NowLine =
   | ({ kind: "accepted" } & Lines)
   | ({ kind: "elsewhere" } & Lines)
   | ({ kind: "subagent" } & Lines)
+  | ({ kind: "parent-owner" } & Lines)
   | ({ kind: "working" } & Lines)
   | ({ kind: "milestone" } & Lines)
   | ({ kind: "status"; state: StatusState } & Lines);
@@ -58,6 +60,8 @@ export function cardNowLine(card: Card, now: number): NowLine | null {
     const parts = [waiting.running === null ? null : `running ${waiting.running}`, waiting.more > 0 ? `${waiting.more} more running` : null];
     return { kind: "subagent", headline: waiting.text, detail: joined(parts) };
   }
+  // A child has no owner of its own (decision 32): the owner's turn and status line are its parent card's (TR-178).
+  if (card.parent !== null) return childLine(card, now);
   if (owner !== null && (owner.status === "running" || owner.status === "initializing")) return { kind: "working", ...workingLines(card, owner.turnStartedAt, now) };
   return restingLine(card, now);
 }
@@ -85,6 +89,17 @@ function deliveringLines(card: Card, turnStartedAt: string | null, now: number):
   if (activity !== null) return { headline: "Delivering…", detail: joined([capitalised(activity.text), ago(activity.at, now)]) };
   const started = turnStartedAt === null ? null : ago(turnStartedAt, now);
   return { headline: "Delivering…", detail: started === null ? null : `started ${started}` };
+}
+
+/**
+ * A child with no subagent running (TR-178): under way, it is with its parent's owner, with the child's
+ * own newest milestone under it; otherwise nothing, as every line it could borrow is the parent's.
+ */
+function childLine(card: Card, now: number): NowLine | null {
+  if (card.column !== "working" || card.owner === null || card.parent === null) return null;
+  const milestone = card.latestMilestone;
+  const own = milestone === null || milestone.time === null ? null : joined([capitalised(milestone.text), ago(milestone.time, now)]);
+  return { kind: "parent-owner", headline: `With ${card.parent}'s owner`, detail: own ?? "no subagent running" };
 }
 
 /** Idle: the last status line, unless a milestone written after it says something newer. */
