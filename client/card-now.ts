@@ -1,9 +1,10 @@
 /**
  * What a board card says is happening now (TR-026, TR-031): the first of why it stalled, what it asks
  * of you, that it was accepted and is merging, where a teammate's owner runs, the subagent the owner
- * waits on, what the running owner is doing (TR-080), what a queued ticket waits on (TR-138), or the
- * idle owner's last status line or newer milestone. Each is a headline read whole (it wraps, never cut
- * mid-fact), a muted detail under it, and for an ask the action that opens it. Pure.
+ * waits on, a child's parent owner (TR-178), what the running owner is doing (TR-080), what a queued
+ * ticket waits on (TR-138), or the idle owner's last status line or newer milestone. Each is a headline
+ * read whole (it wraps, never cut mid-fact), a muted detail under it, and for an ask the action that
+ * opens it. Pure.
  */
 import type { Card } from "../shared/contracts";
 import { stillDelivering } from "../shared/delivery-end";
