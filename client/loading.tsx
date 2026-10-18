@@ -19,15 +19,13 @@ import { shimmerMetrics } from "./shimmer";
 import { SPACE } from "./spacing";
 import { SYNCED_LOADER_DOT_COUNT, SYNCED_LOADER_DURATION_MS, syncedLoaderDotSteps } from "./synced-loader-state";
 import { FONT_SIZE } from "./type-scale";
-import { workingElapsed } from "./working-time";
+import { useWorkingElapsed } from "./use-working-elapsed";
 
 // The web has no native animation driver and warns when asked for one.
 const NATIVE_DRIVER = Platform.OS !== "web";
 const GRID_COLUMNS = 2;
 /** The height of the digits of the time beside it, at `FONT_SIZE.small`. */
 const LOADER_SIZE = 10;
-/** Room after the next change before redrawing, so a timer firing a little early still sees the new text. */
-const CHANGE_MARGIN_MS = 50;
 
 export function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
@@ -85,19 +83,6 @@ export function DotLoader({ size, color }: { size: number; color: string }) {
   );
 }
 
-/** The turn's time, redrawn when its text changes: once a minute, then once an hour. */
-function useWorkingElapsed(turnStartedAt: string | null | undefined): string | null {
-  const [now, setNow] = useState(() => Date.now());
-  const elapsed = workingElapsed(turnStartedAt, now);
-  const nextChangeMs = elapsed?.nextChangeMs ?? null;
-  useEffect(() => {
-    if (nextChangeMs === null) return;
-    const timer = setTimeout(() => setNow(Date.now()), nextChangeMs + CHANGE_MARGIN_MS);
-    return () => clearTimeout(timer);
-  }, [nextChangeMs, now]);
-  return elapsed?.text ?? null;
-}
-
 /** Null unless a turn runs: Paseo's loader and how long the turn has run, under a chat's last message. */
 export function WorkingStatus({ theme, status, turnStartedAt }: { theme: PluginTheme; status: string | null | undefined; turnStartedAt: string | null | undefined }) {
   if (!isWorking(status)) return null;
@@ -149,9 +134,11 @@ function ShimmerBand({
   const left = useMemo(() => Animated.add(travel, offset), [travel, offset]);
   const back = useMemo(() => Animated.multiply(left, -1), [left]);
   return (
-    // Hidden from readers and touches: a copy of the words above, for the light only.
+    // Hidden from readers and touches: a copy of the words above, for the light only. `aria-hidden` for
+    // the web, which ignores the two native props.
     <Animated.View
       pointerEvents="none"
+      aria-hidden
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       style={{ position: "absolute", left: 0, top: 0, width: peakWidth * band.share, height: size.height, overflow: "hidden", opacity: band.opacity, transform: [{ translateX: left }] }}
