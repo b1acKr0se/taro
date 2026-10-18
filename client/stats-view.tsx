@@ -2,10 +2,10 @@
  * A project's Stats tab: a totals row (its Wall the project's span, TR-100), then a row per ticket with its wall
  * time, agent time, time waiting on the user, turns, agents, cost, nudges,
  * decisions, crash recoveries and idle compactions (the totals add the manager's). A cost missing some
- * agents' share is marked, and explained under the table. Tapping a ticket shows its time per status. The table fits a
- * wide pane; on a narrower one it scrolls sideways beside a ticket column that stays put, with a fade on the right while
- * columns lie beyond it and, on a desktop, buttons that page through them (TR-107). On a phone the status sits under the
- * title so the first numbers fit.
+ * agents' share is marked, and explained under the table. Tapping a ticket opens it, as its board card does (TR-180);
+ * its ▸ shows its time per status. The table fits a wide pane; on a narrower one it scrolls sideways beside a ticket
+ * column that stays put, with a fade on the right while columns lie beyond it and, on a desktop, buttons that page
+ * through them (TR-107). On a phone the status sits under the title so the first numbers fit.
  *
  * TR-155: the header row sticks to the top, and tickets come 25 to a page. Nothing is moved back by the scroll offset
  * any more (that trailed the scroll by a frame and shook): on the web the page is one scroll box, sideways and down,
@@ -74,6 +74,8 @@ const NUMBERS_WIDTH = NUMBER_COLUMNS.reduce((total, column) => total + column.wi
 /** The table's padding on each side; the ticket column covers the left one, so nothing shows beside it. */
 const SIDE = SPACE.lg;
 const WEB = Platform.OS === "web";
+/** The ▸ before a ticket's id: wide enough to aim at, its taps reaching past it by `hitSlop`. */
+const TOGGLE_WIDTH = SPACE.lg;
 /** The fade over the right edge while columns lie beyond it: its width and steps (core React Native draws no gradient). */
 const FADE_WIDTH = 56;
 const FADE_STEPS = 14;
@@ -128,7 +130,17 @@ type TableRow =
   | { key: string; kind: "cells"; height: number; ticket: ReactNode; rest: ReactNode; onPress?: () => void; indent: number }
   | { key: string; kind: "detail"; text: string };
 
-export function StatsView({ project, theme, compact }: { project: string; theme: PluginTheme; compact: boolean }) {
+export function StatsView({
+  project,
+  theme,
+  compact,
+  onOpenTicket,
+}: {
+  project: string;
+  theme: PluginTheme;
+  compact: boolean;
+  onOpenTicket: (ticket: { id: string }) => void;
+}) {
   const stats = useStats(project);
   const [open, setOpen] = useState<string | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
@@ -156,6 +168,8 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
       title: { color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: CELL_LINE },
       totalTitle: { color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: CELL_LINE, fontWeight: "700" as const },
       id: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
+      ticketLine: { flexDirection: "row" as const, alignItems: "center" as const },
+      toggle: { width: TOGGLE_WIDTH, alignSelf: "stretch" as const, justifyContent: "center" as const },
       under: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: UNDER_LINE },
       detail: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, paddingVertical: SPACE.sm, paddingLeft: SPACE.md },
       note: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, padding: SPACE.lg },
@@ -231,21 +245,30 @@ export function StatsView({ project, theme, compact }: { project: string; theme:
       kind: "cells",
       height,
       indent: parentOf(summary.ticket) !== null ? SPACE.lg : 0,
-      onPress: () => setOpen(expanded ? null : summary.ticket),
+      onPress: () => onOpenTicket({ id: summary.ticket }),
       ticket: (
-        <>
-          <Text style={styles.title} numberOfLines={1}>
-            <Text style={styles.id}>
-              {expanded ? "▾" : "▸"} {summary.ticket}
-            </Text>{" "}
-            {summary.title}
-          </Text>
-          {compact ? (
-            <Text style={styles.under} numberOfLines={1}>
-              {summary.status}
+        <View style={styles.ticketLine}>
+          {/* Its own button inside the row's, so a tap here shows the time per status instead of opening the ticket. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${expanded ? "Hide" : "Show"} ${summary.ticket}'s time per status`}
+            hitSlop={{ top: SPACE.sm, bottom: SPACE.sm, left: SPACE.sm, right: SPACE.xs }}
+            style={styles.toggle}
+            onPress={() => setOpen(expanded ? null : summary.ticket)}
+          >
+            <Text style={styles.id}>{expanded ? "▾" : "▸"}</Text>
+          </Pressable>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.title} numberOfLines={1}>
+              <Text style={styles.id}>{summary.ticket}</Text> {summary.title}
             </Text>
-          ) : null}
-        </>
+            {compact ? (
+              <Text style={styles.under} numberOfLines={1}>
+                {summary.status}
+              </Text>
+            ) : null}
+          </View>
+        </View>
       ),
       rest: (
         <>

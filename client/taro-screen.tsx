@@ -596,7 +596,7 @@ function ProjectView({
             ) : null}
             {kept("stats") ? (
               <KeptPane shown={phoneTab === "stats"}>
-                <MemoStats project={project} theme={theme} compact />
+                <MemoStats project={project} theme={theme} compact onOpenTicket={openTicket} />
               </KeptPane>
             ) : null}
             {kept("board") ? <KeptPane shown={phoneTab === "board"}>{boardView}</KeptPane> : null}
@@ -640,7 +640,7 @@ function ProjectView({
         <View style={{ flex: 1, minHeight: 0 }}>
           {rightVisited.has("stats") ? (
             <KeptPane shown={rightPane === "stats"}>
-              <MemoStats project={project} theme={theme} compact={false} />
+              <MemoStats project={project} theme={theme} compact={false} onOpenTicket={openTicket} />
             </KeptPane>
           ) : null}
           {rightVisited.has("board") ? <KeptPane shown={rightPane === "board"}>{boardView}</KeptPane> : null}
