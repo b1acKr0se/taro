@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { serializeTicket, type Ticket } from "../shared/ticket-format";
-import { appendTicketNote, endDelivery, forgetTicketFile, listTickets, recordChangesRequested, ticketProblems, viewTicket } from "./tickets";
+import { appendTicketNote, endDelivery, forgetTicketFile, listTickets, recordChangesRequested, startPlanning, ticketProblems, viewTicket } from "./tickets";
 
 vi.mock("node:child_process", () => ({
   spawn: () => {
@@ -212,5 +212,31 @@ describe("ticketProblems", () => {
     expect((await listTickets(tracker)).find((summary) => summary.id === "NA-002")?.title).toBe("Empty");
     forgetTicketFile(tracker, "NA-002.md");
     expect((await listTickets(tracker)).find((summary) => summary.id === "NA-002")?.title).toBe("Emptx");
+  });
+});
+
+describe("startPlanning (TR-173)", () => {
+  const record = "OWNER-STARTED 2026-10-14T16:00:00.000Z — the plugin set Planning: owner agent-1 started on this Queued ticket";
+  const dispatch = "DISPATCH-INTENT 2026-10-14T15:59Z — ticket NA-003, token t, branch taro/na-003";
+
+  it("sets a Queued ticket Planning and lands the record, in one write", async () => {
+    write(ticket({ id: "NA-003", title: "Queued", status: "Queued", notes: dispatch }));
+    expect(await startPlanning(tracker, "NA-003", record)).toBe(true);
+    const detail = await viewTicket(tracker, "NA-003");
+    expect(detail.status).toBe("Planning");
+    expect(detail.implementationNotes).toBe(`${dispatch}\n\n${record}`);
+  });
+
+  it.each(["Planning", "In Progress", "Awaiting acceptance", "Done"] as const)("writes nothing to a %s ticket: a takeover keeps its status", async (status) => {
+    write(ticket({ id: "NA-003", title: "Under way", status, notes: dispatch }));
+    const before = readFileSync(join(tracker, "tickets", "NA-003.md"), "utf8");
+    expect(await startPlanning(tracker, "NA-003", record)).toBe(false);
+    expect(readFileSync(join(tracker, "tickets", "NA-003.md"), "utf8")).toBe(before);
+  });
+
+  it("writes nothing to a Queued child", async () => {
+    write(ticket({ id: "NA-001.02", title: "JSON", status: "Queued", parent: "NA-001" }));
+    expect(await startPlanning(tracker, "NA-001.02", record)).toBe(false);
+    expect((await viewTicket(tracker, "NA-001.02")).status).toBe("Queued");
   });
 });

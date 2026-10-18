@@ -4,6 +4,7 @@
  */
 import { deliveryOnOffer } from "../shared/delivery-end";
 import { noteRecords } from "../shared/execution";
+import { startsPlanning } from "../shared/owner-start";
 import type { TicketPriority, TicketProblem } from "../shared/ticket-format";
 import { createTicketStore, type TicketStore } from "./ticket-store";
 
@@ -114,6 +115,12 @@ export async function recordChangesRequested(trackerPath: string, ticketId: stri
  */
 export async function endDelivery(trackerPath: string, ticketId: string, record: string): Promise<boolean> {
   const ticket = await storeFor(trackerPath).editIf(ticketId, deliveryOnOffer, { appendNotes: [record], status: "In Progress" });
+  return ticket !== null;
+}
+
+/** Sets a Queued ticket Planning with the record in one write, as its owner starts (TR-173); false when it had moved on. */
+export async function startPlanning(trackerPath: string, ticketId: string, record: string): Promise<boolean> {
+  const ticket = await storeFor(trackerPath).editIf(ticketId, startsPlanning, { appendNotes: [record], status: "Planning" });
   return ticket !== null;
 }
 
