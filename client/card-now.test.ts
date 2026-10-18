@@ -101,6 +101,45 @@ describe("cardNowLine", () => {
     expect(cardNowLine(card({ column: "queued", parent: "NA-027", lastStatus: status }), NOW)).toBeNull();
   });
 
+  // TR-178: a started child with no agent of its own is placed by its parent's owner, whose work the parent card shows.
+  describe("a started child between its subagents", () => {
+    const child = { id: "NA-027.01", parent: "NA-027" };
+    const running = { ...owner, status: "running", turnStartedAt: "2026-01-01T11:59:00Z" };
+
+    it("names its parent's owner rather than repeating the owner's running work", () => {
+      expect(cardNowLine(card({ ...child, owner: running, lastStatus: status, activity: { text: "running tests", at: "2026-01-01T11:59:30Z" } }), NOW)).toEqual({
+        kind: "parent-owner",
+        headline: "With NA-027's owner",
+        detail: "no subagent running",
+      });
+    });
+
+    it("does not repeat the idle owner's status line either", () => {
+      expect(cardNowLine(card({ ...child, lastStatus: status }), NOW)).toEqual({ kind: "parent-owner", headline: "With NA-027's owner", detail: "no subagent running" });
+    });
+
+    it("shows its own newest milestone under the owner", () => {
+      const latestMilestone = { kind: "MILESTONE", time: "2026-01-01T11:57:00Z", text: "implementer's report verified" };
+      expect(cardNowLine(card({ ...child, owner: running, lastStatus: status, latestMilestone }), NOW)).toEqual({
+        kind: "parent-owner",
+        headline: "With NA-027's owner",
+        detail: "Implementer's report verified · 3m ago",
+      });
+    });
+
+    it("shows its own running subagent as before", () => {
+      expect(cardNowLine(card({ ...child, owner: running, lastStatus: status, subagents: [implementer({})] }), NOW)).toEqual({
+        kind: "subagent",
+        headline: "Implementer building NA-027.01",
+        detail: "running 12m",
+      });
+    });
+
+    it("says nothing of the owner once it is finished", () => {
+      expect(cardNowLine(card({ ...child, status: "Done", column: "done", lastStatus: status }), NOW)).toBeNull();
+    });
+  });
+
   it("shows the owner's last status line as the headline, its state and age as the detail", () => {
     expect(cardNowLine(card({ lastStatus: status }), NOW)).toEqual({ kind: "status", state: "waiting", headline: "Implementer building NA-027.01", detail: "Waiting · 5m ago" });
   });
