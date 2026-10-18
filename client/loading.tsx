@@ -119,6 +119,48 @@ function WorkingStatusRow({ theme, turnStartedAt }: { theme: PluginTheme; turnSt
 }
 
 /**
+ * The band's soft edges, as Paseo's gradient: bands of the bright copy, each narrower and centred in
+ * the last, laid over one another so the light builds towards the middle.
+ */
+const SHIMMER_BANDS = [
+  { share: 1, opacity: 0.3 },
+  { share: 0.7, opacity: 0.4 },
+  { share: 0.4, opacity: 1 },
+] as const;
+
+/** A window `share` of the band wide sliding with it, over the bright copy held still beneath (the copy moves back as far as the window moves). */
+function ShimmerBand({
+  band,
+  travel,
+  peakWidth,
+  size,
+  style,
+  children,
+}: {
+  band: (typeof SHIMMER_BANDS)[number];
+  travel: Animated.Value;
+  peakWidth: number;
+  size: { width: number; height: number };
+  style: object | undefined;
+  children: ReactNode;
+}) {
+  const offset = (peakWidth * (1 - band.share)) / 2;
+  const left = useMemo(() => Animated.add(travel, offset), [travel, offset]);
+  const back = useMemo(() => Animated.multiply(left, -1), [left]);
+  return (
+    // Hidden from readers and touches: a copy of the words above, for the light only.
+    <Animated.View
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={{ position: "absolute", left: 0, top: 0, width: peakWidth * band.share, height: size.height, overflow: "hidden", opacity: band.opacity, transform: [{ translateX: left }] }}
+    >
+      <Animated.View style={[style, { position: "absolute", left: 0, top: 0, width: size.width, height: size.height, transform: [{ translateX: back }] }]}>{children}</Animated.View>
+    </Animated.View>
+  );
+}
+
+/**
  * Words that shimmer while `active`: `render("base")` draws them as they read, and a brighter copy,
  * `render("peak")`, shows through a band that slides across them. Both copies are laid out at the
  * same width, so the bright one lines up letter for letter, cut where the base is cut. `characters`
@@ -131,7 +173,6 @@ export function Shimmer({ active, characters, style, render }: { active: boolean
   const metrics = shimmerMetrics(characters, size.width);
   const travel = useRef(new Animated.Value(metrics.from)).current;
   useLoop(travel, metrics.from, metrics.to, metrics.durationMs, !moving);
-  const counter = useMemo(() => Animated.multiply(travel, -1), [travel]);
   const measure = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
     if (width !== size.width || height !== size.height) setSize({ width, height });
@@ -139,17 +180,13 @@ export function Shimmer({ active, characters, style, render }: { active: boolean
   return (
     <View style={style} onLayout={active ? measure : undefined}>
       {render("base")}
-      {moving ? (
-        // Hidden from readers and touches: a copy of the words above, for the light only.
-        <Animated.View
-          pointerEvents="none"
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-          style={{ position: "absolute", left: 0, top: 0, width: metrics.peakWidth, height: size.height, overflow: "hidden", transform: [{ translateX: travel }] }}
-        >
-          <Animated.View style={[style, { position: "absolute", left: 0, top: 0, width: size.width, height: size.height, transform: [{ translateX: counter }] }]}>{render("peak")}</Animated.View>
-        </Animated.View>
-      ) : null}
+      {moving
+        ? SHIMMER_BANDS.map((band, index) => (
+            <ShimmerBand key={index} band={band} travel={travel} peakWidth={metrics.peakWidth} size={size} style={style}>
+              {render("peak")}
+            </ShimmerBand>
+          ))
+        : null}
     </View>
   );
 }
