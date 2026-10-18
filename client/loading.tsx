@@ -24,6 +24,8 @@ import { workingElapsed } from "./working-time";
 // The web has no native animation driver and warns when asked for one.
 const NATIVE_DRIVER = Platform.OS !== "web";
 const GRID_COLUMNS = 2;
+/** The height of the digits of the time beside it, at `FONT_SIZE.small`. */
+const LOADER_SIZE = 10;
 /** Room after the next change before redrawing, so a timer firing a little early still sees the new text. */
 const CHANGE_MARGIN_MS = 50;
 
@@ -108,11 +110,10 @@ function WorkingStatusRow({ theme, turnStartedAt }: { theme: PluginTheme; turnSt
     <View
       accessibilityRole="text"
       accessibilityLabel={elapsed === null ? "Agent at work" : `Agent at work for ${elapsed}`}
-      style={{ flexDirection: "row", alignItems: "center", alignSelf: "flex-start", height: 24, gap: SPACE.md, marginTop: SPACE.xs }}
+      style={{ flexDirection: "row", alignItems: "center", alignSelf: "flex-start", height: 24, gap: SPACE.sm, marginTop: SPACE.xs }}
     >
-      <View style={{ marginLeft: -2 }}>
-        <DotLoader size={14} color={theme.colors.foreground} />
-      </View>
+      {/* As tall as the time's digits, not Paseo's 14: its dots light in turn, and a taller grid lit only at the top read as a row above the time. */}
+      <DotLoader size={LOADER_SIZE} color={theme.colors.foreground} />
       {elapsed === null ? null : <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small, fontVariant: ["tabular-nums"] }}>{elapsed}</Text>}
     </View>
   );
