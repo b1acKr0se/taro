@@ -51,7 +51,11 @@ Ported files say so in their header comment, with what was changed: `client/comp
 target's look from `src/components/file-drop/file-drop-backdrop.tsx`). The chat's tool calls are
 ported from Paseo too: `client/tool-wording.ts` (each call's label, detail and icon from
 `packages/protocol/src/tool-call-display.ts`, `tool-name-normalization.ts` and `path-utils.ts`, and
-a run's counts from the app's overview tool-call group). Paseo ships
+a run's counts from the app's overview tool-call group). Its look for work under way is ported at
+commit `5293dda`: `client/synced-loader-state.ts` (from `src/components/synced-loader-state.ts`),
+`client/shimmer.ts` (`computeShimmerMetrics` from `src/components/message.tsx`) and
+`client/loading.tsx` (the loader from `src/components/synced-loader.tsx`, the working indicator from
+`src/agent-stream/turn-footer.tsx` and the tool call's shimmer from `src/components/message.tsx`). Paseo ships
 no NOTICE file. Its license, with the Apache License 2.0 in full:
 
 ```

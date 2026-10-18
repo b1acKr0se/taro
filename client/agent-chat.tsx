@@ -54,6 +54,7 @@ import { QueueTrack, useChatQueue } from "./queue-track";
 import { COMPOSER_CONTROL_SIZE, composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
+import { Shimmer, WorkingStatus } from "./loading";
 import { useLatestCallback } from "./latest-callback";
 import { bubbleImageRoom, USER_BUBBLE_SHARE } from "./thumbnail-size";
 import { sameGroup, sameItems } from "./transcript-memo";
@@ -64,6 +65,8 @@ export interface ChatAgent {
   updatedAt: string;
   pendingPermissions: number;
   status: string;
+  /** When its current turn started: the time beside the loader at the chat's end counts from it (TR-183). */
+  turnStartedAt?: string | null;
 }
 
 /** A conversation the user can write to, or one only to read (an archived agent's). */
@@ -665,6 +668,8 @@ export function AgentChat({
                 <PermissionCard request={request} asker={asker} theme={theme} compact={compact} onRespond={(response) => respond(request.id, response)} onOpenLink={openLink} />
               </View>
             ))}
+            {/* An agent held up by a permission request waits for the user, not at work. */}
+            {pending.length > 0 ? null : <WorkingStatus theme={theme} status={live?.status ?? agent.status} turnStartedAt={agent.turnStartedAt} />}
           </KeyboardRevealProvider>
           {keyboardScroll.room > 0 ? <View style={{ height: keyboardScroll.room }} /> : null}
         </ScrollView>
@@ -911,22 +916,29 @@ function SendMarkLine({
 
 /** One tool call as Paseo lists it: its icon, its label and, quieter, the command or path, on one line. */
 function ToolLine({ tool, theme, styles }: { tool: ToolRow; theme: PluginTheme; styles: ChatStyles }) {
+  const running = tool.status === "running";
   return (
     <View style={styles.toolLine}>
-      {tool.status === "running" ? (
-        <Spinner size={13} color={theme.colors.foregroundMuted} />
-      ) : (
-        <Icon name={tool.status === "failed" ? "TriangleAlert" : tool.icon} size={13} color={tool.status === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
-      )}
-      {/* Apart, not one text with spaces: the web build collapses the spaces Paseo's gap stands for. */}
-      <Text style={styles.toolLabel} numberOfLines={1}>
-        {tool.label}
-      </Text>
-      {tool.summary === undefined ? null : (
-        <Text style={styles.toolText} numberOfLines={1}>
-          {tool.summary}
-        </Text>
-      )}
+      {/* Its own icon while it runs, as in Paseo: the words shimmer instead (TR-183). */}
+      <Icon name={tool.status === "failed" ? "TriangleAlert" : tool.icon} size={13} color={tool.status === "failed" ? theme.colors.statusDanger : running ? theme.colors.foreground : theme.colors.foregroundMuted} />
+      <Shimmer
+        active={running}
+        characters={tool.label.length + (tool.summary?.length ?? 0)}
+        style={styles.toolWords}
+        render={(tone) => (
+          <>
+            {/* Apart, not one text with spaces: the web build collapses the spaces Paseo's gap stands for. */}
+            <Text style={[styles.toolLabel, tone === "peak" ? styles.toolPeak : running ? styles.toolLabelRunning : null]} numberOfLines={1}>
+              {tool.label}
+            </Text>
+            {tool.summary === undefined ? null : (
+              <Text style={[styles.toolText, tone === "peak" ? styles.toolPeak : null]} numberOfLines={1}>
+                {tool.summary}
+              </Text>
+            )}
+          </>
+        )}
+      />
     </View>
   );
 }
@@ -946,15 +958,20 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, pastA
           style={[styles.toolHead, open ? styles.toolHeadOpen : null]}
           onPress={toggle}
         >
-          {summary.state === "running" ? (
-            <Spinner size={13} color={theme.colors.foregroundMuted} />
-          ) : (
-            <Icon name={open ? "ChevronDown" : "Wrench"} size={13} color={open ? theme.colors.foreground : theme.colors.foregroundMuted} />
-          )}
-          {/* Never cut: the counts are what the reader wants. */}
-          <Text style={[styles.toolTitle, open ? styles.toolTitleOpen : null]}>{summary.title}</Text>
-          {/* Its own text, so a long summary is cut before the failure is. */}
-          {summary.failed > 0 ? <Text style={styles.toolFailed}>{`· ${summary.failed} failed`}</Text> : null}
+          <Icon name={open ? "ChevronDown" : "Wrench"} size={13} color={open || summary.state === "running" ? theme.colors.foreground : theme.colors.foregroundMuted} />
+          <Shimmer
+            active={summary.state === "running"}
+            characters={summary.title.length}
+            style={styles.toolTitleWords}
+            render={(tone) => (
+              <>
+                {/* Never cut: the counts are what the reader wants. */}
+                <Text style={[styles.toolTitle, open ? styles.toolTitleOpen : null, tone === "peak" ? styles.toolPeak : summary.state === "running" ? styles.toolLabelRunning : null]}>{summary.title}</Text>
+                {/* Its own text, so a long summary is cut before the failure is. */}
+                {summary.failed > 0 ? <Text style={styles.toolFailed}>{`· ${summary.failed} failed`}</Text> : null}
+              </>
+            )}
+          />
         </Pressable>
         {open ? (
           <View style={styles.toolList}>
@@ -1109,6 +1126,12 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
     lineTop: { alignItems: "flex-start" as const },
     lineTextHeight: { lineHeight: lineHeightFor(FONT_SIZE.caption) },
     lineIcon: { height: lineHeightFor(FONT_SIZE.caption), justifyContent: "center" as const },
+    // The label and the command or path, together, so the shimmer crosses both (TR-183).
+    toolWords: { flex: 1, flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm },
+    toolTitleWords: { flexShrink: 1, flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm },
+    // While it runs, as Paseo: the label a little dim, so the band brightening it shows.
+    toolLabelRunning: { color: colors.foreground, opacity: 0.72 },
+    toolPeak: { color: colors.foreground, opacity: 1 },
     toolText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body) },
     toolLabel: { flexShrink: 0, maxWidth: "50%" as const, color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body) },
     toolTitle: { flexShrink: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body) },
