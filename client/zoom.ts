@@ -187,13 +187,6 @@ export function isDoubleTap(previous: Tap | null, tap: Tap): boolean {
   return previous !== null && tap.time - previous.time < DOUBLE_TAP_MS && distanceOf(previous.at, tap.at) < DOUBLE_TAP_SLOP;
 }
 
-/** Whether a point falls outside the drawn image: a tap there is on the backdrop, and closes the view. */
-export function isOutsideImage(point: Point, transform: Transform, fitted: Size): boolean {
-  const halfWidth = (fitted.width * transform.scale) / 2;
-  const halfHeight = (fitted.height * transform.scale) / 2;
-  return Math.abs(point.x - transform.x) > halfWidth || Math.abs(point.y - transform.y) > halfHeight;
-}
-
 /** A gesture from the first finger down to the last finger up. */
 export interface Gesture {
   /** The transform the current one- or two-finger phase began from. */
@@ -256,15 +249,14 @@ export function gestureEnd(gesture: Gesture, current: Transform, moved: { dx: nu
   return target === index ? { kind: "settle", transform: gesture.start } : { kind: "show", index: target };
 }
 
-export type TapOutcome = { kind: "zoom"; transform: Transform } | { kind: "close" } | { kind: "none" };
+export type TapOutcome = { kind: "zoom"; transform: Transform } | { kind: "none" };
 
 /**
- * A tap: the second of a double-tap zooms; a single tap on the backdrop closes (the view waits
- * `DOUBLE_TAP_MS` first, in case a second tap follows); a single tap on the image does nothing.
+ * A tap: the second of a double-tap zooms; a single tap does nothing, on the backdrop too: only the
+ * ✕ and back close the view (TR-177).
  */
 export function tapOutcome(previous: Tap | null, tap: Tap, current: Transform, frame: Frame): TapOutcome {
-  if (isDoubleTap(previous, tap)) return { kind: "zoom", transform: doubleTapAt(current, tap.at, frame) };
-  return isOutsideImage(tap.at, current, frame.fitted) ? { kind: "close" } : { kind: "none" };
+  return isDoubleTap(previous, tap) ? { kind: "zoom", transform: doubleTapAt(current, tap.at, frame) } : { kind: "none" };
 }
 
 /** How an eased move (a double-tap, the Fit / 1:1 button, a snap back) runs: fast, then slowing to rest. */

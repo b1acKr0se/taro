@@ -13,7 +13,6 @@ import {
   gestureStart,
   isAtFit,
   isDoubleTap,
-  isOutsideImage,
   isTap,
   isZoomedIn,
   maxScale,
@@ -218,21 +217,13 @@ describe("taps", () => {
     expect(isDoubleTap(first, { at: { x: 50, y: 0 }, time: 1100 })).toBe(false);
   });
 
-  it("knows a tap on the backdrop from a tap on the image", () => {
-    expect(isOutsideImage(CENTRE, FIT, FRAME.fitted)).toBe(false);
-    expect(isOutsideImage({ x: 0, y: 150 }, FIT, FRAME.fitted)).toBe(true);
-    expect(isOutsideImage({ x: 199, y: 99 }, FIT, FRAME.fitted)).toBe(false);
-    // Zoomed 2× and moved left, the image covers the stage's width.
-    expect(isOutsideImage({ x: -390, y: 0 }, { scale: 2, x: -200, y: 0 }, FRAME.fitted)).toBe(false);
-    expect(isOutsideImage({ x: 0, y: 250 }, { scale: 2, x: -200, y: 0 }, FRAME.fitted)).toBe(true);
-  });
-
-  it("zooms on a double-tap, closes on a backdrop tap, and ignores a tap on the image", () => {
+  it("zooms on a double-tap and ignores a single tap, on the image or the backdrop", () => {
     const first = { at: CENTRE, time: 1000 };
     expect(tapOutcome(first, { at: CENTRE, time: 1100 }, FIT, FRAME)).toEqual({ kind: "zoom", transform: { scale: 2.5, x: 0, y: 0 } });
-    expect(tapOutcome(null, { at: { x: 0, y: 300 }, time: 1000 }, FIT, FRAME)).toEqual({ kind: "close" });
     expect(tapOutcome(null, first, FIT, FRAME)).toEqual({ kind: "none" });
-    // A double-tap on the backdrop zooms rather than closes.
+    // Only the ✕ and back close the view: a tap on the backdrop, at fit or zoomed, does not (TR-177).
+    expect(tapOutcome(null, { at: { x: 0, y: 300 }, time: 1000 }, FIT, FRAME)).toEqual({ kind: "none" });
+    expect(tapOutcome(null, { at: { x: 0, y: 250 }, time: 1000 }, { scale: 2, x: -200, y: 0 }, FRAME)).toEqual({ kind: "none" });
     expect(tapOutcome({ at: { x: 0, y: 300 }, time: 1000 }, { at: { x: 0, y: 300 }, time: 1100 }, FIT, FRAME).kind).toBe("zoom");
   });
 });
