@@ -25,6 +25,14 @@ describe("reply box sources", () => {
     expect(users.sort()).toEqual(["client/agent-chat.tsx", "client/change-box.tsx", "client/decision-card.tsx", "client/permission-card.tsx"]);
   });
 
+  it("offers the chat's stop button and Escape only while the agent works, through the reply box (TR-181)", () => {
+    const chat = clientFiles.find((file) => file.name === "client/agent-chat.tsx")?.source ?? "";
+    expect(chat).toMatch(/stop=\{working \? \{ onStop: stopAgent, busy: stoppingAgent === agent\.id \} : undefined\}/);
+    const box = clientFiles.find((file) => file.name === "client/reply-box.tsx")?.source ?? "";
+    expect(box).toMatch(/isStopKey\(event\.nativeEvent\)/);
+    expect(box).toMatch(/primaryAction\(/);
+  });
+
   it("asks for changes alike on the acceptance and plan cards and Change spec…: one change box behind Request changes… (TR-112, TR-129)", () => {
     const users = clientFiles.filter((file) => /<ChangeBox\b/.test(file.source)).map((file) => file.name);
     expect(users.sort()).toEqual(["client/acceptance-card.tsx", "client/plan-card.tsx", "client/spec-change-box.tsx"]);

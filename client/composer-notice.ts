@@ -17,3 +17,16 @@ export function sendLabel(agent: { working: boolean; requestPending: boolean }):
   if (agent.requestPending) return "Send and turn down the request";
   return agent.working ? "Add to queue" : "Send";
 }
+
+/** Whether the box holds something to send: words other than blanks, or an attachment. */
+export function hasSomethingToSend(text: string, attachments: number): boolean {
+  return text.trim() !== "" || attachments > 0;
+}
+
+/**
+ * The composer's round button (TR-181), Paseo's `resolvePrimaryActionKind`: something to send keeps it
+ * Send; an empty box while the agent works makes it Stop; otherwise Send, dimmed.
+ */
+export function primaryAction(box: { sendable: boolean; stoppable: boolean }): "send" | "stop" {
+  return !box.sendable && box.stoppable ? "stop" : "send";
+}

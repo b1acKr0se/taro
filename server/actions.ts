@@ -65,6 +65,7 @@ import { carriedQuestionLines, questionsToCarry } from "../shared/state";
 import { TARO_LABELS, TICKET_STATUSES, type ProjectConfig } from "../shared/project";
 import { acceptLocalBranch, acceptPullRequest } from "./accept-merge";
 import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
+import { stopAgent } from "./cli";
 import { taroEnvironment } from "./environment";
 import { requireCompleteEvidence } from "./evidence";
 import { readHeadroom } from "./headroom";
@@ -198,6 +199,14 @@ export class Actions {
     const identity = identityFromLabels(agent.labels, agent.title ?? null);
     if (identity === null) throw new Error("That is not a Taro agent.");
     await this.supervisor.startCompaction(paseo, agentId, identity, agent.lastUsage?.contextWindowUsedTokens ?? null, "button");
+  }
+
+  async stop(paseo: PaseoApi, agentId: string): Promise<void> {
+    // Looked up first, so only a live Taro agent's full id reaches `paseo stop`, which takes a prefix or flags too.
+    const agent = await fetchLiveAgent(paseo, agentId);
+    if (agent === null) throw new Error("That agent is no longer running.");
+    if (identityFromLabels(agent.labels, agent.title ?? null) === null) throw new Error("That is not a Taro agent.");
+    await stopAgent(agent.id);
   }
 
   private async owners(paseo: PaseoApi, project: string, ticket: string) {

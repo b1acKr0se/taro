@@ -11,7 +11,7 @@ import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, 
 import { Keyboard, Platform, ScrollView, Text, useWindowDimensions, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
 
 import { attachmentProblem, refuseOversizedImages, type DraftAttachment } from "../shared/attachments";
-import { answeredPermissionAsks, listAgentDecisions, listChatQueue, listSentImages, removeQueuedMessage, retryQueuedMessage, sendQueuedMessageNow, takeQueuedMessage, type SentImagesMessage } from "../shared/contracts";
+import { answeredPermissionAsks, listAgentDecisions, listChatQueue, listSentImages, removeQueuedMessage, retryQueuedMessage, sendQueuedMessageNow, stopAgentTurn, takeQueuedMessage, type SentImagesMessage } from "../shared/contracts";
 import type { PermissionAsk } from "../shared/permission-asks";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { ActionRow } from "./action-row";
@@ -46,7 +46,7 @@ import { groupRows, toolRunSummary, type Group, type ToolRow } from "./tool-runs
 import { ATTACHMENTS_ONLY, transcriptRows, whileWriting } from "./transcript-rows";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
-import { composerNotice, sendLabel } from "./composer-notice";
+import { composerNotice, hasSomethingToSend, sendLabel } from "./composer-notice";
 import { usePendingSends, type ChatSend } from "./use-pending-sends";
 import { isCompacting, isWorking, takeBack, type SendMark, type SendView } from "../shared/pending-sends";
 import { chatQueueKey, EDIT_SENT_MEANWHILE, editRefusal, editRemoval, queueCompacting, sendingToQueue, takenAttachments, type QueueRowAction, type QueueRowMessage } from "./queue-rows";
@@ -408,7 +408,7 @@ export function AgentChat({
 
   const windowSize = useWindowDimensions();
   const metrics = composerMetrics(Platform.OS === "web", windowSize.width);
-  const nothingToSend = draft.trim() === "" && attachments.length === 0;
+  const nothingToSend = !hasSomethingToSend(draft, attachments.length);
 
   function setDraft(text: string): void {
     drafts.set(agent.id, text);
@@ -466,6 +466,18 @@ export function AgentChat({
   const listQueued = useRpc(listChatQueue);
   const sendQueuedNow = useRpc(sendQueuedMessageNow);
   const retryQueued = useRpc(retryQueuedMessage);
+  const stopTurn = useRpc(stopAgentTurn);
+  // The agent a stop is under way for, so another agent's chat opened meanwhile shows its own button.
+  const [stoppingAgent, setStoppingAgent] = useState<string | null>(null);
+  /** The stop button and Escape (TR-181): ends this agent's turn; the queue then sends as after any turn. */
+  function stopAgent(): void {
+    const agentId = agent.id;
+    if (stoppingAgent === agentId) return;
+    setStoppingAgent(agentId);
+    void stopTurn({ agentId })
+      .catch((caught: unknown) => toast.error(errorText(caught)))
+      .finally(() => setStoppingAgent((current) => (current === agentId ? null : current)));
+  }
   const [queueBusy, setQueueBusy] = useState<{ id: string; action: QueueRowAction } | null>(null);
   /** Edit, Send now or Retry on a queued message (TR-171); an error's sentence goes to a toast, and the queue is read again either way. */
   function queueAction(message: QueueRowMessage, action: QueueRowAction): void {
@@ -738,6 +750,7 @@ export function AgentChat({
               enterHint
               onSend={sendDraft}
               canSend={!nothingToSend}
+              stop={working ? { onStop: stopAgent, busy: stoppingAgent === agent.id } : undefined}
               sendLabel={sendLabel({ working, requestPending: pending.length > 0 })}
               above={<AttachmentPreviews theme={theme} attachments={attachments} onRemove={(id) => setAttachments(attachments.filter((attachment) => attachment.id !== id))} />}
               leading={attachButton}

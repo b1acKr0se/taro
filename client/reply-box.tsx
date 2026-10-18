@@ -12,7 +12,8 @@ import { Platform, useWindowDimensions, View, type TextInput as NativeTextInput 
 import { COMPOSER_CONTROL_SIZE, COMPOSER_FONT_SIZE, COMPOSER_WEB_LINE_HEIGHT, composerMaxHeight, composerMetrics, sendsOnEnter } from "./composer-height";
 import { useComposerHeight } from "./composer-input-height";
 import { Pressable, TextInput } from "./focus";
-import { enterKeyAction, type WebKeyPressEvent } from "./keys";
+import { primaryAction } from "./composer-notice";
+import { enterKeyAction, isStopKey, type WebKeyPressEvent } from "./keys";
 import { createNativeFieldSync } from "./native-field-sync";
 import { SPACE } from "./spacing";
 import { Spinner } from "./ui";
@@ -30,6 +31,11 @@ export interface ReplyBoxProps {
   sendLabel?: string | undefined;
   /** A call the send made (`useActions`): "busy" spins in the button, "done" shows a check for a moment. */
   sendState?: "busy" | "done" | undefined;
+  /**
+   * Given while the agent works (TR-181): with nothing to send, the send button becomes Paseo's red stop
+   * button, which calls `onStop`, and Escape in the box calls it whatever the box holds. `busy` while it stops.
+   */
+  stop?: { onStop: () => void; busy: boolean } | undefined;
   /** A phone-sized layout, where Enter makes a new line; by default, a window narrower than Paseo's `md`. */
   compact?: boolean | undefined;
   /** The fill behind the text: the chat's surface1 on a plain pane, surface0 inside a card that is surface1. */
@@ -62,6 +68,7 @@ export function ReplyBox({
   canSend = true,
   sendLabel = "Send",
   sendState,
+  stop,
   compact,
   background,
   fieldRef,
@@ -92,6 +99,10 @@ export function ReplyBox({
   const submitOnEnter = onSend !== undefined && sendsOnEnter({ web, compact, windowWidth: windowSize.width });
   const busy = sendState === "busy";
   const sendable = canSend && editable && !greyed && !busy;
+  const stops = onSend !== undefined && primaryAction({ sendable: canSend || busy, stoppable: stop !== undefined && editable && !greyed }) === "stop";
+  // Lucide draws its square 18 units wide in a 24-unit icon.
+  const stopSquare = Math.round((metrics.iconSize * 18) / 24);
+  const stopKey = web && stop !== undefined && editable && !greyed;
   const { colors } = theme;
   const hasControls = onSend !== undefined || leading !== null || trailing !== null;
   const styles = useMemo(
@@ -139,6 +150,16 @@ export function ReplyBox({
         backgroundColor: colors.accent,
         marginLeft: SPACE.xs,
       },
+      // Paseo's stop button: the send button's circle in red, with a filled square.
+      stop: {
+        width: COMPOSER_CONTROL_SIZE,
+        height: COMPOSER_CONTROL_SIZE,
+        borderRadius: COMPOSER_CONTROL_SIZE / 2,
+        alignItems: "center" as const,
+        justifyContent: "center" as const,
+        backgroundColor: colors.statusDanger,
+        marginLeft: SPACE.xs,
+      },
     }),
     [colors, background, web, greyed, metrics.paddingTop, metrics.paddingBottom, metrics.paddingHorizontal],
   );
@@ -159,8 +180,13 @@ export function ReplyBox({
         multiline
         scrollEnabled={height.scrollEnabled}
         onKeyPress={
-          submitOnEnter
+          submitOnEnter || stopKey
             ? (event: WebKeyPressEvent) => {
+                if (stopKey && isStopKey(event.nativeEvent)) {
+                  if (!stop.busy) stop.onStop();
+                  return;
+                }
+                if (!submitOnEnter) return;
                 const action = enterKeyAction(event.nativeEvent, sendable);
                 if (action === null) return;
                 event.preventDefault();
@@ -175,7 +201,23 @@ export function ReplyBox({
           {leading}
           <View style={styles.controlsEnd}>
             {trailing}
-            {onSend === undefined ? null : (
+            {onSend === undefined ? null : stops && stop !== undefined ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={stop.busy ? "Stopping agent" : "Stop agent"}
+                accessibilityState={{ disabled: stop.busy, busy: stop.busy }}
+                disabled={stop.busy}
+                style={styles.stop}
+                onPress={stop.onStop}
+              >
+                {stop.busy ? (
+                  <Spinner size={metrics.iconSize} color={colors.accentForeground} />
+                ) : (
+                  // Lucide's filled Square, as Paseo draws it: the host's Icon has no fill.
+                  <View style={{ width: stopSquare, height: stopSquare, borderRadius: 2, backgroundColor: colors.accentForeground }} />
+                )}
+              </Pressable>
+            ) : (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={sendLabel}
