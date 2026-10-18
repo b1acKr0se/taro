@@ -63,7 +63,7 @@ export function PastAcceptanceCard({ record, ticket, theme }: { record: Delivery
 
 /** A question that was answered, withdrawn or asked again, left where its block was. */
 export function PastQuestionCard({ card, theme }: { card: QuestionCardView; theme: PluginTheme }) {
-  return <FinishedCard theme={theme} lead="Question" subject={card.subject} outcome={card.outcome} tone={card.tone} time={card.time} words={card.words} />;
+  return <FinishedCard theme={theme} lead="Question" subject={card.subject} outcome={card.outcome} tone={card.tone} time={card.time} answer={card.answer ?? null} words={card.words} />;
 }
 
 /** An answered permission ask or tool question, where it was asked: who answered it how, and when. */
@@ -78,6 +78,7 @@ function PastPermissionCardView({ ask, theme }: { ask: PermissionAsk; theme: Plu
       outcome={view.outcome}
       tone={view.tone}
       time={view.time}
+      answer={view.answer ?? null}
       words={view.words}
     />
   );

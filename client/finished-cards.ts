@@ -16,6 +16,8 @@ export interface FinishedView {
   tone: FinishedTone;
   /** The outcome's time, formatted; null when unknown. */
   time: string | null;
+  /** The option the user picked, or a tool question's answers, shown under the line above the words (TR-172); absent without. */
+  answer?: string | null;
   /** What the user typed with it; null without. */
   words: string | null;
 }
@@ -156,7 +158,10 @@ export interface QuestionCardView extends FinishedView {
 /** The store keeps a closed decision 14 days (`CLOSED_RETENTION_MS`); older messages have no record to find. */
 const RECORD_KEPT_MS = 14 * 24 * 60 * 60 * 1000;
 
-/** How a stored decision ended; null while it is open. A typed answer reads "Answered" with the words quoted under it (TR-159), as do words typed with a picked option. */
+/**
+ * How a stored decision ended; null while it is open. Every answer reads "Answered", with what was
+ * answered under it (TR-172): the picked option's label, the words typed with it or alone (TR-159), or both.
+ */
 export function storedDecisionView(decision: StoredDecision, clock: (iso: string) => string | null): FinishedView | null {
   if (decision.status === "withdrawn") {
     return { outcome: decision.withdrawnWithAgent === true ? "Withdrawn: its agent went away" : "Withdrawn", tone: "neutral", time: null, words: null };
@@ -166,8 +171,8 @@ export function storedDecisionView(decision: StoredDecision, clock: (iso: string
   const label = answer?.label ?? null;
   const typed = answer?.text.trim() ?? "";
   const time = answer === null ? null : clock(answer.at);
-  if (label === null) return { outcome: "Answered", tone: "positive", time, words: typed === "" ? null : typed };
-  return { outcome: `Answered: ${label}`, tone: "positive", time, words: typedBeside(typed, label, decision.options.find((option) => option.label === label)?.prompt ?? "") };
+  if (label === null) return { outcome: "Answered", tone: "positive", time, answer: null, words: typed === "" ? null : typed };
+  return { outcome: "Answered", tone: "positive", time, answer: label, words: typedBeside(typed, label, decision.options.find((option) => option.label === label)?.prompt ?? "") };
 }
 
 /**
@@ -289,6 +294,8 @@ export function permissionCardView(ask: PermissionAsk, clock: (iso: string) => s
     return { kind: question ? "Question" : "Permission", subject: ask.subject, outcome: "Cancelled: the turn stopped", tone: "neutral", time, words: null };
   }
   const allowed = ask.outcome === "allowed";
+  // A tool question's answers are picked as a Taro question's option is: shown as its answer, not quoted (TR-172).
+  const answered = question && allowed;
   const what = question ? (allowed ? "Answered" : "Dismissed") : allowed ? "Allowed" : "Denied";
   const who = ask.by === "rules" ? `by Taro's rules${ask.rule === null ? "" : ` (${ask.rule})`}` : "by you";
   return {
@@ -297,7 +304,8 @@ export function permissionCardView(ask: PermissionAsk, clock: (iso: string) => s
     outcome: `${what} ${who}`,
     tone: allowed ? "positive" : question ? "neutral" : "negative",
     time,
-    words: ask.words,
+    answer: answered ? ask.words : null,
+    words: answered ? null : ask.words,
   };
 }
 
