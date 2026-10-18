@@ -54,7 +54,6 @@ import { QueueTrack, useChatQueue } from "./queue-track";
 import { COMPOSER_CONTROL_SIZE, composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
-import { WorkingRow } from "./working-indicator";
 import { useLatestCallback } from "./latest-callback";
 import { bubbleImageRoom, USER_BUBBLE_SHARE } from "./thumbnail-size";
 import { sameGroup, sameItems } from "./transcript-memo";
@@ -65,8 +64,6 @@ export interface ChatAgent {
   updatedAt: string;
   pendingPermissions: number;
   status: string;
-  /** When its current turn started (TR-176): the "Working… 42s" row counts from it. */
-  turnStartedAt?: string | null;
 }
 
 /** A conversation the user can write to, or one only to read (an archived agent's). */
@@ -668,8 +665,6 @@ export function AgentChat({
                 <PermissionCard request={request} asker={asker} theme={theme} compact={compact} onRespond={(response) => respond(request.id, response)} onOpenLink={openLink} />
               </View>
             ))}
-            {/* An agent held up by a permission request waits for the user, not at work. */}
-            {pending.length > 0 ? null : <WorkingRow theme={theme} status={live?.status ?? agent.status} turnStartedAt={agent.turnStartedAt} />}
           </KeyboardRevealProvider>
           {keyboardScroll.room > 0 ? <View style={{ height: keyboardScroll.room }} /> : null}
         </ScrollView>
