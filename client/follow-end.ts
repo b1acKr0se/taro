@@ -6,7 +6,7 @@
  * reply growing at the end is followed, and a question or permission request
  * arriving at the end is brought into view whole.
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LayoutChangeEvent, LayoutRectangle, NativeScrollEvent, NativeSyntheticEvent, ScrollView } from "react-native";
 
 /** How long after a row is first revealed its re-layouts still scroll to it: the transcript settling. */
@@ -87,6 +87,8 @@ export interface WebScrollNode {
   scrollHeight: number;
   scrollTop: number;
   style: { overflowAnchor?: string };
+  /** The content container, whose growth is followed (absent in tests' plain nodes). */
+  firstElementChild?: unknown;
 }
 
 /** The DOM node behind a scroll view on the web, or null on a phone, whose scroll view has none. */
@@ -147,6 +149,31 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
   const [away, setAway] = useState(false);
   /** The web content's height and scroll before rows were put above the reader (TR-169). */
   const heldAt = useRef<{ height: number; top: number } | null>(null);
+  /** Watches the web transcript's size, to follow the end before the browser paints (TR-184). */
+  const growth = useRef<{ disconnect(): void } | null>(null);
+
+  useEffect(() => () => growth.current?.disconnect(), []);
+
+  /**
+   * On the web, follows the end in the frame the content grows, not a frame later:
+   * `onContentSizeChange` waits for react-native-web's ResizeObserver and a timer, so the browser
+   * first paints the grown content at the old offset and the loader at the end drops for a frame
+   * with each new message (TR-184). A ResizeObserver's callback runs after layout and before paint.
+   */
+  function followGrowth(): void {
+    if (growth.current !== null) return;
+    const Observer = (globalThis as { ResizeObserver?: new (callback: () => void) => { observe(target: unknown): void; disconnect(): void } }).ResizeObserver;
+    const node = webScrollNode(scroller.current);
+    if (Observer === undefined || node === null) return;
+    const observer = new Observer(() => {
+      if (!pinnedToEnd.current || hidden.current) return;
+      node.scrollTop = node.scrollHeight;
+      offset.current = node.scrollTop;
+    });
+    observer.observe(node);
+    if (typeof node.firstElementChild === "object" && node.firstElementChild !== null) observer.observe(node.firstElementChild);
+    growth.current = observer;
+  }
 
   /** Follow the end again — the reader just sent something, or answered something. */
   function pin(): void {
@@ -295,6 +322,7 @@ export function useFollowEnd(onScrolled?: (offset: number, viewportHeight: numbe
         return;
       }
       viewport.current = height;
+      followGrowth();
       if (change === "shown-again") {
         hidden.current = false;
         const y = offset.current;
