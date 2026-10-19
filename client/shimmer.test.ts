@@ -1,6 +1,10 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
-import { shimmerLayers, shimmerMetrics, webShimmerTrack } from "./shimmer";
+import { shimmerLayers, shimmerMetrics, WEB_SHIMMER_COPY_BOX, webShimmerTrack } from "./shimmer";
 
 describe("shimmerMetrics", () => {
   it("starts the band wholly before the words and ends it past them", () => {
@@ -67,5 +71,18 @@ describe("shimmerLayers (TR-184)", () => {
   it("is one full layer when only one is asked for, and none for zero", () => {
     expect(shimmerLayers(1)).toEqual([{ share: 1, opacity: 1 }]);
     expect(shimmerLayers(0)).toEqual([]);
+  });
+});
+
+describe("WEB_SHIMMER_COPY_BOX (TR-189)", () => {
+  it("pins the web's copy to the words' edges, with no measured size to round down", () => {
+    expect(WEB_SHIMMER_COPY_BOX).toEqual({ position: "absolute", left: 0, top: 0, right: 0, bottom: 0 });
+  });
+
+  it("is where the web's copy sits: a width from layout (a whole pixel) wrapped the copy onto a second line, half a line up", () => {
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "loading.tsx"), "utf8");
+    const copy = /function WebShimmerCopy[\s\S]*?\n}\n/.exec(source)?.[0] ?? "";
+    expect(copy).toContain("WEB_SHIMMER_COPY_BOX");
+    expect(copy).not.toMatch(/width: size\.width/);
   });
 });

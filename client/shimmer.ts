@@ -17,6 +17,13 @@ export const SHIMMER_LIGHT = "#ffffff";
 export const SHIMMER_GRADIENT =
   "linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.45) 24%, #ffffff 40%, #ffffff 60%, rgba(255, 255, 255, 0.45) 76%, rgba(255, 255, 255, 0) 100%)";
 
+/**
+ * Where the web's light copy sits over the words (TR-189): pinned to their edges, never given their
+ * measured width, as react-native-web measures a view to a whole pixel. Rounded down, the copy's
+ * words no longer fit, wrap onto a second line and, centred on the row, show half a line up.
+ */
+export const WEB_SHIMMER_COPY_BOX = { position: "absolute", left: 0, top: 0, right: 0, bottom: 0 } as const;
+
 /** One crossing's time: longer for more words, between 1 and 2.3 seconds. */
 export function shimmerDurationMs(characters: number): number {
   const shortTextAdjustment = characters <= 12 ? 0.25 : 0;
