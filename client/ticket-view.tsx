@@ -272,10 +272,14 @@ function TicketDetail({
             )}
             {data.children.map((child) => (
               <View key={child.id} style={{ gap: SPACE.xs }}>
-                <Pressable accessibilityRole="button" accessibilityLabel={`Open ${child.id}`} onPress={() => onOpenChild(child.id)}>
-                  <Text style={styles.text}>
+                {/* The chevron the Children rows carry: both open the child. */}
+                <Pressable accessibilityRole="button" accessibilityLabel={`Open ${child.id}`} onPress={() => onOpenChild(child.id)} style={styles.line}>
+                  <Text style={[styles.text, { minWidth: 0 }]}>
                     <Text style={{ color: colors.foregroundMuted, fontWeight: "600" }}>{child.id}</Text> {child.title}
                   </Text>
+                  <View style={styles.lineIcon}>
+                    <Icon name="ChevronRight" size={14} color={colors.foregroundMuted} />
+                  </View>
                 </Pressable>
                 {child.evidence === null ? (
                   <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, fontStyle: "italic" }}>No evidence recorded</Text>
