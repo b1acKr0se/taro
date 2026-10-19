@@ -1,8 +1,9 @@
 /**
  * A chat's messages until the agent takes them up (TR-084): sends the user's words, marks each on the
- * transcript, and forgets each once the agent took a step after it, or once the queue was read again
- * after the daemon queued it because the agent works (TR-171: the queue track above the composer shows it then). The sending
- * itself is the store's (TR-102): in order, one at a time, and on after the chat has gone.
+ * transcript, and forgets each once the agent took a step after it, or when the daemon queued it
+ * because the agent works, once the queue was read again (TR-171, TR-188: the queue track above the
+ * composer shows it then). The sending itself is the store's (TR-102): in order, one at a time, and on
+ * after the chat has gone.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 
