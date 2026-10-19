@@ -37,7 +37,7 @@ export function OptionChips({
 }) {
   const answer = useRpc(answerDecision);
   // One guard for every chip, shared with the same question in the chat and the Ticket tab (TR-191): it takes one answer.
-  const presses = useActions(decisionCall(decision.key));
+  const presses = useActions(decisionCall(decision));
   // Stays set: the chips remain off until the board reloads without this question, so a second tap cannot answer it again.
   const [answered, setAnswered] = useState(false);
   const chips = useMemo(() => optionChips(decision), [decision]);

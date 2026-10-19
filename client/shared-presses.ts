@@ -71,9 +71,12 @@ export function acceptanceCall(project: string, ticket: string): string {
   return `acceptance:${project}/${ticket}`;
 }
 
-/** The call a decision's buttons answer. */
-export function decisionCall(key: string): string {
-  return `decision:${key}`;
+/**
+ * The call a decision's buttons answer: one asking of it. An owner asking again reuses the key in a later turn,
+ * and that asking starts idle rather than inheriting the last answer's hold.
+ */
+export function decisionCall(decision: { key: string; turn: string | null }): string {
+  return `decision:${decision.key}@${decision.turn ?? ""}`;
 }
 
 /** The press key of a decision's option, the same on every surface so the pressed one spins on each. */

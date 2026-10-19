@@ -153,7 +153,7 @@ function TicketDetail({
   // What changed since the plan the user last answered shows in green while it is asked again (TR-151).
   const planMarks = usePlanMarks(plan, markedAgainst(detail.data?.previousPlan, approving !== null));
   // One owner of both Approve presses, shared with the decision's other surfaces (TR-191): while one is in flight the rest are disabled.
-  const approvePresses = useActions(approving === null ? undefined : decisionCall(approving.decision.key));
+  const approvePresses = useActions(approving === null ? undefined : decisionCall(approving.decision));
   const pauseRpc = useRpc(pauseTicket);
   const resumeRpc = useRpc(resumeTicket);
   const compactRpc = useRpc(compactAgent);

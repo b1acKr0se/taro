@@ -82,7 +82,7 @@ describe("createSharedPresses", () => {
   it("drops an idle call nobody shows, and keeps one still shown", () => {
     const presses = createSharedPresses();
     const leave = presses.subscribe(call, () => undefined);
-    presses.subscribe(decisionCall("owner:scope-approval"), () => undefined);
+    presses.subscribe(decisionCall({ key: "owner:scope-approval", turn: "turn-1" }), () => undefined);
     expect(presses.size()).toBe(2);
     leave();
     expect(presses.size()).toBe(1);
@@ -94,12 +94,25 @@ describe("createSharedPresses", () => {
     expect(presses.guardFor(call).run("accept", () => new Promise<void>(() => undefined), "hold")).not.toBeNull();
     expect(presses.guardFor(acceptanceCall("notes-app", "NA-13")).run("accept", async () => undefined, "hold")).not.toBeNull();
     expect(presses.guardFor(acceptanceCall("other-app", "NA-12")).run("accept", async () => undefined, "hold")).not.toBeNull();
-    expect(presses.guardFor(decisionCall("owner:scope-approval")).run(optionPress("Approve"), async () => undefined, "hold")).not.toBeNull();
+    expect(presses.guardFor(decisionCall({ key: "owner:scope-approval", turn: "turn-1" })).run(optionPress("Approve"), async () => undefined, "hold")).not.toBeNull();
   });
 
   it("gives an option the same press key on every surface, distinct per option", () => {
     expect(optionPress("Approve")).toBe(optionPress("Approve"));
     expect(optionPress("Approve")).not.toBe(optionPress("Split into children"));
-    expect(decisionCall("a:scope-approval")).not.toBe(acceptanceCall("a", "scope-approval"));
+    expect(decisionCall({ key: "a:scope-approval", turn: null })).not.toBe(acceptanceCall("a", "scope-approval"));
+  });
+
+  // A plan answered with Request changes and asked again within the hold: the new asking is idle, the old one still held.
+  it("starts an owner's next asking of the same decision idle while the last answer still holds", async () => {
+    const presses = createSharedPresses();
+    const first = decisionCall({ key: "owner:scope-approval", turn: "turn-1" });
+    const again = decisionCall({ key: "owner:scope-approval", turn: "turn-2" });
+    await presses.guardFor(first).run("change", async () => undefined, "hold");
+    expect(presses.shown(first)).toEqual({ key: "change", phase: "busy" });
+    expect(presses.shown(again)).toBeNull();
+    expect(presses.guardFor(again).run(optionPress("Approve"), async () => undefined, "hold")).not.toBeNull();
+    // The same asking read again keeps its call, so a press in flight stays held.
+    expect(decisionCall({ key: "owner:scope-approval", turn: "turn-1" })).toBe(first);
   });
 });

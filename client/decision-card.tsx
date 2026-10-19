@@ -77,7 +77,7 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
   const [picked, setPicked] = useState<DecisionPick>(null);
   const [whyOpen, setWhyOpen] = useState(false);
   // Shared with the same decision's chips and buttons on every other surface (TR-191).
-  const presses = useActions(decisionCall(decision.key));
+  const presses = useActions(decisionCall(decision));
   const busy = presses.busy;
   const { colors } = theme;
   const optionRows = useMemo(() => decisionOptionRows(decision), [decision]);

@@ -379,7 +379,7 @@ export function PlanActions({
 }) {
   const answer = useRpc(answerDecision);
   // Shared with the same decision's buttons on every other surface (TR-191).
-  const ownPresses = useActions(decisionCall(decision.key));
+  const ownPresses = useActions(decisionCall(decision));
   const presses = sharedPresses ?? ownPresses;
   const [typed, setTyped] = useState("");
   // The option the box is open for: null for Request changes…, undefined while the buttons show.
