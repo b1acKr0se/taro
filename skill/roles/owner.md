@@ -99,7 +99,8 @@ one a "helper".
 - **Unattended commands:** follow `reference/shell.md` (removals that need no approval, scratch
   trackers with `--tracker`), and tell each subagent to read it.
 - Pick each subagent's model and thinking by the task's difficulty from the allowed list: mechanical
-  → the cheapest; routine implementation → middle; risky or hard → the strongest. A model the user
+  → the cheapest; routine implementation → middle; risky or hard → the strongest, with tiers and
+  the step-down rule from `reference/model-tiers.md` (no Claude assumed). A model the user
   named (in the brief or in your chat) wins over this. Start them with
   `reference/paseo.md`; record them in EXECUTION.
 - The plugin delivers each subagent's report to you. Verify it: the report must hold real command
