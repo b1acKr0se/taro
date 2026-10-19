@@ -127,3 +127,21 @@ export function sendingToQueue(views: readonly SendView[], working: boolean): Qu
       : [],
   );
 }
+
+/** How long a queued message's send waits for the queue to be read again before its arriving row goes anyway. */
+export const QUEUE_READ_WAIT_MS = 3_000;
+
+/**
+ * The answer of a send the daemon queued, given only once the queue was read again (TR-188): the store
+ * forgets the message's arriving row on that answer, and until the read lands no row would show it, so
+ * the row went and came back. A read that fails or outlasts the wait lets it go anyway.
+ */
+export async function afterQueueRead<Answer extends { queued: boolean }>(
+  answer: Answer,
+  readQueue: () => Promise<unknown>,
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<Answer> {
+  if (!answer.queued) return answer;
+  await Promise.race([readQueue().catch(() => undefined), wait(QUEUE_READ_WAIT_MS)]);
+  return answer;
+}

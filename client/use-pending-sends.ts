@@ -1,8 +1,9 @@
 /**
  * A chat's messages until the agent takes them up (TR-084): sends the user's words, marks each on the
- * transcript, and forgets each once the agent took a step after it, or at once when the daemon queued
- * it because the agent works (TR-171: the queue track above the composer shows it then). The sending
- * itself is the store's (TR-102): in order, one at a time, and on after the chat has gone.
+ * transcript, and forgets each once the agent took a step after it, or when the daemon queued it
+ * because the agent works, once the queue was read again (TR-171, TR-188: the queue track above the
+ * composer shows it then). The sending itself is the store's (TR-102): in order, one at a time, and on
+ * after the chat has gone.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -10,6 +11,7 @@ import { outgoingAttachments, type DraftAttachment, type OutgoingFile, type Outg
 import { isWorking, newChatMessageId, STOPPED_GRACE_MS, viewSends, type PendingSend, type SendTimelineEntry, type SendView } from "../shared/pending-sends";
 import { useLatestCallback } from "./latest-callback";
 import { pendingSends } from "./pending-send-store";
+import { afterQueueRead } from "./queue-rows";
 
 /**
  * Sends the words and attachments under the chat's own message id; `answersRequest` when the chat shows
@@ -49,8 +51,8 @@ export function usePendingSends({
   entries: readonly SendTimelineEntry[];
   hasOlder: boolean;
   onSend: ChatSend | undefined;
-  /** Told when the daemon queued a message, to read the queue again at once. */
-  onQueued: () => void;
+  /** Told when the daemon queued a message, to read the queue again at once; the message stays until it is read (TR-188). */
+  onQueued: () => Promise<unknown>;
 }): PendingSends {
   const [sends, setSends] = useState(() => pendingSends.get(agentId));
   useEffect(() => {
@@ -64,8 +66,7 @@ export function usePendingSends({
   const transport = useLatestCallback(async (pending: PendingSend) => {
     if (onSend === undefined) throw new Error("This chat cannot send.");
     const answer = await onSend(pending.text, outgoingAttachments(pending.attachments), pending.id, pending.answersRequest === true);
-    if (answer.queued) onQueued();
-    return answer;
+    return afterQueueRead(answer, onQueued);
   });
   const canSend = onSend !== undefined;
   useEffect(() => {

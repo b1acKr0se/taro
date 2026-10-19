@@ -2,8 +2,9 @@
  * The messages each chat sent until the agent takes them up (TR-084), per agent. Kept on a
  * `globalThis` slot like the drafts (`draft.ts`): a message on its way outlives a reconnect, though not
  * the app. Bump the slot's version when `PendingSend` changes shape, and read the last one
- * (`migrateKeptSends`). One the daemon queued (the agent works, TR-171) is forgotten at once: the
- * daemon's queue shows it from then on.
+ * (`migrateKeptSends`). One the daemon queued (the agent works, TR-171) is forgotten on that answer,
+ * which its transport gives once the daemon's queue was read again (TR-188): the queue shows it from
+ * then on.
  *
  * It also sends them (TR-102): one at a time per agent, in the order sent, so several can be on their
  * way while the user types on, and none overtakes another. The sending outlives the chat that started
