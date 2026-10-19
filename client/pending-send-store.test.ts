@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { PendingSend } from "../shared/pending-sends";
 import { keptMap } from "./kept";
 import { createPendingSendStore, migrateKeptSends, type PendingSendStore } from "./pending-send-store";
+import { afterQueueRead } from "./queue-rows";
 
 function send(id: string, state: PendingSend["state"] = "sent"): PendingSend {
   return { id, text: id, attachments: [], at: 1, state };
@@ -353,6 +354,24 @@ describe("the chat queue on the daemon (TR-171)", () => {
     wire.calls[1]?.settle();
     await settled();
     expect(states(store)).toEqual(["chat-b:sent"]);
+  });
+
+  it("keeps a queued message until the queue was read again, so its row never leaves and comes back (TR-188)", async () => {
+    const store = createPendingSendStore({});
+    const wire = manualTransport();
+    let readDone = () => {};
+    const readQueue = vi.fn(() => new Promise<void>((resolve) => (readDone = resolve)));
+    const never = () => new Promise<void>(() => {});
+    store.setTransport("agent-1", async (pending) => afterQueueRead(await wire.transport(pending), readQueue, never));
+    store.add("agent-1", send("chat-a", "sending"));
+    await settled();
+    wire.calls[0]?.queue();
+    await settled();
+    expect(readQueue).toHaveBeenCalledTimes(1);
+    expect(states(store)).toEqual(["chat-a:sending"]);
+    readDone();
+    await settled();
+    expect(states(store)).toEqual([]);
   });
 
   it("hands the transport whether the message answers a pending request", async () => {

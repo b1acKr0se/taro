@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { NOT_QUEUED } from "../shared/chat-queue";
-import { chatQueueKey, EDIT_REFUSAL, editRefusal, editRemoval, queueCompacting, takenAttachments, queuePollMs, queueRowActions, queueRowText, QUEUE_POLL_BUSY_MS, QUEUE_POLL_QUIET_MS, type QueueRowMessage, sendingToQueue } from "./queue-rows";
+import { afterQueueRead, chatQueueKey, EDIT_REFUSAL, editRefusal, editRemoval, queueCompacting, takenAttachments, queuePollMs, queueRowActions, queueRowText, QUEUE_POLL_BUSY_MS, QUEUE_POLL_QUIET_MS, type QueueRowMessage, sendingToQueue } from "./queue-rows";
 import type { PendingSend, SendView } from "../shared/pending-sends";
 
 function queued(change: Partial<QueueRowMessage> = {}): QueueRowMessage {
@@ -171,5 +171,49 @@ describe("messages on their way to a working agent (TR-171)", () => {
     expect(sendingToQueue([view("chat-a", "sending")], false)).toEqual([]);
     expect(sendingToQueue([view("chat-a", "failed"), view("chat-b", "waiting"), view("chat-c", "unread"), view("chat-d", "sending", "12")], true)).toEqual([]);
     expect(sendingToQueue([], true)).toEqual([]);
+  });
+});
+
+describe("afterQueueRead (TR-188)", () => {
+  const never = () => new Promise<void>(() => {});
+  const flush = async () => {
+    for (let step = 0; step < 10; step += 1) await Promise.resolve();
+  };
+
+  it("answers a send that went at once without reading the queue", async () => {
+    const readQueue = vi.fn(() => Promise.resolve());
+    await expect(afterQueueRead({ queued: false }, readQueue, never)).resolves.toEqual({ queued: false });
+    expect(readQueue).not.toHaveBeenCalled();
+  });
+
+  it("answers a queued send only once the queue was read", async () => {
+    let readDone = () => {};
+    let answered = false;
+    void afterQueueRead({ queued: true }, () => new Promise<void>((resolve) => (readDone = resolve)), never).then(() => (answered = true));
+    await flush();
+    expect(answered).toBe(false);
+    readDone();
+    await flush();
+    expect(answered).toBe(true);
+  });
+
+  it("answers anyway when the read fails", async () => {
+    await expect(afterQueueRead({ queued: true }, () => Promise.reject(new Error("Not connected")), never)).resolves.toEqual({ queued: true });
+  });
+
+  it("answers anyway once the wait runs out on a read that never lands, waiting QUEUE_READ_WAIT_MS", async () => {
+    const waits: number[] = [];
+    let waited = () => {};
+    let answered = false;
+    void afterQueueRead({ queued: true }, never, (ms) => {
+      waits.push(ms);
+      return new Promise<void>((resolve) => (waited = resolve));
+    }).then(() => (answered = true));
+    await flush();
+    expect(answered).toBe(false);
+    expect(waits).toEqual([3_000]);
+    waited();
+    await flush();
+    expect(answered).toBe(true);
   });
 });

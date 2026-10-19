@@ -181,7 +181,7 @@ export function AgentChat({
     draftAttachments.set(agent.id, back.attachments);
   }
   const queries = useQueryClient();
-  const refreshQueue = () => void queries.invalidateQueries({ queryKey: chatQueueKey(agent.id) });
+  const refreshQueue = () => queries.invalidateQueries({ queryKey: chatQueueKey(agent.id) });
   const sends = usePendingSends({
     agentId: agent.id,
     status: live?.status ?? agent.status,
@@ -521,7 +521,7 @@ export function AgentChat({
       .catch((caught: unknown) => toast.error(errorText(caught)))
       .finally(() => {
         setQueueBusy(null);
-        refreshQueue();
+        void refreshQueue();
       });
   }
 
