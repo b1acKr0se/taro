@@ -45,7 +45,9 @@ async function branchExists(repoRoot: string, branch: string): Promise<boolean> 
   for (const ref of refs) {
     if (await runChecked("git", ["-C", repoRoot, "rev-parse", "--verify", "--quiet", ref]).then(() => true, () => false)) return true;
   }
-  return false;
+  // A repository with no commits yet has its branch only as the name HEAD points at.
+  const unborn = (await runChecked("git", ["-C", repoRoot, "symbolic-ref", "--quiet", "HEAD"]).catch(() => "")).trim();
+  return unborn === `refs/heads/${branch}`;
 }
 
 /**

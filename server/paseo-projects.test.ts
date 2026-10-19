@@ -191,6 +191,14 @@ describe("onboardingProblems", () => {
     expect(await onboardingProblems({ project: "shop", settings: settings(shop, { baseBranch: "develop" }) })).toEqual({});
   });
 
+  it("finds nothing for the branch a repository with no commits yet is on (TR-196)", async () => {
+    const empty = join(root, "empty");
+    await mkdir(empty, { recursive: true });
+    git(empty, "init", "-q", "-b", "develop");
+    expect(await onboardingProblems({ project: "empty", settings: settings(empty, { baseBranch: "develop" }) })).toEqual({});
+    expect(await onboardingProblems({ project: "empty", settings: settings(empty, { baseBranch: "main" }) })).toEqual({ baseBranch: "The repository has no branch named main." });
+  });
+
   it("puts each problem on its field", async () => {
     const shop = await repository("shop");
     expect(await onboardingProblems({ project: "shop", settings: settings(shop, { baseBranch: "release" }) })).toEqual({ baseBranch: "The repository has no branch named release." });
