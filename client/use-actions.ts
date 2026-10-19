@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { errorText } from "./format";
 import { createPressGuard, press, type AfterSuccess, type PressGuard, type PressShown } from "./press-guard";
+import { sharedPresses } from "./shared-presses";
 
 export interface PressOptions<Value> {
   /** "hold" where success makes the button leave: it stays busy until then instead of showing a check. */
@@ -26,9 +27,14 @@ export interface Actions {
   busy: boolean;
 }
 
-export function useActions(): Actions {
+/**
+ * `call` (`acceptanceCall`, `decisionCall`) shares the group's guard with every other surface showing the
+ * same call (TR-191): a press on one shows busy on all. Without it the guard is this group's own.
+ */
+export function useActions(call?: string): Actions {
   const toast = useToast();
-  const [shown, setShown] = useState<PressShown | null>(null);
+  const [ownShown, setOwnShown] = useState<PressShown | null>(null);
+  const [sharedShown, setSharedShown] = useState<{ call: string; shown: PressShown | null } | null>(null);
   const guard = useRef<PressGuard | null>(null);
   // Made on first press and dropped on unmount, so a remount (React's strict mode) gets a live one.
   useEffect(
@@ -38,10 +44,20 @@ export function useActions(): Actions {
     },
     [],
   );
+  useEffect(() => {
+    if (call === undefined) return undefined;
+    const presses = sharedPresses();
+    setSharedShown({ call, shown: presses.shown(call) });
+    return presses.subscribe(call, (shown) => setSharedShown({ call, shown }));
+  }, [call]);
+  // Read straight from the registry until the subscription catches up, so a surface opened mid-press is busy at once.
+  const shown = call === undefined ? ownShown : sharedShown !== null && sharedShown.call === call ? sharedShown.shown : sharedPresses().shown(call);
   return {
     press(key, action, options = {}) {
-      if (guard.current === null) guard.current = createPressGuard({ onChange: setShown });
-      press(guard.current, key, action, {
+      if (call === undefined && guard.current === null) guard.current = createPressGuard({ onChange: setOwnShown });
+      const group = call === undefined ? guard.current : sharedPresses().guardFor(call);
+      if (group === null) return;
+      press(group, key, action, {
         after: options.after,
         onSuccess: (value) => {
           if (options.success !== undefined) toast.show(options.success, { variant: "success" });

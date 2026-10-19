@@ -28,6 +28,7 @@ import { SPACE } from "./spacing";
 import { rowButtonStyle } from "./control-colors";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { AcceptancePair, Spinner } from "./ui";
+import { acceptanceCall } from "./shared-presses";
 import { useActions } from "./use-actions";
 import { polled } from "./polling";
 
@@ -58,7 +59,8 @@ export function AcceptanceCard({
   const detail = useQuery({ queryKey: ["taro", "ticket", project, card.id], queryFn: () => load({ project, ticket: card.id }), ...polled(6_000) });
   const [writing, setWriting] = useState(false);
   const [typed, setTyped] = useState("");
-  const actions = useActions();
+  // Shared with every other Accept for this ticket (TR-191): a press on the Needs you card makes these busy too.
+  const actions = useActions(acceptanceCall(project, card.id));
   const busy = actions.busy;
   const { colors } = theme;
   const summary = detail.data?.finalSummary === null || detail.data?.finalSummary === undefined ? null : finalSummaryBody(detail.data.finalSummary);
@@ -169,7 +171,7 @@ export function AcceptanceCard({
  */
 export function AcceptNow({ card, project, theme, onChanged }: { card: Card; project: string; theme: PluginTheme; onChanged: () => void }) {
   const accept = useRpc(acceptTicket);
-  const actions = useActions();
+  const actions = useActions(acceptanceCall(project, card.id));
   const { colors } = theme;
   const state = actions.stateOf("accept");
   return (

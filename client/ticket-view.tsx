@@ -38,6 +38,7 @@ import { recentMilestoneRows } from "./milestone-rows";
 import { paneGutter, SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { Chip, IconButton, MONOSPACE } from "./ui";
+import { decisionCall, optionPress } from "./shared-presses";
 import { useActions, type Actions } from "./use-actions";
 import { recordKindLook, toneColor } from "./visual-meta";
 import { polled } from "./polling";
@@ -151,8 +152,8 @@ function TicketDetail({
   const approving = useMemo(() => ticketViewApproval(open, ticket), [open, ticket]);
   // What changed since the plan the user last answered shows in green while it is asked again (TR-151).
   const planMarks = usePlanMarks(plan, markedAgainst(detail.data?.previousPlan, approving !== null));
-  // One owner of both Approve presses: while one is in flight the other is disabled.
-  const approvePresses = useActions();
+  // One owner of both Approve presses, shared with the decision's other surfaces (TR-191): while one is in flight the rest are disabled.
+  const approvePresses = useActions(approving === null ? undefined : decisionCall(approving.decision.key));
   const pauseRpc = useRpc(pauseTicket);
   const resumeRpc = useRpc(resumeTicket);
   const compactRpc = useRpc(compactAgent);
@@ -527,8 +528,8 @@ function SummaryApprove({
       tone="accent"
       theme={theme}
       disabled={presses.busy}
-      state={presses.stateOf("summary-approve")}
-      onPress={() => presses.press("summary-approve", () => answer({ key: decision.key, label: options.approve, text: "", from: answeredFrom }), { after: "hold", onSuccess: onAnswered })}
+      state={presses.stateOf(optionPress(options.approve))}
+      onPress={() => presses.press(optionPress(options.approve), () => answer({ key: decision.key, label: options.approve, text: "", from: answeredFrom }), { after: "hold", onSuccess: onAnswered })}
     />
   );
 }

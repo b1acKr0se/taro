@@ -30,6 +30,7 @@ import { PlanDecision } from "./plan-card";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { AcceptancePair, IconButton } from "./ui";
+import { acceptanceCall } from "./shared-presses";
 import { useActions } from "./use-actions";
 import { useNow } from "./use-now";
 import { phaseLook, statusStateLook, toneColor } from "./visual-meta";
@@ -63,7 +64,9 @@ export function TicketCard({
   const accept = useRpc(acceptTicket);
   const resume = useRpc(resumeTicket);
   const actions = useActions();
-  const busy = actions.busy;
+  // Accept shares its guard with the chat's Accept and Request changes for this ticket (TR-191).
+  const acceptPresses = useActions(acceptanceCall(project, card.id));
+  const busy = actions.busy || acceptPresses.busy;
   const [childrenOpen, setChildrenOpen] = useState(false);
   const now = useNow();
   const { colors } = theme;
@@ -278,10 +281,10 @@ export function TicketCard({
           <AcceptancePair
             theme={theme}
             busy={busy}
-            acceptState={actions.stateOf("accept")}
+            acceptState={acceptPresses.stateOf("accept")}
             requestLabel="Request changes"
             // The accepted ticket leaves this call, so Accept stays busy until it does.
-            onAccept={() => actions.press("accept", () => accept({ project, ticket: card.id }), { after: "hold", success: `Accepted ${card.id}.`, onSuccess: onChanged })}
+            onAccept={() => acceptPresses.press("accept", () => accept({ project, ticket: card.id }), { after: "hold", success: `Accepted ${card.id}.`, onSuccess: onChanged })}
             onRequestChanges={onOpen}
           />
         ) : line.kind === "call" ? (
