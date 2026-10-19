@@ -329,7 +329,7 @@ export function ProjectSetup({
           theme={theme}
           wide={wide}
           label="Subagent models"
-          hint="Owners pick from these per task by difficulty, within their own provider: the cheapest for mechanical work, the strongest for hard problems."
+          hint="Owners pick from these per task by difficulty: the cheapest for mechanical work, the strongest for hard problems."
         >
           <ModelChooser
             theme={theme}
