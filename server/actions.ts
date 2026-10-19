@@ -117,6 +117,12 @@ export class Actions {
   private readonly pauseNotes = new Map<string, { updatedAt: string; notes: string | null }>();
   /** Accepts the plugin is running (TR-141), by project and ticket. */
   private readonly accepting = new Map<string, Promise<void>>();
+  /**
+   * An Accept or a Request changes still in its checks, by project and ticket, and decisions being answered (TR-191): claimed
+   * before the first await, so a second press from another surface in the same instant is refused rather than run alongside.
+   */
+  private readonly ticketCalls = new Map<string, "accept" | "changes">();
+  private readonly answering = new Set<string>();
   /** Projects whose stored ladder was merged in since the start. */
   private readonly ladderLoaded = new Set<string>();
 
@@ -131,6 +137,16 @@ export class Actions {
   ) {}
 
   async answerDecision(paseo: PaseoApi, key: string, label: string | null, text: string, from: "screen" | "tab" = "screen"): Promise<void> {
+    if (this.answering.has(key)) throw new Error("That decision is already being answered.");
+    this.answering.add(key);
+    try {
+      await this.answerOpenDecision(paseo, key, label, text, from);
+    } finally {
+      this.answering.delete(key);
+    }
+  }
+
+  private async answerOpenDecision(paseo: PaseoApi, key: string, label: string | null, text: string, from: "screen" | "tab"): Promise<void> {
     const decision = await this.state.decision(key);
     // An answered or withdrawn decision stays stored for a while; a second answer would contradict the first.
     if (decision === null || decision.status !== "open") throw new Error("That decision is no longer open.");
@@ -225,6 +241,18 @@ export class Actions {
    * merges) and runs the steps after answering; a surprise goes to an owner (`handOffAccept`).
    */
   async accept(paseo: PaseoApi, project: string, ticket: string): Promise<void> {
+    const key = acceptKey(project, ticket);
+    if (this.accepting.has(key) || this.ticketCalls.get(key) === "accept") throw new Error(`${ticket} is already being accepted.`);
+    if (this.ticketCalls.get(key) === "changes") throw new Error(`${ticket}'s changes are being sent to its owner: Accept is off until they are.`);
+    this.ticketCalls.set(key, "accept");
+    try {
+      await this.acceptChecked(paseo, project, ticket);
+    } finally {
+      this.ticketCalls.delete(key);
+    }
+  }
+
+  private async acceptChecked(paseo: PaseoApi, project: string, ticket: string): Promise<void> {
     const config = await requireProjectConfig(project);
     await this.requireOwner(paseo, project, ticket);
     const paths = await projectPaths(project);
@@ -234,7 +262,6 @@ export class Actions {
     // Nor while the owner waits on a question (TR-146): its answer may change what merges.
     const holding = questionHoldingAccept((await this.state.allDecisions()).filter((decision) => decision.project === project && decision.ticket === ticket));
     if (holding !== null) throw new Error(`${ticket}'s owner still waits on its question \`${holding.id}\`: answer it first.`);
-    if (this.accepting.has(acceptKey(project, ticket))) throw new Error(`${ticket} is already being accepted.`);
     const plan = acceptPlan(config, detail);
     // Without the reviewed head (or the PR), nothing can merge: an owner presents it again, and the card keeps offering Accept.
     if (plan.missing !== null) {
@@ -332,6 +359,19 @@ export class Actions {
   }
 
   async requestChanges(paseo: PaseoApi, project: string, ticket: string, text: string): Promise<void> {
+    const key = acceptKey(project, ticket);
+    // Changes sent while the merge runs would send the owner to work the merge then closes as Done.
+    if (this.accepting.has(key) || this.ticketCalls.get(key) === "accept") throw new Error(`${ticket} is being accepted: wait for the merge to finish.`);
+    if (this.ticketCalls.get(key) === "changes") throw new Error(`${ticket}'s changes are already being sent.`);
+    this.ticketCalls.set(key, "changes");
+    try {
+      await this.sendChanges(paseo, project, ticket, text);
+    } finally {
+      this.ticketCalls.delete(key);
+    }
+  }
+
+  private async sendChanges(paseo: PaseoApi, project: string, ticket: string, text: string): Promise<void> {
     const owner = await this.requireOwner(paseo, project, ticket);
     await sendWithoutInterrupting(paseo, owner.id, await message(TEMPLATES.requestChanges, { ticket, text: text.trim() }));
     const paths = await projectPaths(project);
