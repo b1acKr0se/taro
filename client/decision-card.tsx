@@ -28,6 +28,7 @@ import { ImageThumbnail } from "./image-view";
 import { PlanDecision } from "./plan-card";
 import { ReplyBox } from "./reply-box";
 import { IconButton } from "./ui";
+import { decisionCall, optionPress } from "./shared-presses";
 import { useActions } from "./use-actions";
 
 /** The height of an option's thumbnails; a phone shot is half as wide, a desktop one 1.6 times. */
@@ -75,11 +76,14 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
   const [typed, setTyped] = useState("");
   const [picked, setPicked] = useState<DecisionPick>(null);
   const [whyOpen, setWhyOpen] = useState(false);
-  const presses = useActions();
+  // Shared with the same decision's chips and buttons on every other surface (TR-191).
+  const presses = useActions(decisionCall(decision));
   const busy = presses.busy;
   const { colors } = theme;
   const optionRows = useMemo(() => decisionOptionRows(decision), [decision]);
   const submit = decisionSubmit(optionRows.rows, picked, typed, answerPlaceholder(decision));
+  // The picked option's press key, so its chip on the Needs you card spins while this sends.
+  const submitPress = submit.label === null ? "submit" : optionPress(submit.label);
   const answerable = readOnlyNote === null;
   // A card that cannot be answered does not ask for the user.
   const waiting = decision.blocking && answerable;
@@ -238,10 +242,11 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
               tone="accent"
               theme={theme}
               disabled={busy || !submit.enabled}
-              state={presses.stateOf("submit")}
+              // Busy too while another surface answers this decision, as nothing is picked here to spin instead.
+              state={presses.stateOf(submitPress) ?? (busy ? "busy" : undefined)}
               // The answered decision leaves, so Submit stays busy until it does.
               onPress={() =>
-                presses.press("submit", () => answer({ key: decision.key, label: submit.label, text: submit.text, from: answeredFrom }), {
+                presses.press(submitPress, () => answer({ key: decision.key, label: submit.label, text: submit.text, from: answeredFrom }), {
                   after: "hold",
                   onSuccess: () => {
                     setTyped("");

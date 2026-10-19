@@ -134,6 +134,26 @@ describe("Actions.answerDecision", () => {
     expect(sendFromPlugin).toHaveBeenCalledTimes(1);
   });
 
+  // TR-191: Approve on the Needs you card and Request changes in the chat in the same instant, both still in their checks.
+  it("sends one answer when two arrive at once, refusing the other", async () => {
+    const live = paseoWhere(async () => ({ agent: { id: "owner", status: "idle", archivedAt: null } }));
+    const decisions = [stored("owner")];
+    const actions = actionsOver(decisions);
+    const results = await Promise.allSettled([actions.answerDecision(live, key, "Approve", ""), actions.answerDecision(live, key, null, "Rename the button")]);
+    expect(results.map((result) => result.status)).toEqual(["fulfilled", "rejected"]);
+    expect(results[1]).toMatchObject({ reason: new Error("That decision is already being answered.") });
+    expect(sendFromPlugin).toHaveBeenCalledTimes(1);
+    expect(decisions[0]?.answer).toMatchObject({ label: "Approve" });
+  });
+
+  it("lets a decision be answered again after an answer failed", async () => {
+    const decisions = [stored("owner")];
+    const actions = actionsOver(decisions);
+    await expect(actions.answerDecision(paseoWhere(async () => Promise.reject(new Error("timeout"))), key, "Approve", "")).rejects.toThrow("timeout");
+    await actions.answerDecision(paseoWhere(async () => ({ agent: { id: "owner", status: "idle", archivedAt: null } })), key, "Approve", "");
+    expect(sendFromPlugin).toHaveBeenCalledTimes(1);
+  });
+
   it("still answers a live agent, closed ones included", async () => {
     for (const status of ["idle", "closed"]) {
       vi.mocked(sendFromPlugin).mockClear();

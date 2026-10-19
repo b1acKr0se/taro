@@ -6,7 +6,7 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
-import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
+import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useState } from "react";
 import { View } from "react-native";
 
@@ -16,12 +16,12 @@ import type { StoredDecision } from "../shared/state";
 import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
-import { errorText } from "./format";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, labelLineHeightFor } from "./type-scale";
 import { Spinner } from "./ui";
-import { usePressGuards } from "./use-actions";
+import { decisionCall, optionPress } from "./shared-presses";
+import { useActions } from "./use-actions";
 
 export function OptionChips({
   decision,
@@ -35,10 +35,9 @@ export function OptionChips({
   onOpen: () => void;
   onAnswered: () => void;
 }) {
-  const toast = useToast();
   const answer = useRpc(answerDecision);
-  const guardFor = usePressGuards();
-  const [sending, setSending] = useState<string | null>(null);
+  // One guard for every chip, shared with the same question in the chat and the Ticket tab (TR-191): it takes one answer.
+  const presses = useActions(decisionCall(decision));
   // Stays set: the chips remain off until the board reloads without this question, so a second tap cannot answer it again.
   const [answered, setAnswered] = useState(false);
   const chips = useMemo(() => optionChips(decision), [decision]);
@@ -72,26 +71,20 @@ export function OptionChips({
       onOpen();
       return;
     }
-    // One guard for every chip: a question takes one answer, so a second tap on any chip is ignored.
-    const running = guardFor("answer").run(chip.label, () => answer({ key: decision.key, label: chip.label, text: "", from: "screen" }), "hold");
-    if (running === null) return;
-    setSending(chip.label);
-    void running.then((outcome) => {
-      setSending(null);
-      if (outcome.ok) {
+    presses.press(optionPress(chip.label), () => answer({ key: decision.key, label: chip.label, text: "", from: "screen" }), {
+      after: "hold",
+      onSuccess: () => {
         setAnswered(true);
         onAnswered();
-      } else {
-        toast.error(errorText(outcome.error));
-      }
+      },
     });
   }
 
   return (
     <View style={styles.row}>
       {chips.map((chip, index) => {
-        const busy = sending === chip.label;
-        const off = sending !== null || answered;
+        const busy = presses.stateOf(optionPress(chip.label)) === "busy";
+        const off = presses.busy || answered;
         return (
           <Pressable
             key={`${index}:${chip.label}`}

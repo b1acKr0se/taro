@@ -215,6 +215,30 @@ describe("accept run by the plugin", () => {
     await actions.acceptRunning("demo", "DM-1");
     expect(actions.acceptRunning("demo", "DM-1")).toBeUndefined();
   });
+
+  // TR-191: the Needs you card and the chat pressed in the same instant, both calls still in their checks.
+  it("takes only one of two Accepts pressed at once, writing one ACCEPTED", async () => {
+    config({});
+    ticket(`EXECUTION 2026-01-01T00:00Z — review-head: ${head}`);
+    outcome({ kind: "done", acceptance: "ACCEPTANCE x" });
+    const results = await Promise.allSettled([actions.accept(paseo, "demo", "DM-1"), actions.accept(paseo, "demo", "DM-1")]);
+    await actions.acceptRunning("demo", "DM-1");
+    expect(results.map((result) => result.status)).toEqual(["fulfilled", "rejected"]);
+    expect(results[1]).toMatchObject({ reason: new Error("DM-1 is already being accepted.") });
+    expect(written()).toHaveLength(1);
+    expect(vi.mocked(acceptLocalBranch)).toHaveBeenCalledOnce();
+  });
+
+  it("frees the ticket for another Accept once one is refused", async () => {
+    config({});
+    ticket(`EXECUTION 2026-01-01T00:00Z — review-head: ${head}`);
+    outcome({ kind: "done", acceptance: "ACCEPTANCE x" });
+    stored = [{ id: "count-style", project: "demo", ticket: "DM-1", agentRole: "owner", status: "open" } as StoredDecision];
+    await expect(actions.accept(paseo, "demo", "DM-1")).rejects.toThrow(/waits on its question/);
+    stored = [];
+    await accept();
+    expect(vi.mocked(acceptLocalBranch)).toHaveBeenCalledOnce();
+  });
 });
 
 describe("a surprise goes to a warm owner or a fresh one", () => {
@@ -327,5 +351,37 @@ describe("requestChanges (TR-131)", () => {
     vi.mocked(recordChangesRequested).mockRejectedValueOnce(new Error("tracker locked"));
     await expect(actions.requestChanges({} as PaseoApi, "demo", "DM-1", "Rename it")).rejects.toThrow("Sent to the owner, but DM-1 could not be moved to In Progress: tracker locked");
     expect(vi.mocked(sendWithoutInterrupting)).toHaveBeenCalledOnce();
+  });
+
+  // TR-191: changes sent from another surface while the merge runs would send the owner to work the merge then closes.
+  it("refuses changes while the ticket is being accepted, and takes them once the Accept settled", async () => {
+    config({});
+    ticket(`EXECUTION 2026-01-01T00:00Z — review-head: ${head}`);
+    let finish: (value: AcceptOutcome) => void = () => undefined;
+    vi.mocked(acceptLocalBranch).mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    await actions.accept(paseo, "demo", "DM-1");
+    await expect(actions.requestChanges({} as PaseoApi, "demo", "DM-1", "Rename it")).rejects.toThrow("DM-1 is being accepted: wait for the merge to finish.");
+    expect(vi.mocked(sendWithoutInterrupting)).not.toHaveBeenCalled();
+    expect(vi.mocked(recordChangesRequested)).not.toHaveBeenCalled();
+    finish({ kind: "not-merged", reason: "the main checkout is dirty" });
+    await actions.acceptRunning("demo", "DM-1");
+    await actions.requestChanges({} as PaseoApi, "demo", "DM-1", "Rename it");
+    expect(vi.mocked(recordChangesRequested)).toHaveBeenCalledOnce();
+  });
+
+  it("refuses changes pressed in the same instant as Accept, whichever came first", async () => {
+    config({});
+    ticket(`EXECUTION 2026-01-01T00:00Z — review-head: ${head}`);
+    outcome({ kind: "done", acceptance: "ACCEPTANCE x" });
+    const acceptFirst = await Promise.allSettled([actions.accept(paseo, "demo", "DM-1"), actions.requestChanges({} as PaseoApi, "demo", "DM-1", "Rename it")]);
+    await actions.acceptRunning("demo", "DM-1");
+    expect(acceptFirst.map((result) => result.status)).toEqual(["fulfilled", "rejected"]);
+    expect(vi.mocked(recordChangesRequested)).not.toHaveBeenCalled();
+
+    const changesFirst = await Promise.allSettled([actions.requestChanges({} as PaseoApi, "demo", "DM-1", "Rename it"), actions.accept(paseo, "demo", "DM-1")]);
+    expect(changesFirst.map((result) => result.status)).toEqual(["fulfilled", "rejected"]);
+    expect(changesFirst[1]).toMatchObject({ reason: new Error("DM-1's changes are being sent to its owner: Accept is off until they are.") });
+    expect(vi.mocked(recordChangesRequested)).toHaveBeenCalledOnce();
+    expect(vi.mocked(acceptLocalBranch)).toHaveBeenCalledOnce();
   });
 });

@@ -34,6 +34,7 @@ import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { IconButton } from "./ui";
+import { decisionCall, optionPress } from "./shared-presses";
 import { useActions, type Actions } from "./use-actions";
 import { polled } from "./polling";
 
@@ -377,7 +378,8 @@ export function PlanActions({
   onWriting?: (open: boolean) => void;
 }) {
   const answer = useRpc(answerDecision);
-  const ownPresses = useActions();
+  // Shared with the same decision's buttons on every other surface (TR-191).
+  const ownPresses = useActions(decisionCall(decision));
   const presses = sharedPresses ?? ownPresses;
   const [typed, setTyped] = useState("");
   // The option the box is open for: null for Request changes…, undefined while the buttons show.
@@ -449,8 +451,8 @@ export function PlanActions({
           tone="accent"
           theme={theme}
           disabled={busy}
-          state={presses.stateOf("approve")}
-          onPress={() => send("approve", options.approve, "")}
+          state={presses.stateOf(optionPress(options.approve))}
+          onPress={() => send(optionPress(options.approve), options.approve, "")}
         />
       </View>
       <View style={styles.slot}>
@@ -469,8 +471,8 @@ export function PlanActions({
             showLabel
             theme={theme}
             disabled={busy}
-            state={presses.stateOf(`option:${other.label}`)}
-            onPress={() => (other.asksForWords ? setWriting(other.label) : send(`option:${other.label}`, other.label, ""))}
+            state={presses.stateOf(optionPress(other.label))}
+            onPress={() => (other.asksForWords ? setWriting(other.label) : send(optionPress(other.label), other.label, ""))}
           />
         </View>
       ))}
