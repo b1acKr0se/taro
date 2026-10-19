@@ -4,7 +4,7 @@
  * `./zoom`; the top bar, the safe area and smooth gestures are TR-042; clearing the macOS desktop
  * app's window controls is TR-048). The client cannot read the
  * daemon's disk, so a `file://` URI or an absolute path is read through `taro.image.read`, which serves only the directories Taro's images live in; an `https://`
- * image loads directly.
+ * image, and a composer attachment's inline data (TR-192), load directly.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -17,6 +17,7 @@ import { COMPOSER_WIDE_WIDTH } from "./composer-height";
 import { watchFullScreen } from "./desktop-window";
 import { ErrorBoundary } from "./error-boundary";
 import { Pressable } from "./focus";
+import { sourceOf, type ImageSource } from "./image-source";
 import { FullScreenModal, SafeArea } from "./safe-area";
 import { SPACE } from "./spacing";
 import { canCopyThumbnails, copyKey, copySizeFor, drawnUri, settledCopy, thumbnailCopy } from "./thumbnail-copy";
@@ -51,14 +52,6 @@ import {
 const THUMBNAIL_HEIGHT = 160;
 const CAPTION_MIN_WIDTH = 120;
 
-type ImageSource = { kind: "local"; path: string } | { kind: "remote"; uri: string } | { kind: "none" };
-
-function sourceOf(source: string): ImageSource {
-  if (source.startsWith("file://") || source.startsWith("/")) return { kind: "local", path: source };
-  if (source.startsWith("https://")) return { kind: "remote", uri: source };
-  return { kind: "none" };
-}
-
 /** The image as a URI the `Image` component can draw: undefined while loading, null when it cannot be had; with its size when the daemon read it from the file (TR-164). */
 function useImageUri(source: ImageSource): { uri: string | null | undefined; mimeType: string; size: Size | null } {
   const read = useRpc(readImageRpc);
@@ -77,7 +70,7 @@ function useImageUri(source: ImageSource): { uri: string | null | undefined; mim
   const width = image?.width;
   const height = image?.height;
   const size = useMemo(() => (width === undefined || height === undefined ? null : { width, height }), [width, height]);
-  if (source.kind === "remote") return { uri: source.uri, mimeType: "", size: null };
+  if (source.kind === "remote" || source.kind === "inline") return { uri: source.uri, mimeType: "", size: null };
   if (source.kind === "none" || query.isError) return { uri: null, mimeType: "", size: null };
   if (query.data === undefined) return { uri: undefined, mimeType: "", size: null };
   return { uri, mimeType: image?.mimeType ?? "", size };

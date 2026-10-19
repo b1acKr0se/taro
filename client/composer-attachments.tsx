@@ -1,17 +1,19 @@
 /**
  * The composer's attachments (TR-036): the + button inside the box, the "Add attachment" sheet it
  * opens — a bottom sheet on a phone, a popover over the + on a wide screen, as Paseo's own — and the
- * removable previews of what is attached. What each item does is in `attachment-pickers.ts`.
+ * removable previews of what is attached, an image's opening full size in the viewer (TR-192). What
+ * each item does is in `attachment-pickers.ts`.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useRef, useState } from "react";
 import { Image, ScrollView, Text, View, useWindowDimensions } from "react-native";
 
-import { base64ByteLength, formatBytes, type DraftAttachment } from "../shared/attachments";
+import { attachmentGallery, base64ByteLength, formatBytes, type DraftAttachment } from "../shared/attachments";
 import { ATTACHMENT_SOURCES, type AttachmentSource } from "./attachment-sources";
 import { COMPOSER_CONTROL_SIZE } from "./composer-height";
 import { Pressable } from "./focus";
+import { ImageGallery } from "./image-view";
 import { BottomSafeArea, FullScreenModal } from "./safe-area";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
@@ -183,14 +185,15 @@ function AttachmentSheet({
   );
 }
 
-/** The attachments waiting to be sent, each with a remove button; nothing when there are none. */
+/** The attachments waiting to be sent, each with a remove button; nothing when there are none. A press on an image opens the viewer on it, among the draft's images. */
 export function AttachmentPreviews({ theme, attachments, onRemove }: { theme: PluginTheme; attachments: readonly DraftAttachment[]; onRemove: (id: string) => void }) {
   const { colors } = theme;
   const styles = useMemo(
     () => ({
       strip: { flexGrow: 0 },
       stripBody: { gap: SPACE.sm, paddingHorizontal: SPACE.sm, paddingTop: SPACE.sm },
-      image: { width: PREVIEW_SIZE, height: PREVIEW_SIZE, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface2 },
+      image: { width: PREVIEW_SIZE, height: PREVIEW_SIZE, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface2, overflow: "hidden" as const },
+      imageFill: { width: "100%" as const, height: "100%" as const },
       file: {
         height: PREVIEW_SIZE,
         maxWidth: 220,
@@ -222,13 +225,18 @@ export function AttachmentPreviews({ theme, attachments, onRemove }: { theme: Pl
     }),
     [colors],
   );
+  const gallery = useMemo(() => attachmentGallery(attachments), [attachments]);
+  const [opened, setOpened] = useState<string | null>(null);
+  const start = opened === null ? -1 : gallery.findIndex((image) => image.id === opened);
   if (attachments.length === 0) return null;
   return (
     <ScrollView horizontal style={styles.strip} contentContainerStyle={styles.stripBody} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       {attachments.map((attachment) => (
         <View key={attachment.id}>
           {attachment.kind === "image" ? (
-            <Image accessibilityLabel={attachment.fileName} source={{ uri: `data:${attachment.mimeType};base64,${attachment.data}` }} style={styles.image} resizeMode="cover" />
+            <Pressable accessibilityRole="imagebutton" accessibilityLabel={`${attachment.fileName}, open full size`} style={styles.image} onPress={() => setOpened(attachment.id)}>
+              <Image accessibilityLabel={attachment.fileName} source={{ uri: `data:${attachment.mimeType};base64,${attachment.data}` }} style={styles.imageFill} resizeMode="cover" />
+            </Pressable>
           ) : (
             <View style={styles.file}>
               <Icon name="File" size={18} color={colors.foregroundMuted} />
@@ -251,6 +259,8 @@ export function AttachmentPreviews({ theme, attachments, onRemove }: { theme: Pl
           </Pressable>
         </View>
       ))}
+      {/* Opened by id, not position: an attachment gone while the viewer is open closes it rather than showing another. */}
+      <ImageGallery images={gallery} start={start < 0 ? null : start} onClose={() => setOpened(null)} />
     </ScrollView>
   );
 }

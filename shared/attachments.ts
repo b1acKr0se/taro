@@ -87,6 +87,13 @@ export function outgoingAttachments(attachments: readonly DraftAttachment[]): { 
   };
 }
 
+/** The draft's images as the viewer moves through them (TR-192), in order, each drawn from its data and captioned with its file name; files are left out. */
+export function attachmentGallery(attachments: readonly DraftAttachment[]): { id: string; source: string; alt: string }[] {
+  return attachments
+    .filter((attachment) => attachment.kind === "image")
+    .map((attachment) => ({ id: attachment.id, source: `data:${attachment.mimeType};base64,${attachment.data}`, alt: attachment.fileName }));
+}
+
 /** A `data:` URL's type and base64 content (what a browser's FileReader and the phone's clipboard give), or null. */
 export function parseDataUrl(url: string): { mimeType: string; data: string } | null {
   const match = /^data:([^;,]*)(?:;[^;,]*)*;base64,([\s\S]*)$/.exec(url);

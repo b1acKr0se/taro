@@ -4,6 +4,7 @@ import {
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENTS,
   MAX_IMAGE_BASE64_LENGTH,
+  attachmentGallery,
   attachmentProblem,
   imageTooLarge,
   oversizedImageProblem,
@@ -90,6 +91,25 @@ describe("the per-image limit (TR-037)", () => {
     expect(refuseOversizedImages(["a.jpg", "b.jpg", "c.jpg"].map((fileName) => ({ kind: "image" as const, fileName, data: overLimit }))).problem).toMatch(/ 2 more images were left out too\.$/);
     expect(refuseOversizedImages([])).toEqual({ fitting: [], problem: null });
     expect(refuseOversizedImages(list.slice(1, 3))).toEqual({ fitting: list.slice(1, 3), problem: null });
+  });
+});
+
+describe("attachmentGallery", () => {
+  it("lists the draft's images in order, drawn from their data and named by file, without the files", () => {
+    const list: DraftAttachment[] = [
+      { id: "1", kind: "image", fileName: "first screen.png", mimeType: "image/png", data: "AA==" },
+      { id: "2", kind: "file", fileName: "notes.txt", mimeType: "text/plain", data: "Ag==" },
+      { id: "3", kind: "image", fileName: "photo.jpg", mimeType: "image/jpeg", data: "/9j/" },
+    ];
+    expect(attachmentGallery(list)).toEqual([
+      { id: "1", source: "data:image/png;base64,AA==", alt: "first screen.png" },
+      { id: "3", source: "data:image/jpeg;base64,/9j/", alt: "photo.jpg" },
+    ]);
+  });
+
+  it("is empty with no images", () => {
+    expect(attachmentGallery([])).toEqual([]);
+    expect(attachmentGallery([{ id: "1", kind: "file", fileName: "a.pdf", mimeType: "application/pdf", data: "AA==" }])).toEqual([]);
   });
 });
 
