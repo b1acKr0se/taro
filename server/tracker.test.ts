@@ -43,6 +43,18 @@ describe("trackers on disk (scratch repositories, never the live tracker)", () =
     expect(git(tracker, "show", "--name-only", "--format=%s", "HEAD").trim().split("\n")).toEqual(["taro: update tracker", "", ".gitignore", "tracker.json"]);
   });
 
+  it("creates the tracker in a repository with no commits yet, leaving its branch unborn (TR-196)", async () => {
+    rmSync(repo, { recursive: true, force: true });
+    mkdirSync(repo);
+    git(repo, "init", "-q", "-b", "develop");
+    expect(await ensureTracker({ ...setup(), baseBranch: "develop" })).toEqual({ adopted: false });
+    expect(git(tracker, "show", "--name-only", "--format=%s", "HEAD").trim().split("\n")).toEqual(["taro: update tracker", "", ".gitignore", "tracker.json"]);
+    expect(readFileSync(join(tracker, ".gitignore"), "utf8")).toBe(".taro/\ntickets/.*.tmp\n");
+    expect(git(repo, "symbolic-ref", "HEAD").trim()).toBe("refs/heads/develop");
+    expect(spawnSync("git", ["-C", repo, "rev-parse", "--verify", "--quiet", "HEAD"]).status).not.toBe(0);
+    expect(git(repo, "status", "--porcelain")).toBe("");
+  });
+
   it("adopts a tracker that has tracker.json as it is", async () => {
     await ensureTracker(setup());
     writeFileSync(join(tracker, "tracker.json"), '{"schema":1,"prefix":"NA","padding":3,"lastId":7,"lastChild":{}}\n');

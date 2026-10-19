@@ -79,8 +79,11 @@ export async function ensureTracker(setup: TrackerSetup): Promise<{ adopted: boo
       await git(repoPath, ["worktree", "add", trackerPath, TRACKER_BRANCH]);
     } else {
       if (references.includes(`refs/remotes/origin/${TRACKER_BRANCH}`)) start = `refs/remotes/origin/${TRACKER_BRANCH}`;
+      else if (!references.includes(start) && !(await gitSucceeds(repoPath, ["rev-parse", "--verify", "--quiet", "HEAD"]))) start = "";
       else if (!references.includes(start)) start = "HEAD";
-      await git(repoPath, ["worktree", "add", "-b", TRACKER_BRANCH, trackerPath, start]);
+      // No commit to start from (the repository's first commit is the user's): the tracker begins its own history.
+      if (start === "") await git(repoPath, ["worktree", "add", "--orphan", "-b", TRACKER_BRANCH, trackerPath]);
+      else await git(repoPath, ["worktree", "add", "-b", TRACKER_BRANCH, trackerPath, start]);
     }
   }
   const branch = (await git(trackerPath, ["symbolic-ref", "--short", "HEAD"])).trim();
