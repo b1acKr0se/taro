@@ -94,6 +94,12 @@ export async function viewTicket(trackerPath: string, ticketId: string): Promise
   };
 }
 
+/** What a parent's detail shows of a child (TR-187), read from the child's file alone: a tracker of 200 tickets is not listed once per child. */
+export async function childRecords(trackerPath: string, ticketId: string): Promise<{ id: string; status: string; labels: string[]; notes: string | null }> {
+  const ticket = await storeFor(trackerPath).read(ticketId);
+  return { id: ticket.id, status: ticket.status, labels: ticket.labels, notes: textOrNull(ticket.notes) };
+}
+
 /** Appends a timestamped record to the ticket's notes. */
 export async function appendTicketNote(trackerPath: string, ticketId: string, record: string): Promise<void> {
   await storeFor(trackerPath).appendNote(ticketId, record);

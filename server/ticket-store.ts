@@ -98,6 +98,8 @@ export interface CacheEntry {
 export interface TicketStore {
   list(): Promise<TicketList>;
   view(id: string): Promise<TicketView>;
+  /** One ticket's file alone, without listing the tracker (`view` lists it for the children). */
+  read(id: string): Promise<Ticket>;
   search(query: string): Promise<TicketSummary[]>;
   create(input: CreateTicketInput): Promise<Ticket>;
   edit(id: string, changes: TicketChanges, options?: { revision?: string }): Promise<Ticket>;
@@ -659,5 +661,9 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
     cache.delete(file.slice(slash + 1));
   }
 
-  return { list, view, search, create, edit, editIf, appendNote, forget, withLock: locked, cacheEntries: () => cache };
+  async function readOne(id: string): Promise<Ticket> {
+    return (await readTicket(id)).ticket;
+  }
+
+  return { list, view, read: readOne, search, create, edit, editIf, appendNote, forget, withLock: locked, cacheEntries: () => cache };
 }

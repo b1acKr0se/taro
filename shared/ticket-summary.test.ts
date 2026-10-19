@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { descriptionParts, firstTextLine } from "./description";
 import { finalSections } from "./final-summary";
 import { LEGACY, LEGACY_DESCRIPTION, LEGACY_FINAL, SHORT, SHORT_DESCRIPTION, SHORT_FINAL } from "./ticket-fixtures.test-data";
-import { foldList, milestoneSummary, planSummary, resultLine, ticketSections, ticketSummary, type TicketFacts } from "./ticket-summary";
+import { evidenceSummary, foldList, milestoneSummary, planSummary, resultLine, ticketSections, ticketSummary, type TicketFacts } from "./ticket-summary";
 
 const EMPTY: TicketFacts = {
   title: "Fix login redirect",
@@ -268,5 +268,33 @@ describe("foldList", () => {
     expect(foldList(items(4), 3, false)).toEqual({ shown: [0, 1, 2], hidden: 1 });
     expect(foldList(items(5), 4, false)).toEqual({ shown: [0, 1, 2, 3], hidden: 1 });
     expect(foldList(items(5), 4, true)).toEqual({ shown: [0, 1, 2, 3, 4], hidden: 0 });
+  });
+});
+
+// TR-187: a parent's Evidence row counts its children's own records, so PS-001 shows it before its own delivery.
+describe("evidenceSummary", () => {
+  const record = (checks: number, screenshots = 0) => ({ checks: Array.from({ length: checks }, () => ({})), screenshots: Array.from({ length: screenshots }, () => ({})) });
+
+  it("keeps a ticket without children as it was, zero screenshots included", () => {
+    expect(evidenceSummary({ children: [], evidence: record(3) })).toBe("3 checks · 0 screenshots");
+    expect(evidenceSummary({ children: [], evidence: record(1, 1) })).toBe("1 check · 1 screenshot");
+    expect(evidenceSummary({ children: [], evidence: null })).toBeNull();
+  });
+
+  it("shows a parent with no record of its own through its children's records", () => {
+    const children = [{ status: "Done", evidence: record(5) }, { status: "Done", evidence: null }, { status: "Done", evidence: record(4, 2) }];
+    expect(evidenceSummary({ children, evidence: null })).toBe("2 of 3 children · 9 checks · 2 screenshots");
+  });
+
+  it("adds the parent's own record to the count, and leaves zero screenshots out", () => {
+    expect(evidenceSummary({ children: [{ status: "Done", evidence: record(2) }], evidence: record(1) })).toBe("1 of 1 child · 3 checks");
+    expect(evidenceSummary({ children: [{ status: "Done", evidence: null }], evidence: record(1) })).toBe("0 of 1 child · 1 check");
+  });
+
+  it("has no Evidence row while neither the parent nor any child has a record", () => {
+    expect(evidenceSummary({ children: [{ status: "In Progress", evidence: null }, { status: "Queued" }], evidence: null })).toBeNull();
+    const parent = { ...EMPTY, children: [{ status: "Done", evidence: null }] };
+    expect(ticketSections(parent, []).some((section) => section.key === "evidence")).toBe(false);
+    expect(ticketSections({ ...parent, children: [{ status: "Done", evidence: record(1) }] }, []).find((section) => section.key === "evidence")?.summary).toBe("1 of 1 child · 1 check");
   });
 });

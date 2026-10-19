@@ -20,12 +20,18 @@ export interface TicketFacts {
   acceptanceCriteria: readonly { checked: boolean }[];
   notes: string | null;
   finalSummary: string | null;
-  children: readonly { status: string | null }[];
-  evidence: { checks: readonly unknown[]; screenshots: readonly unknown[] } | null;
+  /** A child's evidence is its own EVIDENCE record (TR-187); absent where the caller has none to give. */
+  children: readonly { status: string | null; evidence?: EvidenceCounts | null }[];
+  evidence: EvidenceCounts | null;
   /** Paused by the user (TR-088): only their Resume moves it on. */
   pause?: { state: string } | null;
   /** The owner is in a turn (TR-153): a delivery is not offered until it ends. */
   ownerRunning?: boolean;
+}
+
+interface EvidenceCounts {
+  checks: readonly unknown[];
+  screenshots: readonly unknown[];
 }
 
 /** An open decision of this ticket (the caller picks the ticket's open ones), the parts read here. */
@@ -119,9 +125,8 @@ export function ticketSections(ticket: TicketFacts, decisions: readonly OpenDeci
   }
   const result = resultLine(ticket.finalSummary);
   if (result !== null) sections.push({ key: "result", summary: plainText(result), open: true });
-  if (ticket.evidence !== null) {
-    sections.push({ key: "evidence", summary: `${count(ticket.evidence.checks.length, "check", "checks")} · ${count(ticket.evidence.screenshots.length, "screenshot", "screenshots")}`, open: false });
-  }
+  const evidence = evidenceSummary(ticket);
+  if (evidence !== null) sections.push({ key: "evidence", summary: evidence, open: false });
   const milestones = ticketMilestones(ticket.notes);
   const newest = milestones[milestones.length - 1];
   if (newest !== undefined) sections.push({ key: "milestones", summary: milestoneSummary(newest), open: false });
@@ -134,6 +139,23 @@ export function ticketSections(ticket: TicketFacts, decisions: readonly OpenDeci
     sections.push({ key: "records", summary: milestones.length === 0 ? "raw notes" : count(milestones.length, "record", "records"), open: false });
   }
   return sections;
+}
+
+/**
+ * The Evidence row's summary, null when there is nothing to show. A parent's row also counts its
+ * children's records (TR-187), "6 of 7 children · 31 checks", as a multi-repo parent's own record
+ * may come only at delivery.
+ */
+export function evidenceSummary(ticket: Pick<TicketFacts, "children" | "evidence">): string | null {
+  const recorded = ticket.children.flatMap((child) => (child.evidence === undefined || child.evidence === null ? [] : [child.evidence]));
+  if (ticket.evidence === null && recorded.length === 0) return null;
+  const records = ticket.evidence === null ? recorded : [ticket.evidence, ...recorded];
+  const checks = count(records.reduce((total, record) => total + record.checks.length, 0), "check", "checks");
+  const screenshotTotal = records.reduce((total, record) => total + record.screenshots.length, 0);
+  if (ticket.children.length === 0) return `${checks} · ${count(screenshotTotal, "screenshot", "screenshots")}`;
+  const parts = [`${recorded.length} of ${count(ticket.children.length, "child", "children")}`, checks];
+  if (screenshotTotal > 0) parts.push(count(screenshotTotal, "screenshot", "screenshots"));
+  return parts.join(" · ");
 }
 
 /** A record in a line: its kind in plain words and its first sentence, "Acceptance — the user accepted." */
