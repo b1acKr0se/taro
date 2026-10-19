@@ -16,7 +16,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { AccessibilityInfo, Animated, Easing, Platform, Text, View, type LayoutChangeEvent } from "react-native";
 
 import { isWorking } from "../shared/pending-sends";
-import { shimmerDurationMs, shimmerLayers, shimmerMetrics } from "./shimmer";
+import { shimmerDurationMs, shimmerLayers, shimmerMetrics, WEB_SHIMMER_COPY_BOX } from "./shimmer";
 import { SPACE } from "./spacing";
 import { SYNCED_LOADER_DOT_COUNT, SYNCED_LOADER_DURATION_MS, syncedLoaderDotSteps } from "./synced-loader-state";
 import { FONT_SIZE } from "./type-scale";
@@ -156,7 +156,7 @@ function WebShimmerCopy({ durationMs, size, style, children }: { durationMs: num
       aria-hidden
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={[style, { position: "absolute", left: 0, top: 0, width: size.width, height: size.height }]}
+      style={[style, WEB_SHIMMER_COPY_BOX]}
     >
       {children}
     </View>
