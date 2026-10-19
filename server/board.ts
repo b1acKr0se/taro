@@ -36,7 +36,7 @@ import { serialized } from "./serialize";
 import { pastPlan, previousPlan } from "./plan-history";
 import type { PluginState } from "./state";
 import { agentBrief } from "./summaries";
-import { listTickets, ticketProblems, viewTicket } from "./tickets";
+import { childRecords, listTickets, ticketProblems, viewTicket } from "./tickets";
 
 const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing", "Awaiting acceptance", "Blocked"]);
 
@@ -380,9 +380,9 @@ export async function loadTicketPastPlan(project: string, ticketId: string, card
 
 /** A child's EVIDENCE record, read from its own ticket file each time (TR-187): the parent never keeps a copy. Null when it has none or cannot be read. */
 async function childEvidence(project: string, tracker: string, childId: string): Promise<EvidenceView | null> {
-  const child = await viewTicket(tracker, childId).catch(() => null);
-  if (child === null || parseEvidence(child.implementationNotes) === null) return null;
-  return ticketEvidence(project, child.id, child.implementationNotes, child.labels, child.status);
+  const child = await childRecords(tracker, childId).catch(() => null);
+  if (child === null || parseEvidence(child.notes) === null) return null;
+  return ticketEvidence(project, child.id, child.notes, child.labels, child.status);
 }
 
 export async function loadTicketDetail(paseo: PaseoApi, project: string, ticketId: string): Promise<TicketDetailView> {

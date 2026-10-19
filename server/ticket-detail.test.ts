@@ -7,11 +7,11 @@ import { ticketSections } from "../shared/ticket-summary";
 import { projectAgents } from "./agents";
 import { loadTicketDetail } from "./board";
 import type { PaseoAgent, PaseoApi } from "./host-types";
-import { listTickets, viewTicket } from "./tickets";
+import { childRecords, listTickets, viewTicket } from "./tickets";
 
 vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: "/tracker" }) }));
 vi.mock("./agents", async (original) => ({ ...(await original<typeof import("./agents")>()), projectAgents: vi.fn(async () => []) }));
-vi.mock("./tickets", () => ({ listTickets: vi.fn(), viewTicket: vi.fn() }));
+vi.mock("./tickets", () => ({ listTickets: vi.fn(), viewTicket: vi.fn(), childRecords: vi.fn() }));
 
 type Viewed = Awaited<ReturnType<typeof viewTicket>>;
 
@@ -35,6 +35,7 @@ function parent(subtasks: { id: string; title: string; status: string }[], paren
 beforeEach(() => {
   vi.mocked(listTickets).mockReset();
   vi.mocked(viewTicket).mockReset();
+  vi.mocked(childRecords).mockReset().mockImplementation(async (_tracker, id) => ({ id, status: "Done", labels: [], notes: null }));
   vi.mocked(projectAgents).mockReset().mockResolvedValue([]);
 });
 
@@ -53,24 +54,21 @@ describe("loadTicketDetail children", () => {
 
   // TR-187: each child's EVIDENCE comes from its own ticket file, read when the parent loads; the parent holds no copy.
   it("gives each child the EVIDENCE record of its own ticket, null where it has none or cannot be read", async () => {
-    const tickets: Record<string, Viewed> = {
-      "NA-1": parent([
+    vi.mocked(viewTicket).mockResolvedValue(
+      parent([
         { id: "NA-1.01", title: "Export as CSV", status: "Done" },
         { id: "NA-1.02", title: "Export as JSON", status: "Done" },
         { id: "NA-1.03", title: "Export as PDF", status: "Done" },
       ]),
-      "NA-1.01": {
-        ...parent([], "NA-1"),
-        id: "NA-1.01",
-        status: "Done",
-        implementationNotes: "EVIDENCE 2026-10-18T07:16Z\ncheck: npm test (notes-api @5605098) — 82 passing\nreview: independent review, 0 open findings\nscreenshots: none — API only",
-      } as Viewed,
-      "NA-1.02": { ...parent([], "NA-1"), id: "NA-1.02", status: "Done", implementationNotes: "MILESTONE 2026-10-18T07:00Z — built" } as Viewed,
+    );
+    const notes: Record<string, string> = {
+      "NA-1.01": "EVIDENCE 2026-10-18T07:16Z\ncheck: npm test (notes-api @5605098) — 82 passing\nreview: independent review, 0 open findings\nscreenshots: none — API only",
+      "NA-1.02": "MILESTONE 2026-10-18T07:00Z — built",
     };
-    vi.mocked(viewTicket).mockImplementation(async (_tracker, id) => {
-      const found = tickets[id];
+    vi.mocked(childRecords).mockImplementation(async (_tracker, id) => {
+      const found = notes[id];
       if (found === undefined) throw new Error(`${id} not found`);
-      return found;
+      return { id, status: "Done", labels: [], notes: found };
     });
     const detail = await loadTicketDetail({} as PaseoApi, "notes", "NA-1");
     const [csv, json, pdf] = detail.children;
@@ -79,6 +77,9 @@ describe("loadTicketDetail children", () => {
     expect(pdf?.evidence).toBeNull();
     expect(detail.evidence).toBeNull();
     expect(ticketSections({ ...detail, plan: null }, []).find((section) => section.key === "evidence")?.summary).toBe("1 of 3 children · 1 check");
+    // The parent is viewed (and the tracker listed) once; each child is read from its own file.
+    expect(viewTicket).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(childRecords).mock.calls.map((call) => call[1])).toEqual(["NA-1.01", "NA-1.02", "NA-1.03"]);
   });
 
   it("has no children for a ticket without any", async () => {

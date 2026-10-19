@@ -76,28 +76,35 @@ interface TicketViewProps {
   planRequest?: number;
 }
 
-/** The ticket, or a child opened from its rows in place (TR-187) under a back row to its parent. */
+/**
+ * The ticket, or a child opened from its rows in place (TR-187) under a back row to its parent.
+ * Every ticket on the trail stays mounted, hidden under the one shown, so going back finds the
+ * parent with its rows open and scrolled as the user left it.
+ */
 export function TicketView(props: TicketViewProps) {
   const [kept, setKept] = useState(() => startTrail(props.ticket));
   const trail = trailFor(kept, props.ticket);
   const { shown, back } = trailView(trail);
-  const detail = (
-    <TicketDetail key={shown} {...props} ticket={shown} planRequest={back === null ? (props.planRequest ?? 0) : 0} onOpenChild={(child) => setKept(openChild(trail, child))} />
-  );
-  if (back === null) return detail;
   const { colors } = props.theme;
-  // The pane's header still names the ticket it opened on, so this row names the child shown.
+  const tickets = [trail.root, ...trail.opened];
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm, paddingTop: SPACE.md, paddingHorizontal: paneGutter(false) }}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Back to ${back}`} onPress={() => setKept(goBack(trail))} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs }}>
-          <Icon name="ChevronLeft" size={14} color={colors.accent} />
-          <Text style={{ color: colors.accent, fontSize: FONT_SIZE.small, fontWeight: "600" }}>{back}</Text>
-        </Pressable>
-        <Icon name="ChevronRight" size={12} color={colors.foregroundMuted} />
-        <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "600" }}>{shown}</Text>
-      </View>
-      {detail}
+      {back === null ? null : (
+        // The pane's header still names the ticket it opened on, so this row names the child shown.
+        <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm, paddingTop: SPACE.md, paddingHorizontal: paneGutter(false) }}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Back to ${back}`} onPress={() => setKept(goBack(trail))} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs }}>
+            <Icon name="ChevronLeft" size={14} color={colors.accent} />
+            <Text style={{ color: colors.accent, fontSize: FONT_SIZE.small, fontWeight: "600" }}>{back}</Text>
+          </Pressable>
+          <Icon name="ChevronRight" size={12} color={colors.foregroundMuted} />
+          <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "600" }}>{shown}</Text>
+        </View>
+      )}
+      {tickets.map((ticket, depth) => (
+        <View key={`${depth}:${ticket}`} style={depth === tickets.length - 1 ? { flex: 1 } : { display: "none" }}>
+          <TicketDetail {...props} ticket={ticket} planRequest={depth === 0 ? (props.planRequest ?? 0) : 0} onOpenChild={(child) => setKept(openChild(trailFor(kept, props.ticket), child))} />
+        </View>
+      ))}
     </View>
   );
 }

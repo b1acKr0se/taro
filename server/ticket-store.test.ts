@@ -444,6 +444,17 @@ describe("ticket store", () => {
       expect(reads.sort()).toEqual(["TR-001.md", "TR-002.md"]);
     });
 
+    // TR-187: a parent's detail reads each child this way, so 7 children do not list a 200-ticket tracker 7 times.
+    it("read() reads the one file and lists nothing", async () => {
+      for (const id of ["TR-001", "TR-002", "TR-003"]) await writeTicketFile({ id, notes: `notes of ${id}` });
+      const { tickets, reads } = countingStore();
+      const ticket = await tickets.read("TR-002");
+      expect(ticket.notes).toBe("notes of TR-002");
+      expect(reads).toEqual(["TR-002.md"]);
+      expect(tickets.cacheEntries().size).toBe(0);
+      await expect(tickets.read("TR-009")).rejects.toBeInstanceOf(TicketNotFound);
+    });
+
     it("list() drops deleted files", async () => {
       for (const id of ["TR-001", "TR-002"]) await writeTicketFile({ id });
       const { tickets } = countingStore();
