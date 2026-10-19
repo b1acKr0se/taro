@@ -8,8 +8,8 @@
 
 export const WRITING_A_QUESTION = "Writing a question…";
 
-const OPENER = "```decision";
-const CLOSED = /^```decision[^\n]*\n[\s\S]*?```/;
+const OPENERS = ["```decision", "```taro-decision"];
+const CLOSED = /^```(?:taro-)?decision[^\n]*\n[\s\S]*?```/;
 const STATES = ["working:", "waiting:", "blocked:", "done:", "failed:"];
 
 /** Whether `line` is a status line, or could still become one as more is written. */
@@ -31,11 +31,11 @@ export interface HeldText {
  * fence is left out until the next piece or the turn's end.
  */
 export function heldWhileWriting(text: string): HeldText {
-  const opened = text.lastIndexOf(OPENER);
+  const opened = Math.max(...OPENERS.map((opener) => text.lastIndexOf(opener)));
   if (opened !== -1 && !CLOSED.test(text.slice(opened))) return { text: text.slice(0, opened).replace(/\s+$/, ""), asking: true };
   const lineStart = text.lastIndexOf("\n") + 1;
   const last = text.slice(lineStart);
   const fence = last.trimStart();
-  if (startsStatusLine(last) || (fence.length >= 3 && OPENER.startsWith(fence))) return { text: text.slice(0, lineStart).replace(/\s+$/, ""), asking: false };
+  if (startsStatusLine(last) || (fence.length >= 3 && OPENERS.some((opener) => opener.startsWith(fence)))) return { text: text.slice(0, lineStart).replace(/\s+$/, ""), asking: false };
   return { text, asking: false };
 }

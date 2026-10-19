@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseDecisionBlocks, parseStatusLine, withImagePaths, withoutDecisionBlocks } from "./reports";
+import { decisionMessageSegments, parseDecisionBlocks, parseStatusLine, withImagePaths, withoutDecisionBlocks } from "./reports";
 
 describe("parseStatusLine", () => {
   it("reads the last line", () => {
@@ -295,5 +295,50 @@ describe("parseDecisionBlocks option images (TR-055)", () => {
     const options = [{ label: "Pills", prompt: "Pills", consequence: "", images: [image("a.png", "x"), image("dir/b.png", "y")] }];
     expect(withImagePaths(options, "/evidence/notes/NA-1")[0]?.images.map((each) => each.path)).toEqual(["/evidence/notes/NA-1/a.png", null]);
     expect(withImagePaths(options, null)[0]?.images.map((each) => each.path)).toEqual([null, null]);
+  });
+});
+
+describe("a decision fence written the wrong way (TR-197)", () => {
+  const JSON_BODY = JSON.stringify(
+    {
+      id: "scope-approval",
+      question: "Approve the plan for TR-195?",
+      blocking: true,
+      options: [{ label: "Approve", prompt: "Approve the plan for TR-195", consequence: "I build it" }, "Split into children"],
+      recommended: "Approve",
+      reason: "small and clear",
+    },
+    null,
+    2,
+  );
+
+  it("reads a taro-decision fence with a JSON body as a complete decision", () => {
+    const message = `Plan is in the ticket.\n\n\`\`\`taro-decision\n${JSON_BODY}\n\`\`\`\n\nwaiting: approval`;
+    const [decision] = parseDecisionBlocks(message);
+    expect(decision).toMatchObject({ id: "scope-approval", blocking: true, recommended: "Approve", problems: [] });
+    expect(decision?.options.map((option) => [option.label, option.prompt])).toEqual([
+      ["Approve", "Approve the plan for TR-195"],
+      ["Split into children", "Split into children"],
+    ]);
+    expect(withoutDecisionBlocks(message)).toBe("Plan is in the ticket.\n\nwaiting: approval");
+    expect(decisionMessageSegments(message)?.map((segment) => segment.kind)).toEqual(["text", "decision", "text"]);
+  });
+
+  it("reads a decision fence with a JSON body", () => {
+    expect(parseDecisionBlocks(`\`\`\`decision\n${JSON_BODY}\n\`\`\``)).toHaveLength(1);
+  });
+
+  it("reads a taro-decision fence with a YAML body", () => {
+    expect(parseDecisionBlocks(BLOCK.replace("```decision", "```taro-decision"))[0]?.id).toBe("fee-storage");
+  });
+
+  it("keeps the problems of an incomplete JSON block and falls back to YAML for broken JSON", () => {
+    expect(parseDecisionBlocks('```taro-decision\n{"id": "x", "question": "Q"}\n```')[0]?.problems).toContain("no options");
+    expect(parseDecisionBlocks("```decision\n{ not json\nid: x\nquestion: Q\n```")[0]?.id).toBe("x");
+  });
+
+  it("leaves other fences alone", () => {
+    expect(parseDecisionBlocks("```decisions\nid: x\n```")).toEqual([]);
+    expect(parseDecisionBlocks("```json\n{}\n```")).toEqual([]);
   });
 });
