@@ -57,6 +57,7 @@ import { useAgentTimeline } from "./use-timeline";
 import { Shimmer, WorkingStatus } from "./loading";
 import { SHIMMER_LIGHT } from "./shimmer";
 import { useLatestCallback } from "./latest-callback";
+import { BREAK_LONG_WORDS } from "./long-word-wrap";
 import { bubbleImageRoom, USER_BUBBLE_SHARE } from "./thumbnail-size";
 import { sameGroup, sameItems } from "./transcript-memo";
 import type { SentImage } from "./sent-images";
@@ -823,7 +824,7 @@ function UserMessage({
     <View style={styles.userRow} onLayout={(event) => setChatWidth(event.nativeEvent.layout.width)}>
       <View style={styles.userColumn}>
         <View style={styles.user}>
-          <Text selectable style={styles.userText}>
+          <Text selectable style={[styles.userText, BREAK_LONG_WORDS]}>
             {text}
           </Text>
           {images === undefined || room === null ? null : (
