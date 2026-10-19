@@ -86,17 +86,17 @@ export function TicketView(props: TicketViewProps) {
   );
   if (back === null) return detail;
   const { colors } = props.theme;
+  // The pane's header still names the ticket it opened on, so this row names the child shown.
   return (
     <View style={{ flex: 1 }}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Back to ${back}`}
-        onPress={() => setKept(goBack(trail))}
-        style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs, paddingTop: SPACE.md, paddingHorizontal: paneGutter(false), alignSelf: "flex-start" }}
-      >
-        <Icon name="ChevronLeft" size={14} color={colors.accent} />
-        <Text style={{ color: colors.accent, fontSize: FONT_SIZE.small, fontWeight: "600" }}>{back}</Text>
-      </Pressable>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm, paddingTop: SPACE.md, paddingHorizontal: paneGutter(false) }}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Back to ${back}`} onPress={() => setKept(goBack(trail))} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs }}>
+          <Icon name="ChevronLeft" size={14} color={colors.accent} />
+          <Text style={{ color: colors.accent, fontSize: FONT_SIZE.small, fontWeight: "600" }}>{back}</Text>
+        </Pressable>
+        <Icon name="ChevronRight" size={12} color={colors.foregroundMuted} />
+        <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "600" }}>{shown}</Text>
+      </View>
       {detail}
     </View>
   );
