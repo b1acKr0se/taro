@@ -51,7 +51,26 @@ the flow.
    same message as a question; then ask with a blocking decision `scope-approval` whose question is `Approve the plan
    for <ID>?`, options Approve (and Split into children when you propose children), and `why` one
    line at most: the card shows the plan's Goal, Choices I made and Size from the ticket, and View
-   plan opens the rest. The card has Approve and Request changes…: the user asks for a change by
+   plan opens the rest.
+   Write it as a fence named exactly `decision` with a YAML body, never `taro-decision` or JSON
+   (TR-195 did, and the user saw raw JSON, no card):
+
+   ````
+   ```decision
+   id: scope-approval
+   question: Approve the plan for <ID>?
+   why: <one line>
+   blocking: true
+   options:
+     - label: Approve
+       prompt: Approve the plan for <ID>
+   recommended: Approve
+   reason: <why>
+   ```
+   ````
+
+   Then `waiting: approval of the <ID> plan`. Every other question has the same shape
+   (`reference/formats.md`). The card has Approve and Request changes…: the user asks for a change by
    typing in the box Request changes… opens, and their words arrive as changes requested. **They are
    never approval**: update the plan and ask `scope-approval` again, unless they clearly approve
    ("approve, but skip the review"): then record them as APPROVAL, put the change into the plan and

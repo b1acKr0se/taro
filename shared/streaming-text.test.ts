@@ -45,3 +45,12 @@ describe("heldWhileWriting", () => {
     expect(heldWhileWriting("All done.\n\ndone: merged\n")).toEqual(shown("All done.\n\ndone: merged\n"));
   });
 });
+
+describe("a taro-decision fence (TR-197)", () => {
+  it("is held back while unclosed and kept once closed", () => {
+    expect(heldWhileWriting("Plan.\n\n```taro-decision\n{\"id\": \"scope-appr")).toEqual(asking("Plan."));
+    expect(heldWhileWriting("Plan.\n\n```taro")).toEqual({ text: "Plan.", asking: false });
+    const closed = "A.\n\n```taro-decision\n{\"id\": \"a\"}\n```\n\nThen more.";
+    expect(heldWhileWriting(closed)).toEqual({ text: closed, asking: false });
+  });
+});

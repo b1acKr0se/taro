@@ -72,7 +72,8 @@ export const ParsedDecisionSchema = z.object({
 });
 export type ParsedDecision = z.infer<typeof ParsedDecisionSchema>;
 
-const FENCE = /```decision[^\n]*\n([\s\S]*?)```/g;
+// `taro-decision` is the renderer's own name for the block; agents write it too (TR-195).
+const FENCE = /```(?:taro-)?decision(?![\w-])[^\n]*\n([\s\S]*?)```/g;
 
 /** Every `decision` block in a message, in order. */
 export function parseDecisionBlocks(message: string): ParsedDecision[] {
@@ -238,6 +239,10 @@ function imageLine(line: string): string {
  * rather than failing the whole block.
  */
 export function parseDecisionBody(body: string): ParsedDecision {
+  if (body.trimStart().startsWith("{")) {
+    const fromJson = parseJsonDecisionBody(body);
+    if (fromJson !== null) return fromJson;
+  }
   const fields: Record<string, string> = {};
   const options: Record<string, string>[] = [];
   const images = new Map<Record<string, string>, OptionImage[]>();
@@ -302,6 +307,47 @@ export function parseDecisionBody(body: string): ParsedDecision {
     }
   }
 
+  return completeDecision(fields, options, images);
+}
+
+/** A body written as a JSON object (same fields as the YAML); null when it is not valid JSON of that shape. */
+function parseJsonDecisionBody(body: string): ParsedDecision | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+  const record = parsed as Record<string, unknown>;
+  const text = (value: unknown): string => (typeof value === "string" ? value : typeof value === "number" || typeof value === "boolean" ? String(value) : "");
+  const fields: Record<string, string> = {};
+  for (const [key, value] of Object.entries(record)) if (key !== "options") fields[key.toLowerCase()] = text(value);
+  const options: Record<string, string>[] = [];
+  const images = new Map<Record<string, string>, OptionImage[]>();
+  for (const raw of Array.isArray(record.options) ? record.options : []) {
+    const entry: Record<string, string> = {};
+    if (typeof raw === "string") entry.label = raw;
+    else if (typeof raw === "object" && raw !== null) {
+      for (const [key, value] of Object.entries(raw)) if (key !== "images") entry[key.toLowerCase()] = text(value);
+      const listed = (raw as { images?: unknown }).images;
+      if (Array.isArray(listed)) {
+        images.set(
+          entry,
+          listed.flatMap((image: unknown) => {
+            if (typeof image !== "object" || image === null) return [];
+            const { file, caption } = image as { file?: unknown; caption?: unknown };
+            return [{ file: text(file), caption: text(caption), path: null }];
+          }),
+        );
+      }
+    }
+    options.push(entry);
+  }
+  return completeDecision(fields, options, images);
+}
+
+function completeDecision(fields: Record<string, string>, options: Record<string, string>[], images: Map<Record<string, string>, OptionImage[]>): ParsedDecision {
   const problems: string[] = [];
   const parsedOptions: DecisionOption[] = [];
   for (const option of options) {
