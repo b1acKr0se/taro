@@ -43,12 +43,42 @@ describe("loadTicketDetail children", () => {
     vi.mocked(viewTicket).mockResolvedValue(parent([{ id: "NA-1.01", title: "Export as CSV", status: "Done" }, { id: "NA-1.02", title: "Export as JSON", status: "In Progress" }]));
     const detail = await loadTicketDetail({} as PaseoApi, "notes", "NA-1");
     expect(detail.children).toEqual([
-      { id: "NA-1.01", title: "Export as CSV", status: "Done" },
-      { id: "NA-1.02", title: "Export as JSON", status: "In Progress" },
+      { id: "NA-1.01", title: "Export as CSV", status: "Done", evidence: null },
+      { id: "NA-1.02", title: "Export as JSON", status: "In Progress", evidence: null },
     ]);
     const children = ticketSections({ ...detail, plan: null }, []).find((section) => section.key === "children");
     expect(children?.summary).toBe("2 children · 1 done");
     expect(listTickets).not.toHaveBeenCalled();
+  });
+
+  // TR-187: each child's EVIDENCE comes from its own ticket file, read when the parent loads; the parent holds no copy.
+  it("gives each child the EVIDENCE record of its own ticket, null where it has none or cannot be read", async () => {
+    const tickets: Record<string, Viewed> = {
+      "NA-1": parent([
+        { id: "NA-1.01", title: "Export as CSV", status: "Done" },
+        { id: "NA-1.02", title: "Export as JSON", status: "Done" },
+        { id: "NA-1.03", title: "Export as PDF", status: "Done" },
+      ]),
+      "NA-1.01": {
+        ...parent([], "NA-1"),
+        id: "NA-1.01",
+        status: "Done",
+        implementationNotes: "EVIDENCE 2026-10-18T07:16Z\ncheck: npm test (notes-api @5605098) — 82 passing\nreview: independent review, 0 open findings\nscreenshots: none — API only",
+      } as Viewed,
+      "NA-1.02": { ...parent([], "NA-1"), id: "NA-1.02", status: "Done", implementationNotes: "MILESTONE 2026-10-18T07:00Z — built" } as Viewed,
+    };
+    vi.mocked(viewTicket).mockImplementation(async (_tracker, id) => {
+      const found = tickets[id];
+      if (found === undefined) throw new Error(`${id} not found`);
+      return found;
+    });
+    const detail = await loadTicketDetail({} as PaseoApi, "notes", "NA-1");
+    const [csv, json, pdf] = detail.children;
+    expect(csv?.evidence).toMatchObject({ checks: [{ command: "npm test (notes-api @5605098)", result: "82 passing" }], review: "independent review, 0 open findings", screenshotsNone: "API only" });
+    expect(json?.evidence).toBeNull();
+    expect(pdf?.evidence).toBeNull();
+    expect(detail.evidence).toBeNull();
+    expect(ticketSections({ ...detail, plan: null }, []).find((section) => section.key === "evidence")?.summary).toBe("1 of 3 children · 1 check");
   });
 
   it("has no children for a ticket without any", async () => {

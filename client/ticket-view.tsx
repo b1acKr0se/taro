@@ -22,6 +22,7 @@ import type { PauseView } from "../shared/pause";
 import { parsePlan } from "../shared/plan";
 import { markedAgainst } from "../shared/plan-changes";
 import type { StoredDecision } from "../shared/state";
+import { goBack, openChild, startTrail, trailFor, trailView } from "../shared/ticket-trail";
 import { foldList, ticketSections, ticketSummary, type TicketSectionKey, type TicketSummary } from "../shared/ticket-summary";
 import { PhaseBadge } from "./badges";
 import { pauseRow, phaseOf } from "./card-now";
@@ -66,20 +67,49 @@ const SECTION_LOOK: Record<TicketSectionKey, { icon: string; name: string }> = {
   records: { icon: "ScrollText", name: "Records" },
 };
 
-export function TicketView({
-  project,
-  ticket,
-  theme,
-  answeredFrom = "screen",
-  planRequest = 0,
-}: {
+interface TicketViewProps {
   project: string;
   ticket: string;
   theme: PluginTheme;
   answeredFrom?: "screen" | "tab";
   /** A ticket beside the chat (TR-149): when this counts up from 0 or changes, the Plan row unfolds and scrolls into view. */
   planRequest?: number;
-}) {
+}
+
+/** The ticket, or a child opened from its rows in place (TR-187) under a back row to its parent. */
+export function TicketView(props: TicketViewProps) {
+  const [kept, setKept] = useState(() => startTrail(props.ticket));
+  const trail = trailFor(kept, props.ticket);
+  const { shown, back } = trailView(trail);
+  const detail = (
+    <TicketDetail key={shown} {...props} ticket={shown} planRequest={back === null ? (props.planRequest ?? 0) : 0} onOpenChild={(child) => setKept(openChild(trail, child))} />
+  );
+  if (back === null) return detail;
+  const { colors } = props.theme;
+  return (
+    <View style={{ flex: 1 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Back to ${back}`}
+        onPress={() => setKept(goBack(trail))}
+        style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs, paddingTop: SPACE.md, paddingHorizontal: paneGutter(false), alignSelf: "flex-start" }}
+      >
+        <Icon name="ChevronLeft" size={14} color={colors.accent} />
+        <Text style={{ color: colors.accent, fontSize: FONT_SIZE.small, fontWeight: "600" }}>{back}</Text>
+      </Pressable>
+      {detail}
+    </View>
+  );
+}
+
+function TicketDetail({
+  project,
+  ticket,
+  theme,
+  answeredFrom = "screen",
+  planRequest = 0,
+  onOpenChild,
+}: TicketViewProps & { onOpenChild: (child: string) => void }) {
   const load = useRpc(loadTicket);
   const listDecisions = useRpc(listOpenDecisions);
   const toast = useToast();
@@ -204,21 +234,51 @@ export function TicketView({
           <View style={{ gap: SPACE.sm }}>
             {data.children.map((child) => (
               // The badge ends the row, so every id and title starts at one edge whatever its status's length.
-              <View key={child.id} style={styles.line}>
+              <Pressable key={child.id} accessibilityRole="button" accessibilityLabel={`Open ${child.id}`} onPress={() => onOpenChild(child.id)} style={styles.line}>
                 <Text style={[styles.text, { minWidth: 0 }]}>
                   <Text style={{ color: colors.foregroundMuted, fontWeight: "600" }}>{child.id}</Text> {child.title}
                 </Text>
                 <View style={styles.childBadge}>
                   <PhaseBadge theme={theme} status={child.status ?? "Unknown"} />
                 </View>
-              </View>
+                <View style={styles.lineIcon}>
+                  <Icon name="ChevronRight" size={14} color={colors.foregroundMuted} />
+                </View>
+              </Pressable>
             ))}
           </View>
         );
       case "result":
         return data.finalSummary === null ? null : <ResultBody finalSummary={data.finalSummary} theme={theme} onOpenLink={openLink} />;
       case "evidence":
-        return data.evidence === null ? null : <EvidenceBlock evidence={data.evidence} theme={theme} screenshotLimit={SCREENSHOTS_SHOWN} />;
+        if (data.children.length === 0) return data.evidence === null ? null : <EvidenceBlock evidence={data.evidence} theme={theme} screenshotLimit={SCREENSHOTS_SHOWN} />;
+        // A parent's own record first, then each child's from its own ticket (TR-187), under the child's id.
+        return (
+          <View style={{ gap: SPACE.lg }}>
+            {data.evidence === null ? null : (
+              <View style={{ gap: SPACE.xs }}>
+                <Text style={styles.text}>
+                  <Text style={{ color: colors.foregroundMuted, fontWeight: "600" }}>{data.id}</Text> {data.title}
+                </Text>
+                <EvidenceBlock evidence={data.evidence} theme={theme} screenshotLimit={SCREENSHOTS_SHOWN} />
+              </View>
+            )}
+            {data.children.map((child) => (
+              <View key={child.id} style={{ gap: SPACE.xs }}>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Open ${child.id}`} onPress={() => onOpenChild(child.id)}>
+                  <Text style={styles.text}>
+                    <Text style={{ color: colors.foregroundMuted, fontWeight: "600" }}>{child.id}</Text> {child.title}
+                  </Text>
+                </Pressable>
+                {child.evidence === null ? (
+                  <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, fontStyle: "italic" }}>No evidence recorded</Text>
+                ) : (
+                  <EvidenceBlock evidence={child.evidence} theme={theme} screenshotLimit={SCREENSHOTS_SHOWN} />
+                )}
+              </View>
+            ))}
+          </View>
+        );
       case "milestones":
         return <Timeline notes={data.notes} theme={theme} onOpenLink={openLink} />;
       case "description":

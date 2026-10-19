@@ -11,7 +11,7 @@ import { boardColumn, complexityOf, FIRST_PAGE, hasStarted, newestOwner, PAGED_C
 import { offersCompact } from "../shared/compact";
 import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
 import { acceptedRecord, executionMachine, notMergedRecord, pullRequestMerged, pullRequestUrl, type AcceptedRecord, type NotMergedRecord } from "../shared/execution";
-import type { Board, BoardPaging, Card, TicketDetailView } from "../shared/contracts";
+import type { Board, BoardPaging, Card, EvidenceView, TicketDetailView } from "../shared/contracts";
 import { latestMilestone, type Milestone } from "../shared/milestones";
 import { deliveredLine, firstAsk } from "../shared/needs-you";
 import { dependsOn } from "../shared/owner-cap";
@@ -378,6 +378,13 @@ export async function loadTicketPastPlan(project: string, ticketId: string, card
   return pastPlan(tracker, detail.id, detail.implementationNotes, card);
 }
 
+/** A child's EVIDENCE record, read from its own ticket file each time (TR-187): the parent never keeps a copy. Null when it has none or cannot be read. */
+async function childEvidence(project: string, tracker: string, childId: string): Promise<EvidenceView | null> {
+  const child = await viewTicket(tracker, childId).catch(() => null);
+  if (child === null || parseEvidence(child.implementationNotes) === null) return null;
+  return ticketEvidence(project, child.id, child.implementationNotes, child.labels, child.status);
+}
+
 export async function loadTicketDetail(paseo: PaseoApi, project: string, ticketId: string): Promise<TicketDetailView> {
   const tracker = (await projectPaths(project)).tracker;
   const detail = await viewTicket(tracker, ticketId);
@@ -399,7 +406,7 @@ export async function loadTicketDetail(paseo: PaseoApi, project: string, ticketI
     notes: detail.implementationNotes,
     finalSummary: detail.finalSummary,
     dependencies: detail.dependencies,
-    children: detail.subtasks.map((child) => ({ id: child.id, title: child.title, status: child.status })),
+    children: await Promise.all(detail.subtasks.map(async (child) => ({ id: child.id, title: child.title, status: child.status, evidence: await childEvidence(project, tracker, child.id) }))),
     evidence: hasRecord || detail.status === "Awaiting acceptance" ? await ticketEvidence(project, detail.id, detail.implementationNotes, detail.labels, detail.status) : null,
     pause: pausing.pause,
     pausable: pausing.pausable,

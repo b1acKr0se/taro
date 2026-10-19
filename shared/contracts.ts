@@ -294,7 +294,8 @@ export const TicketDetailSchema = z.object({
   notes: z.string().nullable(),
   finalSummary: z.string().nullable(),
   dependencies: z.array(z.string()),
-  children: z.array(z.object({ id: z.string(), title: z.string(), status: z.string().nullable() })),
+  /** Each child with its own EVIDENCE record, judged, or null when it has none (TR-187). */
+  children: z.array(z.object({ id: z.string(), title: z.string(), status: z.string().nullable(), evidence: EvidenceViewSchema.nullable().default(null) })),
   /** The judged evidence, when the notes hold an EVIDENCE record or the ticket is Awaiting acceptance. */
   evidence: EvidenceViewSchema.nullable().default(null),
   /** Pausing, paused or queued to resume (TR-088), else null. */
