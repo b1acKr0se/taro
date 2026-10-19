@@ -196,6 +196,17 @@ export function endStoppedCompactions<Row extends { kind: string; text?: string 
 }
 
 /**
+ * A tool call still "running" once the agent stopped working, or with the user's words after it (an
+ * earlier turn), drawn as finished (TR-190). Paseo replays a Claude agent's history after a restart
+ * or reload with each call repeated after its result, and its server keeps that last "running";
+ * Paseo's own app lets no "running" follow a finished call, so it shows them completed too.
+ */
+export function endStoppedTools(rows: TranscriptRow[], working: boolean): TranscriptRow[] {
+  const lastUser = rows.map((row) => row.kind).lastIndexOf("user");
+  return rows.map((row, index) => (row.kind === "tool" && row.status === "running" && (!working || index < lastUser) ? { ...row, status: "completed" } : row));
+}
+
+/**
  * The rows while the agent writes (TR-144): the newest reply, when it is the last row, without a
  * decision block or status line it has not finished (`heldWhileWriting`). The same rows otherwise.
  */

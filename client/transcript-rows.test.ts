@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { INTERRUPT_NOTE_END, INTERRUPT_NOTE_START } from "../shared/chat-queue";
-import { transcriptRows, type TimelineEntry } from "./transcript-rows";
+import { endStoppedTools, transcriptRows, type TimelineEntry } from "./transcript-rows";
 
 const IMAGE = "![Image](file:///tmp/paseo-attachments-x1/ab.png)";
 
@@ -141,5 +141,28 @@ describe("transcriptRows Send now messages (TR-171)", () => {
 
   it("keeps a message of words only as it is", () => {
     expect(transcriptRows([user(1, "Plain words")])).toEqual([{ key: "1", kind: "user", text: "Plain words" }]);
+  });
+});
+
+describe("endStoppedTools (TR-190)", () => {
+  const statuses = (rows: ReturnType<typeof transcriptRows>) => rows.map((row) => (row.kind === "tool" ? row.status : row.kind));
+  // As Paseo replays a Claude agent's history: its calls read "running" again, whatever they ended as.
+  const replayed = [user(1, "List the notes"), toolCall(2, "Bash", { type: "shell", command: "ls" }, "running"), said(3, "Two notes."), user(4, "Read the first"), toolCall(5, "Read", { type: "read", filePath: "/home/user/notes-app/a.md" }, "running")];
+
+  it("draws every call still running as finished once the agent stopped working", () => {
+    expect(statuses(endStoppedTools(transcriptRows(replayed), false))).toEqual(["user", "completed", "agent", "user", "completed"]);
+  });
+
+  it("keeps the current turn's running call while the agent works, and finishes an earlier turn's", () => {
+    expect(statuses(endStoppedTools(transcriptRows(replayed), true))).toEqual(["user", "completed", "agent", "user", "running"]);
+  });
+
+  it("leaves failed and cancelled calls as they are", () => {
+    const rows = transcriptRows([toolCall(1, "Bash", { type: "shell", command: "ls" }, "failed"), toolCall(2, "Bash", { type: "shell", command: "ls" }, "canceled")]);
+    expect(statuses(endStoppedTools(rows, false))).toEqual(["failed", "canceled"]);
+  });
+
+  it("returns no rows for none", () => {
+    expect(endStoppedTools([], false)).toEqual([]);
   });
 });

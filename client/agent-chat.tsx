@@ -43,7 +43,7 @@ import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
 import { cardFits, cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
 import { groupRows, toolRunSummary, type Group, type ToolRow } from "./tool-runs";
-import { ATTACHMENTS_ONLY, transcriptRows, whileWriting } from "./transcript-rows";
+import { ATTACHMENTS_ONLY, endStoppedTools, transcriptRows, whileWriting } from "./transcript-rows";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
 import { composerNotice, hasSomethingToSend, sendLabel } from "./composer-notice";
@@ -160,7 +160,9 @@ export function AgentChat({
   const writing = (live?.status ?? agent.status) === "running";
   // The agent's folder, so a tool call's path inside it reads as Paseo shows it.
   const cwd = timeline.agent?.cwd ?? null;
-  const rows = useMemo(() => whileWriting(transcriptRows(timeline.entries, cwd), writing), [timeline.entries, cwd, writing]);
+  const working = isWorking(live?.status ?? agent.status);
+  // A tool call shimmers only while its turn runs (TR-190).
+  const rows = useMemo(() => whileWriting(endStoppedTools(transcriptRows(timeline.entries, cwd), working), writing), [timeline.entries, cwd, working, writing]);
   const groups = useMemo(() => groupRows(rows), [rows]);
   // The newest entry's position, not the count: the timeline is a tail and stops growing in length.
   const sentImages = useSentImages(agent.id, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0);
@@ -190,7 +192,6 @@ export function AgentChat({
     onSend,
     onQueued: refreshQueue,
   });
-  const working = isWorking(live?.status ?? agent.status);
   // The messages waiting on the daemon for the turn to end (TR-171), drawn above the box.
   const queue = useChatQueue(agent.id, working, readOnly === undefined);
   const timelineCompacting = useMemo(() => isCompacting(timeline.entries), [timeline.entries]);
