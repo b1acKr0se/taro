@@ -55,6 +55,10 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
    slot-free messages while threads are short and sends them when they recover.
 4. Create the owner's worktree workspace and start the owner (`reference/paseo.md`), with the
    project's owner model, thinking and mode from AGENTS.md — the strongest model by default.
+   When a trivial or low ticket (or the user) calls for a cheaper owner, step down inside the
+   project's owner model's own provider (a Codex owner to a smaller Codex model, a Gemini owner to
+   a smaller Gemini model); never to Claude unless the project's owner model is Claude. With no
+   cheaper model of that provider available, keep the project's owner model.
    **The user's words win:** if the request names a model ("use sonnet for this", "a cheap model is
    fine"), start the owner with that model, and pass any model the user named for subagents into the
    brief. Before retrying an uncertain launch,
