@@ -44,19 +44,21 @@ describe("needsYouTotal", () => {
 describe("the count badge's places", () => {
   it("is the one pill on the sidebar, the tabs and the switch", () => {
     expect(source("sidebar.tsx")).toContain("<CountBadge theme={theme} count={waiting} />");
-    expect(source("taro-screen.tsx")).toContain("<CountBadge theme={theme} count={count} />");
+    expect(source("project-tabs.tsx")).toContain("<CountBadge theme={theme} count={project.needsYou} />");
+    expect(source("project-tabs.tsx")).toContain("<CountBadge theme={theme} count={inboxCount} />");
     expect(source("ui.tsx")).toContain("<CountBadge theme={theme} count={option.count ?? 0} />");
-    for (const file of ["sidebar.tsx", "taro-screen.tsx"]) expect(source(file)).not.toContain("statusWarning, alignItems");
+    for (const file of ["sidebar.tsx", "taro-screen.tsx", "project-tabs.tsx"]) expect(source(file)).not.toContain("statusWarning, alignItems");
   });
 
   it("names the count to screen readers on the tabs and the switch's segments", () => {
-    expect(source("taro-screen.tsx")).toContain("accessibilityLabel={countBadgeLabel(label, count)}");
+    expect(source("project-tabs.tsx")).toContain("accessibilityLabel={countBadgeLabel(project.name, compact ? 0 : project.needsYou)}");
+    expect(source("project-tabs.tsx")).toContain('accessibilityLabel={countBadgeLabel("Inbox", inboxCount)}');
     expect(source("ui.tsx")).toContain("accessibilityLabel={countBadgeLabel(option.label, option.count ?? 0)}");
   });
 
   it("counts every project's waiting items on the wide Inbox tab, which lists them all", () => {
     const screen = source("taro-screen.tsx");
-    expect(screen).toMatch(/tab\("inbox", "Inbox", "Inbox", showing === "inbox", \(\) => choose\(selected, "inbox"\), needsYouTotal\(list\)\)/);
+    expect(screen).toContain("inboxCount={needsYouTotal(list)}");
     expect(screen).toMatch(/<MemoInbox projects=\{list\}/);
     expect(screen).not.toContain("`Inbox ${");
   });

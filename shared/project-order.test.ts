@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { moveProject, orderProjects } from "./project-order";
+import { dropIndex, moveProject, orderProjects } from "./project-order";
 
 const project = (name: string, createdMs: number) => ({ name, createdMs });
 const names = (list: { name: string }[]) => list.map((entry) => entry.name);
@@ -42,5 +42,36 @@ describe("moveProject", () => {
     expect(moveProject(["a", "b"], "a", 99)).toEqual(["b", "a"]);
     expect(moveProject(["a", "b"], "b", -4)).toEqual(["b", "a"]);
     expect(moveProject(["a", "b"], "z", 0)).toEqual(["a", "b"]);
+  });
+});
+
+describe("dropIndex", () => {
+  const slots = [
+    { name: "a", x: 0, width: 100 },
+    { name: "b", x: 100, width: 100 },
+    { name: "c", x: 200, width: 100 },
+  ];
+
+  it("stays put for a small drag and moves past each neighbour's centre", () => {
+    expect(dropIndex(slots, "b", 0)).toBe(1);
+    expect(dropIndex(slots, "b", 90)).toBe(1);
+    expect(dropIndex(slots, "b", 110)).toBe(2);
+    expect(dropIndex(slots, "b", -110)).toBe(0);
+  });
+
+  it("clamps a drag past either end and answers 0 for an unknown name", () => {
+    expect(dropIndex(slots, "a", 9999)).toBe(2);
+    expect(dropIndex(slots, "c", -9999)).toBe(0);
+    expect(dropIndex(slots, "z", 50)).toBe(0);
+    expect(dropIndex([], "a", 50)).toBe(0);
+  });
+
+  it("copes with tabs of different widths", () => {
+    const uneven = [
+      { name: "a", x: 0, width: 300 },
+      { name: "b", x: 300, width: 50 },
+    ];
+    expect(dropIndex(uneven, "b", -180)).toBe(0);
+    expect(dropIndex(uneven, "b", -170)).toBe(1);
   });
 });

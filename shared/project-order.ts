@@ -30,3 +30,20 @@ export function moveProject(names: readonly string[], name: string, index: numbe
   const target = Math.max(0, Math.min(without.length, index));
   return [...without.slice(0, target), name, ...without.slice(target)];
 }
+
+export interface TabSlot {
+  name: string;
+  x: number;
+  width: number;
+}
+
+/**
+ * Where a dragged tab lands: its centre, moved by `shift`, is compared with the other tabs' centres,
+ * and the index is how many of them lie to its left. `slots` are in the order shown.
+ */
+export function dropIndex(slots: readonly TabSlot[], name: string, shift: number): number {
+  const dragged = slots.find((slot) => slot.name === name);
+  if (dragged === undefined) return 0;
+  const centre = dragged.x + dragged.width / 2 + shift;
+  return slots.filter((slot) => slot.name !== name && slot.x + slot.width / 2 < centre).length;
+}
