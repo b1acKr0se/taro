@@ -36,6 +36,13 @@ describe("the chat's status (TR-201)", () => {
     expect(chat).not.toMatch(/live\?\.status \?\? agent\.status(?!, timeline\.turn)/);
   });
 
+  it("tells the ticket pane, whose header shows the shown agent's status from it rather than the board's older read", () => {
+    expect(chat).toMatch(/useEffect\(\(\) => \{\s*onStatus\?\.\(status\);\s*\}, \[status\]\);/);
+    const pane = read("owner-pane.tsx");
+    expect(pane).toMatch(/onStatus=\{\(status\) => setChatStatus\(\{ agentId: shown\.id, status \}\)\}/);
+    expect(pane).toMatch(/shown\.live \? \(chatStatus\?\.agentId === shown\.id \? chatStatus\.status : shown\.brief\.status\) : "archived"/);
+  });
+
   it("shows the loader while a message is on its way, and the turn's time only while a turn runs", () => {
     expect(chat).toMatch(/const loaderShown = showsLoader\(status, sends\.views\.map\(\(view\) => view\.mark\)\);/);
   });

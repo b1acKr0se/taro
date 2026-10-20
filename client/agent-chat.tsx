@@ -121,6 +121,7 @@ export function AgentChat({
   delivery,
   records,
   suggestions,
+  onStatus,
 }: {
   agent: ChatAgent;
   /** Who this agent is to the user, named on its permission and question cards. */
@@ -154,6 +155,8 @@ export function AgentChat({
   records?: { project: string; ticket: string; plans: readonly PlanAnswer[] | null; deliveries: readonly DeliveryRecord[]; settling: boolean } | undefined;
   /** Things to send (the manager's suggestions, TR-045), after the buttons in their sideways-scrolling line. */
   suggestions?: ReactNode;
+  /** Told the agent's status as the chat follows it (TR-201), so a header beside it says the same, not the board's older read. */
+  onStatus?: ((status: string) => void) | undefined;
 } & ChatComposer) {
   const toast = useToast();
   const timeline = useAgentTimeline(agent.id, `${agent.updatedAt}:${agent.pendingPermissions}`);
@@ -162,6 +165,9 @@ export function AgentChat({
   // The stream's turn start or end over the last read (TR-201): the stop button and loader follow it at once.
   const status = statusWithTurn(live?.status ?? agent.status, timeline.turn);
   const writing = status === "running";
+  useEffect(() => {
+    onStatus?.(status);
+  }, [status]);
   // The agent's folder, so a tool call's path inside it reads as Paseo shows it.
   const cwd = timeline.agent?.cwd ?? null;
   const working = isWorking(status);
