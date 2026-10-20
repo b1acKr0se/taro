@@ -13,6 +13,7 @@ import {
   showsLoader,
   statusWithTurn,
   STOPPED_GRACE_MS,
+  replyIsBeingWritten,
   takeBack,
   turnIsOpen,
   viewSends,
@@ -341,5 +342,16 @@ describe("turnIsOpen (TR-208)", () => {
 
   it("does not count a failed message, which never starts a turn", () => {
     expect(turnIsOpen(true, [view("a", "failed", null)], new Set(["a"]))).toBe(true);
+  });
+});
+
+describe("replyIsBeingWritten (TR-210)", () => {
+  it("keeps the last reply's status line while the agent works on a message not in the timeline yet", () => {
+    expect(replyIsBeingWritten("running", false)).toBe(false);
+  });
+
+  it("holds the unfinished status line of a reply the agent is writing, and never when it is not running", () => {
+    expect(replyIsBeingWritten("running", true)).toBe(true);
+    expect(replyIsBeingWritten("idle", true)).toBe(false);
   });
 });

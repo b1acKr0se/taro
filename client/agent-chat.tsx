@@ -50,7 +50,7 @@ import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
 import { composerNotice, hasSomethingToSend, sendLabel } from "./composer-notice";
 import { usePendingSends, type ChatSend } from "./use-pending-sends";
-import { isCompacting, isWorking, showsLoader, statusWithTurn, takeBack, type SendMark, type SendView } from "../shared/pending-sends";
+import { isCompacting, isWorking, replyIsBeingWritten, showsLoader, statusWithTurn, takeBack, type SendMark, type SendView } from "../shared/pending-sends";
 import { chatQueueKey, EDIT_SENT_MEANWHILE, editRefusal, editRemoval, queueCompacting, sendingToQueue, takenAttachments, type QueueRowAction, type QueueRowMessage } from "./queue-rows";
 import { QueueTrack, useChatQueue } from "./queue-track";
 import { COMPOSER_CONTROL_SIZE, composerMetrics } from "./composer-height";
@@ -186,8 +186,10 @@ export function AgentChat({
     onSend,
     onQueued: refreshQueue,
   });
-  // A tool call shimmers only while its turn runs (TR-190).
-  const rows = useMemo(() => whileWriting(endStoppedTools(withoutOpenTurn(transcriptRows(timeline.entries, cwd), sends.turnOpen), working), writing), [timeline.entries, cwd, working, sends.turnOpen, writing]);
+  // A tool call shimmers only while its turn runs (TR-190). The reply before a sent message the timeline
+  // does not show yet is not being written, so its status line stays (TR-210, as its footer does, TR-208).
+  const writingReply = replyIsBeingWritten(status, sends.turnOpen);
+  const rows = useMemo(() => whileWriting(endStoppedTools(withoutOpenTurn(transcriptRows(timeline.entries, cwd), sends.turnOpen), working), writingReply), [timeline.entries, cwd, working, sends.turnOpen, writingReply]);
   const groups = useMemo(() => groupRows(rows), [rows]);
   // The newest entry's position, not the count: the timeline is a tail and stops growing in length.
   const sentImages = useSentImages(agent.id, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0);
