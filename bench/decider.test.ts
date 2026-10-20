@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { awaitsAcceptance, choosesAction, deciderPrompt, parseReply, permissionVerdict, staleWaiting, WAITING_NOTICE_MS } from "./decider.ts";
+import { answerEvents, awaitsAcceptance, choosesAction, DECIDER_RULES, deciderPrompt, parseReplies, parseReply, permissionVerdict, severalAnswerInput, severalCard, staleWaiting, WAITING_NOTICE_MS, type OpenDecision } from "./decider.ts";
 
 describe("parseReply", () => {
   const log = (body: string) => `\nsome thinking\nREPLY abc123\n${body}\n`;
@@ -76,5 +76,122 @@ describe("staleWaiting", () => {
   it("leaves a delivered or finished ticket to its own card", () => {
     expect(staleWaiting({ status: "Awaiting acceptance", lastStatus: waited(30) }, now)).toBeNull();
     expect(staleWaiting({ status: "Done", lastStatus: waited(30) }, now)).toBeNull();
+  });
+});
+
+const several: OpenDecision = {
+  key: "agent:export-format",
+  id: "export-format",
+  question: "2 questions: Tag format · Attachments",
+  why: "",
+  blocking: true,
+  status: "open",
+  askedAt: "2026-10-20T12:00:00Z",
+  options: [],
+  recommended: "",
+  reason: "",
+  questions: [
+    {
+      header: "Tag format",
+      question: "Should exported notes keep their tags as YAML front matter or as a hashtag line?",
+      why: "Front matter is read by static site tools",
+      options: [
+        { label: "YAML front matter", prompt: "Write tags as YAML front matter", consequence: "site tools read it" },
+        { label: "Hashtag line", prompt: "Write tags as a hashtag line at the top" },
+      ],
+      recommended: "YAML front matter",
+      reason: "the notes are published through a site generator",
+    },
+    {
+      header: "Attachments",
+      question: "What should happen to images attached to notes?",
+      why: "",
+      options: [
+        { label: "Copy beside each note", prompt: "Copy images beside each note" },
+        { label: "Leave them out", prompt: "Leave images out of the export" },
+      ],
+      recommended: "Copy beside each note",
+      reason: "an export should open without the app",
+    },
+  ],
+};
+
+describe("several questions on one card", () => {
+  it("several questions: one block per question in order", () => {
+    const prompt = deciderPrompt({ kind: "question", card: severalCard(several), spec: "SPEC", brief: "BRIEF", history: [], nonce: "n0nce", questions: 2 });
+    const first = prompt.indexOf("Question 1 of 2 — Tag format:");
+    const second = prompt.indexOf("Question 2 of 2 — Attachments:");
+    expect(first).toBeGreaterThan(0);
+    expect(second).toBeGreaterThan(first);
+    expect(prompt.slice(first, second)).toContain("- YAML front matter (recommended) — site tools read it");
+    expect(prompt.slice(first, second)).toContain("Why recommended: the notes are published through a site generator");
+    expect(prompt.slice(second)).toContain("- Leave them out");
+    ["answer 1: <", "text 1:", "preference 1:", "brief 1:", "answer 2: <", "text 2:", "preference 2:", "brief 2:"].forEach((part) => expect(prompt).toContain(part));
+    expect(prompt.indexOf("answer 1: <")).toBeLessThan(prompt.indexOf("answer 2: <"));
+    expect(prompt).not.toContain("choice: <");
+  });
+  it("one question: the prompt is unchanged", () => {
+    const prompt = deciderPrompt({ kind: "question", card: "Question: Which?\nOptions:\n- A", spec: "SPEC", brief: "BRIEF", history: ['- plan "x" → Approve'], nonce: "n0nce" });
+    // Captured from the code before several questions were added.
+    const before = "\n\nSPEC:\nSPEC\n\nBRIEF the owner was given:\nBRIEF\n\nDecided so far:\n- plan \"x\" → Approve\n\nTHE CARD (question):\nQuestion: Which?\nOptions:\n- A\n\nBegin your final reply with a line that is exactly \"REPLY n0nce\", then these four lines and nothing else:\nchoice: <choice is one option's exact label, or Other>\ntext: <the words to type, one line; empty when none>\npreference: <P1, P2 ... or none>\nbrief: <yes or no>";
+    expect(prompt).toBe(DECIDER_RULES + before);
+  });
+});
+
+describe("parseReplies", () => {
+  const log = (body: string) => `\nthinking\nREPLY abc123\n${body}\n`;
+  const three = "answer 1: A\ntext 1: one\npreference 1: P1\nbrief 1: no\nanswer 2: Other\ntext 2: my words\npreference 2: none\nbrief 2: yes\nanswer 3: C\ntext 3:\npreference 3: P2\nbrief 3: no";
+  it("reads three answers", () => {
+    expect(parseReplies(log(three), "abc123", 3)).toEqual([
+      { choice: "A", text: "one", preference: "P1", briefAnswered: false },
+      { choice: "Other", text: "my words", preference: "none", briefAnswered: true },
+      { choice: "C", text: "", preference: "P2", briefAnswered: false },
+    ]);
+  });
+  it("null when one answer is missing", () => {
+    expect(parseReplies(log(three.replace("answer 2: Other", "answer 2:")), "abc123", 3)).toBeNull();
+    expect(parseReplies(log("answer 1: A\nanswer 2: B"), "abc123", 3)).toBeNull();
+    expect(parseReplies("\nanswer 1: A", "abc123", 1)).toBeNull();
+  });
+  it("strips (recommended)", () => {
+    expect(parseReplies(log("answer 1: Copy beside each note (recommended)\nanswer 2: B"), "abc123", 2)?.map((reply) => reply.choice)).toEqual(["Copy beside each note", "B"]);
+  });
+});
+
+describe("severalAnswerInput", () => {
+  it("maps labels and Other to answers in order", () => {
+    expect(
+      severalAnswerInput(several, [
+        { choice: "yaml front matter", text: "", preference: "none", briefAnswered: false },
+        { choice: "Other", text: "Only PNG files", preference: "P1", briefAnswered: false },
+      ]),
+    ).toEqual({
+      key: "agent:export-format",
+      label: null,
+      text: "",
+      from: "screen",
+      answers: [
+        { header: "Tag format", label: "YAML front matter", text: "Write tags as YAML front matter" },
+        { header: "Attachments", label: null, text: "Only PNG files" },
+      ],
+    });
+  });
+});
+
+describe("answerEvents", () => {
+  it("one answer event per question", () => {
+    const events = answerEvents(
+      several,
+      [
+        { choice: "YAML front matter", text: "", preference: "P2", briefAnswered: true },
+        { choice: "Other", text: "Only PNG", preference: "none", briefAnswered: false },
+      ],
+      "rpc",
+      "2026-10-20T12:01:00Z",
+    );
+    expect(events).toEqual([
+      { type: "answer", at: "2026-10-20T12:01:00Z", kind: "question", id: "export-format#Tag format", via: "rpc", choice: "YAML front matter", text: "", preference: "P2", briefAnswered: true },
+      { type: "answer", at: "2026-10-20T12:01:00Z", kind: "question", id: "export-format#Attachments", via: "rpc", choice: "Other", text: "Only PNG", preference: "none", briefAnswered: false },
+    ]);
   });
 });

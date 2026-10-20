@@ -38,6 +38,16 @@ export interface DeciderOptions {
   log: (line: string) => void;
 }
 
+/** One question of a card that asks several (`DecisionQuestionSchema` in `shared/reports.ts`). */
+export interface OpenQuestion {
+  header: string;
+  question: string;
+  why: string;
+  options: { label: string; prompt?: string; consequence?: string }[];
+  recommended: string;
+  reason: string;
+}
+
 export interface OpenDecision {
   key: string;
   id: string;
@@ -50,6 +60,8 @@ export interface OpenDecision {
   options: { label: string; prompt?: string; consequence?: string }[];
   recommended: string;
   reason: string;
+  /** Two to four questions answered together; on such a card `question` is only a summary. */
+  questions?: OpenQuestion[];
 }
 
 export interface DeciderReply {
@@ -103,12 +115,31 @@ export function awaitsAcceptance(text: string): boolean {
 }
 
 /** The prompt for one card: rules, spec, brief, what was decided so far, the card, and the reply format. */
-export function deciderPrompt(input: { kind: CardKind; card: string; spec: string; brief: string; history: readonly string[]; nonce: string }): string {
+export function deciderPrompt(input: { kind: CardKind; card: string; spec: string; brief: string; history: readonly string[]; nonce: string; questions?: number }): string {
   const format = {
     plan: "choice is Approve or Request changes",
     question: "choice is one option's exact label, or Other",
     acceptance: "choice is Accept or Request changes",
   }[input.kind];
+  const count = input.questions ?? 1;
+  const replyFormat =
+    count > 1
+      ? [
+          `Begin your final reply with a line that is exactly "REPLY ${input.nonce}", then these four lines for each of the ${count} questions, in order, and nothing else:`,
+          ...Array.from({ length: count }, (_, index) => [
+            `answer ${index + 1}: <one option's exact label, or Other>`,
+            `text ${index + 1}: <the words to type, one line; empty when none>`,
+            `preference ${index + 1}: <P1, P2 ... or none>`,
+            `brief ${index + 1}: <yes or no>`,
+          ]).flat(),
+        ]
+      : [
+          `Begin your final reply with a line that is exactly "REPLY ${input.nonce}", then these four lines and nothing else:`,
+          `choice: <${format}>`,
+          "text: <the words to type, one line; empty when none>",
+          "preference: <P1, P2 ... or none>",
+          "brief: <yes or no>",
+        ];
   return [
     DECIDER_RULES,
     "",
@@ -123,11 +154,7 @@ export function deciderPrompt(input: { kind: CardKind; card: string; spec: strin
     `THE CARD (${input.kind}):`,
     input.card.trim(),
     "",
-    `Begin your final reply with a line that is exactly "REPLY ${input.nonce}", then these four lines and nothing else:`,
-    `choice: <${format}>`,
-    "text: <the words to type, one line; empty when none>",
-    "preference: <P1, P2 ... or none>",
-    "brief: <yes or no>",
+    ...replyFormat,
   ].join("\n");
 }
 
@@ -142,6 +169,21 @@ export function parseReply(log: string, nonce: string): DeciderReply | null {
   return { choice, text: field("text"), preference: field("preference") || "none", briefAnswered: /^y/i.test(field("brief")) };
 }
 
+/** The replies to a card asking `count` questions: the `<k>`-numbered fields after the last `REPLY <nonce>` line; null when any answer is missing or empty. */
+export function parseReplies(log: string, nonce: string, count: number): DeciderReply[] | null {
+  const at = log.lastIndexOf(`\nREPLY ${nonce}`);
+  if (at < 0) return null;
+  const body = log.slice(at + 1);
+  const replies: DeciderReply[] = [];
+  for (let number = 1; number <= count; number += 1) {
+    const field = (name: string): string => new RegExp(`^${name} ${number}:[ \\t]*(.*)$`, "im").exec(body)?.[1]?.trim() ?? "";
+    const choice = field("answer").replace(/\s*\(recommended\)\s*$/i, "");
+    if (choice === "") return null;
+    replies.push({ choice, text: field("text"), preference: field("preference") || "none", briefAnswered: /^y/i.test(field("brief")) });
+  }
+  return replies;
+}
+
 /** Whether a reply's choice picks the named action ("Approve", "Accept"), however it is punctuated. */
 export function choosesAction(choice: string, action: string): boolean {
   return choice.trim().replace(/[….]+$/, "").toLowerCase() === action.toLowerCase();
@@ -151,13 +193,42 @@ function planCard(decision: OpenDecision, plan: string): string {
   return [`Question: ${decision.question}`, decision.why === "" ? "" : `Why: ${decision.why}`, "Plan:", plan, "Buttons: Approve, Request changes…"].filter((line) => line !== "").join("\n");
 }
 
-function questionCard(decision: OpenDecision): string {
+function questionCard(decision: Pick<OpenQuestion, "question" | "why" | "options" | "recommended" | "reason">): string {
   const options = decision.options.map((option) => `- ${option.label}${option.label === decision.recommended ? " (recommended)" : ""}${option.consequence === undefined || option.consequence === "" ? "" : ` — ${option.consequence}`}`);
   return [`Question: ${decision.question}`, decision.why === "" ? "" : `Why: ${decision.why}`, "Options:", ...options, decision.reason === "" ? "" : `Why recommended: ${decision.reason}`, "You may also pick Other and type your own words."].filter((line) => line !== "").join("\n");
 }
 
+/** A card asking several questions: a block per question, each laid out as one question is. */
+export function severalCard(decision: OpenDecision): string {
+  const questions = decision.questions ?? [];
+  return questions.map((question, index) => `Question ${index + 1} of ${questions.length} — ${question.header}:\n${questionCard(question)}`).join("\n\n");
+}
+
+/** The option a reply names, case-insensitively; null for Other. */
+function matchingOption(question: Pick<OpenQuestion, "options">, reply: DeciderReply): OpenQuestion["options"][number] | null {
+  return question.options.find((option) => option.label.toLowerCase() === reply.choice.toLowerCase()) ?? null;
+}
+
+/** The RPC answer to a card asking several: one answer per question in order (the server refuses fewer). */
+export function severalAnswerInput(decision: OpenDecision, replies: readonly DeciderReply[]): { key: string; label: null; text: ""; from: "screen"; answers: { header: string; label: string | null; text: string }[] } {
+  const answers = (decision.questions ?? []).map((question, index) => {
+    const reply = replies[index] ?? { choice: "", text: "", preference: "none", briefAnswered: false };
+    const option = matchingOption(question, reply);
+    return option === null ? { header: question.header, label: null, text: reply.text === "" ? reply.choice : reply.text } : { header: question.header, label: option.label, text: option.prompt ?? option.label };
+  });
+  return { key: decision.key, label: null, text: "", from: "screen", answers };
+}
+
+/** The log's `answer` events for a card asking several: one per question, so the score counts each. */
+export function answerEvents(decision: OpenDecision, replies: readonly DeciderReply[], via: "ui" | "rpc", at: string): Extract<DeciderEvent, { type: "answer" }>[] {
+  return (decision.questions ?? []).flatMap((question, index) => {
+    const reply = replies[index];
+    return reply === undefined ? [] : [{ type: "answer" as const, at, kind: "question", id: `${decision.id}#${question.header}`, via, choice: reply.choice, text: reply.text, preference: reply.preference, briefAnswered: reply.briefAnswered }];
+  });
+}
+
 /** Labels the card shows as options: the agent's own "Other" and "Change…" stand for typing and are hidden. */
-function visibleOptions(decision: OpenDecision): string[] {
+function visibleOptions(decision: Pick<OpenQuestion, "options">): string[] {
   return decision.options.map((option) => option.label).filter((label) => !/^(other|change)\b/i.test(label.trim()));
 }
 
@@ -202,7 +273,7 @@ async function visibleCardText(page: Page, question: string, labels: readonly st
     ({ needle, wanted }: { needle: string; wanted: string[] }) => {
       const squeeze = (value: string): string => value.replace(/\s+/g, " ").trim();
       const leaves = (Array.from(document.querySelectorAll("*")) as any[]).filter((element: any) => element.children.length === 0 && squeeze(element.textContent ?? "").includes(squeeze(needle)));
-      const actions = /\b(Approve|Submit|Accept)\b/;
+      const actions = /\b(Approve|Submit|Accept|Next)\b/;
       // For each place the question appears, the smallest ancestor that holds an action and every option; the smallest of those is the card.
       const cards = leaves.flatMap((leaf: any) => {
         let node: any = leaf;
@@ -243,16 +314,18 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
   };
 
   /** Asks the Sonnet decider; retries once when its reply cannot be read. */
-  async function ask(kind: CardKind, card: string, id: string): Promise<DeciderReply> {
+  const ask = (kind: CardKind, card: string, id: string): Promise<DeciderReply> => askAgent(kind, card, id, undefined, (log, nonce) => parseReply(log, nonce));
+
+  async function askAgent<Reply>(kind: CardKind, card: string, id: string, questions: number | undefined, read: (log: string, nonce: string) => Reply | null): Promise<Reply> {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const nonce = Math.random().toString(36).slice(2, 10);
-      const prompt = deciderPrompt({ kind, card, spec: options.spec, brief: options.brief, history, nonce });
+      const prompt = deciderPrompt({ kind, card, spec: options.spec, brief: options.brief, history, nonce, ...(questions === undefined ? {} : { questions }) });
       if (attempt === 0) record({ type: "prompt", at: now(), kind, id, text: card });
       const started = await run("paseo", ["run", "--provider", DECIDER_MODEL, "--mode", "bypassPermissions", "--cwd", options.throwaway.deciderDirectory, "--title", `decider ${id}`, "--json", ...paseoArgs(options.throwaway), prompt], { timeoutMs: 300_000 });
       const agentId = /"agentId":\s*"([^"]+)"/.exec(started.stdout)?.[1];
       if (agentId === undefined) continue;
       const logs = await run("paseo", ["logs", agentId, ...paseoArgs(options.throwaway)], { timeoutMs: 60_000 });
-      const reply = parseReply(`\n${logs.stdout}`, nonce);
+      const reply = read(`\n${logs.stdout}`, nonce);
       if (reply !== null) return reply;
     }
     throw new Error(`the decider gave no readable reply for ${id}`);
@@ -328,6 +401,20 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
     }
   }
 
+  /** The phone's board card for a several-questions card, once: screenshotted and its first question's text checked. */
+  async function checkBoardCard(number: number, decision: OpenDecision, first: OpenQuestion): Promise<void> {
+    const phone = await newPage(true);
+    try {
+      await phone.page.screenshot({ path: join(cardsDirectory, `${number}-${decision.id}-phone-light.png`) });
+      const shown = await phone.page.getByText(first.question.slice(0, 60), { exact: false }).filter({ visible: true }).count().catch(() => 0);
+      if (shown === 0) return;
+      const text = await visibleCardText(phone.page, first.question, visibleOptions(first));
+      if (text !== null) cardTextViolations(text, { question: first.question, options: visibleOptions(first) }).forEach((violation) => record({ type: "violation", at: now(), kind: violation.kind, detail: `${decision.id} (phone): ${violation.detail}` }));
+    } finally {
+      await phone.close();
+    }
+  }
+
   const clickText = async (page: Page, text: string): Promise<void> => page.getByText(text, { exact: true }).filter({ visible: true }).first().click({ timeout: 10_000 });
 
   async function typeInto(page: Page, placeholderStart: string, words: string): Promise<void> {
@@ -368,6 +455,66 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
     }
     await typeInto(page, placeholder, words);
     await clickText(page, "Send changes");
+  }
+
+  /** Answers a card asking several questions through the UI, question by question; throws when a control is missing. */
+  async function answerSeveralInUi(page: Page, number: number, decision: OpenDecision, replies: readonly DeciderReply[]): Promise<void> {
+    const questions = decision.questions ?? [];
+    await openFullCard(page, "question");
+    for (let index = 0; index < questions.length; index += 1) {
+      const question = questions[index] as OpenQuestion;
+      const reply = replies[index] as DeciderReply;
+      const labels = visibleOptions(question);
+      await page.screenshot({ path: join(cardsDirectory, `${number}-${decision.id}-q${index + 1}-desktop-dark.png`) });
+      const text = await visibleCardText(page, question.question, labels);
+      if (text === null) throw new Error(`question ${index + 1} (${question.header}) is not on the card`);
+      cardTextViolations(text, { question: question.question, options: labels }).forEach((violation) => record({ type: "violation", at: now(), kind: violation.kind, detail: `${decision.id}#${question.header} (desktop): ${violation.detail}` }));
+      const label = labels.find((candidate) => candidate.toLowerCase() === reply.choice.toLowerCase());
+      if (label !== undefined) {
+        await page.getByRole("radio", { name: new RegExp(`^${escapeRegExp(label)}`) }).filter({ visible: true }).first().click({ timeout: 10_000 });
+        if (reply.text !== "") await typeInto(page, ANSWER_PLACEHOLDER, reply.text).catch(() => undefined);
+      } else {
+        await clickText(page, "Other");
+        await typeInto(page, ANSWER_PLACEHOLDER, reply.text === "" ? reply.choice : reply.text);
+      }
+      if (index < questions.length - 1) await clickText(page, "Next");
+      else await page.getByText(/^Submit \d+ answers$/).filter({ visible: true }).first().click({ timeout: 10_000 });
+      await page.waitForTimeout(1000);
+    }
+  }
+
+  /** A card asking several questions: one prompt for all, answered on screen question by question, one `answer` event each. */
+  async function handleSeveral(decision: OpenDecision): Promise<void> {
+    const questions = decision.questions ?? [];
+    const first = questions[0] as OpenQuestion;
+    counter += 1;
+    const number = counter;
+    const replies = await askAgent("question", severalCard(decision), decision.id, questions.length, (log, nonce) => parseReplies(log, nonce, questions.length));
+    options.log(`decider: question ${decision.id} → ${replies.map((reply, index) => `${(questions[index] as OpenQuestion).header}: ${reply.choice}`).join("; ")}`);
+    const opened = await findCard(first.question);
+    let via: "ui" | "rpc" = "ui";
+    if (opened === null) {
+      record({ type: "violation", at: now(), kind: "card-missing", detail: `question card "${first.question}" not on screen within 2 minutes` });
+      via = "rpc";
+      await rpc(options.throwaway, "taro.decision.answer", severalAnswerInput(decision, replies));
+    } else {
+      try {
+        await checkBoardCard(number, decision, first);
+        await answerSeveralInUi(opened.page, number, decision, replies);
+        await opened.page.waitForTimeout(2500);
+      } catch (error) {
+        record({ type: "violation", at: now(), kind: "card-missing", detail: `question card "${first.question}" could not be answered on screen: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}` });
+        via = "rpc";
+        await rpc(options.throwaway, "taro.decision.answer", severalAnswerInput(decision, replies));
+      } finally {
+        await opened.close();
+      }
+    }
+    answerEvents(decision, replies, via, now()).forEach(record);
+    questions.forEach((question, index) => {
+      const reply = replies[index] as DeciderReply;
+      history.push(`- question "${question.question}" → ${reply.choice}${reply.text === "" ? "" : `: ${reply.text}`}`);
+    });
   }
 
   /** The RPC fallback for a card that never showed. */
@@ -460,6 +607,8 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
       if (first.id === "scope-approval") {
         const plan = ticketSection(ticketText(), "plan");
         await handle("plan", first.id, first.question, planCard(first, plan), visibleOptions(first), first);
+      } else if ((first.questions ?? []).length > 1) {
+        await handleSeveral(first);
       } else {
         await handle("question", first.id, first.question, questionCard(first), visibleOptions(first), first);
       }

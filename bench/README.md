@@ -81,6 +81,7 @@ host's threads; the harness waits while the host is above 85% of `pids.max`.
 - It requests changes on a plan or on Accept at most twice per kind, then approves, so a run always ends.
 - A model's answers vary between runs: one run per task and arm is a pilot, not a statistic. Differences of a
   few dollars or one hidden test are noise.
+- A card asking several questions is answered question by question in the UI (a tab, then Next, then Submit), with one `answer` per question in `decider.log`.
 - It plays the user for decisions only. It does not test whether the delivered UI looks right.
 - The card text check looks for leaks in the card's own text; it cannot tell a wrong but well-formed card.
 
