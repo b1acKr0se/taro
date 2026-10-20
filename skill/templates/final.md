@@ -14,7 +14,7 @@ FINAL <ISO timestamp>
 <at most 3 bullets>
 
 ## Rulings
-- <a choice made after approval that the user could have made differently> — <its cost if wrong>
+- <a choice made after approval that the user could have made differently> — <why> — <its cost if wrong>
 <at most 5 bullets, from the RULING records>
 
 Revision: <full SHA> on <branch> · PR: <URL, or "none (local-only)">
