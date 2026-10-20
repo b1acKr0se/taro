@@ -273,7 +273,7 @@ async function visibleCardText(page: Page, question: string, labels: readonly st
     ({ needle, wanted }: { needle: string; wanted: string[] }) => {
       const squeeze = (value: string): string => value.replace(/\s+/g, " ").trim();
       const leaves = (Array.from(document.querySelectorAll("*")) as any[]).filter((element: any) => element.children.length === 0 && squeeze(element.textContent ?? "").includes(squeeze(needle)));
-      const actions = /\b(Approve|Submit|Accept|Next)\b/;
+      const actions = /\b(Approve|Submit|Accept|Next|Answer)\b/;
       // For each place the question appears, the smallest ancestor that holds an action and every option; the smallest of those is the card.
       const cards = leaves.flatMap((leaf: any) => {
         let node: any = leaf;
