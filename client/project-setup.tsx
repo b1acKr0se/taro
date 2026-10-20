@@ -5,7 +5,7 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
-import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
+import { useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
@@ -29,13 +29,13 @@ import {
   pullRequestNote,
   pullRequestsReady,
   settingsFrom,
+  setupBar,
   setupProblems,
   ticketExample,
   type SetupDraft,
   type SetupProblems,
 } from "../shared/setup-form";
 import { MANAGER_ACTION_LABELS, MANAGER_ACTION_SUCCESS, managerSettingsActions, type ManagerActionKind } from "../shared/manager-actions";
-import { Pressable } from "./focus";
 import { errorText } from "./format";
 import { KeyboardScrollView } from "./keyboard";
 import { PrerequisiteList, usePrerequisites } from "./prerequisite-list";
@@ -229,274 +229,287 @@ export function ProjectSetup({
     );
   };
 
+  const bar = setupBar(existing?.project ?? null);
+
   return (
-    <KeyboardScrollView
-      onLayout={(event) => setWidth(Math.min(PAGE_MAX_WIDTH, event.nativeEvent.layout.width))}
-      contentContainerStyle={{ padding: SPACE.lg, paddingBottom: SPACE.xxl * 2, gap: SPACE.lg, maxWidth: PAGE_MAX_WIDTH, width: "100%", alignSelf: "center" }}
-    >
-      <View style={{ gap: SPACE.sm }}>
-        {onCancel === null ? null : (
-          <Pressable accessibilityRole="link" disabled={busy} onPress={onCancel} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs, alignSelf: "flex-start", opacity: busy ? 0.5 : 1 }}>
-            <Icon name="ChevronLeft" size={14} color={colors.accent} />
-            <Text style={{ color: colors.accent, fontSize: FONT_SIZE.small }}>{existing === null ? "Back" : `Back to ${existing.project}`}</Text>
-          </Pressable>
-        )}
-        <Text style={{ color: colors.foreground, fontSize: wide ? FONT_SIZE.display : FONT_SIZE.heading, fontWeight: "700" }}>
-          {existing === null ? "Add a project" : `${existing.project} settings`}
-        </Text>
-        <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) }}>
-          {existing === null
-            ? "Taro gives the project its own ticket tracker and a manager. You talk to the manager; it looks into each request, files a ticket and starts a task owner."
-            : "Changes apply to agents started from now on. Running agents keep their settings."}
+    <View style={{ flex: 1 }}>
+      {/* Outside the scroll view, so it stays put while the form scrolls. */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: SPACE.sm,
+          paddingHorizontal: SPACE.lg,
+          paddingVertical: SPACE.sm,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+          backgroundColor: colors.surface0,
+        }}
+      >
+        {onCancel === null ? null : <IconButton theme={theme} icon="ArrowLeft" label={bar.backLabel} disabled={busy} onPress={onCancel} />}
+        <Text numberOfLines={1} style={{ flex: 1, color: colors.foreground, fontSize: FONT_SIZE.heading, fontWeight: "700" }}>
+          {bar.title}
         </Text>
       </View>
+      <KeyboardScrollView
+        onLayout={(event) => setWidth(Math.min(PAGE_MAX_WIDTH, event.nativeEvent.layout.width))}
+        contentContainerStyle={{ padding: SPACE.lg, paddingBottom: SPACE.xxl * 2, gap: SPACE.lg, maxWidth: PAGE_MAX_WIDTH, width: "100%", alignSelf: "center" }}
+      >
+        <View style={{ gap: SPACE.sm }}>
+          <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) }}>
+            {existing === null
+              ? "Taro gives the project its own ticket tracker and a manager. You talk to the manager; it looks into each request, files a ticket and starts a task owner."
+              : "Changes apply to agents started from now on. Running agents keep their settings."}
+          </Text>
+        </View>
 
-      {showChecks ? (
-        <FormSection theme={theme} icon="ListChecks" title="Before you start" description="What Taro needs on this machine.">
-          <View style={{ gap: SPACE.sm }}>
-            <PrerequisiteList theme={theme} checks={checks} />
-            {prerequisites.isLoading ? <Text style={muted}>Checking…</Text> : null}
-          </View>
-        </FormSection>
-      ) : null}
+        {showChecks ? (
+          <FormSection theme={theme} icon="ListChecks" title="Before you start" description="What Taro needs on this machine.">
+            <View style={{ gap: SPACE.sm }}>
+              <PrerequisiteList theme={theme} checks={checks} />
+              {prerequisites.isLoading ? <Text style={muted}>Checking…</Text> : null}
+            </View>
+          </FormSection>
+        ) : null}
 
-      <FormSection theme={theme} icon="FolderGit2" title="Project" description="The repository Taro works in and where its tickets live.">
-        <Field theme={theme} wide={wide} label="Name" hint={existing === null ? "Lowercase letters, digits and dashes; used for folders and labels." : null} error={problem("project")}>
-          {existing === null ? (
-            <TextField theme={theme} accessibilityLabel="Name" value={draft.project} onChangeText={(text) => update("project", text)} placeholder="shop" invalid={problem("project") !== null} />
-          ) : (
-            <FixedValue theme={theme} text={existing.project} />
-          )}
-        </Field>
-        <Field theme={theme} wide={wide} label="Repository" hint={existing === null ? "The absolute path of a local git checkout." : null} error={problem("repoPath")}>
-          {existing === null ? (
-            <TextField
-              theme={theme}
-              accessibilityLabel="Repository"
-              value={draft.repoPath}
-              onChangeText={(text) => update("repoPath", text)}
-              placeholder="/home/you/code/shop"
-              invalid={problem("repoPath") !== null}
-            />
-          ) : (
-            <FixedValue theme={theme} text={existing.repoPath} monospace />
-          )}
-        </Field>
-        <Field theme={theme} wide={wide} label="Base branch" hint={`Task owners branch off ${branch} and deliver back to it.`} error={problem("baseBranch")}>
-          <TextField theme={theme} accessibilityLabel="Base branch" value={draft.baseBranch} onChangeText={(text) => update("baseBranch", text)} invalid={problem("baseBranch") !== null} />
-        </Field>
-        <Field
-          theme={theme}
-          wide={wide}
-          label="Ticket prefix"
-          hint={existing === null ? `One to eight capital letters.${example === null ? "" : ` Tickets look like ${example}.`}` : example === null ? null : `Tickets look like ${example}.`}
-          error={problem("ticketPrefix")}
-        >
-          {existing === null ? (
-            <TextField
-              theme={theme}
-              accessibilityLabel="Ticket prefix"
-              value={draft.ticketPrefix}
-              onChangeText={(text) => update("ticketPrefix", text.toUpperCase())}
-              placeholder="SH"
-              invalid={problem("ticketPrefix") !== null}
-            />
-          ) : (
-            <FixedValue theme={theme} text={existing.ticketPrefix} />
-          )}
-        </Field>
-        <Field theme={theme} wide={wide} label="Tickets">
-          <ChoiceCards
+        <FormSection theme={theme} icon="FolderGit2" title="Project" description="The repository Taro works in and where its tickets live.">
+          <Field theme={theme} wide={wide} label="Name" hint={existing === null ? "Lowercase letters, digits and dashes; used for folders and labels." : null} error={problem("project")}>
+            {existing === null ? (
+              <TextField theme={theme} accessibilityLabel="Name" value={draft.project} onChangeText={(text) => update("project", text)} placeholder="shop" invalid={problem("project") !== null} />
+            ) : (
+              <FixedValue theme={theme} text={existing.project} />
+            )}
+          </Field>
+          <Field theme={theme} wide={wide} label="Repository" hint={existing === null ? "The absolute path of a local git checkout." : null} error={problem("repoPath")}>
+            {existing === null ? (
+              <TextField
+                theme={theme}
+                accessibilityLabel="Repository"
+                value={draft.repoPath}
+                onChangeText={(text) => update("repoPath", text)}
+                placeholder="/home/you/code/shop"
+                invalid={problem("repoPath") !== null}
+              />
+            ) : (
+              <FixedValue theme={theme} text={existing.repoPath} monospace />
+            )}
+          </Field>
+          <Field theme={theme} wide={wide} label="Base branch" hint={`Task owners branch off ${branch} and deliver back to it.`} error={problem("baseBranch")}>
+            <TextField theme={theme} accessibilityLabel="Base branch" value={draft.baseBranch} onChangeText={(text) => update("baseBranch", text)} invalid={problem("baseBranch") !== null} />
+          </Field>
+          <Field
             theme={theme}
-            value={draft.trackerSync}
-            onChange={(value) => update("trackerSync", value)}
-            options={[
-              { value: "local", title: "This machine only", description: "The taro/tickets branch stays in this checkout; nothing is pushed." },
-              { value: "remote", title: "Synced with the remote", description: "Ticket changes are pushed to the taro/tickets branch, so other machines see the same board." },
-            ]}
-          />
-        </Field>
-      </FormSection>
-
-      <FormSection theme={theme} icon="Bot" title="Agents" description="The models Taro starts its agents with. Task owners and their subagents run in bypass mode.">
-        <Field theme={theme} wide={wide} label="Manager" hint={modelHint ?? "Reads and routes your requests, so a mid-size model is enough."}>
-          {modelRow("manager", "Manager")}
-        </Field>
-        <Field theme={theme} wide={wide} label="Task owner" hint={modelHint ?? "Plans, builds and delivers each ticket; the top tier is recommended."}>
-          {modelRow("owner", "Task owner")}
-        </Field>
-        <Field
-          theme={theme}
-          wide={wide}
-          label="Subagent models"
-          hint="Owners pick from these per task by difficulty: the cheapest for mechanical work, the strongest for hard problems."
-        >
-          <ModelChooser
-            theme={theme}
-            options={pickerOptions(draft.subagentModels)}
-            selected={draft.subagentModels}
-            emptyText="None chosen: subagents get their owner's model."
-            onAdd={(value) => setDraft((current) => ({ ...current, subagentModels: toggleSubagentModel(current.subagentModels, value) }))}
-            onRemove={(value) => setDraft((current) => ({ ...current, subagentModels: toggleSubagentModel(current.subagentModels, value) }))}
-          />
-        </Field>
-      </FormSection>
-
-      <FormSection theme={theme} icon="GitPullRequest" title="How work is delivered" description="Where a task owner stops, and what pressing Accept does.">
-        <Field theme={theme} wide={wide} label="Finish line">
-          <ChoiceCards
-            theme={theme}
-            value={draft.delivery}
-            onChange={(value) => update("delivery", value)}
-            options={[
-              {
-                value: "pull-request",
-                title: "Pull request",
-                description: "The owner pushes its branch, opens a pull request, has it reviewed and marks it ready.",
-                unavailable: pullRequestNote(pullRequests, draft.delivery === "pull-request"),
-              },
-              { value: "local-only", title: "Local branch only", description: "The owner leaves a clean branch that fast-forwards from the base branch. Nothing is pushed." },
-            ]}
-          />
-        </Field>
-        <Field theme={theme} wide={wide} label="Merging">
-          <ChoiceCards
-            theme={theme}
-            value={draft.acceptAlsoMerges ? "on-accept" : "manual"}
-            onChange={(value) => update("acceptAlsoMerges", value === "on-accept")}
-            options={[
-              { value: "on-accept", title: "Merge when accepted", description: "After you press Accept, Taro merges once it has checked the reviewed head is unchanged." },
-              { value: "manual", title: "You merge", description: "Accept closes the ticket; merging stays with you." },
-            ]}
-          />
-        </Field>
-        {asksMergeMethod ? (
-          <Field theme={theme} wide={wide} label="Merge method" hint={mergeMethodHint(branch)}>
+            wide={wide}
+            label="Ticket prefix"
+            hint={existing === null ? `One to eight capital letters.${example === null ? "" : ` Tickets look like ${example}.`}` : example === null ? null : `Tickets look like ${example}.`}
+            error={problem("ticketPrefix")}
+          >
+            {existing === null ? (
+              <TextField
+                theme={theme}
+                accessibilityLabel="Ticket prefix"
+                value={draft.ticketPrefix}
+                onChangeText={(text) => update("ticketPrefix", text.toUpperCase())}
+                placeholder="SH"
+                invalid={problem("ticketPrefix") !== null}
+              />
+            ) : (
+              <FixedValue theme={theme} text={existing.ticketPrefix} />
+            )}
+          </Field>
+          <Field theme={theme} wide={wide} label="Tickets">
             <ChoiceCards
               theme={theme}
-              value={draft.mergeMethod}
-              onChange={(value) => update("mergeMethod", value)}
-              options={MERGE_METHODS.map((method) => ({
-                value: method,
-                title: MERGE_METHOD_TITLES[method],
-                description: mergeMethodDescription(method, branch),
-                unavailable: mergeMethodNote(method, allowedMergeMethods, draft.mergeMethod === method),
-              }))}
+              value={draft.trackerSync}
+              onChange={(value) => update("trackerSync", value)}
+              options={[
+                { value: "local", title: "This machine only", description: "The taro/tickets branch stays in this checkout; nothing is pushed." },
+                { value: "remote", title: "Synced with the remote", description: "Ticket changes are pushed to the taro/tickets branch, so other machines see the same board." },
+              ]}
             />
           </Field>
-        ) : null}
-      </FormSection>
-
-      <FormSection theme={theme} icon="Bell" title="Notifications" description="When a ticket enters Needs you: ready to accept, a question, a permission, blocked or stalled.">
-        <Field theme={theme} wide={wide} label="Tell me">
-          <ChoiceCards
-            theme={theme}
-            value={draft.notify ? "on" : "off"}
-            onChange={(value) => update("notify", value === "on")}
-            options={[
-              { value: "on", title: "Notify me", description: "A push to your phone, or a desktop notification while you use a desktop window." },
-              { value: "off", title: "Don't notify", description: "Only the badge and the board show what waits on you." },
-            ]}
-          />
-        </Field>
-      </FormSection>
-
-      <FormSection theme={theme} icon="Gauge" title="Limits" description="How much runs at once, and when long conversations are compacted.">
-        <Field theme={theme} wide={wide} label="Owners running at once" hint="The manager queues the rest; every agent costs host resources and money." error={problem("maxParallelOwners")}>
-          <TextField
-            theme={theme}
-            accessibilityLabel="Owners running at once"
-            value={draft.maxParallelOwners}
-            onChangeText={(text) => update("maxParallelOwners", text)}
-            invalid={problem("maxParallelOwners") !== null}
-          />
-        </Field>
-        <Field theme={theme} wide={wide} label="Compact owners above" hint="Tokens of context; a busy owner above this is asked to hand off and compact." error={problem("compactThresholdTokens")}>
-          <TextField
-            theme={theme}
-            accessibilityLabel="Compact owners above"
-            value={draft.compactThresholdTokens}
-            onChangeText={(text) => update("compactThresholdTokens", text)}
-            invalid={problem("compactThresholdTokens") !== null}
-          />
-        </Field>
-        <Field
-          theme={theme}
-          wide={wide}
-          label="Compact idle agents above"
-          hint="Tokens of context; an owner or the manager idle for 55 minutes is compacted before its prompt cache expires."
-          error={problem("idleCompactThresholdTokens")}
-        >
-          <TextField
-            theme={theme}
-            accessibilityLabel="Compact idle agents above"
-            value={draft.idleCompactThresholdTokens}
-            onChangeText={(text) => update("idleCompactThresholdTokens", text)}
-            invalid={problem("idleCompactThresholdTokens") !== null}
-          />
-        </Field>
-      </FormSection>
-
-      {existing === null ? null : (
-        <FormSection
-          theme={theme}
-          icon="ScrollText"
-          title="Standing orders"
-          tag="optional"
-          description="Rules for this project on top of the repository's own instructions; the manager copies the ones that apply into every brief."
-        >
-          {orders === null ? (
-            <Text style={muted}>Loading…</Text>
-          ) : (
-            <TextField theme={theme} accessibilityLabel="Standing orders" value={orders} onChangeText={setOrders} placeholder="e.g. Run the end-to-end tests before delivering." multiline />
-          )}
         </FormSection>
-      )}
 
-      {existing === null ? null : (
-        <FormSection theme={theme} icon="UserCog" title="Manager" description={managerActions.description}>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: SPACE.sm }}>
-            {managerActions.kinds.map((kind) => (
-              <IconButton
-                key={kind}
+        <FormSection theme={theme} icon="Bot" title="Agents" description="The models Taro starts its agents with. Task owners and their subagents run in bypass mode.">
+          <Field theme={theme} wide={wide} label="Manager" hint={modelHint ?? "Reads and routes your requests, so a mid-size model is enough."}>
+            {modelRow("manager", "Manager")}
+          </Field>
+          <Field theme={theme} wide={wide} label="Task owner" hint={modelHint ?? "Plans, builds and delivers each ticket; the top tier is recommended."}>
+            {modelRow("owner", "Task owner")}
+          </Field>
+          <Field
+            theme={theme}
+            wide={wide}
+            label="Subagent models"
+            hint="Owners pick from these per task by difficulty: the cheapest for mechanical work, the strongest for hard problems."
+          >
+            <ModelChooser
+              theme={theme}
+              options={pickerOptions(draft.subagentModels)}
+              selected={draft.subagentModels}
+              emptyText="None chosen: subagents get their owner's model."
+              onAdd={(value) => setDraft((current) => ({ ...current, subagentModels: toggleSubagentModel(current.subagentModels, value) }))}
+              onRemove={(value) => setDraft((current) => ({ ...current, subagentModels: toggleSubagentModel(current.subagentModels, value) }))}
+            />
+          </Field>
+        </FormSection>
+
+        <FormSection theme={theme} icon="GitPullRequest" title="How work is delivered" description="Where a task owner stops, and what pressing Accept does.">
+          <Field theme={theme} wide={wide} label="Finish line">
+            <ChoiceCards
+              theme={theme}
+              value={draft.delivery}
+              onChange={(value) => update("delivery", value)}
+              options={[
+                {
+                  value: "pull-request",
+                  title: "Pull request",
+                  description: "The owner pushes its branch, opens a pull request, has it reviewed and marks it ready.",
+                  unavailable: pullRequestNote(pullRequests, draft.delivery === "pull-request"),
+                },
+                { value: "local-only", title: "Local branch only", description: "The owner leaves a clean branch that fast-forwards from the base branch. Nothing is pushed." },
+              ]}
+            />
+          </Field>
+          <Field theme={theme} wide={wide} label="Merging">
+            <ChoiceCards
+              theme={theme}
+              value={draft.acceptAlsoMerges ? "on-accept" : "manual"}
+              onChange={(value) => update("acceptAlsoMerges", value === "on-accept")}
+              options={[
+                { value: "on-accept", title: "Merge when accepted", description: "After you press Accept, Taro merges once it has checked the reviewed head is unchanged." },
+                { value: "manual", title: "You merge", description: "Accept closes the ticket; merging stays with you." },
+              ]}
+            />
+          </Field>
+          {asksMergeMethod ? (
+            <Field theme={theme} wide={wide} label="Merge method" hint={mergeMethodHint(branch)}>
+              <ChoiceCards
                 theme={theme}
-                icon={MANAGER_ICONS[kind]}
-                label={MANAGER_ACTION_LABELS[kind]}
-                showLabel
-                // On a narrow page the pair wraps into equal full-width rows.
-                grow={!wide}
-                disabled={busy}
-                state={presses.stateOf(kind)}
-                onPress={() => managerAction(kind)}
+                value={draft.mergeMethod}
+                onChange={(value) => update("mergeMethod", value)}
+                options={MERGE_METHODS.map((method) => ({
+                  value: method,
+                  title: MERGE_METHOD_TITLES[method],
+                  description: mergeMethodDescription(method, branch),
+                  unavailable: mergeMethodNote(method, allowedMergeMethods, draft.mergeMethod === method),
+                }))}
               />
-            ))}
-          </View>
-          {managerFailure === null ? null : <Text style={[muted, { color: colors.statusDanger }]}>{managerFailure}</Text>}
+            </Field>
+          ) : null}
         </FormSection>
-      )}
 
-      {failure === null ? null : <Text style={[muted, { color: colors.statusDanger }]}>{failure}</Text>}
-      <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center", gap: SPACE.sm }}>
-        {valid ? null : (
-          <Text style={[muted, { flexGrow: 1, flexBasis: 200 }]}>
-            {existing === null ? "Fill in the project's name, repository and ticket prefix to continue." : "Fix the fields marked in red to save."}
-          </Text>
+        <FormSection theme={theme} icon="Bell" title="Notifications" description="When a ticket enters Needs you: ready to accept, a question, a permission, blocked or stalled.">
+          <Field theme={theme} wide={wide} label="Tell me">
+            <ChoiceCards
+              theme={theme}
+              value={draft.notify ? "on" : "off"}
+              onChange={(value) => update("notify", value === "on")}
+              options={[
+                { value: "on", title: "Notify me", description: "A push to your phone, or a desktop notification while you use a desktop window." },
+                { value: "off", title: "Don't notify", description: "Only the badge and the board show what waits on you." },
+              ]}
+            />
+          </Field>
+        </FormSection>
+
+        <FormSection theme={theme} icon="Gauge" title="Limits" description="How much runs at once, and when long conversations are compacted.">
+          <Field theme={theme} wide={wide} label="Owners running at once" hint="The manager queues the rest; every agent costs host resources and money." error={problem("maxParallelOwners")}>
+            <TextField
+              theme={theme}
+              accessibilityLabel="Owners running at once"
+              value={draft.maxParallelOwners}
+              onChangeText={(text) => update("maxParallelOwners", text)}
+              invalid={problem("maxParallelOwners") !== null}
+            />
+          </Field>
+          <Field theme={theme} wide={wide} label="Compact owners above" hint="Tokens of context; a busy owner above this is asked to hand off and compact." error={problem("compactThresholdTokens")}>
+            <TextField
+              theme={theme}
+              accessibilityLabel="Compact owners above"
+              value={draft.compactThresholdTokens}
+              onChangeText={(text) => update("compactThresholdTokens", text)}
+              invalid={problem("compactThresholdTokens") !== null}
+            />
+          </Field>
+          <Field
+            theme={theme}
+            wide={wide}
+            label="Compact idle agents above"
+            hint="Tokens of context; an owner or the manager idle for 55 minutes is compacted before its prompt cache expires."
+            error={problem("idleCompactThresholdTokens")}
+          >
+            <TextField
+              theme={theme}
+              accessibilityLabel="Compact idle agents above"
+              value={draft.idleCompactThresholdTokens}
+              onChangeText={(text) => update("idleCompactThresholdTokens", text)}
+              invalid={problem("idleCompactThresholdTokens") !== null}
+            />
+          </Field>
+        </FormSection>
+
+        {existing === null ? null : (
+          <FormSection
+            theme={theme}
+            icon="ScrollText"
+            title="Standing orders"
+            tag="optional"
+            description="Rules for this project on top of the repository's own instructions; the manager copies the ones that apply into every brief."
+          >
+            {orders === null ? (
+              <Text style={muted}>Loading…</Text>
+            ) : (
+              <TextField theme={theme} accessibilityLabel="Standing orders" value={orders} onChangeText={setOrders} placeholder="e.g. Run the end-to-end tests before delivering." multiline />
+            )}
+          </FormSection>
         )}
-        {onCancel === null ? null : <IconButton theme={theme} icon="X" label="Cancel" showLabel disabled={busy} onPress={onCancel} />}
-        <IconButton
-          theme={theme}
-          tone="accent"
-          icon={existing === null ? "Rocket" : "Check"}
-          label={existing === null ? "Create tracker and start manager" : "Save"}
-          showLabel
-          disabled={busy || !valid}
-          state={presses.stateOf("submit")}
-          onPress={submit}
-        />
-      </View>
-      <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption) }}>
-        Tickets live on the taro/tickets branch of the repository, in a separate checkout Taro manages.
-      </Text>
-    </KeyboardScrollView>
+
+        {existing === null ? null : (
+          <FormSection theme={theme} icon="UserCog" title="Manager" description={managerActions.description}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: SPACE.sm }}>
+              {managerActions.kinds.map((kind) => (
+                <IconButton
+                  key={kind}
+                  theme={theme}
+                  icon={MANAGER_ICONS[kind]}
+                  label={MANAGER_ACTION_LABELS[kind]}
+                  showLabel
+                  // On a narrow page the pair wraps into equal full-width rows.
+                  grow={!wide}
+                  disabled={busy}
+                  state={presses.stateOf(kind)}
+                  onPress={() => managerAction(kind)}
+                />
+              ))}
+            </View>
+            {managerFailure === null ? null : <Text style={[muted, { color: colors.statusDanger }]}>{managerFailure}</Text>}
+          </FormSection>
+        )}
+
+        {failure === null ? null : <Text style={[muted, { color: colors.statusDanger }]}>{failure}</Text>}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center", gap: SPACE.sm }}>
+          {valid ? null : (
+            <Text style={[muted, { flexGrow: 1, flexBasis: 200 }]}>
+              {existing === null ? "Fill in the project's name, repository and ticket prefix to continue." : "Fix the fields marked in red to save."}
+            </Text>
+          )}
+          {onCancel === null ? null : <IconButton theme={theme} icon="X" label="Cancel" showLabel disabled={busy} onPress={onCancel} />}
+          <IconButton
+            theme={theme}
+            tone="accent"
+            icon={existing === null ? "Rocket" : "Check"}
+            label={existing === null ? "Create tracker and start manager" : "Save"}
+            showLabel
+            disabled={busy || !valid}
+            state={presses.stateOf("submit")}
+            onPress={submit}
+          />
+        </View>
+        <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption) }}>
+          Tickets live on the taro/tickets branch of the repository, in a separate checkout Taro manages.
+        </Text>
+      </KeyboardScrollView>
+    </View>
   );
 }

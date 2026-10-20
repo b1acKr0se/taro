@@ -120,6 +120,11 @@ export function ticketExample(prefix: string): string | null {
   return TicketPrefixSchema.safeParse(upper).success ? `${upper}-001` : null;
 }
 
+/** The setup page's top bar (TR-203): its title, and what the back button is called for a screen reader. */
+export function setupBar(project: string | null): { title: string; backLabel: string } {
+  return project === null ? { title: "Add a project", backLabel: "Back" } : { title: `${project} Settings`, backLabel: `Back to ${project}` };
+}
+
 /** What the Pull request choice says while gh cannot open pull requests (TR-063). */
 export const PULL_REQUEST_NEEDS_GH = "Unavailable: install gh and run gh auth login on this machine.";
 export const PULL_REQUEST_KEPT_WITHOUT_GH = "gh is not ready, so owners cannot open pull requests: install gh and run gh auth login, or choose Local branch only.";
