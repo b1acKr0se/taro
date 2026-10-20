@@ -191,7 +191,7 @@ async function main(): Promise<void> {
     await run(join(BENCH_ROOT, "bin", "taro"), ["ticket", "edit", ticket, "--append-notes", `EXECUTION ${new Date().toISOString().slice(0, 16)}Z — owner ${ownerId}, model ${options.ownerModel}, workspace ${workspaceId}, worktree ${workspace.cwd ?? ""}, branch taro/${slug}, host bench`, "--tracker", tracker]);
     runLog(`owner ${ownerId} started in ${workspaceId}`);
 
-    decider = startDecider({ throwaway, project: PROJECT, ticket, tracker, spec: readFileSync(join(taskDirectory, "spec.md"), "utf8"), brief, playwright: options.playwright, out: options.out, log: runLog });
+    decider = startDecider({ throwaway, ownerAgentId: ownerId, project: PROJECT, ticket, tracker, spec: readFileSync(join(taskDirectory, "spec.md"), "utf8"), brief, playwright: options.playwright, out: options.out, log: runLog });
 
     const deadline = started + options.maxMinutes * 60_000;
     for (;;) {

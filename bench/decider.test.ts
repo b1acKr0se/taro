@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { awaitsAcceptance, choosesAction, deciderPrompt, parseReply, permissionVerdict } from "./decider.ts";
+import { awaitsAcceptance, choosesAction, deciderPrompt, parseReply, permissionVerdict, staleWaiting, WAITING_NOTICE_MS } from "./decider.ts";
 
 describe("parseReply", () => {
   const log = (body: string) => `\nsome thinking\nREPLY abc123\n${body}\n`;
@@ -57,5 +57,24 @@ describe("permissionVerdict", () => {
     expect(permissionVerdict("Allow Bash?\npaseo daemon restart --host 127.0.0.1:6767")).toBe("deny");
     expect(permissionVerdict("Allow Bash?\nrm -rf ~/.paseo/worktrees")).toBe("deny");
     expect(permissionVerdict("Allow Bash?\nls /root/.paseo/plugin-data")).toBe("deny");
+  });
+});
+
+describe("staleWaiting", () => {
+  const now = Date.parse("2026-01-05T12:00:00Z");
+  const waited = (minutes: number) => ({ state: "waiting", at: new Date(now - minutes * 60_000).toISOString() });
+  it("returns the status time once the owner has waited long enough", () => {
+    expect(staleWaiting({ status: "In Progress", ownerRunning: false, lastStatus: waited(9) }, now)).toBe(waited(9).at);
+    expect(staleWaiting({ status: "Planning", lastStatus: waited(WAITING_NOTICE_MS / 60_000) }, now)).not.toBeNull();
+  });
+  it("is null when the wait is short, the owner is running, or the status is not waiting", () => {
+    expect(staleWaiting({ status: "In Progress", lastStatus: waited(3) }, now)).toBeNull();
+    expect(staleWaiting({ status: "In Progress", ownerRunning: true, lastStatus: waited(30) }, now)).toBeNull();
+    expect(staleWaiting({ status: "In Progress", lastStatus: { state: "working", at: waited(30).at } }, now)).toBeNull();
+    expect(staleWaiting({ status: "In Progress", lastStatus: null }, now)).toBeNull();
+  });
+  it("leaves a delivered or finished ticket to its own card", () => {
+    expect(staleWaiting({ status: "Awaiting acceptance", lastStatus: waited(30) }, now)).toBeNull();
+    expect(staleWaiting({ status: "Done", lastStatus: waited(30) }, now)).toBeNull();
   });
 });

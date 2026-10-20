@@ -26,6 +26,8 @@ const MAX_CHANGE_REQUESTS = 2;
 
 export interface DeciderOptions {
   throwaway: Throwaway;
+  /** The owner's agent id, for a chat message when it waits on a card that never came. */
+  ownerAgentId?: string;
   project: string;
   ticket: string;
   tracker: string;
@@ -58,6 +60,19 @@ export interface DeciderReply {
 }
 
 export type CardKind = "plan" | "question" | "acceptance";
+
+/** How long an owner may sit idle on a `waiting:` status with no card before the user notices and writes to it. */
+export const WAITING_NOTICE_MS = 8 * 60_000;
+
+export const WAITING_NOTICE_TEXT = "I don't see a card from you, so there is nothing for me to answer. If you need a decision, ask it with a decision card; otherwise decide it yourself and carry on.";
+
+/** The status time of an owner that has waited too long with nothing on screen for the user to answer; null otherwise. */
+export function staleWaiting(detail: { status: string; ownerRunning?: boolean; lastStatus?: { state: string; at: string } | null }, now: number): string | null {
+  if (detail.status !== "Planning" && detail.status !== "In Progress") return null;
+  if (detail.ownerRunning === true || detail.lastStatus === null || detail.lastStatus === undefined) return null;
+  if (detail.lastStatus.state !== "waiting") return null;
+  return now - Date.parse(detail.lastStatus.at) >= WAITING_NOTICE_MS ? detail.lastStatus.at : null;
+}
 
 /** What the user would refuse: a command that reaches the real daemon or its home. Everything else on the scratch project is allowed. */
 export function permissionVerdict(detail: string): "allow" | "deny" {
@@ -462,7 +477,17 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
       const heading = title === undefined ? options.ticket : (JSON.parse(title) as string);
       const card = [`Ticket: ${heading}`, "Delivery summary:", ticketSection(text, "final-summary"), "Buttons: Accept, Request changes"].join("\n");
       await handle("acceptance", "accept", heading, card, ["Accept", "Request changes"], null);
+      return;
     }
+    // Nothing on screen for the user: an owner idle on "waiting:" for a long time asked for something that never became a card.
+    if (options.ownerAgentId === undefined) return;
+    const detail = (await rpc(options.throwaway, "taro.ticket.load", { project: options.project, ticket: options.ticket })) as Parameters<typeof staleWaiting>[0];
+    const since = staleWaiting(detail, Date.now());
+    if (since === null || handled.has(`waiting:${since}`)) return;
+    handled.add(`waiting:${since}`);
+    record({ type: "violation", at: now(), kind: "owner-waiting-no-card", detail: `the owner waited from ${since} on "${detail.lastStatus?.state}" with no card, permission or delivery for the user; the user wrote to it` });
+    await rpc(options.throwaway, "taro.agent.tell", { agentId: options.ownerAgentId, text: WAITING_NOTICE_TEXT });
+    options.log("decider: wrote to a waiting owner (no card on screen)");
   }
 
   const loop = (async () => {
