@@ -68,8 +68,7 @@ export function ProjectTabs({
   const { colors } = theme;
   const styles = useMemo(
     () => ({
-      // A little taller on a wide screen so the bell's corner badge has room above the button.
-      row: { flexDirection: "row" as const, alignItems: "stretch" as const, paddingTop: compact ? 0 : SPACE.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
+      row: { flexDirection: "row" as const, alignItems: "stretch" as const, borderBottomWidth: 1, borderBottomColor: colors.border },
       scroller: { flex: 1, minWidth: 0 },
       tabs: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.lg, paddingHorizontal: paneGutter(false) },
       tab: {
@@ -87,13 +86,15 @@ export function ProjectTabs({
       tabText: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body), fontWeight: "600" as const },
       tabMuted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body), fontWeight: "500" as const },
       insertion: { position: "absolute" as const, top: SPACE.sm, bottom: SPACE.sm, width: 2, borderRadius: 1, backgroundColor: colors.accent },
-      // A bell button, like a notification control: bordered square, the count on its corner in the danger colour.
+      // A bell with the word Inbox in a bordered button, the count on its corner in the danger colour; its margins give the row its height.
       inbox: {
+        flexDirection: "row" as const,
         alignItems: "center" as const,
-        justifyContent: "center" as const,
         alignSelf: "center" as const,
-        width: 38,
-        height: 36,
+        gap: SPACE.sm,
+        paddingVertical: SPACE.sm,
+        paddingHorizontal: SPACE.md + 2,
+        marginVertical: SPACE.sm,
         marginLeft: paneGutter(false),
         borderRadius: 9,
         borderWidth: 1,
@@ -102,8 +103,10 @@ export function ProjectTabs({
       },
       // Chosen: a stronger wash, ringed in the foreground colour, as no project tab is underlined then.
       inboxActive: { borderColor: colors.foreground, backgroundColor: withAlpha(colors.accent, 0.3) },
-      inboxBadge: { position: "absolute" as const, top: -7, right: -9, borderWidth: 2, borderColor: colors.surface0, borderRadius: 11 },
-      divider: { width: 1, alignSelf: "stretch" as const, marginVertical: SPACE.sm, marginLeft: SPACE.md, backgroundColor: colors.border },
+      inboxText: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body), fontWeight: "600" as const },
+      inboxBadge: { position: "absolute" as const, top: -7, right: -8, borderWidth: 2, borderColor: colors.surface0, borderRadius: 11 },
+      // The same full-height line as the one before New Project.
+      divider: { width: 1, alignSelf: "stretch" as const, marginLeft: SPACE.md, backgroundColor: colors.border },
       pinned: {
         flexDirection: "row" as const,
         alignItems: "center" as const,
@@ -113,7 +116,7 @@ export function ProjectTabs({
         backgroundColor: colors.surface0,
       },
     }),
-    [colors],
+    [colors, compact],
   );
 
   const names = projects.map((project) => project.name);
@@ -216,7 +219,8 @@ export function ProjectTabs({
             style={[styles.inbox, inboxActive ? styles.inboxActive : null]}
             onPress={onOpenInbox}
           >
-            <Icon name="Bell" size={18} color={colors.foreground} />
+            <Icon name="Bell" size={16} color={colors.foreground} />
+            <CentredLabel style={styles.inboxText}>Inbox</CentredLabel>
             <View style={styles.inboxBadge}>
               <CountBadge theme={theme} count={inboxCount} background={colors.statusDanger} />
             </View>
