@@ -6,7 +6,7 @@
  */
 import { join } from "node:path";
 
-import { deliveryEndedRecord, deliveryTakenBackRecord, questionEndingDelivery, questionOpenAtDelivery } from "../shared/delivery-end";
+import { asksToAccept, deliveryEndedRecord, deliveryTakenBackRecord, questionEndingDelivery, questionOpenAtDelivery } from "../shared/delivery-end";
 import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compaction";
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
@@ -435,6 +435,7 @@ export class Supervisor {
     const newlyAsked: string[] = [];
     const opened: StoredDecision[] = [];
     const held: { id: string; open: string }[] = [];
+    const refused: string[] = [];
     const corrections = await this.state.updateDecisions((stored) => {
       const problems: string[] = [];
       // Withdrawals first: an owner may withdraw its open question below the block that asks the next one.
@@ -442,6 +443,11 @@ export class Supervisor {
       for (const block of inOrder) {
         const key = `${agent.id}:${block.id}`;
         const index = stored.findIndex((existing) => existing.key === key);
+        // The card on the delivery is the only Accept, and it merges; a question that asks for one more would not.
+        if (identity.role === "owner" && !block.withdrawn && asksToAccept(block)) {
+          refused.push(block.id);
+          continue;
+        }
         // Made blocking and still open: a later read (failed, or the ticket moved on) does not unblock it.
         const stillBlocking = stored[index]?.status === "open" && stored[index]?.madeBlocking === true;
         const decision = asPlanningQuestion(block, planning || stillBlocking);
@@ -500,6 +506,9 @@ export class Supervisor {
     if (ending !== null && identity.ticket !== null) await this.endDeliveryOn(identity, identity.ticket, ending.id);
     if (corrections.length > 0) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.decisionCorrection, { problems: [...new Set(corrections)].join("; ") }));
+    }
+    if (refused.length > 0) {
+      await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.acceptQuestionRefused, { refused: refused.map((id) => `\`${id}\``).join(", ") }));
     }
     if (held.length > 0) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.decisionHeld, { held: held.map((each) => `\`${each.id}\``).join(", "), open: held[0]!.open }));

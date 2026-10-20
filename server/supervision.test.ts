@@ -13,9 +13,9 @@ import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, huma
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question" },
+  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", acceptQuestionRefused: "accept-question-refused", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question" },
   skillDirectory: async () => "/skill",
-  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : `${path}:${values.ticket ?? ""}`),
+  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "accept-question-refused" ? `accept-question-refused:${values.refused}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : `${path}:${values.ticket ?? ""}`),
 }));
 vi.mock("./projects", () => ({ readProjectConfig: async () => null, projectPaths: async () => ({ tracker: "/tracker" }) }));
 vi.mock("./tickets", () => ({ viewTicket: vi.fn(), endDelivery: vi.fn(async () => true) }));
@@ -355,7 +355,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     const { state, decisions } = fakeState();
     const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
     const first = [human("hi"), reply];
-    const second = [plugin("nudge"), ask("merge", "Merge now?")];
+    const second = [plugin("nudge"), ask("rollout", "Ship it now?")];
     await run(taro, ...first, ...second);
     expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
 
@@ -370,7 +370,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     const { state, decisions } = fakeState();
     const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
     // Stored from an earlier read (for instance reconcile's tail page); its block is not in this timeline.
-    await run(taro, plugin("start"), ask("merge", "Merge now?"));
+    await run(taro, plugin("start"), ask("rollout", "Ship it now?"));
     await run(taro, human("hi"), reply, plugin("implementer report"), reply);
     expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
   });
@@ -379,7 +379,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     asManager();
     const { state, decisions } = fakeState();
     const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
-    const first = [plugin("start"), ask("merge", "Merge now?")];
+    const first = [plugin("start"), ask("rollout", "Ship it now?")];
     await run(taro, ...first);
     await run(taro, ...first, human("merge it"), reply);
     expect(decisions.map((decision) => decision.status)).toEqual(["answered"]);
@@ -425,6 +425,20 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     await run(taro, ...first);
     await run(taro, ...first, human("Use the existing table"), reply);
     expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
+  });
+
+  // TR-200: the delivery's Accept card is the only Accept.
+  describe("a question that asks to accept or merge", () => {
+    const refusals = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("accept-question-refused:"));
+
+    it("is not shown to the user, and the owner is told to deliver instead", async () => {
+      vi.mocked(sendFromPlugin).mockClear();
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      await run(taro, human("start"), ask("accept-tr-9", "Accept TR-9 and merge PR #88?"));
+      expect(decisions).toEqual([]);
+      expect(refusals()).toHaveLength(1);
+    });
   });
 
   // TR-124: an owner asks the user one thing at a time.
@@ -749,7 +763,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     it("leaves the delivery for investigation-done or a held-back question", async () => {
       const other = fakeState();
       const investigating = new Supervisor(other.state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
-      const first = [human("start"), ask("investigation-done", "Accept the findings?")];
+      const first = [human("start"), ask("investigation-done", "Build the recommendation?")];
       await run(investigating, ...first);
       expect(ended()).toEqual([]);
       // Held back behind the open one (TR-124): not shown, so nothing ends.

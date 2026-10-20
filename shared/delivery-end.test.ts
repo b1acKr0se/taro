@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deliveryEndedRecord, deliveryOnOffer, deliveryTakenBackRecord, questionEndingDelivery, questionHoldingAccept, questionOpenAtDelivery, stillDelivering } from "./delivery-end";
+import { deliveryEndedRecord, deliveryOnOffer, deliveryTakenBackRecord, asksToAccept, questionEndingDelivery, questionHoldingAccept, questionOpenAtDelivery, stillDelivering } from "./delivery-end";
 
 const asked = (id: string, blocking: boolean) => ({ id, blocking });
 
@@ -101,5 +101,21 @@ describe("stillDelivering (TR-153)", () => {
   it("is over once the turn ends, the owner is gone or the ticket is not delivered", () => {
     for (const owner of ["idle", "error", "closed", null]) expect(stillDelivering("Awaiting acceptance", owner)).toBe(false);
     for (const status of ["In Progress", "Reviewing", "Done", "Blocked"]) expect(stillDelivering(status, "running")).toBe(false);
+  });
+});
+
+describe("asksToAccept", () => {
+  it("catches the question TR-194 asked and the merge preset", () => {
+    expect(asksToAccept({ id: "accept-tr-194", question: "Accept TR-194 and merge PR #88?" })).toBe(true);
+    expect(asksToAccept({ id: "merge", question: "Ready?" })).toBe(true);
+    expect(asksToAccept({ id: "ok", question: "Merge the pull request now?" })).toBe(true);
+    expect(asksToAccept({ id: "acceptance", question: "Ready?" })).toBe(true);
+  });
+
+  it("leaves other questions alone", () => {
+    expect(asksToAccept({ id: "scope-approval", question: "Approve the plan for TR-200?" })).toBe(false);
+    expect(asksToAccept({ id: "merge-conflict-style", question: "Which side wins in the conflict?" })).toBe(false);
+    expect(asksToAccept({ id: "review-dispute", question: "Apply the fix or accept it as a limitation?" })).toBe(false);
+    expect(asksToAccept({ id: "unmerged", question: "Keep unmerged branches?" })).toBe(false);
   });
 });

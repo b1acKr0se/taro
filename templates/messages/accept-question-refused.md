@@ -1,0 +1,2 @@
+<!-- Sent when an owner asked the user to accept or merge a ticket in a decision block (TR-200). Placeholders: {{refused}}. -->
+Your decision {{refused}} was not shown to the user: the Accept card on your delivery is the only way to accept, and it also merges. A second question would be a button that merges nothing. Deliver instead: record the review head, move the ticket to Awaiting acceptance and end with `done: …`.
