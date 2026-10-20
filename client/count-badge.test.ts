@@ -45,7 +45,7 @@ describe("the count badge's places", () => {
   it("is the one pill on the sidebar, the tabs and the switch", () => {
     expect(source("sidebar.tsx")).toContain("<CountBadge theme={theme} count={waiting} />");
     expect(source("project-tabs.tsx")).toContain("<CountBadge theme={theme} count={project.needsYou} />");
-    expect(source("project-tabs.tsx")).toContain("<CountBadge theme={theme} count={inboxCount} />");
+    expect(source("project-tabs.tsx")).toContain("<CountBadge theme={theme} count={inboxCount} background={colors.statusDanger} />");
     expect(source("ui.tsx")).toContain("<CountBadge theme={theme} count={option.count ?? 0} />");
     for (const file of ["sidebar.tsx", "taro-screen.tsx", "project-tabs.tsx"]) expect(source(file)).not.toContain("statusWarning, alignItems");
   });

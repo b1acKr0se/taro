@@ -31,8 +31,10 @@ describe("the New Project button in the project tab row", () => {
 });
 
 describe("the Inbox button", () => {
-  it("is a tinted accent button on a wide screen only, with a divider before the tabs, not a tab", () => {
-    expect(tabs).toMatch(/inbox: \{[^}]*backgroundColor: withAlpha\(colors\.accent, 0\.13\)/s);
+  it("is a bell button with a danger-coloured count on its corner, on a wide screen only, with a divider before the tabs, not a tab", () => {
+    expect(tabs).toMatch(/inbox: \{[^}]*backgroundColor: colors\.surface1/s);
+    expect(tabs).toContain('<Icon name="Bell"');
+    expect(tabs).toContain("background={colors.statusDanger}");
     expect(tabs).toContain("compact || projects.length === 0 ? null");
     expect(tabs).toMatch(/inboxActive: \{ borderColor: colors\.foreground, backgroundColor: withAlpha\(colors\.accent, 0\.3\) \}/);
     // Not drawn with the project tabs' underline or avatar.
