@@ -207,11 +207,28 @@ describe("openingPaneAgent and askedElsewhere", () => {
   const question = { key: "owner-1:naming", id: "naming", agentId: "owner-1", question: "Call it drafts?", blocking: false } as unknown as Card["decisions"][number];
 
   it("opens on the live agent asking permission, else the owner", () => {
-    expect(openingPaneAgent(listed, "researcher-1")?.id).toBe("researcher-1");
-    expect(openingPaneAgent(listed, "owner-1")?.id).toBe("owner-1");
-    expect(openingPaneAgent(listed, null)?.id).toBe("owner-1");
-    expect(openingPaneAgent(listed, "old-1")?.id).toBe("owner-1");
-    expect(openingPaneAgent([], "researcher-1")).toBeNull();
+    expect(openingPaneAgent(listed, "researcher-1", false)?.id).toBe("researcher-1");
+    expect(openingPaneAgent(listed, "owner-1", false)?.id).toBe("owner-1");
+    expect(openingPaneAgent(listed, null, false)?.id).toBe("owner-1");
+    expect(openingPaneAgent(listed, "old-1", false)?.id).toBe("owner-1");
+    expect(openingPaneAgent([], "researcher-1", false)).toBeNull();
+  });
+
+  // TR-213: a child's owner is its parent's, so its working card opened the parent's chat, not the subagent's.
+  it("opens a child on its running subagent, the newest of several, before its parent's owner", () => {
+    const older = { ...sub("impl-old", "NA-1.01 · implementer: first", "implementer"), status: "running", createdAt: "2026-10-13T14:00:00Z" };
+    const newer = { ...sub("impl-new", "NA-1.01 · implementer: second", "implementer"), status: "running", createdAt: "2026-10-13T14:30:00Z" };
+    const idle = { ...sub("impl-idle", "NA-1.01 · implementer: done", "implementer"), status: "idle", createdAt: "2026-10-13T14:45:00Z" };
+    const child = paneAgents(card({ owner, subagents: [older, idle, newer] }));
+    expect(openingPaneAgent(child, null, true)?.id).toBe("impl-new");
+    expect(openingPaneAgent(child, null, false)?.id).toBe("owner-1");
+  });
+
+  it("opens a child on its owner when no subagent runs, and a permission asker still comes first", () => {
+    expect(openingPaneAgent(listed, null, true)?.id).toBe("owner-1");
+    const child = paneAgents(card({ owner, subagents: [{ ...sub("impl-1", "NA-1.01 · implementer: x"), status: "running" }] }));
+    expect(openingPaneAgent(child, "owner-1", true)?.id).toBe("owner-1");
+    expect(openingPaneAgent(child, "impl-1", true)?.id).toBe("impl-1");
   });
 
   it("points the owner's chat at a subagent's permission before any question", () => {

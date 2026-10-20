@@ -123,7 +123,7 @@ export function OwnerPane({
   const [openedOn, setOpenedOn] = useState<PaneOpening>(() => paneOpening(null, openKey, askerId));
   const current = paneOpening(openedOn, openKey, askerId);
   if (current !== openedOn) setOpenedOn(current);
-  const shown = agents.find((agent) => agent.id === chosenId) ?? openingPaneAgent(agents, current.asker) ?? agents[0] ?? null;
+  const shown = agents.find((agent) => agent.id === chosenId) ?? openingPaneAgent(agents, current.asker, card.parent !== null) ?? agents[0] ?? null;
   const inset = paneGutter(compact);
   // Changes sent end the delivery at once (TR-131), before the board reads the ticket back In Progress: kept for the card as it was then.
   const [changesSentOn, setChangesSentOn] = useState<string | null>(null);
