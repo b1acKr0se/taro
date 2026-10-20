@@ -95,7 +95,7 @@ export function ProjectTabs({
         paddingVertical: SPACE.sm,
         paddingHorizontal: SPACE.md + 2,
         marginVertical: SPACE.sm,
-        marginLeft: 0,
+        marginLeft: SPACE.md,
         borderRadius: 9,
         borderWidth: 1,
         borderColor: colors.border,
