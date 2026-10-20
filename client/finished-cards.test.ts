@@ -180,6 +180,36 @@ describe("questionCards", () => {
     expect(cards([message("a", [block("one")])], [empty]).get("a")?.[0]).toMatchObject({ outcome: "Answered", answer: null, words: null });
   });
 
+  it("says a card of several questions one line per question, quoting only the typed words", () => {
+    const options = (prompt: string) => [{ label: prompt.split(" ")[1] ?? prompt, prompt, consequence: "", images: [] }];
+    const questions = [
+      { header: "Tags", question: "Tags as?", why: "", options: options("Use YAML"), recommended: "", reason: "" },
+      { header: "Folders", question: "Layout?", why: "", options: options("One folder"), recommended: "", reason: "" },
+      { header: "Images", question: "Images?", why: "", options: options("Keep inline"), recommended: "", reason: "" },
+    ];
+    const answer = {
+      text: 'Tags: Use YAML\nFolders: One folder\nImages: "keep them out"',
+      label: null,
+      at: "2026-01-19T10:05:00Z",
+      answers: [
+        { header: "Tags", label: "YAML", text: "Use YAML" },
+        { header: "Folders", label: "folder", text: "One folder" },
+        { header: "Images", label: null, text: "keep them out" },
+      ],
+    };
+    const several = stored("one", { question: "3 questions: Tags, Folders, Images", questions, answer });
+    expect(cards([message("a", [block("one")])], [several]).get("a")?.[0]).toMatchObject({
+      outcome: "Answered",
+      answer: null,
+      words: null,
+      answers: [
+        { header: "Tags", answer: "YAML", words: null },
+        { header: "Folders", answer: "folder", words: null },
+        { header: "Images", answer: null, words: "keep them out" },
+      ],
+    });
+  });
+
   it("says withdrawn, and that its agent went away", () => {
     const rows = [message("a", [block("one"), block("two")])];
     const out = cards(rows, [stored("one", { status: "withdrawn", answer: null }), stored("two", { status: "withdrawn", answer: null, withdrawnWithAgent: true })]).get("a");
