@@ -1033,6 +1033,22 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, pastA
         </View>
       );
     }
+    case "received":
+      return (
+        <View key={row.key} style={styles.toolRun}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: open }}
+            accessibilityLabel={`Message from ${row.sender}, ${open ? "fold" : "show"}`}
+            style={styles.toolHead}
+            onPress={() => onToggle(row.key)}
+          >
+            <Icon name={open ? "ChevronDown" : "MessageSquare"} size={13} color={theme.colors.foregroundMuted} />
+            <Text style={styles.toolTitle} numberOfLines={1}>{`Message from ${row.sender}`}</Text>
+          </Pressable>
+          {open ? <Markdown source={row.text} theme={theme} onOpenLink={onOpenLink} /> : null}
+        </View>
+      );
     case "error":
       return (
         <Text key={row.key} style={styles.error}>

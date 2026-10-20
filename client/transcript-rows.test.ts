@@ -217,3 +217,22 @@ describe("transcriptRows turn footers (TR-202)", () => {
     expect(withoutOpenTurn(rows, false)).toBe(rows);
   });
 });
+
+describe("transcriptRows received messages (TR-218)", () => {
+  const sent = (seq: number, agentMessage: unknown): TimelineEntry =>
+    ({ seqStart: seq, seqEnd: seq, timestamp: "2026-01-05T10:00:00Z", item: { type: "tool_call", callId: `paseo-agent-message:${seq}`, name: "agent_message", status: "completed", detail: { type: "plain_text", text: "x" }, agentMessage } }) as unknown as TimelineEntry;
+
+  it("shows a starting prompt as a message from its sender, not a tool call", () => {
+    const rows = rowsOf([sent(1, { event: "message", sender: { id: "m1", title: "notes-app · Manager" }, text: "  You are the task owner.\n\nTicket NA-1  " }), said(2, "On it.")]);
+    expect(rows).toEqual([
+      { key: "1", kind: "received", sender: "notes-app · Manager", text: "You are the task owner.\n\nTicket NA-1", at: "2026-01-05T10:00:00Z" },
+      { key: "2", kind: "agent", text: "On it." },
+    ]);
+  });
+
+  it("names an unnamed sender and skips an empty or malformed message", () => {
+    expect(rowsOf([sent(1, { event: "message", sender: {}, text: "Hi" })])).toMatchObject([{ kind: "received", sender: "another agent", text: "Hi" }]);
+    expect(rowsOf([sent(1, { event: "message", text: "  " })]).map((row) => row.kind)).toEqual(["tool"]);
+    expect(rowsOf([sent(1, "nope")]).map((row) => row.kind)).toEqual(["tool"]);
+  });
+});
