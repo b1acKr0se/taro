@@ -72,9 +72,9 @@ rather than exceed it.
 
 - **DISPATCH-INTENT** (manager, before launching): ticket, unique token, intended branch.
 - **EXECUTION**: owner agent id, owner model, workspace id, machine (`hostname`), worktree path, branch, base
-  SHA; later the subagents (agent id, job, task, model, workspace and the owner's context estimate
+  SHA; later the subagents (the whole agent id, which the plugin matches, job, task, model, workspace and the owner's context estimate
   as `estimate: <n>k`, `roles/owner.md`, Subagents) and `review-head: <sha>`:
-  `EXECUTION 2026-01-05T10:00Z — subagent 3f2a…, implementer, NA-012.02, claude/claude-sonnet-5-5, workspace w1, estimate: 60k`.
+  `EXECUTION 2026-01-05T10:00Z — subagent 3f2a9c1e-5b7d-4e2a-9c1f-0a6b8d2e4f13, implementer, NA-012.02, claude/claude-sonnet-5-5, workspace w1, estimate: 60k`.
 - **APPROVAL**: the user's exact words, time, and what they approved (the plan).
 - **HANDS-OFF**: the user's words that hand the ticket over ("decide yourself", "I'm away", "don't
   ask me"), quoted exactly; the owner asks no questions and raises no plan approval card from then
