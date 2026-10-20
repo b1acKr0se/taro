@@ -41,7 +41,8 @@ Never go on without the tracker: the ticket is the record of the work (SKILL.md 
 ## Statuses
 
 `Queued → Planning → Ready → In Progress → Reviewing → Awaiting acceptance → Done`, plus `Blocked`
-and `Cancelled`. Trivial tasks go from Planning straight to In Progress once their plan is written (no approval card).
+and `Cancelled`. Trivial and hands-off tickets go from Planning straight to In Progress once their plan is
+written (no approval card).
 
 | Status | Who sets it | When |
 | --- | --- | --- |
@@ -71,8 +72,24 @@ rather than exceed it.
 
 - **DISPATCH-INTENT** (manager, before launching): ticket, unique token, intended branch.
 - **EXECUTION**: owner agent id, owner model, workspace id, machine (`hostname`), worktree path, branch, base
-  SHA; later the subagents (agent id, job, task) and `review-head: <sha>`.
+  SHA; later the subagents (agent id, job, task, model, workspace and the owner's context estimate
+  as `estimate: <n>k`, `roles/owner.md`, Subagents) and `review-head: <sha>`:
+  `EXECUTION 2026-01-05T10:00Z — subagent 3f2a…, implementer, NA-012.02, claude/claude-sonnet-5-5, workspace w1, estimate: 60k`.
 - **APPROVAL**: the user's exact words, time, and what they approved (the plan).
+- **HANDS-OFF**: the user's words that hand the ticket over ("decide yourself", "I'm away", "don't
+  ask me"), quoted exactly; the owner asks no questions and raises no plan approval card from then
+  on (`roles/owner.md`, Hands-off): `HANDS-OFF 2026-01-05T10:00Z — the user: "decide yourself, I'm away today"`.
+- **RISKS**: above trivial, before the first code commit: one `risk:` line per case, its category
+  (input, state, ordering, numeric, file, protocol, concurrency, security), a named test and its
+  exact input and outcome, never the spec's own examples (1–3 lines at low; `roles/owner.md`, Build):
+
+      RISKS 2026-01-05T10:00Z — before code
+      risk: state — `export_after_failed_write`: a write that fails half way leaves the old file intact
+      risk: input — `export_empty_title`: a note titled "" exports as `untitled-<id>.md`
+
+- **RULING**: a choice made after approval that the user could have made differently, in four
+  fixed parts; FINAL's Rulings lists them:
+  `RULING 2026-01-05T10:00Z — kept exports in UTF-8 only — every current import reads UTF-8 — a user with Latin-1 files re-saves them first`.
 - **MILESTONE**: one line of at most about 150 characters: what happened and what's next, e.g.
   `MILESTONE 2026-10-13T14:02Z — Picker built (6cdd38a), checks green; next: review`. Before a long
   command: its log path and expected duration. Detail belongs in commits and the other records.
@@ -96,8 +113,8 @@ rather than exceed it.
   sets Planning in the same write. A ticket already past Queued keeps its status.
 - **DELIVERY-ENDED**: written by the plugin when an owner asks a blocking question while its ticket
   awaits acceptance; it moves the ticket to In Progress in the same write (`roles/owner.md`).
-- **REVIEW**: reviewer, revision, verdict, every finding answered (fixed, or rejected with the
-  reason); after fixes, what the fix check re-checked: its range, fix check or full re-review, and
+- **REVIEW**: reviewer, revision, verdict, every finding answered (fixed, rejected with the
+  reason, or named in FINAL's Limitations); after fixes, what the fix check re-checked: its range, fix check or full re-review, and
   its verdict (`roles/owner.md`, Review).
 - **EVIDENCE**: what the user sees before Accept; the newest record counts. One fact per line,
   label in any case, separator ` — ` (` -- ` and ` - ` also work):
@@ -115,7 +132,7 @@ rather than exceed it.
 
       EVIDENCE 2026-01-05T10:00Z — before FINAL
       check: npm test — 37 files, 360 passed
-      review: one independent round (Sonnet) — 1 blocker, fixed; fix check by the same reviewer (fix range, callers, suite) — pass
+      review: one independent round (Sonnet) — 2 findings, fixed; fix check by the same reviewer (fix range, callers, suite) — pass
       ux: list rows: titles and dates start at one x on both; no placeholder text; own pass fixed a clipped Save button; reviewer agrees
       coverage: notes list, 40 notes with long titles — notes-list-desktop.png, notes-list-phone.png
       coverage: empty list — notes-empty-phone.png
@@ -127,7 +144,8 @@ rather than exceed it.
   (`~/.paseo/…` without `PASEO_HOME`).
 - **FINAL**: set with `--final-summary`, following `templates/final.md`: What changed (at most 5
   bullets; the first is the ticket's one-line result), How it was verified (at most 3, the review
-  among them), Limitations (at most 3), then `Revision: <sha> on <branch> · PR: <URL or none>`.
+  among them), Limitations (at most 3), `## Rulings` (at most 5, only when there are RULING
+  records), then `Revision: <sha> on <branch> · PR: <URL or none>`.
   The evidence per criterion is the EVIDENCE record; do not repeat it.
 - **ACCEPTANCE**: the user's words, time, accepted revision and PR, and the merge result as one
   fixed field the board reads (a Done card shows GitHub's merged icon from it): `merge: merged

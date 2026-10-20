@@ -24,3 +24,18 @@ treat it as not cheaper than anything.
   one of any provider the project allows (an Opus owner, with only GPT terra allowed below it, uses
   terra for easy work).
 - No cheaper allowed model: keep the model you have.
+
+## Matching the task
+
+- **Mechanical** means the what is fully decided: about 150 lines written or fewer, at most two
+  components, fast tests, and the tests given as named tests with exact values or as code. Typical:
+  a project skeleton and its config, stubs, a thin wrapper over a given interface, a constant table,
+  a small pure function with a crisp spec, docs from existing code. Never mechanical: a parser, an
+  evaluator, a server, UI, anything with state, a protocol or security, or an unclear spec.
+  Mechanical work goes to the cheapest allowed tier.
+- **Routine design** goes to the middle tier; **risky or hard** work to the top tier.
+- **Never the cheapest** for a fix, a review or an investigation: each needs judgement, and
+  cheapest-tier reviewers have caught none of ten planted defects in a measured run.
+- **A miss goes up:** a task the cheapest tier got wrong goes to a **fresh** agent one tier up with
+  a fix note (`templates/fix-note.md`), never retried at the same tier.
+- The step-down rules below still decide which allowed model fills a tier.

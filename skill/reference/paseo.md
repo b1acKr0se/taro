@@ -40,8 +40,20 @@ tab`, `checking the whole branch`. The board shows it as "Implementer building t
 26m"; never a bare "step 3" (a step number may follow as a hint: `…, 2 of 3`).
 
 Bypass mode ids: Claude `bypassPermissions`, Codex `full-access`. Models: `paseo provider models
-<provider> --json`; pick from the project's allowed list. Parallel children only: create their own
-worktree first (as for an owner, branching from your parent branch) and run them there.
+<provider> --json`; pick from the project's allowed list.
+
+**Parallel children only** (`roles/owner.md`, Children): commit what they build on first (the
+skeleton child), then give each child its own worktree, branching from your branch, and start its
+implementer in that workspace (`--workspace <its workspaceId>`):
+
+```bash
+paseo workspace create --isolation worktree --path <repoPath> --project <paseoProjectId> \
+  --new-branch taro/<child-id-lowercase> --base taro/<your-id-lowercase> \
+  --worktree-slug <child-id-lowercase> --title "<child ID> · <title>" --json
+```
+
+When its report is verified, merge its branch into yours from your worktree (`git -C <your
+worktree> merge taro/<child-id-lowercase>`), then run the seam check.
 
 The plugin delivers each subagent's final message to you when its turn ends; you do not need to poll.
 To look anyway: `paseo inspect <agentId> --json`, `paseo logs <agentId>`. To steer a subagent:

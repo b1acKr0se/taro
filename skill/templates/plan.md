@@ -19,4 +19,4 @@
 <at most 4 bullets; the outcome criteria (roles/owner.md), the screenshots for the EVIDENCE `ux:` pass, and the tests>
 
 ## Size
-<complexity, review level, rough time, on one line: "Medium: one independent review; about 1 hour.">
+<complexity, who builds it, review level, rough time, on one line: "Medium: one implementer, one independent review; about 1 hour.">
