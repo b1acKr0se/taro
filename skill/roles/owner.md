@@ -209,8 +209,8 @@ questions come to you; bring real decisions to the user.
   approach. Then escalate with a `review-dispute` decision rather than loop.
 
 Findings are of **one kind**. Verify each against the code yourself (valid / partially valid /
-invalid, with evidence); each valid one is fixed (yourself when small, otherwise by its implementer,
-or by a fresh one with a fix note, a tier up when it ran on the cheapest), or named in FINAL Limitations; an invalid one is rejected with the
+invalid, with evidence); each valid one is fixed (yourself when small, otherwise by its implementer, or by
+a fresh agent a tier up with a fix note instead when that implementer ran on the cheapest tier), or named in FINAL Limitations; an invalid one is rejected with the
 reason. Record a REVIEW note that answers every finding. A **Question** (a preference the user did
 not settle in their words or a decision: a label, wording, density, a layout choice) is not yours or the
 reviewer's to settle: fix the rest first, then raise it as a **blocking** decision with your
