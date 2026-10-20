@@ -60,6 +60,8 @@ import { Shimmer, WorkingStatus } from "./loading";
 import { SHIMMER_LIGHT } from "./shimmer";
 import { useLatestCallback } from "./latest-callback";
 import { BREAK_LONG_WORDS } from "./long-word-wrap";
+import { senderPillColours } from "./sender-pill";
+import { needsFold, RECEIVED_FOLD_LINES } from "./received-fold";
 import { bubbleImageRoom, USER_BUBBLE_SHARE } from "./thumbnail-size";
 import { sameGroup, sameItems } from "./transcript-memo";
 import type { SentImage } from "./sent-images";
@@ -876,6 +878,32 @@ function UserMessage({
   );
 }
 
+/** A message another agent sent: the user's bubble with the sender's name as a pill inside it, folded when long (TR-220). */
+function ReceivedMessage({ sender, text, open, onToggle, styles }: { sender: string; text: string; open: boolean; onToggle: () => void; styles: ChatStyles }) {
+  const folds = needsFold(text);
+  return (
+    <View style={styles.userRow}>
+      <View style={styles.userColumn}>
+        <View style={[styles.user, styles.receivedBubble]}>
+          <View style={styles.senderPill} accessibilityLabel={`Message from ${sender}`}>
+            <Text style={styles.senderText} numberOfLines={1}>
+              {sender}
+            </Text>
+          </View>
+          <Text selectable style={[styles.userText, BREAK_LONG_WORDS]} numberOfLines={folds && !open ? RECEIVED_FOLD_LINES : undefined}>
+            {text}
+          </Text>
+          {folds ? (
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={onToggle} style={styles.foldButton}>
+              <Text style={styles.foldText}>{open ? "Show less" : "Show more"}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 const USER_BUBBLE_PADDING = SPACE.md;
 const USER_BUBBLE_BORDER = 1;
 
@@ -1034,21 +1062,7 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, pastA
       );
     }
     case "received":
-      return (
-        <View key={row.key} style={styles.toolRun}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ expanded: open }}
-            accessibilityLabel={`Message from ${row.sender}, ${open ? "fold" : "show"}`}
-            style={styles.toolHead}
-            onPress={() => onToggle(row.key)}
-          >
-            <Icon name={open ? "ChevronDown" : "MessageSquare"} size={13} color={theme.colors.foregroundMuted} />
-            <Text style={styles.toolTitle} numberOfLines={1}>{`Message from ${row.sender}`}</Text>
-          </Pressable>
-          {open ? <Markdown source={row.text} theme={theme} onOpenLink={onOpenLink} /> : null}
-        </View>
-      );
+      return <ReceivedMessage key={row.key} sender={row.sender} text={row.text} open={open} onToggle={() => onToggle(row.key)} styles={styles} />;
     case "error":
       return (
         <Text key={row.key} style={styles.error}>
@@ -1122,6 +1136,7 @@ function EarlierMessages({ hasOlder, loading, theme, styles, onLoad }: { hasOlde
 
 function chatStyles(theme: PluginTheme, compact: boolean) {
   const { colors } = theme;
+  const pill = senderPillColours(colors);
   return {
     pane: { flex: 1, minHeight: 0, backgroundColor: colors.surface0 },
     transcript: { flex: 1 },
@@ -1148,6 +1163,11 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
       paddingHorizontal: USER_BUBBLE_PADDING,
       paddingVertical: SPACE.sm + 2,
     },
+    receivedBubble: { alignSelf: "stretch" as const, gap: SPACE.sm },
+    senderPill: { alignSelf: "flex-start" as const, maxWidth: "100%" as const, backgroundColor: pill.background, borderRadius: 999, paddingHorizontal: SPACE.sm + 2, paddingVertical: SPACE.xs - 1 },
+    senderText: { color: pill.text, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
+    foldButton: { alignSelf: "flex-start" as const, paddingVertical: SPACE.xs },
+    foldText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small },
     userImages: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, marginTop: SPACE.sm },
     userText: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) },
     agentRow: { alignSelf: "stretch" as const, gap: SPACE.sm },
