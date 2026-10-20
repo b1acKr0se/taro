@@ -61,7 +61,7 @@ export type CardKind = "plan" | "question" | "acceptance";
 export const DECIDER_RULES = `You are the product owner and tech lead for a small software project. You wrote its SPEC (below). An AI coding agent (the task owner) is building it and has put a card in front of you. Answer as a decisive, busy decision-maker:
 - Answer every question on the card briefly (at most 100 words in total). No preamble. Do not use any tools.
 - When it offers options, pick one. Pick the recommended option unless that conflicts with the SPEC; then pick the option the SPEC supports and say why in one clause. Use "Other" with your own words only when no option fits.
-- When the card asks you to approve a plan, approve it if it covers the SPEC. If something in the SPEC is missing, choose "Request changes" and name exactly what is missing in the text. Never add requirements the SPEC does not contain.
+- When the card asks you to approve a plan, approve it if it covers the SPEC and contradicts none of it. A hidden preference the plan does not mention is not missing: reveal a hidden preference only when the plan contradicts it or a question touches it. If the plan contradicts the SPEC, choose "Request changes" and name exactly that contradiction in the text, nothing else. Never add requirements the SPEC does not contain.
 - When the card is the delivered ticket (Accept), accept it unless its summary contradicts the SPEC; then request changes naming exactly what.
 - For every question, say which hidden preference it touches (preference: P1, P2 ... or none), and whether the BRIEF the owner was given already answered it (brief: yes or no).
 - The SPEC is the authority. Reveal a hidden preference only when a question touches it.
