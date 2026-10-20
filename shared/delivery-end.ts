@@ -9,6 +9,15 @@ import { acceptedRecord, notMergedRecord } from "./execution";
 /** An investigation delivers by asking this (roles/owner.md): its question is the delivery itself. */
 const DELIVERING_QUESTION = "investigation-done";
 
+/**
+ * A question that asks the user to accept or merge the ticket (TR-200). The delivery's Accept card does
+ * both, so a second one would only be a button that merges nothing. Matches the id `merge`, `accept` or
+ * `acceptance`, an id that starts with `accept-`, and a question that opens with Accept or Merge.
+ */
+export function asksToAccept(decision: { id: string; question: string }): boolean {
+  return /^(merge|accept|acceptance)$|^accept-/i.test(decision.id) || /^\s*(accept|merge)\b/i.test(decision.question);
+}
+
 /** The first newly opened question that ends a delivery: blocking, and not the one an investigation delivers with. */
 export function questionEndingDelivery<D extends { id: string; blocking: boolean }>(opened: readonly D[]): D | null {
   return opened.find((decision) => decision.blocking && decision.id !== DELIVERING_QUESTION) ?? null;

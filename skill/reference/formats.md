@@ -59,7 +59,7 @@ default: Per trade         # what you do if the user does not answer (non-blocki
 - **Blocking** (`blocking: true`): stop and wait. Only for real gates: an owner's question before
   its plan is approved (every one: the plugin shows it as blocking whatever its flag), a reviewer's
   Question (asked and answered before the owner delivers), scope approval when you made a choice the
-  user did not, a child breakdown, a merge, anything destructive, a review dispute you cannot settle.
+  user did not, a child breakdown, anything destructive, a review dispute you cannot settle.
   An owner never delivers with a question open: the plugin takes such a delivery back.
 - The board shows the `question` and the option labels on a card with nothing else, and a tap on a
   label answers. So the `question` stands alone, in at most about three lines: say what is to be
@@ -112,12 +112,13 @@ Use these ids and options for recurring decisions (add free-form ones as needed)
 | `scope-approval` | Approve · Split into children (when proposed) | Approve; the `question` is `Approve the plan for <ID>?`, the plan in the ticket (`templates/plan.md`, `roles/owner.md`) |
 | `complexity` | Keep · Lower · Raise | Keep |
 | `child-breakdown` | Approve · Fewer children | Approve |
-| `merge` | Merge · Hold | Merge, when review passed and the head is unchanged |
 | `investigation-done` | Build the recommendation · File follow-up · Close | Build |
 | `review-dispute` | Apply the fix · Accept as a limitation | your verdict |
 
 The user asks for a change, or another approach, by typing in the card's field (for a plan, the
 box Request changes… opens); no preset has an option for it.
 
-Acceptance is not a decision block: the plugin shows Accept / Request changes on tickets in
-Awaiting acceptance.
+Acceptance is not a decision block, and neither is the merge: the plugin shows Accept / Request
+changes on tickets in Awaiting acceptance, and Accept merges. Never ask "Accept TR-12 and merge PR
+#9?" or any such question: it would be a second Accept that merges nothing, and the plugin does not
+show it.

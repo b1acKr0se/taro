@@ -249,6 +249,9 @@ full re-review or fix check, and the reviewer's verdict.
   plugin moves the ticket to In Progress when it shows the decision (a DELIVERY-ENDED record), so
   only the question shows. Once it is answered, deliver again (Awaiting acceptance, a new review head
   if anything changed) and end with `done: …`.
+- **Never ask the user to accept or merge** (TR-200): no decision block, no question in words. The
+  card under your `done:` message is the only Accept, and pressing it merges; a question that asks
+  for one more is not shown (the plugin tells you), so deliver instead.
 - **Accept:** the plugin runs the steps below itself when the user presses Accept (TR-141): it
   merges, records ACCEPTANCE (or NOT-MERGED / NOT-SYNCED) and sets Done, and you hear nothing; the
   plugin archives you after Done. Only when it stops on something that needs judgement (a moved
