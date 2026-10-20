@@ -12,6 +12,7 @@ const owner = {
   status: "idle",
   provider: "claude",
   model: null,
+  thinking: null,
   workspaceId: null,
   pendingPermissions: 0,
   updatedAt: "2026-01-01T00:00:00Z",

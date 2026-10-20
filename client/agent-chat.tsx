@@ -20,6 +20,7 @@ import { availableSources, type AttachmentSource } from "./attachment-sources";
 import { AttachButton, AttachmentPreviews, DropBackdrop } from "./composer-attachments";
 import type { StoredDecision } from "../shared/state";
 import { WRITING_A_QUESTION } from "../shared/streaming-text";
+import { AgentControlsBar, type AgentIdentity } from "./agent-controls-bar";
 import { ContextMeter } from "./context-meter";
 import { useOnPaneHidden } from "./pane-visibility";
 import { DecisionCard } from "./decision-card";
@@ -87,6 +88,8 @@ type ChatComposer =
       actions?: ReactNode;
       /** The agent's context window, drawn as a ring inside the composer beside the send button. */
       context?: { used: number | null | undefined; max: number | null | undefined };
+      /** The agent's model and effort, read-only beside the + button as in Paseo's composer. */
+      identity?: AgentIdentity;
       /** A tooltip over the buttons' line, open while one of them is hovered or held (Replace manager's, TR-128). */
       actionsTip?: string | null;
       readOnly?: undefined;
@@ -101,6 +104,7 @@ type ChatComposer =
       /** How full its context window was, drawn at the footer's end (TR-156). */
       context?: { used: number | null | undefined; max: number | null | undefined };
       actionsTip?: undefined;
+      identity?: undefined;
     };
 
 export function AgentChat({
@@ -113,6 +117,7 @@ export function AgentChat({
   beforeSend,
   actions,
   context,
+  identity,
   actionsTip,
   readOnly,
   decorateRow,
@@ -767,7 +772,16 @@ export function AgentChat({
               stop={working ? { onStop: stopAgent, busy: stoppingAgent === agent.id } : undefined}
               sendLabel={sendLabel({ working, requestPending: pending.length > 0 })}
               above={<AttachmentPreviews theme={theme} attachments={attachments} onRemove={(id) => setAttachments(attachments.filter((attachment) => attachment.id !== id))} />}
-              leading={attachButton}
+              leading={
+                identity === undefined ? (
+                  attachButton
+                ) : (
+                  <View style={{ minWidth: 0, flexShrink: 1, flexDirection: "row", alignItems: "center" }}>
+                    {attachButton}
+                    <AgentControlsBar theme={theme} agent={identity} />
+                  </View>
+                )
+              }
               trailing={context === undefined ? null : <ContextMeter theme={theme} used={context.used} max={context.max} ringSize={metrics.ringSize} />}
             />
           </View>

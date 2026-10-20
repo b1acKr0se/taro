@@ -10,6 +10,7 @@ export function agentBrief(agent: PaseoAgent): AgentBrief {
     status: agent.status,
     provider: agent.provider,
     model: agent.model ?? null,
+    thinking: agent.thinkingOptionId ?? null,
     workspaceId: agent.workspaceId ?? null,
     pendingPermissions: agent.pendingPermissions.length,
     updatedAt: agent.updatedAt,
@@ -23,6 +24,8 @@ export function agentBrief(agent: PaseoAgent): AgentBrief {
 export interface ModelOption {
   id: string;
   label: string;
+  /** The model's own name, without the provider: what the composer shows. */
+  modelLabel: string;
   thinkingOptions: string[];
   defaultThinking: string;
 }
@@ -47,6 +50,7 @@ export async function listModelOptions(paseo: PaseoApi): Promise<ModelOption[]> 
           .map((model) => ({
             id: `${provider}/${model.id}`,
             label: `${label} · ${model.label}`,
+            modelLabel: model.label,
             thinkingOptions: (model.thinkingOptions ?? []).map((option) => option.id),
             defaultThinking: model.defaultThinkingOptionId ?? "",
           }));
