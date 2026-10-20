@@ -212,30 +212,35 @@ describe("pull request", () => {
     expect(await acceptPullRequest({ ...input(prHead), run: failing })).toEqual({ kind: "surprise", found: `gh pr view ${url} failed: gh: not logged in` });
   });
 
-  it("records NOT-SYNCED after merging when main has commits origin lacks, then only syncs on the next Accept", async () => {
+  it("closes the ticket after merging when main has commits origin lacks, saying local main was not updated (TR-215)", async () => {
     await commit(repo, "local.md", "local\n");
     const outcome = await acceptPullRequest(input(prHead));
-    expect(outcome).toEqual({ kind: "not-synced", reason: `main in ${repo} has commits origin lacks; push or drop them, then Accept again` });
+    expect(outcome.kind).toBe("done");
+    expect(outcome.kind === "done" && outcome.acceptance).toContain(`local main not updated: main in ${repo} has commits origin lacks`);
+    expect(outcome.kind === "done" && outcome.acceptance).toMatch(/merge: merged \S+$/);
     expect(state).toBe("MERGED");
-    await git(repo, "reset", "-q", "--hard", "HEAD~1");
-    calls = [];
-    const again = await acceptPullRequest(input(prHead));
-    expect(again.kind).toBe("done");
-    expect(calls.some((call) => call[1] === "merge")).toBe(false);
   });
 
-  it("records NOT-SYNCED for a dirty main checkout after merging, and leaves it alone", async () => {
+  it("closes the ticket for a dirty main checkout after merging, and leaves it alone", async () => {
     await writeFile(join(repo, "readme.md"), "edited\n");
     const outcome = await acceptPullRequest(input(prHead));
-    expect(outcome.kind).toBe("not-synced");
-    expect(outcome.kind === "not-synced" && outcome.reason).toContain("has uncommitted or untracked changes (readme.md)");
+    expect(outcome.kind).toBe("done");
+    expect(outcome.kind === "done" && outcome.acceptance).toContain("local main not updated: ");
+    expect(outcome.kind === "done" && outcome.acceptance).toContain("has uncommitted or untracked changes (readme.md)");
     expect(await git(repo, "status", "--porcelain")).toBe("M readme.md");
   });
 
-  it("records NOT-SYNCED when the fetch fails", async () => {
+  it("closes the ticket when the fetch fails", async () => {
     await git(repo, "remote", "set-url", "origin", join(root, "missing.git"));
     const outcome = await acceptPullRequest(input(prHead));
-    expect(outcome.kind).toBe("not-synced");
-    expect(outcome.kind === "not-synced" && outcome.reason).toMatch(/^fetching origin main into .* failed \(.+\); fix the connection or the remote, then Accept again$/);
+    expect(outcome.kind).toBe("done");
+    expect(outcome.kind === "done" && outcome.acceptance).toMatch(/local main not updated: fetching origin main into .* failed \(.+\)/);
+  });
+
+  it("closes the ticket when the main checkout is on another branch", async () => {
+    await git(repo, "checkout", "-q", "-b", "fix/other");
+    const outcome = await acceptPullRequest(input(prHead));
+    expect(outcome.kind).toBe("done");
+    expect(outcome.kind === "done" && outcome.acceptance).toContain("local main not updated: ");
   });
 });

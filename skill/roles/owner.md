@@ -258,14 +258,14 @@ full re-review or fix check, and the reviewer's verdict.
   card under your `done:` message is the only Accept, and pressing it merges; a question that asks
   for one more is not shown (the plugin tells you), so deliver instead.
 - **Accept:** the plugin runs the steps below itself when the user presses Accept (TR-141): it
-  merges, records ACCEPTANCE (or NOT-MERGED / NOT-SYNCED) and sets Done, and you hear nothing; the
+  merges, records ACCEPTANCE (or NOT-MERGED) and sets Done, and you hear nothing; the
   plugin archives you after Done. Only when it stops on something that needs judgement (a moved
   head, a conflict, a base branch that moved under a local branch, an unexpected gh or git answer)
   does a message reach you, or a fresh owner after a long idle: it says what the plugin found, and
   the ticket's ACCEPT-HANDOFF record says so too. Take it from that step; the steps are safe to
   repeat. If the message says to merge (accept-also-merges), merge only what the user reviewed.
   - **Pull request** (TR-110), in this order:
-    1. The PR is already `MERGED` (an earlier Accept merged it, then recorded NOT-SYNCED) → go to 3.
+    1. The PR is already `MERGED` (an earlier Accept merged it, then was cut off) → go to 3.
     2. Merge only when the PR's `headRefOid` still equals the recorded review head, with the merge
        method the message names: `gh pr merge <url> --merge|--rebase|--squash --match-head-commit
        <sha>`, then confirm `state` is `MERGED`. A moved head → present it again. A conflict →
@@ -279,11 +279,10 @@ full re-review or fix check, and the reviewer's verdict.
        counts), `git -C <repository path> fetch origin <base>`, then `git -C <repository path>
        merge --ff-only origin/<base>`. Dirty, on
        another branch, commits origin lacks (the fast-forward fails) or the fetch failed → do not
-       touch it (no stash, checkout, reset or merge): record **NOT-SYNCED** with the reason and what
-       the user does first, in one short line (the card already says it merged); end with
-       `waiting: <reason>`. The card goes back to
-       Needs you, and the next Accept only repeats this step.
-    4. Record ACCEPTANCE with the method and the local base `<old>` → `<new>` in its prose, then its
+       touch it (no stash, checkout, reset or merge) and go on to 4: the pull request merged, so the
+       ticket closes (TR-215). Never leave it waiting for another Accept.
+    4. Record ACCEPTANCE with the method and the local base `<old>` → `<new>` in its prose (or, when 3
+       left it alone, `local <base> not updated: <reason>`), then its
        fixed field `merge: merged <merge commit>` (`reference/tickets.md`), set **Done**, and end
        with `done: merged <url>`.
   - **Local branch** (decision 34, TR-109), in this order:

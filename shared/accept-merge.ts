@@ -11,8 +11,6 @@ export type AcceptOutcome =
   | { kind: "done"; acceptance: string }
   /** Nothing merged because of the user's side; the NOT-MERGED reason and what they do first. */
   | { kind: "not-merged"; reason: string }
-  /** The pull request merged but the main checkout could not follow; the NOT-SYNCED reason. */
-  | { kind: "not-synced"; reason: string }
   /** What the plugin found that needs an owner. */
   | { kind: "surprise"; found: string };
 

@@ -142,14 +142,14 @@ describe("pullRequestMergeInstruction", () => {
     expect(text).toContain("git -C /home/user/notes-app fetch origin develop, then git -C /home/user/notes-app merge --ff-only origin/develop");
     expect(text.indexOf("merge --ff-only")).toBeGreaterThan(text.indexOf("Confirm its state is MERGED"));
     expect(text.indexOf("record ACCEPTANCE")).toBeGreaterThan(text.indexOf("merge --ff-only"));
-    expect(text).toContain("If develop cannot fast-forward (uncommitted changes, another branch checked out, commits origin lacks, the fetch failed), do not touch it: record NOT-SYNCED with the reason and what I do first (not that it merged: the card says so).");
+    expect(text).toContain("If develop cannot fast-forward (uncommitted changes, another branch checked out, commits origin lacks, the fetch failed), do not touch it, and still finish: the pull request merged, so the ticket closes. Say in the ACCEPTANCE prose that local develop was not updated, with the reason and what I do.");
   });
 
   it("has ACCEPTANCE carry the merge field the Done card reads (TR-114)", () => {
     expect(pullRequestMergeInstruction(notes, null, target)).toContain("Then record ACCEPTANCE ending with its merge field, merge: merged <merge commit>, and set the ticket Done.");
   });
 
-  it("lets a second Accept after NOT-SYNCED skip the merge GitHub already made", () => {
+  it("lets a second Accept after a cut-off skip the merge GitHub already made", () => {
     expect(pullRequestMergeInstruction(notes, null, target)).toContain("an earlier Accept may have merged it already: then go on");
   });
 

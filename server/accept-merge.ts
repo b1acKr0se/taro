@@ -85,8 +85,8 @@ async function methodAllowed(input: PullRequestAccept): Promise<boolean | null> 
 
 /**
  * Pull request (TR-110): merge it with the project's method only while its head is the reviewed
- * one, then bring the main checkout's base branch up to origin's. A PR already MERGED (an earlier
- * Accept, then NOT-SYNCED or a reload) goes straight to the second part.
+ * one, then try to bring the main checkout's base branch up to origin's. A PR already MERGED (an earlier
+ * Accept cut off by a reload) goes straight to the second part. The ticket closes either way (TR-215).
  */
 export async function acceptPullRequest(input: PullRequestAccept): Promise<AcceptOutcome> {
   const { url, head, method, baseBranch, repoPath } = input;
@@ -111,16 +111,23 @@ export async function acceptPullRequest(input: PullRequestAccept): Promise<Accep
   const mergeCommit = view.mergeCommit ?? head;
   const merged = mergedNow ? `merged ${url} with ${title}` : `${url} was already merged`;
 
+  // The pull request is merged: whatever stops the local base branch following it (TR-215) is a note on the closed ticket, not a reason to keep it open.
+  const local = await syncLocalBase(input);
+  return { kind: "done", acceptance: acceptanceText(input.at(), input.ticket, `Accepted ${head}, PR ${url}; ${merged}; ${local}`, `merged ${mergeCommit}`) };
+}
+
+/** Fast-forwards the main checkout's base branch to origin's; the ACCEPTANCE phrase for what happened, a failure included. */
+async function syncLocalBase(input: PullRequestAccept): Promise<string> {
+  const { baseBranch, repoPath } = input;
   const problem = await checkoutProblem(input);
-  if (problem !== null) return { kind: "not-synced", reason: problem };
+  if (problem !== null) return `local ${baseBranch} not updated: ${problem}`;
   const old = await headOf(input, "HEAD");
   const fetch = await git(input, ["fetch", "origin", baseBranch], NETWORK_TIMEOUT_MS);
-  if (fetch.code !== 0) return { kind: "not-synced", reason: `fetching origin ${baseBranch} into ${repoPath} failed (${commandError(fetch)}); fix the connection or the remote, then Accept again` };
+  if (fetch.code !== 0) return `local ${baseBranch} not updated: fetching origin ${baseBranch} into ${repoPath} failed (${commandError(fetch)})`;
   const forward = await git(input, ["merge", "--ff-only", `origin/${baseBranch}`]);
-  if (forward.code !== 0) return { kind: "not-synced", reason: `${baseBranch} in ${repoPath} has commits origin lacks; push or drop them, then Accept again` };
+  if (forward.code !== 0) return `local ${baseBranch} not updated: ${baseBranch} in ${repoPath} has commits origin lacks`;
   const now = await headOf(input, "HEAD");
-  const local = old === now ? `local ${baseBranch} already at ${shortSha(now ?? "")}` : `local ${baseBranch} ${shortSha(old ?? "")} → ${shortSha(now ?? "")}`;
-  return { kind: "done", acceptance: acceptanceText(input.at(), input.ticket, `Accepted ${head}, PR ${url}; ${merged}; ${local}`, `merged ${mergeCommit}`) };
+  return old === now ? `local ${baseBranch} already at ${shortSha(now ?? "")}` : `local ${baseBranch} ${shortSha(old ?? "")} → ${shortSha(now ?? "")}`;
 }
 
 /**
