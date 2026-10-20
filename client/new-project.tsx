@@ -68,7 +68,6 @@ export function NewProject({
   compact,
   onOpenProject,
   onCreating,
-  onCancel,
 }: {
   theme: PluginTheme;
   compact: boolean;
@@ -76,8 +75,6 @@ export function NewProject({
   onOpenProject: (project: string) => void;
   /** Creating has started; the screen shows its progress. */
   onCreating: () => void;
-  /** Leaves; null when there is no project to go back to. */
-  onCancel: (() => void) | null;
 }) {
   const models = useModels();
   const calls = { check: useRpc(checkOnboarding), onboard: useRpc(onboardProject), launch: useRpc(launchManager) };
@@ -165,7 +162,6 @@ export function NewProject({
         setDraft(null);
         setPage("form", false);
       }}
-      onCancel={onCancel}
     />
   );
 }
@@ -186,7 +182,6 @@ function ProjectPicker({
   onPick,
   onOpenProject,
   onManual,
-  onCancel,
 }: {
   theme: PluginTheme;
   compact: boolean;
@@ -196,7 +191,6 @@ function ProjectPicker({
   onPick: (candidate: PaseoProjectCandidate) => void;
   onOpenProject: (project: string) => void;
   onManual: () => void;
-  onCancel: (() => void) | null;
 }) {
   const prerequisites = usePrerequisites();
   // A check that failed stays listed once fixed, so it visibly turns green when the checks run again.
@@ -292,7 +286,6 @@ function ProjectPicker({
       contentContainerStyle={{ padding: SPACE.lg, paddingBottom: SPACE.xxl * 2, gap: SPACE.lg, maxWidth: PAGE_MAX_WIDTH, width: "100%", alignSelf: "center" }}
     >
       <View style={{ gap: SPACE.sm }}>
-        {onCancel === null ? null : <View style={{ alignSelf: "flex-start" }}><IconButton theme={theme} icon="ArrowLeft" label="Back" onPress={onCancel} /></View>}
         <Text style={{ color: colors.foreground, fontSize: wide ? FONT_SIZE.display : FONT_SIZE.heading, fontWeight: "700" }}>Add a project</Text>
         <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) }}>
           {nothingInPaseo
