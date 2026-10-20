@@ -141,6 +141,18 @@ export function viewSends(
 }
 
 /**
+ * Whether the newest turn still counts as open (TR-202's footer waits for it to end). The agent
+ * starts working when a message reaches it, before the timeline holds that message: the turn that
+ * ended before it was sent is not open, so its footer stays rather than leaving and coming back
+ * once the message lands. A message sent to a working agent (`sentWhileIdle` omits it) is a turn
+ * that really is open.
+ */
+export function turnIsOpen(working: boolean, views: readonly SendView[], sentWhileIdle: ReadonlySet<string>): boolean {
+  if (!working) return false;
+  return !views.some((view) => view.rowKey === null && view.mark !== "failed" && sentWhileIdle.has(view.send.id));
+}
+
+/**
  * The message to send next: the first one sending, once everything before it has gone. Null while a
  * failed one is before it, so a message never overtakes one sent earlier.
  */
