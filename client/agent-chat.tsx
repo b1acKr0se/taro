@@ -852,22 +852,21 @@ function UserMessage({
 const USER_BUBBLE_PADDING = SPACE.md;
 const USER_BUBBLE_BORDER = 1;
 
-const MARK_TEXT: Record<SendMark, string> = {
-  sending: "Sending…",
+/** A message on its way, or waiting on the agent, says nothing under itself: the loader is the only sign (TR-199). */
+type SilentMark = "sending" | "waiting";
+
+const MARK_TEXT: Record<Exclude<SendMark, SilentMark>, string> = {
   behind: "Waits for the message above to be sent",
   failed: "Not sent",
-  waiting: "Waiting for the agent's next step",
   unread: "Not read: the agent stopped first",
 };
 
-const MARK_ACTIONS: Record<SendMark, readonly { action: MarkAction; label: string; icon: string }[]> = {
-  sending: [],
+const MARK_ACTIONS: Record<Exclude<SendMark, SilentMark>, readonly { action: MarkAction; label: string; icon: string }[]> = {
   behind: [],
   failed: [
     { action: "retry", label: "Retry", icon: "RotateCcw" },
     { action: "edit", label: "Edit", icon: "Pencil" },
   ],
-  waiting: [],
   unread: [
     { action: "resend", label: "Resend", icon: "RotateCcw" },
     { action: "dismiss", label: "Dismiss", icon: "X" },
@@ -875,8 +874,8 @@ const MARK_ACTIONS: Record<SendMark, readonly { action: MarkAction; label: strin
 };
 
 /** A failed message's mark says why (TR-102). */
-function markText(view: SendView): string {
-  return view.mark === "failed" ? `Not sent: ${view.send.error ?? "Paseo did not take it."}` : MARK_TEXT[view.mark];
+function markText(view: SendView, mark: Exclude<SendMark, SilentMark>): string {
+  return mark === "failed" ? `Not sent: ${view.send.error ?? "Paseo did not take it."}` : MARK_TEXT[mark];
 }
 
 function SendMarkLine({
@@ -891,24 +890,22 @@ function SendMarkLine({
   onAction: (id: string, action: MarkAction) => void;
 }) {
   const { colors } = theme;
+  const { mark } = view;
+  if (mark === "sending" || mark === "waiting") return null;
   return (
     <View style={styles.mark}>
       <View style={styles.markLine}>
-        {view.mark === "waiting" || view.mark === "sending" ? (
-          <Spinner size={11} color={colors.foregroundMuted} />
-        ) : (
-          <Icon
-            name={view.mark === "behind" ? "Timer" : "AlertTriangle"}
-            size={12}
-            color={view.mark === "behind" ? colors.foregroundMuted : view.mark === "failed" ? colors.statusDanger : colors.statusWarning}
-          />
-        )}
-        <Text style={[styles.markText, view.mark === "failed" ? { color: colors.statusDanger } : null]}>{markText(view)}</Text>
+        <Icon
+          name={mark === "behind" ? "Timer" : "AlertTriangle"}
+          size={12}
+          color={mark === "behind" ? colors.foregroundMuted : mark === "failed" ? colors.statusDanger : colors.statusWarning}
+        />
+        <Text style={[styles.markText, mark === "failed" ? { color: colors.statusDanger } : null]}>{markText(view, mark)}</Text>
       </View>
       {/* The shared button (Catch up's style), in a row of their own under the words, right-aligned with the bubble. */}
-      {MARK_ACTIONS[view.mark].length === 0 ? null : (
+      {MARK_ACTIONS[mark].length === 0 ? null : (
         <View style={styles.markActions}>
-          {MARK_ACTIONS[view.mark].map((each) => (
+          {MARK_ACTIONS[mark].map((each) => (
             <IconButton key={each.action} icon={each.icon} label={each.label} showLabel theme={theme} onPress={() => onAction(view.send.id, each.action)} />
           ))}
         </View>

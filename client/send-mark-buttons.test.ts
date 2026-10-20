@@ -24,4 +24,11 @@ describe("a mark's actions", () => {
     expect(row).toContain('justifyContent: "flex-end"');
     expect(row).not.toContain("flexWrap");
   });
+
+  it("says nothing under a message that is sending or waiting on the agent: the loader is the only sign (TR-199)", () => {
+    expect(chat).not.toContain("Sending…");
+    expect(chat).not.toContain("Waiting for the agent");
+    expect(markLine).toContain('if (mark === "sending" || mark === "waiting") return null;');
+    expect(markLine).not.toContain("<Spinner");
+  });
 });
