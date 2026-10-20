@@ -217,9 +217,12 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   const saveOrder = useRpc(reorderProjects);
   /** A dragged tab (TR-214): the new order shows at once, is saved on the daemon, then the list is read again. */
   function reorder(order: string[]): void {
-    queryClient.setQueryData(PROJECTS_KEY, (data: typeof projects.data) =>
-      data === undefined ? data : { ...data, projects: order.flatMap((name) => data.projects.filter((summary) => summary.config.project === name)) },
-    );
+    // A poll already in flight would bring back the old order over this one.
+    void queryClient.cancelQueries({ queryKey: PROJECTS_KEY }).then(() => {
+      queryClient.setQueryData(PROJECTS_KEY, (data: typeof projects.data) =>
+        data === undefined ? data : { ...data, projects: order.flatMap((name) => data.projects.filter((summary) => summary.config.project === name)) },
+      );
+    });
     saveOrder({ order }).then(refresh, refresh);
   }
 
