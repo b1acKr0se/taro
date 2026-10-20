@@ -19,10 +19,11 @@ vi.mock("./projects", () => ({
   projectsDirectory: async () => projects,
   projectPaths: async (project: string) => ({ tracker: join(projects, project, "tracker") }),
 }));
+// NA-7's notes; any other ticket (a child) has none, so a record is found only where it is written.
 let ticketNotes: string | null = null;
 vi.mock("./tickets", () => ({
   appendTicketNote: vi.fn(async () => undefined),
-  childRecords: vi.fn(async () => ({ id: "NA-7", status: "In Progress", labels: [], notes: ticketNotes })),
+  childRecords: vi.fn(async (_tracker: string, id: string) => ({ id, status: "In Progress", labels: [], notes: id === "NA-7" ? ticketNotes : null })),
 }));
 
 process.env.GIT_CONFIG_GLOBAL = "/dev/null";
@@ -220,6 +221,12 @@ describe("the over-estimate note", () => {
     expect(notes()).toHaveLength(1);
     expect(notes()[0]).toMatch(/^CONTEXT \S+ — peaked at 142k against an estimate of 60k: implementer sub-1\. Split the task/);
     await watchTrimmedTurn(stats, { id: "sub-1", provider: "claude", cwd, createdAt: since, persistence: { sessionId: "session-peak" } }, subagent, [], claudeConfig);
+    expect(notes()).toHaveLength(1);
+  });
+
+  it("reads a child subagent's estimate from its parent, where the owner records it", async () => {
+    ticketNotes = estimateOf("60k");
+    await turn(overEstimateStats(), { ...subagent, ticket: "NA-7.01" });
     expect(notes()).toHaveLength(1);
   });
 

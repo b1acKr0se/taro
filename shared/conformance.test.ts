@@ -182,6 +182,26 @@ describe("hands-off, risks and rulings", () => {
     expect(kinds(ticket({ notes: handsOff }), { transitions: bareTransitions })).toEqual([]);
   });
 
+  it("a HANDS-OFF written after building began does not count", () => {
+    const late = `${NO_APPROVAL_NOTES}\n\n${RISKS_RECORD}\n\nHANDS-OFF 2026-01-05T11:30Z — the user: "decide everything yourself"`;
+    const transitions = [{ from: "Queued", to: "Planning", at: "2026-01-05T10:01:00.000Z" }, { from: "Planning", to: "In Progress", at: "2026-01-05T10:10:00.000Z" }];
+    expect(kinds(ticket({ notes: late }), { transitions })).toContain("no-approval");
+    const early = `HANDS-OFF 2026-01-05T10:05Z — the user: "decide everything yourself"\n\n${NO_APPROVAL_NOTES}\n\n${RISKS_RECORD}`;
+    expect(kinds(ticket({ notes: early }), { transitions })).not.toContain("no-approval");
+  });
+
+  it("a HANDS-OFF the user never gave is a violation", () => {
+    const handsOff = `HANDS-OFF 2026-01-05T09:59Z — the user: "decide everything yourself"\n\n${NO_APPROVAL_NOTES}\n\n${RISKS_RECORD}`;
+    const found = conformanceViolations(ticket({ notes: handsOff }), { handsOff: false });
+    expect(found).toContainEqual({ kind: "hands-off-unasked", detail: "HANDS-OFF at 2026-01-05T09:59Z though the user did not hand the ticket off" });
+    expect(found.map((violation) => violation.kind)).toContain("no-approval");
+  });
+
+  it("no no-risks on an investigation", () => {
+    const investigation = ticket({ status: "In Progress", labels: '"complexity-medium","investigation"' }).replace("2026-01-05T10:00:00Z", "2026-10-22T10:00:00Z");
+    expect(kinds(investigation)).not.toContain("no-risks");
+  });
+
   it("no-risks on a medium ticket after the cut-off", () => {
     const text = ticket({ status: "In Progress" }).replace("2026-01-05T10:00:00Z", "2026-10-22T10:00:00Z");
     expect(conformanceViolations(text, { transitions: [{ to: "Planning", at: "a" }, { to: "In Progress", at: "2026-10-22T10:09Z" }] })).toContainEqual({ kind: "no-risks", detail: "In Progress at 2026-10-22T10:09Z with no RISKS record" });

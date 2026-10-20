@@ -23,6 +23,7 @@ import {
 import { subagentEstimate } from "../shared/execution";
 import { withSkillsOff } from "../shared/claude-settings";
 import { isSubagentRole } from "../shared/project";
+import { parentOf } from "../shared/stats";
 import { statePath } from "./data-dir";
 import { isInside } from "./environment";
 import { readJsonIfPresent, writeTextAtomically } from "./files";
@@ -152,7 +153,11 @@ async function noteStartingContext(stats: Stats, agent: WatchedAgent, ticket: st
  */
 async function noteOverEstimate(stats: Stats, agent: WatchedAgent, ticket: string, project: string, sessionId: string, who: { id: string; role: string }, tracker: string, configDirectory: string): Promise<void> {
   if (await stats.hasOverEstimateNote(project, ticket, agent.id)) return;
-  const estimate = subagentEstimate((await childRecords(tracker, ticket)).notes, agent.id);
+  // An owner records its subagents on its own ticket, so a child's subagent is found on the parent.
+  const parent = parentOf(ticket);
+  const tickets = parent === null ? [ticket] : [ticket, parent];
+  const notes = (await Promise.all(tickets.map(async (id) => (await childRecords(tracker, id)).notes ?? ""))).join("\n\n");
+  const estimate = subagentEstimate(notes, agent.id);
   if (estimate === null) return;
   const transcript = await findTranscript(configDirectory, agent.cwd, sessionId);
   if (transcript === null) return;

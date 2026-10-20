@@ -148,11 +148,21 @@ export function conformanceViolations(ticketText: string, options: ConformanceOp
   const found: ConformanceViolation[] = [];
   const trivial = ticket.labels.includes("complexity-trivial");
   const notes = records(ticket.notes);
-  const handsOff = options.handsOff === true || notes.some((record) => /^HANDS-OFF\b/.test(record));
+  const handsOffRecord = notes.find((record) => /^HANDS-OFF\b/.test(record));
+  const handsOffAt = handsOffRecord === undefined ? null : (/^HANDS-OFF\s+(\S+)/.exec(handsOffRecord)?.[1] ?? null);
+  const firstInProgressAt = options.transitions?.find((transition) => transition.to === "In Progress")?.at;
+  // A HANDS-OFF counts only when written before building began: one appended later excuses nothing it came after.
+  const handsOffInTime = handsOffRecord !== undefined && !(Date.parse(handsOffAt ?? "") > Date.parse(firstInProgressAt ?? ""));
+  const handsOff = options.handsOff === true || (options.handsOff !== false && handsOffInTime);
   const startedBuilding = PAST_PLANNING.has(ticket.status);
   const delivered = ticket.status === "Awaiting acceptance" || ticket.status === "Done";
 
   found.push(...statusViolations({ ...options, handsOff }, trivial));
+
+  // The caller knows the user did not hand the ticket off (a benchmark task that is not hands-off).
+  if (options.handsOff === false && handsOffRecord !== undefined) {
+    found.push({ kind: "hands-off-unasked", detail: `HANDS-OFF at ${handsOffAt ?? "?"} though the user did not hand the ticket off` });
+  }
 
   if (startedBuilding && !trivial && ticket.plan.trim() === "") {
     found.push({ kind: "no-plan", detail: `${ticket.status} with no plan` });
@@ -166,7 +176,8 @@ export function conformanceViolations(ticketText: string, options: ConformanceOp
     found.push({ kind: "no-approval", detail: `In Progress${inProgressAt === undefined ? "" : ` at ${inProgressAt}`} with no APPROVAL` });
   }
 
-  const complexity = ticket.labels.some((label) => /^complexity-(?:low|medium|high)$/.test(label));
+  // RISKS is due before the first code commit, and an investigation makes none.
+  const complexity = ticket.labels.some((label) => /^complexity-(?:low|medium|high)$/.test(label)) && !ticket.labels.includes("investigation");
   if (startedBuilding && complexity && ticket.created >= RISKS_SINCE && !notes.some((record) => /^RISKS\b/.test(record))) {
     const inProgressAt = options.transitions?.find((transition) => transition.to === "In Progress")?.at;
     found.push({ kind: "no-risks", detail: `In Progress${inProgressAt === undefined ? "" : ` at ${inProgressAt}`} with no RISKS record` });
