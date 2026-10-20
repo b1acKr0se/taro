@@ -14,6 +14,7 @@ import {
   statusWithTurn,
   STOPPED_GRACE_MS,
   takeBack,
+  turnIsOpen,
   viewSends,
   type PendingSend,
   type SendTimelineEntry,
@@ -316,5 +317,29 @@ describe("chat message ids", () => {
 
   it("refuse anything else", () => {
     for (const id of ["taro-1", "chat-", "chat-A B", `chat-${"a".repeat(65)}`]) expect(ChatMessageIdSchema.safeParse(id).success).toBe(false);
+  });
+});
+
+describe("turnIsOpen (TR-208)", () => {
+  const view = (id: string, mark: "sending" | "failed" | "waiting", rowKey: string | null) => ({ send: sent(id, T0, "sending"), mark, rowKey });
+
+  it("keeps the footer of the turn before a message sent to an idle agent that started working on it, until the message lands", () => {
+    expect(turnIsOpen(true, [view("a", "sending", null)], new Set(["a"]))).toBe(false);
+    expect(turnIsOpen(true, [view("a", "waiting", null)], new Set(["a"]))).toBe(false);
+  });
+
+  it("is open once the message is in the timeline, or when the agent was working when it was sent", () => {
+    expect(turnIsOpen(true, [view("a", "waiting", "10")], new Set(["a"]))).toBe(true);
+    expect(turnIsOpen(true, [view("a", "sending", null)], new Set())).toBe(true);
+  });
+
+  it("is open while a turn runs with nothing sent, and never when the agent is idle", () => {
+    expect(turnIsOpen(true, [], new Set())).toBe(true);
+    expect(turnIsOpen(false, [], new Set())).toBe(false);
+    expect(turnIsOpen(false, [view("a", "sending", null)], new Set(["a"]))).toBe(false);
+  });
+
+  it("does not count a failed message, which never starts a turn", () => {
+    expect(turnIsOpen(true, [view("a", "failed", null)], new Set(["a"]))).toBe(true);
   });
 });

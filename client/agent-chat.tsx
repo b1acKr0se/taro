@@ -176,8 +176,18 @@ export function AgentChat({
   // The agent's folder, so a tool call's path inside it reads as Paseo shows it.
   const cwd = timeline.agent?.cwd ?? null;
   const working = isWorking(status);
+  const queries = useQueryClient();
+  const refreshQueue = () => queries.invalidateQueries({ queryKey: chatQueueKey(agent.id) });
+  const sends = usePendingSends({
+    agentId: agent.id,
+    status,
+    entries: timeline.entries,
+    hasOlder: timeline.hasOlder,
+    onSend,
+    onQueued: refreshQueue,
+  });
   // A tool call shimmers only while its turn runs (TR-190).
-  const rows = useMemo(() => whileWriting(endStoppedTools(withoutOpenTurn(transcriptRows(timeline.entries, cwd), working), working), writing), [timeline.entries, cwd, working, writing]);
+  const rows = useMemo(() => whileWriting(endStoppedTools(withoutOpenTurn(transcriptRows(timeline.entries, cwd), sends.turnOpen), working), writing), [timeline.entries, cwd, working, sends.turnOpen, writing]);
   const groups = useMemo(() => groupRows(rows), [rows]);
   // The newest entry's position, not the count: the timeline is a tail and stops growing in length.
   const sentImages = useSentImages(agent.id, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0);
@@ -197,16 +207,6 @@ export function AgentChat({
     drafts.set(agent.id, back.text);
     draftAttachments.set(agent.id, back.attachments);
   }
-  const queries = useQueryClient();
-  const refreshQueue = () => queries.invalidateQueries({ queryKey: chatQueueKey(agent.id) });
-  const sends = usePendingSends({
-    agentId: agent.id,
-    status,
-    entries: timeline.entries,
-    hasOlder: timeline.hasOlder,
-    onSend,
-    onQueued: refreshQueue,
-  });
   // The messages waiting on the daemon for the turn to end (TR-171), drawn above the box.
   const queue = useChatQueue(agent.id, working, readOnly === undefined);
   const timelineCompacting = useMemo(() => isCompacting(timeline.entries), [timeline.entries]);

@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { outgoingAttachments, type DraftAttachment, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
-import { isWorking, newChatMessageId, STOPPED_GRACE_MS, viewSends, type PendingSend, type SendTimelineEntry, type SendView } from "../shared/pending-sends";
+import { isWorking, newChatMessageId, STOPPED_GRACE_MS, turnIsOpen, viewSends, type PendingSend, type SendTimelineEntry, type SendView } from "../shared/pending-sends";
 import { useLatestCallback } from "./latest-callback";
 import { pendingSends } from "./pending-send-store";
 import { afterQueueRead } from "./queue-rows";
@@ -28,6 +28,8 @@ export type ChatSend = (
 export interface PendingSends {
   /** Each message still waiting, sending, failed or unread, in the order sent. */
   views: SendView[];
+  /** Whether the agent's newest turn is still going: false while it only started on a message the timeline has not shown yet. */
+  turnOpen: boolean;
   /** Sends the words in turn after those before them. */
   send(text: string, attachments: readonly DraftAttachment[], answersRequest: boolean): void;
   /** Sends an unread message again, as a new message. */
@@ -78,6 +80,8 @@ export function usePendingSends({
   if (working) stoppedAt.current = null;
   else if (stoppedAt.current === null) stoppedAt.current = Date.now();
 
+  // Messages sent while the agent was idle, to tell the turn they start from the one before them (`turnIsOpen`).
+  const sentWhileIdle = useRef(new Set<string>());
   // Drawn again when a waiting message's grace runs out, as nothing else may change by then.
   const [now, setNow] = useState(Date.now);
   const { views, read, landed } = useMemo(() => viewSends(sends, entries, { stoppedAt: stoppedAt.current, hasOlder }, now), [sends, entries, hasOlder, now, working]);
@@ -97,8 +101,11 @@ export function usePendingSends({
 
   return {
     views,
+    turnOpen: turnIsOpen(working, views, sentWhileIdle.current),
     send(text, attachments, answersRequest) {
-      pendingSends.add(agentId, { id: newChatMessageId(), text, attachments, at: Date.now(), state: "sending", ...(answersRequest ? { answersRequest } : {}) });
+      const id = newChatMessageId();
+      if (!working) sentWhileIdle.current.add(id);
+      pendingSends.add(agentId, { id, text, attachments, at: Date.now(), state: "sending", ...(answersRequest ? { answersRequest } : {}) });
     },
     resend(id) {
       pendingSends.resend(agentId, id, { id: newChatMessageId(), at: Date.now() });
