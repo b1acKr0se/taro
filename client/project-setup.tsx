@@ -246,7 +246,7 @@ export function ProjectSetup({
           backgroundColor: colors.surface0,
         }}
       >
-        {onCancel === null ? null : <IconButton theme={theme} icon="ChevronLeft" label={bar.backLabel} disabled={busy} onPress={onCancel} />}
+        {onCancel === null ? null : <IconButton theme={theme} icon="ArrowLeft" label={bar.backLabel} disabled={busy} onPress={onCancel} />}
         <Text numberOfLines={1} style={{ flex: 1, color: colors.foreground, fontSize: FONT_SIZE.heading, fontWeight: "700" }}>
           {bar.title}
         </Text>
