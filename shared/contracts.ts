@@ -312,6 +312,8 @@ export const TicketDetailSchema = z.object({
   pausable: z.boolean().default(false),
   /** The owner's agent id while Compact is offered for it (`shared/compact.ts`, TR-095), else null. */
   compactOwner: z.string().nullable().default(null),
+  /** Relaunch owner is offered (`shared/relaunch.ts`, TR-219). */
+  relaunchable: z.boolean().default(false),
   /** Change spec… is offered: Queued with no owner (`shared/spec-change.ts`, TR-129). */
   specChangeable: z.boolean().default(false),
   /** The plan the user last answered, when and how (TR-151), so a plan asked again marks what changed since; null before any answer. */

@@ -12,7 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Text, View, type ScrollView as NativeScrollView } from "react-native";
 
-import { answerDecision, compactAgent, listOpenDecisions, loadTicket, pauseTicket, resumeTicket } from "../shared/contracts";
+import { answerDecision, compactAgent, listOpenDecisions, loadTicket, pauseTicket, relaunchOwner, resumeTicket } from "../shared/contracts";
 import { ticketViewApproval } from "../shared/decision-view";
 import { descriptionParts } from "../shared/description";
 import { finalSummaryBody } from "../shared/execution";
@@ -157,6 +157,7 @@ function TicketDetail({
   const pauseRpc = useRpc(pauseTicket);
   const resumeRpc = useRpc(resumeTicket);
   const compactRpc = useRpc(compactAgent);
+  const relaunchRpc = useRpc(relaunchOwner);
   // One owner of the Park, Resume and Compact presses: while one is in flight the others are disabled.
   const pausePresses = useActions();
   // What Park and Resume did is the server's to say (TR-088). Each may put the other in its place
@@ -329,6 +330,15 @@ function TicketDetail({
                 busy: pausePresses.busy,
               }
         }
+        relaunchAction={
+          data.relaunchable
+            ? {
+                run: () => pausePresses.press("relaunch", () => relaunchRpc({ project, ticket }), { success: "A fresh owner is starting.", onSuccess: () => void detail.refetch() }),
+                state: pausePresses.stateOf("relaunch"),
+                busy: pausePresses.busy,
+              }
+            : null
+        }
         specChange={data.specChangeable && !specOpen ? () => setSpecOpen(true) : null}
         summary={summary}
         approve={approving === null ? null : { ...approving, presses: approvePresses }}
@@ -385,6 +395,7 @@ function SummaryBlock({
   pause,
   pauseAction,
   compactAction,
+  relaunchAction,
   specChange,
   summary,
   approve,
@@ -400,6 +411,8 @@ function SummaryBlock({
   pauseAction: { kind: "pause" | "resume"; run: () => void; state: "busy" | "done" | undefined; busy: boolean } | null;
   /** Compact beside Park, for an idle owner with a large context (TR-095). */
   compactAction: { run: () => void; state: "busy" | "done" | undefined; busy: boolean } | null;
+  /** Relaunch owner: a fresh owner from the latest HANDOFF, in any worked status (TR-219). */
+  relaunchAction: { run: () => void; state: "busy" | "done" | undefined; busy: boolean } | null;
   /** Opens Change spec…'s box under the block, on a Queued ticket with no owner (TR-129). */
   specChange: (() => void) | null;
   summary: TicketSummary;
@@ -434,7 +447,7 @@ function SummaryBlock({
         {labels.map((each) => (
           <Chip key={each} theme={theme} icon="Tag" text={each} color={colors.foregroundMuted} />
         ))}
-        {pauseAction === null && compactAction === null && specChange === null ? null : (
+        {pauseAction === null && compactAction === null && relaunchAction === null && specChange === null ? null : (
           <View style={{ marginLeft: "auto", flexDirection: "row", flexWrap: "wrap", gap: SPACE.sm }}>
             {pauseAction === null ? null : (
               <IconButton
@@ -445,6 +458,17 @@ function SummaryBlock({
                 disabled={pauseAction.busy}
                 state={pauseAction.state}
                 onPress={pauseAction.run}
+              />
+            )}
+            {relaunchAction === null ? null : (
+              <IconButton
+                icon="RotateCcw"
+                label="Relaunch owner"
+                showLabel
+                theme={theme}
+                disabled={relaunchAction.busy}
+                state={relaunchAction.state}
+                onPress={relaunchAction.run}
               />
             )}
             {specChange === null ? null : <IconButton icon="Pencil" label="Change spec…" showLabel theme={theme} onPress={specChange} />}

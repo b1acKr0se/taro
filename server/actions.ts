@@ -402,6 +402,9 @@ export class Actions {
     const config = await requireProjectConfig(project);
     const paths = await projectPaths(project);
     const previous = (await this.owners(paseo, project, ticket)).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
+    // A detail view left open past Accept must not start an owner for a finished ticket (TR-219).
+    const status = (await viewTicket(paths.tracker, ticket)).status;
+    if (status === "Done" || status === "Cancelled") throw new Error(`${ticket} is ${status}; there is no owner to relaunch.`);
     let workspaceId = previous?.workspaceId ?? null;
     if (workspaceId === null) {
       const detail = await viewTicket(paths.tracker, ticket);
