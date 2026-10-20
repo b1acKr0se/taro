@@ -242,5 +242,6 @@ describe("pull request", () => {
     const outcome = await acceptPullRequest(input(prHead));
     expect(outcome.kind).toBe("done");
     expect(outcome.kind === "done" && outcome.acceptance).toContain("local main not updated: ");
+    expect(outcome.kind === "done" && outcome.acceptance).not.toContain("Accept again");
   });
 });

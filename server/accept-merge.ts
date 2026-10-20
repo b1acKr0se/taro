@@ -89,7 +89,7 @@ async function methodAllowed(input: PullRequestAccept): Promise<boolean | null> 
  * Accept cut off by a reload) goes straight to the second part. The ticket closes either way (TR-215).
  */
 export async function acceptPullRequest(input: PullRequestAccept): Promise<AcceptOutcome> {
-  const { url, head, method, baseBranch, repoPath } = input;
+  const { url, head, method, repoPath } = input;
   const title = MERGE_METHOD_TITLES[method];
   const before = await viewPullRequest(input);
   if (before.view === undefined) return { kind: "surprise", found: before.error };
@@ -120,7 +120,7 @@ export async function acceptPullRequest(input: PullRequestAccept): Promise<Accep
 async function syncLocalBase(input: PullRequestAccept): Promise<string> {
   const { baseBranch, repoPath } = input;
   const problem = await checkoutProblem(input);
-  if (problem !== null) return `local ${baseBranch} not updated: ${problem}`;
+  if (problem !== null) return `local ${baseBranch} not updated: ${problem.replace(/, then Accept again$/, "")}`;
   const old = await headOf(input, "HEAD");
   const fetch = await git(input, ["fetch", "origin", baseBranch], NETWORK_TIMEOUT_MS);
   if (fetch.code !== 0) return `local ${baseBranch} not updated: fetching origin ${baseBranch} into ${repoPath} failed (${commandError(fetch)})`;
