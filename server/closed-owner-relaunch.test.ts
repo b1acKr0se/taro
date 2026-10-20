@@ -36,11 +36,13 @@ let live: PaseoAgent[];
 let notes: Record<string, string>;
 let actions: Actions;
 let relaunched: string[];
+let failing: Set<string>;
 
 beforeEach(() => {
   live = [];
   notes = {};
   relaunched = [];
+  failing = new Set();
   vi.mocked(appendTicketNote).mockClear();
   vi.mocked(projectAgents).mockImplementation(async () => [...live]);
   vi.mocked(listTaroAgents).mockImplementation(async () => [...live]);
@@ -50,7 +52,9 @@ beforeEach(() => {
   const state = { forgetAgent: async () => undefined, queueLadder: async () => null, saveQueueLadder: async () => undefined } as unknown as PluginState;
   actions = new Actions(state, {} as Supervisor, {} as TrackerWatch, {} as Stats, {} as Recovery);
   vi.spyOn(actions, "relaunchOwner").mockImplementation(async (_paseo, _project, id) => {
+    if (failing.has(id)) throw new Error("provider not ready");
     relaunched.push(id);
+    live.push(agent(`fresh-${id}`, id, "running"));
     return `fresh-${id}`;
   });
 });
@@ -77,5 +81,23 @@ describe("closed owners are replaced", () => {
     vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Awaiting acceptance"), ticket("DM-2", "In Progress")] as never);
     await actions.checkQueues(paseo);
     expect(relaunched).toEqual([]);
+  });
+
+  it("recounts between relaunches: with one live owner and a cap of 2 only one of two starts, with one note", async () => {
+    live = [agent("x", "DM-9", "running"), agent("a", "DM-1", "closed"), agent("b", "DM-2", "closed")];
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-9", "In Progress"), ticket("DM-1", "In Progress"), ticket("DM-2", "In Progress")] as never);
+    await actions.checkQueues(paseo);
+    expect(relaunched).toEqual(["DM-1"]);
+    expect(vi.mocked(appendTicketNote)).toHaveBeenCalledTimes(1);
+  });
+
+  it("notes a failed relaunch and goes on to the next ticket", async () => {
+    live = [agent("a", "DM-1", "closed"), agent("b", "DM-2", "closed")];
+    failing.add("DM-1");
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "In Progress"), ticket("DM-2", "In Progress")] as never);
+    await actions.checkQueues(paseo);
+    expect(relaunched).toEqual(["DM-2"]);
+    const written = vi.mocked(appendTicketNote).mock.calls.map((call) => `${call[1]} ${call[2]}`);
+    expect(written.some((line) => /^DM-1 OWNER-RELAUNCH-FAILED .*provider not ready/.test(line))).toBe(true);
   });
 });

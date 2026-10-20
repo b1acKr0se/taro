@@ -29,10 +29,10 @@ export interface ClosedOwnerAgent {
   labels: Readonly<Record<string, string>>;
 }
 
-/** The ticket's OWNER-RELAUNCHED records within the window. */
+/** The ticket's OWNER-RELAUNCHED and OWNER-RELAUNCH-FAILED records within the window. */
 export function recentAutoRelaunches(notes: string | null, now: number): number {
   return noteRecords(notes).filter((record) => {
-    const at = /^OWNER-RELAUNCHED\s+(\S+)/.exec(record)?.[1];
+    const at = /^OWNER-RELAUNCH(?:ED|-FAILED)\s+(\S+)/.exec(record)?.[1];
     return at !== undefined && now - Date.parse(at) < AUTO_RELAUNCH_WINDOW_MS;
   }).length;
 }
@@ -53,4 +53,9 @@ export function ticketsWithClosedOwner(tickets: readonly ClosedOwnerTicket[], ow
 
 export function ownerRelaunchedText(at: string, previous: string, agentId: string): string {
   return `OWNER-RELAUNCHED ${at} — Paseo closed the owner ${previous} (a daemon update or restart); the plugin started a fresh owner ${agentId} from the latest HANDOFF`;
+}
+
+export function ownerRelaunchFailedText(at: string, reason: string): string {
+  const flat = reason.replace(/\s+/g, " ").trim().slice(0, 200);
+  return `OWNER-RELAUNCH-FAILED ${at} — the plugin could not start a fresh owner after Paseo closed the old one (${flat}); Relaunch it from the board`;
 }

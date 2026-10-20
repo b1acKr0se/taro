@@ -14,7 +14,7 @@ import { questionHoldingAccept } from "../shared/delivery-end";
 import { doneTicketOf, planRelease } from "../shared/done-release";
 import { acceptanceText, handoffText, ownerIsWarm, type AcceptOutcome, type Handover } from "../shared/accept-merge";
 import { acceptanceMerge, acceptedRecord, acceptedRecordText, executionBranch, executionWorkspace, localMergeInstruction, pluginAcceptPending, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
-import { ownerRelaunchedText, ticketsWithClosedOwner } from "../shared/closed-owner";
+import { ownerRelaunchedText, ownerRelaunchFailedText, ticketsWithClosedOwner } from "../shared/closed-owner";
 import { dependsOn, holdsSlot, shouldWakeManager, statusChanges, withRecordedStatuses, type StatusChange } from "../shared/owner-cap";
 import {
   handoffSincePauseRequest,
@@ -1079,10 +1079,17 @@ export class Actions {
       const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners, true);
       if (!count.freeSlot) break;
       const previous = owners.filter((owner) => dependsOn([owner.labels[TARO_LABELS.ticket] ?? ""], id)).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
-      const agentId = await this.relaunchOwner(paseo, project, id);
-      await appendTicketNote(paths.tracker, id, ownerRelaunchedText(new Date(now).toISOString(), previous?.id ?? "(none)", agentId));
-      console.log(`[taro] ${project}: Paseo closed ${id}'s owner; started a fresh owner ${agentId}`);
-      started = true;
+      const at = new Date(now).toISOString();
+      try {
+        const agentId = await this.relaunchOwner(paseo, project, id);
+        await appendTicketNote(paths.tracker, id, ownerRelaunchedText(at, previous?.id ?? "(none)", agentId));
+        console.log(`[taro] ${project}: Paseo closed ${id}'s owner; started a fresh owner ${agentId}`);
+        started = true;
+      } catch (error: unknown) {
+        // Counted towards the hourly limit, and one ticket's failure never stops the next.
+        reportFailure(`[taro] ${project}: relaunching ${id}'s closed owner failed:`, error);
+        await appendTicketNote(paths.tracker, id, ownerRelaunchFailedText(at, error instanceof Error ? error.message : String(error))).catch(() => undefined);
+      }
     }
     return started;
   }

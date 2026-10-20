@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { AUTO_RELAUNCH_WINDOW_MS, ownerRelaunchedText, ticketsWithClosedOwner } from "./closed-owner";
+import { AUTO_RELAUNCH_WINDOW_MS, ownerRelaunchedText, ownerRelaunchFailedText, ticketsWithClosedOwner } from "./closed-owner";
 import { TARO_LABELS } from "./project";
 
 const NOW = Date.parse("2026-01-05T12:00:00Z");
@@ -35,6 +35,8 @@ describe("ticketsWithClosedOwner", () => {
     const owners = [owner("TR-1", "closed")];
     const two = [record("2026-01-05T11:30:00Z"), record("2026-01-05T11:50:00Z")].join("\n\n");
     expect(ticketsWithClosedOwner([ticket("TR-1", "In Progress", two)], owners, NOW)).toEqual([]);
+    const mixed = [record("2026-01-05T11:30:00Z"), ownerRelaunchFailedText("2026-01-05T11:50:00Z", "boom")].join("\n\n");
+    expect(ticketsWithClosedOwner([ticket("TR-1", "In Progress", mixed)], owners, NOW)).toEqual([]);
     const old = [record("2026-01-05T09:00:00Z"), record(new Date(NOW - AUTO_RELAUNCH_WINDOW_MS + 60_000).toISOString())].join("\n\n");
     expect(ticketsWithClosedOwner([ticket("TR-1", "In Progress", old)], owners, NOW)).toEqual(["TR-1"]);
   });
