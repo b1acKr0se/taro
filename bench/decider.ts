@@ -232,15 +232,19 @@ export const MAX_CARD_ATTEMPTS = 3;
 
 /**
  * A card whose answer failed on screen and over RPC: its key leaves `handled` so the next pass asks again, up to
- * `MAX_CARD_ATTEMPTS` per key; the last failure keeps the key handled and says so. Returns the violation to log.
+ * `MAX_CARD_ATTEMPTS` per key. The last failure keeps the key handled and returns the one violation for the card
+ * (so `cardFailures` counts a card once); earlier failures return null, for a plain log line.
  */
-export function releaseFailedKey(handled: Set<string>, attempts: Map<string, number>, key: string, error: unknown, at: string): Extract<DeciderEvent, { type: "violation" }> {
+export function releaseFailedKey(handled: Set<string>, attempts: Map<string, number>, key: string, error: unknown, at: string): Extract<DeciderEvent, { type: "violation" }> | null {
   const attempt = (attempts.get(key) ?? 0) + 1;
   attempts.set(key, attempt);
   const givingUp = attempt >= MAX_CARD_ATTEMPTS;
-  if (!givingUp) handled.delete(key);
+  if (!givingUp) {
+    handled.delete(key);
+    return null;
+  }
   const reason = (error instanceof Error ? error.message : String(error)).split("\n")[0];
-  return { type: "violation", at, kind: "card-unanswered", detail: `${key} could not be answered on screen or over RPC (attempt ${attempt} of ${MAX_CARD_ATTEMPTS}${givingUp ? ", giving up" : ""}): ${reason}` };
+  return { type: "violation", at, kind: "card-unanswered", detail: `${key} could not be answered on screen or over RPC after ${MAX_CARD_ATTEMPTS} attempts: ${reason}` };
 }
 
 /** Only an unreadable reply from the decider's model ends the decider (and the run); any other failed pass is logged and tried again. */
@@ -631,7 +635,9 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
     try {
       await answer();
     } catch (error) {
-      record(releaseFailedKey(handled, attempts, key, error, now()));
+      const violation = releaseFailedKey(handled, attempts, key, error, now());
+      if (violation !== null) record(violation);
+      else options.log(`decider: card ${key} not answered (attempt ${attempts.get(key)} of ${MAX_CARD_ATTEMPTS}), will try again`);
       throw error;
     }
   }

@@ -219,22 +219,23 @@ describe("answerEvents", () => {
 
 describe("releaseFailedKey", () => {
   const at = "2026-10-20T12:00:00Z";
-  it("drops the key so the card is asked again, and returns a violation to log", () => {
+  it("drops the key so the card is asked again, with no violation yet", () => {
     const handled = new Set(["agent:export-format@t1", "other"]);
     const event = releaseFailedKey(handled, new Map(), "agent:export-format@t1", new Error("rpc failed: boom\nmore"), at);
     expect(handled.has("agent:export-format@t1")).toBe(false);
     expect(handled.has("other")).toBe(true);
-    expect(event).toEqual({ type: "violation", at, kind: "card-unanswered", detail: "agent:export-format@t1 could not be answered on screen or over RPC (attempt 1 of 3): rpc failed: boom" });
+    expect(event).toBeNull();
   });
 
-  it("gives up on a card after 3 attempts: the key stays handled and the last violation says so, once", () => {
+  it("gives up on a card after 3 attempts: the key stays handled and one violation is returned, on the last", () => {
     const handled = new Set(["k"]);
     const attempts = new Map<string, number>();
     const events = [1, 2, 3].map(() => {
       handled.add("k");
-      return releaseFailedKey(handled, attempts, "k", new Error("boom"), at);
+      return releaseFailedKey(handled, attempts, "k", new Error("boom\nmore"), at);
     });
-    expect(events.map((event) => event.detail.includes("giving up"))).toEqual([false, false, true]);
+    expect(events.slice(0, 2)).toEqual([null, null]);
+    expect(events[2]).toEqual({ type: "violation", at, kind: "card-unanswered", detail: "k could not be answered on screen or over RPC after 3 attempts: boom" });
     expect(handled.has("k")).toBe(true);
   });
 
