@@ -14,7 +14,7 @@ import { lacksPlan, noPlanRecord } from "../shared/no-plan";
 import { asPlanningQuestion, asStored, planningTicket } from "../shared/planning-questions";
 import type { DrainTrigger } from "../shared/chat-queue";
 import { isCrash } from "../shared/recovery";
-import { hashText, parseDecisionBlocks, parseStatusLine, seenAgain, withImagePaths, type ParsedDecision } from "../shared/reports";
+import { hashText, parseDecisionBlocks, parseStatusLine, questionsOf, seenAgain, withImagePaths, type ParsedDecision } from "../shared/reports";
 import { openQuestionHolding, withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDecision } from "../shared/state";
 import { watchTrimmedTurn } from "./agent-trim";
 import { fetchLiveAgent, isMidTurn, listTaroAgents } from "./agents";
@@ -507,9 +507,11 @@ export class Supervisor {
           }
           continue;
         }
+        const evidence = identity.ticket === null ? null : ticketEvidenceDirectory(identity.project, identity.ticket);
         const next: StoredDecision = {
           ...decision,
-          options: withImagePaths(decision.options, identity.ticket === null ? null : ticketEvidenceDirectory(identity.project, identity.ticket)),
+          options: withImagePaths(decision.options, evidence),
+          questions: questionsOf(decision).map((question) => ({ ...question, options: withImagePaths(question.options, evidence) })),
           key,
           project: identity.project,
           ticket: identity.ticket,

@@ -9,6 +9,7 @@
 import { randomUUID } from "node:crypto";
 
 import { carriedSlot } from "../shared/chat-queue";
+import { answerWords, severalAnswers, type QuestionAnswer } from "../shared/decision-answers";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { questionHoldingAccept } from "../shared/delivery-end";
 import { doneTicketOf, planRelease } from "../shared/done-release";
@@ -61,6 +62,7 @@ import {
 } from "../shared/queue-check";
 import { hasHeadroom, type BoardAlert } from "../shared/recovery";
 import { specChangeRefusal } from "../shared/spec-change";
+import { questionsOf } from "../shared/reports";
 import { carriedQuestionLines, questionsToCarry } from "../shared/state";
 import { TARO_LABELS, TICKET_STATUSES, type ProjectConfig } from "../shared/project";
 import { acceptLocalBranch, acceptPullRequest } from "./accept-merge";
@@ -136,17 +138,17 @@ export class Actions {
     private readonly queue: ChatQueue | null = null,
   ) {}
 
-  async answerDecision(paseo: PaseoApi, key: string, label: string | null, text: string, from: "screen" | "tab" = "screen"): Promise<void> {
+  async answerDecision(paseo: PaseoApi, key: string, label: string | null, text: string, from: "screen" | "tab" = "screen", answers?: QuestionAnswer[]): Promise<void> {
     if (this.answering.has(key)) throw new Error("That decision is already being answered.");
     this.answering.add(key);
     try {
-      await this.answerOpenDecision(paseo, key, label, text, from);
+      await this.answerOpenDecision(paseo, key, label, text, from, answers ?? []);
     } finally {
       this.answering.delete(key);
     }
   }
 
-  private async answerOpenDecision(paseo: PaseoApi, key: string, label: string | null, text: string, from: "screen" | "tab"): Promise<void> {
+  private async answerOpenDecision(paseo: PaseoApi, key: string, label: string | null, text: string, from: "screen" | "tab", answers: QuestionAnswer[]): Promise<void> {
     const decision = await this.state.decision(key);
     // An answered or withdrawn decision stays stored for a while; a second answer would contradict the first.
     if (decision === null || decision.status !== "open") throw new Error("That decision is no longer open.");
@@ -155,16 +157,15 @@ export class Actions {
       await this.supervisor.withdrawDecisionsOf(decision.agentId);
       throw new Error("The agent that asked this is archived or gone, so nothing was sent; its open questions are withdrawn.");
     }
-    const option = label === null ? null : decision.options.find((candidate) => candidate.label === label) ?? null;
-    const typed = text.trim();
-    const prompt = option?.prompt.trim() ?? "";
-    const lead = prompt.replace(/\u2026$/, "").trim();
+    const questions = questionsOf(decision);
+    // Checked before anything is sent: a card asking several is answered whole or not at all (TR-207).
+    const several = questions.length > 0 ? severalAnswers(questions, answers) : null;
+    const option = several !== null || label === null ? null : decision.options.find((candidate) => candidate.label === label) ?? null;
     // Typed text goes with a chosen option (an option whose prompt ends with "…" asks for it): the prompt, then the text.
-    // Text that already starts with the prompt (the card prefills it; older cards send the prompt alone) is not repeated.
-    const words = option === null ? typed : typed === "" ? prompt : typed.startsWith(lead) ? typed : `${lead}: ${typed}`;
+    const words = several?.message ?? answerWords(option, text);
     if (words === "") throw new Error("Type an answer or press an option.");
     // Words typed on a plan without a button are Request changes, never approval (TR-140): bare, an owner took them for one.
-    const changesRequested = option === null && decision.id === SCOPE_APPROVAL;
+    const changesRequested = several === null && option === null && decision.id === SCOPE_APPROVAL;
     // Tagged as the plugin's, so this answer closes only its own decision, not the agent's others.
     await sendFromPlugin(paseo, decision.agentId, await message(changesRequested ? TEMPLATES.planChanges : TEMPLATES.answer, { text: words }));
     // A decision without a ticket is the manager's: answering it acts on a queued alert as a message would.
@@ -174,12 +175,13 @@ export class Actions {
       const stored = decisions.find((candidate) => candidate.key === key);
       if (stored !== undefined) {
         stored.status = "answered";
-        stored.answer = { text: words, label: option?.label ?? null, at };
+        stored.answer = several === null ? { text: words, label: option?.label ?? null, at } : { text: words, label: null, at, answers: several.answers };
       }
     });
     if (decision.ticket !== null) {
       const paths = await projectPaths(decision.project);
-      await appendTicketNote(paths.tracker, decision.ticket, `ANSWER ${at} — ${decision.id}: "${decision.question}" → ${option === null ? (changesRequested ? `Request changes ("${words}")` : `"${words}"`) : `${option.label} ("${words}")`} (the user, from ${from === "tab" ? "the agent's tab" : "the Taro screen"})`).catch(
+      const given = several !== null ? several.record : option === null ? (changesRequested ? `Request changes ("${words}")` : `"${words}"`) : `${option.label} ("${words}")`;
+      await appendTicketNote(paths.tracker, decision.ticket, `ANSWER ${at} — ${decision.id}: "${decision.question}" → ${given} (the user, from ${from === "tab" ? "the agent's tab" : "the Taro screen"})`).catch(
         (error: unknown) => console.warn(`[taro] could not record the answer on ${decision.ticket}: ${error instanceof Error ? error.message : String(error)}`),
       );
     }

@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
-import { decisionMessageSegments, parseDecisionBlocks, parseStatusLine, withImagePaths, withoutDecisionBlocks } from "./reports";
+import { decisionMessageSegments, parseDecisionBlocks, parseDecisionBody, parseStatusLine, sameQuestion, withImagePaths, withoutDecisionBlocks } from "./reports";
 
 describe("parseStatusLine", () => {
   it("reads the last line", () => {
@@ -340,5 +343,116 @@ describe("a decision fence written the wrong way (TR-197)", () => {
   it("leaves other fences alone", () => {
     expect(parseDecisionBlocks("```decisions\nid: x\n```")).toEqual([]);
     expect(parseDecisionBlocks("```json\n{}\n```")).toEqual([]);
+  });
+});
+
+describe("a decision that asks several questions (TR-207)", () => {
+  const question = (header: string, labels: string[], recommended = labels[0] ?? "") =>
+    [
+      `  - header: ${header}`,
+      `    question: ${header} as?`,
+      "    options:",
+      ...labels.flatMap((label) => [`      - label: ${label}`, `        prompt: Use ${label}`]),
+      `    recommended: ${recommended}`,
+      "    reason: it fits",
+    ].join("\n");
+  const block = (...questions: string[]) => `id: export\nblocking: true\nquestions:\n${questions.join("\n")}\n`;
+
+  it("reads the ticket's example", () => {
+    const body =
+      "id: export\nblocking: true\nquestions:\n  - header: Tags\n    question: Tags as?\n    options:\n      - label: YAML\n        prompt: Use YAML\n  - header: Folders\n    question: Layout?\n    options:\n      - label: Flat\n        prompt: One folder\n";
+    expect(parseDecisionBody(body)).toMatchObject({
+      id: "export",
+      blocking: true,
+      questions: [
+        { header: "Tags", question: "Tags as?", options: [{ label: "YAML", prompt: "Use YAML" }] },
+        { header: "Folders", question: "Layout?", options: [{ label: "Flat", prompt: "One folder" }] },
+      ],
+    });
+  });
+
+  it("parses a block with three questions", () => {
+    const decision = parseDecisionBody(block(question("Tags", ["YAML", "Hashtags"]), question("Folders", ["Flat", "Nested"], "Nested"), question("Images", ["Copy", "Link", "Leave out"], "Link")));
+    expect(decision.problems).toEqual([]);
+    expect(decision.questions.map((each) => each.header)).toEqual(["Tags", "Folders", "Images"]);
+    expect(decision.questions.map((each) => each.options.map((option) => option.label))).toEqual([["YAML", "Hashtags"], ["Flat", "Nested"], ["Copy", "Link", "Leave out"]]);
+    expect(decision.questions.map((each) => each.recommended)).toEqual(["YAML", "Nested", "Link"]);
+    expect(decision.questions[2]?.options[1]).toMatchObject({ label: "Link", prompt: "Use Link" });
+    expect(decision.question).toBe("3 questions: Tags · Folders · Images");
+    expect(decision.options).toEqual([]);
+  });
+
+  it("one question in questions parses as a single decision", () => {
+    const decision = parseDecisionBody(block(question("Tags", ["YAML", "Hashtags"])));
+    expect(decision).toMatchObject({ id: "export", blocking: true, question: "Tags as?", recommended: "YAML", reason: "it fits", questions: [], problems: [] });
+    expect(decision.options.map((option) => option.label)).toEqual(["YAML", "Hashtags"]);
+  });
+
+  it("refuses five questions", () => {
+    const decision = parseDecisionBody(block(...["A", "B", "C", "D", "E"].map((header) => question(header, ["Yes", "No"]))));
+    expect(decision.problems.some((problem) => problem.includes("5 questions"))).toBe(true);
+  });
+
+  it("refuses a missing header", () => {
+    const decision = parseDecisionBody(block(question("Tags", ["YAML"]), question("Folders", ["Flat"]).replace("  - header: Folders\n    question", "  - question")));
+    expect(decision.problems).toContain("question 2 has no header");
+  });
+
+  it("refuses a duplicate header", () => {
+    expect(parseDecisionBody(block(question("Tags", ["YAML"]), question("Tags", ["Flat"]))).problems).toContain('two questions have the header "Tags"');
+  });
+
+  it("refuses question and questions together", () => {
+    const decision = parseDecisionBody(`question: Which?\n${block(question("Tags", ["YAML"]), question("Folders", ["Flat"]))}`);
+    expect(decision.problems.some((problem) => problem.startsWith("both question and questions"))).toBe(true);
+  });
+
+  it("refuses a default on several questions", () => {
+    const decision = parseDecisionBody(`default: YAML\n${block(question("Tags", ["YAML"]), question("Folders", ["Flat"]))}`);
+    expect(decision.problems.some((problem) => problem.startsWith("a default on several questions"))).toBe(true);
+    expect(decision.default).toBe("");
+  });
+
+  it("refuses a question with no options and a header past 24 characters", () => {
+    const decision = parseDecisionBody(block(question("Tags", ["YAML"]), question("A header far too long for its tab", []).replace("    options:\n", "")));
+    expect(decision.problems).toContain('question "A header far too long for its tab": no options');
+    expect(decision.problems).toContain('header "A header far too long for its tab" is longer than 24 characters');
+  });
+
+  it("keeps a long why as a block scalar in a question", () => {
+    const why = "    why: |\n      Front matter is read by site tools.\n\n      Hashtags read better in plain editors.";
+    const decision = parseDecisionBody(block(question("Tags", ["YAML"]).replace("    options:", `${why}\n    options:`), question("Folders", ["Flat"])));
+    expect(decision.problems).toEqual([]);
+    expect(decision.questions[0]?.why).toBe("Front matter is read by site tools.\n\nHashtags read better in plain editors.");
+    expect(decision.questions[0]?.options[0]?.label).toBe("YAML");
+  });
+
+  it("reads the example in skill/reference/formats.md without a problem", () => {
+    const formats = readFileSync(join(__dirname, "..", "skill", "reference", "formats.md"), "utf8");
+    const example = /```decision\n(id: export-format[\s\S]*?)```/.exec(formats)?.[1] ?? "";
+    const decision = parseDecisionBody(example);
+    expect(decision.problems).toEqual([]);
+    expect(decision.questions.map((each) => each.header)).toEqual(["Tag format", "Attachments"]);
+  });
+
+  it("reads several questions written as JSON", () => {
+    const body = JSON.stringify({
+      id: "export",
+      blocking: true,
+      questions: [
+        { header: "Tags", question: "Tags as?", options: [{ label: "YAML", prompt: "Use YAML" }], recommended: "YAML", reason: "fits" },
+        { header: "Folders", question: "Layout?", options: [{ label: "Flat", prompt: "One folder" }], recommended: "Flat", reason: "fits" },
+      ],
+    });
+    const decision = parseDecisionBody(body);
+    expect(decision.problems).toEqual([]);
+    expect(decision.questions.map((each) => each.header)).toEqual(["Tags", "Folders"]);
+  });
+
+  it("a block asked again with other questions is not the same question", () => {
+    const first = parseDecisionBody(block(question("Tags", ["YAML"]), question("Folders", ["Flat"])));
+    const second = parseDecisionBody(block(question("Tags", ["YAML"]), question("Folders", ["Nested"])));
+    expect(sameQuestion(first, first)).toBe(true);
+    expect(sameQuestion(first, second)).toBe(false);
   });
 });

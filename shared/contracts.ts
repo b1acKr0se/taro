@@ -335,8 +335,14 @@ export const findAgentTicket = defineRpc({
 
 export const answerDecision = defineRpc({
   name: "taro.decision.answer",
-  /** `from` names where the user answered, for the ANSWER record. */
-  input: z.object({ key: z.string(), label: z.string().nullable(), text: z.string(), from: z.enum(["screen", "tab"]).default("screen") }),
+  /** `from` names where the user answered, for the ANSWER record; `answers`, one per question of a card asking several (TR-207). */
+  input: z.object({
+    key: z.string(),
+    label: z.string().nullable(),
+    text: z.string(),
+    from: z.enum(["screen", "tab"]).default("screen"),
+    answers: z.array(z.object({ header: z.string(), label: z.string().nullable(), text: z.string() })).optional(),
+  }),
   output: Empty,
 });
 
