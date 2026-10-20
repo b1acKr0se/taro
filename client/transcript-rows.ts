@@ -47,12 +47,29 @@ export type TranscriptRow =
   | { key: string; kind: "agent"; text: string; at?: string; asking?: boolean; turn?: TurnFooter }
   | { key: string; kind: "event"; text: string }
   /**
+   * A message another agent sent this one (a manager's starting prompt), which Paseo 0.12 logs as an
+   * `agent_message` tool call rather than a user message (TR-218). Drawn folded: it is long.
+   */
+  | { key: string; kind: "received"; sender: string; text: string; at?: string }
+  /**
    * A tool call as Paseo shows it (TR-150): its label, detail and icon (`text` is both, for what reads
    * every row's words), what it adds to its run's counts, and `alone` for a call Paseo never puts in a run.
    * `at`: when the call started, to place a permission ask it raised after it (TR-149).
    */
   | { key: string; kind: "tool"; text: string; label: string; summary?: string; icon: string; tally: ToolTally; alone: boolean; status: ToolCallItem["status"]; at?: string }
   | { key: string; kind: "error"; text: string };
+
+/** The sender and words of a message another agent sent, or null for any other tool call. */
+export function receivedMessage(item: TimelineItem): { sender: string; text: string } | null {
+  if (item.type !== "tool_call") return null;
+  const message: unknown = Reflect.get(item, "agentMessage");
+  if (typeof message !== "object" || message === null) return null;
+  const text: unknown = Reflect.get(message, "text");
+  if (typeof text !== "string" || text.trim() === "") return null;
+  const sender: unknown = Reflect.get(message, "sender");
+  const title: unknown = typeof sender === "object" && sender !== null ? Reflect.get(sender, "title") : undefined;
+  return { sender: typeof title === "string" && title.trim() !== "" ? title.trim() : "another agent", text: text.trim() };
+}
 
 /** A user row's text when the message had attachments and no words. */
 export const ATTACHMENTS_ONLY = "(attachments)";
@@ -167,12 +184,17 @@ export function transcriptRows(entries: readonly TimelineEntry[], cwd?: string |
   entries.forEach((entry) => {
     const key = rowKey(entry);
     const item = entry.item;
-    if (item.type === "user_message") {
+    const received = receivedMessage(item);
+    if (item.type === "user_message" || received !== null) {
       endTurn();
       turnStartedAt = entry.timestamp;
       turnEndedAt = undefined;
     }
     if (entry.timestamp !== undefined) turnEndedAt = entry.timestamp;
+    if (received !== null) {
+      rows.push(entry.timestamp === undefined ? { key, kind: "received", ...received } : { key, kind: "received", ...received, at: entry.timestamp });
+      return;
+    }
     switch (item.type) {
       case "user_message": {
         const summary = injectedSummary(item.text, item.clientMessageId);
