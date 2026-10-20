@@ -22,7 +22,9 @@ the flow.
    Every question before your plan is approved is blocking (TR-146): stop and wait for the answer,
    never go on with a default (the plugin shows it as blocking whatever its flag, and tells you if
    you did not stop). One decision open at a time: ask the next only after the user answered the
-   last, in a later turn (`reference/formats.md`; the plugin holds back a second). Zero questions
+   last, in a later turn (`reference/formats.md`; the plugin holds back a second). Two to four
+   independent questions may share one card (`reference/formats.md`, Several questions on one
+   card); it counts as one decision. Zero questions
    is normal for a clear ask. Decide everything else yourself and state it as an assumption.
 3. **Rate complexity** and write the **proposal** into the ticket (`-d`, `--plan`, `--add-label
    complexity-<level>`), sized to the level. **Every level writes a plan, trivial included**: no
@@ -136,12 +138,12 @@ any level). Never call one a "helper".
   check, no placeholders, nothing contradicts, everything traces to the approved spec, and the
   RISKS cases for its files are among its tests.
 - **Estimate, then check** each task before you brief it (a rough guide, any language): the start
-  (the project's measured start context: the plugin's CONTEXT note on an earlier subagent of this
-  project, else 30k) + about 22 tokens per line it writes + 37 per line it reads + 0.45 per
+  (the project's measured start context: the `… tokens at start` CONTEXT note on an earlier
+  subagent of this project, else 30k) + about 22 tokens per line it writes + 37 per line it reads + 0.45 per
   character of its brief, plus 15%. Split a task whose work (the estimate minus the start) passes
   100k or whose total passes 60% of its model's context window; merge a task into a neighbour in
   the same files when its brief costs more than its work. Write the estimate into its EXECUTION
-  record as `estimate: <n>k`. A CONTEXT note such as `CONTEXT … peaked at 142k against an estimate
+  record as `estimate: <n>k`, with the whole agent id. A CONTEXT note (Claude subagents) such as `CONTEXT … peaked at 142k against an estimate
   of 60k` says your estimate was low: split such tasks or brief tighter next time.
 - **Threads are finite:** before starting a subagent or a test daemon, read `cat
   /sys/fs/cgroup/pids.current /sys/fs/cgroup/pids.max` and wait while usage is above 85% (skip where
@@ -184,7 +186,8 @@ it, and mark the child Done.
    time in your worktree, committing onto your branch.
 3. **Seam check** after each merge: rerun the consumer's tests against the real producer. A failure
    goes back as a fix (with a fix note) to the producer's or the consumer's implementer, whichever
-   side breaks the interface's `e.g.` lines. Add a small integration child last only when no
+   side breaks the interface's `e.g.` lines, or to a fresh agent a tier up when that implementer
+   ran on the cheapest tier. Add a small integration child last only when no
    child's tests cross the seam.
 
 A child gets its own independent reviewer before it is Done only when it touches stored data, auth
@@ -206,8 +209,8 @@ questions come to you; bring real decisions to the user.
   approach. Then escalate with a `review-dispute` decision rather than loop.
 
 Findings are of **one kind**. Verify each against the code yourself (valid / partially valid /
-invalid, with evidence); each valid one is fixed (yourself when small, otherwise by its implementer
-or a fresh one with a fix note), or named in FINAL Limitations; an invalid one is rejected with the
+invalid, with evidence); each valid one is fixed (yourself when small, otherwise by its implementer,
+or by a fresh one with a fix note, a tier up when it ran on the cheapest), or named in FINAL Limitations; an invalid one is rejected with the
 reason. Record a REVIEW note that answers every finding. A **Question** (a preference the user did
 not settle in their words or a decision: a label, wording, density, a layout choice) is not yours or the
 reviewer's to settle: fix the rest first, then raise it as a **blocking** decision with your
