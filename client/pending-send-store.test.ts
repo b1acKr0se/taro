@@ -74,6 +74,9 @@ describe("createPendingSendStore", () => {
     expect(store.resend("agent-1", "chat-b", { id: "chat-d", at: 8 })?.state).toBe("sending");
     expect(store.resend("agent-1", "chat-gone", { id: "chat-e", at: 9 })).toBeNull();
     expect(store.get("agent-1").map((each) => each.id)).toEqual(["chat-c", "chat-d"]);
+    // Whether the agent works as it goes again, not as the first send found it (TR-216).
+    expect(store.resend("agent-1", "chat-c", { id: "chat-f", at: 10, sentWhileIdle: true })?.sentWhileIdle).toBe(true);
+    expect(store.resend("agent-1", "chat-f", { id: "chat-g", at: 11, sentWhileIdle: false })?.sentWhileIdle).toBe(false);
   });
 });
 

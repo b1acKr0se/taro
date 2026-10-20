@@ -24,7 +24,7 @@ export interface PendingSendStore {
   update(agentId: string, id: string, change: Partial<PendingSend>): void;
   remove(agentId: string, ids: readonly string[]): void;
   /** Replaces a message with a new one of the same words and attachments, to send; null when it is gone. */
-  resend(agentId: string, id: string, again: { id: string; at: number }): PendingSend | null;
+  resend(agentId: string, id: string, again: { id: string; at: number; sentWhileIdle?: boolean }): PendingSend | null;
   /** Sends a failed message again under its own id, and those waiting behind it after it. */
   retry(agentId: string, id: string): void;
   /** How the agent's messages reach Paseo, the latest given; sends what waits for one. */
@@ -168,7 +168,7 @@ export function createPendingSendStore(
       const current = sends.get(agentId) ?? NONE;
       const old = current.find((send) => send.id === id);
       if (old === undefined) return null;
-      const next: PendingSend = { ...old, id: again.id, at: again.at, state: "sending", error: undefined };
+      const next: PendingSend = { ...old, id: again.id, at: again.at, state: "sending", error: undefined, sentWhileIdle: again.sentWhileIdle };
       put(agentId, [...current.filter((send) => send.id !== id), next]);
       startSending(agentId);
       return next;

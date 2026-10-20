@@ -113,7 +113,8 @@ export function takenAttachments(messageId: string, taken: { images: readonly Ou
 export function sendingToQueue(views: readonly SendView[], working: boolean): QueueRowMessage[] {
   if (!working) return [];
   return views.flatMap((view) =>
-    view.rowKey === null && (view.mark === "sending" || view.mark === "behind")
+    // One sent to an idle agent starts the turn that now shows as working: it is the transcript's, never the queue's.
+    view.rowKey === null && view.send.sentWhileIdle !== true && (view.mark === "sending" || view.mark === "behind")
       ? [
           {
             id: view.send.id,

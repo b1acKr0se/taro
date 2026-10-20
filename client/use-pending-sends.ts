@@ -105,10 +105,10 @@ export function usePendingSends({
     send(text, attachments, answersRequest) {
       const id = newChatMessageId();
       if (!working) sentWhileIdle.current.add(id);
-      pendingSends.add(agentId, { id, text, attachments, at: Date.now(), state: "sending", ...(answersRequest ? { answersRequest } : {}) });
+      pendingSends.add(agentId, { id, text, attachments, at: Date.now(), state: "sending", ...(working ? {} : { sentWhileIdle: true }), ...(answersRequest ? { answersRequest } : {}) });
     },
     resend(id) {
-      pendingSends.resend(agentId, id, { id: newChatMessageId(), at: Date.now() });
+      pendingSends.resend(agentId, id, { id: newChatMessageId(), at: Date.now(), sentWhileIdle: !working });
     },
     retry(id) {
       pendingSends.retry(agentId, id);

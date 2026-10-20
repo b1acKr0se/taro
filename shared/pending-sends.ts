@@ -65,6 +65,11 @@ export interface PendingSend {
   error?: string | undefined;
   /** Sent while the chat showed a permission or question: it goes at once, even mid-turn, and turns that down (TR-171). */
   answersRequest?: boolean | undefined;
+  /**
+   * The agent was idle when it left. The turn it starts then shows as working before the message lands in
+   * the timeline, and the message stays in the transcript rather than hop to the queue track and back.
+   */
+  sentWhileIdle?: boolean | undefined;
 }
 
 /** "behind": sending, but waiting for a failed message before it. */

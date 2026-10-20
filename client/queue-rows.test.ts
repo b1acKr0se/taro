@@ -172,6 +172,13 @@ describe("messages on their way to a working agent (TR-171)", () => {
     expect(sendingToQueue([view("chat-a", "failed"), view("chat-b", "waiting"), view("chat-c", "unread"), view("chat-d", "sending", "12")], true)).toEqual([]);
     expect(sendingToQueue([], true)).toEqual([]);
   });
+
+  it("stay in the transcript when sent to an idle agent, though its turn now shows as working (TR-216)", () => {
+    const idle = view("chat-a", "sending");
+    const sentIdle: SendView = { ...idle, send: { ...idle.send, sentWhileIdle: true } };
+    expect(sendingToQueue([sentIdle, view("chat-b", "behind")], true).map((row) => row.id)).toEqual(["chat-b"]);
+    expect(sendingToQueue([{ ...sentIdle, mark: "behind" }], true)).toEqual([]);
+  });
 });
 
 describe("afterQueueRead (TR-188)", () => {
