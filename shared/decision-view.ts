@@ -4,7 +4,7 @@
  * became of it. Pure, so the in-tab renderer stays a thin view.
  */
 import { asStored } from "./planning-questions";
-import { decisionMessageSegments, sameQuestion, type OptionImage, type ParsedDecision } from "./reports";
+import { decisionMessageSegments, sameQuestion, type OptionImage, type ParsedDecision, type ReadDecision } from "./reports";
 import type { StoredDecision } from "./state";
 
 export type DecisionBlockView =
@@ -50,7 +50,7 @@ export const DECISION_BLOCK_KIND = "taro-decision-block";
 /** The plugin timeline items a message becomes (Paseo's `PluginTimelineItem`, kept structural here). */
 export type DecisionTimelineItem =
   | { type: "plugin"; id: string; kind: typeof DECISION_TEXT_KIND; version: 1; data: { text: string } }
-  | { type: "plugin"; id: string; kind: typeof DECISION_BLOCK_KIND; version: 1; data: { decision: ParsedDecision } };
+  | { type: "plugin"; id: string; kind: typeof DECISION_BLOCK_KIND; version: 1; data: { decision: ReadDecision } };
 
 /**
  * The transformer's whole decision: a finished assistant message holding a

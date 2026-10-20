@@ -17,6 +17,7 @@ import { Text, View } from "react-native";
 
 import { acceptTicket, nudgeAgent, relaunchOwner, resumeTicket, type Card, type StatsSummary } from "../shared/contracts";
 import { pullRequestMark } from "../shared/pull-request-state";
+import { questionsOf } from "../shared/reports";
 import { PhaseBadge } from "./badges";
 import { cardFooterLine, cardNowLine, phaseOf, type NowLine } from "./card-now";
 import { CentredLabel } from "./centred-label";
@@ -287,7 +288,7 @@ export function TicketCard({
             onAccept={() => acceptPresses.press("accept", () => accept({ project, ticket: card.id }), { after: "hold", success: `Accepted ${card.id}.`, onSuccess: onChanged })}
             onRequestChanges={onOpen}
           />
-        ) : line.kind === "call" ? (
+        ) : line.kind === "call" && !(line.call.kind === "decision" && questionsOf(line.call.decision).length > 1) ? (
           <View style={styles.actions}>
             <Pressable accessibilityRole="button" accessibilityLabel={`${line.action}: ${line.headline}`} style={styles.action} onPress={onOpen}>
               <CentredLabel style={styles.actionText}>{line.action}</CentredLabel>

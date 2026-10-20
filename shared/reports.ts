@@ -57,8 +57,24 @@ export const DecisionOptionSchema = z.object({
 });
 export type DecisionOption = z.infer<typeof DecisionOptionSchema>;
 
+/** At most this many questions share one card (TR-207); each has a short header for its tab. */
+export const MAX_QUESTIONS = 4;
+export const MAX_HEADER_CHARACTERS = 24;
+
+/** One question of a card that asks several (TR-207): the fields and rules of a single decision, with a header for its tab. */
+export const DecisionQuestionSchema = z.object({
+  header: z.string(),
+  question: z.string(),
+  why: z.string().default(""),
+  options: z.array(DecisionOptionSchema).default([]),
+  recommended: z.string().default(""),
+  reason: z.string().default(""),
+});
+export type DecisionQuestion = z.infer<typeof DecisionQuestionSchema>;
+
 export const ParsedDecisionSchema = z.object({
   id: z.string(),
+  /** On a card that asks several, `<N> questions: <headers>`; its own fields are then in `questions`. */
   question: z.string(),
   why: z.string().default(""),
   blocking: z.boolean().default(false),
@@ -67,17 +83,24 @@ export const ParsedDecisionSchema = z.object({
   reason: z.string().default(""),
   default: z.string().default(""),
   withdrawn: z.boolean().default(false),
+  /**
+   * Two to four questions answered together (TR-207); empty for a single decision. Optional, not
+   * defaulted, so decisions built before it still type; the parser always fills it: read it through `questionsOf`.
+   */
+  questions: z.array(DecisionQuestionSchema).optional(),
   /** What failed validation; empty when the block is complete. */
   problems: z.array(z.string()).default([]),
 });
 export type ParsedDecision = z.infer<typeof ParsedDecisionSchema>;
+/** A decision as the parser returns it: `questions` always there. */
+export type ReadDecision = ParsedDecision & { questions: DecisionQuestion[] };
 
 // `taro-decision` is the renderer's own name for the block; agents write it too (TR-195).
 const FENCE = /```(?:taro-)?decision(?![\w-])[^\n]*\n([\s\S]*?)```/g;
 
 /** Every `decision` block in a message, in order. */
-export function parseDecisionBlocks(message: string): ParsedDecision[] {
-  const decisions: ParsedDecision[] = [];
+export function parseDecisionBlocks(message: string): ReadDecision[] {
+  const decisions: ReadDecision[] = [];
   for (const match of message.replace(/\r\n?/g, "\n").matchAll(FENCE)) {
     if (match[1] !== undefined) decisions.push(parseDecisionBody(match[1]));
   }
@@ -89,7 +112,7 @@ export function withoutDecisionBlocks(message: string): string {
   return message.replace(/\r\n?/g, "\n").replace(FENCE, "").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-export type MessageSegment = { kind: "text"; text: string } | { kind: "decision"; decision: ParsedDecision };
+export type MessageSegment = { kind: "text"; text: string } | { kind: "decision"; decision: ReadDecision };
 
 /**
  * A message cut into its text and its decision blocks, in order, for drawing
@@ -238,11 +261,26 @@ function imageLine(line: string): string {
  * over several lines. Agents write it, so anything unexpected is skipped
  * rather than failing the whole block.
  */
-export function parseDecisionBody(body: string): ParsedDecision {
+export function parseDecisionBody(body: string): ReadDecision {
   if (body.trimStart().startsWith("{")) {
     const fromJson = parseJsonDecisionBody(body);
     if (fromJson !== null) return fromJson;
   }
+  const read = readBody(body);
+  return completeDecision(read, read.questions?.map(readBody) ?? null);
+}
+
+/** What a body (or one item of its `questions:` list) holds, before any rule is checked. */
+interface RawDecision {
+  fields: Record<string, string>;
+  options: Record<string, string>[];
+  images: Map<Record<string, string>, OptionImage[]>;
+  /** The bodies of a `questions:` list's items, each made a body of its own; null without the key. */
+  questions?: string[] | null;
+}
+
+function readBody(body: string): RawDecision {
+  let questions: string[] | null = null;
   const fields: Record<string, string> = {};
   const options: Record<string, string>[] = [];
   const images = new Map<Record<string, string>, OptionImage[]>();
@@ -265,6 +303,12 @@ export function parseDecisionBody(body: string): ParsedDecision {
       const key = pair[1].toLowerCase();
       if (key === "options" && (pair[2] ?? "").trim() === "") {
         inOptions = true;
+        continue;
+      }
+      if (key === "questions" && (pair[2] ?? "").trim() === "") {
+        const read = readQuestionItems(lines, index);
+        questions = read.items;
+        index = read.next;
         continue;
       }
       const read = readValue(lines, index, 0, pair[2] ?? "");
@@ -307,11 +351,43 @@ export function parseDecisionBody(body: string): ParsedDecision {
     }
   }
 
-  return completeDecision(fields, options, images);
+  return { fields, options, images, questions };
+}
+
+/**
+ * The items of a `questions:` list, each turned into a body of its own: its `-` blanked out and
+ * its lines moved left to the item's first key, so the single decision's reader reads it.
+ */
+function readQuestionItems(lines: string[], start: number): { items: string[]; next: number } {
+  let next = start;
+  for (let index = start; index < lines.length; index++) {
+    const line = lines[index] ?? "";
+    if (line.trim() === "") continue;
+    if (indentOf(line) === 0) break;
+    next = index + 1;
+  }
+  const items: string[][] = [];
+  let itemColumn = -1;
+  lines.slice(start, next).forEach((line) => {
+    const indent = indentOf(line);
+    const item = /^-(\s+|$)/.exec(line.trimStart());
+    if (item !== null && (itemColumn === -1 || indent <= itemColumn)) {
+      itemColumn = indent;
+      items.push([" ".repeat(indent + item[0].length) + line.trimStart().slice(item[0].length)]);
+      return;
+    }
+    items[items.length - 1]?.push(line);
+  });
+  const bodies = items.map((item) => {
+    const first = item.find((line) => line.trim() !== "");
+    const column = first === undefined ? 0 : indentOf(first);
+    return item.map((line) => (indentOf(line) >= column ? line.slice(column) : line.trimStart())).join("\n");
+  });
+  return { items: bodies, next };
 }
 
 /** A body written as a JSON object (same fields as the YAML); null when it is not valid JSON of that shape. */
-function parseJsonDecisionBody(body: string): ParsedDecision | null {
+function parseJsonDecisionBody(body: string): ReadDecision | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
@@ -320,9 +396,17 @@ function parseJsonDecisionBody(body: string): ParsedDecision | null {
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
   const record = parsed as Record<string, unknown>;
+  const raw = jsonRaw(record);
+  const questions = Array.isArray(record.questions)
+    ? record.questions.map((question: unknown) => jsonRaw(typeof question === "object" && question !== null && !Array.isArray(question) ? (question as Record<string, unknown>) : {}))
+    : null;
+  return completeDecision(raw, questions);
+}
+
+function jsonRaw(record: Record<string, unknown>): RawDecision {
   const text = (value: unknown): string => (typeof value === "string" ? value : typeof value === "number" || typeof value === "boolean" ? String(value) : "");
   const fields: Record<string, string> = {};
-  for (const [key, value] of Object.entries(record)) if (key !== "options") fields[key.toLowerCase()] = text(value);
+  for (const [key, value] of Object.entries(record)) if (key !== "options" && key !== "questions") fields[key.toLowerCase()] = text(value);
   const options: Record<string, string>[] = [];
   const images = new Map<Record<string, string>, OptionImage[]>();
   for (const raw of Array.isArray(record.options) ? record.options : []) {
@@ -344,10 +428,52 @@ function parseJsonDecisionBody(body: string): ParsedDecision | null {
     }
     options.push(entry);
   }
-  return completeDecision(fields, options, images);
+  return { fields, options, images };
 }
 
-function completeDecision(fields: Record<string, string>, options: Record<string, string>[], images: Map<Record<string, string>, OptionImage[]>): ParsedDecision {
+function completeDecision(raw: RawDecision, questions: RawDecision[] | null): ReadDecision {
+  const fields = raw.fields;
+  // One item in `questions:` is a single decision written the long way.
+  const single = questions !== null && questions.length === 1 && fields.question === undefined ? questions[0] : undefined;
+  const asked = single === undefined ? raw : { ...single, fields: { ...single.fields, ...pick(fields, ["id", "blocking", "status", "default"]) } };
+  if (questions !== null && questions.length > 1) return completeSeveral(fields, questions);
+  const { question, problems } = completeQuestion(asked.fields, asked.options, asked.images);
+  if (questions !== null && fields.question !== undefined && questions.length > 0) problems.push("both question and questions: write one or the other");
+  return finishDecision(asked.fields, question, [], problems);
+}
+
+/** A card of 2–4 questions (TR-207): each checked as a single decision, with a header of its own, and no default since every one waits for the user. */
+function completeSeveral(fields: Record<string, string>, raws: RawDecision[]): ReadDecision {
+  const problems: string[] = [];
+  if (raws.length > MAX_QUESTIONS) problems.push(`${raws.length} questions: at most ${MAX_QUESTIONS} on one card`);
+  if (fields.question !== undefined) problems.push("both question and questions: write one or the other");
+  if ((fields.default ?? "") !== "") problems.push("a default on several questions: each one waits for the user, so drop default");
+  const seen = new Set<string>();
+  const questions = raws.map((raw, index) => {
+    const header = (raw.fields.header ?? "").trim();
+    const name = header === "" ? `question ${index + 1}` : `question "${header}"`;
+    if (header === "") problems.push(`question ${index + 1} has no header`);
+    else if (seen.has(header)) problems.push(`two questions have the header "${header}"`);
+    else if (header.length > MAX_HEADER_CHARACTERS) problems.push(`header "${header}" is longer than ${MAX_HEADER_CHARACTERS} characters`);
+    seen.add(header);
+    const complete = completeQuestion(raw.fields, raw.options, raw.images);
+    problems.push(...complete.problems.map((problem) => `${name}: ${problem}`));
+    return { ...complete.question, header: header === "" ? `Question ${index + 1}` : header };
+  });
+  const summary = `${questions.length} questions: ${questions.map((question) => question.header).join(" · ")}`;
+  const question = { question: summary, why: "", options: [], recommended: "", reason: "" };
+  return finishDecision({ ...fields, default: "" }, question, questions, problems);
+}
+
+function pick(fields: Record<string, string>, keys: string[]): Record<string, string> {
+  return Object.fromEntries(keys.flatMap((key) => (fields[key] === undefined ? [] : [[key, fields[key]]])));
+}
+
+function completeQuestion(
+  fields: Record<string, string>,
+  options: Record<string, string>[],
+  images: Map<Record<string, string>, OptionImage[]>,
+): { question: Omit<DecisionQuestion, "header">; problems: string[] } {
   const problems: string[] = [];
   const parsedOptions: DecisionOption[] = [];
   for (const option of options) {
@@ -372,18 +498,23 @@ function completeDecision(fields: Record<string, string>, options: Record<string
   if (recommended === "") problems.push("no recommended option");
   else if (parsedOptions.length > 0 && !parsedOptions.some((option) => option.label === recommended)) problems.push("recommended names no option");
   if ((fields.reason ?? "") === "") problems.push("no reason for the recommendation");
+  return { question: { question, why: fields.why ?? "", options: parsedOptions, recommended, reason: fields.reason ?? "" }, problems };
+}
+
+function finishDecision(fields: Record<string, string>, asked: Omit<DecisionQuestion, "header">, questions: DecisionQuestion[], problems: string[]): ReadDecision {
   const id = fields.id ?? "";
   if (id === "") problems.push("no id");
   return {
-    id: id === "" ? `untitled-${hashText(question)}` : id,
-    question,
-    why: fields.why ?? "",
+    id: id === "" ? `untitled-${hashText(asked.question)}` : id,
+    question: asked.question,
+    why: asked.why,
     blocking: /^(true|yes)$/i.test(fields.blocking ?? ""),
-    options: parsedOptions,
-    recommended,
-    reason: fields.reason ?? "",
+    options: asked.options,
+    recommended: asked.recommended,
+    reason: asked.reason,
     default: fields.default ?? "",
     withdrawn: /^withdrawn$/i.test(fields.status ?? ""),
+    questions,
     problems,
   };
 }
@@ -396,13 +527,21 @@ export function withImagePaths(options: readonly DecisionOption[], folder: strin
   }));
 }
 
+/** A decision's questions; one held from before TR-207 has none. */
+export function questionsOf(decision: { questions?: DecisionQuestion[] | undefined }): DecisionQuestion[] {
+  return decision.questions ?? [];
+}
+
+type Asked = Pick<ParsedDecision, "question" | "options" | "blocking"> & { questions?: DecisionQuestion[] | undefined };
+
+function askedText(options: readonly DecisionOption[]): string {
+  return JSON.stringify(options.map((option) => [option.label, option.prompt]));
+}
+
 /** Whether a block asks exactly what a stored decision asked. */
-export function sameQuestion(left: Pick<ParsedDecision, "question" | "options" | "blocking">, right: Pick<ParsedDecision, "question" | "options" | "blocking">): boolean {
-  return (
-    left.question === right.question &&
-    left.blocking === right.blocking &&
-    JSON.stringify(left.options.map((option) => [option.label, option.prompt])) === JSON.stringify(right.options.map((option) => [option.label, option.prompt]))
-  );
+export function sameQuestion(left: Asked, right: Asked): boolean {
+  const several = (decision: Asked) => JSON.stringify(questionsOf(decision).map((question) => [question.header, question.question, askedText(question.options)]));
+  return left.question === right.question && left.blocking === right.blocking && askedText(left.options) === askedText(right.options) && several(left) === several(right);
 }
 
 /**
@@ -410,7 +549,7 @@ export function sameQuestion(left: Pick<ParsedDecision, "question" | "options" |
  * rather than asked again (TR-108). A plan approval reads the same every round, so the turn decides
  * when both are known; a decision stored before turns were recorded falls back to the question.
  */
-export function seenAgain(stored: Pick<ParsedDecision, "question" | "options" | "blocking"> & { turn: string | null }, block: Pick<ParsedDecision, "question" | "options" | "blocking">, turn: string | null): boolean {
+export function seenAgain(stored: Asked & { turn: string | null }, block: Asked, turn: string | null): boolean {
   if (stored.turn !== null && turn !== null) return stored.turn === turn;
   return sameQuestion(stored, block);
 }

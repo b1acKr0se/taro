@@ -9,6 +9,7 @@ import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMemo } from "react";
 import { Text, View } from "react-native";
 
+import { questionsOf } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import { questionContext } from "./card-now";
 import { CentredLabel } from "./centred-label";
@@ -72,10 +73,13 @@ export function QuestionCard({
     [colors, compact, fill],
   );
   const context = questionContext(decision, now);
+  const several = questionsOf(decision).length;
+  // A card asking several says how many; its pills name them (TR-207).
+  const headline = several > 1 ? `${several} questions for you` : decision.question;
   const tone = decision.blocking ? colors.statusWarning : colors.foregroundMuted;
 
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`${asker} asks: ${decision.question}`} onPress={onOpen} style={styles.card}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${asker} asks: ${headline}`} onPress={onOpen} style={styles.card}>
       <View style={styles.head}>
         <View style={[styles.dot, { backgroundColor: tone }]} />
         <Text style={styles.asker} numberOfLines={1}>
@@ -88,7 +92,7 @@ export function QuestionCard({
         </View>
         <View style={styles.lineText}>
           <Text style={styles.question} numberOfLines={3}>
-            {decision.question}
+            {headline}
           </Text>
           {context === null ? null : <Text style={styles.detail}>{context}</Text>}
         </View>
@@ -96,10 +100,13 @@ export function QuestionCard({
       {/* Buttons start at the card's left edge, under the asker, not under the question (TR-089). */}
       <View style={styles.buttons}>
         <OptionChips decision={decision} theme={theme} onOpen={onOpen} onAnswered={onAnswered} />
-        <Pressable accessibilityRole="button" accessibilityLabel={`Answer: ${decision.question}`} style={styles.action} onPress={onOpen}>
-          <CentredLabel style={styles.actionText}>Answer</CentredLabel>
-          <Icon name="ArrowRight" size={12} color={colors.accent} />
-        </Pressable>
+        {/* Several questions draw their own Answer, which turns into Send once all are answered. */}
+        {several > 1 ? null : (
+          <Pressable accessibilityRole="button" accessibilityLabel={`Answer: ${decision.question}`} style={styles.action} onPress={onOpen}>
+            <CentredLabel style={styles.actionText}>Answer</CentredLabel>
+            <Icon name="ArrowRight" size={12} color={colors.accent} />
+          </Pressable>
+        )}
       </View>
     </Pressable>
   );

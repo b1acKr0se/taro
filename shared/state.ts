@@ -10,6 +10,8 @@ export const DecisionAnswerSchema = z.object({
   /** The option pressed, or null for typed words. */
   label: z.string().nullable(),
   at: z.string(),
+  /** On a card asking several questions (TR-207), each question's answer in order; `text` is then the message sent. */
+  answers: z.array(z.object({ header: z.string(), label: z.string().nullable(), text: z.string() })).optional(),
 });
 
 export const StoredDecisionSchema = ParsedDecisionSchema.extend({

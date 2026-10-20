@@ -2,7 +2,8 @@
  * A question's options on a board or Inbox card (TR-045), in the agent's words and order, the
  * recommended one marked; options that only stand for typing ("Change…", "Other") are left out
  * (TR-061). Pressing one answers at once; one that asks for words ("Rename…") opens the full card
- * instead, where the reasoning is and the words can be typed.
+ * instead, where the reasoning is and the words can be typed. A card asking several questions is
+ * `./question-pills`, which draws its own Answer or Send.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -12,10 +13,12 @@ import { View } from "react-native";
 
 import { answerDecision } from "../shared/contracts";
 import { optionChips, type OptionChip } from "../shared/decision-view";
+import { questionsOf } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
+import { QuestionPills } from "./question-pills";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, labelLineHeightFor } from "./type-scale";
@@ -32,6 +35,22 @@ export function OptionChips({
   decision: StoredDecision;
   theme: PluginTheme;
   /** Opens the full card, for an option that asks for words. */
+  onOpen: () => void;
+  onAnswered: () => void;
+}) {
+  // Several questions on one card (TR-207): pills and a chip row per question, not one answer per chip.
+  if (questionsOf(decision).length > 1) return <QuestionPills decision={decision} theme={theme} onOpen={onOpen} onAnswered={onAnswered} />;
+  return <SingleChips decision={decision} theme={theme} onOpen={onOpen} onAnswered={onAnswered} />;
+}
+
+function SingleChips({
+  decision,
+  theme,
+  onOpen,
+  onAnswered,
+}: {
+  decision: StoredDecision;
+  theme: PluginTheme;
   onOpen: () => void;
   onAnswered: () => void;
 }) {

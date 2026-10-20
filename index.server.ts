@@ -325,8 +325,8 @@ export default function contribute(server: PluginServerContext) {
     const identity = agent === null ? null : identityFromLabels(agent.labels, agent.title ?? null);
     return { project: identity?.project ?? null, ticket: identity?.ticket ?? null, role: identity?.role ?? null };
   });
-  server.handle(answerDecision, async ({ key, label, text, from }, { paseo }) => {
-    await actions.answerDecision(keep(paseo), key, label, text, from);
+  server.handle(answerDecision, async ({ key, label, text, from, answers }, { paseo }) => {
+    await actions.answerDecision(keep(paseo), key, label, text, from, answers);
     invalidateBoards();
     return {};
   });
