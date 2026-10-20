@@ -24,6 +24,22 @@ export function parseNodeTest(output: string): HiddenScore | null {
   return { passed: Number(passed), total: Number(total) };
 }
 
+/**
+ * `python -m unittest` output (on stderr): `Ran N tests`, then `OK` or `FAILED (failures=F, errors=E)`.
+ * Passed is the total less failures and errors (a task's tests must not use `subTest`: each failing sub-test counts again). Null when no summary is there or nothing ran.
+ */
+export function parseUnittest(output: string): HiddenScore | null {
+  const total = /^Ran (\d+) tests? in /m.exec(output)?.[1];
+  if (total === undefined || Number(total) === 0) return null;
+  const count = (name: string): number => Number(new RegExp(`\\b${name}=(\\d+)`).exec(/^FAILED \(.*\)$/m.exec(output)?.[0] ?? "")?.[1] ?? 0);
+  return { passed: Math.max(0, Number(total) - count("failures") - count("errors")), total: Number(total) };
+}
+
+/** The score of whichever runner's output this is. */
+export function parseTestOutput(output: string): HiddenScore | null {
+  return parseNodeTest(output) ?? parseUnittest(output);
+}
+
 export interface AgentStatsLike {
   agentId: string;
   role: string;
@@ -162,12 +178,14 @@ export async function runHidden(mergedRepository: string, taskDirectory: string)
     // main as merged, not the working tree: a git archive of it.
     const archived = await run("sh", ["-c", 'git -C "$1" archive main | tar -x -C "$2"', "sh", mergedRepository, copy]);
     if (archived.code !== 0) return { score: null, output: `git archive failed: ${archived.stderr}` };
+    // The hidden tests go where the task says (`hiddenInto` in task.json), else into `hidden/`.
+    const hiddenInto = (JSON.parse(readFileSync(join(taskDirectory, "task.json"), "utf8")) as { hiddenInto?: string }).hiddenInto ?? "hidden";
     const hidden = join(taskDirectory, "hidden");
-    if (existsSync(hidden)) cpSync(hidden, join(copy, "hidden"), { recursive: true });
+    if (existsSync(hidden)) cpSync(hidden, join(copy, hiddenInto), { recursive: true });
     const command = readFileSync(join(taskDirectory, "test-command"), "utf8").trim();
     const result = await run("sh", ["-c", command], { cwd: copy, timeoutMs: 300_000 });
     const output = `${result.stdout}\n${result.stderr}`;
-    return { score: parseNodeTest(output), output };
+    return { score: parseTestOutput(output), output };
   } finally {
     rmSync(copy, { recursive: true, force: true });
   }

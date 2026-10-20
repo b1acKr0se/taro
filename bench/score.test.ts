@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { countRecords, loggedViolations, parseNodeTest, scoreQuestions, scoreStats } from "./score.ts";
+import { countRecords, loggedViolations, parseNodeTest, parseTestOutput, parseUnittest, scoreQuestions, scoreStats } from "./score.ts";
 
 describe("parseNodeTest", () => {
   it("reads passes and the total from the summary", () => {
@@ -15,6 +15,30 @@ describe("parseNodeTest", () => {
   it("is null when no test ran (no summary)", () => {
     expect(parseNodeTest("Could not find 'hidden/*.test.js'\n")).toBeNull();
     expect(parseNodeTest("")).toBeNull();
+  });
+});
+
+describe("parseUnittest", () => {
+  it("reads a run where everything passed", () => {
+    expect(parseUnittest("..........\n----------------------------------------------------------------------\nRan 10 tests in 0.032s\n\nOK\n")).toEqual({ passed: 10, total: 10 });
+  });
+  it("takes failures and errors off the total", () => {
+    expect(parseUnittest("Ran 14 tests in 1.200s\n\nFAILED (failures=3, errors=2)\n")).toEqual({ passed: 9, total: 14 });
+    expect(parseUnittest("Ran 1 test in 0.001s\n\nFAILED (errors=1)\n")).toEqual({ passed: 0, total: 1 });
+  });
+  it("counts skipped tests as run and not failed", () => {
+    expect(parseUnittest("Ran 5 tests in 0.1s\n\nOK (skipped=2)\n")).toEqual({ passed: 5, total: 5 });
+    expect(parseUnittest("Ran 5 tests in 0.1s\n\nFAILED (failures=1, skipped=2)\n")).toEqual({ passed: 4, total: 5 });
+  });
+  it("is null when none ran or the runner did not start", () => {
+    expect(parseUnittest("----------------------------------------------------------------------\nRan 0 tests in 0.000s\n\nNO TESTS RAN\n")).toBeNull();
+    expect(parseUnittest("/usr/bin/python3: No module named unittest\n")).toBeNull();
+    expect(parseUnittest("")).toBeNull();
+  });
+  it("parseTestOutput reads either runner", () => {
+    expect(parseTestOutput("ℹ tests 4\nℹ pass 3\n")).toEqual({ passed: 3, total: 4 });
+    expect(parseTestOutput("Ran 4 tests in 0.1s\n\nFAILED (failures=1)\n")).toEqual({ passed: 3, total: 4 });
+    expect(parseTestOutput("nothing")).toBeNull();
   });
 });
 

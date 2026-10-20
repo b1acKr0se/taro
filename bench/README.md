@@ -14,9 +14,12 @@ out, so two versions of the plugin (an *arm* each) can be compared on the same t
 
 Tasks (`bench/tasks/<name>/`): `medium-feature` (export notes to Markdown), `bug-fix` (a tag filter that
 matches substrings, plus the neighbours that break the same way), `high-children` (notebooks, search and a
-summary over one shared field). Each has `brief.md` (the ticket as a manager files it), `spec.md` (the
+summary over one shared field), `greenfield-modules` (a multi-module build from scratch in a second language:
+`notesite`, a static site generator in Python 3.12, standard library, `unittest`; its hidden tests go into the
+repository's `tests/` folder, `hiddenInto` in its `task.json`, and run with `-p "test_hidden_*.py"`; its tests
+import lazily and use no `subTest`, so a missing module fails its own tests and counts are comparable). Each has `brief.md` (the ticket as a manager files it), `spec.md` (the
 decider's full intent with hidden preferences), `repo/` (the seed notes app, plain Node 22, `node --test`),
-`hidden/` (tests the owner never sees) and `test-command`.
+`hidden/` (tests the owner never sees) and `test-command` (node:test or unittest output is scored).
 
 A checkout is used at its `HEAD` through a `git worktree add --detach` copy in a `mktemp -d` folder with
 `bench/` removed from it, so the owner cannot read the hidden tests or the decider's spec. To run main, give
