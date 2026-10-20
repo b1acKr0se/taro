@@ -37,6 +37,20 @@ export function executionMachine(notes: string | null): string | null {
   return newestExecutionMatch(notes, /\b(?:machine|host(?:name)?)\b[\s:=`*"']*([A-Za-z0-9][A-Za-z0-9._-]*)/i)?.replace(/\.+$/, "") ?? null;
 }
 
+/**
+ * The tokens an owner estimated for a subagent (`estimate: 60k` in the subagent's EXECUTION record,
+ * `skill/roles/owner.md`), from the newest record naming that agent id and carrying one; the `k` is
+ * required, as a bare number could be anything.
+ */
+export function subagentEstimate(notes: string | null, agentId: string): number | null {
+  const records = noteRecords(notes).filter((record) => /^EXECUTION\b/.test(record) && record.includes(agentId));
+  for (let index = records.length - 1; index >= 0; index--) {
+    const thousands = /\bestimate\b[\s:=`*"']*(\d+(?:\.\d+)?)k\b/i.exec(records[index] ?? "")?.[1];
+    if (thousands !== undefined) return Math.round(Number(thousands) * 1000);
+  }
+  return null;
+}
+
 /** The last match's first group in the newest record that has one. */
 function newestRecordMatch(notes: string | null, pattern: RegExp): string | null {
   const records = noteRecords(notes);

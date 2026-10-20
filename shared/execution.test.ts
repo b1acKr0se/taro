@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { boardColumn } from "./board";
-import { acceptanceMerge, acceptedRecord, acceptedRecordText, executionMachine, executionWorkspace, finalSummaryBody, localMergeInstruction, noteRecords, notMergedRecord, pullRequestMergeInstruction, pullRequestMerged, pullRequestUrl, reviewHead } from "./execution";
+import { acceptanceMerge, acceptedRecord, acceptedRecordText, executionMachine, executionWorkspace, subagentEstimate, finalSummaryBody, localMergeInstruction, noteRecords, notMergedRecord, pullRequestMergeInstruction, pullRequestMerged, pullRequestUrl, reviewHead } from "./execution";
 
 const managerRecord = "EXECUTION 2026-10-13T11:22Z — owner agent d86f, workspace wks_67ddffd9312aa95a, machine devbox, worktree /w/tr-001";
 // As a Haiku owner wrote it on the throwaway daemon: the relaunch could not find its workspace (TR-001).
@@ -395,5 +395,29 @@ describe("acceptanceMerge", () => {
     expect(acceptanceMerge(null)).toBeNull();
     expect(acceptanceMerge("")).toBeNull();
     expect(acceptanceMerge("ACCEPTED 2026-10-16T03:00:00.000Z — the user accepted; merging: the pull request")).toBeNull();
+  });
+});
+
+describe("subagentEstimate", () => {
+  const record = (id: string, estimate: string) => `EXECUTION 2026-01-05T10:00Z — subagent ${id}, implementer, NA-012.02, claude/claude-sonnet-5-5, workspace w1, estimate: ${estimate}`;
+
+  it("reads a subagent's estimate", () => {
+    expect(subagentEstimate(record("3f2a9c", "60k"), "3f2a9c")).toBe(60_000);
+    expect(subagentEstimate(record("3f2a9c", "60K"), "3f2a9c")).toBe(60_000);
+    expect(subagentEstimate(null, "3f2a9c")).toBeNull();
+  });
+
+  it("newest record wins", () => {
+    expect(subagentEstimate([record("3f2a9c", "40k"), record("3f2a9c", "80k")].join("\n\n"), "3f2a9c")).toBe(80_000);
+  });
+
+  it("another agent's record is ignored", () => {
+    expect(subagentEstimate(record("3f2a9c", "60k"), "77aa00")).toBeNull();
+    expect(subagentEstimate([record("3f2a9c", "60k"), record("77aa00", "90k")].join("\n\n"), "3f2a9c")).toBe(60_000);
+  });
+
+  it("an estimate without k is ignored", () => {
+    expect(subagentEstimate(record("3f2a9c", "60"), "3f2a9c")).toBeNull();
+    expect(subagentEstimate([record("3f2a9c", "40k"), record("3f2a9c", "60")].join("\n\n"), "3f2a9c")).toBe(40_000);
   });
 });

@@ -38,6 +38,12 @@ export const FINAL_HEADINGS: readonly { heading: string; limit: number }[] = [
   { heading: "Limitations", limit: 3 },
 ];
 
+/** Optional: an owner writes Rulings only when it decided something for the user; absent is never a violation. */
+const RULINGS_HEADING = { heading: "Rulings", limit: 5 };
+
+/** Tickets created before this date predate the RISKS rule (`skill/roles/owner.md`). */
+export const RISKS_SINCE = "2026-10-21";
+
 /** Records the plugin writes (or owners write) when it had to correct the workflow. */
 const CORRECTION_RECORDS = ["DELIVERY-ENDED", "NO-PLAN"];
 
@@ -105,6 +111,11 @@ function finalViolations(finalText: string): ConformanceViolation[] {
     const bullets = lines.filter((line) => BULLET.test(line)).length;
     if (bullets > limit) found.push({ kind: "final-over-limit", detail: `"${heading}" has ${bullets} bullets (limit ${limit})` });
   });
+  const rulings = sections.find((candidate) => candidate.heading.toLowerCase() === RULINGS_HEADING.heading.toLowerCase());
+  if (rulings !== undefined) {
+    const bullets = rulings.lines.filter((line) => !/^\s*Revision:/i.test(line) && BULLET.test(line)).length;
+    if (bullets > RULINGS_HEADING.limit) found.push({ kind: "final-over-limit", detail: `"${RULINGS_HEADING.heading}" has ${bullets} bullets (limit ${RULINGS_HEADING.limit})` });
+  }
   return found;
 }
 
@@ -136,12 +147,12 @@ export function conformanceViolations(ticketText: string, options: ConformanceOp
   const ticket = parsed.ticket;
   const found: ConformanceViolation[] = [];
   const trivial = ticket.labels.includes("complexity-trivial");
-  const handsOff = options.handsOff === true;
   const notes = records(ticket.notes);
+  const handsOff = options.handsOff === true || notes.some((record) => /^HANDS-OFF\b/.test(record));
   const startedBuilding = PAST_PLANNING.has(ticket.status);
   const delivered = ticket.status === "Awaiting acceptance" || ticket.status === "Done";
 
-  found.push(...statusViolations(options, trivial));
+  found.push(...statusViolations({ ...options, handsOff }, trivial));
 
   if (startedBuilding && !trivial && ticket.plan.trim() === "") {
     found.push({ kind: "no-plan", detail: `${ticket.status} with no plan` });
@@ -153,6 +164,12 @@ export function conformanceViolations(ticketText: string, options: ConformanceOp
   if (startedBuilding && !approved && !trivial && !handsOff) {
     const inProgressAt = options.transitions?.find((transition) => transition.to === "In Progress")?.at;
     found.push({ kind: "no-approval", detail: `In Progress${inProgressAt === undefined ? "" : ` at ${inProgressAt}`} with no APPROVAL` });
+  }
+
+  const complexity = ticket.labels.some((label) => /^complexity-(?:low|medium|high)$/.test(label));
+  if (startedBuilding && complexity && ticket.created >= RISKS_SINCE && !notes.some((record) => /^RISKS\b/.test(record))) {
+    const inProgressAt = options.transitions?.find((transition) => transition.to === "In Progress")?.at;
+    found.push({ kind: "no-risks", detail: `In Progress${inProgressAt === undefined ? "" : ` at ${inProgressAt}`} with no RISKS record` });
   }
 
   if (delivered) {

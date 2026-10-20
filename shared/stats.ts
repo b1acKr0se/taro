@@ -28,6 +28,8 @@ export const AgentStatsSchema = z.object({
   contextMaxTokens: z.number().nullable().default(null),
   /** A trimmed agent's first request, from its transcript (TR-139): what it started with. */
   startingContextTokens: z.number().nullable().default(null),
+  /** Set once the ticket has its note that this subagent outgrew its owner's estimate (TR-207). */
+  overEstimateNoted: z.boolean().optional(),
 });
 export type AgentStats = z.infer<typeof AgentStatsSchema>;
 

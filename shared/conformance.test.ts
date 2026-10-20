@@ -89,6 +89,7 @@ ${parts.finalSummary ?? FINAL}
 `;
 }
 
+const RISKS_RECORD = "RISKS 2026-01-05T10:06Z — where this breaks\nrisk: input — an empty file";
 const kinds = (text: string, options = {}) => conformanceViolations(text, options).map((violation) => violation.kind);
 
 describe("conformanceViolations", () => {
@@ -168,5 +169,38 @@ describe("conformanceViolations", () => {
 
   it("reports a file that does not parse", () => {
     expect(kinds("not a ticket")).toEqual(["unreadable"]);
+  });
+});
+
+describe("hands-off, risks and rulings", () => {
+  const NO_APPROVAL_NOTES = NOTES.replace(/APPROVAL[^\n]*\n\n/, "");
+  const bareTransitions = [{ from: "Queued", to: "In Progress", at: "b" }];
+
+  it("a HANDS-OFF record counts as hands-off", () => {
+    expect(kinds(ticket({ notes: NO_APPROVAL_NOTES }))).toContain("no-approval");
+    const handsOff = `HANDS-OFF 2026-01-05T09:59Z — the user: "decide everything yourself"\n\n${NO_APPROVAL_NOTES}\n\n${RISKS_RECORD}`;
+    expect(kinds(ticket({ notes: handsOff }), { transitions: bareTransitions })).toEqual([]);
+  });
+
+  it("no-risks on a medium ticket after the cut-off", () => {
+    const text = ticket({ status: "In Progress" }).replace("2026-01-05T10:00:00Z", "2026-10-22T10:00:00Z");
+    expect(conformanceViolations(text, { transitions: [{ to: "Planning", at: "a" }, { to: "In Progress", at: "2026-10-22T10:09Z" }] })).toContainEqual({ kind: "no-risks", detail: "In Progress at 2026-10-22T10:09Z with no RISKS record" });
+    const withRisks = ticket({ status: "In Progress", notes: `${NOTES}\n\n${RISKS_RECORD}` }).replace("2026-01-05T10:00:00Z", "2026-10-22T10:00:00Z");
+    expect(kinds(withRisks)).not.toContain("no-risks");
+  });
+
+  it("no no-risks before the cut-off or on trivial", () => {
+    expect(kinds(ticket({ status: "In Progress" }))).not.toContain("no-risks");
+    const trivial = ticket({ status: "In Progress", labels: '"complexity-trivial"' }).replace("2026-01-05T10:00:00Z", "2026-10-22T10:00:00Z");
+    expect(kinds(trivial)).not.toContain("no-risks");
+    const unlabelled = ticket({ status: "In Progress", labels: "" }).replace("2026-01-05T10:00:00Z", "2026-10-22T10:00:00Z");
+    expect(kinds(unlabelled)).not.toContain("no-risks");
+  });
+
+  it("six Rulings is over the limit", () => {
+    const rulings = (count: number) => `${FINAL.replace("\n\nRevision", "")}\n\n## Rulings\n${Array.from({ length: count }, (_, index) => `- ruling ${index} — why — cost`).join("\n")}\n\nRevision: abc`;
+    expect(kinds(ticket({ finalSummary: rulings(6) }))).toContain("final-over-limit");
+    expect(kinds(ticket({ finalSummary: rulings(5) }))).not.toContain("final-over-limit");
+    expect(kinds(ticket())).not.toContain("final-section-missing");
   });
 });

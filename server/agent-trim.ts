@@ -9,15 +9,18 @@ import { createInterface } from "node:readline";
 
 import {
   contextRecord,
-  firstRequestTokens,
   HIDDEN_SKILLS,
   isClaudeProvider,
   isTrimmedLaunch,
+  OVER_ESTIMATE_FACTOR,
+  overEstimateRecord,
+  requestTokens,
   STARTING_CONTEXT_LIMIT,
   toolMissRecord,
   toolMisses,
   withTrimmedTools,
 } from "../shared/agent-trim";
+import { subagentEstimate } from "../shared/execution";
 import { withSkillsOff } from "../shared/claude-settings";
 import { isSubagentRole } from "../shared/project";
 import { statePath } from "./data-dir";
@@ -29,7 +32,7 @@ import { projectPaths, projectsDirectory } from "./projects";
 import { serialized } from "./serialize";
 import { claudeConfigDirectory, findTranscript } from "./session-cost";
 import type { Stats } from "./stats";
-import { appendTicketNote } from "./tickets";
+import { appendTicketNote, childRecords } from "./tickets";
 
 interface CreateRequest {
   config: { provider: string; cwd: string; providerOptions?: Record<string, unknown> };
@@ -75,10 +78,25 @@ async function transcriptStartingContext(path: string): Promise<number | null> {
   const lines = createInterface({ input: createReadStream(path, { encoding: "utf8" }), crlfDelay: Infinity });
   try {
     for await (const line of lines) {
-      const tokens = firstRequestTokens(line);
+      const tokens = requestTokens(line);
       if (tokens !== null) return tokens;
     }
     return null;
+  } finally {
+    lines.close();
+  }
+}
+
+/** The largest request in a transcript, a built-in subagent's lines (sidechains) left out. */
+export async function transcriptPeakContext(path: string): Promise<number | null> {
+  const lines = createInterface({ input: createReadStream(path, { encoding: "utf8" }), crlfDelay: Infinity });
+  let peak: number | null = null;
+  try {
+    for await (const line of lines) {
+      const tokens = requestTokens(line);
+      if (tokens !== null && (peak === null || tokens > peak)) peak = tokens;
+    }
+    return peak;
   } finally {
     lines.close();
   }
@@ -111,13 +129,34 @@ export async function watchTrimmedTurn(
   const misses = toolMisses(turn);
   if (misses.length > 0) await appendTicketNote(tracker, identity.ticket, toolMissRecord(recordTime(), who, misses));
 
-  if (await stats.hasStartingContext(identity.project, identity.ticket, agent.id)) return;
   const sessionId = agent.persistence?.sessionId;
   if (typeof sessionId !== "string" || sessionId === "") return;
+  await noteStartingContext(stats, agent, identity.ticket, identity.project, sessionId, who, tracker, configDirectory);
+  if (identity.role !== "owner") await noteOverEstimate(stats, agent, identity.ticket, identity.project, sessionId, who, tracker, configDirectory);
+}
+
+/** Once, the agent's starting context into the stats, with a CONTEXT note when it is over the limit. */
+async function noteStartingContext(stats: Stats, agent: WatchedAgent, ticket: string, project: string, sessionId: string, who: { id: string; role: string }, tracker: string, configDirectory: string): Promise<void> {
+  if (await stats.hasStartingContext(project, ticket, agent.id)) return;
   const transcript = await findTranscript(configDirectory, agent.cwd, sessionId);
   if (transcript === null) return;
   const tokens = await transcriptStartingContext(transcript);
   if (tokens === null) return;
-  const taken = await stats.startingContext(identity.project, identity.ticket, agent.id, tokens);
-  if (taken && tokens > STARTING_CONTEXT_LIMIT) await appendTicketNote(tracker, identity.ticket, contextRecord(recordTime(), who, tokens));
+  const taken = await stats.startingContext(project, ticket, agent.id, tokens);
+  if (taken && tokens > STARTING_CONTEXT_LIMIT) await appendTicketNote(tracker, ticket, contextRecord(recordTime(), who, tokens));
+}
+
+/**
+ * Once per subagent, a CONTEXT note when its largest request is over 1.25 × the estimate its owner
+ * recorded: the owner sized the task wrong. The transcript is read only for an agent with an estimate.
+ */
+async function noteOverEstimate(stats: Stats, agent: WatchedAgent, ticket: string, project: string, sessionId: string, who: { id: string; role: string }, tracker: string, configDirectory: string): Promise<void> {
+  if (await stats.hasOverEstimateNote(project, ticket, agent.id)) return;
+  const estimate = subagentEstimate((await childRecords(tracker, ticket)).notes, agent.id);
+  if (estimate === null) return;
+  const transcript = await findTranscript(configDirectory, agent.cwd, sessionId);
+  if (transcript === null) return;
+  const peak = await transcriptPeakContext(transcript);
+  if (peak === null || peak <= OVER_ESTIMATE_FACTOR * estimate) return;
+  if (await stats.noteOverEstimate(project, ticket, agent.id)) await appendTicketNote(tracker, ticket, overEstimateRecord(recordTime(), who, peak, estimate));
 }

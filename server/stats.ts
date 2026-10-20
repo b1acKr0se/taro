@@ -275,6 +275,11 @@ export class Stats {
     return record !== undefined && record.startingContextTokens !== null;
   }
 
+  /** Whether an agent on `ticket` already has its over-estimate note. */
+  async hasOverEstimateNote(project: string, ticket: string, agentId: string): Promise<boolean> {
+    return (await this.load()).tickets[keyFor(project, ticket)]?.agents[agentId]?.overEstimateNoted === true;
+  }
+
   /** Records an agent's starting context once, on the parent too; true when `ticket`'s record took it now. */
   async startingContext(project: string, ticket: string, agentId: string, tokens: number): Promise<boolean> {
     let taken = false;
@@ -284,6 +289,23 @@ export class Stats {
         const record = file.tickets[keyFor(project, target)]?.agents[agentId];
         if (record === undefined || record.startingContextTokens !== null) continue;
         record.startingContextTokens = tokens;
+        changed = true;
+        if (target === ticket) taken = true;
+      }
+      return changed;
+    });
+    return taken;
+  }
+
+  /** Marks an agent's over-estimate note as written, on the parent too; true when `ticket`'s record took the mark now. */
+  async noteOverEstimate(project: string, ticket: string, agentId: string): Promise<boolean> {
+    let taken = false;
+    await this.modify((file) => {
+      let changed = false;
+      for (const target of ticketAndParent(ticket)) {
+        const record = file.tickets[keyFor(project, target)]?.agents[agentId];
+        if (record === undefined || record.overEstimateNoted === true) continue;
+        record.overEstimateNoted = true;
         changed = true;
         if (target === ticket) taken = true;
       }

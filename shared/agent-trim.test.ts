@@ -5,6 +5,8 @@ import {
   firstRequestTokens,
   HIDDEN_SKILLS,
   isTrimmedLaunch,
+  overEstimateRecord,
+  requestTokens,
   isTrimmedTool,
   STARTING_CONTEXT_LIMIT,
   toolMissRecord,
@@ -149,5 +151,22 @@ describe("firstRequestTokens", () => {
     expect(firstRequestTokens(assistant({ input_tokens: 0 }))).toBeNull();
     expect(firstRequestTokens(assistant("none"))).toBeNull();
     expect(firstRequestTokens('{"type":"assistant","usage":')).toBeNull();
+  });
+});
+
+describe("overEstimateRecord", () => {
+  it("over-estimate record text", () => {
+    expect(overEstimateRecord("2026-10-20T10:00Z", { id: "3f2a9c", role: "implementer" }, 142_000, 60_000)).toBe(
+      "CONTEXT 2026-10-20T10:00Z — peaked at 142k against an estimate of 60k: implementer 3f2a9c. Split the task or tighten the brief next time (roles/owner.md, Subagents).",
+    );
+  });
+
+  it("rounds to whole k", () => {
+    expect(overEstimateRecord("t", { id: "a", role: "reviewer" }, 141_600, 59_600)).toContain("peaked at 142k against an estimate of 60k");
+    expect(ticketMilestones(overEstimateRecord("2026-10-20T10:00Z", { id: "a", role: "reviewer" }, 141_600, 60_000)).map((record) => record.kind)).toEqual(["CONTEXT"]);
+  });
+
+  it("is read by requestTokens like the first request", () => {
+    expect(requestTokens(JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 5, cache_read_input_tokens: 19_000 } } }))).toBe(19_005);
   });
 });

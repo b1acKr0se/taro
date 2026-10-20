@@ -162,8 +162,17 @@ export function contextRecord(at: string, agent: { id: string; role: string }, t
   return `CONTEXT ${at} — ${tokens.toLocaleString("en-US")} tokens at start, over ${STARTING_CONTEXT_LIMIT.toLocaleString("en-US")}: ${agent.role} ${agent.id}, where a trimmed owner or subagent starts under that (TR-139). It was launched without the Taro environment, or new tools, MCP servers, skills or instructions grew its first request.`;
 }
 
-/** The first request's whole input (fresh, cache written and cache read) from a transcript line, or null. */
-export function firstRequestTokens(line: string): number | null {
+/** A subagent whose largest request is over this many times its owner's estimate gets a CONTEXT note. */
+export const OVER_ESTIMATE_FACTOR = 1.25;
+
+/** The CONTEXT record for a subagent that outgrew its estimate; both sizes in whole k. */
+export function overEstimateRecord(at: string, agent: { id: string; role: string }, peak: number, estimate: number): string {
+  const thousands = (tokens: number) => `${Math.round(tokens / 1000)}k`;
+  return `CONTEXT ${at} — peaked at ${thousands(peak)} against an estimate of ${thousands(estimate)}: ${agent.role} ${agent.id}. Split the task or tighten the brief next time (roles/owner.md, Subagents).`;
+}
+
+/** A request's whole input (fresh, cache written and cache read) from a transcript line, or null. */
+export function requestTokens(line: string): number | null {
   if (!line.includes('"assistant"') || !line.includes('"usage"')) return null;
   try {
     const entry = JSON.parse(line) as { type?: unknown; isSidechain?: unknown; message?: { usage?: Record<string, unknown> } };
@@ -177,3 +186,6 @@ export function firstRequestTokens(line: string): number | null {
     return null;
   }
 }
+
+/** The name from when only the first request was read. */
+export const firstRequestTokens = requestTokens;

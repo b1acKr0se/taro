@@ -615,7 +615,7 @@ function FinalBody({ sections, theme, onOpenLink }: { sections: FinalSections; t
   return (
     <View style={{ gap: SPACE.md }}>
       {FINAL_SECTIONS.map((template) => {
-        const items = sections[template.key];
+        const items = sections[template.key] ?? [];
         if (items.length === 0) return null;
         const open = unfolded.has(template.key);
         // Past the template's limit the rest folds, as the plan's sections do.

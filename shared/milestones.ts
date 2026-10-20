@@ -36,6 +36,9 @@ export const RECORD_KINDS: ReadonlySet<string> = new Set([
   "DISPATCH-INTENT",
   "TOOL-MISS",
   "CONTEXT",
+  "RISKS",
+  "RULING",
+  "HANDS-OFF",
 ]);
 
 /** Every record in a ticket's notes, whole, in note order (notes are append-only, so oldest first). */

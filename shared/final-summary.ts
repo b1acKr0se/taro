@@ -1,24 +1,28 @@
 /**
  * A FINAL summary in the template's short format (`skill/templates/final.md`, TR-061): What
- * changed, How it was verified and Limitations as bullets, each heading a Markdown heading, a bold
+ * changed, How it was verified, Limitations and the optional Rulings as bullets, each heading a Markdown heading, a bold
  * line or a line ending in a colon. Pure. A FINAL without What changed is an older free-form one and
  * stays Markdown.
  */
 import { finalSummaryBody } from "./execution";
 
-export type FinalSectionKey = "changed" | "verified" | "limitations";
+export type FinalSectionKey = "changed" | "verified" | "limitations" | "rulings";
 
 /** The template's sections in order, with their bullet limits. */
 export const FINAL_SECTIONS: readonly { key: FinalSectionKey; heading: string; limit: number }[] = [
   { key: "changed", heading: "What changed", limit: 5 },
   { key: "verified", heading: "How it was verified", limit: 3 },
   { key: "limitations", heading: "Limitations", limit: 3 },
+  // Optional: an owner writes it only when it decided something the user could have been asked.
+  { key: "rulings", heading: "Rulings", limit: 5 },
 ];
 
 export interface FinalSections {
   changed: string[];
   verified: string[];
   limitations: string[];
+  /** Only when the FINAL has a Rulings section: older FINALs keep their shape. */
+  rulings?: string[];
   /** Everything else (the revision line, prose, other sections) as Markdown; empty when none. */
   rest: string;
 }
@@ -37,7 +41,7 @@ function sectionKey(heading: string): FinalSectionKey | null {
 /** The FINAL's sections, or null when it has no What changed section. */
 export function finalSections(finalSummary: string | null): FinalSections | null {
   if (finalSummary === null) return null;
-  const sections: Record<FinalSectionKey, string[]> = { changed: [], verified: [], limitations: [] };
+  const sections: Record<FinalSectionKey, string[]> = { changed: [], verified: [], limitations: [], rulings: [] };
   const rest: string[] = [];
   let current: FinalSectionKey | null = null;
   let found = false;
@@ -72,5 +76,6 @@ export function finalSections(finalSummary: string | null): FinalSections | null
       else items.push(line.trim());
     });
   if (!found) return null;
-  return { ...sections, rest: rest.join("\n").trim() };
+  const { rulings, ...template } = sections;
+  return { ...template, ...(rulings.length > 0 ? { rulings } : {}), rest: rest.join("\n").trim() };
 }

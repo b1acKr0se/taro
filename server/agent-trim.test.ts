@@ -19,7 +19,11 @@ vi.mock("./projects", () => ({
   projectsDirectory: async () => projects,
   projectPaths: async (project: string) => ({ tracker: join(projects, project, "tracker") }),
 }));
-vi.mock("./tickets", () => ({ appendTicketNote: vi.fn(async () => undefined) }));
+let ticketNotes: string | null = null;
+vi.mock("./tickets", () => ({
+  appendTicketNote: vi.fn(async () => undefined),
+  childRecords: vi.fn(async () => ({ id: "NA-7", status: "In Progress", labels: [], notes: ticketNotes })),
+}));
 
 process.env.GIT_CONFIG_GLOBAL = "/dev/null";
 process.env.GIT_CONFIG_NOSYSTEM = "1";
@@ -40,7 +44,10 @@ function worktree(): string {
 const taroEnv = { TARO_PROJECT: "notes-app", TARO_TRACKER: "/home/user/tracker", TARO_SKILL: "/home/user/skill" };
 const settingsOf = (cwd: string) => join(cwd, ".claude", "settings.local.json");
 
-beforeEach(() => vi.mocked(appendTicketNote).mockClear());
+beforeEach(() => {
+  vi.mocked(appendTicketNote).mockClear();
+  ticketNotes = null;
+});
 
 describe("trimAgentLaunch", () => {
   it("trims a Taro owner's or subagent's launch, keeping its options, and turns the skills off in its worktree", async () => {
@@ -163,5 +170,81 @@ describe("watchTrimmedTurn", () => {
     const first = await trimmingStartedAt();
     expect(await trimmingStartedAt()).toBe(first);
     expect(JSON.parse(readFileSync(join(state, "context-trim.json"), "utf8"))).toEqual({ since: first });
+  });
+});
+
+function overEstimateStats() {
+  const noted = new Set<string>();
+  const stats = {
+    hasStartingContext: vi.fn(async () => true),
+    hasOverEstimateNote: vi.fn(async () => false),
+    startingContext: vi.fn(async () => false),
+    noteOverEstimate: vi.fn(async (_project: string, ticket: string, agentId: string) => {
+      const key = `${ticket}:${agentId}`;
+      if (noted.has(key)) return false;
+      noted.add(key);
+      return true;
+    }),
+  };
+  return stats as unknown as Stats;
+}
+
+/** Requests of 31k, 90k and 142k, and a built-in subagent's 300k that is not the agent's own. */
+function peakTranscript(cwd: string, sessionId: string): void {
+  const folder = join(claudeConfig, "projects", cwd.replace(/[^a-zA-Z0-9]/g, "-"));
+  mkdirSync(folder, { recursive: true });
+  const request = (tokens: number, extra: Record<string, unknown> = {}) => ({ type: "assistant", message: { usage: { input_tokens: 2, cache_creation_input_tokens: 0, cache_read_input_tokens: tokens - 2 } }, ...extra });
+  const lines = [request(31_000), request(90_000), request(300_000, { isSidechain: true }), request(142_000), { type: "user", message: { role: "user", content: "next" } }];
+  writeFileSync(join(folder, `${sessionId}.jsonl`), lines.map((line) => JSON.stringify(line)).join("\n") + "\n");
+}
+
+const estimateOf = (estimate: string) => `EXECUTION 2026-10-20T10:00Z — subagent sub-1, implementer, NA-7.01, claude/claude-sonnet-5-5, workspace w1, estimate: ${estimate}`;
+
+describe("the over-estimate note", () => {
+  const subagent = { project: "notes-app", role: "implementer", ticket: "NA-7" };
+  const notes = () => vi.mocked(appendTicketNote).mock.calls.map(([, , record]) => record).filter((record) => record.startsWith("CONTEXT"));
+
+  async function turn(stats: Stats, identity = subagent, session = "session-peak") {
+    const since = await trimmingStartedAt();
+    // No git here: the transcript is found by the directory's name alone.
+    const cwd = mkdtempSync(join(scratch, "peak-"));
+    peakTranscript(cwd, session);
+    await watchTrimmedTurn(stats, { id: "sub-1", provider: "claude", cwd, createdAt: since, persistence: { sessionId: session } }, identity, [], claudeConfig);
+    return { cwd, since };
+  }
+
+  it("notes a peak over the estimate once", async () => {
+    ticketNotes = estimateOf("60k");
+    const stats = overEstimateStats();
+    const { cwd, since } = await turn(stats);
+    expect(notes()).toHaveLength(1);
+    expect(notes()[0]).toMatch(/^CONTEXT \S+ — peaked at 142k against an estimate of 60k: implementer sub-1\. Split the task/);
+    await watchTrimmedTurn(stats, { id: "sub-1", provider: "claude", cwd, createdAt: since, persistence: { sessionId: "session-peak" } }, subagent, [], claudeConfig);
+    expect(notes()).toHaveLength(1);
+  });
+
+  it("no note without an estimate", async () => {
+    ticketNotes = "EXECUTION 2026-10-20T10:00Z — subagent sub-1, implementer, NA-7.01";
+    await turn(overEstimateStats());
+    expect(notes()).toEqual([]);
+  });
+
+  it("no note at 1.2× the estimate", async () => {
+    ticketNotes = estimateOf("118k");
+    await turn(overEstimateStats());
+    expect(notes()).toEqual([]);
+  });
+
+  it("an owner gets no over-estimate note", async () => {
+    ticketNotes = estimateOf("60k");
+    await turn(overEstimateStats(), { ...subagent, role: "owner" });
+    expect(notes()).toEqual([]);
+  });
+
+  it("sidechain requests are not the peak", async () => {
+    // 142k is the largest of the agent's own requests: an estimate of 115k (bar 143.75k) is not exceeded, though the sidechain's 300k would be.
+    ticketNotes = estimateOf("115k");
+    await turn(overEstimateStats());
+    expect(notes()).toEqual([]);
   });
 });

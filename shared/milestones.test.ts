@@ -96,3 +96,21 @@ describe("kindLabel", () => {
     expect(kindLabel("")).toBe("");
   });
 });
+
+describe("the Taro 207 records", () => {
+  it("RISKS keeps its risk lines", () => {
+    const notes = "MILESTONE 2026-10-20T09:00Z — plan approved\nRISKS — three ways this breaks\nrisk: input — an empty file\nrisk: concurrency — two writers\nMILESTONE 2026-10-20T10:05Z — built";
+    expect(ticketMilestones(notes).map((record) => record.kind)).toEqual(["MILESTONE", "RISKS", "MILESTONE"]);
+    expect(ticketMilestones(notes)[1]?.text).toContain("risk: input — an empty file risk: concurrency — two writers");
+  });
+
+  it("RULING and HANDS-OFF are records without a time too", () => {
+    const notes = "MILESTONE 2026-10-20T10:00Z — a\nRULING — use X — simpler — redo\nHANDS-OFF — the user: \"you decide\"";
+    expect(ticketMilestones(notes).map((record) => record.kind)).toEqual(["MILESTONE", "RULING", "HANDS-OFF"]);
+  });
+
+  it("HANDS-OFF reads Hands off", () => {
+    expect(kindLabel("HANDS-OFF")).toBe("Hands off");
+    expect(kindLabel("RISKS")).toBe("Risks");
+  });
+});
