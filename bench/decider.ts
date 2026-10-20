@@ -19,6 +19,8 @@ import type { DeciderEvent } from "./score.ts";
 export const DECIDER_MODEL = "claude/claude-sonnet-5-5";
 const CARD_WAIT_MS = 120_000;
 const POLL_MS = 5000;
+/** The question card's own text field (the chat composer below it has another placeholder). */
+const ANSWER_PLACEHOLDER = "Answer in your own words";
 /** Request changes at most this many times on one kind of card, so a run always ends. */
 const MAX_CHANGE_REQUESTS = 2;
 
@@ -115,7 +117,7 @@ export function parseReply(log: string, nonce: string): DeciderReply | null {
   if (at < 0) return null;
   const body = log.slice(at + 1);
   const field = (name: string): string => new RegExp(`^${name}:[ \\t]*(.*)$`, "im").exec(body)?.[1]?.trim() ?? "";
-  const choice = field("choice");
+  const choice = field("choice").replace(/\s*\(recommended\)\s*$/i, "");
   if (choice === "") return null;
   return { choice, text: field("text"), preference: field("preference") || "none", briefAnswered: /^y/i.test(field("brief")) };
 }
@@ -179,16 +181,20 @@ async function visibleCardText(page: Page, question: string, labels: readonly st
   return page.evaluate(
     ({ needle, wanted }: { needle: string; wanted: string[] }) => {
       const squeeze = (value: string): string => value.replace(/\s+/g, " ").trim();
-      const holder = (Array.from(document.querySelectorAll("*")) as any[]).find((element: any) => element.children.length === 0 && squeeze(element.textContent ?? "").includes(squeeze(needle)));
-      if (holder === undefined) return null;
+      const leaves = (Array.from(document.querySelectorAll("*")) as any[]).filter((element: any) => element.children.length === 0 && squeeze(element.textContent ?? "").includes(squeeze(needle)));
       const actions = /\b(Approve|Submit|Accept)\b/;
-      let node: any = holder;
-      while (node.parentElement !== null) {
-        const text = squeeze(node.innerText ?? "");
-        if (actions.test(text) && wanted.every((label) => text.includes(squeeze(label)))) return node.innerText;
-        node = node.parentElement;
-      }
-      return node.innerText;
+      // For each place the question appears, the smallest ancestor that holds an action and every option; the smallest of those is the card.
+      const cards = leaves.flatMap((leaf: any) => {
+        let node: any = leaf;
+        while (node.parentElement !== null) {
+          const text = squeeze(node.innerText ?? "");
+          if (actions.test(text) && wanted.every((label) => text.includes(squeeze(label)))) return [node.innerText as string];
+          node = node.parentElement;
+        }
+        return [];
+      });
+      if (cards.length === 0) return leaves.length === 0 ? null : (leaves[0].innerText as string);
+      return cards.reduce((best: string, text: string) => (text.length < best.length ? text : best));
     },
     { needle: question, wanted: [...labels] },
   );
@@ -269,13 +275,26 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
     return null;
   }
 
+  /**
+   * A question on the board shows its options as chips and an Answer button; Answer opens the owner's chat
+   * with the full card (options, Other, Submit). The plan and Accept cards are complete on the board.
+   */
+  async function openFullCard(page: Page, kind: CardKind): Promise<void> {
+    if (kind !== "question") return;
+    await page.getByText("Answer", { exact: true }).filter({ visible: true }).first().click({ timeout: 10_000 });
+    await page.waitForTimeout(2500);
+  }
+
   /** The screenshots and the text check of a card on screen: desktop dark on the answering page, phone light on a page of its own. */
-  async function checkCard(desktop: Page, number: number, id: string, question: string, labels: string[]): Promise<void> {
+  async function checkCard(desktop: Page, kind: CardKind, number: number, id: string, question: string, labels: string[]): Promise<void> {
+    await openFullCard(desktop, kind);
     await desktop.screenshot({ path: join(cardsDirectory, `${number}-${id}-desktop-dark.png`) });
     const desktopText = await visibleCardText(desktop, question, labels);
     const phone = await newPage(true);
     try {
       // The phone's board may be on another page of the screen; the card's text is checked only where it shows.
+      const onBoard = await phone.page.getByText(question.slice(0, 60), { exact: false }).filter({ visible: true }).count().catch(() => 0);
+      if (onBoard > 0) await openFullCard(phone.page, kind).catch((error) => record({ type: "violation", at: now(), kind: "card-missing", detail: `${id} (phone): could not open the full card: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}` }));
       const shown = await phone.page.getByText(question.slice(0, 60), { exact: false }).filter({ visible: true }).count().catch(() => 0);
       await phone.page.screenshot({ path: join(cardsDirectory, `${number}-${id}-phone-light.png`) });
       const checked: [string, string | null][] = [["desktop", desktopText], ["phone", shown > 0 ? await visibleCardText(phone.page, question, labels) : null]];
@@ -304,10 +323,10 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
       const label = labels.find((candidate) => candidate.toLowerCase() === reply.choice.toLowerCase());
       if (label !== undefined) {
         await page.getByRole("radio", { name: new RegExp(`^${escapeRegExp(label)}`) }).filter({ visible: true }).first().click({ timeout: 10_000 });
-        if (reply.text !== "") await typeInto(page, "", reply.text).catch(() => undefined);
+        if (reply.text !== "") await typeInto(page, ANSWER_PLACEHOLDER, reply.text).catch(() => undefined);
       } else {
         await clickText(page, "Other");
-        await typeInto(page, "", reply.text === "" ? reply.choice : reply.text);
+        await typeInto(page, ANSWER_PLACEHOLDER, reply.text === "" ? reply.choice : reply.text);
       }
       await clickText(page, "Submit");
       return;
@@ -361,7 +380,7 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
       await answerOverRpc(kind, reply, decision);
     } else {
       try {
-        await checkCard(opened.page, number, id, question, labels);
+        await checkCard(opened.page, kind, number, id, question, labels);
         await answerInUi(opened.page, kind, reply, decision);
         await opened.page.waitForTimeout(2500);
       } catch (error) {

@@ -129,6 +129,7 @@ async function main(): Promise<void> {
   };
   process.on("SIGINT", () => onSignal("SIGINT"));
   process.on("SIGTERM", () => onSignal("SIGTERM"));
+  process.on("SIGHUP", () => onSignal("SIGHUP"));
 
   const started = Date.now();
   let decider: ReturnType<typeof startDecider> | null = null;
