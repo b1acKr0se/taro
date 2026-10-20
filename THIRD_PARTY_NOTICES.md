@@ -58,7 +58,10 @@ gradient from `src/components/message.tsx`), `client/web-shimmer.ts` (`buildShim
 keyframes from the same file) and `client/loading.tsx` (the loader from `src/components/synced-loader.tsx`, the working indicator from
 `src/agent-stream/turn-footer.tsx` and the tool call's shimmer from `src/components/message.tsx`). The turn footer is ported at the same
 commit: `client/turn-footer.tsx` (`AssistantTurnFooter` and `TurnCopyButton` from `src/components/message.tsx`)
-and `client/turn-time.ts` (`src/utils/time.ts` and `src/timeline/turn-time.ts`). Paseo ships
+and `client/turn-time.ts` (`src/utils/time.ts` and `src/timeline/turn-time.ts`). The composer's model and effort controls are ported from Paseo too: `client/agent-controls-bar.tsx` (from
+`src/composer/agent-controls/control.tsx`), `shared/agent-controls.ts` (`formatThinkingOptionLabel` from
+`src/agent-controls/labels.ts`) and `client/provider-icon-data.ts` (the provider marks of `src/components/icons/*-icon.tsx`,
+drawn to PNG). Paseo ships
 no NOTICE file. Its license, with the Apache License 2.0 in full:
 
 ```

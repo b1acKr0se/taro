@@ -11,6 +11,7 @@ function brief(id: string, title: string | null = null): AgentBrief {
     status: "idle",
     provider: "claude",
     model: null,
+    thinking: null,
     workspaceId: null,
     pendingPermissions: 0,
     updatedAt: "2026-10-13T14:00:00Z",

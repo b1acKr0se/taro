@@ -42,6 +42,8 @@ export const AgentBriefSchema = z.object({
   status: z.string(),
   provider: z.string(),
   model: z.string().nullable(),
+  /** The thinking option id it runs with (its effort), when Paseo reports one. */
+  thinking: z.string().nullable().default(null),
   workspaceId: z.string().nullable(),
   pendingPermissions: z.number().int(),
   updatedAt: z.string(),
@@ -174,7 +176,7 @@ export const listModels = defineRpc({
   name: "taro.models.list",
   input: Empty,
   output: z.object({
-    models: z.array(z.object({ id: z.string(), label: z.string(), thinkingOptions: z.array(z.string()), defaultThinking: z.string() })),
+    models: z.array(z.object({ id: z.string(), label: z.string(), modelLabel: z.string().default(""), thinkingOptions: z.array(z.string()), defaultThinking: z.string() })),
   }),
 });
 

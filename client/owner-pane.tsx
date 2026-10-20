@@ -231,6 +231,7 @@ export function OwnerPane({
                     : undefined
                 }
                 context={{ used: shown.brief.contextUsedTokens, max: shown.brief.contextMaxTokens }}
+                identity={shown.brief}
                 actions={
                   elsewhere === null ? undefined : (
                     <Pressable

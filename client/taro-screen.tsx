@@ -834,6 +834,7 @@ function ManagerPane({
           </>
         }
         context={{ used: manager.contextUsedTokens, max: manager.contextMaxTokens }}
+        identity={manager}
         actionsTip={replaceTip !== null && tipOpen ? replaceTip : null}
       />
       <ReplaceFirstDialog
