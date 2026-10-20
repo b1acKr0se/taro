@@ -4,7 +4,9 @@ import type { AgentState, StoredDecision } from "../shared/state";
 import { fetchLiveAgent, listTaroAgents } from "./agents";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
 import { sendFromPlugin } from "./send";
-import { endDelivery, viewTicket } from "./tickets";
+import { branchName, commitsPast } from "./branch-commits";
+import { readProjectConfig } from "./projects";
+import { appendTicketNote, endDelivery, viewTicket } from "./tickets";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
@@ -13,12 +15,13 @@ import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, huma
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", acceptQuestionRefused: "accept-question-refused", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question" },
+  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", acceptQuestionRefused: "accept-question-refused", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question", noPlan: "no-plan" },
   skillDirectory: async () => "/skill",
-  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "accept-question-refused" ? `accept-question-refused:${values.refused}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : `${path}:${values.ticket ?? ""}`),
+  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "accept-question-refused" ? `accept-question-refused:${values.refused}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : path === "no-plan" ? `no-plan:${values.ticket}:${values.branch}:${values.commits}:${values.base}` : `${path}:${values.ticket ?? ""}`),
 }));
-vi.mock("./projects", () => ({ readProjectConfig: async () => null, projectPaths: async () => ({ tracker: "/tracker" }) }));
-vi.mock("./tickets", () => ({ viewTicket: vi.fn(), endDelivery: vi.fn(async () => true) }));
+vi.mock("./projects", () => ({ readProjectConfig: vi.fn(async () => null), projectPaths: async () => ({ tracker: "/tracker" }) }));
+vi.mock("./branch-commits", () => ({ commitsPast: vi.fn(async () => 0), branchName: vi.fn(async () => "taro/tr-9") }));
+vi.mock("./tickets", () => ({ viewTicket: vi.fn(), endDelivery: vi.fn(async () => true), appendTicketNote: vi.fn(async () => undefined) }));
 
 const recovery = { onCrash: vi.fn(async () => undefined), recoverLeftovers: async () => 0 } as unknown as Recovery;
 
@@ -1041,5 +1044,112 @@ describe("Supervisor.onTurnEnded records the agent's cost (TR-097)", () => {
   it("passes an empty reading when Paseo has no usage (after a daemon restart)", async () => {
     const call = await endTurn(subagent);
     expect(call[4]).toEqual({ costUsd: null, contextTokens: null, contextMaxTokens: null });
+  });
+});
+
+// TR-205's owner built and committed with no plan on its ticket; the plugin flags it and stops the owner (TR-206).
+describe("Supervisor.onTurnEnded with commits and no plan", () => {
+  const owner = {
+    id: "owner-np",
+    provider: "claude",
+    model: "sonnet",
+    title: "TR-9 · x",
+    status: "idle",
+    cwd: "/work/tr-9",
+    labels: { "taro.project": "taro", "taro.role": "owner", "taro.ticket": "TR-9" },
+  };
+  const hookAgent = { id: owner.id, parentAgentId: null } as unknown as HookAgent;
+  const completed = { kind: "completed" } as unknown as TurnOutcome;
+  const reply = items({ type: "user_message", text: "go" }, { type: "assistant_message", text: "Built it.\n\ndone: built" });
+  let commits = 0;
+
+  function supervisor(): Supervisor {
+    const agents: Record<string, AgentState> = {};
+    const state = {
+      allDecisions: async () => [],
+      updateDecisions: async <T>(change: (decisions: never[]) => T) => change([]),
+      agent: async (agentId: string) => agents[agentId] ?? null,
+      updateAgent: async <T>(agentId: string, initial: () => AgentState, change: (record: AgentState) => T) => {
+        const record = agents[agentId] ?? initial();
+        agents[agentId] = record;
+        return change(record);
+      },
+    } as unknown as PluginState;
+    return new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+  }
+  const ticket = (status: string, implementationPlan: string | null) =>
+    vi.mocked(viewTicket).mockResolvedValue({ status, implementationPlan, acceptanceCriteria: [], implementationNotes: null, labels: [] } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+  const told = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("no-plan:"));
+  const records = () => vi.mocked(appendTicketNote).mock.calls.map(([, , record]) => record);
+  const end = (taro: Supervisor) => taro.onTurnEnded({} as PaseoApi, hookAgent, completed, reply, null, undefined);
+
+  beforeEach(() => {
+    commits = 0;
+    vi.mocked(fetchLiveAgent).mockResolvedValue(owner as unknown as PaseoAgent);
+    vi.mocked(sendFromPlugin).mockClear();
+    vi.mocked(appendTicketNote).mockClear();
+    vi.mocked(commitsPast).mockReset();
+    vi.mocked(commitsPast).mockImplementation(async () => commits);
+    vi.mocked(readProjectConfig).mockResolvedValue({ baseBranch: "main" } as unknown as Awaited<ReturnType<typeof readProjectConfig>>);
+  });
+
+  afterEach(() => {
+    vi.mocked(viewTicket).mockReset();
+    vi.mocked(readProjectConfig).mockReset();
+    vi.mocked(readProjectConfig).mockResolvedValue(null);
+  });
+
+  it("records NO-PLAN on the ticket and tells the owner to stop, once while the plan is missing", async () => {
+    ticket("In Progress", null);
+    commits = 2;
+    const taro = supervisor();
+    await end(taro);
+    expect(vi.mocked(commitsPast).mock.calls[0]).toEqual(["/work/tr-9", "main"]);
+    expect(vi.mocked(branchName).mock.calls[0]).toEqual(["/work/tr-9"]);
+    expect(told()).toEqual(["no-plan:TR-9:taro/tr-9:2 commits:main"]);
+    expect(records()).toHaveLength(1);
+    expect(records()[0]).toMatch(/^NO-PLAN \S+ — 2 commits on taro\/tr-9 past main with no plan on the ticket/);
+
+    commits = 3;
+    await end(taro);
+    expect(told()).toHaveLength(1);
+    expect(records()).toHaveLength(1);
+  });
+
+  it("flags again after a plan was written and later emptied", async () => {
+    commits = 1;
+    const taro = supervisor();
+    ticket("In Progress", null);
+    await end(taro);
+    ticket("In Progress", "## Goal\nFix it");
+    await end(taro);
+    ticket("In Progress", "");
+    await end(taro);
+    expect(told()).toEqual(["no-plan:TR-9:taro/tr-9:1 commit:main", "no-plan:TR-9:taro/tr-9:1 commit:main"]);
+  });
+
+  it("leaves an older ticket alone whose criteria checklist stands for its plan", async () => {
+    commits = 2;
+    vi.mocked(viewTicket).mockResolvedValue({ status: "In Progress", implementationPlan: null, acceptanceCriteria: [{ index: 1, text: "works", checked: false }], implementationNotes: null, labels: [] } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+    await end(supervisor());
+    expect(told()).toEqual([]);
+  });
+
+  it("says nothing with a plan, with no commits, on a closed ticket, or when the ticket or git cannot be read", async () => {
+    commits = 4;
+    ticket("In Progress", "## Goal\nFix the typo");
+    await end(supervisor());
+    expect(vi.mocked(commitsPast)).not.toHaveBeenCalled();
+    ticket("Done", null);
+    await end(supervisor());
+    commits = 0;
+    ticket("In Progress", null);
+    await end(supervisor());
+    vi.mocked(commitsPast).mockRejectedValue(new Error("git stopped"));
+    await end(supervisor());
+    vi.mocked(viewTicket).mockRejectedValue(new Error("no ticket"));
+    await end(supervisor());
+    expect(told()).toEqual([]);
+    expect(records()).toEqual([]);
   });
 });

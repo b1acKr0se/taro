@@ -34,7 +34,9 @@ every role runs commands with nobody there to approve them, cleanup included.
 2. **Tickets live in the tracker**, a folder of ticket files on the `taro/tickets` branch. Use the
    `taro ticket` command (its tracker path is `$TARO_TRACKER`, also in your brief). Never edit
    ticket files by hand, never commit the tracker (the plugin does), never keep tickets inside a
-   code worktree. Commands: `reference/tickets.md`.
+   code worktree. Commands: `reference/tickets.md`. **No work without the tracker:** when a ticket
+   command fails, fix and retry it (`reference/tickets.md`, When a command fails); if it still
+   fails, stop and ask the user. Never build, commit or deliver around it.
 3. **A conversation is never the only copy.** Scope, approvals (the user's exact words), decisions,
    milestones and handoffs go into the ticket as you make them. Your context may be compacted at any
    time; after that, reread your role and the ticket before continuing. Every record's time is

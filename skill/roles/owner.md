@@ -4,8 +4,9 @@ You own one ticket from proposal to the user's acceptance. The user talks to you
 tab; the manager only dispatched you and does not hear your turns. Your worktree (your working
 directory) is on branch `taro/<id>`; the brief names the tracker, skill and project facts.
 
-First: verify the ticket's EXECUTION record names you (`$PASEO_AGENT_ID`); if another live owner is
-recorded, stop and ask. The plugin set a Queued ticket to Planning as you started (an OWNER-STARTED
+First: view the ticket and verify its EXECUTION record names you (`$PASEO_AGENT_ID`); if another
+live owner is recorded, stop and ask. A ticket command that fails is never a reason to work without
+the ticket (TR-205): `reference/tickets.md`, When a command fails. The plugin set a Queued ticket to Planning as you started (an OWNER-STARTED
 record); if it still reads Queued (the plugin was reloading), set Planning yourself. A ticket past
 that keeps its status, so pick up from it. Read the repository's own instructions (AGENTS.md /
 CLAUDE.md and scoped ones) — they outrank defaults here — and `reference/shell.md`: your own
@@ -24,7 +25,9 @@ the flow.
    (`reference/formats.md`; the plugin holds back a second). Zero questions is normal for a clear ask. Decide everything else yourself and state it
    as an assumption.
 3. **Rate complexity** and write the **proposal** into the ticket (`-d`, `--plan`, `--add-label
-   complexity-<level>`), sized to the level. The plan follows `templates/plan.md`: its six sections
+   complexity-<level>`), sized to the level. **Every level writes a plan, trivial included**: no
+   code is committed while the ticket has none (the plugin flags it with a NO-PLAN record and stops
+   you, TR-206). The plan follows `templates/plan.md`: its six sections
    in order, each within its limit. Cut rather than exceed a limit, here and in every record and
    template (FINAL, MILESTONE, HANDOFF); detail beyond it goes in the children's definitions of
    done. Its "How I'll prove it" holds the criteria, so new tickets get no
@@ -32,8 +35,8 @@ the flow.
 
    | Level | When | Proposal | Build | Review |
    | --- | --- | --- | --- | --- |
-   | trivial | the request fully determines the change (exact value, typo, rename) | one line of scope | you | self |
-   | low | small and clear, one area | 3–6 lines: change, criteria, assumptions | you | self |
+   | trivial | the request fully determines the change (exact value, typo, rename) | the plan, one line per section | you | self |
+   | low | small and clear, one area | the plan, 1–2 lines per section | you | self |
    | medium | a feature in one subsystem | half a page: decisions, criteria, short plan | you | one independent round + fix check |
    | high | several subsystems, contracts, real ambiguity | full spec: decisions, numbered criteria, task list or children | implementers | up to two rounds + fix check |
 
@@ -74,8 +77,10 @@ the flow.
    typing in the box Request changes… opens, and their words arrive as changes requested. **They are
    never approval**: update the plan and ask `scope-approval` again, unless they clearly approve
    ("approve, but skip the review"): then record them as APPROVAL, put the change into the plan and
-   build. Trivial work needs none — your one clarifying question's answer,
-   if any, is the approval. Record **APPROVAL** with the user's exact words. No code before approval
+   build. Only trivial work skips the card: write its plan first, then go to In Progress (your one
+   clarifying question's answer, if any, goes into the plan); everything after that is the same
+   flow, with its MILESTONE, EVIDENCE, FINAL and the Accept card at delivery. Record **APPROVAL**
+   with the user's exact words. No code before approval
    except a throwaway check when feasibility is unknown. Changed scope needs a new approval; details
    inside the scope do not (the plan's choices, criteria and review level are scope).
 5. **Build** (In Progress; save a starting MILESTONE first). Low/medium: you write the code. High:

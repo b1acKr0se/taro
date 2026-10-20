@@ -29,10 +29,19 @@ Other exit codes: 1 for an error such as a missing ticket, 2 for a usage mistake
 usage). New tickets have no acceptance criteria list; the criteria live in the plan's How I'll
 prove it. Only an older ticket has a checklist, ticked with `--check-ac <n>`.
 
+## When a command fails
+
+Never go on without the tracker: the ticket is the record of the work (SKILL.md rule 3).
+
+- **Exit 2** is a usage mistake: read the usage it prints and fix the command (`view`, not `show`).
+- **`taro` not found:** run it by its full path, `"$TARO_SKILL/../bin/taro" ticket …`.
+- **Anything else**, or still failing: stop and ask the user with a blocking decision, saying what
+  you ran and what it printed. Do not build, commit or deliver until a ticket command works.
+
 ## Statuses
 
 `Queued → Planning → Ready → In Progress → Reviewing → Awaiting acceptance → Done`, plus `Blocked`
-and `Cancelled`. Trivial tasks go from Planning straight to In Progress.
+and `Cancelled`. Trivial tasks go from Planning straight to In Progress once their plan is written (no approval card).
 
 | Status | Who sets it | When |
 | --- | --- | --- |
@@ -141,6 +150,9 @@ rather than exceed it.
   it found. The plugin itself writes ACCEPTANCE, NOT-MERGED and NOT-SYNCED on the routine
   path; an owner writes them only after a hand-off.
 - **ANSWER**: written by the plugin when the user answers a decision.
+- **NO-PLAN**: written by the plugin when an owner's turn ends with commits on its branch and no
+  plan on the ticket (TR-206); the owner is told to stop, write the plan and, above trivial, ask
+  `scope-approval` before building on.
 - **ESCAPE**: on a delivered ticket, when a later ticket fixes a defect it shipped; written by the
   later ticket's owner. What escaped, the fixing ticket, and the check that should have caught it
   (coverage map, alignment, placeholder text, a test, a review area):

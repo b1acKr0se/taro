@@ -503,7 +503,7 @@ export default function contribute(server: PluginServerContext) {
     await installCompactHook(paseo, request)
       .then((done) => (done === null ? undefined : console.log(`[taro] ${request.agentId}: ${done}`)))
       .catch((error: unknown) => reportFailure(`[taro] compact hook for ${request.agentId}:`, error));
-    const environment = await sessionEnvironment(paseo, request.agentId, request.cwd, request.env?.PATH).catch(() => null);
+    const environment = await sessionEnvironment(paseo, request.agentId, request.cwd, request.env?.PATH, request.env?.TARO_PROJECT).catch(() => null);
     if (environment === null) return;
     return { ...request, env: { ...request.env, ...environment } };
   });

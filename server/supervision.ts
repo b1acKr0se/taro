@@ -10,6 +10,7 @@ import { asksToAccept, deliveryEndedRecord, deliveryTakenBackRecord, questionEnd
 import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compaction";
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
+import { lacksPlan, noPlanRecord } from "../shared/no-plan";
 import { asPlanningQuestion, asStored, planningTicket } from "../shared/planning-questions";
 import type { DrainTrigger } from "../shared/chat-queue";
 import { isCrash } from "../shared/recovery";
@@ -17,11 +18,12 @@ import { hashText, parseDecisionBlocks, parseStatusLine, seenAgain, withImagePat
 import { openQuestionHolding, withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDecision } from "../shared/state";
 import { watchTrimmedTurn } from "./agent-trim";
 import { fetchLiveAgent, isMidTurn, listTaroAgents } from "./agents";
+import { branchName, commitsPast } from "./branch-commits";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
 import { ticketEvidence, ticketEvidenceDirectory } from "./evidence";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { projectPaths, readProjectConfig } from "./projects";
-import { endDelivery, viewTicket } from "./tickets";
+import { appendTicketNote, endDelivery, viewTicket } from "./tickets";
 import { isPluginMessageId, sendCommand, sendFromPlugin } from "./send";
 import type { ChatQueue } from "./chat-queue";
 import type { Recovery } from "./recovery";
@@ -175,6 +177,7 @@ export function freshState(identity: TaroIdentity): AgentState {
     idleCompaction: "none",
     lastTurnEndedAt: null,
     evidenceReminded: null,
+    noPlanFlagged: false,
   };
 }
 
@@ -306,6 +309,7 @@ export class Supervisor {
     if (outcome.kind === "completed" && (await this.drainQueue(paseo, live.id, "completed"))) return;
     if (identity.role !== "owner") return;
 
+    if (outcome.kind === "completed" && (await this.flagCommitsWithoutPlan(paseo, live, identity))) return;
     if (outcome.kind === "completed") {
       const stalled = (status === null || status.state === "working") && !openBlocking;
       const nudge = await this.state.updateAgent(live.id, () => freshState(identity), (record) => {
@@ -405,6 +409,49 @@ export class Supervisor {
         ticket: identity.ticket,
         missing: missing.map((gap) => `- ${gap}`).join("\n"),
         folder: ticketEvidenceDirectory(identity.project, identity.ticket),
+        skill: await skillDirectory(),
+      }),
+    );
+    return true;
+  }
+
+  /**
+   * An owner whose branch has commits while its ticket has no plan (TR-206) gets a NO-PLAN record on
+   * the ticket and is told to stop and plan, once per gap. Git runs only when the plan is missing.
+   */
+  private async flagCommitsWithoutPlan(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity): Promise<boolean> {
+    if (identity.ticket === null) return false;
+    let lacking: boolean;
+    let found: { commits: number; branch: string; base: string } | null = null;
+    try {
+      const detail = await viewTicket((await projectPaths(identity.project)).tracker, identity.ticket);
+      lacking = lacksPlan({ status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length });
+      const base = lacking ? (await readProjectConfig(identity.project))?.baseBranch : undefined;
+      const commits = base === undefined ? 0 : await commitsPast(agent.cwd, base);
+      if (base !== undefined && commits > 0) found = { commits, branch: await branchName(agent.cwd), base };
+    } catch {
+      return false;
+    }
+    const flagged = found;
+    const tell = await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
+      if (!lacking) record.noPlanFlagged = false;
+      if (flagged === null || record.noPlanFlagged) return false;
+      record.noPlanFlagged = true;
+      return true;
+    });
+    if (!tell || flagged === null) return false;
+    const record = noPlanRecord(new Date().toISOString(), flagged.commits, flagged.branch, flagged.base);
+    await appendTicketNote((await projectPaths(identity.project)).tracker, identity.ticket, record).catch((error: unknown) => {
+      console.warn(`[taro] flagging ${identity.ticket}'s commits without a plan: ${error instanceof Error ? error.message : String(error)}`);
+    });
+    await sendFromPlugin(
+      paseo,
+      agent.id,
+      await message(TEMPLATES.noPlan, {
+        ticket: identity.ticket,
+        branch: flagged.branch,
+        commits: flagged.commits === 1 ? "1 commit" : `${flagged.commits} commits`,
+        base: flagged.base,
         skill: await skillDirectory(),
       }),
     );
