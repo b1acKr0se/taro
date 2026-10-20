@@ -24,8 +24,9 @@ export interface ResultFile {
 
 const OWNER_ROLE = "owner";
 
+/** An arm is a commit of the plugin: two copies of the same commit are one arm. */
 export function armKey(result: ResultFile): string {
-  return `${result.arm.checkout}@${result.arm.sha}`;
+  return result.arm.sha;
 }
 
 const usd = (value: number): string => `$${value.toFixed(2)}`;
@@ -83,7 +84,7 @@ export function renderReport(results: readonly ResultFile[]): string {
   results.forEach((result) => {
     if (!arms.includes(armKey(result))) arms.push(armKey(result));
   });
-  const names = arms.map((key) => `${String.fromCharCode(65 + arms.indexOf(key))} · ${key.slice(key.lastIndexOf("@") + 1, key.lastIndexOf("@") + 8)}`);
+  const names = arms.map((key) => `${String.fromCharCode(65 + arms.indexOf(key))} · ${key.slice(0, 7)}`);
   const tasks: string[] = [];
   results.forEach((result) => {
     if (!tasks.includes(result.task)) tasks.push(result.task);

@@ -36,6 +36,12 @@ describe("renderReport", () => {
     expect(text).toContain("| Card failures | none | card-text ×1 |");
   });
 
+  it("treats two copies of the same commit as one arm", () => {
+    const text = renderReport([result(), result({ task: "bug-fix", arm: { checkout: "/tmp/another-copy", sha: "aaaaaaa1111" } })]);
+    expect(text).toContain("| | A · aaaaaaa |");
+    expect(text).not.toContain("B ·");
+  });
+
   it("shows dashes for a task one arm did not run", () => {
     const text = renderReport([result(), result({ task: "bug-fix" }), result({ arm: { checkout: "/repo/branch", sha: "bbbbbbb2222" } })]);
     const bugFix = text.slice(text.indexOf("### bug-fix"));
