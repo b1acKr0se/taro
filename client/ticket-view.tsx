@@ -33,7 +33,6 @@ import { KeyboardScrollView } from "./keyboard";
 import { Markdown, MarkdownInline } from "./markdown";
 import { PlanActions, PlanBody, usePlanMarks, type PlanCardOptions } from "./plan-card";
 import { SpecChangeBox } from "./spec-change-box";
-import { TopBar } from "./top-bar";
 import { withAlpha } from "./tint";
 import { recentMilestoneRows } from "./milestone-rows";
 import { paneGutter, SPACE } from "./spacing";
@@ -92,8 +91,15 @@ export function TicketView(props: TicketViewProps) {
   return (
     <View style={{ flex: 1 }}>
       {back === null ? null : (
-        // The pane's header still names the ticket it opened on, so this bar names the child shown; icon-only back (TR-205).
-        <TopBar theme={props.theme} title={shown} backLabel={`Back to ${back}`} onBack={() => setKept(goBack(trail))} />
+        // The pane's header still names the ticket it opened on, so this row names the child shown.
+        <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm, paddingTop: SPACE.md, paddingHorizontal: paneGutter(false) }}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Back to ${back}`} onPress={() => setKept(goBack(trail))} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs }}>
+            <Icon name="ChevronLeft" size={14} color={colors.accent} />
+            <Text style={{ color: colors.accent, fontSize: FONT_SIZE.small, fontWeight: "600" }}>{back}</Text>
+          </Pressable>
+          <Icon name="ChevronRight" size={12} color={colors.foregroundMuted} />
+          <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.small, fontWeight: "600" }}>{shown}</Text>
+        </View>
       )}
       {tickets.map((ticket, depth) => (
         <View key={`${depth}:${ticket}`} style={depth === tickets.length - 1 ? { flex: 1 } : { display: "none" }}>

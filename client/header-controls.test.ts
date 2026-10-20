@@ -38,20 +38,12 @@ describe("header controls", () => {
     expect(segmented).not.toMatch(/(height|size|padding|paddingHorizontal|borderRadius): \d/);
   });
 
-  it("draws every screen's Back as an arrow alone that still names its target (TR-205)", () => {
+  it("draws a phone's Back as an icon alone that still names its target", () => {
     const pane = source("owner-pane.tsx");
-    const leading = pane.slice(pane.indexOf("leading={"), pane.indexOf("\n", pane.indexOf("leading={")));
-    expect(leading).not.toContain("compact");
+    const leading = pane.slice(pane.indexOf("leading={compact"), pane.indexOf("\n", pane.indexOf("leading={compact")));
     expect(leading).toContain('icon="ArrowLeft"');
     expect(leading).toContain("label={backLabel}");
     expect(leading).not.toContain("showLabel");
-    expect(pane).not.toContain("showLabel theme={theme} onPress={onBack}");
     expect(pane).toContain("const backLabel = planOpen ? \"Back\" : `Back to ${backTo}`;");
-    // The pages and the child-ticket row share the settings page's fixed bar.
-    expect(source("top-bar.tsx")).toContain('icon="ArrowLeft"');
-    for (const file of ["project-setup.tsx", "new-project.tsx", "ticket-view.tsx"]) {
-      expect(source(file)).toContain("<TopBar");
-      expect(source(file)).not.toContain('"ChevronLeft"');
-    }
   });
 });

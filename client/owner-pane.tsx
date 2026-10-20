@@ -158,11 +158,12 @@ export function OwnerPane({
         subtitle={shown === null ? undefined : `${shown.label} · ${paneStatus(shown, chatStatus)}`}
         icon={shown === null ? "Bot" : roleIcon(shown)}
         compact={compact}
-        // An arrow alone on every width, as on the settings page (TR-205), so the title keeps the row (TR-077); its target is still read out.
-        leading={<IconButton icon="ArrowLeft" label={backLabel} theme={theme} onPress={onBack} />}
+        // An arrow alone on a phone, the size of Open beside it, so the title keeps the row (TR-077); its target is still read out.
+        leading={compact ? <IconButton icon="ArrowLeft" label={backLabel} theme={theme} onPress={onBack} /> : undefined}
       >
         {compact && !ticketBeside ? tabSwitch(true) : null}
         {shown !== null && onOpenAgent !== null ? <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(shown.id)} /> : null}
+        {compact ? null : <IconButton icon="ArrowLeft" label={backLabel} showLabel theme={theme} onPress={onBack} />}
         {onShowBoard === null ? null : <IconButton icon="PanelRightOpen" label="Show the board" theme={theme} onPress={onShowBoard} />}
       </PaneHeader>
       {/* Nothing to show here (a phone, one agent) takes no height at all. */}
