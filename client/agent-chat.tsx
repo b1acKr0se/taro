@@ -60,6 +60,7 @@ import { Shimmer, WorkingStatus } from "./loading";
 import { SHIMMER_LIGHT } from "./shimmer";
 import { useLatestCallback } from "./latest-callback";
 import { BREAK_LONG_WORDS } from "./long-word-wrap";
+import { senderPillColours } from "./sender-pill";
 import { needsFold, RECEIVED_FOLD_LINES } from "./received-fold";
 import { bubbleImageRoom, USER_BUBBLE_SHARE } from "./thumbnail-size";
 import { sameGroup, sameItems } from "./transcript-memo";
@@ -1135,6 +1136,7 @@ function EarlierMessages({ hasOlder, loading, theme, styles, onLoad }: { hasOlde
 
 function chatStyles(theme: PluginTheme, compact: boolean) {
   const { colors } = theme;
+  const pill = senderPillColours(colors);
   return {
     pane: { flex: 1, minHeight: 0, backgroundColor: colors.surface0 },
     transcript: { flex: 1 },
@@ -1162,8 +1164,8 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
       paddingVertical: SPACE.sm + 2,
     },
     receivedBubble: { alignSelf: "stretch" as const, gap: SPACE.sm },
-    senderPill: { alignSelf: "flex-start" as const, maxWidth: "100%" as const, backgroundColor: colors.surface0, borderRadius: 999, paddingHorizontal: SPACE.sm + 2, paddingVertical: 1 },
-    senderText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
+    senderPill: { alignSelf: "flex-start" as const, maxWidth: "100%" as const, backgroundColor: pill.background, borderRadius: 999, paddingHorizontal: SPACE.sm + 2, paddingVertical: 1 },
+    senderText: { color: pill.text, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
     foldButton: { alignSelf: "flex-start" as const, paddingVertical: SPACE.xs },
     foldText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small },
     userImages: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, marginTop: SPACE.sm },
