@@ -173,6 +173,6 @@ describe("setupBar", () => {
   });
 
   it("names an existing project's settings and where back goes", () => {
-    expect(setupBar("notes-app")).toEqual({ title: "notes-app settings", backLabel: "Back to notes-app" });
+    expect(setupBar("notes-app")).toEqual({ title: "notes-app Settings", backLabel: "Back to notes-app" });
   });
 });
