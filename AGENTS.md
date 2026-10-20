@@ -15,7 +15,8 @@ EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
 - RPC wire names match `/^[a-z][a-z0-9._-]*$/`. Colours only from `theme.colors`, except the
   image viewer's opaque black backdrop and white controls (`VIEWER` in `client/image-view.tsx`) and
   GitHub's merged purple on a Done card's PR (`GITHUB_MERGED` in `client/github-colors.ts`) and
-  Paseo's white shimmer band over a running tool call (`SHIMMER_LIGHT` in `client/shimmer.ts`).
+  Paseo's white shimmer band over a running tool call (`SHIMMER_LIGHT` in `client/shimmer.ts`) and
+  the project avatars' ten tones with their white letter (`AVATAR_COLORS` in `shared/project-avatar.ts`, ported from Paseo's sidebar).
   Every `Text`, `TextInput` and `CentredLabel` sets a theme colour or sits inside a `Text` that does:
   the platform default is black, unreadable in dark theme (TR-170). `client/text-colour.test.ts`
   fails on one; a piece of inline text built in another function says so with an
@@ -40,6 +41,10 @@ EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
   call there is feature-detected and guarded. If the ✕ sits under the window controls again after a
   Paseo update, that object was renamed or reshaped. The viewer sits in an error boundary
   (`client/error-boundary.ts`, a constructor function, as classes are out).
+- The project tab row (`client/project-tabs.tsx`, TR-214) pins New project outside the scrolling tabs so a phone
+  never scrolls to it, draws Inbox on a wide screen as a bell-and-word button with a count badge apart from the tabs, and reorders projects by
+  press-and-hold then drag (`PanResponder`, only a lifted tab takes the drag). The order is the daemon's
+  `project-order.json` in the Taro home (`server/project-order.ts`): newest project on the left until the user drags.
 - Kept view state (the screen's view, drafts, the timeline cache) lives on `globalThis` slots
   (`client/kept.ts`): Paseo's app unloads every plugin when it disconnects and evaluates the bundles
   again on reconnect. Change a kept field's type and it starts over; version the slot.

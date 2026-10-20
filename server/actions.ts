@@ -319,7 +319,6 @@ export class Actions {
     }
     if (outcome.kind === "done") await closeTicket(paths.tracker, ticket, outcome.acceptance);
     else if (outcome.kind === "not-merged") await appendTicketNote(paths.tracker, ticket, `NOT-MERGED ${at()} — ${outcome.reason}`);
-    else if (outcome.kind === "not-synced") await appendTicketNote(paths.tracker, ticket, `NOT-SYNCED ${at()} — ${outcome.reason}`);
     else await this.handOffAccept(paseo, project, ticket, outcome.found, plan.instruction);
     console.log(`[taro] ${project}: Accept on ${ticket} ended ${outcome.kind}`);
   }

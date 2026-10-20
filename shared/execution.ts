@@ -125,7 +125,7 @@ export function pullRequestMergeInstruction(notes: string | null, finalSummary: 
     "Then record ACCEPTANCE ending with its merge field, merge: merged <merge commit>, and set the ticket Done. " +
     "If the head moved, do not merge; present it again. " +
     `If GitHub refuses the ${title} method, do not use another: record NOT-MERGED with GitHub's reason. ` +
-    `If ${baseBranch} cannot fast-forward (uncommitted changes, another branch checked out, commits origin lacks, the fetch failed), do not touch it: record NOT-SYNCED with the reason and what I do first (not that it merged: the card says so).`
+    `If ${baseBranch} cannot fast-forward (uncommitted changes, another branch checked out, commits origin lacks, the fetch failed), do not touch it, and still finish: the pull request merged, so the ticket closes. Say in the ACCEPTANCE prose that local ${baseBranch} was not updated, with the reason and what I do.`
   );
 }
 
@@ -212,7 +212,7 @@ export function executionBranch(notes: string | null): string | null {
 /**
  * Why the owner did not finish after Accept: a problem on the user's side, such as a dirty main checkout.
  * Either nothing merged (NOT-MERGED, TR-109), or the pull request merged and the local base branch
- * could not fast-forward to it (NOT-SYNCED, TR-110); Accept again then only brings the base branch up.
+ * could not fast-forward to it (NOT-SYNCED, TR-110; since TR-215 Accept closes the ticket instead, and only older tickets carry the record).
  */
 export interface NotMergedRecord {
   at: string;

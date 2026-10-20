@@ -44,6 +44,7 @@ import {
   readMergeMethods,
   readProjectConfig as readProjectConfigRpc,
   readStandingOrders,
+  reorderProjects,
   restartManager as restartManagerRpc,
   resumeManager as resumeManagerRpc,
   tellManager as tellManagerRpc,
@@ -57,6 +58,7 @@ import { inboxCount } from "./shared/board";
 import { askFromRequest } from "./shared/permission-asks";
 import { ProjectSettingsSchema } from "./shared/project";
 import { Actions } from "./server/actions";
+import { inTabOrder, saveTabOrder } from "./server/project-order";
 import { ChatQueue } from "./server/chat-queue";
 import { createCrashTrail } from "./server/crash-trail";
 import { backfillCosts, recordArchivedUsage } from "./server/cost-recording";
@@ -238,7 +240,7 @@ export default function contribute(server: PluginServerContext) {
 
   server.handle(listProjects, async (_input, { paseo }) => {
     keep(paseo);
-    const configs = await listProjectConfigs();
+    const configs = await inTabOrder(await listProjectConfigs());
     const projects = await Promise.all(
       configs.map(async (config) => {
         const manager = await fetchLiveAgent(paseo, config.managerAgentId);
@@ -251,6 +253,11 @@ export default function contribute(server: PluginServerContext) {
       }),
     );
     return { taroHome: await taroHome(), projects };
+  });
+
+  server.handle(reorderProjects, async (input) => {
+    await saveTabOrder(input.order);
+    return {};
   });
 
   server.handle(checkPrerequisitesRpc, async (_input, { paseo }) => ({ checks: await checkPrerequisites(paseo) }));

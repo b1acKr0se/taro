@@ -48,10 +48,10 @@ describe("the pull-request accept path (TR-110)", () => {
     expect([...steps].sort((left, right) => left - right)).toEqual(steps);
   });
 
-  it("never falls back to another method, and records NOT-MERGED or NOT-SYNCED for the user", () => {
+  it("never falls back to another method, and closes a merged pull request whose local base could not follow", () => {
     expect(path).toContain("GitHub refusing the method → never try another: record\n       **NOT-MERGED**");
-    expect(path).toContain("record **NOT-SYNCED** with the reason");
-    expect(tickets).toMatch(/- \*\*NOT-SYNCED\*\*: [\s\S]*`NOT-SYNCED \d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z — /);
+    expect(path).toContain("local <base> not updated: <reason>");
+    expect(path).not.toContain("record **NOT-SYNCED**");
   });
 });
 

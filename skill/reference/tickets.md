@@ -157,15 +157,13 @@ rather than exceed it.
   method, and only then: the reason in one short line the user reads on the card, what they do
   first. It ends the "merging" state and puts the card back in Needs you:
   `NOT-MERGED 2026-01-06T09:00Z — commit or discard src/app.ts in the main checkout, then Accept again`.
-- **NOT-SYNCED**: after Accept, a pull request that merged while the base branch in the main
-  checkout could not fast-forward to origin's (dirty, on another branch, commits origin lacks, the
-  fetch failed): the reason and what the user does first, in one short line. Like NOT-MERGED, it
-  puts the card back in Needs you; the next Accept only brings the base branch up:
-  `NOT-SYNCED 2026-01-06T09:00Z — main has 2 commits origin lacks; push or drop them, then Accept again`.
+- **NOT-SYNCED** (older tickets only, TR-215): a pull request merged while the base branch in the main
+  checkout could not fast-forward to origin's. It is no longer written: the ticket closes, and
+  ACCEPTANCE says `local <base> not updated: <reason>`. The next Accept on an old one closes it.
 - **ACCEPTED**, **ACCEPT-HANDOFF**: written by the plugin when the user presses Accept (the card
   says it merges), and when its own merge stops on something that needs an owner: who took over
   and why (the owner, or a fresh owner when the owner had been idle 5 minutes or more), then what
-  it found. The plugin itself writes ACCEPTANCE, NOT-MERGED and NOT-SYNCED on the routine
+  it found. The plugin itself writes ACCEPTANCE and NOT-MERGED on the routine
   path; an owner writes them only after a hand-off.
 - **ANSWER**: written by the plugin when the user answers a decision.
 - **NO-PLAN**: written by the plugin when an owner's turn ends with commits on its branch and no

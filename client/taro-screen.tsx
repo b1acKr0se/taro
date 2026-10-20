@@ -12,10 +12,11 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import type { PluginScreenProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { memo, useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 
-import { catchUp, compactManager, restartManager, resumeManager, tellManager, type Card, type ProjectSummary } from "../shared/contracts";
+import { catchUp, compactManager, reorderProjects, restartManager, resumeManager, tellManager, type Card, type ProjectSummary } from "../shared/contracts";
 import { MANAGER_ACTION_LABELS, MANAGER_ACTION_SUCCESS, managerPaneNotice, offersReplaceManager, REPLACE_MANAGER_LABEL, replaceManagerNotice, type ReplaceFirstAction } from "../shared/manager-actions";
 import { withoutDecisionBlocks } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
@@ -42,7 +43,8 @@ import { afterCreation, resetCreation } from "./project-creation";
 import { ProjectSetup } from "./project-setup";
 import { ReplaceFirstDialog } from "./replace-first-dialog";
 import { ScreenLayerHost } from "./screen-layer";
-import { useProjects, useRefreshProjects } from "./queries";
+import { ProjectTabs } from "./project-tabs";
+import { PROJECTS_KEY, useProjects, useRefreshProjects } from "./queries";
 import { paneGutter, SPACE } from "./spacing";
 import { StatsView } from "./stats-view";
 import { CrashCard } from "./crash-card";
@@ -205,68 +207,41 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
   const styles = useMemo(
     () => ({
       root: { flex: 1, backgroundColor: colors.surface0 },
-      tabBar: { borderBottomWidth: 1, borderBottomColor: colors.border },
-      // New project follows the last tab and scrolls with them (TR-071), centred in the row.
-      tabs: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.lg, paddingHorizontal: paneGutter(false) },
-      // Flat tabs: the chosen one is marked by its text and a line under it, not by a box.
-      tab: {
-        flexDirection: "row" as const,
-        alignItems: "center" as const,
-        gap: SPACE.sm,
-        paddingHorizontal: SPACE.xs,
-        paddingTop: SPACE.md,
-        paddingBottom: SPACE.md - 2,
-        borderBottomWidth: 2,
-        borderBottomColor: "transparent",
-      },
-      tabActive: { borderBottomColor: colors.accent },
-      tabText: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body), fontWeight: "600" as const },
-      tabMuted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body), fontWeight: "500" as const },
       body: { flex: 1, minHeight: 0 },
       error: { color: colors.statusDanger, padding: SPACE.lg },
     }),
     [colors],
   );
 
-  function tab(key: string, label: string, icon: string, active: boolean, onPress: () => void, count = 0) {
-    return (
-      <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: active }} accessibilityLabel={countBadgeLabel(label, count)} style={[styles.tab, active ? styles.tabActive : null]} onPress={onPress}>
-        <Icon name={icon} size={15} color={active ? colors.foreground : colors.foregroundMuted} />
-        <CentredLabel style={active ? styles.tabText : styles.tabMuted}>{label}</CentredLabel>
-        <CountBadge theme={theme} count={count} />
-      </Pressable>
-    );
+  const queryClient = useQueryClient();
+  const saveOrder = useRpc(reorderProjects);
+  /** A dragged tab (TR-214): the new order shows at once, is saved on the daemon, then the list is read again. */
+  function reorder(order: string[]): void {
+    // A poll already in flight would bring back the old order over this one.
+    void queryClient.cancelQueries({ queryKey: PROJECTS_KEY }).then(() => {
+      queryClient.setQueryData(PROJECTS_KEY, (data: typeof projects.data) =>
+        data === undefined ? data : { ...data, projects: order.flatMap((name) => data.projects.filter((summary) => summary.config.project === name)) },
+      );
+    });
+    saveOrder({ order }).then(refresh, refresh);
   }
 
   const settingUp = showing === "setup";
-  // The Catch up button's look (TR-071): a labelled button, not a round "+".
-  const newProject = <IconButton icon="Plus" label="New Project" showLabel theme={theme} onPress={() => choose(selected, "setup")} />;
-
-  const projectTabs = layout.compact ? (
-    // A phone: the project pill row only; manager · Inbox · Board live inside the project view.
-    <ScrollView horizontal contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
-      {list.map((summary) =>
-        tab(summary.config.project, summary.config.project, "FolderKanban", !settingUp && current?.config.project === summary.config.project, () => choose(summary.config.project, "project")),
-      )}
-      {newProject}
-    </ScrollView>
-  ) : (
-    <ScrollView horizontal contentContainerStyle={styles.tabs} showsHorizontalScrollIndicator={false}>
-      {list.length === 0 ? null : tab("inbox", "Inbox", "Inbox", showing === "inbox", () => choose(selected, "inbox"), needsYouTotal(list))}
-      {list.map((summary) =>
-        tab(
-          summary.config.project,
-          summary.config.project,
-          "FolderKanban",
-          (showing === "project" || showing === "settings") && current?.config.project === summary.config.project,
-          () => choose(summary.config.project, "project"),
-          summary.needsYou,
-        ),
-      )}
-      {newProject}
-    </ScrollView>
+  const tabProjects = list.map((summary) => ({ name: summary.config.project, needsYou: summary.needsYou }));
+  const tabs = (
+    <ProjectTabs
+      theme={theme}
+      compact={layout.compact}
+      projects={tabProjects}
+      active={layout.compact ? (settingUp ? null : (current?.config.project ?? null)) : showing === "project" || showing === "settings" ? (current?.config.project ?? null) : null}
+      inboxActive={showing === "inbox"}
+      inboxCount={needsYouTotal(list)}
+      onOpenProject={(name) => choose(name, "project")}
+      onOpenInbox={() => choose(selected, "inbox")}
+      onNewProject={() => choose(selected, "setup")}
+      onReorder={reorder}
+    />
   );
-  const tabs = <View style={styles.tabBar}>{projectTabs}</View>;
 
   let body;
   if (showing === "setup" && creating.step !== "idle") {
