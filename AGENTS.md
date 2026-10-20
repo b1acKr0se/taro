@@ -134,6 +134,11 @@ daemon with its own home and port, unique to your ticket:
   PID 1), kill them by pid, and delete the home and the scratch repository by their literal paths:
   `rm -rf -- /tmp/paseo-TR-012 /tmp/notes-app.Ab12Cd` (`skill/reference/shell.md`; a target worked
   out by a command, such as `"$(dirname $R)"`, stops you for approval).
+- The stop button and Escape end a turn straight over the daemon's websocket (TR-201,
+  `server/daemon-cancel.ts`): the SDK has no cancel and `paseo stop` takes about a second to start.
+  It reads Paseo's undocumented `paseo.pid` (`listen`) and `local-credential` in the daemon's home and
+  speaks its `hello` / `cancel_agent_request` messages; when any of that fails it falls back to the
+  CLI and logs why. If stopping turns slow again after a Paseo update, look for that log line.
 - Every command the plugin runs goes through `server/process.ts`: its own process group, killed
   whole on a timeout or the plugin's stop. Never `spawn` elsewhere.
 
