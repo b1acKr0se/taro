@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { countRecords, loggedViolations, parseNodeTest, parseTestOutput, parseUnittest, scoreQuestions, scoreStats } from "./score.ts";
+import { countPermissions, countRecords, loggedViolations, parseNodeTest, parseTestOutput, parseUnittest, scoreQuestions, scoreStats } from "./score.ts";
 
 describe("parseNodeTest", () => {
   it("reads passes and the total from the summary", () => {
@@ -94,6 +94,11 @@ describe("the decider's log", () => {
   ].join("\n");
   it("counts questions, preference hits and questions the brief answered", () => {
     expect(scoreQuestions(log)).toEqual({ asked: 3, preferenceHits: 1, redundant: 1 });
+  });
+  it("counts the permission asks it answered, and the ones it denied", () => {
+    const ask = (decision: string) => JSON.stringify({ type: "permission", at: "t", tool: "Bash", detail: "cd /tmp/x; rm -rf y", decision, via: "ui" });
+    expect(countPermissions([ask("allow"), ask("deny"), ask("allow"), "not json"].join("\n"))).toEqual({ asked: 3, denied: 1 });
+    expect(countPermissions("")).toEqual({ asked: 0, denied: 0 });
   });
   it("collects the violations it logged", () => {
     expect(loggedViolations(log)).toEqual([{ kind: "card-missing", detail: "no plan card in 2 minutes" }]);

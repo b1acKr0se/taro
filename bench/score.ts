@@ -125,7 +125,8 @@ export function countRecords(ticketText: string): RecordCounts {
 export type DeciderEvent =
   | { type: "prompt"; at: string; kind: string; id: string; text: string }
   | { type: "answer"; at: string; kind: string; id: string; via: "ui" | "rpc"; choice: string; text: string; preference: string; briefAnswered: boolean }
-  | { type: "violation"; at: string; kind: string; detail: string };
+  | { type: "violation"; at: string; kind: string; detail: string }
+  | { type: "permission"; at: string; tool: string; detail: string; decision: "allow" | "deny"; via: "ui" };
 
 export interface QuestionScore {
   asked: number;
@@ -150,6 +151,22 @@ export function scoreQuestions(log: string): QuestionScore {
     if (event.briefAnswered) score.redundant += 1;
   });
   return score;
+}
+
+/** The permission asks the decider answered as the user: how many, and how many it denied. */
+export function countPermissions(log: string): { asked: number; denied: number } {
+  const counts = { asked: 0, denied: 0 };
+  log.split("\n").forEach((line) => {
+    try {
+      const event = JSON.parse(line) as DeciderEvent;
+      if (event.type !== "permission") return;
+      counts.asked += 1;
+      if (event.decision === "deny") counts.denied += 1;
+    } catch {
+      // not a record line
+    }
+  });
+  return counts;
 }
 
 /** The violations the decider logged: a card it could not find, text on a card that is wrong. */

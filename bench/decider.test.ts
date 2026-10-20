@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { awaitsAcceptance, choosesAction, deciderPrompt, parseReply } from "./decider.ts";
+import { awaitsAcceptance, choosesAction, deciderPrompt, parseReply, permissionVerdict } from "./decider.ts";
 
 describe("parseReply", () => {
   const log = (body: string) => `\nsome thinking\nREPLY abc123\n${body}\n`;
@@ -46,5 +46,16 @@ describe("deciderPrompt", () => {
   it("carries the rules, the spec, the brief, the history, the card and the reply format", () => {
     const prompt = deciderPrompt({ kind: "question", card: "Question: Which?", spec: "SPEC TEXT", brief: "BRIEF TEXT", history: ['- plan "x" → Approve'], nonce: "n0nce" });
     ["never write code", "SPEC TEXT", "BRIEF TEXT", '- plan "x" → Approve', "Question: Which?", 'exactly "REPLY n0nce"', "choice is one option's exact label, or Other"].forEach((part) => expect(prompt.toLowerCase()).toContain(part.toLowerCase()));
+  });
+});
+
+describe("permissionVerdict", () => {
+  it("allows a command on the scratch project, even one with cd and rm in /tmp", () => {
+    expect(permissionVerdict("Allow Bash?\ncd /tmp/taro-bench-home.Ab12/worktrees/x/na-001; python3 - <<'EOF'\nEOF\nrm -rf /tmp/na001-shots")).toBe("allow");
+  });
+  it("denies a command that reaches the real daemon or its home", () => {
+    expect(permissionVerdict("Allow Bash?\npaseo daemon restart --host 127.0.0.1:6767")).toBe("deny");
+    expect(permissionVerdict("Allow Bash?\nrm -rf ~/.paseo/worktrees")).toBe("deny");
+    expect(permissionVerdict("Allow Bash?\nls /root/.paseo/plugin-data")).toBe("deny");
   });
 });

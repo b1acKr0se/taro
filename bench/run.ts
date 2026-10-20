@@ -11,7 +11,7 @@ import { join, resolve } from "node:path";
 import { startDecider } from "./decider.ts";
 import { BENCH_ROOT, cleanup, ensureDirectory, installPlugin, makePluginCopy, makeThrowaway, paseoArgs, pickPort, rpc, scratchDirectory, seedRepository, startDaemon, waitForThreads, type Throwaway } from "./daemon.ts";
 import { run } from "./process.ts";
-import { conformanceOf, countRecords, loggedViolations, runHidden, scoreQuestions, scoreStats, type TicketStatsLike } from "./score.ts";
+import { conformanceOf, countPermissions, countRecords, loggedViolations, runHidden, scoreQuestions, scoreStats, type TicketStatsLike } from "./score.ts";
 import type { ResultFile } from "./report.ts";
 
 const PROJECT = "notes-app";
@@ -243,7 +243,7 @@ async function main(): Promise<void> {
       records: countRecords(finalText),
       cardFailures: loggedViolations(deciderLog),
     };
-    writeFileSync(join(options.out, "result.json"), `${JSON.stringify({ ...result, timePerStatusMs: scored?.timePerStatusMs ?? {}, decisions: scored?.decisions ?? 0, nudges: scored?.nudges ?? 0, recoveries: scored?.recoveries ?? 0 }, null, 2)}\n`);
+    writeFileSync(join(options.out, "result.json"), `${JSON.stringify({ ...result, timePerStatusMs: scored?.timePerStatusMs ?? {}, permissions: countPermissions(deciderLog), decisions: scored?.decisions ?? 0, nudges: scored?.nudges ?? 0, recoveries: scored?.recoveries ?? 0 }, null, 2)}\n`);
     runLog(`done: stop ${stop}, cost $${result.costUsd.toFixed(2)}, hidden ${hidden === null ? "not run" : `${hidden.passed}/${hidden.total}`}`);
   } catch (error) {
     runLog(`error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`);

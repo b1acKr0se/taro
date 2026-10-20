@@ -59,6 +59,11 @@ export interface DeciderReply {
 
 export type CardKind = "plan" | "question" | "acceptance";
 
+/** What the user would refuse: a command that reaches the real daemon or its home. Everything else on the scratch project is allowed. */
+export function permissionVerdict(detail: string): "allow" | "deny" {
+  return /\/\.paseo\b|~\/\.paseo|:6767\b|\bport 6767\b/.test(detail) ? "deny" : "allow";
+}
+
 /** The rules of superlite's decider, adapted to Taro's cards. */
 export const DECIDER_RULES = `You are the product owner and tech lead for a small software project. You wrote its SPEC (below). An AI coding agent (the task owner) is building it and has put a card in front of you. Answer as a decisive, busy decision-maker:
 - Answer every question on the card briefly (at most 100 words in total). No preamble. Do not use any tools.
@@ -395,7 +400,41 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
     history.push(`- ${kind} "${question}" → ${reply.choice}${reply.text === "" ? "" : `: ${reply.text}`}`);
   }
 
+  /** A permission ask from the owner or a subagent (a shell command Claude Code itself holds back): answered as the user would, Allow unless it reaches the real daemon. */
+  async function answerPermission(): Promise<boolean> {
+    const board = (await rpc(options.throwaway, "taro.board.load", { project: options.project })) as { cards: { id: string; permission?: { id: string | null; title: string; detail: string | null } | null }[] };
+    const ask = board.cards.find((card) => card.id === options.ticket)?.permission;
+    if (ask === undefined || ask === null) return false;
+    const key = `permission:${ask.id ?? ""}:${ask.detail ?? ask.title}`;
+    if (handled.has(key)) return false;
+    handled.add(key);
+    const verdict = permissionVerdict(`${ask.title}\n${ask.detail ?? ""}`);
+    counter += 1;
+    const opened = await findCard(ask.title);
+    if (opened === null) {
+      record({ type: "violation", at: now(), kind: "card-missing", detail: `permission card "${ask.title}" not on screen within 2 minutes` });
+      handled.delete(key);
+      return false;
+    }
+    try {
+      await opened.page.getByText("Review", { exact: true }).filter({ visible: true }).first().click({ timeout: 10_000 });
+      await opened.page.waitForTimeout(2500);
+      await opened.page.screenshot({ path: join(cardsDirectory, `${counter}-permission-desktop-dark.png`) });
+      await clickText(opened.page, verdict === "allow" ? "Allow" : "Deny");
+      await opened.page.waitForTimeout(2500);
+      record({ type: "permission", at: now(), tool: ask.title, detail: (ask.detail ?? "").slice(0, 300), decision: verdict, via: "ui" });
+      options.log(`decider: permission ${ask.title} → ${verdict}`);
+    } catch (error) {
+      record({ type: "violation", at: now(), kind: "card-missing", detail: `permission card "${ask.title}" could not be answered on screen: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}` });
+      handled.delete(key);
+    } finally {
+      await opened.close();
+    }
+    return true;
+  }
+
   async function pass(): Promise<void> {
+    if (await answerPermission()) return;
     const open = ((await rpc(options.throwaway, "taro.decisions.open", { project: options.project })) as { decisions: OpenDecision[] }).decisions
       .filter((decision) => decision.status === "open" && decision.held !== true && !handled.has(`${decision.key}@${decision.askedAt}`))
       .sort((left, right) => left.askedAt.localeCompare(right.askedAt));
