@@ -1,6 +1,6 @@
 /**
  * One throwaway Paseo daemon for one benchmark run: its own home and port, the plugin installed from a
- * detached copy of a checkout, a scratch repository, and the cleanup of all of it. Runs under Node
+ * `git archive` copy of a checkout, a scratch repository, and the cleanup of all of it. Runs under Node
  * type stripping: erasable syntax, `.ts` import extensions, no packages.
  */
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync, cpSync } from "node:fs";
@@ -18,7 +18,7 @@ export const BENCH_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 export interface Throwaway {
   home: string;
   port: number;
-  /** A detached copy of the plugin checkout, without its `bench/` folder. */
+  /** A `git archive` copy of the plugin checkout, without its `bench/` folder or `.git`. */
   pluginCopy: string;
   pluginSource: string;
   repository: string;
@@ -76,11 +76,14 @@ export async function pickPort(): Promise<number> {
   throw new Error("no free port in 6810-6899");
 }
 
-/** `git worktree add --detach` of the checkout at `sha`, with `bench/` removed so the owner cannot read hidden tests. */
+/**
+ * A `git archive` of the checkout at `sha` with `bench/` removed: no `.git`, so the owner cannot
+ * `git show` the hidden tests or the decider's spec out of history.
+ */
 export async function makePluginCopy(throwaway: Throwaway, sha: string): Promise<void> {
   const copy = scratchDirectory(throwaway, "plugin");
-  const added = await run("git", ["-C", throwaway.pluginSource, "worktree", "add", "--detach", copy, sha]);
-  if (added.code !== 0) throw new Error(`git worktree add failed: ${added.stderr}`);
+  const archived = await run("sh", ["-c", 'git -C "$1" archive "$2" | tar -x -C "$3"', "sh", throwaway.pluginSource, sha, copy]);
+  if (archived.code !== 0) throw new Error(`git archive failed: ${archived.stderr}`);
   throwaway.pluginCopy = copy;
   rmSync(join(copy, "bench"), { recursive: true, force: true });
   // The plugin's compile resolves zod and the host's types from node_modules; the copy shares the checkout's.
@@ -160,7 +163,7 @@ export async function leftovers(throwaway: Throwaway): Promise<string[]> {
 }
 
 /**
- * Stops the daemon, kills what is left by pid, and removes the worktree copy, the home and the scratch
+ * Stops the daemon, kills what is left by pid, and removes the plugin copy, the home and the scratch
  * folders by their literal paths. Safe to call twice. Returns what it found left over.
  */
 export async function cleanup(throwaway: Throwaway, log: (line: string) => void = () => undefined): Promise<{ leftoverProcesses: string[]; removed: string[] }> {
@@ -182,13 +185,12 @@ export async function cleanup(throwaway: Throwaway, log: (line: string) => void 
   log("cleanup: removing the folders");
   const removed: string[] = [];
   if (throwaway.pluginCopy !== "") {
+    // Unlink the shared node_modules first, so the removal below can never reach the checkout's.
     try {
       unlinkSync(join(throwaway.pluginCopy, "node_modules"));
     } catch {
       // no link made
     }
-    await run("git", ["-C", throwaway.pluginSource, "worktree", "remove", "--force", throwaway.pluginCopy]);
-    await run("git", ["-C", throwaway.pluginSource, "worktree", "prune"]);
   }
   // The scratch repository has worktrees of its own (the owner's): removed with it, and its home too.
   [...new Set([...throwaway.folders, ...(throwaway.home === "" ? [] : [throwaway.home])])].forEach((path) => {

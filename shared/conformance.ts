@@ -19,6 +19,8 @@ export interface ConformanceOptions {
   nudges?: number;
   /** The ticket's status changes with times, as the plugin's stats record them; the sequence check needs them. */
   transitions?: { from?: string | null; to: string; at: string }[];
+  /** Whether the ticket's plugin version has a RISKS record; given, it overrides the creation date (a main-era ticket can be dated after the cut-off). */
+  risks?: boolean;
 }
 
 /** The plan template's sections in order, each with its limit (bullets; lines for Goal and Size). */
@@ -178,7 +180,7 @@ export function conformanceViolations(ticketText: string, options: ConformanceOp
 
   // RISKS is due before the first code commit, and an investigation makes none.
   const complexity = ticket.labels.some((label) => /^complexity-(?:low|medium|high)$/.test(label)) && !ticket.labels.includes("investigation");
-  if (startedBuilding && complexity && ticket.created >= RISKS_SINCE && !notes.some((record) => /^RISKS\b/.test(record))) {
+  if (startedBuilding && complexity && (options.risks ?? ticket.created >= RISKS_SINCE) && !notes.some((record) => /^RISKS\b/.test(record))) {
     const inProgressAt = options.transitions?.find((transition) => transition.to === "In Progress")?.at;
     found.push({ kind: "no-risks", detail: `In Progress${inProgressAt === undefined ? "" : ` at ${inProgressAt}`} with no RISKS record` });
   }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { answerEvents, awaitsAcceptance, choosesAction, DECIDER_RULES, deciderPrompt, parseReplies, parseReply, permissionVerdict, severalAnswerInput, severalCard, staleWaiting, WAITING_NOTICE_MS, type OpenDecision } from "./decider.ts";
+import { answerEvents, awaitsAcceptance, choosesAction, DECIDER_RULES, deciderPrompt, parseReplies, parseReply, permissionVerdict, deleteDeciderAgent, isFatalDeciderError, landedChangeRequest, limitedReply, releaseFailedKey, severalAnswerInput, severalCard, staleWaiting, WAITING_NOTICE_MS, type OpenDecision } from "./decider.ts";
 
 describe("parseReply", () => {
   const log = (body: string) => `\nsome thinking\nREPLY abc123\n${body}\n`;
@@ -164,6 +164,27 @@ describe("severalAnswerInput", () => {
       severalAnswerInput(several, [
         { choice: "yaml front matter", text: "", preference: "none", briefAnswered: false },
         { choice: "Other", text: "Only PNG files", preference: "P1", briefAnswered: false },
+      ]).answers,
+    ).toEqual([
+      { header: "Tag format", label: "YAML front matter", text: "Write tags as YAML front matter" },
+      { header: "Attachments", label: null, text: "Only PNG files" },
+    ]);
+  });
+
+  it("keeps words typed beside a chosen option, and falls back to the label without a prompt", () => {
+    const answers = severalAnswerInput(several, [
+      { choice: "Hashtag line", text: "but put it last", preference: "none", briefAnswered: false },
+      { choice: "Skip", text: "", preference: "none", briefAnswered: false },
+    ]).answers;
+    expect(answers[0]).toEqual({ header: "Tag format", label: "Hashtag line", text: "but put it last" });
+    expect(answers[1]?.text).not.toBe("");
+  });
+
+  it("maps the whole input", () => {
+    expect(
+      severalAnswerInput(several, [
+        { choice: "yaml front matter", text: "", preference: "none", briefAnswered: false },
+        { choice: "Other", text: "Only PNG files", preference: "P1", briefAnswered: false },
       ]),
     ).toEqual({
       key: "agent:export-format",
@@ -193,5 +214,99 @@ describe("answerEvents", () => {
       { type: "answer", at: "2026-10-20T12:01:00Z", kind: "question", id: "export-format#Tag format", via: "rpc", choice: "YAML front matter", text: "", preference: "P2", briefAnswered: true },
       { type: "answer", at: "2026-10-20T12:01:00Z", kind: "question", id: "export-format#Attachments", via: "rpc", choice: "Other", text: "Only PNG", preference: "none", briefAnswered: false },
     ]);
+  });
+});
+
+describe("releaseFailedKey", () => {
+  const at = "2026-10-20T12:00:00Z";
+  it("drops the key so the card is asked again, with no violation yet", () => {
+    const handled = new Set(["agent:export-format@t1", "other"]);
+    const event = releaseFailedKey(handled, new Map(), "agent:export-format@t1", new Error("rpc failed: boom\nmore"), at);
+    expect(handled.has("agent:export-format@t1")).toBe(false);
+    expect(handled.has("other")).toBe(true);
+    expect(event).toBeNull();
+  });
+
+  it("gives up on a card after 3 attempts: the key stays handled and one violation is returned, on the last", () => {
+    const handled = new Set(["k"]);
+    const attempts = new Map<string, number>();
+    const events = [1, 2, 3].map(() => {
+      handled.add("k");
+      return releaseFailedKey(handled, attempts, "k", new Error("boom\nmore"), at);
+    });
+    expect(events.slice(0, 2)).toEqual([null, null]);
+    expect(events[2]).toEqual({ type: "violation", at, kind: "card-unanswered", detail: "k could not be answered on screen or over RPC after 3 attempts: boom" });
+    expect(handled.has("k")).toBe(true);
+  });
+
+  it("counts each key on its own", () => {
+    const handled = new Set(["a", "b"]);
+    const attempts = new Map<string, number>();
+    [1, 2].forEach(() => releaseFailedKey(handled, attempts, "a", new Error("x"), at));
+    releaseFailedKey(handled, attempts, "b", new Error("x"), at);
+    expect(handled.has("b")).toBe(false);
+  });
+});
+
+describe("isFatalDeciderError", () => {
+  it("only an unreadable reply ends the decider; any other pass failure is logged and retried", () => {
+    expect(isFatalDeciderError(new Error("the decider gave no readable reply for scope-approval"))).toBe(true);
+    expect(isFatalDeciderError(new Error("rpc taro.decision.answer failed: boom"))).toBe(false);
+    expect(isFatalDeciderError("locator timed out")).toBe(false);
+  });
+});
+
+describe("deleteDeciderAgent", () => {
+  it("runs paseo delete on the daemon home and logs a non-zero exit", async () => {
+    const calls: string[][] = [];
+    const lines: string[] = [];
+    const runner = async (command: string, args: readonly string[]) => {
+      calls.push([command, ...args]);
+      return { code: 1, stderr: "agent busy\n" };
+    };
+    await deleteDeciderAgent(runner, ["--home", "/tmp/taro-bench-home.x"], "agent-1", (line) => lines.push(line));
+    expect(calls).toEqual([["paseo", "delete", "agent-1", "--home", "/tmp/taro-bench-home.x"]]);
+    expect(lines).toEqual(["decider: paseo delete agent-1 exited 1: agent busy"]);
+  });
+  it("is silent when the delete succeeds", async () => {
+    const lines: string[] = [];
+    await deleteDeciderAgent(async () => ({ code: 0, stderr: "" }), [], "agent-1", (line) => lines.push(line));
+    expect(lines).toEqual([]);
+  });
+});
+
+describe("change requests under retry", () => {
+  const change = { choice: "Request changes", text: "cover the tag filter", preference: "none", briefAnswered: false };
+  it("a change request that never landed does not count, so a retry stays a change request", () => {
+    const counts: Record<string, number> = {};
+    // Two attempts whose answers failed: limitedReply only decides, nothing is counted.
+    expect(limitedReply(counts, "plan", change, "Approve").choice).toBe("Request changes");
+    expect(limitedReply(counts, "plan", change, "Approve").choice).toBe("Request changes");
+    expect(counts).toEqual({});
+  });
+  it("counts a landed one, and turns the request past the limit into an approval", () => {
+    const counts: Record<string, number> = {};
+    [1, 2].forEach(() => landedChangeRequest(counts, "plan", limitedReply(counts, "plan", change, "Approve"), "Approve"));
+    expect(counts).toEqual({ plan: 2 });
+    const third = limitedReply(counts, "plan", change, "Approve");
+    expect(third).toMatchObject({ choice: "Approve", text: "" });
+    landedChangeRequest(counts, "plan", third, "Approve");
+    expect(counts).toEqual({ plan: 2 });
+  });
+  it("counts plan and acceptance apart, and never an approval", () => {
+    const counts: Record<string, number> = {};
+    landedChangeRequest(counts, "plan", { ...change, choice: "Approve" }, "Approve");
+    landedChangeRequest(counts, "acceptance", change, "Accept");
+    expect(counts).toEqual({ acceptance: 1 });
+  });
+});
+
+describe("staleWaiting and a card the decider gave up on", () => {
+  const now = Date.parse("2026-01-05T12:00:00Z");
+  const detail = { status: "In Progress", ownerRunning: false, lastStatus: { state: "waiting", at: new Date(now - 20 * 60_000).toISOString() } };
+  it("says nothing while a card the decider gave up on is still open", () => {
+    expect(staleWaiting(detail, now, true)).toBeNull();
+    expect(staleWaiting(detail, now, false)).toBe(detail.lastStatus.at);
+    expect(staleWaiting(detail, now)).toBe(detail.lastStatus.at);
   });
 });

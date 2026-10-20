@@ -79,7 +79,9 @@ export const WAITING_NOTICE_MS = 8 * 60_000;
 export const WAITING_NOTICE_TEXT = "I don't see a card from you, so there is nothing for me to answer. If you need a decision, ask it with a decision card; otherwise decide it yourself and carry on.";
 
 /** The status time of an owner that has waited too long with nothing on screen for the user to answer; null otherwise. */
-export function staleWaiting(detail: { status: string; ownerRunning?: boolean; lastStatus?: { state: string; at: string } | null }, now: number): string | null {
+export function staleWaiting(detail: { status: string; ownerRunning?: boolean; lastStatus?: { state: string; at: string } | null }, now: number, givenUpCardOpen = false): string | null {
+  // A card the decider gave up on is still on screen: telling the owner there is none would be false.
+  if (givenUpCardOpen) return null;
   if (detail.status !== "Planning" && detail.status !== "In Progress") return null;
   if (detail.ownerRunning === true || detail.lastStatus === null || detail.lastStatus === undefined) return null;
   if (detail.lastStatus.state !== "waiting") return null;
@@ -214,7 +216,7 @@ export function severalAnswerInput(decision: OpenDecision, replies: readonly Dec
   const answers = (decision.questions ?? []).map((question, index) => {
     const reply = replies[index] ?? { choice: "", text: "", preference: "none", briefAnswered: false };
     const option = matchingOption(question, reply);
-    return option === null ? { header: question.header, label: null, text: reply.text === "" ? reply.choice : reply.text } : { header: question.header, label: option.label, text: option.prompt ?? option.label };
+    return option === null ? { header: question.header, label: null, text: reply.text === "" ? reply.choice : reply.text } : { header: question.header, label: option.label, text: reply.text || option.prompt || option.label };
   });
   return { key: decision.key, label: null, text: "", from: "screen", answers };
 }
@@ -225,6 +227,48 @@ export function answerEvents(decision: OpenDecision, replies: readonly DeciderRe
     const reply = replies[index];
     return reply === undefined ? [] : [{ type: "answer" as const, at, kind: "question", id: `${decision.id}#${question.header}`, via, choice: reply.choice, text: reply.text, preference: reply.preference, briefAnswered: reply.briefAnswered }];
   });
+}
+
+/** The reply a card gets: past `MAX_CHANGE_REQUESTS` landed requests of its kind, one more request for changes becomes an approval so a run ends. Counts nothing. */
+export function limitedReply(counts: Record<string, number>, kind: string, reply: DeciderReply, approveAction: string): DeciderReply {
+  if (kind === "question" || choosesAction(reply.choice, approveAction)) return reply;
+  return (counts[kind] ?? 0) + 1 > MAX_CHANGE_REQUESTS ? { ...reply, choice: approveAction, text: "" } : reply;
+}
+
+/** Counts a request for changes once its answer has landed (on screen or over RPC), never an attempt that failed and is retried. */
+export function landedChangeRequest(counts: Record<string, number>, kind: string, reply: DeciderReply, approveAction: string): void {
+  if (kind !== "question" && !choosesAction(reply.choice, approveAction)) counts[kind] = (counts[kind] ?? 0) + 1;
+}
+
+/** How many times one card is tried before the decider gives up on it. */
+export const MAX_CARD_ATTEMPTS = 3;
+
+/**
+ * A card whose answer failed on screen and over RPC: its key leaves `handled` so the next pass asks again, up to
+ * `MAX_CARD_ATTEMPTS` per key. The last failure keeps the key handled and returns the one violation for the card
+ * (so `cardFailures` counts a card once); earlier failures return null, for a plain log line.
+ */
+export function releaseFailedKey(handled: Set<string>, attempts: Map<string, number>, key: string, error: unknown, at: string): Extract<DeciderEvent, { type: "violation" }> | null {
+  const attempt = (attempts.get(key) ?? 0) + 1;
+  attempts.set(key, attempt);
+  const givingUp = attempt >= MAX_CARD_ATTEMPTS;
+  if (!givingUp) {
+    handled.delete(key);
+    return null;
+  }
+  const reason = (error instanceof Error ? error.message : String(error)).split("\n")[0];
+  return { type: "violation", at, kind: "card-unanswered", detail: `${key} could not be answered on screen or over RPC after ${MAX_CARD_ATTEMPTS} attempts: ${reason}` };
+}
+
+/** Only an unreadable reply from the decider's model ends the decider (and the run); any other failed pass is logged and tried again. */
+export function isFatalDeciderError(error: unknown): boolean {
+  return /no readable reply/.test(error instanceof Error ? error.message : String(error));
+}
+
+/** Deletes a decider agent (it holds the spec in its prompt) and logs a non-zero exit: `run` never rejects, so a failure shows only in its code. */
+export async function deleteDeciderAgent(runner: (command: string, args: readonly string[], options: { timeoutMs: number }) => Promise<{ code: number | null; stderr: string }>, daemonArgs: readonly string[], agentId: string, log: (line: string) => void): Promise<void> {
+  const deleted = await runner("paseo", ["delete", agentId, ...daemonArgs], { timeoutMs: 60_000 });
+  if (deleted.code !== 0) log(`decider: paseo delete ${agentId} exited ${deleted.code}: ${deleted.stderr.trim()}`);
 }
 
 /** Labels the card shows as options: the agent's own "Other" and "Change…" stand for typing and are hidden. */
@@ -296,6 +340,9 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
   let failure: string | null = null;
   const history: string[] = [];
   const handled = new Set<string>();
+  const attempts = new Map<string, number>();
+  /** Keys of cards the decider gave up on: they stay open on screen. */
+  const givenUp = new Set<string>();
   const changeRequests: Record<string, number> = {};
   let counter = 0;
   const logPath = join(options.out, "decider.log");
@@ -326,6 +373,8 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
       if (agentId === undefined) continue;
       const logs = await run("paseo", ["logs", agentId, ...paseoArgs(options.throwaway)], { timeoutMs: 60_000 });
       const reply = read(`\n${logs.stdout}`, nonce);
+      // The agent holds the spec in its prompt: it must not outlive its answer on the daemon the owner shares.
+      await deleteDeciderAgent(run, paseoArgs(options.throwaway), agentId, options.log);
       if (reply !== null) return reply;
     }
     throw new Error(`the decider gave no readable reply for ${id}`);
@@ -532,13 +581,9 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
   async function handle(kind: CardKind, id: string, question: string, card: string, labels: string[], decision: OpenDecision | null): Promise<void> {
     counter += 1;
     const number = counter;
-    let reply = await ask(kind, card, id);
     // A run must end: past the limit the decider's request for changes becomes an approval.
     const approveAction = kind === "plan" ? "Approve" : "Accept";
-    if (kind !== "question" && !choosesAction(reply.choice, approveAction)) {
-      changeRequests[kind] = (changeRequests[kind] ?? 0) + 1;
-      if ((changeRequests[kind] ?? 0) > MAX_CHANGE_REQUESTS) reply = { ...reply, choice: approveAction, text: "" };
-    }
+    const reply = limitedReply(changeRequests, kind, await ask(kind, card, id), approveAction);
     options.log(`decider: ${kind} ${id} → ${reply.choice}${reply.text === "" ? "" : ` (${reply.text.slice(0, 80)})`}`);
     const opened = await findCard(question);
     let via: "ui" | "rpc" = "ui";
@@ -559,6 +604,8 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
         await opened.close();
       }
     }
+    // Counted here, after the answer landed: a failed attempt throws before this and is asked again.
+    landedChangeRequest(changeRequests, kind, reply, approveAction);
     record({ type: "answer", at: now(), kind, id, via, choice: reply.choice, text: reply.text, preference: reply.preference, briefAnswered: reply.briefAnswered });
     history.push(`- ${kind} "${question}" → ${reply.choice}${reply.text === "" ? "" : `: ${reply.text}`}`);
   }
@@ -596,22 +643,41 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
     return true;
   }
 
+  /** Runs a card's answer; when it throws (the screen and the RPC both failed) the key is released so the card is tried again. */
+  async function guarded(key: string, answer: () => Promise<void>): Promise<void> {
+    try {
+      await answer();
+    } catch (error) {
+      const violation = releaseFailedKey(handled, attempts, key, error, now());
+      if (violation !== null) {
+        givenUp.add(key);
+        record(violation);
+      }
+      else options.log(`decider: card ${key} not answered (attempt ${attempts.get(key)} of ${MAX_CARD_ATTEMPTS}), will try again`);
+      throw error;
+    }
+  }
+
   async function pass(): Promise<void> {
     if (await answerPermission()) return;
-    const open = ((await rpc(options.throwaway, "taro.decisions.open", { project: options.project })) as { decisions: OpenDecision[] }).decisions
-      .filter((decision) => decision.status === "open" && decision.held !== true && !handled.has(`${decision.key}@${decision.askedAt}`))
+    const allOpen = ((await rpc(options.throwaway, "taro.decisions.open", { project: options.project })) as { decisions: OpenDecision[] }).decisions.filter((decision) => decision.status === "open" && decision.held !== true);
+    const open = allOpen
+      .filter((decision) => !handled.has(`${decision.key}@${decision.askedAt}`))
       .sort((left, right) => left.askedAt.localeCompare(right.askedAt));
     const first = open[0];
     if (first !== undefined) {
-      handled.add(`${first.key}@${first.askedAt}`);
-      if (first.id === "scope-approval") {
-        const plan = ticketSection(ticketText(), "plan");
-        await handle("plan", first.id, first.question, planCard(first, plan), visibleOptions(first), first);
-      } else if ((first.questions ?? []).length > 1) {
-        await handleSeveral(first);
-      } else {
-        await handle("question", first.id, first.question, questionCard(first), visibleOptions(first), first);
-      }
+      const key = `${first.key}@${first.askedAt}`;
+      handled.add(key);
+      await guarded(key, async () => {
+        if (first.id === "scope-approval") {
+          const plan = ticketSection(ticketText(), "plan");
+          await handle("plan", first.id, first.question, planCard(first, plan), visibleOptions(first), first);
+        } else if ((first.questions ?? []).length > 1) {
+          await handleSeveral(first);
+        } else {
+          await handle("question", first.id, first.question, questionCard(first), visibleOptions(first), first);
+        }
+      });
       return;
     }
     const text = ticketText();
@@ -625,13 +691,14 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
       const title = /^title:\s*(".*")$/m.exec(text)?.[1];
       const heading = title === undefined ? options.ticket : (JSON.parse(title) as string);
       const card = [`Ticket: ${heading}`, "Delivery summary:", ticketSection(text, "final-summary"), "Buttons: Accept, Request changes"].join("\n");
-      await handle("acceptance", "accept", heading, card, ["Accept", "Request changes"], null);
+      await guarded(stamp, () => handle("acceptance", "accept", heading, card, ["Accept", "Request changes"], null));
       return;
     }
     // Nothing on screen for the user: an owner idle on "waiting:" for a long time asked for something that never became a card.
     if (options.ownerAgentId === undefined) return;
     const detail = (await rpc(options.throwaway, "taro.ticket.load", { project: options.project, ticket: options.ticket })) as Parameters<typeof staleWaiting>[0];
-    const since = staleWaiting(detail, Date.now());
+    const givenUpOpen = allOpen.some((decision) => givenUp.has(`${decision.key}@${decision.askedAt}`)) || (awaitsAcceptance(text) && givenUp.has(`acceptance@${/^updated:\s*"([^"]+)"/m.exec(text)?.[1] ?? ""}`));
+    const since = staleWaiting(detail, Date.now(), givenUpOpen);
     if (since === null || handled.has(`waiting:${since}`)) return;
     handled.add(`waiting:${since}`);
     record({ type: "violation", at: now(), kind: "owner-waiting-no-card", detail: `the owner waited from ${since} on "${detail.lastStatus?.state}" with no card, permission or delivery for the user; the user wrote to it` });
@@ -644,12 +711,14 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
       try {
         await pass();
       } catch (error) {
-        failure = error instanceof Error ? error.message : String(error);
-        options.log(`decider error: ${failure}`);
-        // One bad pass does not end the run; a failure that repeats does.
+        const message = error instanceof Error ? error.message : String(error);
+        options.log(`decider error: ${message}`);
+        // Only a fatal error is exposed to the run's poll; any other bad pass is retried (a card at most MAX_CARD_ATTEMPTS times).
+        if (isFatalDeciderError(error)) {
+          failure = message;
+          return;
+        }
         await sleep(POLL_MS * 2);
-        if (failure !== null && /no readable reply/.test(failure)) return;
-        failure = null;
       }
       await sleep(POLL_MS);
     }

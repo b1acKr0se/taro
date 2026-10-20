@@ -1,6 +1,9 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { conformanceOf, countPermissions, countRecords, loggedViolations, parseNodeTest, parseTestOutput, parseUnittest, scoreQuestions, scoreStats } from "./score.ts";
+import { peakContextOf, storedAgentRecord, storedSessionIdOf, conformanceOf, countPermissions, countRecords, loggedViolations, parseNodeTest, parseTestOutput, parseUnittest, scoreQuestions, scoreStats } from "./score.ts";
 
 describe("parseNodeTest", () => {
   it("reads passes and the total from the summary", () => {
@@ -134,5 +137,47 @@ risk: ordering — two pins at once
     expect(kinds).not.toContain("hands-off-unasked");
     expect(kinds).not.toContain("no-approval");
     expect(kinds).not.toContain("status-skip");
+  });
+});
+
+describe("peakContextOf", () => {
+  const line = (input: number, cacheRead: number, extra: object = {}): string => JSON.stringify({ type: "assistant", message: { usage: { input_tokens: input, cache_creation_input_tokens: 0, cache_read_input_tokens: cacheRead } }, ...extra });
+  it("is the largest request, not the last: a context that dropped keeps its peak", () => {
+    expect(peakContextOf([line(10, 150_000), line(10, 40_000), line(10, 60_000)].join("\n"))).toBe(150_010);
+  });
+  it("skips sidechains and lines that are not requests", () => {
+    expect(peakContextOf([line(10, 90_000), line(10, 400_000, { isSidechain: true }), "not json", JSON.stringify({ type: "user" })].join("\n"))).toBe(90_010);
+  });
+  it("is null with no request", () => {
+    expect(peakContextOf("")).toBeNull();
+  });
+});
+
+describe("storedSessionIdOf", () => {
+  const record = (persistence: unknown): string => JSON.stringify({ id: "agent-1", provider: "claude", cwd: "/home/user/notes-app", persistence });
+  it("reads the session id from the daemon's stored agent record", () => {
+    expect(storedSessionIdOf(record({ provider: "claude", sessionId: "11111111-2222-3333-4444-555555555555", nativeHandle: "x", metadata: { cwd: "/home/user/notes-app" } }))).toBe("11111111-2222-3333-4444-555555555555");
+  });
+  it("is null for another provider, no persistence, an empty id or text that is not JSON", () => {
+    expect(storedSessionIdOf(record({ provider: "codex", sessionId: "abc" }))).toBeNull();
+    expect(storedSessionIdOf(record(null))).toBeNull();
+    expect(storedSessionIdOf(record({ provider: "claude", sessionId: "" }))).toBeNull();
+    expect(storedSessionIdOf("Agent a1")).toBeNull();
+  });
+});
+
+describe("storedAgentRecord", () => {
+  it("finds <home>/agents/<slug>/<agentId>.json, and null for a missing agent or an unsafe id", () => {
+    const home = mkdtempSync(join(tmpdir(), "taro-bench-test."));
+    try {
+      mkdirSync(join(home, "agents", "home-user-notes-app"), { recursive: true });
+      writeFileSync(join(home, "agents", "home-user-notes-app", "agent-1.json"), '{"id":"agent-1"}');
+      expect(storedAgentRecord(home, "agent-1")).toBe('{"id":"agent-1"}');
+      expect(storedAgentRecord(home, "agent-2")).toBeNull();
+      expect(storedAgentRecord(home, "../agent-1")).toBeNull();
+      expect(storedAgentRecord(join(home, "none"), "agent-1")).toBeNull();
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

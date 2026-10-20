@@ -209,6 +209,12 @@ describe("hands-off, risks and rulings", () => {
     expect(kinds(withRisks)).not.toContain("no-risks");
   });
 
+  it("risks:false excuses a main-era ticket dated after the cut-off, risks:true requires one before it", () => {
+    const text = ticket({ status: "In Progress" }).replace("2026-01-05T10:00:00Z", "2026-10-22T10:00:00Z");
+    expect(conformanceViolations(text, { risks: false }).map((violation) => violation.kind)).not.toContain("no-risks");
+    expect(conformanceViolations(ticket({ status: "In Progress" }), { risks: true }).map((violation) => violation.kind)).toContain("no-risks");
+  });
+
   it("no no-risks before the cut-off or on trivial", () => {
     expect(kinds(ticket({ status: "In Progress" }))).not.toContain("no-risks");
     const trivial = ticket({ status: "In Progress", labels: '"complexity-trivial"' }).replace("2026-01-05T10:00:00Z", "2026-10-22T10:00:00Z");
