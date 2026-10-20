@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, Platform, ScrollView, View, type LayoutChangeEvent } from "react-native";
 
 import { dropIndex, moveProject, type TabSlot } from "../shared/project-order";
-import { createTabDrag, edgeStep, type TabDrag } from "../shared/tab-drag";
+import { clampScroll, createTabDrag, edgeStep, type TabDrag } from "../shared/tab-drag";
 import { AVATAR_LETTER_COLOR, avatarColor, avatarLetter, avatarRadius } from "../shared/project-avatar";
 import { CentredLabel } from "./centred-label";
 import { CountBadge } from "./count-badge";
@@ -124,6 +124,7 @@ export function ProjectTabs({
   const scrollRef = useRef<ScrollView>(null);
   const scrollX = useRef(0);
   const viewWidth = useRef(0);
+  const contentWidth = useRef(0);
   const drag = useRef<TabDrag | null>(null);
   if (drag.current === null) drag.current = createTabDrag();
   // What the responder callbacks read: they are made once, so they look the latest values up here.
@@ -174,7 +175,9 @@ export function ProjectTabs({
       const centre = centreInView();
       const step = centre === null ? 0 : edgeStep(centre, viewWidth.current);
       if (step === 0 || drag.current?.moved() !== true) return;
-      scrollX.current = Math.max(0, scrollX.current + step);
+      const next = clampScroll(scrollX.current, step, contentWidth.current, viewWidth.current);
+      if (next === scrollX.current) return;
+      scrollX.current = next;
       scrollRef.current?.scrollTo({ x: scrollX.current, animated: false });
       setShift(drag.current?.scrolled(scrollX.current) ?? 0);
     }, 16);
@@ -230,6 +233,9 @@ export function ProjectTabs({
         }}
         onLayout={(event) => {
           viewWidth.current = event.nativeEvent.layout.width;
+        }}
+        onContentSizeChange={(width) => {
+          contentWidth.current = width;
         }}
         showsHorizontalScrollIndicator={false}
       >

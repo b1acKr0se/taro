@@ -15,6 +15,11 @@ export function edgeStep(centreInView: number, viewWidth: number): number {
   return 0;
 }
 
+/** The row's scroll after a step, held between its start and its end (the native view stops there and says nothing). */
+export function clampScroll(scrollX: number, step: number, contentWidth: number, viewWidth: number): number {
+  return Math.min(Math.max(0, scrollX + step), Math.max(0, contentWidth - viewWidth));
+}
+
 export interface TabDrag {
   lifted(): string | null;
   /** Whether the finger has moved since the lift: a drag, not just a hold. */

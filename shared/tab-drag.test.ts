@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createTabDrag, EDGE_PX, EDGE_STEP_PX, edgeStep } from "./tab-drag";
+import { clampScroll, createTabDrag, EDGE_PX, EDGE_STEP_PX, edgeStep } from "./tab-drag";
 
 describe("a tab drag", () => {
   it("puts a tab back when the finger lifts after a hold with no move (it must not stay lifted)", () => {
@@ -59,4 +59,12 @@ describe("edgeStep", () => {
   it("does nothing before the row has a width", () => {
     expect(edgeStep(0, 0)).toBe(0);
   });
+});
+
+describe("clampScroll", () => {
+  it("steps inside the row", () => expect(clampScroll(100, 14, 1000, 300)).toBe(114));
+  it("stops at the end", () => expect(clampScroll(695, 14, 1000, 300)).toBe(700));
+  it("stays at the end when already there", () => expect(clampScroll(700, 14, 1000, 300)).toBe(700));
+  it("stops at the start", () => expect(clampScroll(5, -14, 1000, 300)).toBe(0));
+  it("is 0 when the content fits the view", () => expect(clampScroll(0, 14, 200, 300)).toBe(0));
 });
