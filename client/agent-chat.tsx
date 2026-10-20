@@ -49,7 +49,7 @@ import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
 import { composerNotice, hasSomethingToSend, sendLabel } from "./composer-notice";
 import { usePendingSends, type ChatSend } from "./use-pending-sends";
-import { isCompacting, isWorking, takeBack, type SendMark, type SendView } from "../shared/pending-sends";
+import { isCompacting, isWorking, showsLoader, statusWithTurn, takeBack, type SendMark, type SendView } from "../shared/pending-sends";
 import { chatQueueKey, EDIT_SENT_MEANWHILE, editRefusal, editRemoval, queueCompacting, sendingToQueue, takenAttachments, type QueueRowAction, type QueueRowMessage } from "./queue-rows";
 import { QueueTrack, useChatQueue } from "./queue-track";
 import { COMPOSER_CONTROL_SIZE, composerMetrics } from "./composer-height";
@@ -159,10 +159,12 @@ export function AgentChat({
   const timeline = useAgentTimeline(agent.id, `${agent.updatedAt}:${agent.pendingPermissions}`);
   // The timeline's read of the agent when it is newer than the board's: it follows the stream.
   const live = timeline.agent !== null && timeline.agent.updatedAt >= agent.updatedAt ? timeline.agent : null;
-  const writing = (live?.status ?? agent.status) === "running";
+  // The stream's turn start or end over the last read (TR-201): the stop button and loader follow it at once.
+  const status = statusWithTurn(live?.status ?? agent.status, timeline.turn);
+  const writing = status === "running";
   // The agent's folder, so a tool call's path inside it reads as Paseo shows it.
   const cwd = timeline.agent?.cwd ?? null;
-  const working = isWorking(live?.status ?? agent.status);
+  const working = isWorking(status);
   // A tool call shimmers only while its turn runs (TR-190).
   const rows = useMemo(() => whileWriting(endStoppedTools(withoutOpenTurn(transcriptRows(timeline.entries, cwd), working), working), writing), [timeline.entries, cwd, working, writing]);
   const groups = useMemo(() => groupRows(rows), [rows]);
@@ -188,7 +190,7 @@ export function AgentChat({
   const refreshQueue = () => queries.invalidateQueries({ queryKey: chatQueueKey(agent.id) });
   const sends = usePendingSends({
     agentId: agent.id,
-    status: live?.status ?? agent.status,
+    status,
     entries: timeline.entries,
     hasOlder: timeline.hasOlder,
     onSend,
@@ -199,6 +201,8 @@ export function AgentChat({
   const timelineCompacting = useMemo(() => isCompacting(timeline.entries), [timeline.entries]);
   const compacting = queueCompacting(timelineCompacting, queue.compacting);
   const marksByRow = useMemo(() => new Map(sends.views.flatMap((view) => (view.rowKey === null ? [] : [[view.rowKey, view] as const]))), [sends.views]);
+  // From the moment a message leaves, as in Paseo, not once the daemon reports the turn it starts (TR-201).
+  const loaderShown = showsLoader(status, sends.views.map((view) => view.mark));
   // On their way to a working agent: drawn in the queue track, where the daemon will put them (TR-171).
   const sendingRows = useMemo(() => sendingToQueue(sends.views, working), [sends.views, working]);
   const echoes = sends.views.filter((view) => view.rowKey === null && !sendingRows.some((row) => row.id === view.send.id));
@@ -673,7 +677,7 @@ export function AgentChat({
               </View>
             ))}
             {/* An agent held up by a permission request waits for the user, not at work. */}
-            {pending.length > 0 ? null : <WorkingStatus theme={theme} status={live?.status ?? agent.status} turnStartedAt={agent.turnStartedAt} />}
+            {pending.length > 0 ? null : <WorkingStatus theme={theme} shown={loaderShown} turnStartedAt={working ? agent.turnStartedAt : null} />}
           </KeyboardRevealProvider>
           {keyboardScroll.room > 0 ? <View style={{ height: keyboardScroll.room }} /> : null}
         </ScrollView>

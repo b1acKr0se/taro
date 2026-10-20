@@ -15,7 +15,6 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AccessibilityInfo, Animated, Easing, Platform, Text, View, type LayoutChangeEvent } from "react-native";
 
-import { isWorking } from "../shared/pending-sends";
 import { shimmerDurationMs, shimmerLayers, shimmerMetrics, WEB_SHIMMER_COPY_BOX } from "./shimmer";
 import { SPACE } from "./spacing";
 import { SYNCED_LOADER_DOT_COUNT, SYNCED_LOADER_DURATION_MS, syncedLoaderDotSteps } from "./synced-loader-state";
@@ -86,9 +85,9 @@ export function DotLoader({ size, color }: { size: number; color: string }) {
   );
 }
 
-/** Null unless a turn runs: Paseo's loader and how long the turn has run, under a chat's last message. */
-export function WorkingStatus({ theme, status, turnStartedAt }: { theme: PluginTheme; status: string | null | undefined; turnStartedAt: string | null | undefined }) {
-  if (!isWorking(status)) return null;
+/** Null unless `shown` (a turn runs, or a message is on its way to start one): Paseo's loader and how long the turn has run, under a chat's last message. */
+export function WorkingStatus({ theme, shown, turnStartedAt }: { theme: PluginTheme; shown: boolean; turnStartedAt: string | null | undefined }) {
+  if (!shown) return null;
   return <WorkingStatusRow theme={theme} turnStartedAt={turnStartedAt} />;
 }
 

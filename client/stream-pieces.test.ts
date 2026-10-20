@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { drawnWithPieces, streamedPiece, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
+import { drawnWithPieces, streamedPiece, turnBoundary, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
 import { transcriptRows, whileWriting, type TimelineEntry } from "./transcript-rows";
 
 const EPOCH = "epoch-1";
@@ -106,5 +106,25 @@ describe("whileWriting", () => {
     const plain = transcriptRows(read);
     expect(whileWriting(plain, true)).toBe(plain);
     expect(whileWriting([], true)).toEqual([]);
+  });
+});
+
+describe("turnBoundary (TR-201)", () => {
+  const stream = (inner: unknown) => ({ agentId: "agent-1", event: inner, timestamp: "2026-01-01T00:00:00Z" });
+
+  it("reads a turn's start", () => {
+    expect(turnBoundary(stream({ type: "turn_started", provider: "claude", turnId: "turn-2" }))).toBe("started");
+  });
+
+  it("reads a turn's end however it ended: completed, failed or stopped", () => {
+    for (const type of ["turn_completed", "turn_failed", "turn_canceled"]) expect(turnBoundary(stream({ type, provider: "claude" }))).toBe("ended");
+  });
+
+  it("is null for every other event, and for what is not an event", () => {
+    expect(turnBoundary(event(3, "Hello"))).toBeNull();
+    for (const inner of [{ type: "timeline", item: { type: "tool_call" } }, { type: "replacement", epoch: "e" }, { type: "subscription_restored" }, { type: "error", error: "x" }, { type: "attention_required" }, {}, null, "turn_started"]) {
+      expect(turnBoundary(stream(inner))).toBeNull();
+    }
+    for (const value of [null, undefined, "turn_started", 3, {}]) expect(turnBoundary(value)).toBeNull();
   });
 });

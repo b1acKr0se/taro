@@ -6,6 +6,7 @@
  * The read stays the truth; a piece out of order, from another epoch, or after a step the read lacks
  * (a tool call) waits for the next read.
  */
+import type { TurnBoundary } from "../shared/pending-sends";
 import type { TimelineEntry } from "./transcript-rows";
 
 export interface StreamedPiece {
@@ -37,6 +38,16 @@ export function streamedPiece(event: unknown): StreamedPiece | null {
     collapsed: [],
   } as unknown as TimelineEntry;
   return { epoch, seq, entry };
+}
+
+/** A turn starting or ending, from a stream event (TR-201); null for every other event. */
+export function turnBoundary(event: unknown): TurnBoundary | null {
+  if (typeof event !== "object" || event === null) return null;
+  const inner: unknown = Reflect.get(event, "event");
+  const type: unknown = typeof inner === "object" && inner !== null ? Reflect.get(inner, "type") : null;
+  if (type === "turn_started") return "started";
+  if (type === "turn_completed" || type === "turn_failed" || type === "turn_canceled") return "ended";
+  return null;
 }
 
 /** The read's entries with the pieces that continue it, in order and without a gap, after them. */
