@@ -124,7 +124,9 @@ export async function rpc(throwaway: Throwaway, method: string, input: unknown):
 }
 
 export async function installPlugin(throwaway: Throwaway): Promise<void> {
-  const installed = await run("paseo", ["plugin", "install", throwaway.pluginCopy, ...paseoArgs(throwaway)], { timeoutMs: 180_000 });
+  // Paseo loads the plugin before install returns, which took 2.5-3 minutes on a busy host: 180 s cut a run short.
+  const installed = await run("paseo", ["plugin", "install", throwaway.pluginCopy, ...paseoArgs(throwaway)], { timeoutMs: 600_000 });
+  if (installed.timedOut) throw new Error("paseo plugin install did not return within 10 minutes");
   if (installed.code !== 0) throw new Error(`paseo plugin install failed: ${installed.stderr || installed.stdout}`);
   // The plugin starts with the daemon's plugin host: ask it something until it answers.
   for (let attempt = 0; attempt < 60; attempt += 1) {
