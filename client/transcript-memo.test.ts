@@ -24,6 +24,13 @@ describe("sameGroup", () => {
     expect(sameGroup(asking, { key: "m1", row: { key: "m1", kind: "agent", text: "Plan written.", asking: true } })).toBe(true);
   });
 
+  it("redraws a message when its turn footer came, went or changed (TR-202)", () => {
+    const footed = (durationMs: number): Group => ({ key: "m1", row: { key: "m1", kind: "agent", text: "Done.", turn: { copyText: "Done.", completedAt: "2026-10-20T10:00:11Z", durationMs, newest: false } } });
+    expect(sameGroup(message("m1", "Done."), footed(11_000))).toBe(false);
+    expect(sameGroup(footed(11_000), footed(11_000))).toBe(true);
+    expect(sameGroup(footed(11_000), footed(12_000))).toBe(false);
+  });
+
   it("redraws a row that became another kind or another row", () => {
     expect(sameGroup(message("m1", "x"), { key: "m1", row: { key: "m1", kind: "error", text: "x" } })).toBe(false);
     expect(sameGroup(message("m1", "x"), message("m2", "x"))).toBe(false);

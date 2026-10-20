@@ -16,6 +16,7 @@ import { stripInterruptNote } from "../shared/chat-queue";
 import { heldWhileWriting } from "../shared/streaming-text";
 
 import { imageLineOf } from "./markdown-parse";
+import { turnDurationMs } from "./turn-time";
 import { joinsRuns, toolDisplay, toolTally, type ToolDetail, type ToolTally } from "./tool-wording";
 
 type PaseoApi = ReturnType<typeof usePaseo>;
@@ -24,6 +25,18 @@ export type TimelineEntry = TimelinePage["entries"][number];
 type TimelineItem = TimelineEntry["item"];
 type ToolCallItem = Extract<TimelineItem, { type: "tool_call" }>;
 
+/**
+ * What a finished turn's footer shows (TR-202), on the turn's last reply: the text copy takes, when the
+ * turn's last item arrived and how long it took (null when the turn's first message is out of view).
+ */
+export interface TurnFooter {
+  copyText: string;
+  completedAt?: string;
+  durationMs: number | null;
+  /** The newest turn, which may still be going. */
+  newest: boolean;
+}
+
 export type TranscriptRow =
   /** `at`: when it was sent, to place a permission ask raised after it (TR-149). */
   | { key: string; kind: "user"; text: string; at?: string }
@@ -31,7 +44,7 @@ export type TranscriptRow =
    * `at`: when the message started, for matching what was answered after it (TR-135). `asking`: the
    * reply is writing a decision block, not drawn until it closes (TR-144).
    */
-  | { key: string; kind: "agent"; text: string; at?: string; asking?: boolean }
+  | { key: string; kind: "agent"; text: string; at?: string; asking?: boolean; turn?: TurnFooter }
   | { key: string; kind: "event"; text: string }
   /**
    * A tool call as Paseo shows it (TR-150): its label, detail and icon (`text` is both, for what reads
@@ -141,9 +154,25 @@ function appendReply(text: string, piece: string): string {
 export function transcriptRows(entries: readonly TimelineEntry[], cwd?: string | null): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
   let previousReply: TimelineEntry | undefined;
+  // A turn runs from a user message (Paseo counts a note it injected too) to the next one (TR-202).
+  let turnStartedAt: string | undefined;
+  let turnEndedAt: string | undefined;
+  let turnReplies: Extract<TranscriptRow, { kind: "agent" }>[] = [];
+  const endTurn = (newest = false) => {
+    const spoken = turnReplies.filter((reply) => reply.text.trim() !== "");
+    const last = spoken[spoken.length - 1];
+    if (last !== undefined) last.turn = { copyText: spoken.map((reply) => reply.text.trim()).join("\n\n"), ...(turnEndedAt === undefined ? {} : { completedAt: turnEndedAt }), durationMs: turnDurationMs(turnStartedAt, turnEndedAt), newest };
+    turnReplies = [];
+  };
   entries.forEach((entry) => {
     const key = rowKey(entry);
     const item = entry.item;
+    if (item.type === "user_message") {
+      endTurn();
+      turnStartedAt = entry.timestamp;
+      turnEndedAt = undefined;
+    }
+    if (entry.timestamp !== undefined) turnEndedAt = entry.timestamp;
     switch (item.type) {
       case "user_message": {
         const summary = injectedSummary(item.text, item.clientMessageId);
@@ -156,8 +185,11 @@ export function transcriptRows(entries: readonly TimelineEntry[], cwd?: string |
       }
       case "assistant_message": {
         const last = rows[rows.length - 1];
-        if (last === undefined || last.kind !== "agent") rows.push({ key, kind: "agent", text: appendAssistantText("", item.text), at: entry.timestamp });
-        else if (startsNewReply(previousReply, entry)) last.text = appendReply(last.text, item.text);
+        if (last === undefined || last.kind !== "agent") {
+          const reply: Extract<TranscriptRow, { kind: "agent" }> = { key, kind: "agent", text: appendAssistantText("", item.text), at: entry.timestamp };
+          rows.push(reply);
+          turnReplies.push(reply);
+        } else if (startsNewReply(previousReply, entry)) last.text = appendReply(last.text, item.text);
         else last.text = appendAssistantText(last.text, item.text);
         previousReply = entry;
         break;
@@ -182,6 +214,7 @@ export function transcriptRows(entries: readonly TimelineEntry[], cwd?: string |
         break;
     }
   });
+  endTurn(true);
   return endStoppedCompactions(rows.filter((row) => row.kind !== "agent" || row.text.trim() !== ""));
 }
 
@@ -215,4 +248,17 @@ export function whileWriting(rows: TranscriptRow[], writing: boolean): Transcrip
   if (!writing || last === undefined || last.kind !== "agent") return rows;
   const held = heldWhileWriting(last.text);
   return held.text === last.text && !held.asking ? rows : [...rows.slice(0, -1), { ...last, text: held.text, asking: held.asking }];
+}
+
+/**
+ * The rows without the footer of a turn still going (TR-202): the newest turn's footer waits for the
+ * agent to stop, as Paseo's does, so "Worked for" never counts a turn that is not over.
+ */
+export function withoutOpenTurn(rows: TranscriptRow[], working: boolean): TranscriptRow[] {
+  if (!working) return rows;
+  return rows.map((row) => {
+    if (row.kind !== "agent" || row.turn?.newest !== true) return row;
+    const { turn: _turn, ...rest } = row;
+    return rest;
+  });
 }

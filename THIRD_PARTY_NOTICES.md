@@ -56,7 +56,9 @@ commit `5293dda`: `client/synced-loader-state.ts` (from `src/components/synced-l
 `client/shimmer.ts` (`computeShimmerMetrics`, `SHIMMER_GRADIENT` and the native shimmer's track and
 gradient from `src/components/message.tsx`), `client/web-shimmer.ts` (`buildShimmerTextStyle` and its
 keyframes from the same file) and `client/loading.tsx` (the loader from `src/components/synced-loader.tsx`, the working indicator from
-`src/agent-stream/turn-footer.tsx` and the tool call's shimmer from `src/components/message.tsx`). Paseo ships
+`src/agent-stream/turn-footer.tsx` and the tool call's shimmer from `src/components/message.tsx`). The turn footer is ported at the same
+commit: `client/turn-footer.tsx` (`AssistantTurnFooter` and `TurnCopyButton` from `src/components/message.tsx`)
+and `client/turn-time.ts` (`src/utils/time.ts` and `src/timeline/turn-time.ts`). Paseo ships
 no NOTICE file. Its license, with the Apache License 2.0 in full:
 
 ```
