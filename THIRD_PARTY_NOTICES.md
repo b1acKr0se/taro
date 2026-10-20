@@ -61,7 +61,9 @@ commit: `client/turn-footer.tsx` (`AssistantTurnFooter` and `TurnCopyButton` fro
 and `client/turn-time.ts` (`src/utils/time.ts` and `src/timeline/turn-time.ts`). The composer's model and effort controls are ported from Paseo too: `client/agent-controls-bar.tsx` (from
 `src/composer/agent-controls/control.tsx`), `shared/agent-controls.ts` (`formatThinkingOptionLabel` from
 `src/agent-controls/labels.ts`) and `client/provider-icon-data.ts` (the provider marks of `src/components/icons/*-icon.tsx`,
-drawn to PNG). Paseo ships
+drawn to PNG). The project tabs' letter avatars are ported from Paseo too: `shared/project-avatar.ts` (the ten tones of
+`src/styles/identity-colors.ts`, the name hash, the letter of `src/utils/project-display-name.ts` and the corner radius of
+`src/components/project-icon-view.tsx`). Paseo ships
 no NOTICE file. Its license, with the Apache License 2.0 in full:
 
 ```
