@@ -20,6 +20,7 @@ import { createPullRequestStates } from "./pull-request-states";
 import { pauseRefusal, pauseView, type PauseView } from "../shared/pause";
 import { holdReason, queuedTickets, recount, type Recount } from "../shared/queue-check";
 import { queuedSlot, queuedWait } from "../shared/queued-wait";
+import { offersRelaunch } from "../shared/relaunch";
 import { offersSpecChange } from "../shared/spec-change";
 import { isSubagentRole, roleFromLabel, TARO_LABELS } from "../shared/project";
 import { boardAlerts, type BoardAlert } from "../shared/recovery";
@@ -415,6 +416,7 @@ export async function loadTicketDetail(paseo: PaseoApi, project: string, ticketI
     compactOwner:
       owner !== null && offersCompact({ parent: detail.parentTaskId, owner: { status: owner.status, contextUsedTokens: owner.lastUsage?.contextWindowUsedTokens ?? null } }) ? owner.id : null,
     specChangeable: offersSpecChange({ status: detail.status, parent: detail.parentTaskId, ownerRunning: owner !== null, paused: pausing.pause !== null }),
+    relaunchable: offersRelaunch({ status: detail.status, parent: detail.parentTaskId, paused: pausing.pause !== null, ownerRunning: owner !== null && isMidTurn(owner) }),
     previousPlan: detail.implementationPlan === null ? null : await previousPlan(tracker, detail.id, detail.implementationNotes),
     ownerRunning: owner !== null && isMidTurn(owner),
   };
