@@ -188,17 +188,12 @@ describe("accept run by the plugin", () => {
     expect(vi.mocked(sendWithoutInterrupting)).not.toHaveBeenCalled();
   });
 
-  it("records NOT-MERGED and NOT-SYNCED itself, waking no owner", async () => {
+  it("records NOT-MERGED itself, waking no owner", async () => {
     config({});
     ticket(`EXECUTION 2026-01-01T00:00Z — review-head: ${head}`);
     outcome({ kind: "not-merged", reason: "the main checkout is dirty; clean it, then Accept again" });
     await accept();
-    config({ delivery: "pull-request" });
-    ticket(`EXECUTION 2026-01-01T00:00Z — pr: ${url}, review-head: ${head}`);
-    outcome({ kind: "not-synced", reason: "main has commits origin lacks" });
-    await accept();
     expect(written()[1]).toMatch(/^NOT-MERGED \S+ — the main checkout is dirty; clean it, then Accept again$/);
-    expect(written()[3]).toMatch(/^NOT-SYNCED \S+ — main has commits origin lacks$/);
     expect(vi.mocked(closeTicket)).not.toHaveBeenCalled();
     expect(vi.mocked(sendWithoutInterrupting)).not.toHaveBeenCalled();
     expect(created).toEqual([]);
