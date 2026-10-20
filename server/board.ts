@@ -200,10 +200,17 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
     new Set(agents.map((agent) => agent.id)),
   );
 
+  const childrenOf = new Map<string, { id: string; title: string; status: string }[]>();
+  for (const ticket of tickets) {
+    if (ticket.parentTaskId !== null) childrenOf.set(ticket.parentTaskId, [...(childrenOf.get(ticket.parentTaskId) ?? []), { id: ticket.id, title: ticket.title, status: ticket.status }]);
+  }
+
   // Placing a ticket needs only the list, live agents and under-way records; a full card is built only for the page (TR-082).
   const placed = await Promise.all(
     tickets.map(async (ticket) => {
-      const { owner, subagents: liveSubagents, columnAgent, askers } = ticketAgents(ticket.id, ticket.parentTaskId, byTicket, ticket.status);
+      const { owner, subagents: ownSubagents, childSubagents, columnAgent, askers } = ticketAgents(ticket.id, ticket.parentTaskId, byTicket, ticket.status, (childrenOf.get(ticket.id) ?? []).map((child) => child.id));
+      // A parent's detail also lists its children's live subagents (TR-212).
+      const liveSubagents = [...ownSubagents, ...childSubagents];
       // A child not started has no status of its own: its parent owner's line is about other work (TR-080).
       const ownLine = ticket.parentTaskId === null || hasStarted(ticket.status);
       const ownerState = owner === null ? null : agentStates[owner.id] ?? null;
@@ -234,11 +241,6 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
   );
   const page = pageColumns(placed, paging.limits, paging.include);
   const queue = page.kept.some((entry) => entry.column === "queued") ? await queueRecount(project, paths.tracker, tickets, agents, headroom) : null;
-
-  const childrenOf = new Map<string, { id: string; title: string; status: string }[]>();
-  for (const ticket of tickets) {
-    if (ticket.parentTaskId !== null) childrenOf.set(ticket.parentTaskId, [...(childrenOf.get(ticket.parentTaskId) ?? []), { id: ticket.id, title: ticket.title, status: ticket.status }]);
-  }
 
   const cards: Card[] = await Promise.all(
     page.kept.map(async ({ ticket, column, owner, liveSubagents, askers, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere, pausing }) => {

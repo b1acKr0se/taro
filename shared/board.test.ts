@@ -179,6 +179,19 @@ describe("ticketAgents", () => {
     expect(joined.subagents.map((entry) => entry.id)).toEqual(["builder"]);
   });
 
+  // TR-212: a parent's detail listed only agents labelled with the parent, so a child's running subagent was missing.
+  it("lists the live subagents of a parent's children apart from its own, without placing or asking for the parent", () => {
+    const childBuilder = agent("child-builder", "implementer", "DEMO-1.01", "running", "DEMO-1.01 · implementer: x", undefined, [{}]);
+    const childOwner = agent("child-owner", "owner", "DEMO-1.01", "running", "DEMO-1.01 · Child work");
+    const unrelated = agent("other", "implementer", "DEMO-2.01", "running", "DEMO-2.01 · implementer: y");
+    const joined = ticketAgents("DEMO-1", null, grouped([parentOwner, childBuilder, childOwner, unrelated]), "In Progress", ["DEMO-1.01"]);
+    expect(joined.childSubagents.map((entry) => entry.id)).toEqual(["child-builder"]);
+    expect(joined.subagents).toEqual([]);
+    expect(joined.columnAgent?.id).toBe("owner");
+    expect(joined.askers.map((entry) => entry.id)).toEqual([]);
+    expect(ticketAgents("DEMO-1", null, grouped([parentOwner, childBuilder])).childSubagents).toEqual([]);
+  });
+
   // TR-096: a researcher of a ticket sat on a permission while its card stayed in Working.
   it("puts a ticket whose subagent, not its owner, asks permission under Needs you, and back once it clears", () => {
     const placed = (agents: (JoinedAgent & { id: string })[]) => {

@@ -130,6 +130,8 @@ export interface JoinedAgent {
 export interface TicketAgents<Agent> {
   owner: Agent | null;
   subagents: Agent[];
+  /** A parent's children's live subagents, to list on its detail only: they never place the card or ask for it (TR-212). */
+  childSubagents: Agent[];
   /** Whose live state places the card. */
   columnAgent: Agent | null;
   /** The agents waiting on a permission for this ticket, the one the card shows first leading (TR-096). */
@@ -150,6 +152,7 @@ export function ticketAgents<Agent extends JoinedAgent>(
   parentId: string | null,
   byTicket: ReadonlyMap<string, readonly Agent[]>,
   status?: string,
+  childIds: readonly string[] = [],
 ): TicketAgents<Agent> {
   const own = byTicket.get(ticketId) ?? [];
   const parents = parentId === null ? [] : byTicket.get(parentId) ?? [];
@@ -159,19 +162,25 @@ export function ticketAgents<Agent extends JoinedAgent>(
     return role !== null && isSubagentRole(role);
   });
   const owner = newestOwner(own) ?? newestOwner(parents);
+  const childSubagents = childIds.flatMap((childId) =>
+    (byTicket.get(childId) ?? []).filter((agent) => {
+      const role = roleFromLabel(agent.labels[TARO_LABELS.role]);
+      return role !== null && isSubagentRole(role);
+    }),
+  );
   const asking = byNewest(subagents.filter(asks));
   if (parentId === null) {
     // A subagent titled for a child asks on the child's card alone, so one request is not counted twice.
     const forThis = asking.filter((agent) => titledTicket(agent.title) === null || titledTicket(agent.title) === ticketId);
     const askers = owner !== null && asks(owner) ? [owner, ...forThis] : forThis;
-    return { owner, subagents, columnAgent: askers[0] ?? owner, askers };
+    return { owner, subagents, childSubagents, columnAgent: askers[0] ?? owner, askers };
   }
   const running = newest(subagents.filter((agent) => agent.status === "running" || agent.status === "initializing"));
   // A child not started yet is not what the parent's owner works on (TR-080): only its own subagents place it.
   const placing = status === undefined || hasStarted(status) ? owner : null;
   const columnAgent = asking[0] ?? running ?? placing;
   // The parent's owner asks about the child only while nothing else of the child's is under way.
-  return { owner, subagents, columnAgent, askers: columnAgent !== null && columnAgent === placing && asks(placing) ? [placing] : asking };
+  return { owner, subagents, childSubagents, columnAgent, askers: columnAgent !== null && columnAgent === placing && asks(placing) ? [placing] : asking };
 }
 
 /** The ticket id a title starts with ("TR-1.01 · implementer: …"), or null. */
