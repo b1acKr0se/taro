@@ -7,7 +7,7 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useRef, useState } from "react";
-import { PanResponder, ScrollView, View, type LayoutChangeEvent } from "react-native";
+import { PanResponder, Platform, ScrollView, View, type LayoutChangeEvent } from "react-native";
 
 import { dropIndex, moveProject, type TabSlot } from "../shared/project-order";
 import { AVATAR_LETTER_COLOR, avatarColor, avatarLetter, avatarRadius } from "../shared/project-avatar";
@@ -25,6 +25,8 @@ const LIFT_DELAY_MS = 300;
 /** A lifted tab within this many px of the row's edge scrolls the row, per move. */
 const EDGE_PX = 40;
 const EDGE_STEP_PX = 14;
+/** On the web a drag across the tabs would select their names instead. */
+const NO_SELECT = Platform.OS === "web" ? ({ userSelect: "none" } as object) : null;
 
 export interface TabProject {
   name: string;
@@ -81,7 +83,7 @@ export function ProjectTabs({
         borderBottomColor: "transparent",
       },
       tabActive: { borderBottomColor: colors.accent },
-      tabLifted: { opacity: 0.85, zIndex: 10, backgroundColor: colors.surface1, borderRadius: 6 },
+      tabLifted: { zIndex: 10, backgroundColor: colors.surface2, borderRadius: 6 },
       tabText: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body), fontWeight: "600" as const },
       tabMuted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body), fontWeight: "500" as const },
       insertion: { position: "absolute" as const, top: SPACE.sm, bottom: SPACE.sm, width: 2, borderRadius: 1, backgroundColor: colors.accent },
@@ -212,7 +214,7 @@ export function ProjectTabs({
         }}
         showsHorizontalScrollIndicator={false}
       >
-        <View style={styles.tabs} {...responder.panHandlers}>
+        <View style={[styles.tabs, NO_SELECT]} {...responder.panHandlers}>
           {projects.map((project) => {
             const isActive = active === project.name;
             const isLifted = lifted === project.name;
