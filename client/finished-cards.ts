@@ -4,7 +4,7 @@
  */
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import type { PermissionAsk } from "../shared/permission-asks";
-import { parseDecisionBlocks, parseStatusLine } from "../shared/reports";
+import { parseDecisionBlocks, parseStatusLine, questionsOf } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import type { PlanLine } from "./plan-lines";
 
@@ -19,6 +19,15 @@ export interface FinishedView {
   /** The option the user picked, or a tool question's answers, shown under the line above the words (TR-172); absent without. */
   answer?: string | null;
   /** What the user typed with it; null without. */
+  words: string | null;
+  /** On a card asking several questions (TR-207), a line per question in its order; absent otherwise. */
+  answers?: AnsweredLine[];
+}
+
+/** One question's answer on a finished card: its header, the option picked (null for Other) and the user's own words. */
+export interface AnsweredLine {
+  header: string;
+  answer: string | null;
   words: string | null;
 }
 
@@ -160,7 +169,8 @@ const RECORD_KEPT_MS = 14 * 24 * 60 * 60 * 1000;
 
 /**
  * How a stored decision ended; null while it is open. Every answer reads "Answered", with what was
- * answered under it (TR-172): the picked option's label, the words typed with it or alone (TR-159), or both.
+ * answered under it (TR-172): the picked option's label, the words typed with it or alone (TR-159), or both;
+ * on a card asking several, that for each question.
  */
 export function storedDecisionView(decision: StoredDecision, clock: (iso: string) => string | null): FinishedView | null {
   if (decision.status === "withdrawn") {
@@ -171,6 +181,18 @@ export function storedDecisionView(decision: StoredDecision, clock: (iso: string
   const label = answer?.label ?? null;
   const typed = answer?.text.trim() ?? "";
   const time = answer === null ? null : clock(answer.at);
+  const several = answer?.answers ?? [];
+  if (several.length > 0) {
+    // The message sent is every line at once, not the user's words: each question says its own.
+    const questions = questionsOf(decision);
+    const answers = several.map((each, index): AnsweredLine => {
+      const words = each.text.trim();
+      if (each.label === null) return { header: each.header, answer: null, words: words === "" ? null : words };
+      const prompt = questions[index]?.options.find((option) => option.label === each.label)?.prompt ?? "";
+      return { header: each.header, answer: each.label, words: typedBeside(words, each.label, prompt) };
+    });
+    return { outcome: "Answered", tone: "positive", time, answer: null, words: null, answers };
+  }
   if (label === null) return { outcome: "Answered", tone: "positive", time, answer: null, words: typed === "" ? null : typed };
   return { outcome: "Answered", tone: "positive", time, answer: label, words: typedBeside(typed, label, decision.options.find((option) => option.label === label)?.prompt ?? "") };
 }

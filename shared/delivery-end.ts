@@ -12,10 +12,12 @@ const DELIVERING_QUESTION = "investigation-done";
 /**
  * A question that asks the user to accept or merge the ticket (TR-200). The delivery's Accept card does
  * both, so a second one would only be a button that merges nothing. Matches the id `merge`, `accept` or
- * `acceptance`, an id that starts with `accept-`, and a question that opens with Accept or Merge.
+ * `acceptance`, an id that starts with `accept-`, and a question that opens with Accept or Merge, on
+ * a card asking several (TR-207) any of its questions.
  */
-export function asksToAccept(decision: { id: string; question: string }): boolean {
-  return /^(merge|accept|acceptance)$|^accept-/i.test(decision.id) || /^\s*(accept|merge)\b/i.test(decision.question);
+export function asksToAccept(decision: { id: string; question: string; questions?: readonly { question: string }[] | undefined }): boolean {
+  const opensWithAccept = (question: string) => /^\s*(accept|merge)\b/i.test(question);
+  return /^(merge|accept|acceptance)$|^accept-/i.test(decision.id) || opensWithAccept(decision.question) || (decision.questions ?? []).some((each) => opensWithAccept(each.question));
 }
 
 /** The first newly opened question that ends a delivery: blocking, and not the one an investigation delivers with. */

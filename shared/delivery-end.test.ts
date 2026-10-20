@@ -118,4 +118,10 @@ describe("asksToAccept", () => {
     expect(asksToAccept({ id: "review-dispute", question: "Apply the fix or accept it as a limitation?" })).toBe(false);
     expect(asksToAccept({ id: "unmerged", question: "Keep unmerged branches?" })).toBe(false);
   });
+
+  it("reads each question of a card asking several (TR-207)", () => {
+    const card = (...questions: string[]) => ({ id: "wrap-up", question: `${questions.length} questions: A, B`, questions: questions.map((question) => ({ question })) });
+    expect(asksToAccept(card("Which changelog wording?", "Merge PR #88 now?"))).toBe(true);
+    expect(asksToAccept(card("Which changelog wording?", "Keep unmerged branches?"))).toBe(false);
+  });
 });

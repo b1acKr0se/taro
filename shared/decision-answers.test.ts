@@ -50,6 +50,16 @@ describe("severalAnswers (TR-207)", () => {
     expect(() => severalAnswers(QUESTIONS.slice(0, 1), [{ header: "Tags", label: null, text: "  " }])).toThrow(/Type an answer/);
   });
 
+  it("two questions with the same header each get their own answer, by position", () => {
+    const twice = [question("Tags", [["YAML", "Use YAML"]]), question("Tags", [["Hashtags", "Use a hashtag line"]])];
+    const sent = severalAnswers(twice, [
+      { header: "Tags", label: "YAML", text: "" },
+      { header: "Tags", label: "Hashtags", text: "" },
+    ]);
+    expect(sent.message).toBe("Tags: Use YAML\nTags: Use a hashtag line");
+    expect(() => severalAnswers(twice, [{ header: "Tags", label: "YAML", text: "" }])).toThrow(/1 of 2 answered/);
+  });
+
   it("the record lists each header, label or Other, and words", () => {
     const sent = severalAnswers(QUESTIONS.slice(0, 2), [
       { header: "Tags", label: "YAML", text: "" },
