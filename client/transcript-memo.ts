@@ -17,7 +17,7 @@ export function sameGroup(left: Group, right: Group): boolean {
       return other !== undefined && tool.key === other.key && tool.text === other.text && tool.icon === other.icon && tool.status === other.status;
     });
   }
-  return left.row.kind === right.row.kind && left.row.key === right.row.key && left.row.text === right.row.text && asking(left.row) === asking(right.row);
+  return left.row.kind === right.row.kind && left.row.key === right.row.key && left.row.text === right.row.text && asking(left.row) === asking(right.row) && sameTurn(left.row, right.row);
 }
 
 /** Whether two lists hold the same items in order, each compared with `same` (identity by default). */
@@ -29,4 +29,10 @@ export function sameItems<Item>(left: readonly Item[] | undefined, right: readon
 
 function asking(row: TranscriptRow): boolean {
   return row.kind === "agent" && row.asking === true;
+}
+
+function sameTurn(left: TranscriptRow, right: TranscriptRow): boolean {
+  const a = left.kind === "agent" ? left.turn : undefined;
+  const b = right.kind === "agent" ? right.turn : undefined;
+  return a === b || (a !== undefined && b !== undefined && a.copyText === b.copyText && a.completedAt === b.completedAt && a.durationMs === b.durationMs);
 }

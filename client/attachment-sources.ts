@@ -20,6 +20,7 @@ export const ATTACHMENT_SOURCES: readonly { source: AttachmentSource; label: str
 export const EXPO_MODULES = {
   imagePicker: { name: "ExponentImagePicker", methods: ["launchImageLibraryAsync"] },
   clipboard: { name: "ExpoClipboard", methods: ["getImageAsync"] },
+  clipboardText: { name: "ExpoClipboard", methods: ["setStringAsync"] },
   documentPicker: { name: "ExpoDocumentPicker", methods: ["getDocumentAsync"] },
   fileSystem: { name: "ExponentFileSystem", methods: ["readAsStringAsync"] },
   imageManipulator: { name: "ExpoImageManipulator", methods: ["manipulate"] },

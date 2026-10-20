@@ -43,7 +43,8 @@ import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
 import { cardFits, cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
 import { groupRows, toolRunSummary, type Group, type ToolRow } from "./tool-runs";
-import { ATTACHMENTS_ONLY, endStoppedTools, transcriptRows, whileWriting } from "./transcript-rows";
+import { ATTACHMENTS_ONLY, endStoppedTools, transcriptRows, whileWriting, withoutOpenTurn } from "./transcript-rows";
+import { TurnFooterView } from "./turn-footer";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
 import { composerNotice, hasSomethingToSend, sendLabel } from "./composer-notice";
@@ -163,7 +164,7 @@ export function AgentChat({
   const cwd = timeline.agent?.cwd ?? null;
   const working = isWorking(live?.status ?? agent.status);
   // A tool call shimmers only while its turn runs (TR-190).
-  const rows = useMemo(() => whileWriting(endStoppedTools(transcriptRows(timeline.entries, cwd), working), writing), [timeline.entries, cwd, working, writing]);
+  const rows = useMemo(() => whileWriting(endStoppedTools(withoutOpenTurn(transcriptRows(timeline.entries, cwd), working), working), writing), [timeline.entries, cwd, working, writing]);
   const groups = useMemo(() => groupRows(rows), [rows]);
   // The newest entry's position, not the count: the timeline is a tail and stops growing in length.
   const sentImages = useSentImages(agent.id, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0);
@@ -997,6 +998,7 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, pastA
           {pastPlan === undefined || project === undefined || ticketId === undefined ? null : <PastPlanCard line={pastPlan} project={project} ticket={ticketId} theme={theme} compact={compact} />}
           {pastAcceptance === undefined || ticketId === undefined ? null : <PastAcceptanceCard record={pastAcceptance} ticket={ticketId} theme={theme} />}
           {pastQuestions === undefined ? null : pastQuestions.map((card) => <PastQuestionCard key={card.id} card={card} theme={theme} />)}
+          {row.turn === undefined ? null : <TurnFooterView turn={row.turn} theme={theme} />}
           {targets.length === 0 ? null : (
             <View style={styles.agentRow} onLayout={(event) => onRowLayout(row.key, targets, "cards", event.nativeEvent.layout)}>
               {renderCards(asked)}
