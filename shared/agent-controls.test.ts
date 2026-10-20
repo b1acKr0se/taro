@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { effortOf, modelName, thinkingLabel } from "./agent-controls";
+import { controlLabels, effortOf, modelName, thinkingLabel } from "./agent-controls";
 
 describe("thinkingLabel", () => {
   it("words the ids as Paseo's composer does", () => {
@@ -48,5 +48,18 @@ describe("effortOf", () => {
     expect(effortOf(models, { provider: "codex", model: "gpt-9", thinking: null })).toBeNull();
     expect(effortOf(models, { provider: "claude", model: "claude-next", thinking: null })).toBeNull();
     expect(effortOf(models, { provider: "claude", model: null, thinking: null })).toBeNull();
+  });
+});
+
+describe("controlLabels", () => {
+  const models = [{ id: "claude/opus", modelLabel: "Opus 5", defaultThinking: "high" }];
+  it("names the model and words its effort", () => {
+    expect(controlLabels(models, { provider: "claude", model: "opus", thinking: "xhigh" })).toEqual({ name: "Opus 5", effort: "Extra high" });
+  });
+  it("falls back to the model's default effort", () => {
+    expect(controlLabels(models, { provider: "claude", model: "opus", thinking: null })).toEqual({ name: "Opus 5", effort: "High" });
+  });
+  it("has no effort when none is known, and the provider when no model", () => {
+    expect(controlLabels([], { provider: "claude", model: null, thinking: null })).toEqual({ name: "claude", effort: null });
   });
 });

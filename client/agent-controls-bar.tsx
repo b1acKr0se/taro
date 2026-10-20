@@ -7,9 +7,9 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
-import { Image, Text, View } from "react-native";
+import { Image, Platform, Text, View } from "react-native";
 
-import { effortOf, modelName, thinkingLabel } from "../shared/agent-controls";
+import { controlLabels } from "../shared/agent-controls";
 import { PROVIDER_ICON_PNG } from "./provider-icon-data";
 import { useModels } from "./queries";
 import { SPACE } from "./spacing";
@@ -18,6 +18,8 @@ import { FONT_SIZE } from "./type-scale";
 /** Paseo's toolbar glyph and control heights. */
 const GLYPH_SIZE = 16;
 const CONTROL_HEIGHT = 28;
+/** The phone composer's icons are 20px (`composerMetrics`). */
+const PHONE_GLYPH_SIZE = 20;
 
 export interface AgentIdentity {
   provider: string;
@@ -25,11 +27,11 @@ export interface AgentIdentity {
   thinking: string | null;
 }
 
-function ProviderGlyph({ provider, color }: { provider: string; color: string }) {
+function ProviderGlyph({ provider, color, size = GLYPH_SIZE }: { provider: string; color: string; size?: number }) {
   const png = PROVIDER_ICON_PNG[provider];
   // A provider Paseo draws no mark for gets its Bot, as in Paseo.
-  if (png === undefined) return <Icon name="Bot" size={GLYPH_SIZE} color={color} />;
-  return <Image source={{ uri: `data:image/png;base64,${png}` }} style={{ width: GLYPH_SIZE, height: GLYPH_SIZE, tintColor: color }} accessibilityIgnoresInvertColors />;
+  if (png === undefined) return <Icon name="Bot" size={size} color={color} />;
+  return <Image source={{ uri: `data:image/png;base64,${png}` }} style={{ width: size, height: size, tintColor: color }} accessibilityIgnoresInvertColors />;
 }
 
 export function AgentControlsBar({ theme, agent }: { theme: PluginTheme; agent: AgentIdentity }) {
@@ -37,9 +39,20 @@ export function AgentControlsBar({ theme, agent }: { theme: PluginTheme; agent: 
   // Not drawn before the model list arrives, or the raw id would flash before the name.
   if (models.query.isLoading) return null;
   const muted = theme.colors.foregroundMuted;
-  const name = modelName(models.options, agent) ?? agent.provider;
-  const chosen = effortOf(models.options, agent);
-  const effort = chosen === null ? null : thinkingLabel(chosen);
+  const { name, effort } = controlLabels(models.options, agent);
+  // The phone app's composer (TR-209): the mark, the model in normal text and the effort dimmer, on
+  // one line, with no pills or brain, as Paseo draws it there.
+  if (Platform.OS !== "web") {
+    return (
+      <View accessible accessibilityLabel={effort === null ? `Model: ${name}` : `Model: ${name}, effort: ${effort}`} style={{ minWidth: 0, flexShrink: 1, flexDirection: "row", alignItems: "center", gap: SPACE.sm, paddingHorizontal: SPACE.sm }}>
+        <ProviderGlyph provider={agent.provider} color={theme.colors.foreground} size={PHONE_GLYPH_SIZE} />
+        <Text style={{ minWidth: 0, flexShrink: 1, color: theme.colors.foreground, fontSize: FONT_SIZE.body }} numberOfLines={1}>
+          {name}
+          {effort === null ? null : <Text style={{ color: muted }}>{` ${effort}`}</Text>}
+        </Text>
+      </View>
+    );
+  }
   const textStyle = { minWidth: 0, flexShrink: 1, color: muted, fontSize: FONT_SIZE.small };
   return (
     <View style={{ minWidth: 0, flexShrink: 1, flexDirection: "row", alignItems: "center" }}>
