@@ -1164,7 +1164,7 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
       paddingVertical: SPACE.sm + 2,
     },
     receivedBubble: { alignSelf: "stretch" as const, gap: SPACE.sm },
-    senderPill: { alignSelf: "flex-start" as const, maxWidth: "100%" as const, backgroundColor: pill.background, borderRadius: 999, paddingHorizontal: SPACE.sm + 2, paddingVertical: 1 },
+    senderPill: { alignSelf: "flex-start" as const, maxWidth: "100%" as const, backgroundColor: pill.background, borderRadius: 999, paddingHorizontal: SPACE.sm + 2, paddingVertical: SPACE.xs - 1 },
     senderText: { color: pill.text, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
     foldButton: { alignSelf: "flex-start" as const, paddingVertical: SPACE.xs },
     foldText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small },
