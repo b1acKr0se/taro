@@ -408,10 +408,12 @@ export function sameQuestion(left: Pick<ParsedDecision, "question" | "options" |
 /**
  * Whether a block is an answered decision seen again (a repeated hook, the reconcile after a restart)
  * rather than asked again (TR-108). A plan approval reads the same every round, so the turn decides
- * when both are known; a decision stored before turns were recorded falls back to the question.
+ * when both are known; a decision stored before turns were recorded falls back to the question, unless
+ * an earlier turn of the timeline already held the block: then this one is a later ask (TR-221).
  */
-export function seenAgain(stored: Pick<ParsedDecision, "question" | "options" | "blocking"> & { turn: string | null }, block: Pick<ParsedDecision, "question" | "options" | "blocking">, turn: string | null): boolean {
+export function seenAgain(stored: Pick<ParsedDecision, "question" | "options" | "blocking"> & { turn: string | null }, block: Pick<ParsedDecision, "question" | "options" | "blocking">, turn: string | null, askedEarlier = false): boolean {
   if (stored.turn !== null && turn !== null) return stored.turn === turn;
+  if (stored.turn === null && turn !== null && askedEarlier) return false;
   return sameQuestion(stored, block);
 }
 

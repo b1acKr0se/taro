@@ -323,6 +323,34 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
   });
 
+  // TR-221: an owner's first turn opens with a received message; Request changes, then the same ask.
+  const received = (text: string) => ({ type: "tool_call", agentMessage: { text, sender: { title: "taro · Manager" } } });
+
+  it("reopens the re-ask after a first turn opened by a received message, and keeps a replay of the first turn quiet", async () => {
+    const { state, decisions } = fakeState();
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+    const first = [received("start"), ask("scope-approval", "Approve the plan for TR-9?")];
+    await run(taro, ...first);
+    decisions[0]!.status = "answered";
+    await run(taro, ...first);
+    expect(decisions.map((decision) => decision.status)).toEqual(["answered"]);
+    await run(taro, ...first, human("changes please"), reply, ask("scope-approval", "Approve the plan for TR-9?"));
+    expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
+  });
+
+  it("reopens a re-ask for a decision stored without a turn when an earlier turn held the same block", async () => {
+    const { state, decisions } = fakeState();
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+    const first = [received("start"), ask("scope-approval", "Approve the plan for TR-9?")];
+    await run(taro, ...first);
+    decisions[0]!.turn = null;
+    decisions[0]!.status = "answered";
+    await run(taro, ...first);
+    expect(decisions.map((decision) => decision.status)).toEqual(["answered"]);
+    await run(taro, ...first, human("changes please"), reply, ask("scope-approval", "Approve the plan for TR-9?"));
+    expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
+  });
+
   it("keeps an answered decision answered when the reconcile after a restart reads its turn again", async () => {
     const { state, decisions, agents } = fakeState();
     const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
