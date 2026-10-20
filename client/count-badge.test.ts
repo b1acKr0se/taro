@@ -50,6 +50,10 @@ describe("the count badge's places", () => {
     for (const file of ["sidebar.tsx", "taro-screen.tsx", "project-tabs.tsx"]) expect(source(file)).not.toContain("statusWarning, alignItems");
   });
 
+  it("keeps the warning colour unless a badge is given another (the bell's is the danger colour)", () => {
+    expect(source("count-badge.tsx")).toContain("background ?? theme.colors.statusWarning");
+  });
+
   it("names the count to screen readers on the tabs and the switch's segments", () => {
     expect(source("project-tabs.tsx")).toContain("accessibilityLabel={countBadgeLabel(project.name, compact ? 0 : project.needsYou)}");
     expect(source("project-tabs.tsx")).toContain('accessibilityLabel={countBadgeLabel("Inbox", inboxCount)}');

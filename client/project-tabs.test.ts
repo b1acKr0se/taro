@@ -35,6 +35,9 @@ describe("the Inbox button", () => {
     expect(tabs).toMatch(/inbox: \{[^}]*backgroundColor: colors\.surface1/s);
     expect(tabs).toContain('<Icon name="Bell"');
     expect(tabs).toContain("background={colors.statusDanger}");
+    expect(tabs).toMatch(/inboxBadge: \{ position: "absolute" as const, top: -\d+, right: -\d+/);
+    // The row takes its height from the button's margins, not a padding that would push the tabs off centre.
+    expect(tabs).not.toMatch(/row: \{[^}]*paddingTop/);
     expect(tabs).toContain("compact || projects.length === 0 ? null");
     expect(tabs).toMatch(/inboxActive: \{ borderColor: colors\.foreground, backgroundColor: withAlpha\(colors\.accent, 0\.3\) \}/);
     // Not drawn with the project tabs' underline or avatar.
