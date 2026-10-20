@@ -11,6 +11,7 @@ import {
   pullRequestsReady,
   settingsFrom,
   setupProblems,
+  setupBar,
   ticketExample,
   type SetupDraft,
 } from "./setup-form";
@@ -163,5 +164,15 @@ describe("pull requests without gh (TR-063)", () => {
     expect(pullRequestNote(false, false)).toBe(PULL_REQUEST_NEEDS_GH);
     expect(pullRequestNote(false, true)).toBe(PULL_REQUEST_KEPT_WITHOUT_GH);
     expect(PULL_REQUEST_NEEDS_GH).toContain("gh auth login");
+  });
+});
+
+describe("setupBar", () => {
+  it("names a new project's page and a plain back button", () => {
+    expect(setupBar(null)).toEqual({ title: "Add a project", backLabel: "Back" });
+  });
+
+  it("names an existing project's settings and where back goes", () => {
+    expect(setupBar("notes-app")).toEqual({ title: "notes-app settings", backLabel: "Back to notes-app" });
   });
 });
