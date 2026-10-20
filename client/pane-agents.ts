@@ -21,7 +21,6 @@ export interface PaneAgent {
 
 const SHORT_ID_LENGTH = 8;
 
-/** What an agent is called on screen: by its job (TR-017). */
 /**
  * The shown agent's status for the pane's header (TR-201): what its chat follows, which sees a turn
  * start or end before the board's next poll; the board's for an agent whose chat has not said yet.
@@ -31,6 +30,7 @@ export function paneStatus(shown: { id: string; live: boolean; brief: { status: 
   return chatStatus?.agentId === shown.id ? chatStatus.status : shown.brief.status;
 }
 
+/** What an agent is called on screen: by its job (TR-017). */
 export function paneAgentJob(role: PaneAgentRole): string {
   return role;
 }

@@ -86,8 +86,9 @@ function sessionMessage(data: unknown): { type?: unknown; payload?: unknown } | 
 
 /**
  * Ends the agent's turn through the daemon's websocket. Resolves once the daemon answered that it
- * did (or that no turn was running); throws `DaemonCancelError` when the daemon refused, and
- * `DirectCancelUnavailable` when this route could not be used, so the caller tries the CLI.
+ * did (or that no turn was running); throws `DaemonCancelError` when the daemon refused or did not
+ * answer a cancel it has in time, and `DirectCancelUnavailable` when this route could not be used,
+ * so the caller tries the CLI.
  */
 export async function cancelOverSocket(agentId: string, options: DirectCancelOptions): Promise<void> {
   const lockText = await readText(join(options.home, "paseo.pid"));
