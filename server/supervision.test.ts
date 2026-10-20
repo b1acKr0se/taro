@@ -10,7 +10,7 @@ import { appendTicketNote, endDelivery, viewTicket } from "./tickets";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
-import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, humanMessages, identityFromLabels, Supervisor, tabMessages } from "./supervision";
+import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, humanMessages, identityFromLabels, Supervisor, tabMessages, turnIdentity } from "./supervision";
 
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
@@ -100,6 +100,23 @@ describe("currentTurn", () => {
   it("is the whole timeline without a user message, and empty for an empty one", () => {
     expect(currentTurn(items(claudeAuto, reply))).toEqual([claudeAuto, reply]);
     expect(currentTurn([])).toEqual([]);
+  });
+});
+
+describe("a turn opened by a message another agent sent", () => {
+  const received = (text: string) => ({ type: "tool_call", agentMessage: { text, sender: { title: "taro · Manager" } } });
+  const plan = (text: string) => ({ type: "assistant_message", text });
+
+  it("starts at the received message and has an identity", () => {
+    expect(currentTurn(items(userTurn, reply, received("start"), reply))).toEqual([received("start"), reply]);
+    expect(turnIdentity(items(received("start"), plan("plan")))).not.toBeNull();
+  });
+
+  it("tells a re-ask in a later turn from the first ask (TR-221)", () => {
+    const first = turnIdentity(currentTurn(items(received("start"), plan("approve the plan"))));
+    const second = turnIdentity(currentTurn(items(received("start"), plan("approve the plan"), { type: "user_message", text: "changes please" }, plan("approve the plan"))));
+    expect(first).not.toBeNull();
+    expect(second).not.toBe(first);
   });
 });
 
@@ -303,6 +320,34 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     await run(taro, human("reload"), ask("scope-approval", "Approve the plan for TR-9?"));
     expect(decisions.map((decision) => decision.status)).toEqual(["answered"]);
     await run(taro, human("change"), ask("scope-approval", "Approve the new plan for TR-9?"));
+    expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
+  });
+
+  // TR-221: an owner's first turn opens with a received message; Request changes, then the same ask.
+  const received = (text: string) => ({ type: "tool_call", agentMessage: { text, sender: { title: "taro · Manager" } } });
+
+  it("reopens the re-ask after a first turn opened by a received message, and keeps a replay of the first turn quiet", async () => {
+    const { state, decisions } = fakeState();
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+    const first = [received("start"), ask("scope-approval", "Approve the plan for TR-9?")];
+    await run(taro, ...first);
+    decisions[0]!.status = "answered";
+    await run(taro, ...first);
+    expect(decisions.map((decision) => decision.status)).toEqual(["answered"]);
+    await run(taro, ...first, human("changes please"), reply, ask("scope-approval", "Approve the plan for TR-9?"));
+    expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
+  });
+
+  it("reopens a re-ask for a decision stored without a turn when an earlier turn held the same block", async () => {
+    const { state, decisions } = fakeState();
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+    const first = [received("start"), ask("scope-approval", "Approve the plan for TR-9?")];
+    await run(taro, ...first);
+    decisions[0]!.turn = null;
+    decisions[0]!.status = "answered";
+    await run(taro, ...first);
+    expect(decisions.map((decision) => decision.status)).toEqual(["answered"]);
+    await run(taro, ...first, human("changes please"), reply, ask("scope-approval", "Approve the plan for TR-9?"));
     expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
   });
 

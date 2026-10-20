@@ -13,6 +13,7 @@
 import type { usePaseo } from "@getpaseo/plugin/client";
 
 import { stripInterruptNote } from "../shared/chat-queue";
+import { receivedMessage } from "../shared/received-message";
 import { heldWhileWriting } from "../shared/streaming-text";
 
 import { imageLineOf } from "./markdown-parse";
@@ -58,18 +59,6 @@ export type TranscriptRow =
    */
   | { key: string; kind: "tool"; text: string; label: string; summary?: string; icon: string; tally: ToolTally; alone: boolean; status: ToolCallItem["status"]; at?: string }
   | { key: string; kind: "error"; text: string };
-
-/** The sender and words of a message another agent sent, or null for any other tool call. */
-export function receivedMessage(item: TimelineItem): { sender: string; text: string } | null {
-  if (item.type !== "tool_call") return null;
-  const message: unknown = Reflect.get(item, "agentMessage");
-  if (typeof message !== "object" || message === null) return null;
-  const text: unknown = Reflect.get(message, "text");
-  if (typeof text !== "string" || text.trim() === "") return null;
-  const sender: unknown = Reflect.get(message, "sender");
-  const title: unknown = typeof sender === "object" && sender !== null ? Reflect.get(sender, "title") : undefined;
-  return { sender: typeof title === "string" && title.trim() !== "" ? title.trim() : "another agent", text: text.trim() };
-}
 
 /** A user row's text when the message had attachments and no words. */
 export const ATTACHMENTS_ONLY = "(attachments)";

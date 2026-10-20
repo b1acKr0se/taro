@@ -13,8 +13,9 @@ import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
 import { lacksPlan, noPlanRecord } from "../shared/no-plan";
 import { asPlanningQuestion, asStored, planningTicket } from "../shared/planning-questions";
 import type { DrainTrigger } from "../shared/chat-queue";
+import { receivedMessage } from "../shared/received-message";
 import { isCrash } from "../shared/recovery";
-import { hashText, parseDecisionBlocks, parseStatusLine, seenAgain, withImagePaths, type ParsedDecision } from "../shared/reports";
+import { hashText, parseDecisionBlocks, parseStatusLine, sameQuestion, seenAgain, withImagePaths, type ParsedDecision } from "../shared/reports";
 import { openQuestionHolding, withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDecision } from "../shared/state";
 import { watchTrimmedTurn } from "./agent-trim";
 import { fetchLiveAgent, isMidTurn, listTaroAgents } from "./agents";
@@ -95,10 +96,15 @@ export function allAssistantText(timeline: readonly TimelineItem[]): string {
   return timeline.flatMap((item) => (item.type === "assistant_message" ? [item.text] : [])).join("");
 }
 
-/** The turn that just ended: from the last user message on (the whole timeline when there is none). */
+/** Whether an item opens a turn: a user message, or one another agent sent (Paseo 0.12.0 logs an agent's starting prompt that way). */
+function opensTurn(item: TimelineItem): boolean {
+  return item.type === "user_message" || receivedMessage(item) !== null;
+}
+
+/** The turn that just ended: from the last opening message on (the whole timeline when there is none). */
 export function currentTurn(timeline: readonly TimelineItem[]): readonly TimelineItem[] {
-  const lastUser = timeline.map((item) => item.type).lastIndexOf("user_message");
-  return timeline.slice(lastUser === -1 ? 0 : lastUser);
+  const lastOpening = timeline.map(opensTurn).lastIndexOf(true);
+  return timeline.slice(lastOpening === -1 ? 0 : lastOpening);
 }
 
 /**
@@ -109,8 +115,15 @@ export function currentTurn(timeline: readonly TimelineItem[]): readonly Timelin
  */
 export function turnIdentity(turn: readonly TimelineItem[]): string | null {
   const opening = turn[0];
-  if (opening === undefined || opening.type !== "user_message") return null;
-  return hashText(JSON.stringify([opening.text, allAssistantText(turn)]));
+  if (opening === undefined) return null;
+  const openingText = opening.type === "user_message" ? opening.text : receivedMessage(opening)?.text;
+  if (openingText === undefined) return null;
+  return hashText(JSON.stringify([openingText, allAssistantText(turn)]));
+}
+
+/** What the agent wrote before the current turn, to tell a later ask from a replay for a decision stored without a turn (TR-221). */
+function earlierText(timeline: readonly TimelineItem[], turn: readonly TimelineItem[]): string {
+  return allAssistantText(timeline.slice(0, timeline.length - turn.length));
 }
 
 /**
@@ -123,7 +136,7 @@ async function latestTurnItems(paseo: PaseoApi, agentId: string): Promise<Timeli
   let page = await timeline.refetch({ direction: "tail", limit: 40, projection: "projected" }).catch(() => null);
   if (page === null) return null;
   let items = page.entries.map((entry) => entry.item);
-  for (let older = 0; older < 10 && !items.some((item) => item.type === "user_message"); older++) {
+  for (let older = 0; older < 10 && !items.some(opensTurn); older++) {
     if (!page.hasOlder || page.startCursor === null) break;
     page = await timeline.refetch({ direction: "before", cursor: page.startCursor, limit: 40, projection: "projected" }).catch(() => null);
     if (page === null) break;
@@ -249,7 +262,7 @@ export class Supervisor {
     // like words the user typed, and it closed the owner's open cards (TR-134).
     const userWords = identity.role === "manager" ? tabMessages(turn) : [];
     if (userWords.length > 0) await this.closeAnsweredInTab(live.id, userWords, decisions, now);
-    if (decisions.length > 0) await this.storeDecisions(paseo, live, identity, decisions, turnIdentity(turn), now, status?.state === "waiting");
+    if (decisions.length > 0) await this.storeDecisions(paseo, live, identity, decisions, turnIdentity(turn), now, status?.state === "waiting", earlierText(timeline, turn));
 
     const openBlocking = (await this.state.allDecisions()).some(
       (decision) => decision.agentId === live.id && decision.status === "open" && decision.blocking,
@@ -367,7 +380,7 @@ export class Supervisor {
           if (status !== null) record.lastStatus = { ...status, at: agent.updatedAt };
         });
         const decisions = parseDecisionBlocks(allAssistantText(turn));
-        if (decisions.length > 0) await this.storeDecisions(paseo, agent, identity, decisions, turnIdentity(turn), agent.updatedAt, status?.state === "waiting");
+        if (decisions.length > 0) await this.storeDecisions(paseo, agent, identity, decisions, turnIdentity(turn), agent.updatedAt, status?.state === "waiting", earlierText(items, turn));
         if (isSubagentRole(identity.role)) {
           await this.deliverReport(paseo, agent, identity, closing, hashText(closing), agent.labels["paseo.parent-agent-id"] ?? null);
         }
@@ -476,7 +489,8 @@ export class Supervisor {
     });
   }
 
-  private async storeDecisions(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, decisions: readonly ParsedDecision[], turn: string | null, now: string, waiting: boolean): Promise<void> {
+  private async storeDecisions(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, decisions: readonly ParsedDecision[], turn: string | null, now: string, waiting: boolean, earlier: string): Promise<void> {
+    const earlierBlocks = turn === null || earlier === "" ? [] : parseDecisionBlocks(earlier);
     // Read only when a question would go on without the user: everything else keeps its own flag.
     const planning = identity.role === "owner" && decisions.some((decision) => !decision.withdrawn && !decision.blocking) && (await this.ticketPlanning(identity));
     const newlyAsked: string[] = [];
@@ -522,7 +536,7 @@ export class Supervisor {
           answer: null,
         };
         const existing = stored[index];
-        if (existing !== undefined && existing.status !== "open" && seenAgain(existing, asStored(decision, existing), turn)) {
+        if (existing !== undefined && existing.status !== "open" && seenAgain(existing, asStored(decision, existing), turn, earlierBlocks.some((asked) => asked.id === block.id && sameQuestion(asked, block)))) {
           // The same block seen again (a repeated hook, a replayed turn) does not reopen an answered decision; asked in a later turn, it does.
           continue;
         }
