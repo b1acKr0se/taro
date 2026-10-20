@@ -18,11 +18,11 @@ import { hashText, parseDecisionBlocks, parseStatusLine, seenAgain, withImagePat
 import { openQuestionHolding, withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDecision } from "../shared/state";
 import { watchTrimmedTurn } from "./agent-trim";
 import { fetchLiveAgent, isMidTurn, listTaroAgents } from "./agents";
+import { branchName, commitsPast } from "./branch-commits";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
 import { ticketEvidence, ticketEvidenceDirectory } from "./evidence";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { projectPaths, readProjectConfig } from "./projects";
-import { runChecked } from "./process";
 import { appendTicketNote, endDelivery, viewTicket } from "./tickets";
 import { isPluginMessageId, sendCommand, sendFromPlugin } from "./send";
 import type { ChatQueue } from "./chat-queue";
@@ -425,10 +425,10 @@ export class Supervisor {
     let found: { commits: number; branch: string; base: string } | null = null;
     try {
       const detail = await viewTicket((await projectPaths(identity.project)).tracker, identity.ticket);
-      lacking = lacksPlan({ status: detail.status, plan: detail.implementationPlan });
+      lacking = lacksPlan({ status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length });
       const base = lacking ? (await readProjectConfig(identity.project))?.baseBranch : undefined;
       const commits = base === undefined ? 0 : await commitsPast(agent.cwd, base);
-      if (base !== undefined && commits > 0) found = { commits, branch: await currentBranch(agent.cwd), base };
+      if (base !== undefined && commits > 0) found = { commits, branch: await branchName(agent.cwd), base };
     } catch {
       return false;
     }
@@ -733,18 +733,4 @@ export class Supervisor {
         : await message(TEMPLATES.handoffRequest, { usedTokens: size, ticket: identity.ticket ?? "your ticket", skill: await skillDirectory() });
     await sendFromPlugin(paseo, agentId, text);
   }
-}
-
-/** Commits on the worktree's HEAD that the base branch lacks; 0 when git cannot tell (no such base here). */
-async function commitsPast(cwd: string, base: string): Promise<number> {
-  for (const ref of [base, `origin/${base}`]) {
-    const counted = await runChecked("git", ["-C", cwd, "rev-list", "--count", `${ref}..HEAD`], { timeoutMs: 15_000 }).catch(() => null);
-    if (counted !== null) return Number.parseInt(counted.trim(), 10) || 0;
-  }
-  return 0;
-}
-
-async function currentBranch(cwd: string): Promise<string> {
-  const name = await runChecked("git", ["-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"], { timeoutMs: 15_000 }).catch(() => "");
-  return name.trim() === "" ? "its branch" : name.trim();
 }

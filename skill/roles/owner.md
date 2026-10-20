@@ -36,7 +36,7 @@ the flow.
    | Level | When | Proposal | Build | Review |
    | --- | --- | --- | --- | --- |
    | trivial | the request fully determines the change (exact value, typo, rename) | the plan, one line per section | you | self |
-   | low | small and clear, one area | 3–6 lines: change, criteria, assumptions | you | self |
+   | low | small and clear, one area | the plan, 1–2 lines per section | you | self |
    | medium | a feature in one subsystem | half a page: decisions, criteria, short plan | you | one independent round + fix check |
    | high | several subsystems, contracts, real ambiguity | full spec: decisions, numbered criteria, task list or children | implementers | up to two rounds + fix check |
 

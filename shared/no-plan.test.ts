@@ -5,16 +5,20 @@ import { lacksPlan, noPlanRecord } from "./no-plan";
 describe("lacksPlan", () => {
   it("finds no plan on a ticket in any status before Done, an empty or blank plan included", () => {
     for (const status of ["Queued", "Planning", "Ready", "In Progress", "Reviewing", "Awaiting acceptance", "Blocked"]) {
-      expect(lacksPlan({ status, plan: null })).toBe(true);
+      expect(lacksPlan({ status, plan: null, criteria: 0 })).toBe(true);
     }
-    expect(lacksPlan({ status: "In Progress", plan: "" })).toBe(true);
-    expect(lacksPlan({ status: "In Progress", plan: "  \n" })).toBe(true);
+    expect(lacksPlan({ status: "In Progress", plan: "", criteria: 0 })).toBe(true);
+    expect(lacksPlan({ status: "In Progress", plan: "  \n", criteria: 0 })).toBe(true);
   });
 
   it("leaves a ticket with a plan, however short, and a closed ticket alone", () => {
-    expect(lacksPlan({ status: "In Progress", plan: "## Goal\nFix the typo" })).toBe(false);
-    expect(lacksPlan({ status: "Done", plan: null })).toBe(false);
-    expect(lacksPlan({ status: "Cancelled", plan: null })).toBe(false);
+    expect(lacksPlan({ status: "In Progress", plan: "## Goal\nFix the typo", criteria: 0 })).toBe(false);
+    expect(lacksPlan({ status: "Done", plan: null, criteria: 0 })).toBe(false);
+    expect(lacksPlan({ status: "Cancelled", plan: null, criteria: 0 })).toBe(false);
+  });
+
+  it("counts an older ticket's acceptance-criteria checklist as its plan", () => {
+    expect(lacksPlan({ status: "In Progress", plan: null, criteria: 3 })).toBe(false);
   });
 });
 

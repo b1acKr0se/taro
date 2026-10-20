@@ -7,9 +7,12 @@
 /** Statuses after which nobody builds on the ticket any more. */
 const CLOSED: ReadonlySet<string> = new Set(["Done", "Cancelled"]);
 
-/** Whether a ticket still worked on has no plan: then any commit on its owner's branch came first. */
-export function lacksPlan(ticket: { status: string; plan: string | null }): boolean {
-  return !CLOSED.has(ticket.status) && (ticket.plan ?? "").trim() === "";
+/**
+ * Whether a ticket still worked on has no plan: then any commit on its owner's branch came first. An
+ * older ticket kept its criteria as a checklist instead (reference/tickets.md), which counts as one.
+ */
+export function lacksPlan(ticket: { status: string; plan: string | null; criteria: number }): boolean {
+  return !CLOSED.has(ticket.status) && (ticket.plan ?? "").trim() === "" && ticket.criteria === 0;
 }
 
 export function noPlanRecord(at: string, commits: number, branch: string, base: string): string {
