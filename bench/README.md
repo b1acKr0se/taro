@@ -21,24 +21,24 @@ import lazily and use no `subTest`, so a missing module fails its own tests and 
 decider's full intent with hidden preferences), `repo/` (the seed notes app, plain Node 22, `node --test`),
 `hidden/` (tests the owner never sees) and `test-command` (node:test or unittest output is scored).
 
-A checkout is used at its `HEAD` through a `git worktree add --detach` copy in a `mktemp -d` folder with
-`bench/` removed from it, so the owner cannot read the hidden tests or the decider's spec. To run main, give
-`--plugin` a checkout whose HEAD is main (a detached worktree of it, not the main checkout itself).
+A checkout is used at its `HEAD` through a `git archive` copy in a `mktemp -d` folder with `bench/` removed
+from it and no `.git`, so the owner can neither read nor `git show` the hidden tests or the decider's spec. To run main, give
+`--plugin` a checkout whose HEAD is main (a worktree of it, not the main checkout itself).
 
 ## Cost and time
 
 A run of an Opus owner is about $5–25 and 30–90 minutes; `--max-usd` (default 25, read from the plugin's own
 `stats.json`) and `--max-minutes` (default 90) stop it and `result.json` says which (`stop`). The decider is
-Sonnet, one short turn per card (cents). A Haiku smoke run costs under $3. Every agent costs about 65 of the
+Sonnet (each decider agent is deleted once its reply is read), one short turn per card (cents). A Haiku smoke run costs under $3. Every agent costs about 65 of the
 host's threads; the harness waits while the host is above 85% of `pids.max`.
 
 ## Safety
 
 - The daemon gets its own `mktemp -d` home and a random free port in 6810–6899. `bench/safety.ts` refuses port
-  6767, any home under `~/.paseo`, an empty or relative path, and any folder that is not a `taro-bench-*`
+  6767, any home under `~/.paseo` or `$PASEO_HOME`, an empty or relative path, and any folder that is not a `taro-bench-*`
   folder made by the run (`bench/safety.test.ts`). Removals run only on such folders, by literal path.
 - Cleanup runs on success, on error and on Ctrl-C: the daemon is stopped, anything still running from the run's
-  folders is killed by pid, the plugin copy is removed with `git worktree remove`, and the home and scratch
+  folders is killed by pid, the plugin copy is removed with the other folders, and the home and scratch
   folders are deleted. The log's last lines say what was left (`leftover processes`).
 - Nothing touches the real daemon, `~/.paseo` or the main checkout.
 
@@ -63,6 +63,9 @@ host's threads; the harness waits while the host is above 85% of `pids.max`.
 - `stop`: `done`, `time`, `cost` (the cap) or `error`. A capped run is not scored for hidden tests.
 - `costUsd`, `byRole`: from the plugin's `stats.json` for the ticket, each agent's cost at its last turn end,
   per role with its models, peak context, turns and active time. A child ticket's agents count on the parent.
+- `caps` and `models`: what the run was allowed and ran on; the report prints both and warns when arms differ.
+- `ownerPeakContextTokens`: the owner's largest request, read from its Claude transcript (not the last turn's
+  context); `null` when the transcript is not found.
 - `hidden`: `{ passed, total }` of the task's hidden tests on merged main; `null` when not run.
 - `questions`: cards that asked a question (not the plan or Accept): how many, how many touched a hidden
   preference (the decider says `preference: P1`…), how many the brief already answered (`brief: yes`).

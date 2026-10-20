@@ -20,6 +20,10 @@ export interface ResultFile {
   conformance: { kind: string; detail: string }[];
   records: { RISKS: number; RULING: number; EVIDENCE: number; FINAL: number };
   cardFailures: { kind: string; detail: string }[];
+  /** What the run was allowed (absent in results from before the caps were recorded). */
+  caps?: { maxMinutes: number; maxUsd: number };
+  /** The owner's largest request, from its Claude transcript; null when the transcript was not found. */
+  ownerPeakContextTokens?: number | null;
 }
 
 const OWNER_ROLE = "owner";
@@ -47,6 +51,9 @@ function stopNote(result: ResultFile): string {
   return result.stop === "done" ? "" : ` (stopped: ${result.stop === "cost" ? "cost cap" : result.stop === "time" ? "time cap" : "error"})`;
 }
 
+const modelsOf = (result: ResultFile): string => `owner ${result.models.owner}; subagents ${result.models.subagents.join(", ") || "none"}`;
+const capsOf = (result: ResultFile): string => (result.caps === undefined ? "unknown" : `${result.caps.maxMinutes} min, ${usd(result.caps.maxUsd)}`);
+
 /** The rows of one task's table for one arm; the same labels in the same order for every arm. */
 function column(result: ResultFile | undefined): string[] {
   if (result === undefined) return Array.from({ length: ROWS.length }, () => "—");
@@ -57,7 +64,9 @@ function column(result: ResultFile | undefined): string[] {
     `${usd(result.costUsd)}${note}`,
     usd(ownerCost),
     usd(result.costUsd - ownerCost),
-    owner === undefined ? "—" : tokens(owner.peakContextTokens),
+    result.ownerPeakContextTokens === undefined || result.ownerPeakContextTokens === null ? "—" : tokens(result.ownerPeakContextTokens),
+    modelsOf(result),
+    capsOf(result),
     minutes(result.wallMs),
     result.hidden === null ? "not run" : `${result.hidden.passed}/${result.hidden.total}`,
     `${result.questions.asked} (${result.questions.preferenceHits} / ${result.questions.redundant})`,
@@ -71,6 +80,8 @@ const ROWS = [
   "Cost, owner",
   "Cost, subagents",
   "Owner peak context",
+  "Models",
+  "Caps",
   "Wall time",
   "Hidden tests passed",
   "Questions (preference hits / redundant)",
@@ -95,6 +106,10 @@ export function renderReport(results: readonly ResultFile[]): string {
     out.push(`### ${task}`, "", `| | ${names.join(" | ")} |`, `| --- | ${names.map(() => "---").join(" | ")} |`);
     ROWS.forEach((row, index) => out.push(`| ${row} | ${columns.map((rows) => rows[index]).join(" | ")} |`));
     out.push("");
+    // Arms that ran on different models or caps are not a like-for-like comparison.
+    const ran = arms.flatMap((key) => results.filter((result) => result.task === task && armKey(result) === key).slice(0, 1));
+    const differing = [["models", modelsOf], ["caps", capsOf]].filter(([, read]) => new Set(ran.map(read as typeof modelsOf)).size > 1).map(([name]) => name);
+    if (differing.length > 0) out.push(`> Warning: ${task}: the arms differ in ${differing.join(", ")}`, "");
   });
   return out.join("\n");
 }

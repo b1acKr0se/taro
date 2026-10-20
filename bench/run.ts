@@ -1,7 +1,7 @@
 /**
  * `node bench/run.ts --plugin <checkout> --task <name> --out <dir> [--owner-model <id>]
  * [--subagent-models <ids>] [--max-minutes N] [--max-usd N]`: one ticket end to end on a throwaway
- * Paseo daemon with the plugin from a detached copy of a checkout, a model playing the user, and a score
+ * Paseo daemon with the plugin from a git archive copy of a checkout, a model playing the user, and a score
  * at the end (`<dir>/result.json`). See bench/README.md. Runs under Node type stripping: erasable
  * syntax, `.ts` import extensions, no packages.
  */
@@ -11,7 +11,7 @@ import { join, resolve } from "node:path";
 import { startDecider } from "./decider.ts";
 import { BENCH_ROOT, cleanup, ensureDirectory, installPlugin, makePluginCopy, makeThrowaway, paseoArgs, pickPort, rpc, scratchDirectory, seedRepository, startDaemon, waitForThreads, type Throwaway } from "./daemon.ts";
 import { run } from "./process.ts";
-import { conformanceOf, countPermissions, countRecords, loggedViolations, runHidden, scoreQuestions, scoreStats, type TicketStatsLike } from "./score.ts";
+import { conformanceOf, countPermissions, countRecords, loggedViolations, peakContextOfSession, runHidden, scoreQuestions, scoreStats, sessionIdOf, type TicketStatsLike } from "./score.ts";
 import type { ResultFile } from "./report.ts";
 
 const PROJECT = "notes-app";
@@ -91,6 +91,14 @@ function ticketFile(tracker: string, ticket: string): string | null {
   return existsSync(path) ? readFileSync(path, "utf8") : null;
 }
 
+/** The owner's largest request, from its Claude transcript (the session id from `paseo inspect`); null when either is not found. */
+async function ownerPeakContext(throwaway: Throwaway, ownerId: string): Promise<number | null> {
+  if (ownerId === "") return null;
+  const inspected = await run("paseo", ["inspect", ownerId, "--json", ...paseoArgs(throwaway)], { timeoutMs: 60_000 });
+  const sessionId = inspected.code === 0 ? sessionIdOf(inspected.stdout) : null;
+  return sessionId === null ? null : peakContextOfSession(sessionId);
+}
+
 const statusOf = (text: string | null): string => (text === null ? "?" : (/^status:\s*"([^"]+)"/m.exec(text)?.[1] ?? "?"));
 
 async function main(): Promise<void> {
@@ -137,6 +145,10 @@ async function main(): Promise<void> {
   const started = Date.now();
   let ticket = "";
   let tracker = "";
+  let ownerId = "";
+  // Whether this arm's plugin defines a RISKS record, read from its own reference: a ticket's date cannot say.
+  let risks = false;
+  const caps = { maxMinutes: options.maxMinutes, maxUsd: options.maxUsd };
   try {
     await waitForThreads(runLog);
     throwaway.home = scratchDirectory(throwaway, "home");
@@ -144,6 +156,8 @@ async function main(): Promise<void> {
     throwaway.port = await pickPort();
     runLog(`plugin ${options.plugin} at ${sha.slice(0, 12)}; port ${throwaway.port}; home ${throwaway.home}`);
     await makePluginCopy(throwaway, sha);
+    const ticketsReference = join(throwaway.pluginCopy, "skill", "reference", "tickets.md");
+    risks = existsSync(ticketsReference) && /\bRISKS\b/.test(readFileSync(ticketsReference, "utf8"));
     await seedRepository(throwaway, join(taskDirectory, "repo"));
     await startDaemon(throwaway);
     await installPlugin(throwaway);
@@ -187,7 +201,7 @@ async function main(): Promise<void> {
       { timeoutMs: 180_000 },
     );
     if (ownerResult.code !== 0) throw new Error(`owner start failed: ${ownerResult.stderr || ownerResult.stdout}`);
-    const ownerId = (JSON.parse(ownerResult.stdout) as { agentId?: string; id?: string }).agentId ?? (JSON.parse(ownerResult.stdout) as { id?: string }).id ?? "";
+    ownerId = (JSON.parse(ownerResult.stdout) as { agentId?: string; id?: string }).agentId ?? (JSON.parse(ownerResult.stdout) as { id?: string }).id ?? "";
     await run(join(BENCH_ROOT, "bin", "taro"), ["ticket", "edit", ticket, "--append-notes", `EXECUTION ${new Date().toISOString().slice(0, 16)}Z — owner ${ownerId}, model ${options.ownerModel}, workspace ${workspaceId}, worktree ${workspace.cwd ?? ""}, branch taro/${slug}, host bench`, "--tracker", tracker]);
     runLog(`owner ${ownerId} started in ${workspaceId}`);
 
@@ -241,17 +255,22 @@ async function main(): Promise<void> {
       byRole: scored?.byRole ?? {},
       hidden,
       questions: scoreQuestions(deciderLog),
-      conformance: conformanceOf(finalText, stats?.nudges ?? 0, undefined, stats?.transitions ?? []),
+      conformance: conformanceOf(finalText, stats?.nudges ?? 0, undefined, stats?.transitions ?? [], risks),
       records: countRecords(finalText),
       cardFailures: loggedViolations(deciderLog),
+      caps,
+      ownerPeakContextTokens: await ownerPeakContext(throwaway, ownerId).catch(() => null),
     };
     writeFileSync(join(options.out, "result.json"), `${JSON.stringify({ ...result, timePerStatusMs: scored?.timePerStatusMs ?? {}, permissions: countPermissions(deciderLog), decisions: scored?.decisions ?? 0, nudges: scored?.nudges ?? 0, recoveries: scored?.recoveries ?? 0 }, null, 2)}\n`);
     runLog(`done: stop ${stop}, cost $${result.costUsd.toFixed(2)}, hidden ${hidden === null ? "not run" : `${hidden.passed}/${hidden.total}`}`);
   } catch (error) {
     runLog(`error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`);
     stop = "error";
-    // A run that failed still leaves a result, so the report shows it as an error rather than missing.
-    writeFileSync(join(options.out, "result.json"), `${JSON.stringify({ task: options.task, arm: { checkout: options.plugin, sha }, models: { owner: options.ownerModel, subagents: options.subagentModels }, stop, wallMs: Date.now() - started, costUsd: 0, byRole: {}, hidden: null, questions: { asked: 0, preferenceHits: 0, redundant: 0 }, conformance: [], records: { RISKS: 0, RULING: 0, EVIDENCE: 0, FINAL: 0 }, cardFailures: [] }, null, 2)}\n`);
+    // A run that failed still leaves a result, so the report shows it as an error rather than missing; what it cost is in the stats.
+    const failedStats = ticket === "" ? null : readStats(throwaway, ticket);
+    const failedScore = failedStats === null ? null : scoreStats(failedStats, new Date());
+    if (failedStats !== null) writeFileSync(join(options.out, "stats.json"), JSON.stringify(failedStats, null, 2));
+    writeFileSync(join(options.out, "result.json"), `${JSON.stringify({ task: options.task, arm: { checkout: options.plugin, sha }, models: { owner: options.ownerModel, subagents: options.subagentModels }, caps, ownerPeakContextTokens: await ownerPeakContext(throwaway, ownerId).catch(() => null), stop, wallMs: Date.now() - started, costUsd: failedScore?.costUsd ?? 0, byRole: failedScore?.byRole ?? {}, hidden: null, questions: { asked: 0, preferenceHits: 0, redundant: 0 }, conformance: [], records: { RISKS: 0, RULING: 0, EVIDENCE: 0, FINAL: 0 }, cardFailures: [] }, null, 2)}\n`);
     process.exitCode = 1;
   } finally {
     if (decider !== null) await decider.stop().catch(() => undefined);

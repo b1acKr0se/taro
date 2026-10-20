@@ -3,10 +3,12 @@
  * decider's questions, all into `result.json`. The parsers are pure; `runHidden` runs the task's test
  * command in a copy of the merged repository. Runs under Node type stripping.
  */
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { createReadStream, cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { createInterface } from "node:readline";
 
+import { requestTokens } from "../shared/agent-trim.ts";
 import { conformanceViolations, type ConformanceViolation } from "../shared/conformance.ts";
 import { run } from "./process.ts";
 import { SCRATCH_PREFIX, assertSafeHome } from "./safety.ts";
@@ -183,9 +185,53 @@ export function loggedViolations(log: string): ConformanceViolation[] {
   return found;
 }
 
-/** `handsOff` undefined when the task does not say: a HANDS-OFF record the decider gave then counts; `false` reports one. */
-export function conformanceOf(ticketText: string, nudges: number, handsOff: boolean | undefined, transitions: TicketStatsLike["transitions"]): ConformanceViolation[] {
-  return conformanceViolations(ticketText, { nudges, transitions, ...(handsOff === undefined ? {} : { handsOff }) });
+/**
+ * `handsOff` undefined when the task does not say: a HANDS-OFF record the decider gave then counts; `false` reports one.
+ * `risks` says whether the arm's plugin defines a RISKS record at all: the ticket's date cannot, as a main-era ticket is dated after the cut-off too.
+ */
+export function conformanceOf(ticketText: string, nudges: number, handsOff: boolean | undefined, transitions: TicketStatsLike["transitions"], risks?: boolean): ConformanceViolation[] {
+  return conformanceViolations(ticketText, { nudges, transitions, ...(handsOff === undefined ? {} : { handsOff }), ...(risks === undefined ? {} : { risks }) });
+}
+
+/** The largest request in a Claude transcript (sidechains skipped), or null when it holds none: the context the agent really reached. */
+export function peakContextOf(transcript: string): number | null {
+  let peak: number | null = null;
+  transcript.split("\n").forEach((line) => {
+    const tokens = requestTokens(line);
+    if (tokens !== null && (peak === null || tokens > peak)) peak = tokens;
+  });
+  return peak;
+}
+
+/** The Claude session id in `paseo inspect --json` output (`persistence.sessionId`, wherever it is nested), or null. */
+export function sessionIdOf(inspectOutput: string): string | null {
+  const search = (value: unknown, depth: number): string | null => {
+    if (typeof value !== "object" || value === null || depth > 6) return null;
+    const record = value as Record<string, unknown>;
+    if (typeof record.sessionId === "string" && record.sessionId !== "") return record.sessionId;
+    return Object.values(record).reduce<string | null>((found, child) => found ?? search(child, depth + 1), null);
+  };
+  try {
+    return search(JSON.parse(inspectOutput), 0);
+  } catch {
+    return null;
+  }
+}
+
+/** The peak context of a Claude session from its transcript under Claude Code's config folder; null when the transcript is not found. */
+export async function peakContextOfSession(sessionId: string, configDirectory = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude")): Promise<number | null> {
+  if (!/^[A-Za-z0-9-]+$/.test(sessionId)) return null;
+  const projects = join(configDirectory, "projects");
+  const folder = existsSync(projects) ? readdirSync(projects).find((name) => existsSync(join(projects, name, `${sessionId}.jsonl`))) : undefined;
+  if (folder === undefined) return null;
+  // Streamed: an owner's transcript can pass a hundred megabytes.
+  const lines = createInterface({ input: createReadStream(join(projects, folder, `${sessionId}.jsonl`), { encoding: "utf8" }), crlfDelay: Infinity });
+  let peak: number | null = null;
+  for await (const line of lines) {
+    const tokens = requestTokens(line);
+    if (tokens !== null && (peak === null || tokens > peak)) peak = tokens;
+  }
+  return peak;
 }
 
 /** Copies the merged repository, adds the task's hidden tests and runs its test command there. */

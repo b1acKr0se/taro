@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { conformanceOf, countPermissions, countRecords, loggedViolations, parseNodeTest, parseTestOutput, parseUnittest, scoreQuestions, scoreStats } from "./score.ts";
+import { peakContextOf, sessionIdOf, conformanceOf, countPermissions, countRecords, loggedViolations, parseNodeTest, parseTestOutput, parseUnittest, scoreQuestions, scoreStats } from "./score.ts";
 
 describe("parseNodeTest", () => {
   it("reads passes and the total from the summary", () => {
@@ -134,5 +134,29 @@ risk: ordering — two pins at once
     expect(kinds).not.toContain("hands-off-unasked");
     expect(kinds).not.toContain("no-approval");
     expect(kinds).not.toContain("status-skip");
+  });
+});
+
+describe("peakContextOf", () => {
+  const line = (input: number, cacheRead: number, extra: object = {}): string => JSON.stringify({ type: "assistant", message: { usage: { input_tokens: input, cache_creation_input_tokens: 0, cache_read_input_tokens: cacheRead } }, ...extra });
+  it("is the largest request, not the last: a context that dropped keeps its peak", () => {
+    expect(peakContextOf([line(10, 150_000), line(10, 40_000), line(10, 60_000)].join("\n"))).toBe(150_010);
+  });
+  it("skips sidechains and lines that are not requests", () => {
+    expect(peakContextOf([line(10, 90_000), line(10, 400_000, { isSidechain: true }), "not json", JSON.stringify({ type: "user" })].join("\n"))).toBe(90_010);
+  });
+  it("is null with no request", () => {
+    expect(peakContextOf("")).toBeNull();
+  });
+});
+
+describe("sessionIdOf", () => {
+  it("finds the session id in the inspect output wherever it is nested", () => {
+    expect(sessionIdOf(JSON.stringify({ id: "a1", persistence: { provider: "claude", sessionId: "s-123" } }))).toBe("s-123");
+    expect(sessionIdOf(JSON.stringify({ agent: { persistence: { sessionId: "s-9" } } }))).toBe("s-9");
+  });
+  it("is null when there is none or the output is not JSON", () => {
+    expect(sessionIdOf(JSON.stringify({ id: "a1" }))).toBeNull();
+    expect(sessionIdOf("Agent a1")).toBeNull();
   });
 });

@@ -23,12 +23,12 @@ export function assertSafePort(port: number): void {
   }
 }
 
-/** Throws unless the path is an absolute folder of this benchmark's under the temporary folder and not under `~/.paseo`. */
-export function assertSafeHome(path: string, home = homedir(), temporary = tmpdir()): void {
+/** Throws unless the path is an absolute folder of this benchmark's under the temporary folder and not under `~/.paseo` or `$PASEO_HOME`. */
+export function assertSafeHome(path: string, home = homedir(), temporary = tmpdir(), paseoHome = process.env.PASEO_HOME ?? ""): void {
   if (path === "" || path.trim() === "") throw new Error("refusing an empty path");
   if (!isAbsolute(path)) throw new Error(`refusing the relative path ${path}`);
   const resolved = resolve(path);
-  if (inside(resolved, resolve(home, ".paseo")) || inside(resolved, "/root/.paseo")) throw new Error(`refusing ${resolved}: it is under ~/.paseo, the real daemon's home`);
+  if (inside(resolved, resolve(home, ".paseo")) || (paseoHome.trim() !== "" && inside(resolved, resolve(paseoHome)))) throw new Error(`refusing ${resolved}: it is under ~/.paseo, the real daemon's home`);
   if (resolved === resolve(home) || resolved === "/" || resolved === resolve(temporary)) throw new Error(`refusing ${resolved}: not a folder of its own`);
   const name = resolved.slice(resolve(temporary).length + 1);
   if (!inside(resolved, resolve(temporary)) || !name.startsWith(SCRATCH_PREFIX) || name.includes(sep)) {

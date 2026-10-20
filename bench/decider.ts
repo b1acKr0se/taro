@@ -214,7 +214,7 @@ export function severalAnswerInput(decision: OpenDecision, replies: readonly Dec
   const answers = (decision.questions ?? []).map((question, index) => {
     const reply = replies[index] ?? { choice: "", text: "", preference: "none", briefAnswered: false };
     const option = matchingOption(question, reply);
-    return option === null ? { header: question.header, label: null, text: reply.text === "" ? reply.choice : reply.text } : { header: question.header, label: option.label, text: option.prompt ?? option.label };
+    return option === null ? { header: question.header, label: null, text: reply.text === "" ? reply.choice : reply.text } : { header: question.header, label: option.label, text: reply.text || option.prompt || option.label };
   });
   return { key: decision.key, label: null, text: "", from: "screen", answers };
 }
@@ -225,6 +225,13 @@ export function answerEvents(decision: OpenDecision, replies: readonly DeciderRe
     const reply = replies[index];
     return reply === undefined ? [] : [{ type: "answer" as const, at, kind: "question", id: `${decision.id}#${question.header}`, via, choice: reply.choice, text: reply.text, preference: reply.preference, briefAnswered: reply.briefAnswered }];
   });
+}
+
+/** A card whose answer failed on screen and over RPC: its key leaves `handled` so the next pass asks again, and the failure is logged. */
+export function releaseFailedKey(handled: Set<string>, key: string, error: unknown, at: string): Extract<DeciderEvent, { type: "violation" }> {
+  handled.delete(key);
+  const reason = error instanceof Error ? error.message : String(error);
+  return { type: "violation", at, kind: "card-unanswered", detail: `${key} could not be answered on screen or over RPC: ${reason.split("\n")[0]}` };
 }
 
 /** Labels the card shows as options: the agent's own "Other" and "Change…" stand for typing and are hidden. */
@@ -326,6 +333,8 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
       if (agentId === undefined) continue;
       const logs = await run("paseo", ["logs", agentId, ...paseoArgs(options.throwaway)], { timeoutMs: 60_000 });
       const reply = read(`\n${logs.stdout}`, nonce);
+      // The agent holds the spec in its prompt: it must not outlive its answer on the daemon the owner shares.
+      await run("paseo", ["delete", agentId, ...paseoArgs(options.throwaway)], { timeoutMs: 60_000 }).catch(() => undefined);
       if (reply !== null) return reply;
     }
     throw new Error(`the decider gave no readable reply for ${id}`);
@@ -596,6 +605,16 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
     return true;
   }
 
+  /** Runs a card's answer; when it throws (the screen and the RPC both failed) the key is released so the card is tried again. */
+  async function guarded(key: string, answer: () => Promise<void>): Promise<void> {
+    try {
+      await answer();
+    } catch (error) {
+      record(releaseFailedKey(handled, key, error, now()));
+      throw error;
+    }
+  }
+
   async function pass(): Promise<void> {
     if (await answerPermission()) return;
     const open = ((await rpc(options.throwaway, "taro.decisions.open", { project: options.project })) as { decisions: OpenDecision[] }).decisions
@@ -603,15 +622,18 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
       .sort((left, right) => left.askedAt.localeCompare(right.askedAt));
     const first = open[0];
     if (first !== undefined) {
-      handled.add(`${first.key}@${first.askedAt}`);
-      if (first.id === "scope-approval") {
-        const plan = ticketSection(ticketText(), "plan");
-        await handle("plan", first.id, first.question, planCard(first, plan), visibleOptions(first), first);
-      } else if ((first.questions ?? []).length > 1) {
-        await handleSeveral(first);
-      } else {
-        await handle("question", first.id, first.question, questionCard(first), visibleOptions(first), first);
-      }
+      const key = `${first.key}@${first.askedAt}`;
+      handled.add(key);
+      await guarded(key, async () => {
+        if (first.id === "scope-approval") {
+          const plan = ticketSection(ticketText(), "plan");
+          await handle("plan", first.id, first.question, planCard(first, plan), visibleOptions(first), first);
+        } else if ((first.questions ?? []).length > 1) {
+          await handleSeveral(first);
+        } else {
+          await handle("question", first.id, first.question, questionCard(first), visibleOptions(first), first);
+        }
+      });
       return;
     }
     const text = ticketText();
@@ -625,7 +647,7 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
       const title = /^title:\s*(".*")$/m.exec(text)?.[1];
       const heading = title === undefined ? options.ticket : (JSON.parse(title) as string);
       const card = [`Ticket: ${heading}`, "Delivery summary:", ticketSection(text, "final-summary"), "Buttons: Accept, Request changes"].join("\n");
-      await handle("acceptance", "accept", heading, card, ["Accept", "Request changes"], null);
+      await guarded(stamp, () => handle("acceptance", "accept", heading, card, ["Accept", "Request changes"], null));
       return;
     }
     // Nothing on screen for the user: an owner idle on "waiting:" for a long time asked for something that never became a card.

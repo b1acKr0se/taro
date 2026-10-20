@@ -22,7 +22,12 @@ describe("assertSafeHome", () => {
   it("refuses a home under ~/.paseo, or the real one", () => {
     expect(() => assertSafeHome("/home/someone/.paseo", home, "/tmp")).toThrow(/real daemon/);
     expect(() => assertSafeHome("/home/someone/.paseo/worktrees/x", home, "/tmp")).toThrow(/real daemon/);
-    expect(() => assertSafeHome("/root/.paseo/plugin-data", home, "/tmp")).toThrow(/real daemon/);
+    expect(() => assertSafeHome("/root/.paseo/plugin-data", "/root", "/tmp")).toThrow(/real daemon/);
+  });
+  it("refuses a folder under $PASEO_HOME", () => {
+    expect(() => assertSafeHome("/srv/paseo-data/worktrees/x", home, "/tmp", "/srv/paseo-data")).toThrow(/real daemon/);
+    expect(() => assertSafeHome("/tmp/taro-bench-Ab12Cd", home, "/tmp", "/srv/paseo-data")).not.toThrow();
+    expect(() => assertSafeHome("/tmp/taro-bench-Ab12Cd", home, "/tmp", "")).not.toThrow();
   });
   it("refuses an empty or relative path", () => {
     expect(() => assertSafeHome("", home, "/tmp")).toThrow(/empty/);

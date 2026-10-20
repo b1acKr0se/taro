@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { answerEvents, awaitsAcceptance, choosesAction, DECIDER_RULES, deciderPrompt, parseReplies, parseReply, permissionVerdict, severalAnswerInput, severalCard, staleWaiting, WAITING_NOTICE_MS, type OpenDecision } from "./decider.ts";
+import { answerEvents, awaitsAcceptance, choosesAction, DECIDER_RULES, deciderPrompt, parseReplies, parseReply, permissionVerdict, releaseFailedKey, severalAnswerInput, severalCard, staleWaiting, WAITING_NOTICE_MS, type OpenDecision } from "./decider.ts";
 
 describe("parseReply", () => {
   const log = (body: string) => `\nsome thinking\nREPLY abc123\n${body}\n`;
@@ -164,6 +164,27 @@ describe("severalAnswerInput", () => {
       severalAnswerInput(several, [
         { choice: "yaml front matter", text: "", preference: "none", briefAnswered: false },
         { choice: "Other", text: "Only PNG files", preference: "P1", briefAnswered: false },
+      ]).answers,
+    ).toEqual([
+      { header: "Tag format", label: "YAML front matter", text: "Write tags as YAML front matter" },
+      { header: "Attachments", label: null, text: "Only PNG files" },
+    ]);
+  });
+
+  it("keeps words typed beside a chosen option, and falls back to the label without a prompt", () => {
+    const answers = severalAnswerInput(several, [
+      { choice: "Hashtag line", text: "but put it last", preference: "none", briefAnswered: false },
+      { choice: "Skip", text: "", preference: "none", briefAnswered: false },
+    ]).answers;
+    expect(answers[0]).toEqual({ header: "Tag format", label: "Hashtag line", text: "but put it last" });
+    expect(answers[1]?.text).not.toBe("");
+  });
+
+  it("maps the whole input", () => {
+    expect(
+      severalAnswerInput(several, [
+        { choice: "yaml front matter", text: "", preference: "none", briefAnswered: false },
+        { choice: "Other", text: "Only PNG files", preference: "P1", briefAnswered: false },
       ]),
     ).toEqual({
       key: "agent:export-format",
@@ -193,5 +214,15 @@ describe("answerEvents", () => {
       { type: "answer", at: "2026-10-20T12:01:00Z", kind: "question", id: "export-format#Tag format", via: "rpc", choice: "YAML front matter", text: "", preference: "P2", briefAnswered: true },
       { type: "answer", at: "2026-10-20T12:01:00Z", kind: "question", id: "export-format#Attachments", via: "rpc", choice: "Other", text: "Only PNG", preference: "none", briefAnswered: false },
     ]);
+  });
+});
+
+describe("releaseFailedKey", () => {
+  it("drops the key so the card is asked again, and returns a violation to log", () => {
+    const handled = new Set(["agent:export-format@t1", "other"]);
+    const event = releaseFailedKey(handled, "agent:export-format@t1", new Error("rpc failed: boom\nmore"), "2026-10-20T12:00:00Z");
+    expect(handled.has("agent:export-format@t1")).toBe(false);
+    expect(handled.has("other")).toBe(true);
+    expect(event).toEqual({ type: "violation", at: "2026-10-20T12:00:00Z", kind: "card-unanswered", detail: "agent:export-format@t1 could not be answered on screen or over RPC: rpc failed: boom" });
   });
 });
