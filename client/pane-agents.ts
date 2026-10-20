@@ -121,9 +121,21 @@ export function defaultPaneAgent(list: readonly PaneAgent[]): PaneAgent | null {
   return list.find((agent) => agent.role === "owner" && agent.live) ?? list.find((agent) => agent.role === "owner") ?? null;
 }
 
-/** The agent a ticket's pane opens on: the one asking permission, where Allow and Deny are (TR-096), else the owner. */
-export function openingPaneAgent(list: readonly PaneAgent[], askerId: string | null): PaneAgent | null {
-  return list.find((agent) => agent.live && agent.id === askerId) ?? defaultPaneAgent(list);
+/**
+ * The newest running subagent of a child's pane, the one its card's line names (TR-213): a child's owner
+ * is its parent's, about other work, so its chat is not the one to open. Null when none runs.
+ */
+export function childWorkingAgent(list: readonly PaneAgent[]): PaneAgent | null {
+  const running = list.filter((agent) => agent.live && agent.role !== "owner" && (agent.brief.status === "running" || agent.brief.status === "initializing"));
+  return running.sort((left, right) => (right.brief.createdAt ?? "").localeCompare(left.brief.createdAt ?? ""))[0] ?? null;
+}
+
+/**
+ * The agent a ticket's pane opens on: the one asking permission, where Allow and Deny are (TR-096), else
+ * a child's running subagent (TR-213), else the owner.
+ */
+export function openingPaneAgent(list: readonly PaneAgent[], askerId: string | null, child: boolean): PaneAgent | null {
+  return list.find((agent) => agent.live && agent.id === askerId) ?? (child ? childWorkingAgent(list) : null) ?? defaultPaneAgent(list);
 }
 
 /** One opening of a ticket's pane (its card or Review tapped) and the agent asking permission then. */
