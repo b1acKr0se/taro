@@ -14,6 +14,7 @@ import { questionHoldingAccept } from "../shared/delivery-end";
 import { doneTicketOf, planRelease } from "../shared/done-release";
 import { acceptanceText, handoffText, ownerIsWarm, type AcceptOutcome, type Handover } from "../shared/accept-merge";
 import { acceptanceMerge, acceptedRecord, acceptedRecordText, executionBranch, executionWorkspace, localMergeInstruction, pluginAcceptPending, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
+import { ownerRelaunchedText, ticketsWithClosedOwner } from "../shared/closed-owner";
 import { dependsOn, holdsSlot, shouldWakeManager, statusChanges, withRecordedStatuses, type StatusChange } from "../shared/owner-cap";
 import {
   handoffSincePauseRequest,
@@ -1054,7 +1055,36 @@ export class Actions {
       reportFailure(`[taro] pause check for ${project} failed:`, error);
       return false;
     });
-    return (await this.checkQueueAfterPauses(paseo, project, now)) || paused;
+    const relaunched = await this.relaunchClosedOwners(paseo, project, now).catch((error: unknown) => {
+      reportFailure(`[taro] closed-owner check for ${project} failed:`, error);
+      return false;
+    });
+    return (await this.checkQueueAfterPauses(paseo, project, now)) || paused || relaunched;
+  }
+
+  /**
+   * TR-217: a daemon update or restart closes owners of tickets still being worked. Each gets a fresh
+   * owner from its latest HANDOFF while a slot and thread headroom allow, oldest ticket first, with a
+   * note on the ticket. Returns whether any started.
+   */
+  private async relaunchClosedOwners(paseo: PaseoApi, project: string, now: number): Promise<boolean> {
+    const config = await requireProjectConfig(project);
+    const paths = await projectPaths(project);
+    const tickets = await listTickets(paths.tracker);
+    const candidates = await this.pauseCandidates(project, tickets);
+    const owners = (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner");
+    const due = ticketsWithClosedOwner(candidates.map(({ ticket, notes }) => ({ id: ticket.id, status: ticket.status, parentTaskId: ticket.parentTaskId, notes })), owners, now);
+    let started = false;
+    for (const id of due) {
+      const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners, true);
+      if (!count.freeSlot) break;
+      const previous = owners.filter((owner) => dependsOn([owner.labels[TARO_LABELS.ticket] ?? ""], id)).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+      const agentId = await this.relaunchOwner(paseo, project, id);
+      await appendTicketNote(paths.tracker, id, ownerRelaunchedText(new Date(now).toISOString(), previous?.id ?? "(none)", agentId));
+      console.log(`[taro] ${project}: Paseo closed ${id}'s owner; started a fresh owner ${agentId}`);
+      started = true;
+    }
+    return started;
   }
 
   private async checkQueueAfterPauses(paseo: PaseoApi, project: string, now: number): Promise<boolean> {
