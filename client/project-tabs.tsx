@@ -15,6 +15,7 @@ import { CentredLabel } from "./centred-label";
 import { CountBadge } from "./count-badge";
 import { countBadgeLabel } from "./count-badge-text";
 import { Pressable } from "./focus";
+import { withAlpha } from "./tint";
 import { paneGutter, SPACE } from "./spacing";
 import { FONT_SIZE, labelLineHeightFor } from "./type-scale";
 import { IconButton } from "./ui";
@@ -87,7 +88,7 @@ export function ProjectTabs({
       tabText: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body), fontWeight: "600" as const },
       tabMuted: { color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body), fontWeight: "500" as const },
       insertion: { position: "absolute" as const, top: SPACE.sm, bottom: SPACE.sm, width: 2, borderRadius: 1, backgroundColor: colors.accent },
-      // A solid accent button, the only filled control in the row, so Inbox reads as a button and not a project.
+      // A tinted button (accent wash, accent border, a soft lower edge), so Inbox reads as a button and not a project.
       inbox: {
         flexDirection: "row" as const,
         alignItems: "center" as const,
@@ -99,11 +100,12 @@ export function ProjectTabs({
         borderRadius: 9,
         borderWidth: 2,
         borderColor: colors.accent,
-        backgroundColor: colors.accent,
+        borderBottomWidth: 3,
+        backgroundColor: withAlpha(colors.accent, 0.13),
       },
-      // Chosen: the same button ringed in the foreground colour, as no project tab is underlined then.
-      inboxActive: { borderColor: colors.foreground },
-      inboxText: { color: colors.accentForeground, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body), fontWeight: "700" as const },
+      // Chosen: a stronger wash, ringed in the foreground colour, as no project tab is underlined then.
+      inboxActive: { borderColor: colors.foreground, backgroundColor: withAlpha(colors.accent, 0.3) },
+      inboxText: { color: colors.foreground, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body), fontWeight: "700" as const },
       divider: { width: 1, alignSelf: "stretch" as const, marginVertical: SPACE.sm, marginLeft: SPACE.md, backgroundColor: colors.border },
       pinned: {
         flexDirection: "row" as const,
@@ -193,7 +195,7 @@ export function ProjectTabs({
             style={[styles.inbox, inboxActive ? styles.inboxActive : null]}
             onPress={onOpenInbox}
           >
-            <Icon name="Inbox" size={15} color={colors.accentForeground} />
+            <Icon name="Inbox" size={15} color={colors.accent} />
             <CentredLabel style={styles.inboxText}>Inbox</CentredLabel>
             <CountBadge theme={theme} count={inboxCount} />
           </Pressable>

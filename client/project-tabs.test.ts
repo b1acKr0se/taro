@@ -31,10 +31,10 @@ describe("the New Project button in the project tab row", () => {
 });
 
 describe("the Inbox button", () => {
-  it("is a solid accent button on a wide screen only, with a divider before the tabs, not a tab", () => {
-    expect(tabs).toMatch(/inbox: \{[^}]*backgroundColor: colors\.accent,/s);
+  it("is a tinted accent button on a wide screen only, with a divider before the tabs, not a tab", () => {
+    expect(tabs).toMatch(/inbox: \{[^}]*backgroundColor: withAlpha\(colors\.accent, 0\.13\)/s);
     expect(tabs).toContain("compact || projects.length === 0 ? null");
-    expect(tabs).toMatch(/inboxActive: \{ borderColor: colors\.foreground \}/);
+    expect(tabs).toMatch(/inboxActive: \{ borderColor: colors\.foreground, backgroundColor: withAlpha\(colors\.accent, 0\.3\) \}/);
     // Not drawn with the project tabs' underline or avatar.
     const inbox = tabs.slice(tabs.indexOf('onPress={onOpenInbox}'), tabs.indexOf("styles.divider"));
     expect(inbox).not.toContain("ProjectAvatar");

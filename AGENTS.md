@@ -42,7 +42,7 @@ EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
   Paseo update, that object was renamed or reshaped. The viewer sits in an error boundary
   (`client/error-boundary.ts`, a constructor function, as classes are out).
 - The project tab row (`client/project-tabs.tsx`, TR-214) pins New project outside the scrolling tabs so a phone
-  never scrolls to it, draws Inbox on a wide screen as a solid button apart from the tabs, and reorders projects by
+  never scrolls to it, draws Inbox on a wide screen as a tinted button apart from the tabs, and reorders projects by
   press-and-hold then drag (`PanResponder`, only a lifted tab takes the drag). The order is the daemon's
   `project-order.json` in the Taro home (`server/project-order.ts`): newest project on the left until the user drags.
 - Kept view state (the screen's view, drafts, the timeline cache) lives on `globalThis` slots
