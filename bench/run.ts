@@ -241,7 +241,7 @@ async function main(): Promise<void> {
       byRole: scored?.byRole ?? {},
       hidden,
       questions: scoreQuestions(deciderLog),
-      conformance: conformanceOf(finalText, stats?.nudges ?? 0, false, stats?.transitions ?? []),
+      conformance: conformanceOf(finalText, stats?.nudges ?? 0, undefined, stats?.transitions ?? []),
       records: countRecords(finalText),
       cardFailures: loggedViolations(deciderLog),
     };

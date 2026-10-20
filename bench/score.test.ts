@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { countPermissions, countRecords, loggedViolations, parseNodeTest, parseTestOutput, parseUnittest, scoreQuestions, scoreStats } from "./score.ts";
+import { conformanceOf, countPermissions, countRecords, loggedViolations, parseNodeTest, parseTestOutput, parseUnittest, scoreQuestions, scoreStats } from "./score.ts";
 
 describe("parseNodeTest", () => {
   it("reads passes and the total from the summary", () => {
@@ -102,5 +102,37 @@ describe("the decider's log", () => {
   });
   it("collects the violations it logged", () => {
     expect(loggedViolations(log)).toEqual([{ kind: "card-missing", detail: "no plan card in 2 minutes" }]);
+  });
+});
+
+describe("conformanceOf", () => {
+  const handedOff = `---
+schema: 1
+id: "AB-002"
+title: "Pin notes"
+status: "In Progress"
+priority: null
+labels: ["complexity-low"]
+parent: null
+depends_on: []
+created: "2026-01-05T10:00:00Z"
+updated: "2026-01-05T11:00:00Z"
+---
+
+## Notes
+
+<!-- taro:notes -->
+HANDS-OFF 2026-01-05T10:01Z — the user: "you decide, I'm away"
+
+RISKS 2026-01-05T10:02Z — where this breaks
+risk: ordering — two pins at once
+<!-- /taro:notes -->
+`;
+
+  it("a HANDS-OFF the decider gave passes when the task does not say", () => {
+    const kinds = conformanceOf(handedOff, 0, undefined, [{ from: "Queued", to: "In Progress", at: "2026-01-05T10:03:00.000Z" }]).map((violation) => violation.kind);
+    expect(kinds).not.toContain("hands-off-unasked");
+    expect(kinds).not.toContain("no-approval");
+    expect(kinds).not.toContain("status-skip");
   });
 });

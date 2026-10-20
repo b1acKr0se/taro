@@ -183,8 +183,9 @@ export function loggedViolations(log: string): ConformanceViolation[] {
   return found;
 }
 
-export function conformanceOf(ticketText: string, nudges: number, handsOff: boolean, transitions: TicketStatsLike["transitions"]): ConformanceViolation[] {
-  return conformanceViolations(ticketText, { nudges, handsOff, transitions });
+/** `handsOff` undefined when the task does not say: a HANDS-OFF record the decider gave then counts; `false` reports one. */
+export function conformanceOf(ticketText: string, nudges: number, handsOff: boolean | undefined, transitions: TicketStatsLike["transitions"]): ConformanceViolation[] {
+  return conformanceViolations(ticketText, { nudges, transitions, ...(handsOff === undefined ? {} : { handsOff }) });
 }
 
 /** Copies the merged repository, adds the task's hidden tests and runs its test command there. */
