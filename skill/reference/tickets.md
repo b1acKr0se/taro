@@ -61,7 +61,7 @@ history: a wrong record is corrected by a **CORRECTION** record. Keep each withi
 rather than exceed it.
 
 - **DISPATCH-INTENT** (manager, before launching): ticket, unique token, intended branch.
-- **EXECUTION**: owner agent id, workspace id, machine (`hostname`), worktree path, branch, base
+- **EXECUTION**: owner agent id, owner model, workspace id, machine (`hostname`), worktree path, branch, base
   SHA; later the subagents (agent id, job, task) and `review-head: <sha>`.
 - **APPROVAL**: the user's exact words, time, and what they approved (the plan).
 - **MILESTONE**: one line of at most about 150 characters: what happened and what's next, e.g.

@@ -23,7 +23,10 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
 1. Create the ticket with the **two-part brief** (`templates/brief.md`) as its description:
    the user's intent nearly verbatim, then at most 5 bullets of notes (the outcomes the user
    expects, related tickets, PRs and known facts, likely areas, out of scope, kind). Cut rather
-   than exceed: the owner reads the code, and the Ticket tab folds the notes away. Add
+   than exceed: the owner reads the code, and the Ticket tab folds the notes away. **Choose the
+   owner's model now**, held or not, and write it on the Kind line (`Owner model: <id> (<tier>)`):
+   the project's owner model by default, or, for a trivial or low ticket, a cheaper allowed model
+   by `reference/model-tiers.md` (no Claude assumed: another provider's model counts). Add
    `-l investigation` when it is one. Read the id back.
 2. Append **DISPATCH-INTENT** (unique token, intended branch `taro/<id-lowercase>`).
 3. **Respect the cap on owners running at once** (AGENTS.md). List live owners with
@@ -54,9 +57,8 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
    85% of the max, queue the ticket as at the cap and say it waits for threads. The plugin holds its
    slot-free messages while threads are short and sends them when they recover.
 4. Create the owner's worktree workspace and start the owner (`reference/paseo.md`), with the
-   project's owner model, thinking and mode from AGENTS.md — the strongest model by default.
-   For a trivial or low ticket you may step the owner down to a cheaper allowed model, following
-   `reference/model-tiers.md` (no Claude assumed: another provider's model counts).
+   model written on the ticket's Kind line (step 1; a ticket filed without one gets it chosen and
+   written now), and the project's thinking and mode from AGENTS.md.
    **The user's words win:** if the request names a model ("use sonnet for this", "a cheap model is
    fine"), start the owner with that model, and pass any model the user named for subagents into the
    brief. Before retrying an uncertain launch,
@@ -66,7 +68,7 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
    <skill>/roles/owner.md and <skill>/reference/shell.md now." followed by the project facts it needs (repository, base branch,
    tracker, skill path, delivery, accept-also-merges, models owners may give subagents), the
    standing orders that apply, and the brief.
-6. Append **EXECUTION** (owner agent id, workspace id, worktree, branch, `hostname`).
+6. Append **EXECUTION** (owner agent id, owner model, workspace id, worktree, branch, `hostname`).
 7. Reply in one line: the ticket id and title, and that its owner is in the "<ID> · <title>" tab.
    End with `done: dispatched <ID>`.
 

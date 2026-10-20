@@ -12,4 +12,5 @@
   the delivered ticket that shipped it, so its owner records an ESCAPE there>
 - Likely areas: <files / modules from a quick look>
 - Out of scope: <what the user's words exclude, if anything>
-- Kind: change | investigation
+- Kind: change | investigation. Owner model: <model id> (<tier>) — always written, the strongest
+  by default or a cheaper one for an easy ticket (`reference/model-tiers.md`)
