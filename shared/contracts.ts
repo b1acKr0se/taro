@@ -96,6 +96,13 @@ export const PrerequisiteSchema = z.object({
 });
 export type Prerequisite = z.infer<typeof PrerequisiteSchema>;
 
+/** The user dragged a project tab: every project's name, in the order now shown (TR-214). */
+export const reorderProjects = defineRpc({
+  name: "taro.projects.reorder",
+  input: z.object({ order: z.array(ProjectNameSchema).max(500) }),
+  output: Empty,
+});
+
 export const checkPrerequisites = defineRpc({
   name: "taro.prerequisites.check",
   input: Empty,
