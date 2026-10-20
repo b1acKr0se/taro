@@ -35,7 +35,7 @@ import { errorText, formatCost, formatDuration } from "./format";
 import { SectionHeading } from "./badges";
 import { useStats } from "./queries";
 import { SPACE } from "./spacing";
-import { clampPage, pageOffset, pageRange, scrollEdges, STATS_PAGE_SIZE, tableFit, ticketPages, trailingSpace, type ScrollEdges } from "./stats-table";
+import { clampPage, pageRange, scrollEdges, STATS_PAGE_SIZE, tableFit, ticketPages, trailingSpace, type ScrollEdges } from "./stats-table";
 import { withAlpha } from "./tint";
 import { FONT_SIZE, labelLineHeightFor } from "./type-scale";
 import { IconButton } from "./ui";
@@ -150,7 +150,6 @@ export function StatsView({
   const ticketWidth = fit.ticketWidth;
   // The web's one scroll box is the page; a phone's page holds the sideways scroll of the numbers.
   const page = useRef<ScrollView>(null);
-  const numbersScroll = useRef<ScrollView>(null);
   const offset = useRef({ x: 0, y: 0 });
   const scrollX = useRef(new Animated.Value(0)).current;
   const headerShift = useMemo(() => Animated.multiply(scrollX, -1), [scrollX]);
@@ -175,7 +174,7 @@ export function StatsView({
       note: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, padding: SPACE.lg },
       notes: { paddingHorizontal: SPACE.lg, paddingBottom: SPACE.lg, gap: SPACE.sm },
       footnote: { color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
-      pager: { flexDirection: "row" as const, alignItems: "center" as const, justifyContent: "center" as const, gap: SPACE.md, padding: SPACE.lg },
+      pager: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm },
       pagerText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small },
       error: { color: colors.statusDanger, padding: SPACE.lg },
     }),
@@ -206,11 +205,6 @@ export function StatsView({
       }),
     [scrollX],
   );
-  function pageColumns(direction: -1 | 1) {
-    const x = pageOffset({ offset: offset.current.x, viewport, content, pinned, direction, columnStarts });
-    if (WEB) page.current?.scrollTo({ x, y: offset.current.y, animated: true });
-    else numbersScroll.current?.scrollTo({ x, animated: true });
-  }
 
   const tickets = useMemo(() => [...(stats.data?.tickets ?? [])].sort((left, right) => compareTickets(left.ticket, right.ticket)), [stats.data]);
   const totals = useMemo(() => projectTotals(tickets, stats.data?.managerIdleCompactions ?? 0), [tickets, stats.data]);
@@ -356,20 +350,6 @@ export function StatsView({
   // On the web the heading, page bar and notes keep to the visible width while the table scrolls sideways under them.
   const pinToView: ViewStyle | null = WEB && viewport > 0 ? { ...stickyStyle({ left: 0 }), width: viewport } : null;
 
-  const heading = (
-    <View style={[{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg, paddingBottom: SPACE.md }, pinToView]}>
-      <SectionHeading theme={theme} icon="ChartColumn" text={`Time and cost · ${ticketsLabel}`}>
-        {/* A mouse wheel scrolls up and down only, and the sideways scroll bar sits at the foot of a long table. */}
-        {compact || fit.fits || viewport === 0 ? null : (
-          <View style={{ flexDirection: "row", gap: SPACE.xs }}>
-            <IconButton theme={theme} icon="ChevronLeft" label="Earlier columns" disabled={!edges.moreLeft} onPress={() => pageColumns(-1)} />
-            <IconButton theme={theme} icon="ChevronRight" label="Later columns" disabled={!edges.moreRight} onPress={() => pageColumns(1)} />
-          </View>
-        )}
-      </SectionHeading>
-    </View>
-  );
-
   function showPage(index: number) {
     setPageIndex(index);
     // A new page starts from its first rows.
@@ -377,19 +357,26 @@ export function StatsView({
     else page.current?.scrollTo({ y: 0, animated: false });
   }
   const range = pageRange(pages, shownPage);
+  const heading = (
+    <View style={[{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg, paddingBottom: SPACE.md }, pinToView]}>
+      <SectionHeading theme={theme} icon="ChartColumn" text={`Time and cost · ${ticketsLabel}`}>
+        {pages.length > 1 ? (
+          <View style={styles.pager}>
+            <IconButton theme={theme} icon="ChevronLeft" label="Previous" disabled={shownPage === 0} onPress={() => showPage(shownPage - 1)} />
+            <Text style={styles.pagerText}>
+              {range.first}–{range.last} of {range.total}
+            </Text>
+            <IconButton theme={theme} icon="ChevronRight" label="Next" disabled={shownPage >= pages.length - 1} onPress={() => showPage(shownPage + 1)} />
+          </View>
+        ) : null}
+      </SectionHeading>
+    </View>
+  );
+
   const footer = (
     <View style={pinToView}>
-      {pages.length > 1 ? (
-        <View style={styles.pager}>
-          <IconButton theme={theme} icon="ChevronLeft" label="Previous" showLabel disabled={shownPage === 0} onPress={() => showPage(shownPage - 1)} />
-          <Text style={styles.pagerText}>
-            {range.first}–{range.last} of {range.total}
-          </Text>
-          <IconButton theme={theme} icon="ChevronRight" label="Next" showLabel iconAfterLabel disabled={shownPage >= pages.length - 1} onPress={() => showPage(shownPage + 1)} />
-        </View>
-      ) : null}
       {/* Under the table, so the notes wrap to the screen. */}
-      <View style={[styles.notes, pages.length > 1 ? null : { paddingTop: SPACE.lg }]}>
+      <View style={[styles.notes, { paddingTop: SPACE.lg }]}>
         {totals.agentsWithoutCost > 0 ? (
           <Text style={styles.footnote}>
             * {totals.agentsWithoutCost} agent{totals.agentsWithoutCost === 1 ? " has" : "s have"} no recorded cost: one still at work gets it at its next turn end; one whose session ended without saving it (a crash or a forced stop) never will. A marked cost leaves theirs out.
@@ -485,7 +472,7 @@ export function StatsView({
           )}
         </View>
         <View style={{ flex: 1 }}>
-          <Animated.ScrollView ref={numbersScroll} horizontal contentContainerStyle={{ width: Math.max(content - pinned, 0), paddingRight: SIDE }} onScroll={onNumbersScroll} scrollEventThrottle={16}>
+          <Animated.ScrollView horizontal contentContainerStyle={{ width: Math.max(content - pinned, 0), paddingRight: SIDE }} onScroll={onNumbersScroll} scrollEventThrottle={16}>
             <View style={{ flex: 1 }}>
               {rows.map((row) =>
                 row.kind === "detail" ? (
