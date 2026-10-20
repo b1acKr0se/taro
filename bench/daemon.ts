@@ -161,12 +161,14 @@ export async function leftovers(throwaway: Throwaway): Promise<string[]> {
  * Stops the daemon, kills what is left by pid, and removes the worktree copy, the home and the scratch
  * folders by their literal paths. Safe to call twice. Returns what it found left over.
  */
-export async function cleanup(throwaway: Throwaway): Promise<{ leftoverProcesses: string[]; removed: string[] }> {
+export async function cleanup(throwaway: Throwaway, log: (line: string) => void = () => undefined): Promise<{ leftoverProcesses: string[]; removed: string[] }> {
+  log("cleanup: stopping the daemon");
   if (throwaway.home !== "" && existsSync(throwaway.home)) await run("paseo", ["daemon", "stop", "--home", throwaway.home], { timeoutMs: 30_000 });
   if (throwaway.daemonPid !== null && alive(throwaway.daemonPid)) killGroup(throwaway.daemonPid);
   await new Promise((resolveWait) => setTimeout(resolveWait, 1500));
   // Agents and the plugin host the daemon started are in its group or its home: find them by what they were started from.
   const found = await leftovers(throwaway);
+  log(`cleanup: ${found.length} processes still running from the run`);
   for (const line of found) {
     const pid = Number(line.split(/\s+/)[0]);
     if (Number.isInteger(pid) && pid !== process.pid && pid > 1) killGroup(pid, "SIGKILL");
@@ -175,6 +177,7 @@ export async function cleanup(throwaway: Throwaway): Promise<{ leftoverProcesses
   if (throwaway.daemonPid !== null && alive(throwaway.daemonPid)) killGroup(throwaway.daemonPid, "SIGKILL");
   await new Promise((resolveWait) => setTimeout(resolveWait, 500));
   const leftoverProcesses = await leftovers(throwaway);
+  log("cleanup: removing the folders");
   const removed: string[] = [];
   if (throwaway.pluginCopy !== "") {
     try {
@@ -186,7 +189,7 @@ export async function cleanup(throwaway: Throwaway): Promise<{ leftoverProcesses
     await run("git", ["-C", throwaway.pluginSource, "worktree", "prune"]);
   }
   // The scratch repository has worktrees of its own (the owner's): removed with it, and its home too.
-  [...throwaway.folders, ...(throwaway.home === "" ? [] : [throwaway.home])].forEach((path) => {
+  [...new Set([...throwaway.folders, ...(throwaway.home === "" ? [] : [throwaway.home])])].forEach((path) => {
     assertSafeHome(path);
     rmSync(path, { recursive: true, force: true });
     removed.push(path);

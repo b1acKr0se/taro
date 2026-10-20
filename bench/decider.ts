@@ -177,7 +177,7 @@ const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/
  */
 async function visibleCardText(page: Page, question: string, labels: readonly string[]): Promise<string | null> {
   return page.evaluate(
-    (needle: string, wanted: string[]) => {
+    ({ needle, wanted }: { needle: string; wanted: string[] }) => {
       const squeeze = (value: string): string => value.replace(/\s+/g, " ").trim();
       const holder = (Array.from(document.querySelectorAll("*")) as any[]).find((element: any) => element.children.length === 0 && squeeze(element.textContent ?? "").includes(squeeze(needle)));
       if (holder === undefined) return null;
@@ -190,8 +190,7 @@ async function visibleCardText(page: Page, question: string, labels: readonly st
       }
       return node.innerText;
     },
-    question,
-    [...labels],
+    { needle: question, wanted: [...labels] },
   );
 }
 

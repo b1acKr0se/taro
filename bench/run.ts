@@ -5,14 +5,13 @@
  * at the end (`<dir>/result.json`). See bench/README.md. Runs under Node type stripping: erasable
  * syntax, `.ts` import extensions, no packages.
  */
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { startDecider } from "./decider.ts";
 import { BENCH_ROOT, cleanup, ensureDirectory, installPlugin, makePluginCopy, makeThrowaway, paseoArgs, pickPort, rpc, scratchDirectory, seedRepository, startDaemon, waitForThreads, type Throwaway } from "./daemon.ts";
 import { run } from "./process.ts";
 import { conformanceOf, countRecords, loggedViolations, runHidden, scoreQuestions, scoreStats, type TicketStatsLike } from "./score.ts";
-import { assertSafeHome } from "./safety.ts";
 import type { ResultFile } from "./report.ts";
 
 const PROJECT = "notes-app";
@@ -109,20 +108,27 @@ async function main(): Promise<void> {
   if (sha === "") throw new Error(`${options.plugin} is not a git checkout`);
   const throwaway = makeThrowaway(options.plugin);
   let stop: ResultFile["stop"] = "error";
-  let cleaned = false;
-  const finish = async (): Promise<{ leftoverProcesses: string[]; removed: string[] } | null> => {
-    if (cleaned) return null;
-    cleaned = true;
-    const outcome = await cleanup(throwaway);
-    runLog(`cleanup: removed ${outcome.removed.length} folders; leftover processes: ${outcome.leftoverProcesses.length === 0 ? "none" : outcome.leftoverProcesses.join(" | ")}`);
-    return outcome;
+  // One cleanup however many callers (the end of the run, an error, Ctrl-C): later callers wait for the same one.
+  let cleaning: Promise<{ leftoverProcesses: string[]; removed: string[] }> | null = null;
+  const finish = (): Promise<{ leftoverProcesses: string[]; removed: string[] }> => {
+    cleaning ??= cleanup(throwaway, runLog).then((outcome) => {
+      runLog(`cleanup: removed ${outcome.removed.length} folders; leftover processes: ${outcome.leftoverProcesses.length === 0 ? "none" : outcome.leftoverProcesses.join(" | ")}`);
+      return outcome;
+    });
+    return cleaning;
   };
-  const onSignal = (): void => {
-    runLog("interrupted: cleaning up");
-    void finish().then(() => process.exit(130));
+  const onSignal = (signal: string): void => {
+    runLog(`${signal}: cleaning up`);
+    finish().then(
+      () => process.exit(130),
+      (error) => {
+        runLog(`cleanup failed: ${String(error)}`);
+        process.exit(131);
+      },
+    );
   };
-  process.once("SIGINT", onSignal);
-  process.once("SIGTERM", onSignal);
+  process.on("SIGINT", () => onSignal("SIGINT"));
+  process.on("SIGTERM", () => onSignal("SIGTERM"));
 
   const started = Date.now();
   let decider: ReturnType<typeof startDecider> | null = null;
@@ -247,13 +253,8 @@ async function main(): Promise<void> {
   } finally {
     if (decider !== null) await decider.stop().catch(() => undefined);
     const outcome = await finish();
-    if (outcome !== null && outcome.leftoverProcesses.length > 0) process.exitCode = 1;
-    process.off("SIGINT", onSignal);
-    process.off("SIGTERM", onSignal);
+    if (outcome.leftoverProcesses.length > 0) process.exitCode = 1;
   }
-  void mkdirSync;
-  void copyFileSync;
-  void assertSafeHome;
 }
 
 await main();
