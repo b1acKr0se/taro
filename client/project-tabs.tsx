@@ -189,6 +189,8 @@ export function ProjectTabs({
     responder.current = PanResponder.create({
       // Only a lifted tab takes the drag, so a plain swipe still scrolls the row.
       onMoveShouldSetPanResponderCapture: () => drag.current?.lifted() !== null,
+      // The row's own scroll (an edge scroll on the web) must not take the drag from a lifted tab.
+      onPanResponderTerminationRequest: () => false,
       onPanResponderMove: (_event, gesture) => setShift(drag.current?.move(gesture.dx, scrollX.current) ?? 0),
       onPanResponderRelease: drop,
       onPanResponderTerminate: drop,

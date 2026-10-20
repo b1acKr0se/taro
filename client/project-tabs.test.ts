@@ -50,6 +50,7 @@ describe("the project tabs", () => {
   it("lift on a long press and take the drag only then, so a swipe still scrolls", () => {
     expect(tabs).toContain("onLongPress={() => lift(project.name)}");
     expect(tabs).toContain("onMoveShouldSetPanResponderCapture: () => drag.current?.lifted() !== null");
+    expect(tabs).toContain("onPanResponderTerminationRequest: () => false");
     expect(tabs).toContain("scrollEnabled={lifted === null}");
   });
 
