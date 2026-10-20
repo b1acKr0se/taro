@@ -303,14 +303,6 @@ export function TaroScreen({ theme, layout, params, navigation }: PluginScreenPr
           refreshCreation();
           refresh();
         }}
-        onCancel={
-          current === null
-            ? null
-            : () => {
-                resetNewProject();
-                choose(current.config.project, "project");
-              }
-        }
       />
     );
   } else if (showing === "inbox" && !layout.compact) {
