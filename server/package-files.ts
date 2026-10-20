@@ -56,6 +56,7 @@ export const TEMPLATES = {
   subagentCrashed: "messages/subagent-crashed.md",
   headroomRecovered: "messages/headroom-recovered.md",
   evidenceMissing: "messages/evidence-missing.md",
+  noPlan: "messages/no-plan.md",
   permissionDenied: "messages/permission-denied.md",
   permissionRules: "permission-rules.md",
 } as const;

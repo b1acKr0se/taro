@@ -76,6 +76,8 @@ export const AgentStateSchema = z.object({
   lastTurnEndedAt: z.string().nullable().default(null),
   /** The missing-evidence set the owner was last told about, so each distinct set is sent once. */
   evidenceReminded: z.string().nullable().default(null),
+  /** Told its commits have no plan on the ticket (TR-206); cleared once the plan is there, so a later gap is told again. */
+  noPlanFlagged: z.boolean().default(false),
 });
 export type AgentState = z.infer<typeof AgentStateSchema>;
 
