@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { answerEvents, awaitsAcceptance, choosesAction, DECIDER_RULES, deciderPrompt, parseReplies, parseReply, permissionVerdict, deleteDeciderAgent, isFatalDeciderError, releaseFailedKey, severalAnswerInput, severalCard, staleWaiting, WAITING_NOTICE_MS, type OpenDecision } from "./decider.ts";
+import { answerEvents, awaitsAcceptance, choosesAction, DECIDER_RULES, deciderPrompt, parseReplies, parseReply, permissionVerdict, deleteDeciderAgent, isFatalDeciderError, landedChangeRequest, limitedReply, releaseFailedKey, severalAnswerInput, severalCard, staleWaiting, WAITING_NOTICE_MS, type OpenDecision } from "./decider.ts";
 
 describe("parseReply", () => {
   const log = (body: string) => `\nsome thinking\nREPLY abc123\n${body}\n`;
@@ -272,5 +272,41 @@ describe("deleteDeciderAgent", () => {
     const lines: string[] = [];
     await deleteDeciderAgent(async () => ({ code: 0, stderr: "" }), [], "agent-1", (line) => lines.push(line));
     expect(lines).toEqual([]);
+  });
+});
+
+describe("change requests under retry", () => {
+  const change = { choice: "Request changes", text: "cover the tag filter", preference: "none", briefAnswered: false };
+  it("a change request that never landed does not count, so a retry stays a change request", () => {
+    const counts: Record<string, number> = {};
+    // Two attempts whose answers failed: limitedReply only decides, nothing is counted.
+    expect(limitedReply(counts, "plan", change, "Approve").choice).toBe("Request changes");
+    expect(limitedReply(counts, "plan", change, "Approve").choice).toBe("Request changes");
+    expect(counts).toEqual({});
+  });
+  it("counts a landed one, and turns the request past the limit into an approval", () => {
+    const counts: Record<string, number> = {};
+    [1, 2].forEach(() => landedChangeRequest(counts, "plan", limitedReply(counts, "plan", change, "Approve"), "Approve"));
+    expect(counts).toEqual({ plan: 2 });
+    const third = limitedReply(counts, "plan", change, "Approve");
+    expect(third).toMatchObject({ choice: "Approve", text: "" });
+    landedChangeRequest(counts, "plan", third, "Approve");
+    expect(counts).toEqual({ plan: 2 });
+  });
+  it("counts plan and acceptance apart, and never an approval", () => {
+    const counts: Record<string, number> = {};
+    landedChangeRequest(counts, "plan", { ...change, choice: "Approve" }, "Approve");
+    landedChangeRequest(counts, "acceptance", change, "Accept");
+    expect(counts).toEqual({ acceptance: 1 });
+  });
+});
+
+describe("staleWaiting and a card the decider gave up on", () => {
+  const now = Date.parse("2026-01-05T12:00:00Z");
+  const detail = { status: "In Progress", ownerRunning: false, lastStatus: { state: "waiting", at: new Date(now - 20 * 60_000).toISOString() } };
+  it("says nothing while a card the decider gave up on is still open", () => {
+    expect(staleWaiting(detail, now, true)).toBeNull();
+    expect(staleWaiting(detail, now, false)).toBe(detail.lastStatus.at);
+    expect(staleWaiting(detail, now)).toBe(detail.lastStatus.at);
   });
 });
