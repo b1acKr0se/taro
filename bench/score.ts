@@ -203,22 +203,26 @@ export function peakContextOf(transcript: string): number | null {
   return peak;
 }
 
-/** The Claude session id in `paseo inspect --json` output (`persistence.sessionId`, wherever it is nested), or null. */
-export function sessionIdOf(inspectOutput: string): string | null {
-  const search = (value: unknown, depth: number): string | null => {
-    if (typeof value !== "object" || value === null || depth > 6) return null;
-    const record = value as Record<string, unknown>;
-    if (typeof record.sessionId === "string" && record.sessionId !== "") return record.sessionId;
-    return Object.values(record).reduce<string | null>((found, child) => found ?? search(child, depth + 1), null);
-  };
+/** The Claude session id in an agent record the daemon stores (`persistence.sessionId`), or null; `paseo inspect` does not carry it. */
+export function storedSessionIdOf(agentRecord: string): string | null {
   try {
-    return search(JSON.parse(inspectOutput), 0);
+    const persistence = (JSON.parse(agentRecord) as { persistence?: { provider?: unknown; sessionId?: unknown } | null }).persistence;
+    return persistence?.provider === "claude" && typeof persistence.sessionId === "string" && persistence.sessionId !== "" ? persistence.sessionId : null;
   } catch {
     return null;
   }
 }
 
-/** The peak context of a Claude session from its transcript under Claude Code's config folder; null when the transcript is not found. */
+/** The stored record of an agent in a daemon home: `<home>/agents/<cwd slug>/<agentId>.json`. Only the throwaway home is ever passed. */
+export function storedAgentRecord(daemonHome: string, agentId: string): string | null {
+  if (!/^[A-Za-z0-9-]+$/.test(agentId)) return null;
+  const agents = join(daemonHome, "agents");
+  if (!existsSync(agents)) return null;
+  const folder = readdirSync(agents).find((name) => existsSync(join(agents, name, `${agentId}.json`)));
+  return folder === undefined ? null : readFileSync(join(agents, folder, `${agentId}.json`), "utf8");
+}
+
+/** The peak context of a Claude session from its transcript under Claude Code's config folder (the one the daemon's agents write to: it and the daemon both inherit this process's environment); null when the transcript is not found. */
 export async function peakContextOfSession(sessionId: string, configDirectory = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude")): Promise<number | null> {
   if (!/^[A-Za-z0-9-]+$/.test(sessionId)) return null;
   const projects = join(configDirectory, "projects");

@@ -1,6 +1,9 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { peakContextOf, sessionIdOf, conformanceOf, countPermissions, countRecords, loggedViolations, parseNodeTest, parseTestOutput, parseUnittest, scoreQuestions, scoreStats } from "./score.ts";
+import { peakContextOf, storedAgentRecord, storedSessionIdOf, conformanceOf, countPermissions, countRecords, loggedViolations, parseNodeTest, parseTestOutput, parseUnittest, scoreQuestions, scoreStats } from "./score.ts";
 
 describe("parseNodeTest", () => {
   it("reads passes and the total from the summary", () => {
@@ -150,13 +153,31 @@ describe("peakContextOf", () => {
   });
 });
 
-describe("sessionIdOf", () => {
-  it("finds the session id in the inspect output wherever it is nested", () => {
-    expect(sessionIdOf(JSON.stringify({ id: "a1", persistence: { provider: "claude", sessionId: "s-123" } }))).toBe("s-123");
-    expect(sessionIdOf(JSON.stringify({ agent: { persistence: { sessionId: "s-9" } } }))).toBe("s-9");
+describe("storedSessionIdOf", () => {
+  const record = (persistence: unknown): string => JSON.stringify({ id: "agent-1", provider: "claude", cwd: "/home/user/notes-app", persistence });
+  it("reads the session id from the daemon's stored agent record", () => {
+    expect(storedSessionIdOf(record({ provider: "claude", sessionId: "11111111-2222-3333-4444-555555555555", nativeHandle: "x", metadata: { cwd: "/home/user/notes-app" } }))).toBe("11111111-2222-3333-4444-555555555555");
   });
-  it("is null when there is none or the output is not JSON", () => {
-    expect(sessionIdOf(JSON.stringify({ id: "a1" }))).toBeNull();
-    expect(sessionIdOf("Agent a1")).toBeNull();
+  it("is null for another provider, no persistence, an empty id or text that is not JSON", () => {
+    expect(storedSessionIdOf(record({ provider: "codex", sessionId: "abc" }))).toBeNull();
+    expect(storedSessionIdOf(record(null))).toBeNull();
+    expect(storedSessionIdOf(record({ provider: "claude", sessionId: "" }))).toBeNull();
+    expect(storedSessionIdOf("Agent a1")).toBeNull();
+  });
+});
+
+describe("storedAgentRecord", () => {
+  it("finds <home>/agents/<slug>/<agentId>.json, and null for a missing agent or an unsafe id", () => {
+    const home = mkdtempSync(join(tmpdir(), "taro-bench-test."));
+    try {
+      mkdirSync(join(home, "agents", "home-user-notes-app"), { recursive: true });
+      writeFileSync(join(home, "agents", "home-user-notes-app", "agent-1.json"), '{"id":"agent-1"}');
+      expect(storedAgentRecord(home, "agent-1")).toBe('{"id":"agent-1"}');
+      expect(storedAgentRecord(home, "agent-2")).toBeNull();
+      expect(storedAgentRecord(home, "../agent-1")).toBeNull();
+      expect(storedAgentRecord(join(home, "none"), "agent-1")).toBeNull();
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

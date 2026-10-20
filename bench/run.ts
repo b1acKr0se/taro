@@ -11,7 +11,7 @@ import { join, resolve } from "node:path";
 import { startDecider } from "./decider.ts";
 import { BENCH_ROOT, cleanup, ensureDirectory, installPlugin, makePluginCopy, makeThrowaway, paseoArgs, pickPort, rpc, scratchDirectory, seedRepository, startDaemon, waitForThreads, type Throwaway } from "./daemon.ts";
 import { run } from "./process.ts";
-import { conformanceOf, countPermissions, countRecords, loggedViolations, peakContextOfSession, runHidden, scoreQuestions, scoreStats, sessionIdOf, type TicketStatsLike } from "./score.ts";
+import { conformanceOf, countPermissions, countRecords, loggedViolations, peakContextOfSession, runHidden, scoreQuestions, scoreStats, storedAgentRecord, storedSessionIdOf, type TicketStatsLike } from "./score.ts";
 import type { ResultFile } from "./report.ts";
 
 const PROJECT = "notes-app";
@@ -91,11 +91,11 @@ function ticketFile(tracker: string, ticket: string): string | null {
   return existsSync(path) ? readFileSync(path, "utf8") : null;
 }
 
-/** The owner's largest request, from its Claude transcript (the session id from `paseo inspect`); null when either is not found. */
+/** The owner's largest request, from its Claude transcript (the session id is in the daemon home's stored agent record); null when either is not found. Runs before cleanup deletes the home. */
 async function ownerPeakContext(throwaway: Throwaway, ownerId: string): Promise<number | null> {
-  if (ownerId === "") return null;
-  const inspected = await run("paseo", ["inspect", ownerId, "--json", ...paseoArgs(throwaway)], { timeoutMs: 60_000 });
-  const sessionId = inspected.code === 0 ? sessionIdOf(inspected.stdout) : null;
+  if (ownerId === "" || throwaway.home === "") return null;
+  const record = storedAgentRecord(throwaway.home, ownerId);
+  const sessionId = record === null ? null : storedSessionIdOf(record);
   return sessionId === null ? null : peakContextOfSession(sessionId);
 }
 

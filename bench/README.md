@@ -65,7 +65,7 @@ host's threads; the harness waits while the host is above 85% of `pids.max`.
   per role with its models, peak context, turns and active time. A child ticket's agents count on the parent.
 - `caps` and `models`: what the run was allowed and ran on; the report prints both and warns when arms differ.
 - `ownerPeakContextTokens`: the owner's largest request, read from its Claude transcript (not the last turn's
-  context); `null` when the transcript is not found.
+  context; the session id comes from the daemon home's stored agent record, as `paseo inspect` has none); `null` when the transcript is not found.
 - `hidden`: `{ passed, total }` of the task's hidden tests on merged main; `null` when not run.
 - `questions`: cards that asked a question (not the plan or Accept): how many, how many touched a hidden
   preference (the decider says `preference: P1`…), how many the brief already answered (`brief: yes`).
