@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { drawnWithPieces, streamedPiece, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
+import { drawnWithPieces, streamedPiece, turnBoundary, turnTracker, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
 import { transcriptRows, whileWriting, type TimelineEntry } from "./transcript-rows";
 
 const EPOCH = "epoch-1";
@@ -106,5 +106,57 @@ describe("whileWriting", () => {
     const plain = transcriptRows(read);
     expect(whileWriting(plain, true)).toBe(plain);
     expect(whileWriting([], true)).toEqual([]);
+  });
+});
+
+describe("turnBoundary (TR-201)", () => {
+  const stream = (inner: unknown) => ({ agentId: "agent-1", event: inner, timestamp: "2026-01-01T00:00:00Z" });
+
+  it("reads a turn's start", () => {
+    expect(turnBoundary(stream({ type: "turn_started", provider: "claude", turnId: "turn-2" }))).toBe("started");
+  });
+
+  it("reads a turn's end however it ended: completed, failed or stopped", () => {
+    for (const type of ["turn_completed", "turn_failed", "turn_canceled"]) expect(turnBoundary(stream({ type, provider: "claude" }))).toBe("ended");
+  });
+
+  it("is null for every other event, and for what is not an event", () => {
+    expect(turnBoundary(event(3, "Hello"))).toBeNull();
+    for (const inner of [{ type: "timeline", item: { type: "tool_call" } }, { type: "replacement", epoch: "e" }, { type: "subscription_restored" }, { type: "error", error: "x" }, { type: "attention_required" }, {}, null, "turn_started"]) {
+      expect(turnBoundary(stream(inner))).toBeNull();
+    }
+    for (const value of [null, undefined, "turn_started", 3, {}]) expect(turnBoundary(value)).toBeNull();
+  });
+});
+
+describe("turnTracker (TR-201)", () => {
+  it("keeps a boundary through a read begun before it, which lands with the old status, and clears it at the next read", () => {
+    const turns = turnTracker();
+    const inFlight = turns.readStarted();
+    turns.boundary("ended");
+    expect(turns.readLanded(inFlight)).toBe("ended");
+    expect(turns.current()).toBe("ended");
+    const next = turns.readStarted();
+    expect(turns.readLanded(next)).toBeNull();
+    expect(turns.current()).toBeNull();
+  });
+
+  it("keeps a boundary that came after the last read began, even when an earlier read lands later", () => {
+    const turns = turnTracker();
+    const first = turns.readStarted();
+    turns.boundary("started");
+    const second = turns.readStarted();
+    turns.boundary("ended");
+    expect(turns.readLanded(second)).toBe("ended");
+    expect(turns.readLanded(first)).toBe("ended");
+  });
+
+  it("holds the newest of several boundaries, and nothing before any", () => {
+    const turns = turnTracker();
+    expect(turns.current()).toBeNull();
+    expect(turns.readLanded(turns.readStarted())).toBeNull();
+    turns.boundary("started");
+    turns.boundary("ended");
+    expect(turns.current()).toBe("ended");
   });
 });

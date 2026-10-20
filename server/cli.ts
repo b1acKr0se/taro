@@ -1,13 +1,14 @@
 /**
  * The `paseo` CLI, for what the plugin SDK does not offer: creating and
- * renaming projects, stopping a turn, and finding where the plugin is
- * installed. Adapted from FirstMate's `server/cli.ts` (MIT).
+ * renaming projects, stopping a turn when the daemon's websocket cannot be
+ * used (`daemon-cancel.ts`), and finding where the plugin is installed. Adapted from FirstMate's `server/cli.ts` (MIT).
  */
 import { access, constants } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 
 import { paseoHome } from "./data-dir";
+import { cancelOverSocket, DirectCancelUnavailable } from "./daemon-cancel";
 import { commandError, runCommand, type CommandResult } from "./process";
 
 /** Where an install puts the binary, for a daemon started with a bare PATH. */
@@ -80,7 +81,15 @@ export async function renameProject(projectId: string, name: string): Promise<vo
   await runPaseoJson(["project", "rename", projectId, name], "a project cannot be renamed");
 }
 
+/** Straight over the daemon's websocket (TR-201); through `paseo stop` when that route cannot be used. */
 export async function stopAgent(agentId: string): Promise<void> {
+  try {
+    await cancelOverSocket(agentId, { home: paseoHome() });
+    return;
+  } catch (error) {
+    if (!(error instanceof DirectCancelUnavailable)) throw error;
+    console.warn(`[taro] stopping ${agentId} through the CLI: ${error.message}`);
+  }
   await runPaseoJson(["stop", agentId], "a turn cannot be interrupted");
 }
 

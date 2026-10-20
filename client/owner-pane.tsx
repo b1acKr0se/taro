@@ -26,7 +26,7 @@ import { AcceptanceCard, AcceptNow } from "./acceptance-card";
 import { acceptanceReady, offersAcceptance } from "./card-calls";
 import { rowButtonStyle } from "./control-colors";
 import { Pressable } from "./focus";
-import { askedElsewhere, openingPaneAgent, paneAgents, paneAgentJob, paneOpening, roleIcon, type PaneOpening } from "./pane-agents";
+import { askedElsewhere, openingPaneAgent, paneAgents, paneAgentJob, paneOpening, paneStatus, roleIcon, type PaneOpening } from "./pane-agents";
 import { KeyboardScrollView } from "./keyboard";
 import { PaneHeader } from "./pane-header";
 import { useTicketRecords } from "./plan-card";
@@ -113,6 +113,8 @@ export function OwnerPane({
   const backLabel = planOpen ? "Back" : `Back to ${backTo}`;
   // Remembered with the card it was made on, so opening another ticket starts from its default agent.
   const [chosen, setChosen] = useState<{ card: string; agent: string } | null>(null);
+  /** The status the shown agent's chat follows (TR-201): it sees a turn start or end before the board's next poll. */
+  const [chatStatus, setChatStatus] = useState<{ agentId: string; status: string } | null>(null);
   const agents = useMemo(() => paneAgents(card), [card.owner, card.subagents, card.pastAgents]);
   const now = useNow();
   const chosenId = chosen?.card === openKey ? chosen.agent : null;
@@ -153,7 +155,7 @@ export function OwnerPane({
       <PaneHeader
         theme={theme}
         title={`${card.id} · ${card.title}`}
-        subtitle={shown === null ? undefined : `${shown.label} · ${shown.live ? shown.brief.status : "archived"}`}
+        subtitle={shown === null ? undefined : `${shown.label} · ${paneStatus(shown, chatStatus)}`}
         icon={shown === null ? "Bot" : roleIcon(shown)}
         compact={compact}
         // An arrow alone on a phone, the size of Open beside it, so the title keeps the row (TR-077); its target is still read out.
@@ -206,6 +208,7 @@ export function OwnerPane({
                 placeholder={`Talk to ${card.id}'s ${paneAgentJob(shown.role)}…`}
                 onSend={(text, attachments, messageId, answersRequest) => tell({ agentId: shown.id, text, ...attachments, messageId, answersRequest })}
                 transformText={withoutDecisionBlocks}
+                onStatus={(status) => setChatStatus({ agentId: shown.id, status })}
                 asks={{ decisions: shownAsks, onAnswered: onChanged }}
                 records={shown.role === "owner" ? { project, ticket: card.id, plans: records?.plans ?? null, deliveries: records?.deliveries ?? NO_RECORDS, settling } : undefined}
                 delivery={

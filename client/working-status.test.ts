@@ -12,7 +12,7 @@ const loading = read("loading.tsx");
 
 describe("the working status at the end of a chat", () => {
   it("is hidden while a permission request waits on the user", () => {
-    expect(chat).toMatch(/\{pending\.length > 0 \? null : <WorkingStatus theme=\{theme\} status=\{live\?\.status \?\? agent\.status\} turnStartedAt=\{agent\.turnStartedAt\} \/>\}/);
+    expect(chat).toMatch(/\{pending\.length > 0 \? null : <WorkingStatus theme=\{theme\} shown=\{loaderShown\} turnStartedAt=\{working \? agent\.turnStartedAt : null\} \/>\}/);
     expect(chat.match(/<WorkingStatus\b/g)).toHaveLength(1);
   });
 
@@ -27,6 +27,24 @@ describe("the working status at the end of a chat", () => {
   it("never brings back the word Working…", () => {
     expect(chat).not.toMatch(/Working…/);
     expect(loading).not.toMatch(/Working…/);
+  });
+});
+
+describe("the chat's status (TR-201)", () => {
+  it("follows the stream's turn start or end over the last read, everywhere the chat reads the status", () => {
+    expect(chat).toMatch(/const status = statusWithTurn\(live\?\.status \?\? agent\.status, timeline\.turn\);/);
+    expect(chat).not.toMatch(/live\?\.status \?\? agent\.status(?!, timeline\.turn)/);
+  });
+
+  it("tells the ticket pane, whose header shows the shown agent's status from it rather than the board's older read", () => {
+    expect(chat).toMatch(/useEffect\(\(\) => \{\s*onStatus\?\.\(status\);\s*\}, \[status\]\);/);
+    const pane = read("owner-pane.tsx");
+    expect(pane).toMatch(/onStatus=\{\(status\) => setChatStatus\(\{ agentId: shown\.id, status \}\)\}/);
+    expect(pane).toMatch(/subtitle=\{shown === null \? undefined : `\$\{shown\.label\} · \$\{paneStatus\(shown, chatStatus\)\}`\}/);
+  });
+
+  it("shows the loader while a message is on its way, and the turn's time only while a turn runs", () => {
+    expect(chat).toMatch(/const loaderShown = showsLoader\(status, sends\.views\.map\(\(view\) => view\.mark\)\);/);
   });
 });
 

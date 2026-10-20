@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "react";
 
 import { keptMap } from "./kept";
 import { addOlderPage, joinTail, withOlder, type OlderPages } from "./older-pages";
-import { drawnWithPieces, MAX_PIECES, streamedPiece, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
+import type { TurnBoundary } from "../shared/pending-sends";
+import { drawnWithPieces, MAX_PIECES, streamedPiece, turnBoundary, turnTracker, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
 import { CACHED_AGENTS, cacheable, createTimelineCache } from "./timeline-cache";
 import type { TimelinePage, TimelineEntry } from "./transcript-rows";
 
@@ -35,6 +36,11 @@ export interface AgentTimeline {
   error: string | null;
   /** A read is in flight; `entries` may still hold the cached conversation meanwhile. */
   loading: boolean;
+  /**
+   * The last turn start or end the stream told of since the last read began (TR-201): ahead of
+   * `agent`, which waits for the read it starts at once. Null once a read after it has landed.
+   */
+  turn: TurnBoundary | null;
 }
 
 /** The tail alone: earlier pages are kept only while the chat is open. */
@@ -78,6 +84,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
   const [hasOlder, setHasOlder] = useState(initial?.hasOlder ?? false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(agentId !== null);
+  const [turn, setTurn] = useState<TurnBoundary | null>(null);
 
   useEffect(() => {
     if (agentId === null) {
@@ -88,6 +95,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
       setLoading(false);
       setLoadingOlder(false);
       setOlderAsked(false);
+      setTurn(null);
       return;
     }
     const id = agentId;
@@ -106,6 +114,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     let older: OlderPages<TimelineEntry> | null = null;
     let tailHasOlder = cache.get(id)?.hasOlder ?? false;
     let olderInFlight = false;
+    const turns = turnTracker();
     // Another agent in the same mount: its cached read, or a blank pane rather than the last agent's words.
     const cached = cache.get(id);
     setEntries(cached?.entries ?? []);
@@ -115,6 +124,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     setLoading(true);
     setLoadingOlder(false);
     setOlderAsked(false);
+    setTurn(null);
 
     function clearTimers(): void {
       clearTimeout(quiet);
@@ -139,9 +149,11 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
         return;
       }
       inFlight = true;
+      const readToken = turns.readStarted();
       try {
         const page = await timeline.refetch({ direction: "tail", limit, projection: "projected" });
         if (!alive) return;
+        setTurn(turns.readLanded(readToken));
         if (cacheable(page)) cache.set(id, { entries: page.entries, agent: page.agent ?? cache.get(id)?.agent ?? null, hasOlder: page.hasOlder });
         older = joinTail(older, read, page);
         read = page.entries;
@@ -203,6 +215,14 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     }
 
     function onEvent(event: unknown): void {
+      const boundary = turnBoundary(event);
+      if (boundary !== null) {
+        // Drawn at once, and read at once rather than after a pause: a busy turn start held it up to the ceiling.
+        turns.boundary(boundary);
+        setTurn(turns.current());
+        refresh();
+        return;
+      }
       const piece = streamedPiece(event);
       if (piece !== null) {
         if (pieces.length >= MAX_PIECES) pieces = [];
@@ -233,5 +253,5 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     if (revision !== "") reread.current();
   }, [revision]);
 
-  return { entries, agent, hasOlder, loadOlder, loadingOlder, olderAsked, error, loading };
+  return { entries, agent, hasOlder, loadOlder, loadingOlder, olderAsked, error, loading, turn };
 }

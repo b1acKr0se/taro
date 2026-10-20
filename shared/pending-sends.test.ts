@@ -10,6 +10,8 @@ import {
   isWorking,
   newChatMessageId,
   nextToSend,
+  showsLoader,
+  statusWithTurn,
   STOPPED_GRACE_MS,
   takeBack,
   viewSends,
@@ -269,6 +271,38 @@ describe("isWorking", () => {
   it("is true while a turn runs or starts", () => {
     expect([isWorking("running"), isWorking("initializing")]).toEqual([true, true]);
     expect([isWorking("idle"), isWorking("error"), isWorking("closed"), isWorking(null)]).toEqual([false, false, false, false]);
+  });
+});
+
+describe("statusWithTurn (TR-201)", () => {
+  it("is running from the stream's turn start, whatever the last read said", () => {
+    for (const status of ["idle", "error", "running", "initializing", "closed"]) expect(statusWithTurn(status, "started")).toBe("running");
+  });
+
+  it("is idle from the stream's turn end while the last read still says the turn runs", () => {
+    expect([statusWithTurn("running", "ended"), statusWithTurn("initializing", "ended")]).toEqual(["idle", "idle"]);
+  });
+
+  it("keeps a stopped status the read already has, as a turn's end does not make an error or a closed agent idle", () => {
+    expect([statusWithTurn("error", "ended"), statusWithTurn("closed", "ended"), statusWithTurn("idle", "ended")]).toEqual(["error", "closed", "idle"]);
+  });
+
+  it("is the read's status when the stream told of no boundary since", () => {
+    for (const status of ["idle", "running", "error", "initializing"]) expect(statusWithTurn(status, null)).toBe(status);
+  });
+});
+
+describe("showsLoader (TR-201)", () => {
+  it("shows while a turn runs, with or without messages", () => {
+    expect([showsLoader("running", []), showsLoader("initializing", ["waiting"]), showsLoader("running", ["failed"])]).toEqual([true, true, true]);
+  });
+
+  it("shows from the moment a message leaves for an agent that is not working", () => {
+    expect([showsLoader("idle", ["sending"]), showsLoader("error", ["waiting", "sending"])]).toEqual([true, true]);
+  });
+
+  it("does not show for a stopped agent with nothing on its way: none, failed, held behind a failure, delivered or unread", () => {
+    for (const marks of [[], ["failed"], ["failed", "behind"], ["waiting"], ["unread"]] as const) expect(showsLoader("idle", marks)).toBe(false);
   });
 });
 

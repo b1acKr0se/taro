@@ -6,6 +6,7 @@
  * The read stays the truth; a piece out of order, from another epoch, or after a step the read lacks
  * (a tool call) waits for the next read.
  */
+import type { TurnBoundary } from "../shared/pending-sends";
 import type { TimelineEntry } from "./transcript-rows";
 
 export interface StreamedPiece {
@@ -37,6 +38,44 @@ export function streamedPiece(event: unknown): StreamedPiece | null {
     collapsed: [],
   } as unknown as TimelineEntry;
   return { epoch, seq, entry };
+}
+
+/** A turn starting or ending, from a stream event (TR-201); null for every other event. */
+export function turnBoundary(event: unknown): TurnBoundary | null {
+  if (typeof event !== "object" || event === null) return null;
+  const inner: unknown = Reflect.get(event, "event");
+  const type: unknown = typeof inner === "object" && inner !== null ? Reflect.get(inner, "type") : null;
+  if (type === "turn_started") return "started";
+  if (type === "turn_completed" || type === "turn_failed" || type === "turn_canceled") return "ended";
+  return null;
+}
+
+/**
+ * The stream's last turn boundary until a read shows it (TR-201). A read begun before the boundary
+ * says the old status when it lands, so only a read begun after it clears it.
+ */
+export function turnTracker() {
+  let boundaries = 0;
+  let last: TurnBoundary | null = null;
+  return {
+    /** The stream told of a turn starting or ending. */
+    boundary(turn: TurnBoundary): void {
+      boundaries += 1;
+      last = turn;
+    },
+    /** A read begins: its token, for `readLanded`. */
+    readStarted(): number {
+      return boundaries;
+    },
+    /** A read landed: the boundary still ahead of it, or null when the read already shows the last one. */
+    readLanded(token: number): TurnBoundary | null {
+      if (token === boundaries) last = null;
+      return last;
+    },
+    current(): TurnBoundary | null {
+      return last;
+    },
+  };
 }
 
 /** The read's entries with the pieces that continue it, in order and without a gap, after them. */

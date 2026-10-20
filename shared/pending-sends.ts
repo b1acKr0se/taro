@@ -24,6 +24,28 @@ export function isWorking(status: string | null | undefined): boolean {
   return status === "running" || status === "initializing";
 }
 
+/** A turn's start or end as the stream told it, ahead of the next read of the agent (TR-201). */
+export type TurnBoundary = "started" | "ended";
+
+/**
+ * The agent's status with the stream's latest turn boundary over the last read's: the chat follows
+ * a turn starting or ending as the daemon says so, as Paseo does, not after its next read (TR-201).
+ */
+export function statusWithTurn(status: string, turn: TurnBoundary | null): string {
+  if (turn === "started") return "running";
+  if (turn === "ended" && isWorking(status)) return "idle";
+  return status;
+}
+
+/**
+ * Whether the chat shows the loader: while the agent works, and from the moment a message leaves for
+ * an idle agent until the daemon has it, as Paseo shows a message being submitted (TR-201). A message
+ * held behind a failed one, or failed, is not on its way.
+ */
+export function showsLoader(status: string, marks: readonly SendMark[]): boolean {
+  return isWorking(status) || marks.includes("sending");
+}
+
 /** How long a stopped agent has to start on a message before the chat says it did not read it. */
 export const STOPPED_GRACE_MS = 15_000;
 
