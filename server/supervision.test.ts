@@ -10,7 +10,7 @@ import { appendTicketNote, endDelivery, viewTicket } from "./tickets";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
-import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, humanMessages, identityFromLabels, Supervisor, tabMessages } from "./supervision";
+import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, humanMessages, identityFromLabels, Supervisor, tabMessages, turnIdentity } from "./supervision";
 
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
@@ -100,6 +100,23 @@ describe("currentTurn", () => {
   it("is the whole timeline without a user message, and empty for an empty one", () => {
     expect(currentTurn(items(claudeAuto, reply))).toEqual([claudeAuto, reply]);
     expect(currentTurn([])).toEqual([]);
+  });
+});
+
+describe("a turn opened by a message another agent sent", () => {
+  const received = (text: string) => ({ type: "tool_call", agentMessage: { text, sender: { title: "taro · Manager" } } });
+  const plan = (text: string) => ({ type: "assistant_message", text });
+
+  it("starts at the received message and has an identity", () => {
+    expect(currentTurn(items(userTurn, reply, received("start"), reply))).toEqual([received("start"), reply]);
+    expect(turnIdentity(items(received("start"), plan("plan")))).not.toBeNull();
+  });
+
+  it("tells a re-ask in a later turn from the first ask (TR-221)", () => {
+    const first = turnIdentity(currentTurn(items(received("start"), plan("approve the plan"))));
+    const second = turnIdentity(currentTurn(items(received("start"), plan("approve the plan"), { type: "user_message", text: "changes please" }, plan("approve the plan"))));
+    expect(first).not.toBeNull();
+    expect(second).not.toBe(first);
   });
 });
 
