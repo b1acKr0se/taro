@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { AUTO_RELAUNCH_WINDOW_MS, ownerRelaunchedText, ownerRelaunchFailedText, ticketsWithClosedOwner } from "./closed-owner";
+import { AUTO_RELAUNCH_WINDOW_MS, RECENTLY_CLOSED_MS, ownerRelaunchedText, ownerRelaunchFailedText, ticketsWithClosedOwner } from "./closed-owner";
 import { TARO_LABELS } from "./project";
 
 const NOW = Date.parse("2026-01-05T12:00:00Z");
 const ticket = (id: string, status: string, notes: string | null = null, parentTaskId: string | null = null) => ({ id, status, parentTaskId, notes });
-const owner = (id: string, status: string) => ({ status, labels: { [TARO_LABELS.role]: "owner", [TARO_LABELS.ticket]: id } });
+const owner = (id: string, status: string, updatedAt = "2026-01-05T11:00:00Z") => ({ status, updatedAt, labels: { [TARO_LABELS.role]: "owner", [TARO_LABELS.ticket]: id } });
 
 describe("ticketsWithClosedOwner", () => {
   it("picks worked tickets whose only owner is closed, in order", () => {
@@ -39,5 +39,13 @@ describe("ticketsWithClosedOwner", () => {
     expect(ticketsWithClosedOwner([ticket("TR-1", "In Progress", mixed)], owners, NOW)).toEqual([]);
     const old = [record("2026-01-05T09:00:00Z"), record(new Date(NOW - AUTO_RELAUNCH_WINDOW_MS + 60_000).toISOString())].join("\n\n");
     expect(ticketsWithClosedOwner([ticket("TR-1", "In Progress", old)], owners, NOW)).toEqual(["TR-1"]);
+  });
+
+  it("leaves an owner closed more than six hours ago, and uses the newest of several", async () => {
+    const tickets = [ticket("TR-1", "In Progress")];
+    const long = new Date(NOW - RECENTLY_CLOSED_MS - 60_000).toISOString();
+    expect(ticketsWithClosedOwner(tickets, [owner("TR-1", "closed", long)], NOW)).toEqual([]);
+    expect(ticketsWithClosedOwner(tickets, [owner("TR-1", "closed", long), owner("TR-1", "closed", "2026-01-05T11:59:00Z")], NOW)).toEqual(["TR-1"]);
+    expect(ticketsWithClosedOwner(tickets, [owner("TR-1", "closed", "not a time")], NOW)).toEqual([]);
   });
 });

@@ -28,8 +28,8 @@ vi.mock("./headroom", () => ({ readHeadroom: async () => null }));
 vi.mock("./tickets", () => ({ listTickets: vi.fn(), viewTicket: vi.fn(), appendTicketNote: vi.fn(async () => undefined) }));
 
 const ticket = (id: string, status: string) => ({ id, title: id, status, labels: [], parentTaskId: null, updatedAt: null, dependencies: [] });
-const agent = (id: string, ticketId: string, status: string) =>
-  ({ id, status, updatedAt: "2026-01-05T11:00:00Z", workspaceId: `ws-${id}`, labels: { "taro.project": "demo", "taro.role": "owner", "taro.ticket": ticketId } }) as unknown as PaseoAgent;
+const agent = (id: string, ticketId: string, status: string, updatedAt = new Date().toISOString()) =>
+  ({ id, status, updatedAt, workspaceId: `ws-${id}`, labels: { "taro.project": "demo", "taro.role": "owner", "taro.ticket": ticketId } }) as unknown as PaseoAgent;
 const paseo = {} as unknown as PaseoApi;
 
 let live: PaseoAgent[];
@@ -99,5 +99,12 @@ describe("closed owners are replaced", () => {
     expect(relaunched).toEqual(["DM-2"]);
     const written = vi.mocked(appendTicketNote).mock.calls.map((call) => `${call[1]} ${call[2]}`);
     expect(written.some((line) => /^DM-1 OWNER-RELAUNCH-FAILED .*provider not ready/.test(line))).toBe(true);
+  });
+
+  it("leaves an owner that closed a day ago", async () => {
+    live = [agent("a", "DM-1", "closed", new Date(Date.now() - 24 * 60 * 60_000).toISOString())];
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "In Progress")] as never);
+    await actions.checkQueues(paseo);
+    expect(relaunched).toEqual([]);
   });
 });

@@ -17,6 +17,9 @@ const WORKED_STATUSES: ReadonlySet<string> = new Set(["Planning", "In Progress",
 export const MAX_AUTO_RELAUNCHES = 2;
 export const AUTO_RELAUNCH_WINDOW_MS = 60 * 60_000;
 
+/** An owner closed longer ago than this was likely closed on purpose, so it is left to the user. */
+export const RECENTLY_CLOSED_MS = 6 * 60 * 60_000;
+
 export interface ClosedOwnerTicket {
   id: string;
   status: string;
@@ -26,6 +29,8 @@ export interface ClosedOwnerTicket {
 
 export interface ClosedOwnerAgent {
   status: string;
+  /** When Paseo last touched the agent; for a closed one, about when it closed. */
+  updatedAt: string;
   labels: Readonly<Record<string, string>>;
 }
 
@@ -46,6 +51,8 @@ export function ticketsWithClosedOwner(tickets: readonly ClosedOwnerTicket[], ow
       if (pausedHold(ticket.notes) !== null || queuedToResume(ticket.notes)) return false;
       const mine = ownersOf(ticket.id);
       if (mine.length === 0 || mine.some((owner) => owner.status !== "closed")) return false;
+      const closedAt = Math.max(...mine.map((owner) => Date.parse(owner.updatedAt)));
+      if (!(now - closedAt < RECENTLY_CLOSED_MS)) return false;
       return recentAutoRelaunches(ticket.notes, now) < MAX_AUTO_RELAUNCHES;
     })
     .map((ticket) => ticket.id);
