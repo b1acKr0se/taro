@@ -13,5 +13,5 @@
     "allowImportingTsExtensions": true,
     "types": ["node"]
   },
-  "include": ["index.server.ts", "index.client.tsx", "client/**/*", "server/**/*", "shared/**/*"]
+  "include": ["index.server.ts", "index.client.tsx", "client/**/*", "server/**/*", "shared/**/*", "bench/**/*"]
 }
