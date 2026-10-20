@@ -37,3 +37,13 @@ export function modelName(
   const listed = models.find((option) => option.id === `${agent.provider}/${agent.model}`);
   return listed === undefined || listed.modelLabel === "" ? agent.model : listed.modelLabel;
 }
+
+/** What the composer's label reads: the model's name and its effort worded as Paseo words it (null when none is known). */
+export function controlLabels(
+  models: readonly { id: string; modelLabel: string; defaultThinking: string }[],
+  agent: { provider: string; model: string | null; thinking: string | null },
+): { name: string; effort: string | null } {
+  const chosen = effortOf(models, agent);
+  const effort = chosen === null ? null : thinkingLabel(chosen);
+  return { name: modelName(models, agent) ?? agent.provider, effort: effort === "" ? null : effort };
+}
