@@ -6,10 +6,11 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PanResponder, Platform, ScrollView, View, type LayoutChangeEvent } from "react-native";
 
 import { dropIndex, moveProject, type TabSlot } from "../shared/project-order";
+import { createTabDrag, edgeStep, type TabDrag } from "../shared/tab-drag";
 import { AVATAR_LETTER_COLOR, avatarColor, avatarLetter, avatarRadius } from "../shared/project-avatar";
 import { CentredLabel } from "./centred-label";
 import { CountBadge } from "./count-badge";
@@ -23,9 +24,6 @@ import { IconButton } from "./ui";
 const AVATAR_SIZE = 18;
 /** How long a press is held before the tab lifts for dragging. */
 const LIFT_DELAY_MS = 300;
-/** A lifted tab within this many px of the row's edge scrolls the row, per move. */
-const EDGE_PX = 40;
-const EDGE_STEP_PX = 14;
 /** On the web a drag across the tabs would select their names instead. */
 const NO_SELECT = Platform.OS === "web" ? ({ userSelect: "none" } as object) : null;
 
@@ -126,8 +124,10 @@ export function ProjectTabs({
   const scrollRef = useRef<ScrollView>(null);
   const scrollX = useRef(0);
   const viewWidth = useRef(0);
+  const drag = useRef<TabDrag | null>(null);
+  if (drag.current === null) drag.current = createTabDrag();
   // What the responder callbacks read: they are made once, so they look the latest values up here.
-  const live = useRef({ lifted: null as string | null, names, onReorder, startScroll: 0 });
+  const live = useRef({ names, onReorder });
   live.current.names = names;
   live.current.onReorder = onReorder;
 
@@ -136,44 +136,61 @@ export function ProjectTabs({
   }
 
   function lift(name: string): void {
-    live.current.lifted = name;
-    live.current.startScroll = scrollX.current;
+    drag.current?.lift(name, scrollX.current);
     setShift(0);
     setLifted(name);
   }
 
+  /** The finger lifted off a held tab that never moved: put it back, once the responder has had its chance to take a drag. */
+  function releaseHold(): void {
+    setTimeout(() => {
+      if (drag.current?.cancelHold() === true) {
+        setShift(0);
+        setLifted(null);
+      }
+    }, 60);
+  }
+
   function drop(): void {
-    const name = live.current.lifted;
-    live.current.lifted = null;
+    const done = drag.current?.finish() ?? null;
     setLifted(null);
-    if (name === null) return;
-    const index = dropIndex(slotList(), name, shiftNow.current);
-    const order = moveProject(live.current.names, name, index);
-    shiftNow.current = 0;
     setShift(0);
+    if (done === null) return;
+    const order = moveProject(live.current.names, done.name, dropIndex(slotList(), done.name, done.shift));
     if (order.join("\n") !== live.current.names.join("\n")) live.current.onReorder(order);
   }
 
-  const shiftNow = useRef(0);
-  const responder = useRef(
-    PanResponder.create({
+  /** Where the lifted tab's centre is within the visible row, for edge scrolling. */
+  function centreInView(): number | null {
+    const name = drag.current?.lifted() ?? null;
+    const slot = name === null ? undefined : slots.current[name];
+    return slot === undefined ? null : slot.x + slot.width / 2 + (drag.current?.shift() ?? 0) - scrollX.current;
+  }
+
+  // While a tab is held near the row's edge the row scrolls, even when the finger stands still.
+  useEffect(() => {
+    if (lifted === null) return undefined;
+    const timer = setInterval(() => {
+      const centre = centreInView();
+      const step = centre === null ? 0 : edgeStep(centre, viewWidth.current);
+      if (step === 0 || drag.current?.moved() !== true) return;
+      scrollX.current = Math.max(0, scrollX.current + step);
+      scrollRef.current?.scrollTo({ x: scrollX.current, animated: false });
+      setShift(drag.current?.scrolled(scrollX.current) ?? 0);
+    }, 16);
+    return () => clearInterval(timer);
+  }, [lifted]);
+
+  const responder = useRef<ReturnType<typeof PanResponder.create> | null>(null);
+  if (responder.current === null) {
+    responder.current = PanResponder.create({
       // Only a lifted tab takes the drag, so a plain swipe still scrolls the row.
-      onMoveShouldSetPanResponderCapture: () => live.current.lifted !== null,
-      onPanResponderMove: (_event, gesture) => {
-        const name = live.current.lifted;
-        const slot = name === null ? undefined : slots.current[name];
-        if (slot === undefined) return;
-        const total = gesture.dx + (scrollX.current - live.current.startScroll);
-        shiftNow.current = total;
-        setShift(total);
-        const centreInView = slot.x + slot.width / 2 + total - scrollX.current;
-        if (centreInView < EDGE_PX) scrollRef.current?.scrollTo({ x: Math.max(0, scrollX.current - EDGE_STEP_PX), animated: false });
-        else if (centreInView > viewWidth.current - EDGE_PX) scrollRef.current?.scrollTo({ x: scrollX.current + EDGE_STEP_PX, animated: false });
-      },
+      onMoveShouldSetPanResponderCapture: () => drag.current?.lifted() !== null,
+      onPanResponderMove: (_event, gesture) => setShift(drag.current?.move(gesture.dx, scrollX.current) ?? 0),
       onPanResponderRelease: drop,
       onPanResponderTerminate: drop,
-    }),
-  ).current;
+    });
+  }
 
   const target = lifted === null ? null : dropIndex(slotList(), lifted, shift);
   const others = lifted === null ? [] : slotList().filter((slot) => slot.name !== lifted);
@@ -216,7 +233,7 @@ export function ProjectTabs({
         }}
         showsHorizontalScrollIndicator={false}
       >
-        <View style={[styles.tabs, NO_SELECT]} {...responder.panHandlers}>
+        <View style={[styles.tabs, NO_SELECT]} {...responder.current.panHandlers}>
           {projects.map((project) => {
             const isActive = active === project.name;
             const isLifted = lifted === project.name;
@@ -229,6 +246,7 @@ export function ProjectTabs({
                 accessibilityHint="Press and hold, then drag, to move this project"
                 delayLongPress={LIFT_DELAY_MS}
                 onLongPress={() => lift(project.name)}
+                onPressOut={releaseHold}
                 onLayout={(event) => onTabLayout(project.name, event)}
                 onPress={() => onOpenProject(project.name)}
                 style={[styles.tab, isActive ? styles.tabActive : null, isLifted ? styles.tabLifted : null, isLifted ? { transform: [{ translateX: shift }] } : null]}

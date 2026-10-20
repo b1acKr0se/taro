@@ -49,8 +49,15 @@ describe("the project tabs", () => {
 
   it("lift on a long press and take the drag only then, so a swipe still scrolls", () => {
     expect(tabs).toContain("onLongPress={() => lift(project.name)}");
-    expect(tabs).toContain("onMoveShouldSetPanResponderCapture: () => live.current.lifted !== null");
+    expect(tabs).toContain("onMoveShouldSetPanResponderCapture: () => drag.current?.lifted() !== null");
     expect(tabs).toContain("scrollEnabled={lifted === null}");
+  });
+
+  it("put a held tab back when the finger lifts with no move, and scroll the row by a timer at its edge (the state machine is tested in shared/tab-drag.test.ts)", () => {
+    expect(tabs).toContain("onPressOut={releaseHold}");
+    expect(tabs).toContain("drag.current?.cancelHold()");
+    expect(tabs).toContain("setInterval(");
+    expect(tabs).not.toContain("const live = useRef({ lifted");
   });
 
   it("save the order a drop makes, and only when it changed", () => {
