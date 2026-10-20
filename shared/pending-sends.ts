@@ -153,6 +153,15 @@ export function turnIsOpen(working: boolean, views: readonly SendView[], sentWhi
 }
 
 /**
+ * Whether the newest reply is still being written (TR-144 holds back its unfinished status line).
+ * Not while the agent works on a message the timeline has not shown yet: the last reply is then the
+ * one before it, finished, and its status line stays (TR-210).
+ */
+export function replyIsBeingWritten(status: string, turnOpen: boolean): boolean {
+  return status === "running" && turnOpen;
+}
+
+/**
  * The message to send next: the first one sending, once everything before it has gone. Null while a
  * failed one is before it, so a message never overtakes one sent earlier.
  */
