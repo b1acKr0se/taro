@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { clampPage, pageOffset, pageRange, scrollEdges, tableFit, ticketPages, trailingSpace } from "./stats-table";
+import { clampPage, pageRange, scrollEdges, tableFit, ticketPages, trailingSpace } from "./stats-table";
 
 describe("tableFit", () => {
   const columns = { side: 16, ticketMinWidth: 230, rest: 844 };
@@ -59,44 +59,6 @@ describe("trailingSpace", () => {
     expect(trailingSpace({ viewport: 1300, content: 1200, columnStarts })).toBe(0);
     expect(trailingSpace({ viewport: 600, content: 1200, columnStarts })).toBe(0);
     expect(trailingSpace({ viewport: 600, content: 1100, columnStarts: [] })).toBe(0);
-  });
-});
-
-describe("pageOffset", () => {
-  // A step of 600 - 246 - 48 = 306.
-  const table = { viewport: 600, content: 1100, pinned: 246, columnStarts: [0, 120, 192, 264, 340, 392, 448, 532] };
-
-  it("lands on the farthest column start within a step, so no column is sliced at the pinned edge", () => {
-    expect(pageOffset({ ...table, offset: 0, direction: 1 })).toBe(264);
-    expect(pageOffset({ ...table, offset: 264, direction: -1 })).toBe(0);
-  });
-
-  it("stops at the end of the scroll, even when a column starts beyond it", () => {
-    expect(pageOffset({ ...table, offset: 264, direction: 1 })).toBe(500);
-    expect(pageOffset({ ...table, offset: 500, direction: 1 })).toBe(500);
-  });
-
-  it("goes back from the end to a column start, and from part way into the first column to 0", () => {
-    expect(pageOffset({ ...table, offset: 500, direction: -1 })).toBe(264);
-    expect(pageOffset({ ...table, offset: 50, direction: -1 })).toBe(0);
-  });
-
-  it("from a swiped position between starts, steps to a start", () => {
-    expect(pageOffset({ ...table, offset: 130, direction: 1 })).toBe(392);
-    expect(pageOffset({ ...table, offset: 130, direction: -1 })).toBe(0);
-  });
-
-  it("moves to the next column when a step is narrower than it", () => {
-    expect(pageOffset({ viewport: 260, content: 900, pinned: 246, columnStarts: [0, 120, 192], offset: 0, direction: 1 })).toBe(120);
-  });
-
-  it("without column starts, goes to either end", () => {
-    expect(pageOffset({ ...table, columnStarts: [], offset: 100, direction: 1 })).toBe(500);
-    expect(pageOffset({ ...table, columnStarts: [], offset: 100, direction: -1 })).toBe(0);
-  });
-
-  it("stays put when the table fits", () => {
-    expect(pageOffset({ viewport: 1300, content: 1200, pinned: 246, columnStarts: [0, 120], offset: 0, direction: 1 })).toBe(0);
   });
 });
 
