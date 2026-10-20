@@ -108,6 +108,7 @@ async function main(): Promise<void> {
   if (sha === "") throw new Error(`${options.plugin} is not a git checkout`);
   const throwaway = makeThrowaway(options.plugin);
   let stop: ResultFile["stop"] = "error";
+  let decider: ReturnType<typeof startDecider> | null = null;
   // One cleanup however many callers (the end of the run, an error, Ctrl-C): later callers wait for the same one.
   let cleaning: Promise<{ leftoverProcesses: string[]; removed: string[] }> | null = null;
   const finish = (): Promise<{ leftoverProcesses: string[]; removed: string[] }> => {
@@ -119,7 +120,9 @@ async function main(): Promise<void> {
   };
   const onSignal = (signal: string): void => {
     runLog(`${signal}: cleaning up`);
-    finish().then(
+    // The decider's browsers close first (bounded), then the daemon and the folders.
+    const closing = decider === null ? Promise.resolve() : Promise.race([decider.stop().catch(() => undefined), new Promise((resolveWait) => setTimeout(resolveWait, 20_000))]);
+    closing.then(() => finish()).then(
       () => process.exit(130),
       (error) => {
         runLog(`cleanup failed: ${String(error)}`);
@@ -132,7 +135,6 @@ async function main(): Promise<void> {
   process.on("SIGHUP", () => onSignal("SIGHUP"));
 
   const started = Date.now();
-  let decider: ReturnType<typeof startDecider> | null = null;
   let ticket = "";
   let tracker = "";
   try {

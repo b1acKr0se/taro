@@ -219,7 +219,7 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
   const now = (): string => new Date().toISOString();
   const url = `http://127.0.0.1:${options.throwaway.port}/`;
 
-  const { chromium } = createRequire(import.meta.url)(options.playwright) as { chromium: { launch(): Promise<Browser> } };
+  const { chromium } = createRequire(import.meta.url)(options.playwright) as { chromium: { launch(options?: object): Promise<Browser> } };
   let browser: Browser | null = null;
 
   const ticketText = (): string => {
@@ -244,7 +244,8 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
   }
 
   async function newPage(phone: boolean): Promise<{ page: Page; close: () => Promise<void> }> {
-    if (browser === null) browser = await chromium.launch();
+    // Playwright would exit the process on SIGINT before the run's own cleanup could finish.
+    if (browser === null) browser = await chromium.launch({ handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false });
     const context = await browser.newContext(
       phone
         ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, colorScheme: "light" }
