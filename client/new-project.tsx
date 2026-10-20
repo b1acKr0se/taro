@@ -32,6 +32,7 @@ import { ProjectSetup } from "./project-setup";
 import { useModels } from "./queries";
 import { ChoiceCards, Field, FormSection, TextField, TWO_COLUMN_MIN_WIDTH } from "./settings-form";
 import { SPACE } from "./spacing";
+import { TopBar } from "./top-bar";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { IconButton, MONOSPACE, Spinner } from "./ui";
 import { usePressGuards } from "./use-actions";
@@ -286,14 +287,14 @@ function ProjectPicker({
   );
 
   return (
+    <View style={{ flex: 1 }}>
+    <TopBar theme={theme} title="Add a project" backLabel="Back" onBack={onCancel} />
     <KeyboardScrollView
       keyboardShouldPersistTaps="handled"
       onLayout={(event) => setWidth(Math.min(PAGE_MAX_WIDTH, event.nativeEvent.layout.width))}
       contentContainerStyle={{ padding: SPACE.lg, paddingBottom: SPACE.xxl * 2, gap: SPACE.lg, maxWidth: PAGE_MAX_WIDTH, width: "100%", alignSelf: "center" }}
     >
       <View style={{ gap: SPACE.sm }}>
-        {onCancel === null ? null : <BackLink theme={theme} label="Back" onPress={onCancel} />}
-        <Text style={{ color: colors.foreground, fontSize: wide ? FONT_SIZE.display : FONT_SIZE.heading, fontWeight: "700" }}>Add a project</Text>
         <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) }}>
           {nothingInPaseo
             ? "Taro gives a project its own ticket tracker and a manager."
@@ -342,20 +343,7 @@ function ProjectPicker({
         </>
       )}
     </KeyboardScrollView>
-  );
-}
-
-function BackLink({ theme, label, onPress, disabled = false }: { theme: PluginTheme; label: string; onPress: () => void; disabled?: boolean }) {
-  return (
-    <Pressable
-      accessibilityRole="link"
-      disabled={disabled}
-      onPress={onPress}
-      style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs, alignSelf: "flex-start", opacity: disabled ? 0.5 : 1 }}
-    >
-      <Icon name="ChevronLeft" size={14} color={theme.colors.accent} />
-      <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.small }}>{label}</Text>
-    </Pressable>
+    </View>
   );
 }
 
@@ -480,13 +468,12 @@ function ProjectReview({
 
   return (
     <View style={{ flex: 1 }}>
+      <TopBar theme={theme} title={`Add ${candidate?.name ?? draft.project}`} backLabel="Back to all projects" disabled={busy} onBack={onBack} />
       <KeyboardScrollView
         onLayout={(event) => setWidth(Math.min(PAGE_MAX_WIDTH, event.nativeEvent.layout.width))}
         contentContainerStyle={{ padding: SPACE.lg, paddingBottom: compact ? SPACE.lg : SPACE.xxl * 2, gap: SPACE.lg, maxWidth: PAGE_MAX_WIDTH, width: "100%", alignSelf: "center" }}
       >
         <View style={{ gap: SPACE.sm }}>
-          <BackLink theme={theme} label="All projects" disabled={busy} onPress={onBack} />
-          <Text style={{ color: colors.foreground, fontSize: wide ? FONT_SIZE.display : FONT_SIZE.heading, fontWeight: "700" }}>{`Add ${candidate?.name ?? draft.project}`}</Text>
           <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) }}>
             Taro filled these in from the repository. Create it now, or change anything first.
           </Text>
@@ -619,9 +606,15 @@ export function CreationProgress({
   };
 
   return (
+    <View style={{ flex: 1 }}>
+    <TopBar
+      theme={theme}
+      title={failedAt === null ? `Setting up ${project}` : `${project} is not ready`}
+      backLabel="Back to the project's settings"
+      onBack={failedAt === "tracker" ? () => onBackToSetup(state.error ?? "") : null}
+    />
     <KeyboardScrollView contentContainerStyle={{ padding: SPACE.lg, gap: SPACE.lg, maxWidth: PAGE_MAX_WIDTH, width: "100%", alignSelf: "center" }}>
       <View style={{ gap: SPACE.sm }}>
-        <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.heading, fontWeight: "700" }}>{failedAt === null ? `Setting up ${project}` : `${project} is not ready`}</Text>
         <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) }}>
           {failedAt === null ? "Its manager opens here as soon as it has started; this takes a few seconds." : "Nothing else was changed in the repository."}
         </Text>
@@ -636,11 +629,6 @@ export function CreationProgress({
           </Text>
         )}
       </View>
-      {failedAt === "tracker" ? (
-        <View style={{ flexDirection: "row", gap: SPACE.sm, flexWrap: "wrap" }}>
-          <IconButton theme={theme} tone="accent" icon="ChevronLeft" label="Back to the project's settings" showLabel onPress={() => onBackToSetup(state.error ?? "")} />
-        </View>
-      ) : null}
       {failedAt === "manager" ? (
         <View style={{ flexDirection: "row", gap: SPACE.sm, flexWrap: "wrap" }}>
           <IconButton theme={theme} tone="accent" icon="RotateCcw" label="Start the manager again" showLabel onPress={() => void retryManager({ launch })} />
@@ -648,5 +636,6 @@ export function CreationProgress({
         </View>
       ) : null}
     </KeyboardScrollView>
+    </View>
   );
 }

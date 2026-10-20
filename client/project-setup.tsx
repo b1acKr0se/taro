@@ -42,6 +42,7 @@ import { PrerequisiteList, usePrerequisites } from "./prerequisite-list";
 import { ChoiceCards, Dropdown, Field, FixedValue, FormSection, ModelChooser, TextField, TWO_COLUMN_MIN_WIDTH } from "./settings-form";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
+import { TopBar } from "./top-bar";
 import { IconButton } from "./ui";
 import { useRefreshProjects } from "./queries";
 import { useActions } from "./use-actions";
@@ -234,23 +235,7 @@ export function ProjectSetup({
   return (
     <View style={{ flex: 1 }}>
       {/* Outside the scroll view, so it stays put while the form scrolls. */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: SPACE.sm,
-          paddingHorizontal: SPACE.lg,
-          paddingVertical: SPACE.sm,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-          backgroundColor: colors.surface0,
-        }}
-      >
-        {onCancel === null ? null : <IconButton theme={theme} icon="ArrowLeft" label={bar.backLabel} disabled={busy} onPress={onCancel} />}
-        <Text numberOfLines={1} style={{ flex: 1, color: colors.foreground, fontSize: FONT_SIZE.heading, fontWeight: "700" }}>
-          {bar.title}
-        </Text>
-      </View>
+      <TopBar theme={theme} title={bar.title} backLabel={bar.backLabel} onBack={onCancel} disabled={busy} />
       <KeyboardScrollView
         onLayout={(event) => setWidth(Math.min(PAGE_MAX_WIDTH, event.nativeEvent.layout.width))}
         contentContainerStyle={{ padding: SPACE.lg, paddingBottom: SPACE.xxl * 2, gap: SPACE.lg, maxWidth: PAGE_MAX_WIDTH, width: "100%", alignSelf: "center" }}
