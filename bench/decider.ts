@@ -227,11 +227,31 @@ export function answerEvents(decision: OpenDecision, replies: readonly DeciderRe
   });
 }
 
-/** A card whose answer failed on screen and over RPC: its key leaves `handled` so the next pass asks again, and the failure is logged. */
-export function releaseFailedKey(handled: Set<string>, key: string, error: unknown, at: string): Extract<DeciderEvent, { type: "violation" }> {
-  handled.delete(key);
-  const reason = error instanceof Error ? error.message : String(error);
-  return { type: "violation", at, kind: "card-unanswered", detail: `${key} could not be answered on screen or over RPC: ${reason.split("\n")[0]}` };
+/** How many times one card is tried before the decider gives up on it. */
+export const MAX_CARD_ATTEMPTS = 3;
+
+/**
+ * A card whose answer failed on screen and over RPC: its key leaves `handled` so the next pass asks again, up to
+ * `MAX_CARD_ATTEMPTS` per key; the last failure keeps the key handled and says so. Returns the violation to log.
+ */
+export function releaseFailedKey(handled: Set<string>, attempts: Map<string, number>, key: string, error: unknown, at: string): Extract<DeciderEvent, { type: "violation" }> {
+  const attempt = (attempts.get(key) ?? 0) + 1;
+  attempts.set(key, attempt);
+  const givingUp = attempt >= MAX_CARD_ATTEMPTS;
+  if (!givingUp) handled.delete(key);
+  const reason = (error instanceof Error ? error.message : String(error)).split("\n")[0];
+  return { type: "violation", at, kind: "card-unanswered", detail: `${key} could not be answered on screen or over RPC (attempt ${attempt} of ${MAX_CARD_ATTEMPTS}${givingUp ? ", giving up" : ""}): ${reason}` };
+}
+
+/** Only an unreadable reply from the decider's model ends the decider (and the run); any other failed pass is logged and tried again. */
+export function isFatalDeciderError(error: unknown): boolean {
+  return /no readable reply/.test(error instanceof Error ? error.message : String(error));
+}
+
+/** Deletes a decider agent (it holds the spec in its prompt) and logs a non-zero exit: `run` never rejects, so a failure shows only in its code. */
+export async function deleteDeciderAgent(runner: (command: string, args: readonly string[], options: { timeoutMs: number }) => Promise<{ code: number | null; stderr: string }>, daemonArgs: readonly string[], agentId: string, log: (line: string) => void): Promise<void> {
+  const deleted = await runner("paseo", ["delete", agentId, ...daemonArgs], { timeoutMs: 60_000 });
+  if (deleted.code !== 0) log(`decider: paseo delete ${agentId} exited ${deleted.code}: ${deleted.stderr.trim()}`);
 }
 
 /** Labels the card shows as options: the agent's own "Other" and "Change…" stand for typing and are hidden. */
@@ -303,6 +323,7 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
   let failure: string | null = null;
   const history: string[] = [];
   const handled = new Set<string>();
+  const attempts = new Map<string, number>();
   const changeRequests: Record<string, number> = {};
   let counter = 0;
   const logPath = join(options.out, "decider.log");
@@ -334,7 +355,7 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
       const logs = await run("paseo", ["logs", agentId, ...paseoArgs(options.throwaway)], { timeoutMs: 60_000 });
       const reply = read(`\n${logs.stdout}`, nonce);
       // The agent holds the spec in its prompt: it must not outlive its answer on the daemon the owner shares.
-      await run("paseo", ["delete", agentId, ...paseoArgs(options.throwaway)], { timeoutMs: 60_000 }).catch(() => undefined);
+      await deleteDeciderAgent(run, paseoArgs(options.throwaway), agentId, options.log);
       if (reply !== null) return reply;
     }
     throw new Error(`the decider gave no readable reply for ${id}`);
@@ -610,7 +631,7 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
     try {
       await answer();
     } catch (error) {
-      record(releaseFailedKey(handled, key, error, now()));
+      record(releaseFailedKey(handled, attempts, key, error, now()));
       throw error;
     }
   }
@@ -666,12 +687,14 @@ export function startDecider(options: DeciderOptions): { stop: () => Promise<voi
       try {
         await pass();
       } catch (error) {
-        failure = error instanceof Error ? error.message : String(error);
-        options.log(`decider error: ${failure}`);
-        // One bad pass does not end the run; a failure that repeats does.
+        const message = error instanceof Error ? error.message : String(error);
+        options.log(`decider error: ${message}`);
+        // Only a fatal error is exposed to the run's poll; any other bad pass is retried (a card at most MAX_CARD_ATTEMPTS times).
+        if (isFatalDeciderError(error)) {
+          failure = message;
+          return;
+        }
         await sleep(POLL_MS * 2);
-        if (failure !== null && /no readable reply/.test(failure)) return;
-        failure = null;
       }
       await sleep(POLL_MS);
     }

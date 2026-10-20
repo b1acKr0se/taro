@@ -64,6 +64,7 @@ function column(result: ResultFile | undefined): string[] {
     `${usd(result.costUsd)}${note}`,
     usd(ownerCost),
     usd(result.costUsd - ownerCost),
+    owner === undefined ? "—" : tokens(owner.peakContextTokens),
     result.ownerPeakContextTokens === undefined || result.ownerPeakContextTokens === null ? "—" : tokens(result.ownerPeakContextTokens),
     modelsOf(result),
     capsOf(result),
@@ -79,6 +80,7 @@ const ROWS = [
   "Cost, total",
   "Cost, owner",
   "Cost, subagents",
+  "Owner context at end",
   "Owner peak context",
   "Models",
   "Caps",
@@ -108,7 +110,8 @@ export function renderReport(results: readonly ResultFile[]): string {
     out.push("");
     // Arms that ran on different models or caps are not a like-for-like comparison.
     const ran = arms.flatMap((key) => results.filter((result) => result.task === task && armKey(result) === key).slice(0, 1));
-    const differing = [["models", modelsOf], ["caps", capsOf]].filter(([, read]) => new Set(ran.map(read as typeof modelsOf)).size > 1).map(([name]) => name);
+    // Unknown caps (a result from before they were recorded) are left out of the comparison.
+    const differing = [["models", ran.map(modelsOf)], ["caps", ran.filter((result) => result.caps !== undefined).map(capsOf)]].filter(([, values]) => new Set(values).size > 1).map(([name]) => name);
     if (differing.length > 0) out.push(`> Warning: ${task}: the arms differ in ${differing.join(", ")}`, "");
   });
   return out.join("\n");

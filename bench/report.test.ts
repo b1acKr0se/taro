@@ -57,6 +57,22 @@ describe("renderReport", () => {
     expect(text).not.toContain("Warning");
   });
 
+  it("keeps the owner's context at the end beside the peak, so an old result still shows one", () => {
+    const old = result({ arm: { checkout: "/repo/old", sha: "ccccccc3333" } });
+    delete old.ownerPeakContextTokens;
+    delete old.caps;
+    const text = renderReport([old, result({ ownerPeakContextTokens: 210_000, caps: { maxMinutes: 90, maxUsd: 25 } })]);
+    expect(text).toContain("| Owner context at end | 150k | 150k |");
+    expect(text).toContain("| Owner peak context | — | 210k |");
+    expect(text).toContain("| Caps | unknown | 90 min, $25.00 |");
+  });
+
+  it("treats unknown caps as unknown, never as a difference", () => {
+    const old = result({ arm: { checkout: "/repo/old", sha: "ccccccc3333" } });
+    const text = renderReport([old, result({ caps: { maxMinutes: 90, maxUsd: 25 } })]);
+    expect(text).not.toContain("Warning");
+  });
+
   it("treats two copies of the same commit as one arm", () => {
     const text = renderReport([result(), result({ task: "bug-fix", arm: { checkout: "/tmp/another-copy", sha: "aaaaaaa1111" } })]);
     expect(text).toContain("| | A · aaaaaaa |");

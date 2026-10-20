@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { answerEvents, awaitsAcceptance, choosesAction, DECIDER_RULES, deciderPrompt, parseReplies, parseReply, permissionVerdict, releaseFailedKey, severalAnswerInput, severalCard, staleWaiting, WAITING_NOTICE_MS, type OpenDecision } from "./decider.ts";
+import { answerEvents, awaitsAcceptance, choosesAction, DECIDER_RULES, deciderPrompt, parseReplies, parseReply, permissionVerdict, deleteDeciderAgent, isFatalDeciderError, releaseFailedKey, severalAnswerInput, severalCard, staleWaiting, WAITING_NOTICE_MS, type OpenDecision } from "./decider.ts";
 
 describe("parseReply", () => {
   const log = (body: string) => `\nsome thinking\nREPLY abc123\n${body}\n`;
@@ -218,11 +218,58 @@ describe("answerEvents", () => {
 });
 
 describe("releaseFailedKey", () => {
+  const at = "2026-10-20T12:00:00Z";
   it("drops the key so the card is asked again, and returns a violation to log", () => {
     const handled = new Set(["agent:export-format@t1", "other"]);
-    const event = releaseFailedKey(handled, "agent:export-format@t1", new Error("rpc failed: boom\nmore"), "2026-10-20T12:00:00Z");
+    const event = releaseFailedKey(handled, new Map(), "agent:export-format@t1", new Error("rpc failed: boom\nmore"), at);
     expect(handled.has("agent:export-format@t1")).toBe(false);
     expect(handled.has("other")).toBe(true);
-    expect(event).toEqual({ type: "violation", at: "2026-10-20T12:00:00Z", kind: "card-unanswered", detail: "agent:export-format@t1 could not be answered on screen or over RPC: rpc failed: boom" });
+    expect(event).toEqual({ type: "violation", at, kind: "card-unanswered", detail: "agent:export-format@t1 could not be answered on screen or over RPC (attempt 1 of 3): rpc failed: boom" });
+  });
+
+  it("gives up on a card after 3 attempts: the key stays handled and the last violation says so, once", () => {
+    const handled = new Set(["k"]);
+    const attempts = new Map<string, number>();
+    const events = [1, 2, 3].map(() => {
+      handled.add("k");
+      return releaseFailedKey(handled, attempts, "k", new Error("boom"), at);
+    });
+    expect(events.map((event) => event.detail.includes("giving up"))).toEqual([false, false, true]);
+    expect(handled.has("k")).toBe(true);
+  });
+
+  it("counts each key on its own", () => {
+    const handled = new Set(["a", "b"]);
+    const attempts = new Map<string, number>();
+    [1, 2].forEach(() => releaseFailedKey(handled, attempts, "a", new Error("x"), at));
+    releaseFailedKey(handled, attempts, "b", new Error("x"), at);
+    expect(handled.has("b")).toBe(false);
+  });
+});
+
+describe("isFatalDeciderError", () => {
+  it("only an unreadable reply ends the decider; any other pass failure is logged and retried", () => {
+    expect(isFatalDeciderError(new Error("the decider gave no readable reply for scope-approval"))).toBe(true);
+    expect(isFatalDeciderError(new Error("rpc taro.decision.answer failed: boom"))).toBe(false);
+    expect(isFatalDeciderError("locator timed out")).toBe(false);
+  });
+});
+
+describe("deleteDeciderAgent", () => {
+  it("runs paseo delete on the daemon home and logs a non-zero exit", async () => {
+    const calls: string[][] = [];
+    const lines: string[] = [];
+    const runner = async (command: string, args: readonly string[]) => {
+      calls.push([command, ...args]);
+      return { code: 1, stderr: "agent busy\n" };
+    };
+    await deleteDeciderAgent(runner, ["--home", "/tmp/taro-bench-home.x"], "agent-1", (line) => lines.push(line));
+    expect(calls).toEqual([["paseo", "delete", "agent-1", "--home", "/tmp/taro-bench-home.x"]]);
+    expect(lines).toEqual(["decider: paseo delete agent-1 exited 1: agent busy"]);
+  });
+  it("is silent when the delete succeeds", async () => {
+    const lines: string[] = [];
+    await deleteDeciderAgent(async () => ({ code: 0, stderr: "" }), [], "agent-1", (line) => lines.push(line));
+    expect(lines).toEqual([]);
   });
 });
