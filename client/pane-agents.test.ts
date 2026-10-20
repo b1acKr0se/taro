@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { AgentBrief, Card } from "../shared/contracts";
 import type { SubagentRole } from "../shared/project";
-import { askedElsewhere, defaultPaneAgent, openingPaneAgent, paneAgentDetail, paneOpening, paneAgentState, paneAgents, roleIcon, taskOfTitle, waitingOn } from "./pane-agents";
+import { askedElsewhere, defaultPaneAgent, openingPaneAgent, paneAgentDetail, paneOpening, paneAgentState, paneStatus, paneAgents, roleIcon, taskOfTitle, waitingOn } from "./pane-agents";
 
 function brief(id: string, title: string | null = null): AgentBrief {
   return {
@@ -236,5 +236,22 @@ describe("paneOpening", () => {
     const opened = paneOpening(null, "NA-1#1", "researcher-1");
     expect(paneOpening(opened, "NA-1#1", null)).toBe(opened);
     expect(paneOpening(opened, "NA-1#1", "reviewer-1")).toBe(opened);
+  });
+});
+
+describe("paneStatus (TR-201)", () => {
+  const shown = { id: "agent-a", live: true, brief: { status: "running" } };
+
+  it("is what the shown agent's chat follows, ahead of the board's older read", () => {
+    expect(paneStatus(shown, { agentId: "agent-a", status: "idle" })).toBe("idle");
+  });
+
+  it("is the board's for an agent whose chat has not said, or said for another agent", () => {
+    expect(paneStatus(shown, null)).toBe("running");
+    expect(paneStatus(shown, { agentId: "agent-b", status: "idle" })).toBe("running");
+  });
+
+  it("is archived for an agent no longer live, whatever its chat last said", () => {
+    expect(paneStatus({ ...shown, live: false }, { agentId: "agent-a", status: "running" })).toBe("archived");
   });
 });

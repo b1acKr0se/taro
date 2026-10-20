@@ -31,7 +31,7 @@ export interface DirectCancelOptions {
   answerTimeoutMs?: number;
 }
 
-/** The daemon's refusal, from its answer: the CLI would hear the same, so it is not tried. */
+/** The daemon's refusal, from its answer, or no answer to a cancel it has: the CLI would fare no better, so it is not tried. */
 export class DaemonCancelError extends Error {}
 
 /** The direct route could not be used or did not answer; the reason is for the log. */
@@ -133,7 +133,8 @@ export async function cancelOverSocket(agentId: string, options: DirectCancelOpt
       if (!sent && message.type === "status" && Reflect.get(payload, "status") === "server_info") {
         sent = true;
         clearTimeout(timer);
-        timer = setTimeout(() => finish(new DirectCancelUnavailable("the daemon did not answer the stop in time")), options.answerTimeoutMs ?? ANSWER_TIMEOUT_MS);
+        // The daemon has the cancel: the CLI would only send it again and wait as long once more.
+        timer = setTimeout(() => finish(new DaemonCancelError("The daemon did not confirm the stop in time.")), options.answerTimeoutMs ?? ANSWER_TIMEOUT_MS);
         socket.send(JSON.stringify({ type: "session", message: { type: "cancel_agent_request", agentId, requestId } }));
         return;
       }

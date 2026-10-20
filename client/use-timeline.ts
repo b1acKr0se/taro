@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { keptMap } from "./kept";
 import { addOlderPage, joinTail, withOlder, type OlderPages } from "./older-pages";
 import type { TurnBoundary } from "../shared/pending-sends";
-import { drawnWithPieces, MAX_PIECES, streamedPiece, turnBoundary, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
+import { drawnWithPieces, MAX_PIECES, streamedPiece, turnBoundary, turnTracker, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
 import { CACHED_AGENTS, cacheable, createTimelineCache } from "./timeline-cache";
 import type { TimelinePage, TimelineEntry } from "./transcript-rows";
 
@@ -114,8 +114,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     let older: OlderPages<TimelineEntry> | null = null;
     let tailHasOlder = cache.get(id)?.hasOlder ?? false;
     let olderInFlight = false;
-    /** Turn boundaries the stream told of, counted, so a read begun before the last one does not clear it. */
-    let boundaries = 0;
+    const turns = turnTracker();
     // Another agent in the same mount: its cached read, or a blank pane rather than the last agent's words.
     const cached = cache.get(id);
     setEntries(cached?.entries ?? []);
@@ -150,12 +149,11 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
         return;
       }
       inFlight = true;
-      const boundariesBefore = boundaries;
+      const readToken = turns.readStarted();
       try {
         const page = await timeline.refetch({ direction: "tail", limit, projection: "projected" });
         if (!alive) return;
-        // The read began after the stream's last boundary, so its agent already says it.
-        if (boundaries === boundariesBefore) setTurn(null);
+        setTurn(turns.readLanded(readToken));
         if (cacheable(page)) cache.set(id, { entries: page.entries, agent: page.agent ?? cache.get(id)?.agent ?? null, hasOlder: page.hasOlder });
         older = joinTail(older, read, page);
         read = page.entries;
@@ -220,8 +218,8 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
       const boundary = turnBoundary(event);
       if (boundary !== null) {
         // Drawn at once, and read at once rather than after a pause: a busy turn start held it up to the ceiling.
-        boundaries += 1;
-        setTurn(boundary);
+        turns.boundary(boundary);
+        setTurn(turns.current());
         refresh();
         return;
       }

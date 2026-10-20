@@ -128,11 +128,22 @@ describe("cancelOverSocket", () => {
     await expect(cancelOverSocket(AGENT, { home, open: failing.open })).rejects.toBeInstanceOf(DirectCancelUnavailable);
   });
 
-  it("is unavailable when the daemon never answers the cancel", async () => {
+  it("gives up without the CLI when the daemon has the cancel but does not answer it: a second cancel would only wait as long again", async () => {
     const daemon = fakeDaemon((sent, socket) => {
       if (sent.type === "hello") socket.reply(SERVER_INFO);
     });
-    await expect(cancelOverSocket(AGENT, { home, open: daemon.open, answerTimeoutMs: 20 })).rejects.toThrow("did not answer the stop in time");
+    const stopping = cancelOverSocket(AGENT, { home, open: daemon.open, answerTimeoutMs: 20 });
+    await expect(stopping).rejects.toBeInstanceOf(DaemonCancelError);
+    await expect(stopping).rejects.toThrow("The daemon did not confirm the stop in time.");
+    expect(daemon.sockets[0]?.closed).toBe(true);
+  });
+
+  it("is unavailable when the socket closes after the cancel went but before its answer, so the CLI tries", async () => {
+    const daemon = fakeDaemon((sent, socket) => {
+      if (sent.type === "hello") socket.reply(SERVER_INFO);
+      else socket.onclose?.();
+    });
+    await expect(cancelOverSocket(AGENT, { home, open: daemon.open })).rejects.toBeInstanceOf(DirectCancelUnavailable);
   });
 
   it("ignores what is not a session message", async () => {

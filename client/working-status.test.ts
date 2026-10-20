@@ -40,7 +40,7 @@ describe("the chat's status (TR-201)", () => {
     expect(chat).toMatch(/useEffect\(\(\) => \{\s*onStatus\?\.\(status\);\s*\}, \[status\]\);/);
     const pane = read("owner-pane.tsx");
     expect(pane).toMatch(/onStatus=\{\(status\) => setChatStatus\(\{ agentId: shown\.id, status \}\)\}/);
-    expect(pane).toMatch(/shown\.live \? \(chatStatus\?\.agentId === shown\.id \? chatStatus\.status : shown\.brief\.status\) : "archived"/);
+    expect(pane).toMatch(/subtitle=\{shown === null \? undefined : `\$\{shown\.label\} · \$\{paneStatus\(shown, chatStatus\)\}`\}/);
   });
 
   it("shows the loader while a message is on its way, and the turn's time only while a turn runs", () => {

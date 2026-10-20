@@ -50,6 +50,34 @@ export function turnBoundary(event: unknown): TurnBoundary | null {
   return null;
 }
 
+/**
+ * The stream's last turn boundary until a read shows it (TR-201). A read begun before the boundary
+ * says the old status when it lands, so only a read begun after it clears it.
+ */
+export function turnTracker() {
+  let boundaries = 0;
+  let last: TurnBoundary | null = null;
+  return {
+    /** The stream told of a turn starting or ending. */
+    boundary(turn: TurnBoundary): void {
+      boundaries += 1;
+      last = turn;
+    },
+    /** A read begins: its token, for `readLanded`. */
+    readStarted(): number {
+      return boundaries;
+    },
+    /** A read landed: the boundary still ahead of it, or null when the read already shows the last one. */
+    readLanded(token: number): TurnBoundary | null {
+      if (token === boundaries) last = null;
+      return last;
+    },
+    current(): TurnBoundary | null {
+      return last;
+    },
+  };
+}
+
 /** The read's entries with the pieces that continue it, in order and without a gap, after them. */
 export function withStreamed(entries: readonly TimelineEntry[], epoch: string | null, pieces: readonly StreamedPiece[]): readonly TimelineEntry[] {
   const last = entries[entries.length - 1];

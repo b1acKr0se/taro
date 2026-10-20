@@ -26,7 +26,7 @@ import { AcceptanceCard, AcceptNow } from "./acceptance-card";
 import { acceptanceReady, offersAcceptance } from "./card-calls";
 import { rowButtonStyle } from "./control-colors";
 import { Pressable } from "./focus";
-import { askedElsewhere, openingPaneAgent, paneAgents, paneAgentJob, paneOpening, roleIcon, type PaneOpening } from "./pane-agents";
+import { askedElsewhere, openingPaneAgent, paneAgents, paneAgentJob, paneOpening, paneStatus, roleIcon, type PaneOpening } from "./pane-agents";
 import { KeyboardScrollView } from "./keyboard";
 import { PaneHeader } from "./pane-header";
 import { useTicketRecords } from "./plan-card";
@@ -155,7 +155,7 @@ export function OwnerPane({
       <PaneHeader
         theme={theme}
         title={`${card.id} · ${card.title}`}
-        subtitle={shown === null ? undefined : `${shown.label} · ${shown.live ? (chatStatus?.agentId === shown.id ? chatStatus.status : shown.brief.status) : "archived"}`}
+        subtitle={shown === null ? undefined : `${shown.label} · ${paneStatus(shown, chatStatus)}`}
         icon={shown === null ? "Bot" : roleIcon(shown)}
         compact={compact}
         // An arrow alone on a phone, the size of Open beside it, so the title keeps the row (TR-077); its target is still read out.
