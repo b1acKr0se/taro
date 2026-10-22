@@ -4,8 +4,8 @@ import { Icon } from "@getpaseo/plugin/client/react-native";
 import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 
-import { paneGutter, SPACE } from "./spacing";
-import { FONT_SIZE } from "./type-scale";
+import { PANE_HEADER_HEIGHT, paneGutter, SPACE } from "./spacing";
+import { FONT_SIZE, lineHeightFor } from "./type-scale";
 
 export function PaneHeader({
   theme,
@@ -35,18 +35,18 @@ export function PaneHeader({
         alignItems: "center",
         gap: SPACE.sm,
         paddingHorizontal: paneGutter(compact),
-        paddingVertical: compact ? SPACE.xs + SPACE.xxs : SPACE.md,
+        ...(compact ? { paddingVertical: SPACE.xs + SPACE.xxs } : { height: PANE_HEADER_HEIGHT }),
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.border,
       }}
     >
       {leading ?? (compact ? null : <Icon name={icon} size={16} color={theme.colors.foregroundMuted} />)}
       <View style={{ flex: 1, minWidth: 0, gap: compact ? 0 : SPACE.xxs }}>
-        <Text style={{ color: theme.colors.foreground, fontSize: compact ? FONT_SIZE.body : FONT_SIZE.subtitle, fontWeight: "600" }} numberOfLines={1}>
+        <Text style={{ color: theme.colors.foreground, fontSize: compact ? FONT_SIZE.body : FONT_SIZE.subtitle, ...(compact ? {} : { lineHeight: lineHeightFor(FONT_SIZE.subtitle) }), fontWeight: "600" }} numberOfLines={1}>
           {title}
         </Text>
         {subtitle === undefined ? null : (
-          <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.caption }} numberOfLines={1}>
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.caption, lineHeight: lineHeightFor(FONT_SIZE.caption) }} numberOfLines={1}>
             {subtitle}
           </Text>
         )}

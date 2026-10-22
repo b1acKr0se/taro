@@ -45,7 +45,7 @@ import { ReplaceFirstDialog } from "./replace-first-dialog";
 import { ScreenLayerHost } from "./screen-layer";
 import { ProjectTabs } from "./project-tabs";
 import { PROJECTS_KEY, useProjects, useRefreshProjects } from "./queries";
-import { paneGutter, SPACE } from "./spacing";
+import { PANE_HEADER_HEIGHT, paneGutter, SPACE } from "./spacing";
 import { StatsView } from "./stats-view";
 import { CrashCard } from "./crash-card";
 import { drafts } from "./draft";
@@ -589,7 +589,7 @@ function ProjectView({
     <View style={{ flex: 1, flexDirection: "row" }}>
       <View style={{ width: "40%", minWidth: 340, borderRightWidth: 1, borderRightColor: theme.colors.border, backgroundColor: theme.colors.surface0 }}>{left}</View>
       <View style={{ flex: 1, backgroundColor: theme.colors.surface0 }}>
-        <View style={{ paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: theme.colors.border }}>
+        <View style={{ height: PANE_HEADER_HEIGHT, paddingHorizontal: SPACE.lg, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: theme.colors.border }}>
           <Segmented
             theme={theme}
             value={rightPane}
