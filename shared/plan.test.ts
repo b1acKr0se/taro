@@ -78,7 +78,7 @@ describe("parsePlan", () => {
 
   it("counts bullets and lines past each limit", () => {
     const bullets = (count: number) => Array.from({ length: count }, (_, index) => `- item ${index + 1}`).join("\n");
-    const plan = parsePlan(`## Goal\nLine one\nLine two\n## Choices I made\n${bullets(6)}\n## What you'll see\n${bullets(5)}\n## Out of scope\n${bullets(4)}\n## How I'll prove it\n${bullets(9)}\n## Size\nS`);
+    const plan = parsePlan(`## Goal\nLine one\nLine two\n## Choices I made\n${bullets(6)}\n## What you'll see\n${bullets(9)}\n## Out of scope\n${bullets(4)}\n## How I'll prove it\n${bullets(9)}\n## Size\nS`);
     expect(plan?.over).toEqual({ goal: 1, choices: 2, see: 0, outOfScope: 1, proof: 5, size: 0 });
     expect(plan?.sections[1]?.items).toHaveLength(6);
     expect(plan?.goal).toBe("Line one Line two");

@@ -7,11 +7,11 @@
 
 export type PlanSectionKey = "goal" | "choices" | "see" | "outOfScope" | "proof" | "size";
 
-/** The template's sections in order, each with its limit: lines for Goal and Size, bullets for the rest. */
-export const PLAN_SECTIONS: readonly { key: PlanSectionKey; heading: string; limit: number }[] = [
+/** The template's sections in order, each with its limit (null for none): lines for Goal and Size, bullets for the rest. */
+export const PLAN_SECTIONS: readonly { key: PlanSectionKey; heading: string; limit: number | null }[] = [
   { key: "goal", heading: "Goal", limit: 1 },
   { key: "choices", heading: "Choices I made", limit: 4 },
-  { key: "see", heading: "What you'll see", limit: 5 },
+  { key: "see", heading: "What you'll see", limit: null },
   { key: "outOfScope", heading: "Out of scope", limit: 3 },
   { key: "proof", heading: "How I'll prove it", limit: 4 },
   { key: "size", heading: "Size", limit: 1 },

@@ -1,4 +1,4 @@
-<!-- The plan of every ticket, trivial included (a trivial one is one line per section and asks no approval), written with `taro ticket edit <ID> --plan`. Keep the six sections, in this order, with these headings; stay within each limit (cut, never exceed). The approval card shows Goal, Choices I made and Size; View plan shows the rest. -->
+<!-- The plan of every ticket, trivial included (a trivial one is one line per section and asks no approval), written with `taro ticket edit <ID> --plan`. Keep the six sections, in this order, with these headings; stay within each limit (cut, never exceed; What you'll see has none). The approval card shows Goal, Choices I made and Size; View plan shows the rest. -->
 ## Goal
 <the user outcome, one line>
 
@@ -8,7 +8,7 @@
 
 ## What you'll see
 - <a user-visible change>
-<at most 5 bullets>
+<one bullet per change the user will see; no limit>
 
 ## Out of scope
 - <what this does not do>
