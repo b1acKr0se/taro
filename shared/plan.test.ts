@@ -76,11 +76,11 @@ describe("parsePlan", () => {
     expect(parsePlan("#### Goal\nG")).toBeNull();
   });
 
-  it("counts bullets and lines past each limit", () => {
+  it("counts only Goal and Size lines past their limit, never bullets", () => {
     const bullets = (count: number) => Array.from({ length: count }, (_, index) => `- item ${index + 1}`).join("\n");
-    const plan = parsePlan(`## Goal\nLine one\nLine two\n## Choices I made\n${bullets(6)}\n## What you'll see\n${bullets(9)}\n## Out of scope\n${bullets(4)}\n## How I'll prove it\n${bullets(9)}\n## Size\nS`);
-    expect(plan?.over).toEqual({ goal: 1, choices: 2, see: 0, outOfScope: 1, proof: 5, size: 0 });
-    expect(plan?.sections[1]?.items).toHaveLength(6);
+    const plan = parsePlan(`## Goal\nLine one\nLine two\n## Choices I made\n${bullets(9)}\n## What you'll see\n${bullets(9)}\n## Out of scope\n${bullets(9)}\n## How I'll prove it\n${bullets(9)}\n## Size\nS`);
+    expect(plan?.over).toEqual({ goal: 1, choices: 0, see: 0, outOfScope: 0, proof: 0, size: 0 });
+    expect(plan?.sections[1]?.items).toHaveLength(9);
     expect(plan?.goal).toBe("Line one Line two");
   });
 

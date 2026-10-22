@@ -28,9 +28,9 @@ the flow.
    complexity-<level>`), sized to the level. **Every level writes a plan, trivial included**: no
    code is committed while the ticket has none (the plugin flags it with a NO-PLAN record and stops
    you, TR-206). The plan follows `templates/plan.md`: its six sections
-   in order, each within its limit. Cut rather than exceed a limit, here and in every record and
-   template (FINAL, MILESTONE, HANDOFF); detail beyond it goes in the children's definitions of
-   done. Its "How I'll prove it" holds the criteria, so new tickets get no
+   in order; Goal and Size are one line, the other sections have no bullet limit and say what
+   belongs in them. FINAL, MILESTONE and HANDOFF keep their limits: cut rather than exceed them, and
+   detail beyond goes in the children's definitions of done. Its "How I'll prove it" holds the criteria, so new tickets get no
    `--acceptance-criteria`.
 
    | Level | When | Proposal | Build | Review |
