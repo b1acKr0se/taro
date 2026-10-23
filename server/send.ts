@@ -11,13 +11,14 @@
 import { randomUUID } from "node:crypto";
 
 import { CHAT_MESSAGE_PREFIX, COMPACTING_REFUSAL, isCompacting, type SendTimelineEntry } from "../shared/pending-sends";
+import { PLUGIN_MESSAGE_PREFIX } from "../shared/received-message";
 import type { PaseoApi, TimelineItem } from "./host-types";
 
 type SendOptions = NonNullable<Parameters<ReturnType<PaseoApi["agents"]["ref"]>["send"]>[1]>;
 
 export type SendExtras = Pick<SendOptions, "images" | "attachments" | "messageId">;
 
-export const PLUGIN_MESSAGE_PREFIX = "taro-";
+export { PLUGIN_MESSAGE_PREFIX };
 
 export function isPluginMessageId(messageId: string | undefined): boolean {
   return messageId !== undefined && messageId.startsWith(PLUGIN_MESSAGE_PREFIX);

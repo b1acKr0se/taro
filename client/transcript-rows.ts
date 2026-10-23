@@ -13,7 +13,7 @@
 import type { usePaseo } from "@getpaseo/plugin/client";
 
 import { stripInterruptNote } from "../shared/chat-queue";
-import { receivedMessage } from "../shared/received-message";
+import { pluginMessage, receivedMessage } from "../shared/received-message";
 import { heldWhileWriting } from "../shared/streaming-text";
 
 import { imageLineOf } from "./markdown-parse";
@@ -173,7 +173,8 @@ export function transcriptRows(entries: readonly TimelineEntry[], cwd?: string |
   entries.forEach((entry) => {
     const key = rowKey(entry);
     const item = entry.item;
-    const received = receivedMessage(item);
+    // A watch note the plugin sent still folds into an event line, so only a plain plugin message becomes a received row.
+    const received = receivedMessage(item) ?? (item.type === "user_message" && injectedSummary(item.text, item.clientMessageId) !== null ? null : pluginMessage(item));
     if (item.type === "user_message" || received !== null) {
       endTurn();
       turnStartedAt = entry.timestamp;
