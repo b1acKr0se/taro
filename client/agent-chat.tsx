@@ -61,7 +61,7 @@ import { SHIMMER_LIGHT } from "./shimmer";
 import { useLatestCallback } from "./latest-callback";
 import { BREAK_LONG_WORDS } from "./long-word-wrap";
 import { senderPillColours } from "./sender-pill";
-import { needsFold, RECEIVED_FOLD_LINES } from "./received-fold";
+import { foldHeight, needsFold } from "./received-fold";
 import { bubbleImageRoom, USER_BUBBLE_SHARE } from "./thumbnail-size";
 import { sameGroup, sameItems } from "./transcript-memo";
 import type { SentImage } from "./sent-images";
@@ -879,7 +879,7 @@ function UserMessage({
 }
 
 /** A message another agent sent: the user's bubble with the sender's name as a pill inside it, folded when long (TR-220). */
-function ReceivedMessage({ sender, text, open, onToggle, styles }: { sender: string; text: string; open: boolean; onToggle: () => void; styles: ChatStyles }) {
+function ReceivedMessage({ sender, text, open, onToggle, theme, onOpenLink, styles }: { sender: string; text: string; open: boolean; onToggle: () => void; theme: PluginTheme; onOpenLink: (url: string) => void; styles: ChatStyles }) {
   const folds = needsFold(text);
   return (
     <View style={styles.userRow}>
@@ -890,9 +890,9 @@ function ReceivedMessage({ sender, text, open, onToggle, styles }: { sender: str
               {sender}
             </Text>
           </View>
-          <Text selectable style={[styles.userText, BREAK_LONG_WORDS]} numberOfLines={folds && !open ? RECEIVED_FOLD_LINES : undefined}>
-            {text}
-          </Text>
+          <View style={folds && !open ? { maxHeight: foldHeight(lineHeightFor(FONT_SIZE.body)), overflow: "hidden" } : undefined}>
+            <Markdown source={text} theme={theme} onOpenLink={onOpenLink} />
+          </View>
           {folds ? (
             <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={onToggle} style={styles.foldButton}>
               <Text style={styles.foldText}>{open ? "Show less" : "Show more"}</Text>
@@ -1062,7 +1062,7 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, pastA
       );
     }
     case "received":
-      return <ReceivedMessage key={row.key} sender={row.sender} text={row.text} open={open} onToggle={() => onToggle(row.key)} styles={styles} />;
+      return <ReceivedMessage key={row.key} sender={row.sender} text={row.text} open={open} onToggle={() => onToggle(row.key)} theme={theme} onOpenLink={onOpenLink} styles={styles} />;
     case "error":
       return (
         <Text key={row.key} style={styles.error}>

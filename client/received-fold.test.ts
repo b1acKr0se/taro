@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { needsFold, RECEIVED_FOLD_LINES } from "./received-fold";
+import { foldHeight, needsFold, RECEIVED_FOLD_LINES } from "./received-fold";
 
 describe("needsFold", () => {
   it("keeps an empty and a short message whole", () => {
@@ -15,5 +15,12 @@ describe("needsFold", () => {
 
   it("folds one long paragraph that wraps past the fold", () => {
     expect(needsFold("word ".repeat(200))).toBe(true);
+  });
+});
+
+describe("foldHeight", () => {
+  it("is the fold's lines at the line height", () => {
+    expect(foldHeight(20)).toBe(20 * RECEIVED_FOLD_LINES);
+    expect(foldHeight(0)).toBe(0);
   });
 });
