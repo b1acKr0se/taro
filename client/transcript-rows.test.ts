@@ -236,3 +236,26 @@ describe("transcriptRows received messages (TR-218)", () => {
     expect(rowsOf([sent(1, "nope")]).map((row) => row.kind)).toEqual(["tool"]);
   });
 });
+
+describe("transcriptRows plugin messages (TR-228)", () => {
+  const withId = (seq: number, text: string, clientMessageId?: string): TimelineEntry =>
+    ({ seqStart: seq, seqEnd: seq, timestamp: "2026-01-05T10:00:00Z", item: { type: "user_message", text, ...(clientMessageId === undefined ? {} : { clientMessageId }) } }) as unknown as TimelineEntry;
+
+  it("shows a message the plugin sent as received from Plugin", () => {
+    expect(rowsOf([withId(1, "Report from your **reviewer**\n\n- done\n", "taro-6f1c")])).toEqual([
+      { key: "1", kind: "received", sender: "Plugin", text: "Report from your **reviewer**\n\n- done", at: "2026-01-05T10:00:00Z" },
+    ]);
+  });
+
+  it("keeps the user's own words, with or without an id, as the user's bubble", () => {
+    expect(rowsOf([withId(1, "hello", "chat-abc"), withId(2, "hi")]).map((row) => row.kind)).toEqual(["user", "user"]);
+  });
+
+  it("still folds a plugin watch note into an event line", () => {
+    expect(rowsOf([withId(1, "<taro>\nAgent 3f2a finished.\n</taro>", "taro-1")]).map((row) => row.kind)).toEqual(["event"]);
+  });
+
+  it("skips an empty plugin message as a user row", () => {
+    expect(rowsOf([withId(1, "  ", "taro-2")]).map((row) => row.kind)).toEqual(["user"]);
+  });
+});

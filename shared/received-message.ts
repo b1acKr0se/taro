@@ -9,3 +9,16 @@ export function receivedMessage(item: { type: string }): { sender: string; text:
   const title: unknown = typeof sender === "object" && sender !== null ? Reflect.get(sender, "title") : undefined;
   return { sender: typeof title === "string" && title.trim() !== "" ? title.trim() : "another agent", text: text.trim() };
 }
+
+/** The message id prefix of everything the plugin itself sends to an agent (nudges, reports, reloads); the user's own ids never carry it. */
+export const PLUGIN_MESSAGE_PREFIX = "taro-";
+
+/** The sender a plugin-delivered message shows under. */
+export const PLUGIN_SENDER = "Plugin";
+
+/** A user message the plugin sent, recognised by its message id, as a received message from the plugin; null for the user's own. */
+export function pluginMessage(item: { type: string; text?: string; clientMessageId?: string }): { sender: string; text: string } | null {
+  if (item.type !== "user_message" || !item.clientMessageId?.startsWith(PLUGIN_MESSAGE_PREFIX)) return null;
+  const text = item.text?.trim() ?? "";
+  return text === "" ? null : { sender: PLUGIN_SENDER, text };
+}
