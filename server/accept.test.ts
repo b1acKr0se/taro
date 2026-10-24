@@ -135,6 +135,19 @@ describe("accept run by the plugin", () => {
     expect(vi.mocked(acceptLocalBranch).mock.calls[0]?.[0]).toMatchObject({ branches: ["taro/dm-1"] });
   });
 
+  // TR-229: a reopened round works on taro/<id>-<round>; the first round's branch is merged and may be gone.
+  it("falls back to the round's branch on a reopened ticket whose EXECUTION names none", async () => {
+    config({});
+    ticket(
+      `EXECUTION 2026-01-01T00:00Z — branch taro/dm-1, review-head: ${"a".repeat(40)}\n` +
+        'REOPENED 2026-01-02T00:00Z — user: "verify on prod"; round 2; past owners: owner-1\n' +
+        `EXECUTION 2026-01-02T01:00Z — review-head: ${head}`,
+    );
+    outcome({ kind: "done", acceptance: "ACCEPTANCE x" });
+    await accept();
+    expect(vi.mocked(acceptLocalBranch).mock.calls[0]?.[0]).toMatchObject({ branches: ["taro/dm-1-2"], head });
+  });
+
   it("uses the owner's branch when a reviewer's record comes after it, then the taro branch", async () => {
     config({});
     ticket(

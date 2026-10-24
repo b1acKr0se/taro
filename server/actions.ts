@@ -62,7 +62,7 @@ import {
 } from "../shared/queue-check";
 import { hasHeadroom, type BoardAlert } from "../shared/recovery";
 import { refusedMessage } from "../shared/refused-commands";
-import { roundBranch } from "../shared/reopen";
+import { reopenRound, roundBranch } from "../shared/reopen";
 import { specChangeRefusal } from "../shared/spec-change";
 import { carriedQuestionLines, questionsToCarry } from "../shared/state";
 import { TARO_LABELS, TICKET_STATUSES, type ProjectConfig } from "../shared/project";
@@ -309,7 +309,8 @@ export class Actions {
         outcome = url === null ? { kind: "surprise", found: "the ticket records no PR URL" } : await acceptPullRequest({ ...common, url, head, method: config.mergeMethod });
       else {
         const recorded = executionBranch(detail.implementationNotes);
-        const fallback = `taro/${ticket.toLowerCase()}`;
+        // A reopened round works on its own branch (TR-229); the first round's is merged and may be gone.
+        const fallback = roundBranch(ticket, reopenRound(detail.implementationNotes));
         outcome = await acceptLocalBranch({ ...common, head, branches: recorded === null || recorded === fallback ? [fallback] : [recorded, fallback] });
       }
     } catch (error) {
