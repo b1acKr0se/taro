@@ -5,7 +5,7 @@
  */
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
-import { useState, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 
 import { applyPick, moveSelection } from "../shared/composer-picks";
 import { listAgentCommands, listProjectFiles, listTicketsForPicks, readRecentCommands, rememberRecentCommand } from "../shared/contracts";
@@ -105,12 +105,19 @@ export function usePickList({ text, cursor: cursorStore, project, agentId, onPic
     ...shared,
   });
 
-  const view = pickListView(trigger, {
-    commands: loaded(commands, (data) => data),
-    recent: recent.data?.names ?? NO_NAMES,
-    files: loaded(files, (data) => data),
-    tickets: loaded(tickets, (data) => data.tickets),
-  });
+  // Ranked again only when the word or what was read changes, not on every arrow key or render.
+  const recentNames = recent.data?.names ?? NO_NAMES;
+  const view = useMemo(
+    () =>
+      pickListView(trigger, {
+        commands: loaded(commands, (data) => data),
+        recent: recentNames,
+        files: loaded(files, (data) => data),
+        tickets: loaded(tickets, (data) => data.tickets),
+      }),
+    // The trigger is a new object each render; its fields say whether the word changed.
+    [trigger?.kind, trigger?.start, trigger?.end, trigger?.query, trigger?.atStart, commands.data, commands.error, files.data, files.error, tickets.data, tickets.error, recentNames],
+  );
   const rows = view?.rows ?? [];
   const selected = view === null ? 0 : selectedIndex(selection, view.trigger.kind, view.trigger.query, rows.length);
 

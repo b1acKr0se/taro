@@ -215,9 +215,10 @@ function matchCommand(name: string, lowerQuery: string): CommandMatch | null {
 /**
  * The `/` list. Empty query: the recently used commands, then the rest alphabetically. Otherwise the
  * matches, best first; within a tier the shorter name, nearer to what was typed, wins (`co` puts
- * `cost` and `compact` above `code-review`).
+ * `cost` and `compact` above `code-review`). `wordStartsOnly` (a `/` mid-sentence) keeps only names that
+ * begin, or have a word beginning, with the query: there a loose match is more often a path (`/tmp`).
  */
-export function rankCommands(commands: readonly AgentCommand[], query: string, recent: readonly string[]): CommandRow[] {
+export function rankCommands(commands: readonly AgentCommand[], query: string, recent: readonly string[], wordStartsOnly: boolean = false): CommandRow[] {
   if (query === "") {
     const recentRows: CommandRow[] = [];
     recent.forEach((name) => {
@@ -234,7 +235,7 @@ export function rankCommands(commands: readonly AgentCommand[], query: string, r
   const matched: { command: AgentCommand; match: CommandMatch }[] = [];
   commands.forEach((command) => {
     const match = matchCommand(command.name, lowerQuery);
-    if (match !== null) matched.push({ command, match });
+    if (match !== null && (!wordStartsOnly || match.tier <= TIER_WORD_START)) matched.push({ command, match });
   });
   matched.sort(
     (left, right) =>
@@ -382,30 +383,108 @@ export function rankFiles(index: FileIndex, query: string, limit: number = FILE_
   if (query.endsWith("/") && prepared.folders.has(query)) return folderRows(index, query, limit);
   const tags = changedTags(index);
   const lowerQuery = query.toLowerCase();
-  const scored: { candidate: FileCandidate; score: number }[] = [];
-  const candidates = prepared.candidates;
+  const short = lowerQuery.length <= SHORT_QUERY_LENGTH;
+  const best = createBestList(limit);
+  // Typing on narrows the last query's matches: whatever matches `agch` matched `agc`.
+  const narrowing = !short && lastLooseMatches !== null && lastLooseMatches.files === index.files && lowerQuery.startsWith(lastLooseMatches.query);
+  const candidates = narrowing && lastLooseMatches !== null ? lastLooseMatches.matched : prepared.candidates;
+  const matched: FileCandidate[] = [];
   for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
     const candidate = candidates[candidateIndex];
     if (candidate === undefined) continue;
-    const match = fuzzyMatch(candidate.path, candidate.lowerPath, lowerQuery, candidate.nameStart, false);
-    if (match === null) continue;
+    const score = short ? shortMatchScore(candidate, lowerQuery) : fuzzyMatch(candidate.path, candidate.lowerPath, lowerQuery, candidate.nameStart, false)?.score;
+    if (score === undefined || score === null) continue;
+    if (!short) matched.push(candidate);
     const boost = tags.has(candidate.path) ? CHANGED_BOOST : 0;
-    scored.push({ candidate, score: match.score + boost - candidate.path.length * PENALTY_PATH_LENGTH });
+    best.offer(candidate, score + boost - candidate.path.length * PENALTY_PATH_LENGTH);
   }
-  scored.sort((left, right) => right.score - left.score || compareText(left.candidate.path, right.candidate.path));
+  if (!short) lastLooseMatches = { files: index.files, query: lowerQuery, matched };
   // Only the rows shown need their matched letters, the costlier pass.
-  const rows = scored.slice(0, limit).map((entry): FileRow => {
+  const rows = best.entries().map((entry): FileRow => {
     const candidate = entry.candidate;
-    const match = fuzzyMatch(candidate.path, candidate.lowerPath, lowerQuery, candidate.nameStart, true);
+    const hits = short ? shortMatchHits(candidate, lowerQuery) : (fuzzyMatch(candidate.path, candidate.lowerPath, lowerQuery, candidate.nameStart, true)?.hits ?? []);
     return {
       kind: candidate.folder ? "folder" : "file",
       path: candidate.path,
-      hits: match?.hits ?? [],
+      hits,
       tag: candidate.folder ? null : (tags.get(candidate.path) ?? null),
       section: null,
     };
   });
   return { rows, folder: null, fileCount: null };
+}
+
+/**
+ * One or two letters match nearly every path loosely, and scoring each placement cost a phone a quarter
+ * of a second a keystroke on a large project; so a short query matches only where a word starts, the
+ * file name's first, with the letters together.
+ */
+const SHORT_QUERY_LENGTH = 2;
+
+/** The last loose query's matching paths, for the next keystroke that adds to it. */
+let lastLooseMatches: { files: readonly string[]; query: string; matched: FileCandidate[] } | null = null;
+const SHORT_NAME_START = 300;
+const SHORT_NAME_WORD = 200;
+const SHORT_PATH_WORD = 100;
+
+function isWordStart(text: string, index: number): boolean {
+  if (index === 0) return true;
+  const previous = text.charAt(index - 1);
+  return SEPARATORS.includes(previous) || (isLower(previous) && isUpper(text.charAt(index)));
+}
+
+/** Where a short query sits at a word start, preferring the file name's start, then a word in the name, then a folder's. */
+function shortMatchStart(candidate: FileCandidate, lowerQuery: string): { at: number; score: number } | null {
+  if (candidate.lowerPath.startsWith(lowerQuery, candidate.nameStart)) return { at: candidate.nameStart, score: SHORT_NAME_START };
+  let inFolder: number | null = null;
+  for (let found = candidate.lowerPath.indexOf(lowerQuery); found !== -1; found = candidate.lowerPath.indexOf(lowerQuery, found + 1)) {
+    if (!isWordStart(candidate.path, found)) continue;
+    if (found >= candidate.nameStart) return { at: found, score: SHORT_NAME_WORD };
+    if (inFolder === null) inFolder = found;
+  }
+  return inFolder === null ? null : { at: inFolder, score: SHORT_PATH_WORD };
+}
+
+function shortMatchScore(candidate: FileCandidate, lowerQuery: string): number | null {
+  return shortMatchStart(candidate, lowerQuery)?.score ?? null;
+}
+
+function shortMatchHits(candidate: FileCandidate, lowerQuery: string): number[] {
+  const start = shortMatchStart(candidate, lowerQuery);
+  return start === null ? [] : range(start.at, lowerQuery.length);
+}
+
+interface ScoredCandidate {
+  candidate: FileCandidate;
+  score: number;
+}
+
+function ranksBefore(left: ScoredCandidate, right: ScoredCandidate): boolean {
+  if (left.score !== right.score) return left.score > right.score;
+  return compareText(left.candidate.path, right.candidate.path) < 0;
+}
+
+/** The best `limit` candidates in order, kept as they come: sorting every match cost more than matching. */
+function createBestList(limit: number) {
+  const kept: ScoredCandidate[] = [];
+  return {
+    offer(candidate: FileCandidate, score: number): void {
+      const entry = { candidate, score };
+      const last = kept[kept.length - 1];
+      if (kept.length >= limit && (last === undefined || !ranksBefore(entry, last))) return;
+      let position = kept.length;
+      while (position > 0) {
+        const before = kept[position - 1];
+        if (before === undefined || !ranksBefore(entry, before)) break;
+        position -= 1;
+      }
+      kept.splice(position, 0, entry);
+      if (kept.length > limit) kept.pop();
+    },
+    entries(): ScoredCandidate[] {
+      return kept;
+    },
+  };
 }
 
 // Tickets.
@@ -523,8 +602,10 @@ function pickText(pick: Pick): string {
       return `/${pick.name}`;
     case "file":
       return WHITESPACE.test(pick.path) ? `@"${pick.path}"` : `@${pick.path}`;
-    case "folder":
-      return pick.path.endsWith("/") ? `@${pick.path}` : `@${pick.path}/`;
+    case "folder": {
+      const folder = pick.path.endsWith("/") ? pick.path : `${pick.path}/`;
+      return WHITESPACE.test(folder) ? `@"${folder}"` : `@${folder}`;
+    }
     case "ticket":
       return pick.id;
   }
@@ -539,7 +620,8 @@ export function applyPick(text: string, trigger: ActiveTrigger, pick: Pick): { t
   const after = text.slice(trigger.end);
   const inserted = pickText(pick);
   const insertedEnd = before.length + inserted.length;
-  if (pick.kind === "folder") return { text: before + inserted + after, cursor: insertedEnd };
+  // A quoted folder ends the word, so it cannot stay open in the list: it goes in like a file.
+  if (pick.kind === "folder" && !WHITESPACE.test(pick.path)) return { text: before + inserted + after, cursor: insertedEnd };
   if (WHITESPACE.test(after.charAt(0))) return { text: before + inserted + after, cursor: insertedEnd + 1 };
   return { text: `${before}${inserted} ${after}`, cursor: insertedEnd + 1 };
 }

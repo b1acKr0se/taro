@@ -40,7 +40,7 @@ import { PastAcceptanceCard, PastPermissionCard, PastPlanCard, PastQuestionCard 
 import { planLines, type PlanAnswer, type PlanLine } from "./plan-lines";
 import { ReplyBox } from "./reply-box";
 import { PickListLayer, type PickAnchor } from "./pick-list";
-import { createCursorStore, type PickKeyEvent } from "./pick-list-state";
+import { createCursorStore, listTakesKeys, type PickKeyEvent } from "./pick-list-state";
 import { BottomSafeArea } from "./safe-area";
 import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
@@ -811,7 +811,7 @@ export function AgentChat({
                 value={draft}
                 onChangeText={setDraft}
                 onCursor={picksShown ? pickCursor.set : undefined}
-                interceptKey={picksShown ? (event) => pickKeys.current?.(event) ?? false : undefined}
+                interceptKey={picksShown && listTakesKeys(Platform.OS) ? (event) => pickKeys.current?.(event) ?? false : undefined}
                 placeCursor={placeCursor}
                 onFocus={releaseKeyboardClaim}
                 placeholder={placeholder}

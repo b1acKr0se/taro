@@ -98,6 +98,14 @@ function sourceMessage(kind: PickKind, source: Loaded<unknown>): PickMessage | n
  * What the list shows for `trigger`, or null when it is not drawn: a `/` after other words opens only
  * once something typed after it matches a command, so a slash in a sentence never pops a list up.
  */
+/**
+ * Whether the list takes the box's keys (TR-232): only on the web. A phone's Return cannot be held back,
+ * so it would both pick and type a new line; there a tap picks.
+ */
+export function listTakesKeys(platform: string): boolean {
+  return platform === "web";
+}
+
 export function pickListView(trigger: ActiveTrigger | null, sources: PickSources): PickListView | null {
   if (trigger === null) return null;
   const kind = trigger.kind;
@@ -117,7 +125,7 @@ export function pickListView(trigger: ActiveTrigger | null, sources: PickSources
         text: NO_COMMANDS_TEXT,
         detail: error === null || error.trim() === "" ? null : error,
       };
-    rows = rankCommands(commands, trigger.query, sources.recent).map((row): PickRow => ({
+    rows = rankCommands(commands, trigger.query, sources.recent, !trigger.atStart).map((row): PickRow => ({
       kind: "command",
       key: `command:${row.command.name}`,
       row,

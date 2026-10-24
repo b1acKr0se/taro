@@ -12,6 +12,7 @@ import {
   NO_COMMANDS_TEXT,
   parentFolder,
   pickKeyAction,
+  listTakesKeys,
   pickListView,
   pickOf,
   scrollToShow,
@@ -52,6 +53,21 @@ function viewFor(text: string, given: PickSources = sources(), cursor = text.len
 }
 
 describe("pickListView", () => {
+  it("mid-sentence, opens `/` only on a command's name or word start, so a path is not taken for one", () => {
+    const withSetup = sources({ commands: { status: "ready", data: { commands: [...COMMANDS, { name: "terminal-setup", description: "", argumentHint: "" }], error: null } } });
+    expect(viewFor("copy it to /tmp", withSetup)).toBeNull();
+    expect(viewFor("then /comp", withSetup)?.rows.map((row) => row.key)).toEqual(["command:compact"]);
+    expect(viewFor("then /rev", withSetup)?.rows.map((row) => row.key)).toEqual(["command:code-review"]);
+    // At the start of the message the loose match still lists it.
+    expect(viewFor("/tmp", withSetup)?.rows.map((row) => row.key)).toEqual(["command:terminal-setup"]);
+  });
+
+  it("takes the box's keys only on the web, where a key press can be held back", () => {
+    expect(listTakesKeys("web")).toBe(true);
+    expect(listTakesKeys("android")).toBe(false);
+    expect(listTakesKeys("ios")).toBe(false);
+  });
+
   it("opens no list without a trigger word at the cursor", () => {
     expect(viewFor("hello there")).toBeNull();
     expect(pickListView(null, sources())).toBeNull();

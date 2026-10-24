@@ -299,6 +299,39 @@ describe("rankFiles with a query", () => {
     console.log(`rankFiles, 20,000 paths, "agchat": median ${median.toFixed(1)} ms of ${timings.map((time) => time.toFixed(1)).join(", ")}`);
     expect(median).toBeLessThan(50);
   });
+
+  it("gives the same rows when typing on narrows the last query's matches as when ranked afresh", () => {
+    const files = ["client/agent-chat.tsx", "server/agent/chat-queue.ts", "shared/agent-trim.ts", "client/agent-chips.tsx", "docs/archive.md"];
+    const typed = fileIndex({ files });
+    ["agc", "agch", "agcha", "agchat"].forEach((query) => {
+      const narrowed = rankFiles(typed, query).rows;
+      expect(narrowed).toEqual(rankFiles(fileIndex({ files: [...files] }), query).rows);
+    });
+    // Another query, not an extension, or another file list, starts over.
+    expect(rankFiles(typed, "arch").rows.map((row) => row.path)).toEqual(["docs/archive.md"]);
+    expect(rankFiles(fileIndex({ files: ["notes/agchat.md"] }), "agchat").rows.map((row) => row.path)).toEqual(["notes/agchat.md"]);
+  });
+
+  it("ranks 20,000 paths for one- and two-letter queries in under 15 ms a keystroke, file names first", () => {
+    const paths: string[] = [];
+    for (let index = 0; index < 20000; index += 1) paths.push(`client/board/view-${index}/panel-card-${index}.ts`);
+    paths.push("server/agent.ts");
+    const index = fileIndex({ files: paths });
+    rankFiles(index, "x");
+    ["a", "ag", "p", "pa"].forEach((query) => {
+      const timings: number[] = [];
+      for (let run = 0; run < 5; run += 1) {
+        const started = performance.now();
+        rankFiles(index, query);
+        timings.push(performance.now() - started);
+      }
+      const median = [...timings].sort((left, right) => left - right)[2] ?? Infinity;
+      console.log(`rankFiles, 20,000 paths, "${query}": median ${median.toFixed(1)} ms`);
+      expect(median).toBeLessThan(15);
+    });
+    expect(rankFiles(index, "ag").rows[0]?.path).toBe("server/agent.ts");
+    expect(rankFiles(index, "pa").rows[0]?.hits).toEqual([0, 1].map((offset) => rankFiles(index, "pa").rows[0]!.path.lastIndexOf("/") + 1 + offset));
+  });
 });
 
 const tickets: TicketSummary[] = [
@@ -388,6 +421,10 @@ describe("applyPick", () => {
   it("opens a folder with the cursor straight after it and no space", () => {
     expect(picked("see @cli| now", { kind: "folder", path: "client/" })).toBe("see @client/| now");
     expect(picked("@cli|", { kind: "folder", path: "client" })).toBe("@client/|");
+  });
+
+  it("quotes a folder with a space like a file and closes, as a quote ends the word", () => {
+    expect(picked("@my|", { kind: "folder", path: "my docs/" })).toBe('@"my docs/" |');
   });
 
   it("replaces the whole word when the cursor is mid-word", () => {
