@@ -39,6 +39,8 @@ import { deliveryCards, permissionCards, questionCards, sameAcceptanceRecord, sa
 import { PastAcceptanceCard, PastPermissionCard, PastPlanCard, PastQuestionCard } from "./past-cards";
 import { planLines, type PlanAnswer, type PlanLine } from "./plan-lines";
 import { ReplyBox } from "./reply-box";
+import { PickListLayer, type PickAnchor } from "./pick-list";
+import { createCursorStore, type PickKeyEvent } from "./pick-list-state";
 import { BottomSafeArea } from "./safe-area";
 import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
@@ -94,6 +96,8 @@ type ChatComposer =
       identity?: AgentIdentity;
       /** A tooltip over the buttons' line, open while one of them is hovered or held (Replace manager's, TR-128). */
       actionsTip?: string | null;
+      /** The composer's pick lists (TR-232): `/` the agent's commands, `@` the files it works in, `#` the project's tickets. */
+      picks?: { project: string } | undefined;
       readOnly?: undefined;
     }
   | {
@@ -107,6 +111,7 @@ type ChatComposer =
       context?: { used: number | null | undefined; max: number | null | undefined };
       actionsTip?: undefined;
       identity?: undefined;
+      picks?: undefined;
     };
 
 export function AgentChat({
@@ -121,6 +126,7 @@ export function AgentChat({
   context,
   identity,
   actionsTip,
+  picks,
   readOnly,
   decorateRow,
   transformText,
@@ -438,6 +444,33 @@ export function AgentChat({
     setDraftState(text);
   }
 
+  // The pick list follows the box's cursor through a store of its own, so a cursor move redraws the list, not the chat.
+  const [pickCursor] = useState(createCursorStore);
+  const pickKeys = useRef<((event: PickKeyEvent) => boolean) | null>(null);
+  const [placeCursor, setPlaceCursor] = useState<{ text: string; at: number } | undefined>(undefined);
+  const pickBox = useRef<View>(null);
+  const paneHeight = useRef(0);
+  const [pickAnchor, setPickAnchor] = useState<PickAnchor | null>(null);
+  const picksShown = picks !== undefined && readOnly === undefined;
+  /** Where the box's top sits in the pane, for the list above it: on any move of the pane, the composer or the box. */
+  function measurePickAnchor(): void {
+    const box = pickBox.current;
+    const root = pane.current;
+    if (!picksShown || box === null || root === null) return;
+    box.measureLayout(
+      root,
+      (left, top, width) => {
+        const next = { left, width, bottom: paneHeight.current - top, room: top };
+        setPickAnchor((current) => (current !== null && current.left === left && current.width === width && current.bottom === next.bottom && current.room === top ? current : next));
+      },
+      () => undefined,
+    );
+  }
+  const pickInto = useLatestCallback((text: string, cursor: number) => {
+    setDraft(text);
+    setPlaceCursor({ text, at: cursor });
+  });
+
   function setAttachments(next: readonly DraftAttachment[]): void {
     draftAttachments.set(agent.id, next);
     setAttachmentsState(next);
@@ -593,7 +626,14 @@ export function AgentChat({
     );
 
   return (
-    <View ref={pane} style={[styles.pane, { paddingBottom: keyboard }]}>
+    <View
+      ref={pane}
+      style={[styles.pane, { paddingBottom: keyboard }]}
+      onLayout={(event) => {
+        paneHeight.current = event.nativeEvent.layout.height;
+        measurePickAnchor();
+      }}
+    >
       {readOnly === undefined && Platform.OS === "web" ? <DropBackdrop theme={theme} active={dropping} /> : null}
       {/* Re-reading behind the conversation already drawn (cached, or the last agent's read). */}
       <LoadingBar theme={theme} active={timeline.loading && groups.length > 0} />
@@ -698,7 +738,7 @@ export function AgentChat({
         </ScrollView>
         {follow.away ? <JumpToEnd theme={theme} onPress={follow.jumpToEnd} /> : null}
       </View>
-      <BottomSafeArea style={styles.composerFrame}>
+      <BottomSafeArea style={styles.composerFrame} onLayout={measurePickAnchor}>
         {readOnly !== undefined ? (
           <View style={styles.readOnlyBand}>
             <View style={styles.readOnly}>
@@ -762,35 +802,54 @@ export function AgentChat({
                 <Text style={[styles.lineText, { color: theme.colors.foreground }]}>{notice}</Text>
               </View>
             )}
-            <ReplyBox
-              theme={theme}
-              compact={compact}
-              fieldRef={field}
-              value={draft}
-              onChangeText={setDraft}
-              onFocus={releaseKeyboardClaim}
-              placeholder={placeholder}
-              enterHint
-              onSend={sendDraft}
-              canSend={!nothingToSend}
-              stop={working ? { onStop: stopAgent, busy: stoppingAgent === agent.id } : undefined}
-              sendLabel={sendLabel({ working, requestPending: pending.length > 0 })}
-              above={<AttachmentPreviews theme={theme} attachments={attachments} onRemove={(id) => setAttachments(attachments.filter((attachment) => attachment.id !== id))} />}
-              leading={
-                identity === undefined ? (
-                  attachButton
-                ) : (
-                  <View style={{ minWidth: 0, flexShrink: 1, flexDirection: "row", alignItems: "center" }}>
-                    {attachButton}
-                    <AgentControlsBar theme={theme} agent={identity} />
-                  </View>
-                )
-              }
-              trailing={context === undefined ? null : <ContextMeter theme={theme} used={context.used} max={context.max} ringSize={metrics.ringSize} />}
-            />
+            {/* Measured for the pick list, which sits right above it. */}
+            <View ref={pickBox} style={{ flexShrink: 1 }} onLayout={measurePickAnchor}>
+              <ReplyBox
+                theme={theme}
+                compact={compact}
+                fieldRef={field}
+                value={draft}
+                onChangeText={setDraft}
+                onCursor={picksShown ? pickCursor.set : undefined}
+                interceptKey={picksShown ? (event) => pickKeys.current?.(event) ?? false : undefined}
+                placeCursor={placeCursor}
+                onFocus={releaseKeyboardClaim}
+                placeholder={placeholder}
+                enterHint
+                onSend={sendDraft}
+                canSend={!nothingToSend}
+                stop={working ? { onStop: stopAgent, busy: stoppingAgent === agent.id } : undefined}
+                sendLabel={sendLabel({ working, requestPending: pending.length > 0 })}
+                above={<AttachmentPreviews theme={theme} attachments={attachments} onRemove={(id) => setAttachments(attachments.filter((attachment) => attachment.id !== id))} />}
+                leading={
+                  identity === undefined ? (
+                    attachButton
+                  ) : (
+                    <View style={{ minWidth: 0, flexShrink: 1, flexDirection: "row", alignItems: "center" }}>
+                      {attachButton}
+                      <AgentControlsBar theme={theme} agent={identity} />
+                    </View>
+                  )
+                }
+                trailing={context === undefined ? null : <ContextMeter theme={theme} used={context.used} max={context.max} ringSize={metrics.ringSize} />}
+              />
+            </View>
           </View>
         )}
       </BottomSafeArea>
+      {picksShown && picks !== undefined ? (
+        <PickListLayer
+          theme={theme}
+          compact={compact}
+          text={draft}
+          cursor={pickCursor}
+          project={picks.project}
+          agentId={agent.id}
+          anchor={pickAnchor}
+          keys={pickKeys}
+          onPick={pickInto}
+        />
+      ) : null}
     </View>
   );
 }

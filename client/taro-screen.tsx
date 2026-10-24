@@ -759,6 +759,7 @@ function ManagerPane({
         theme={theme}
         compact={compact}
         placeholder="Tell the manager what you need…"
+        picks={{ project }}
         transformText={withoutDecisionBlocks}
         asks={{ decisions, onAnswered: onChanged }}
         suggestions={<SuggestionPills project={project} suggestions={suggestions} theme={theme} onChanged={onChanged} beforeSend={replaceTip === null ? undefined : (send) => replaceFirst("suggestion", send)} />}
