@@ -81,7 +81,6 @@ export interface CloseRoundFacts {
   round: number;
 }
 
-
 /**
  * Why Close round is refused for this ticket, in the user's words; null when it may be closed: a
  * reopened top-level ticket not yet delivered, in any other status (a parked one too, as parking
