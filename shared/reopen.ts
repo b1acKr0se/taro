@@ -74,6 +74,19 @@ export function reopenedRecordText(input: { at: string; note: string; round: num
   return summary === "" ? record : `${record}\nprevious FINAL:\n${indented(summary)}`;
 }
 
+/**
+ * The final summary as this round's delivery: null in a reopened round while it is still the one
+ * Reopen kept (its copy in the REOPENED record), so the Accept card never offers the earlier
+ * round's Result as what this round delivered. The Ticket tab's Result shows it either way.
+ */
+export function roundFinalSummary(notes: string | null, finalSummary: string | null): string | null {
+  const summary = finalSummary?.trim() ?? "";
+  if (summary === "") return null;
+  if (reopenRound(notes) === 1) return finalSummary;
+  const reopened = (currentRound(notes) ?? "").split(/\n(?=[A-Z][A-Z-]{2,}\b)/)[0]?.trimEnd() ?? "";
+  return reopened.endsWith(`\nprevious FINAL:\n${indented(summary)}`) ? null : finalSummary;
+}
+
 export interface CloseRoundFacts {
   status: string;
   parent: string | null;

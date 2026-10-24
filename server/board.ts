@@ -21,7 +21,7 @@ import { pauseRefusal, pauseView, type PauseView } from "../shared/pause";
 import { holdReason, queuedTickets, recount, type Recount } from "../shared/queue-check";
 import { queuedSlot, queuedWait } from "../shared/queued-wait";
 import { offersRelaunch } from "../shared/relaunch";
-import { closeRoundRefusal, reopenRefusal, reopenRound } from "../shared/reopen";
+import { closeRoundRefusal, reopenRefusal, reopenRound, roundFinalSummary } from "../shared/reopen";
 import { offersSpecChange } from "../shared/spec-change";
 import { isSubagentRole, roleFromLabel, TARO_LABELS } from "../shared/project";
 import { boardAlerts, type BoardAlert } from "../shared/recovery";
@@ -305,7 +305,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         notMerged: ticket.status === "Awaiting acceptance" ? facts?.notMerged ?? null : null,
         // A finished ticket waits on nobody, whatever its agents still ask.
         permission: column === "done" ? null : firstAsk(askers),
-        delivered: ticket.status === "Awaiting acceptance" ? deliveredLine(facts?.finalSummary ?? null) : null,
+        delivered: ticket.status === "Awaiting acceptance" ? deliveredLine(roundFinalSummary(facts?.notes ?? null, facts?.finalSummary ?? null)) : null,
         pause: pausing.pause,
         pausable: pausing.pausable,
         queuedWait: waits,

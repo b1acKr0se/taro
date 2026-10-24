@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { noteRecords } from "./execution";
-import { closeRoundRefusal, currentRound, reopenedRecordText, reopenRefusal, reopenRound, roundBranch, roundClosedRecordText, roundNotes } from "./reopen";
+import { closeRoundRefusal, currentRound, reopenedRecordText, reopenRefusal, reopenRound, roundBranch, roundClosedRecordText, roundFinalSummary, roundNotes } from "./reopen";
 
 const ROUND_ONE = "EXECUTION 2026-10-01T10:00Z — owner aaaaaaaa-1111-4111-8111-111111111111, branch taro/tr-9\n\nACCEPTANCE 2026-10-02T10:00Z — merge: merged 0a1b2c3";
 const reopened = (round: number, note = "verify it on prod") => `REOPENED 2026-10-0${round + 2}T10:00Z — user: "${note}"; round ${round}; past owners: none`;
@@ -106,5 +106,33 @@ describe("the ROUND-CLOSED record", () => {
   });
   it("leaves out a branch no owner started", () => {
     expect(roundClosedRecordText({ at: "2026-10-24T03:00Z", round: 3, branch: null })).toBe("ROUND-CLOSED 2026-10-24T03:00Z — round 3 closed by the user; nothing from this round was merged");
+  });
+});
+
+describe("roundFinalSummary", () => {
+  const kept = "FINAL 2026-10-02T10:00Z — shipped the export\nPR: https://github.com/acme/notes-app/pull/12";
+  const reopenedWith = (summary: string | null) =>
+    `${ROUND_ONE}\n\n${reopenedRecordText({ at: "2026-10-03T10:00Z", note: "verify it on prod", round: 2, pastOwners: [], finalSummary: summary })}`;
+  it("keeps round 1's final summary as its delivery", () => {
+    expect(roundFinalSummary(ROUND_ONE, kept)).toBe(kept);
+  });
+  it("is null for no final summary or an empty one", () => {
+    expect(roundFinalSummary(ROUND_ONE, null)).toBeNull();
+    expect(roundFinalSummary(reopenedWith(null), " \n ")).toBeNull();
+  });
+  it("is null in a reopened round while the final summary is still the one Reopen kept, delivered or not", () => {
+    expect(roundFinalSummary(reopenedWith(kept), kept)).toBeNull();
+    expect(roundFinalSummary(`${reopenedWith(kept)}\n\nEVIDENCE 2026-10-04T10:00Z — check: prod export works`, `${kept}\n`)).toBeNull();
+  });
+  it("is the round's own FINAL once the owner wrote one", () => {
+    const own = "FINAL 2026-10-04T10:00Z — verified the export on prod";
+    expect(roundFinalSummary(`${reopenedWith(kept)}\n\nEVIDENCE 2026-10-04T10:00Z — check: x`, own)).toBe(own);
+    expect(roundFinalSummary(reopenedWith(null), own)).toBe(own);
+  });
+  it("reads the latest REOPENED record: round 3 keeping round 2's FINAL hides it, not round 1's", () => {
+    const roundTwo = "FINAL 2026-10-05T10:00Z — verified on staging";
+    const notes = `${reopenedWith(kept)}\n\n${reopenedRecordText({ at: "2026-10-06T10:00Z", note: "now prod", round: 3, pastOwners: [], finalSummary: roundTwo })}`;
+    expect(roundFinalSummary(notes, roundTwo)).toBeNull();
+    expect(roundFinalSummary(notes, kept)).toBe(kept);
   });
 });
