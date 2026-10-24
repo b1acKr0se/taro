@@ -61,6 +61,7 @@ import {
   type Recount,
 } from "../shared/queue-check";
 import { hasHeadroom, type BoardAlert } from "../shared/recovery";
+import { refusedMessage } from "../shared/refused-commands";
 import { specChangeRefusal } from "../shared/spec-change";
 import { carriedQuestionLines, questionsToCarry } from "../shared/state";
 import { TARO_LABELS, TICKET_STATUSES, type ProjectConfig } from "../shared/project";
@@ -190,6 +191,8 @@ export class Actions {
   async tellAgent(paseo: PaseoApi, agentId: string, text: string, attachments: Attachments = {}, answersRequest = false): Promise<{ queued: boolean }> {
     const words = text.trim();
     if (words === "" && !hasAttachments(attachments)) throw new Error("Say something first.");
+    const refusal = refusedMessage(words);
+    if (refusal !== null) throw new Error(refusal);
     const agent = await fetchLiveAgent(paseo, agentId);
     if (agent === null) throw new Error("That agent is no longer running.");
     if (this.queue !== null) return this.queue.tell(paseo, agent, words, attachments, answersRequest);

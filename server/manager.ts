@@ -7,6 +7,7 @@ import { writeFile } from "node:fs/promises";
 
 import { carriedSlot } from "../shared/chat-queue";
 import { TARO_LABELS, type ProjectConfig } from "../shared/project";
+import { refusedMessage } from "../shared/refused-commands";
 import { fetchLiveAgent, isMidTurn } from "./agents";
 import { runPaseoJson } from "./cli";
 import type { PaseoAgent, PaseoApi } from "./host-types";
@@ -206,6 +207,8 @@ export async function tellManager(
 ): Promise<{ agentId: string; queued: boolean }> {
   const words = text.trim();
   if (words === "" && !hasAttachments(attachments)) throw new Error("Say something to the manager.");
+  const refusal = refusedMessage(words);
+  if (refusal !== null) throw new Error(refusal);
   const agent = await requireManager(paseo, project);
   if (chat !== null) return { agentId: agent.id, ...(await chat.queue.tell(paseo, agent, words, attachments, chat.answersRequest)) };
   await sendWithAttachments(paseo, agent.id, words, { ...attachments, agentMidTurn: isMidTurn(agent) });

@@ -38,6 +38,11 @@ import {
   listPaseoProjects as listPaseoProjectsRpc,
   listProjects,
   listSentImages,
+  listAgentCommands,
+  listProjectFiles,
+  listTicketsForPicks,
+  readRecentCommands,
+  rememberRecentCommand as rememberRecentCommandRpc,
   onboardProject as onboardProjectRpc,
   pollNotifications,
   readImageRpc,
@@ -88,6 +93,7 @@ import { allowedMergeMethods } from "./server/merge-methods";
 import { checkPrerequisites } from "./server/prerequisites";
 import { listProjectConfigs, projectPaths, readProjectConfig, requireProjectConfig, taroHome, updateProjectConfig } from "./server/projects";
 import { sentImagesOf } from "./server/sent-images";
+import { agentCommands, projectFiles, recentCommands, rememberRecentCommand, ticketsForPicks } from "./server/composer-picks";
 import { agentBrief, listModelOptions } from "./server/summaries";
 import { TrackerWatch } from "./server/tracker-watch";
 import { stopCommands } from "./server/process";
@@ -429,6 +435,11 @@ export default function contribute(server: PluginServerContext) {
 
   server.handle(readImageRpc, async ({ path }) => ({ image: await readImage(path) }));
   server.handle(listSentImages, async ({ agentId }, { paseo }) => ({ messages: await sentImagesOf(paseo, agentId) }));
+  server.handle(listAgentCommands, async ({ agentId }, { paseo }) => agentCommands(paseo, agentId));
+  server.handle(listProjectFiles, async ({ project, agentId }, { paseo }) => projectFiles(paseo, project, agentId));
+  server.handle(listTicketsForPicks, async ({ project }) => ({ tickets: await ticketsForPicks(project) }));
+  server.handle(readRecentCommands, async ({ project }) => ({ names: await recentCommands(project) }));
+  server.handle(rememberRecentCommandRpc, async ({ project, name }) => ({ names: await rememberRecentCommand(project, name) }));
 
   server.handle(loadStats, async ({ project }) => ({
     tickets: (await stats.all(project)).map((ticket) => summarize(ticket)),

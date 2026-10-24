@@ -544,3 +544,44 @@ export const loadLastCrash = defineRpc({
   output: z.object({ crash: CrashReportSchema.nullable() }),
 });
 export const dismissCrash = defineRpc({ name: "taro.crash.dismiss", input: z.object({ launch: LaunchIdSchema }), output: Empty });
+
+// The chat composer's pick lists (TR-232), in the shapes `shared/composer-picks.ts` ranks.
+
+export const AgentCommandSchema = z.object({ name: z.string(), description: z.string(), argumentHint: z.string(), kind: z.string().optional() });
+
+/** The agent's slash commands from its provider; `error` when the provider could not list them. */
+export const listAgentCommands = defineRpc({
+  name: "taro.composer.commands",
+  input: z.object({ agentId: z.string() }),
+  output: z.object({ commands: z.array(AgentCommandSchema), error: z.string().nullable() }),
+});
+
+/** The files of the agent's own working directory, with what the branch changed and what recent commits touched. */
+export const listProjectFiles = defineRpc({
+  name: "taro.composer.files",
+  input: z.object({ project: ProjectNameSchema, agentId: z.string() }),
+  output: z.object({
+    files: z.array(z.string()).readonly(),
+    changed: z.array(z.object({ path: z.string(), status: z.enum(["new", "changed"]) })).readonly(),
+    recent: z.array(z.string()).readonly(),
+    truncated: z.boolean(),
+  }),
+});
+
+export const listTicketsForPicks = defineRpc({
+  name: "taro.composer.tickets",
+  input: z.object({ project: ProjectNameSchema }),
+  output: z.object({ tickets: z.array(z.object({ id: z.string(), title: z.string(), status: z.string() })) }),
+});
+
+/** The commands the user picked lately in the project, latest first; `remember` puts one first. */
+export const readRecentCommands = defineRpc({
+  name: "taro.composer.recent",
+  input: z.object({ project: ProjectNameSchema }),
+  output: z.object({ names: z.array(z.string()) }),
+});
+export const rememberRecentCommand = defineRpc({
+  name: "taro.composer.remember",
+  input: z.object({ project: ProjectNameSchema, name: z.string().min(1) }),
+  output: z.object({ names: z.array(z.string()) }),
+});

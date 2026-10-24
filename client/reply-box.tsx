@@ -5,9 +5,9 @@
  * the box alone, with their buttons under it, so every place the user types a reply looks alike.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
-import { Icon } from "@getpaseo/plugin/client/react-native";
+import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
-import { Platform, useWindowDimensions, View, type TextInput as NativeTextInput } from "react-native";
+import { Platform, useWindowDimensions, View, type NativeSyntheticEvent, type TextInput as NativeTextInput, type TextInputSelectionChangeEventData } from "react-native";
 
 import { COMPOSER_CONTROL_SIZE, COMPOSER_FONT_SIZE, COMPOSER_WEB_LINE_HEIGHT, composerMaxHeight, composerMetrics, sendsOnEnter } from "./composer-height";
 import { useComposerHeight } from "./composer-input-height";
@@ -15,6 +15,7 @@ import { Pressable, TextInput } from "./focus";
 import { primaryAction } from "./composer-notice";
 import { enterKeyAction, isStopKey, type WebKeyPressEvent } from "./keys";
 import { createNativeFieldSync } from "./native-field-sync";
+import { sendUnlessRefused } from "../shared/refused-commands";
 import { SPACE } from "./spacing";
 import { Spinner } from "./ui";
 
@@ -57,6 +58,15 @@ export interface ReplyBoxProps {
   leading?: ReactNode | undefined;
   /** Beside the send button, at its left (the chat's context ring). */
   trailing?: ReactNode | undefined;
+  /** Hears where the cursor is after each move or edit, null while text is selected (the chat's pick list, TR-232). */
+  onCursor?: ((cursor: number | null) => void) | undefined;
+  /** Sees each key on the web before the box's Enter and Escape; true takes the key, which then does nothing else. */
+  interceptKey?: ((event: WebKeyPressEvent["nativeEvent"]) => boolean) | undefined;
+  /**
+   * Once the box holds `text`, set from outside, the cursor goes to `at` and the box takes the focus: a pick
+   * from the pick list. A new object each time; on the phone the field it remounts with takes it once.
+   */
+  placeCursor?: { text: string; at: number } | undefined;
 }
 
 export function ReplyBox({
@@ -82,6 +92,9 @@ export function ReplyBox({
   above = null,
   leading = null,
   trailing = null,
+  onCursor,
+  interceptKey,
+  placeCursor,
 }: ReplyBoxProps) {
   const ownField = useRef<NativeTextInput>(null);
   const field = fieldRef ?? ownField;
@@ -92,7 +105,15 @@ export function ReplyBox({
     field.current?.focus();
   }, [greyed, field]);
   const web = Platform.OS === "web";
-  const nativeText = useNativeText(!web, value, onChangeText, field);
+  const nativeText = useNativeText(!web, value, onChangeText, field, placeCursor);
+  const placedOnWeb = useRef<object | null>(null);
+  useLayoutEffect(() => {
+    if (!web || placeCursor === undefined || placedOnWeb.current === placeCursor || value !== placeCursor.text) return;
+    placedOnWeb.current = placeCursor;
+    // A press on the list took the focus; the DOM's textarea already holds the new text here.
+    field.current?.focus();
+    (field.current as unknown as { setSelectionRange?: (start: number, end: number) => void } | null)?.setSelectionRange?.(placeCursor.at, placeCursor.at);
+  }, [web, placeCursor, value, field]);
   const windowSize = useWindowDimensions();
   const metrics = composerMetrics(web, windowSize.width);
   const height = useComposerHeight({ text: value, field, minHeight: metrics.minHeight, maxHeight: composerMaxHeight(windowSize.height) });
@@ -105,6 +126,11 @@ export function ReplyBox({
   const stopKey = web && stop !== undefined && editable && !greyed;
   const { colors } = theme;
   const hasControls = onSend !== undefined || leading !== null || trailing !== null;
+  const toast = useToast();
+  // A `/clear` is refused here, before the caller clears the box or shows a row (TR-232): the text stays, nothing flickers.
+  function send(): void {
+    sendUnlessRefused(value, () => onSend?.(), (reason) => toast.error(reason));
+  }
   const styles = useMemo(
     () => ({
       // Paseo's composer box (TR-039); its border stays plain while typing, as Paseo's does.
@@ -179,9 +205,21 @@ export function ReplyBox({
         autoFocus={nativeText.revision === 0 ? autoFocus : nativeText.refocus}
         multiline
         scrollEnabled={height.scrollEnabled}
+        onSelectionChange={
+          onCursor === undefined
+            ? undefined
+            : (event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
+                const { start, end } = event.nativeEvent.selection;
+                onCursor(start === end ? end : null);
+              }
+        }
         onKeyPress={
-          submitOnEnter || stopKey
+          submitOnEnter || stopKey || interceptKey !== undefined
             ? (event: WebKeyPressEvent) => {
+                if (interceptKey?.(event.nativeEvent) === true) {
+                  event.preventDefault();
+                  return;
+                }
                 if (stopKey && isStopKey(event.nativeEvent)) {
                   if (!stop.busy) stop.onStop();
                   return;
@@ -190,7 +228,7 @@ export function ReplyBox({
                 const action = enterKeyAction(event.nativeEvent, sendable);
                 if (action === null) return;
                 event.preventDefault();
-                if (action === "send") onSend?.();
+                if (action === "send") send();
               }
             : undefined
         }
@@ -225,7 +263,7 @@ export function ReplyBox({
                 disabled={!sendable}
                 // The pressed button stays at full strength while it spins.
                 style={[styles.send, { opacity: sendable || busy ? 1 : 0.5 }]}
-                onPress={onSend}
+                onPress={send}
               >
                 {busy ? (
                   <Spinner size={metrics.iconSize} color={colors.accentForeground} />
@@ -262,14 +300,36 @@ export function ReplyBox({
  * that crashed the app. A draft set from outside (cleared on send, put back, another agent's) replaces
  * the field, which also resets its grown height, keeping the focus it had.
  */
-function useNativeText(enabled: boolean, value: string, onChangeText: (text: string) => void, field: RefObject<NativeTextInput | null>) {
+function useNativeText(
+  enabled: boolean,
+  value: string,
+  onChangeText: (text: string) => void,
+  field: RefObject<NativeTextInput | null>,
+  placeCursor: { text: string; at: number } | undefined,
+) {
   const [sync] = useState(() => createNativeFieldSync(value));
   const [shown, setShown] = useState({ revision: 0, text: value, refocus: false });
+  const placed = useRef<object | null>(null);
+  // Where the field remounted for a pick puts its cursor, once: a `selection` prop would hold it there as the reader types.
+  const cursorOnRemount = useRef<number | null>(null);
   useLayoutEffect(() => {
-    if (!enabled || !sync.outside(value)) return;
+    if (!enabled) return;
+    const request = placeCursor !== undefined && placed.current !== placeCursor && placeCursor.text === value ? placeCursor : null;
+    if (request !== null) placed.current = request;
+    if (!sync.outside(value)) {
+      // The text is already the field's own: only the cursor moves, which writes no text back.
+      if (request !== null) setFieldCursor(field.current, request.at);
+      return;
+    }
     const refocus = field.current?.isFocused() ?? false;
-    setShown((current) => ({ revision: current.revision + 1, text: value, refocus }));
-  }, [enabled, value, sync, field]);
+    cursorOnRemount.current = request?.at ?? null;
+    setShown((current) => ({ revision: current.revision + 1, text: value, refocus: refocus || request !== null }));
+  }, [enabled, value, sync, field, placeCursor]);
+  useEffect(() => {
+    if (cursorOnRemount.current === null) return;
+    setFieldCursor(field.current, cursorOnRemount.current);
+    cursorOnRemount.current = null;
+  }, [shown.revision, field]);
   return {
     ...shown,
     onChangeText: (text: string) => {
@@ -280,4 +340,9 @@ function useNativeText(enabled: boolean, value: string, onChangeText: (text: str
       onChangeText(text);
     },
   };
+}
+
+/** React Native's `setSelection` (text left as it is), looked up as an older host may lack it. */
+function setFieldCursor(field: NativeTextInput | null, at: number): void {
+  (field as unknown as { setSelection?: (start: number, end: number) => void } | null)?.setSelection?.(at, at);
 }

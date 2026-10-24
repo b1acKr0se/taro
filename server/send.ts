@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 
 import { CHAT_MESSAGE_PREFIX, COMPACTING_REFUSAL, isCompacting, type SendTimelineEntry } from "../shared/pending-sends";
 import { PLUGIN_MESSAGE_PREFIX, USER_ANSWER_PREFIX } from "../shared/received-message";
+import { refusedMessage } from "../shared/refused-commands";
 import type { PaseoApi, TimelineItem } from "./host-types";
 
 type SendOptions = NonNullable<Parameters<ReturnType<PaseoApi["agents"]["ref"]>["send"]>[1]>;
@@ -24,13 +25,21 @@ export function isPluginMessageId(messageId: string | undefined): boolean {
   return messageId !== undefined && messageId.startsWith(PLUGIN_MESSAGE_PREFIX);
 }
 
+/** The last stop before Paseo for words that are not the plugin's own command: a `/clear` the boxes missed is not sent (TR-232). */
+function refuseWipingCommand(text: string): void {
+  const refusal = refusedMessage(text);
+  if (refusal !== null) throw new Error(refusal);
+}
+
 /** The user's words (from the Taro screen), joining a running turn where possible. */
 export async function sendWithoutInterrupting(paseo: PaseoApi, agentId: string, text: string, extras: SendExtras = {}): Promise<void> {
+  refuseWipingCommand(text);
   await paseo.agents.ref(agentId).send(text, { ...extras, activeTurnBehavior: "steer" });
 }
 
 /** Send now (TR-171): the user's queued words cut the running turn off and start a new one, atomically in Paseo. */
 export async function sendInterrupting(paseo: PaseoApi, agentId: string, text: string, extras: SendExtras = {}): Promise<void> {
+  refuseWipingCommand(text);
   await paseo.agents.ref(agentId).send(text, { ...extras, activeTurnBehavior: "interrupt" });
 }
 

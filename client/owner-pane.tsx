@@ -206,6 +206,7 @@ export function OwnerPane({
                 theme={theme}
                 compact={compact}
                 placeholder={`Talk to ${card.id}'s ${paneAgentJob(shown.role)}…`}
+                picks={{ project }}
                 onSend={(text, attachments, messageId, answersRequest) => tell({ agentId: shown.id, text, ...attachments, messageId, answersRequest })}
                 transformText={withoutDecisionBlocks}
                 onStatus={(status) => setChatStatus({ agentId: shown.id, status })}
