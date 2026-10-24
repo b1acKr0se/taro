@@ -305,6 +305,20 @@ describe("telling an agent through the queue", () => {
     expect(await queue.list("owner-1")).toEqual([]);
   });
 
+  it("queues for an idle agent while Taro compacts it, and sends once the compaction ends (TR-231)", async () => {
+    agents["owner-1"]!.status = "idle";
+    const queue = newQueue();
+    for (const compaction of ["handoff", "compacting"] as const) {
+      records["owner-1"] = AgentStateSchema.parse({ project: "taro", role: "owner", compaction });
+      expect(await queue.tell(paseo, live(), `during ${compaction}`, { messageId: `chat-${compaction}` }, false)).toEqual({ queued: true });
+    }
+    expect(sent).toEqual([]);
+    expect(await ids(queue)).toEqual(["chat-handoff", "chat-compacting"]);
+    records["owner-1"] = AgentStateSchema.parse({ project: "taro", role: "owner", compaction: "none" });
+    expect(await queue.drain(paseo, "owner-1", "completed")).toBe(true);
+    expect(sent.map((each) => each.messageId)).toEqual(["chat-handoff"]);
+  });
+
   it("sends words that answer a pending request at once, even mid-turn", async () => {
     const queue = newQueue();
     expect(await queue.tell(paseo, live(), "yes, allow it", { messageId: "chat-a" }, true)).toEqual({ queued: false });

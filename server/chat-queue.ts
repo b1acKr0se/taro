@@ -276,7 +276,9 @@ export class ChatQueue {
   async tell(paseo: PaseoApi, agent: PaseoAgent, words: string, attachments: Attachments, answersRequest: boolean): Promise<{ queued: boolean }> {
     const file = await this.load(agent.id);
     if (attachments.messageId !== undefined && file.sent.includes(attachments.messageId)) return { queued: true };
-    if (routeChatMessage(agent, answersRequest, file.messages.length) === "send") {
+    // Taro's own handoff → /compact → reload leaves the agent idle between its steps; a prompt then cancels the /compact (TR-231).
+    const compacting = ((await this.state.agent(agent.id))?.compaction ?? "none") !== "none";
+    if (!compacting && routeChatMessage(agent, answersRequest, file.messages.length) === "send") {
       await sendWithAttachments(paseo, agent.id, words, { ...attachments, agentMidTurn: isMidTurn(agent) });
       return { queued: false };
     }
