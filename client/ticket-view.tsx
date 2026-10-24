@@ -356,6 +356,7 @@ function TicketDetail({
         specChange={data.specChangeable && !specOpen ? () => setSpecOpen(true) : null}
         reopenable={data.reopenable}
         onReopened={told}
+        closable={data.closable}
       />
       {data.specChangeable ? <SpecChangeBox project={project} ticket={ticket} theme={theme} open={specOpen} onOpenChange={setSpecOpen} onSent={() => void detail.refetch()} /> : null}
       {sections.length === 0 ? null : (

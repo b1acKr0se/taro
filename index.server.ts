@@ -21,6 +21,7 @@ import {
   pauseTicket,
   relaunchOwner,
   reopenTicket,
+  closeRound,
   resumeTicket,
   requestChanges,
   changeQueuedSpec,
@@ -393,6 +394,11 @@ export default function contribute(server: PluginServerContext) {
   });
   server.handle(reopenTicket, async ({ project, ticket, note }, { paseo }) => {
     const text = await actions.reopenTicket(keep(paseo), project, ticket, note);
+    invalidateBoards();
+    return { message: text };
+  });
+  server.handle(closeRound, async ({ project, ticket, reason }, { paseo }) => {
+    const text = await actions.closeRound(keep(paseo), project, ticket, reason);
     invalidateBoards();
     return { message: text };
   });

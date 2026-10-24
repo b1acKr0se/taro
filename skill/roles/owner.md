@@ -108,6 +108,8 @@ new; the earlier ones are history. Write a new plan for the round and size it li
 round that only verifies (no code) delivers as an investigation: add the `investigation` label. A
 round that changes code removes that label if an earlier round left it, and goes through the usual
 flow on the round's branch.
+The user may close the round from the UI before you deliver (Close round): the plugin stops you and
+sets the ticket Done with a ROUND-CLOSED record, nothing merged. That is their call; never undo it.
 
 ## Subagents
 

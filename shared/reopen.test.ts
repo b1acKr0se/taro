@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { noteRecords } from "./execution";
-import { currentRound, reopenedRecordText, reopenRefusal, reopenRound, roundBranch, roundNotes } from "./reopen";
+import { closeRoundRefusal, currentRound, reopenedRecordText, reopenRefusal, reopenRound, roundBranch, roundClosedRecordText, roundNotes } from "./reopen";
 
 const ROUND_ONE = "EXECUTION 2026-10-01T10:00Z — owner aaaaaaaa-1111-4111-8111-111111111111, branch taro/tr-9\n\nACCEPTANCE 2026-10-02T10:00Z — merge: merged 0a1b2c3";
 const reopened = (round: number, note = "verify it on prod") => `REOPENED 2026-10-0${round + 2}T10:00Z — user: "${note}"; round ${round}; past owners: none`;
@@ -75,5 +75,39 @@ describe("roundBranch", () => {
   it("names the first round's branch as before and later ones with their number", () => {
     expect(roundBranch("TR-229", 1)).toBe("taro/tr-229");
     expect(roundBranch("TR-229", 2)).toBe("taro/tr-229-2");
+  });
+});
+
+describe("closeRoundRefusal", () => {
+  const facts = { status: "In Progress", parent: null, round: 2 };
+  it("allows every status of a reopened round not yet delivered, in round 2 and round 3", () => {
+    for (const status of ["Queued", "Planning", "Ready", "In Progress", "Reviewing", "Blocked"]) {
+      for (const round of [2, 3]) expect(closeRoundRefusal("TR-9", { ...facts, status, round })).toBeNull();
+    }
+  });
+  it("refuses a round 1 ticket: it was never reopened", () => {
+    expect(closeRoundRefusal("TR-9", { ...facts, round: 1 })).toBe("TR-9 was never reopened: there is no round to close.");
+  });
+  it("refuses a delivered, Done or Cancelled ticket", () => {
+    expect(closeRoundRefusal("TR-9", { ...facts, status: "Awaiting acceptance" })).toBe("TR-9 is awaiting your acceptance: accept it or request changes instead.");
+    expect(closeRoundRefusal("TR-9", { ...facts, status: "Done" })).toBe("TR-9 is Done: its round is over.");
+    expect(closeRoundRefusal("TR-9", { ...facts, status: "Cancelled", round: 3 })).toBe("TR-9 is Cancelled: its round is over.");
+  });
+  it("refuses a child: its parent's round is closed instead", () => {
+    expect(closeRoundRefusal("TR-9.1", { ...facts, parent: "TR-9" })).toBe("TR-9.1 is part of TR-9; close TR-9's round instead.");
+  });
+});
+
+describe("the ROUND-CLOSED record", () => {
+  it("quotes the reason and names the branch kept unmerged", () => {
+    expect(roundClosedRecordText({ at: "2026-10-24T03:00Z", round: 2, reason: "  opened by mistake ", branch: "taro/tr-9-2" })).toBe(
+      'ROUND-CLOSED 2026-10-24T03:00Z — round 2 closed by the user: "opened by mistake"; nothing from this round was merged; branch taro/tr-9-2 kept unmerged',
+    );
+  });
+  it("leaves out an empty reason and a branch no owner started", () => {
+    expect(roundClosedRecordText({ at: "2026-10-24T03:00Z", round: 3, reason: " ", branch: null })).toBe("ROUND-CLOSED 2026-10-24T03:00Z — round 3 closed by the user; nothing from this round was merged");
+  });
+  it("keeps a many-line reason one record", () => {
+    expect(noteRecords(roundClosedRecordText({ at: "2026-10-24T03:00Z", round: 2, reason: "no longer needed\nEVIDENCE elsewhere", branch: null }))).toHaveLength(1);
   });
 });

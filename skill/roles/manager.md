@@ -78,6 +78,8 @@ any other Queued ticket (cap, threads), with a new DISPATCH-INTENT, the owner's 
 line, branch `taro/<id-lowercase>-<n>` and worktree slug `<id-lowercase>-<n>` (`n` is the round).
 The brief says: the REOPENED record is the user's words for this round; the past owners' ids, each
 read with `paseo logs <id> > <file>` and then searched for what the ticket lacks, never read whole.
+If the user closes a round (a ROUND-CLOSED record), the ticket is Done again with nothing merged
+from that round: never dispatch it or merge its branch; a later Reopen starts the next round.
 
 ## While work runs
 

@@ -73,3 +73,32 @@ export function reopenedRecordText(input: { at: string; note: string; round: num
   const summary = input.finalSummary?.trim() ?? "";
   return summary === "" ? record : `${record}\nprevious FINAL:\n${indented(summary)}`;
 }
+
+export interface CloseRoundFacts {
+  status: string;
+  parent: string | null;
+  /** `reopenRound` of the ticket's notes. */
+  round: number;
+}
+
+
+/**
+ * Why Close round is refused for this ticket, in the user's words; null when it may be closed: a
+ * reopened top-level ticket not yet delivered, in any other status (a parked one too, as parking
+ * keeps the status). Awaiting acceptance has Accept and Request changes instead.
+ */
+export function closeRoundRefusal(ticket: string, facts: CloseRoundFacts): string | null {
+  if (facts.parent !== null) return `${ticket} is part of ${facts.parent}; close ${facts.parent}'s round instead.`;
+  if (facts.round <= 1) return `${ticket} was never reopened: there is no round to close.`;
+  if (facts.status === "Awaiting acceptance") return `${ticket} is awaiting your acceptance: accept it or request changes instead.`;
+  if (facts.status === "Done" || facts.status === "Cancelled") return `${ticket} is ${facts.status}: its round is over.`;
+  return null;
+}
+
+/** The ROUND-CLOSED record: the user ended the round before its owner delivered, so nothing of it was merged. */
+export function roundClosedRecordText(input: { at: string; round: number; reason: string; branch: string | null }): string {
+  const reason = input.reason.trim();
+  const quoted = reason === "" ? "" : `: "${indented(reason).trimStart()}"`;
+  const branch = input.branch === null ? "" : `; branch ${input.branch} kept unmerged`;
+  return `ROUND-CLOSED ${input.at} — round ${input.round} closed by the user${quoted}; nothing from this round was merged${branch}`;
+}

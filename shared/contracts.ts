@@ -316,6 +316,8 @@ export const TicketDetailSchema = z.object({
   relaunchable: z.boolean().default(false),
   /** Reopen is offered: a Done ticket with no parent (`shared/reopen.ts`, TR-229). */
   reopenable: z.boolean().default(false),
+  /** Close round is offered: a reopened top-level ticket not yet delivered (`closeRoundRefusal` in `shared/reopen.ts`, TR-229). */
+  closable: z.boolean().default(false),
   /** Change spec… is offered: Queued with no owner (`shared/spec-change.ts`, TR-129). */
   specChangeable: z.boolean().default(false),
   /** The plan the user last answered, when and how (TR-151), so a plan asked again marks what changed since; null before any answer. */
@@ -459,6 +461,12 @@ export const changeQueuedSpec = defineRpc({
 export const reopenTicket = defineRpc({
   name: "taro.ticket.reopen",
   input: z.object({ project: ProjectNameSchema, ticket: z.string(), note: z.string().min(1) }),
+  output: z.object({ message: z.string() }),
+});
+/** Close round on a reopened ticket (TR-229): its agents stopped and the ticket Done, nothing merged; `message` is what the user is told. */
+export const closeRound = defineRpc({
+  name: "taro.ticket.close-round",
+  input: z.object({ project: ProjectNameSchema, ticket: z.string(), reason: z.string().default("") }),
   output: z.object({ message: z.string() }),
 });
 export const dismissSuggestion = defineRpc({
