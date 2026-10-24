@@ -5,7 +5,7 @@
  * the box alone, with their buttons under it, so every place the user types a reply looks alike.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
-import { Icon } from "@getpaseo/plugin/client/react-native";
+import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Platform, useWindowDimensions, View, type NativeSyntheticEvent, type TextInput as NativeTextInput, type TextInputSelectionChangeEventData } from "react-native";
 
@@ -15,6 +15,7 @@ import { Pressable, TextInput } from "./focus";
 import { primaryAction } from "./composer-notice";
 import { enterKeyAction, isStopKey, type WebKeyPressEvent } from "./keys";
 import { createNativeFieldSync } from "./native-field-sync";
+import { refusedMessage } from "../shared/refused-commands";
 import { SPACE } from "./spacing";
 import { Spinner } from "./ui";
 
@@ -125,6 +126,13 @@ export function ReplyBox({
   const stopKey = web && stop !== undefined && editable && !greyed;
   const { colors } = theme;
   const hasControls = onSend !== undefined || leading !== null || trailing !== null;
+  const toast = useToast();
+  // A `/clear` is refused here, before the caller clears the box or shows a row (TR-232): the text stays, nothing flickers.
+  function send(): void {
+    const refusal = refusedMessage(value);
+    if (refusal === null) onSend?.();
+    else toast.error(refusal);
+  }
   const styles = useMemo(
     () => ({
       // Paseo's composer box (TR-039); its border stays plain while typing, as Paseo's does.
@@ -222,7 +230,7 @@ export function ReplyBox({
                 const action = enterKeyAction(event.nativeEvent, sendable);
                 if (action === null) return;
                 event.preventDefault();
-                if (action === "send") onSend?.();
+                if (action === "send") send();
               }
             : undefined
         }
@@ -257,7 +265,7 @@ export function ReplyBox({
                 disabled={!sendable}
                 // The pressed button stays at full strength while it spins.
                 style={[styles.send, { opacity: sendable || busy ? 1 : 0.5 }]}
-                onPress={onSend}
+                onPress={send}
               >
                 {busy ? (
                   <Spinner size={metrics.iconSize} color={colors.accentForeground} />

@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { z } from "zod";
 
 import { rememberCommand, type AgentCommand, type FileIndex, type TicketSummary } from "../shared/composer-picks";
+import { UNLISTED_COMMANDS } from "../shared/refused-commands";
 import { fetchLiveAgent } from "./agents";
 import { readJsonIfPresent, writeJsonAtomically } from "./files";
 import type { PaseoApi } from "./host-types";
@@ -28,14 +29,14 @@ const FILE_INDEX_FRESH_MS = 10_000;
 const GIT_TIMEOUT_MS = 10_000;
 const SKIPPED_FOLDERS = new Set([".git", "node_modules"]);
 
-/** The agent's commands as its provider lists them, each name once; a provider's failure is reported, not thrown. */
+/** The agent's commands as its provider lists them, each name once and without those Taro keeps away; a provider's failure is reported, not thrown. */
 export async function agentCommands(paseo: PaseoApi, agentId: string): Promise<{ commands: AgentCommand[]; error: string | null }> {
   try {
     const answer = await paseo.agents.ref(agentId).commands();
     const seen = new Set<string>();
     const commands: AgentCommand[] = [];
     answer.commands.forEach((command) => {
-      if (seen.has(command.name)) return;
+      if (seen.has(command.name) || UNLISTED_COMMANDS.has(command.name)) return;
       seen.add(command.name);
       commands.push({ name: command.name, description: command.description, argumentHint: command.argumentHint, ...(command.kind === undefined ? {} : { kind: command.kind }) });
     });

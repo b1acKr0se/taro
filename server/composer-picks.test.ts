@@ -102,6 +102,16 @@ describe("the agent's commands", () => {
     });
   });
 
+  it("leaves out the commands that would wipe or close a Taro agent", async () => {
+    const paseo = stubPaseo({}, async () => ({
+      agentId: "a",
+      requestId: "r",
+      error: null,
+      commands: ["clear", "reset", "new", "exit", "compact", "clearly"].map((name) => ({ name, description: name, argumentHint: "" })),
+    }));
+    expect((await agentCommands(paseo, "a")).commands.map((command) => command.name)).toEqual(["compact", "clearly"]);
+  });
+
   it("keeps the error a provider reports", async () => {
     const paseo = stubPaseo({}, async () => ({ agentId: "a", requestId: "r", commands: [], error: "Codex cannot list commands" }));
     expect(await agentCommands(paseo, "a")).toEqual({ commands: [], error: "Codex cannot list commands" });

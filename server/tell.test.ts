@@ -75,6 +75,13 @@ describe("telling an agent", () => {
     expect(sent).toEqual([]);
   });
 
+  it("refuses /clear and sends nothing, but sends /clear inside a sentence", async () => {
+    await expect(actions.tellAgent(paseo, "agent-1", "  /clear now")).rejects.toThrow("/clear is not available in this plugin.");
+    expect(sent).toEqual([]);
+    await actions.tellAgent(paseo, "agent-1", "don't /clear yet");
+    expect(sent.map((one) => one.text)).toEqual(["don't /clear yet"]);
+  });
+
   it("refuses an agent that is gone before writing any file", async () => {
     live = [];
     await expect(actions.tellAgent(paseo, "agent-1", "", { files: [FILE] })).rejects.toThrow("no longer running");
@@ -92,6 +99,11 @@ describe("telling a project's manager", () => {
 
   it("still refuses a message with neither words nor attachments", async () => {
     await expect(tellManager(paseo, "demo", " ")).rejects.toThrow("Say something to the manager.");
+  });
+
+  it("refuses /clear to the manager and sends nothing", async () => {
+    await expect(tellManager(paseo, "demo", "/CLEAR")).rejects.toThrow("/clear is not available in this plugin.");
+    expect(sent).toEqual([]);
   });
 
   it("refuses a project without a running manager before writing any file", async () => {
