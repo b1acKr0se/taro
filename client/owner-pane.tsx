@@ -16,7 +16,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 
-import { loadTicket, tellAgent, type Card } from "../shared/contracts";
+import { closeRound, loadTicket, tellAgent, type Card } from "../shared/contracts";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { withoutDecisionBlocks } from "../shared/reports";
 import { offersSpecChange } from "../shared/spec-change";
@@ -34,7 +34,7 @@ import { useTicketRecords } from "./plan-card";
 import { polled } from "./polling";
 import { SpecChangeBox } from "./spec-change-box";
 import { paneGutter, SPACE } from "./spacing";
-import { CloseRoundBox, TIPS } from "./ticket-actions";
+import { TIPS } from "./ticket-actions";
 import { TicketView } from "./ticket-view";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
@@ -145,37 +145,27 @@ export function OwnerPane({
   const mayClose = card.parent === null && card.status !== "Done" && card.status !== "Cancelled" && card.status !== "Awaiting acceptance";
   const detail = useQuery({ queryKey: ["taro", "ticket", project, card.id], queryFn: () => load({ project, ticket: card.id }), enabled: mayClose, ...polled(6_000) });
   const closable = mayClose && detail.data?.closable === true && shown !== null && shown.live && shown.id === card.owner?.id;
-  const [closing, setClosing] = useState<{ card: string; open: boolean; reason: string }>({ card: card.id, open: false, reason: "" });
-  const closeBox = closing.card === card.id ? closing : { card: card.id, open: false, reason: "" };
+  const close = useRpc(closeRound);
   const [closeTipOpen, setCloseTipOpen] = useState(false);
-  const closeRoundLine = !closable ? null : closeBox.open ? (
-    <CloseRoundBox
-      theme={theme}
-      compact={compact}
-      project={project}
-      ticket={card.id}
-      presses={closePresses}
-      value={closeBox.reason}
-      onChangeText={(reason) => setClosing({ ...closeBox, reason })}
-      onClosed={(result) => {
-        toast.show(result.message, { variant: "success" });
-        setClosing({ card: card.id, open: false, reason: "" });
-        void queries.invalidateQueries({ queryKey: ["taro", "ticket", project, card.id] });
-        onChanged();
-      }}
-      onCancel={() => setClosing({ ...closeBox, open: false })}
-    />
-  ) : (
+  // One press closes the round, as Park stops an owner in one press; Reopen undoes a mistaken one.
+  const closeRoundLine = !closable ? null : (
     <IconButton
       icon="CircleCheck"
       label="Close round"
       showLabel
       theme={theme}
       disabled={closePresses.busy}
+      state={closePresses.stateOf("close-round")}
       tip={{ text: TIPS.closeRound, onShow: setCloseTipOpen }}
       onPress={() => {
         setCloseTipOpen(false);
-        setClosing({ ...closeBox, open: true });
+        closePresses.press("close-round", () => close({ project, ticket: card.id }), {
+          onSuccess: (result) => {
+            toast.show(result.message, { variant: "success" });
+            void queries.invalidateQueries({ queryKey: ["taro", "ticket", project, card.id] });
+            onChanged();
+          },
+        });
       }}
     />
   );
@@ -301,7 +291,7 @@ export function OwnerPane({
                     </View>
                   )
                 }
-                actionsTip={closable && !closeBox.open && closeTipOpen ? TIPS.closeRound : null}
+                actionsTip={closable && closeTipOpen ? TIPS.closeRound : null}
               />
             ) : (
               <AgentChat

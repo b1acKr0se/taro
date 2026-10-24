@@ -1,8 +1,8 @@
 /**
  * The ticket's buttons in a row of their own under the summary card (TR-229), each with a tooltip:
  * Close round on a reopened ticket not yet delivered, Park or Resume, Relaunch owner, Change spec…,
- * Compact and, on a Done ticket, Reopen…. Reopen's and Close round's boxes (`ChangeBox`) take the
- * row's place until they are sent or cancelled.
+ * Compact and, on a Done ticket, Reopen…. Reopen's box (`ChangeBox`) takes the row's place until it
+ * is sent or cancelled; Close round acts in one press.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -67,32 +67,14 @@ export function TicketActions({
   closable: boolean;
 }) {
   const reopen = useRpc(reopenTicket);
-  const [open, setOpen] = useState<"reopen" | "close" | null>(null);
+  const close = useRpc(closeRound);
+  const [open, setOpen] = useState<"reopen" | null>(null);
   // Kept across Cancel, so reopening the box finds the words again.
   const [typed, setTyped] = useState("");
-  const [reason, setReason] = useState("");
   // The box and its buttons are revealed together, so Reopen stays above a phone's keyboard.
   const foot = useRef<View>(null);
   const reveal = useRevealFocused(foot);
 
-  if (open === "close" && closable) {
-    return (
-      <CloseRoundBox
-        theme={theme}
-        project={project}
-        ticket={ticket}
-        presses={presses}
-        value={reason}
-        onChangeText={setReason}
-        onClosed={(result) => {
-          setReason("");
-          setOpen(null);
-          onReopened(result);
-        }}
-        onCancel={() => setOpen(null)}
-      />
-    );
-  }
   if (open === "reopen" && reopenable) {
     return (
       <View ref={foot} collapsable={false}>
@@ -126,7 +108,18 @@ export function TicketActions({
     <View style={{ zIndex: 1, flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: SPACE.sm }}>
       {!closable ? null : (
         <TipAnchor theme={theme} text={TIPS.closeRound}>
-          {(tip) => <IconButton icon="CircleCheck" label="Close round" showLabel theme={theme} disabled={presses.busy} onPress={() => setOpen("close")} tip={tip} />}
+          {(tip) => (
+            <IconButton
+              icon="CircleCheck"
+              label="Close round"
+              showLabel
+              theme={theme}
+              disabled={presses.busy}
+              state={presses.stateOf("close-round")}
+              onPress={() => presses.press("close-round", () => close({ project, ticket }), { onSuccess: onReopened })}
+              tip={tip}
+            />
+          )}
         </TipAnchor>
       )}
       {!reopenable ? null : (
@@ -169,52 +162,3 @@ export function TicketActions({
   );
 }
 
-/**
- * Close round's confirm box (TR-229), in the Ticket tab's row and above the owner's chat box: an
- * optional reason, then Close round and Cancel, so a stray tap never stops a working owner. On a
- * failure the box stays open with the words, and the press says why in an error toast.
- */
-export function CloseRoundBox({
-  theme,
-  compact,
-  project,
-  ticket,
-  presses,
-  value,
-  onChangeText,
-  onClosed,
-  onCancel,
-}: {
-  theme: PluginTheme;
-  compact?: boolean | undefined;
-  project: string;
-  ticket: string;
-  presses: Actions;
-  value: string;
-  onChangeText: (text: string) => void;
-  /** After the server has closed the round: told what happened. */
-  onClosed: (result: { message: string }) => void;
-  onCancel: () => void;
-}) {
-  const close = useRpc(closeRound);
-  const foot = useRef<View>(null);
-  const reveal = useRevealFocused(foot);
-  return (
-    <View ref={foot} collapsable={false} style={{ width: "100%" }}>
-      <ChangeBox
-        theme={theme}
-        compact={compact}
-        value={value}
-        onChangeText={onChangeText}
-        onFocus={reveal}
-        placeholder="Why close this round? (optional)"
-        sendLabel="Close round"
-        canSend
-        busy={presses.busy}
-        sendState={presses.stateOf("close-round")}
-        onSend={() => presses.press("close-round", () => close({ project, ticket, reason: value.trim() }), { onSuccess: onClosed })}
-        onCancel={onCancel}
-      />
-    </View>
-  );
-}

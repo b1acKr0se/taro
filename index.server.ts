@@ -397,8 +397,8 @@ export default function contribute(server: PluginServerContext) {
     invalidateBoards();
     return { message: text };
   });
-  server.handle(closeRound, async ({ project, ticket, reason }, { paseo }) => {
-    const text = await actions.closeRound(keep(paseo), project, ticket, reason);
+  server.handle(closeRound, async ({ project, ticket }, { paseo }) => {
+    const text = await actions.closeRound(keep(paseo), project, ticket);
     invalidateBoards();
     return { message: text };
   });

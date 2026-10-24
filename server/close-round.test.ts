@@ -94,7 +94,7 @@ afterEach(async () => {
 describe("Close round", () => {
   it("stops the round's owner and subagents mid-turn, records ROUND-CLOSED and sets Done, the final summary left empty", async () => {
     await writeTicket({ id: "TR-7" });
-    const answer = await actions.closeRound(paseo, "notes-app", "TR-7", "  opened by mistake  ");
+    const answer = await actions.closeRound(paseo, "notes-app", "TR-7");
     expect(answer).toBe("TR-7 is back in Done; its round 2 owner was stopped. Nothing was merged.");
     expect(archived).toEqual([ROUND_OWNER, IMPLEMENTER]);
     expect(archivedWorkspaces).toEqual(["wks_2"]);
@@ -102,30 +102,30 @@ describe("Close round", () => {
     expect(detail.status).toBe("Done");
     expect(detail.finalSummary).toBeNull();
     expect(noteRecords(detail.implementationNotes).pop()).toMatch(
-      /^ROUND-CLOSED \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z — round 2 closed by the user: "opened by mistake"; nothing from this round was merged; branch taro\/tr-7-2 kept unmerged$/,
+      /^ROUND-CLOSED \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z — round 2 closed by the user; nothing from this round was merged; branch taro\/tr-7-2 kept unmerged$/,
     );
     expect(sent).toEqual([]);
   });
 
   it("reads as Done without delivery: nothing accepted or merged in the round, and Reopen offered again", async () => {
     await writeTicket({ id: "TR-7" });
-    await actions.closeRound(paseo, "notes-app", "TR-7", "");
+    await actions.closeRound(paseo, "notes-app", "TR-7");
     const detail = await viewTicket(tracker, "TR-7");
     expect(acceptedRecord(detail.implementationNotes)).toBeNull();
     expect(acceptanceMerge(detail.implementationNotes)).toBeNull();
     expect(reopenRefusal(detail.id, { status: detail.status, parent: detail.parentTaskId, note: "again" })).toBeNull();
   });
 
-  it("closes a Queued round with no reason and no owner yet: no quote, no branch", async () => {
+  it("closes a Queued round with no owner yet: no branch", async () => {
     vi.mocked(projectAgents).mockResolvedValue([]);
     await writeTicket({ id: "TR-7", status: "Queued", notes: `${ROUND_ONE}\n\n${REOPENED}` });
-    expect(await actions.closeRound(paseo, "notes-app", "TR-7", "   ")).toBe("TR-7 is back in Done; round 2 had no agent running. Nothing was merged.");
+    expect(await actions.closeRound(paseo, "notes-app", "TR-7")).toBe("TR-7 is back in Done; round 2 had no agent running. Nothing was merged.");
     expect(noteRecords((await viewTicket(tracker, "TR-7")).implementationNotes).pop()).toMatch(/^ROUND-CLOSED \S+ — round 2 closed by the user; nothing from this round was merged$/);
   });
 
   it("reopens after a closed round as round 3, on taro/tr-7-3", async () => {
     await writeTicket({ id: "TR-7" });
-    await actions.closeRound(paseo, "notes-app", "TR-7", "not needed");
+    await actions.closeRound(paseo, "notes-app", "TR-7");
     vi.mocked(projectAgents).mockResolvedValue([]);
     await actions.reopenTicket(paseo, "notes-app", "TR-7", "Now verify it for real.");
     const detail = await viewTicket(tracker, "TR-7");
@@ -142,10 +142,10 @@ describe("Close round", () => {
     await writeTicket({ id: "TR-9.1", parent: "TR-9" });
     const ids = ["TR-7", "TR-8", "TR-9", "TR-9.1"];
     const before = await Promise.all(ids.map(ticketFile));
-    await expect(actions.closeRound(paseo, "notes-app", "TR-7", "")).rejects.toThrow("TR-7 was never reopened: there is no round to close.");
-    await expect(actions.closeRound(paseo, "notes-app", "TR-8", "")).rejects.toThrow("TR-8 is awaiting your acceptance: accept it or request changes instead.");
-    await expect(actions.closeRound(paseo, "notes-app", "TR-9", "")).rejects.toThrow("TR-9 is Done: its round is over.");
-    await expect(actions.closeRound(paseo, "notes-app", "TR-9.1", "")).rejects.toThrow("TR-9.1 is part of TR-9; close TR-9's round instead.");
+    await expect(actions.closeRound(paseo, "notes-app", "TR-7")).rejects.toThrow("TR-7 was never reopened: there is no round to close.");
+    await expect(actions.closeRound(paseo, "notes-app", "TR-8")).rejects.toThrow("TR-8 is awaiting your acceptance: accept it or request changes instead.");
+    await expect(actions.closeRound(paseo, "notes-app", "TR-9")).rejects.toThrow("TR-9 is Done: its round is over.");
+    await expect(actions.closeRound(paseo, "notes-app", "TR-9.1")).rejects.toThrow("TR-9.1 is part of TR-9; close TR-9's round instead.");
     expect(await Promise.all(ids.map(ticketFile))).toEqual(before);
     expect(archived).toEqual([]);
     expect(archivedWorkspaces).toEqual([]);
@@ -154,7 +154,7 @@ describe("Close round", () => {
   it("keeps the round's workspace while another agent lives in it", async () => {
     await writeTicket({ id: "TR-7" });
     vi.mocked(listTaroAgents).mockResolvedValue([agent(ROUND_OWNER, "owner", "TR-7"), { id: "users-own", status: "idle", workspaceId: "wks_2", labels: {} } as unknown as PaseoAgent]);
-    await actions.closeRound(paseo, "notes-app", "TR-7", "");
+    await actions.closeRound(paseo, "notes-app", "TR-7");
     expect(archived).toEqual([ROUND_OWNER, IMPLEMENTER]);
     expect(archivedWorkspaces).toEqual([]);
   });
@@ -165,7 +165,7 @@ describe("Close round", () => {
       await appendTicketNote(tracker, "TR-7", "MILESTONE 2026-10-03T08:20Z — last words");
       return [agent(ROUND_OWNER, "owner", "TR-7")];
     });
-    await actions.closeRound(paseo, "notes-app", "TR-7", "");
+    await actions.closeRound(paseo, "notes-app", "TR-7");
     const detail = await viewTicket(tracker, "TR-7");
     expect(detail.status).toBe("Done");
     expect(noteRecords(detail.implementationNotes).slice(-2)[0]).toBe("MILESTONE 2026-10-03T08:20Z — last words");
@@ -177,7 +177,7 @@ describe("Close round", () => {
       await writeTicket({ id: "TR-7", status: "Awaiting acceptance" });
       return [];
     });
-    await expect(actions.closeRound(paseo, "notes-app", "TR-7", "")).rejects.toThrow("TR-7 changed while its round was being closed; try again.");
+    await expect(actions.closeRound(paseo, "notes-app", "TR-7")).rejects.toThrow("TR-7 changed while its round was being closed; try again.");
     expect(archivedWorkspaces).toEqual([]);
     const detail = await viewTicket(tracker, "TR-7");
     expect(detail.status).toBe("Awaiting acceptance");
@@ -186,7 +186,7 @@ describe("Close round", () => {
 
   it("closes one round when two Close rounds arrive together", async () => {
     await writeTicket({ id: "TR-7" });
-    const results = await Promise.allSettled([actions.closeRound(paseo, "notes-app", "TR-7", "a"), actions.closeRound(paseo, "notes-app", "TR-7", "b")]);
+    const results = await Promise.allSettled([actions.closeRound(paseo, "notes-app", "TR-7"), actions.closeRound(paseo, "notes-app", "TR-7")]);
     expect(results.map((result) => result.status).sort()).toEqual(["fulfilled", "rejected"]);
     expect(noteRecords((await viewTicket(tracker, "TR-7")).implementationNotes).filter((record) => record.startsWith("ROUND-CLOSED"))).toHaveLength(1);
   });

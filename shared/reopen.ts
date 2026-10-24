@@ -95,9 +95,7 @@ export function closeRoundRefusal(ticket: string, facts: CloseRoundFacts): strin
 }
 
 /** The ROUND-CLOSED record: the user ended the round before its owner delivered, so nothing of it was merged. */
-export function roundClosedRecordText(input: { at: string; round: number; reason: string; branch: string | null }): string {
-  const reason = input.reason.trim();
-  const quoted = reason === "" ? "" : `: "${indented(reason).trimStart()}"`;
+export function roundClosedRecordText(input: { at: string; round: number; branch: string | null }): string {
   const branch = input.branch === null ? "" : `; branch ${input.branch} kept unmerged`;
-  return `ROUND-CLOSED ${input.at} — round ${input.round} closed by the user${quoted}; nothing from this round was merged${branch}`;
+  return `ROUND-CLOSED ${input.at} — round ${input.round} closed by the user; nothing from this round was merged${branch}`;
 }

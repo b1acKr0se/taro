@@ -441,7 +441,7 @@ export class Actions {
    * Done with a ROUND-CLOSED record and nothing merged. The release after Done archives only the
    * workspaces of agents it archives itself, so the round owner's emptied workspace is archived here.
    */
-  async closeRound(paseo: PaseoApi, project: string, ticket: string, reason: string): Promise<string> {
+  async closeRound(paseo: PaseoApi, project: string, ticket: string): Promise<string> {
     // Under the project's tracker lock, with Resume and the minute check, so no owner starts on the round as it closes.
     return serialized(`tracker-changed:${project}`, async () => {
       const paths = await projectPaths(project);
@@ -449,7 +449,7 @@ export class Actions {
       const stopAgents = async () => {
         stopped = await this.archiveTicketAgents(paseo, project, ticket);
       };
-      const closed = await closeRoundRecord(paths.tracker, ticket, reason.trim(), new Date().toISOString(), stopAgents);
+      const closed = await closeRoundRecord(paths.tracker, ticket, new Date().toISOString(), stopAgents);
       await this.archiveOwnerWorkspaces(paseo, project, stopped);
       const owner = stopped.length === 0 ? `round ${closed.round} had no agent running` : `its round ${closed.round} owner was stopped`;
       return `${ticket} is back in Done; ${owner}. Nothing was merged.`;

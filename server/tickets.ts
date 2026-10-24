@@ -179,7 +179,7 @@ export interface RoundClosed {
  * is stopping that owner); a ticket that left the round or a status Close round allows is refused.
  * `beforeWrite` runs between the checks and the write.
  */
-export async function closeRound(trackerPath: string, ticketId: string, reason: string, at: string, beforeWrite: () => Promise<void> = async () => undefined): Promise<RoundClosed> {
+export async function closeRound(trackerPath: string, ticketId: string, at: string, beforeWrite: () => Promise<void> = async () => undefined): Promise<RoundClosed> {
   const store = storeFor(trackerPath);
   const ticket = await store.read(ticketId);
   const notes = textOrNull(ticket.notes);
@@ -191,7 +191,7 @@ export async function closeRound(trackerPath: string, ticketId: string, reason: 
   const branch = executionBranch(notes);
   const stillOpen = (current: { status: string; notes: string }) =>
     reopenRound(textOrNull(current.notes)) === round && closeRoundRefusal(ticket.id, { status: current.status, parent: ticket.parent, round }) === null;
-  const written = await store.editIf(ticket.id, stillOpen, { appendNotes: [roundClosedRecordText({ at, round, reason, branch })], status: "Done" });
+  const written = await store.editIf(ticket.id, stillOpen, { appendNotes: [roundClosedRecordText({ at, round, branch })], status: "Done" });
   if (written === null) throw new Error(`${ticket.id} changed while its round was being closed; try again.`);
   return { round, branch };
 }

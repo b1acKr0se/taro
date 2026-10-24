@@ -99,15 +99,12 @@ describe("closeRoundRefusal", () => {
 });
 
 describe("the ROUND-CLOSED record", () => {
-  it("quotes the reason and names the branch kept unmerged", () => {
-    expect(roundClosedRecordText({ at: "2026-10-24T03:00Z", round: 2, reason: "  opened by mistake ", branch: "taro/tr-9-2" })).toBe(
-      'ROUND-CLOSED 2026-10-24T03:00Z — round 2 closed by the user: "opened by mistake"; nothing from this round was merged; branch taro/tr-9-2 kept unmerged',
+  it("names the branch kept unmerged", () => {
+    expect(roundClosedRecordText({ at: "2026-10-24T03:00Z", round: 2, branch: "taro/tr-9-2" })).toBe(
+      "ROUND-CLOSED 2026-10-24T03:00Z — round 2 closed by the user; nothing from this round was merged; branch taro/tr-9-2 kept unmerged",
     );
   });
-  it("leaves out an empty reason and a branch no owner started", () => {
-    expect(roundClosedRecordText({ at: "2026-10-24T03:00Z", round: 3, reason: " ", branch: null })).toBe("ROUND-CLOSED 2026-10-24T03:00Z — round 3 closed by the user; nothing from this round was merged");
-  });
-  it("keeps a many-line reason one record", () => {
-    expect(noteRecords(roundClosedRecordText({ at: "2026-10-24T03:00Z", round: 2, reason: "no longer needed\nEVIDENCE elsewhere", branch: null }))).toHaveLength(1);
+  it("leaves out a branch no owner started", () => {
+    expect(roundClosedRecordText({ at: "2026-10-24T03:00Z", round: 3, branch: null })).toBe("ROUND-CLOSED 2026-10-24T03:00Z — round 3 closed by the user; nothing from this round was merged");
   });
 });

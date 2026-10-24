@@ -466,7 +466,7 @@ export const reopenTicket = defineRpc({
 /** Close round on a reopened ticket (TR-229): its agents stopped and the ticket Done, nothing merged; `message` is what the user is told. */
 export const closeRound = defineRpc({
   name: "taro.ticket.close-round",
-  input: z.object({ project: ProjectNameSchema, ticket: z.string(), reason: z.string().default("") }),
+  input: z.object({ project: ProjectNameSchema, ticket: z.string() }),
   output: z.object({ message: z.string() }),
 });
 export const dismissSuggestion = defineRpc({
