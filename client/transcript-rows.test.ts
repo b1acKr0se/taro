@@ -251,6 +251,10 @@ describe("transcriptRows plugin messages (TR-228)", () => {
     expect(rowsOf([withId(1, "hello", "chat-abc"), withId(2, "hi")]).map((row) => row.kind)).toEqual(["user", "user"]);
   });
 
+  it("shows an answer the user gave on a decision card as the user's own bubble", () => {
+    expect(rowsOf([withId(1, "Approve the plan for TR-1", "taro-answer-6f1c")]).map((row) => row.kind)).toEqual(["user"]);
+  });
+
   it("still folds a plugin watch note into an event line", () => {
     expect(rowsOf([withId(1, "<taro>\nAgent 3f2a finished.\n</taro>", "taro-1")]).map((row) => row.kind)).toEqual(["event"]);
   });

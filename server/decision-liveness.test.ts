@@ -6,7 +6,7 @@ import { Actions } from "./actions";
 import { isAgentLive, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
 import { invalidateBoards, liveOpenDecisions, loadBoard } from "./board";
 import type { PaseoAgent, PaseoApi } from "./host-types";
-import { sendFromPlugin } from "./send";
+import { sendUserAnswer } from "./send";
 import type { Recovery } from "./recovery";
 import { appendTicketNote } from "./tickets";
 import type { PluginState } from "./state";
@@ -23,7 +23,7 @@ vi.mock("./agents", async (original) => ({
   listTaroAgents: vi.fn(async () => []),
   isMidTurn: () => false,
 }));
-vi.mock("./send", () => ({ sendFromPlugin: vi.fn(async () => undefined), sendWithoutInterrupting: vi.fn(async () => undefined), sendCommand: vi.fn() }));
+vi.mock("./send", () => ({ sendUserAnswer: vi.fn(async () => undefined), sendWithoutInterrupting: vi.fn(async () => undefined), sendCommand: vi.fn() }));
 vi.mock("./package-files", () => ({ TEMPLATES: { answer: "answer", planChanges: "plan-changes", relaunchOwner: "relaunch", carriedQuestions: "carried" }, skillDirectory: async () => "/skill", message: async (path: string) => path }));
 vi.mock("./projects", () => ({
   projectPaths: async () => ({ tracker: "/tracker", suggestions: "/nonexistent/taro-suggestions.md" }),
@@ -65,7 +65,7 @@ function stateOver(decisions: StoredDecision[]): PluginState {
 const agent = (id: string) => ({ id }) as unknown as PaseoAgent;
 
 beforeEach(() => {
-  vi.mocked(sendFromPlugin).mockClear();
+  vi.mocked(sendUserAnswer).mockClear();
 });
 
 describe("liveOpenDecisions", () => {
@@ -100,7 +100,7 @@ describe("Actions.answerDecision", () => {
     it(`sends nothing to an agent ${gone} and withdraws its decisions`, async () => {
       const decisions = [stored("owner")];
       await expect(actionsOver(decisions).answerDecision(paseoWhere(refresh), key, "Approve", "")).rejects.toThrow(/archived or gone/);
-      expect(sendFromPlugin).not.toHaveBeenCalled();
+      expect(sendUserAnswer).not.toHaveBeenCalled();
       expect(decisions[0]?.status).toBe("withdrawn");
     });
   }
@@ -109,7 +109,7 @@ describe("Actions.answerDecision", () => {
     const decisions = [stored("owner")];
     const failing = paseoWhere(async () => Promise.reject(new Error("timeout")));
     await expect(actionsOver(decisions).answerDecision(failing, key, "Approve", "")).rejects.toThrow("timeout");
-    expect(sendFromPlugin).not.toHaveBeenCalled();
+    expect(sendUserAnswer).not.toHaveBeenCalled();
     expect(decisions[0]?.status).toBe("open");
   });
 
@@ -117,10 +117,10 @@ describe("Actions.answerDecision", () => {
   it("sends nothing for a decision already answered or withdrawn", async () => {
     const live = paseoWhere(async () => ({ agent: { id: "owner", status: "idle", archivedAt: null } }));
     for (const status of ["answered", "withdrawn"] as const) {
-      vi.mocked(sendFromPlugin).mockClear();
+      vi.mocked(sendUserAnswer).mockClear();
       const decisions = [stored("owner", "taro", status)];
       await expect(actionsOver(decisions).answerDecision(live, key, "Approve", "")).rejects.toThrow("That decision is no longer open.");
-      expect(sendFromPlugin).not.toHaveBeenCalled();
+      expect(sendUserAnswer).not.toHaveBeenCalled();
       expect(decisions[0]?.status).toBe(status);
     }
   });
@@ -131,7 +131,7 @@ describe("Actions.answerDecision", () => {
     const actions = actionsOver(decisions);
     await actions.answerDecision(live, key, "Approve", "");
     await expect(actions.answerDecision(live, key, "Approve", "")).rejects.toThrow("That decision is no longer open.");
-    expect(sendFromPlugin).toHaveBeenCalledTimes(1);
+    expect(sendUserAnswer).toHaveBeenCalledTimes(1);
   });
 
   // TR-191: Approve on the Needs you card and Request changes in the chat in the same instant, both still in their checks.
@@ -142,7 +142,7 @@ describe("Actions.answerDecision", () => {
     const results = await Promise.allSettled([actions.answerDecision(live, key, "Approve", ""), actions.answerDecision(live, key, null, "Rename the button")]);
     expect(results.map((result) => result.status)).toEqual(["fulfilled", "rejected"]);
     expect(results[1]).toMatchObject({ reason: new Error("That decision is already being answered.") });
-    expect(sendFromPlugin).toHaveBeenCalledTimes(1);
+    expect(sendUserAnswer).toHaveBeenCalledTimes(1);
     expect(decisions[0]?.answer).toMatchObject({ label: "Approve" });
   });
 
@@ -151,15 +151,15 @@ describe("Actions.answerDecision", () => {
     const actions = actionsOver(decisions);
     await expect(actions.answerDecision(paseoWhere(async () => Promise.reject(new Error("timeout"))), key, "Approve", "")).rejects.toThrow("timeout");
     await actions.answerDecision(paseoWhere(async () => ({ agent: { id: "owner", status: "idle", archivedAt: null } })), key, "Approve", "");
-    expect(sendFromPlugin).toHaveBeenCalledTimes(1);
+    expect(sendUserAnswer).toHaveBeenCalledTimes(1);
   });
 
   it("still answers a live agent, closed ones included", async () => {
     for (const status of ["idle", "closed"]) {
-      vi.mocked(sendFromPlugin).mockClear();
+      vi.mocked(sendUserAnswer).mockClear();
       const decisions = [stored("owner")];
       await actionsOver(decisions).answerDecision(paseoWhere(async () => ({ agent: { id: "owner", status, archivedAt: null } })), key, "Approve", "");
-      expect(sendFromPlugin).toHaveBeenCalledTimes(1);
+      expect(sendUserAnswer).toHaveBeenCalledTimes(1);
       expect(decisions[0]?.status).toBe("answered");
     }
   });
@@ -178,7 +178,7 @@ describe("Actions.answerDecision", () => {
     it("sends the option's prompt followed by the text, and records the same words", async () => {
       const decisions = [withChange()];
       await actionsOver(decisions).answerDecision(live, key, "Change…", "  use cards B\n");
-      expect(sendFromPlugin).toHaveBeenCalledTimes(1);
+      expect(sendUserAnswer).toHaveBeenCalledTimes(1);
       expect(decisions[0]?.answer).toMatchObject({ text: "Change the proposal: use cards B", label: "Change…" });
       expect(vi.mocked(appendTicketNote).mock.calls[0]?.[2]).toContain(`→ Change… ("Change the proposal: use cards B")`);
     });
@@ -191,11 +191,11 @@ describe("Actions.answerDecision", () => {
 
     it("sends only the prompt when the text is empty or blank", async () => {
       for (const text of ["", "   "]) {
-        vi.mocked(sendFromPlugin).mockClear();
+        vi.mocked(sendUserAnswer).mockClear();
         const decisions = [withChange()];
         await actionsOver(decisions).answerDecision(live, key, "Change…", text);
         expect(decisions[0]?.answer?.text).toBe("Change the proposal…");
-        expect(sendFromPlugin).toHaveBeenCalledTimes(1);
+        expect(sendUserAnswer).toHaveBeenCalledTimes(1);
       }
     });
 
@@ -219,9 +219,9 @@ describe("Actions.answerDecision", () => {
 
     // TR-140: words typed on a plan card were taken for approval and the owner built at once.
     it("sends words typed on a plan as changes requested, and records them as Request changes", async () => {
-      vi.mocked(sendFromPlugin).mockClear();
+      vi.mocked(sendUserAnswer).mockClear();
       await actionsOver([stored("owner")]).answerDecision(live, key, null, "no independent reviewer");
-      expect(vi.mocked(sendFromPlugin).mock.calls[0]?.[2]).toBe("plan-changes");
+      expect(vi.mocked(sendUserAnswer).mock.calls[0]?.[2]).toBe("plan-changes");
       expect(vi.mocked(appendTicketNote).mock.calls[0]?.[2]).toContain(`→ Request changes ("no independent reviewer")`);
     });
 
@@ -231,10 +231,10 @@ describe("Actions.answerDecision", () => {
         [stored("owner"), key, "Approve", `→ Approve ("Approve")`],
         [other, "owner:fee-storage", null, `→ "per trade"`],
       ] as const) {
-        vi.mocked(sendFromPlugin).mockClear();
+        vi.mocked(sendUserAnswer).mockClear();
         vi.mocked(appendTicketNote).mockClear();
         await actionsOver([decision]).answerDecision(live, decisionKey, label, label === null ? "per trade" : "");
-        expect(vi.mocked(sendFromPlugin).mock.calls[0]?.[2]).toBe("answer");
+        expect(vi.mocked(sendUserAnswer).mock.calls[0]?.[2]).toBe("answer");
         expect(vi.mocked(appendTicketNote).mock.calls[0]?.[2]).toContain(note);
       }
     });
