@@ -7,7 +7,7 @@ import { useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo } from "react";
 import { View } from "react-native";
 
-import { refusedMessage } from "../shared/refused-commands";
+import { sendUnlessRefused } from "../shared/refused-commands";
 import { ReplyBox } from "./reply-box";
 import { SPACE } from "./spacing";
 import { IconButton } from "./ui";
@@ -59,9 +59,7 @@ export function ChangeBox({
       <View style={styles.buttons}>
         <IconButton icon="Send" label={sendLabel} showLabel tone="accent" theme={theme} disabled={busy || !canSend} state={sendState} onPress={() => {
             // Refused before the card's call starts, so Send never spins for it (TR-232).
-            const refusal = refusedMessage(value);
-            if (refusal === null) onSend();
-            else toast.error(refusal);
+            sendUnlessRefused(value, onSend, (reason) => toast.error(reason));
           }} />
         <IconButton icon="X" label="Cancel" showLabel theme={theme} disabled={busy} onPress={onCancel} />
       </View>

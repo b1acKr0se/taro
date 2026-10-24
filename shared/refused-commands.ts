@@ -19,3 +19,10 @@ export function refusedMessage(text: string): string | null {
   const name = match[1]!.toLowerCase();
   return REFUSED_COMMANDS.has(name) ? `/${name} is not available in this plugin.` : null;
 }
+
+/** A box's Send: sends, or says why not and changes nothing, so a refused message never spins or leaves the box. */
+export function sendUnlessRefused(text: string, send: () => void, refuse: (reason: string) => void): void {
+  const refusal = refusedMessage(text);
+  if (refusal === null) send();
+  else refuse(refusal);
+}

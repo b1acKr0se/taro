@@ -15,7 +15,7 @@ import { Pressable, TextInput } from "./focus";
 import { primaryAction } from "./composer-notice";
 import { enterKeyAction, isStopKey, type WebKeyPressEvent } from "./keys";
 import { createNativeFieldSync } from "./native-field-sync";
-import { refusedMessage } from "../shared/refused-commands";
+import { sendUnlessRefused } from "../shared/refused-commands";
 import { SPACE } from "./spacing";
 import { Spinner } from "./ui";
 
@@ -129,9 +129,7 @@ export function ReplyBox({
   const toast = useToast();
   // A `/clear` is refused here, before the caller clears the box or shows a row (TR-232): the text stays, nothing flickers.
   function send(): void {
-    const refusal = refusedMessage(value);
-    if (refusal === null) onSend?.();
-    else toast.error(refusal);
+    sendUnlessRefused(value, () => onSend?.(), (reason) => toast.error(reason));
   }
   const styles = useMemo(
     () => ({

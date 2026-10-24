@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { refusedMessage, UNLISTED_COMMANDS } from "./refused-commands";
+import { refusedMessage, sendUnlessRefused, UNLISTED_COMMANDS } from "./refused-commands";
 
 describe("refusedMessage", () => {
   it("refuses /clear as the message's first word, in any case, with words after it or spaces before", () => {
@@ -24,5 +24,20 @@ describe("refusedMessage", () => {
 describe("UNLISTED_COMMANDS", () => {
   it("keeps /clear, its other names and /exit out of the list", () => {
     expect([...UNLISTED_COMMANDS].sort()).toEqual(["clear", "exit", "new", "reset"]);
+  });
+});
+
+describe("sendUnlessRefused", () => {
+  it("only says why for a refused message, without sending it", () => {
+    const calls: string[] = [];
+    sendUnlessRefused(" /clear now", () => calls.push("sent"), (reason) => calls.push(reason));
+    expect(calls).toEqual(["/clear is not available in this plugin."]);
+  });
+
+  it("only sends anything else, without a word", () => {
+    const calls: string[] = [];
+    sendUnlessRefused("don't /clear yet", () => calls.push("sent"), (reason) => calls.push(reason));
+    sendUnlessRefused("", () => calls.push("sent"), (reason) => calls.push(reason));
+    expect(calls).toEqual(["sent", "sent"]);
   });
 });

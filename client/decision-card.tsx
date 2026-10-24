@@ -13,11 +13,13 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
+import { useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 
 import { answerDecision } from "../shared/contracts";
 import { answerPlaceholder, askedBy, decisionOptionRows, decisionSubmit, type DecisionPick } from "../shared/decision-view";
+import { sendUnlessRefused } from "../shared/refused-commands";
 import type { StoredDecision } from "../shared/state";
 import { Pressable } from "./focus";
 import { useRevealFocused } from "./keyboard";
@@ -78,6 +80,7 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
   const [whyOpen, setWhyOpen] = useState(false);
   // Shared with the same decision's chips and buttons on every other surface (TR-191).
   const presses = useActions(decisionCall(decision));
+  const toast = useToast();
   const busy = presses.busy;
   const { colors } = theme;
   const optionRows = useMemo(() => decisionOptionRows(decision), [decision]);
@@ -245,15 +248,21 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
               // Busy too while another surface answers this decision, as nothing is picked here to spin instead.
               state={presses.stateOf(submitPress) ?? (busy ? "busy" : undefined)}
               // The answered decision leaves, so Submit stays busy until it does.
+              // A typed /clear is refused before the press starts, so Submit never spins for it (TR-232).
               onPress={() =>
-                presses.press(submitPress, () => answer({ key: decision.key, label: submit.label, text: submit.text, from: answeredFrom }), {
-                  after: "hold",
-                  onSuccess: () => {
-                    setTyped("");
-                    setPicked(null);
-                    onAnswered();
-                  },
-                })
+                sendUnlessRefused(
+                  submit.text,
+                  () =>
+                    presses.press(submitPress, () => answer({ key: decision.key, label: submit.label, text: submit.text, from: answeredFrom }), {
+                      after: "hold",
+                      onSuccess: () => {
+                        setTyped("");
+                        setPicked(null);
+                        onAnswered();
+                      },
+                    }),
+                  (reason) => toast.error(reason),
+                )
               }
             />
           </View>
