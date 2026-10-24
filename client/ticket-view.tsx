@@ -33,6 +33,8 @@ import { KeyboardScrollView } from "./keyboard";
 import { Markdown, MarkdownInline } from "./markdown";
 import { PlanActions, PlanBody, usePlanMarks, type PlanCardOptions } from "./plan-card";
 import { SpecChangeBox } from "./spec-change-box";
+import { TIPS, TicketActions } from "./ticket-actions";
+import { TipAnchor, TipBounds } from "./tip-anchor";
 import { withAlpha } from "./tint";
 import { recentMilestoneRows } from "./milestone-rows";
 import { paneGutter, SPACE } from "./spacing";
@@ -308,12 +310,24 @@ function TicketDetail({
   }
 
   return (
+    <TipBounds.Provider value={scroller}>
     <KeyboardScrollView scrollerRef={scroller} contentContainerStyle={styles.body}>
       <SummaryBlock
         theme={theme}
         status={data.status}
         labels={data.labels}
         pause={data.pause}
+        summary={summary}
+        approve={approving === null ? null : { ...approving, presses: approvePresses }}
+        answeredFrom={answeredFrom}
+        onAnswered={() => void decisions.refetch()}
+        onOpenLink={openLink}
+      />
+      <TicketActions
+        theme={theme}
+        project={project}
+        ticket={ticket}
+        presses={pausePresses}
         pauseAction={
           data.pausable
             ? { kind: "pause", run: () => pausePresses.press("pause", () => pauseRpc({ project, ticket }), { after: "check", onSuccess: told }), state: pausePresses.stateOf("pause"), busy: pausePresses.busy }
@@ -340,11 +354,8 @@ function TicketDetail({
             : null
         }
         specChange={data.specChangeable && !specOpen ? () => setSpecOpen(true) : null}
-        summary={summary}
-        approve={approving === null ? null : { ...approving, presses: approvePresses }}
-        answeredFrom={answeredFrom}
-        onAnswered={() => void decisions.refetch()}
-        onOpenLink={openLink}
+        reopenable={data.reopenable}
+        onReopened={told}
       />
       {data.specChangeable ? <SpecChangeBox project={project} ticket={ticket} theme={theme} open={specOpen} onOpenChange={setSpecOpen} onSent={() => void detail.refetch()} /> : null}
       {sections.length === 0 ? null : (
@@ -384,6 +395,7 @@ function TicketDetail({
         </View>
       )}
     </KeyboardScrollView>
+    </TipBounds.Provider>
   );
 }
 
@@ -393,10 +405,6 @@ function SummaryBlock({
   status,
   labels,
   pause,
-  pauseAction,
-  compactAction,
-  relaunchAction,
-  specChange,
   summary,
   approve,
   answeredFrom,
@@ -407,14 +415,6 @@ function SummaryBlock({
   status: string;
   labels: readonly string[];
   pause: PauseView | null;
-  /** Park for a queued or under-way ticket, Resume for a parked one (TR-088, TR-166). */
-  pauseAction: { kind: "pause" | "resume"; run: () => void; state: "busy" | "done" | undefined; busy: boolean } | null;
-  /** Compact beside Park, for an idle owner with a large context (TR-095). */
-  compactAction: { run: () => void; state: "busy" | "done" | undefined; busy: boolean } | null;
-  /** Relaunch owner: a fresh owner from the latest HANDOFF, in any worked status (TR-219). */
-  relaunchAction: { run: () => void; state: "busy" | "done" | undefined; busy: boolean } | null;
-  /** Opens Change spec…'s box under the block, on a Queued ticket with no owner (TR-129). */
-  specChange: (() => void) | null;
   summary: TicketSummary;
   approve: { decision: StoredDecision; options: PlanCardOptions; presses: Actions } | null;
   answeredFrom: "screen" | "tab";
@@ -429,8 +429,8 @@ function SummaryBlock({
   const line = { flexDirection: "row" as const, alignItems: "flex-start" as const, gap: SPACE.sm };
   const iconBox = { width: SUMMARY_ICON, height: lineHeightFor(FONT_SIZE.body), justifyContent: "center" as const, flexShrink: 0 };
   // Every row is icon, label, value in three fixed columns, so the values and their wrapped lines start at one edge.
-  const row = (icon: string, iconColor: string, name: string, value: ReactNode, labelColor = colors.foregroundMuted) => (
-    <View style={line}>
+  const row = (icon: string, iconColor: string, name: string, value: ReactNode, labelColor = colors.foregroundMuted, raised = false) => (
+    <View style={raised ? [line, { zIndex: 1 }] : line}>
       <View style={iconBox}>
         <Icon name={icon} size={15} color={iconColor} />
       </View>
@@ -441,50 +441,12 @@ function SummaryBlock({
     </View>
   );
   return (
-    <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface1, padding: SPACE.md, gap: SPACE.sm }}>
+    <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface1, padding: SPACE.md, gap: SPACE.sm, zIndex: 2 }}>
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: SPACE.sm }}>
         <PhaseBadge theme={theme} status={phaseOf({ status, pause })} />
         {labels.map((each) => (
           <Chip key={each} theme={theme} icon="Tag" text={each} color={colors.foregroundMuted} />
         ))}
-        {pauseAction === null && compactAction === null && relaunchAction === null && specChange === null ? null : (
-          <View style={{ marginLeft: "auto", flexDirection: "row", flexWrap: "wrap", gap: SPACE.sm }}>
-            {pauseAction === null ? null : (
-              <IconButton
-                icon={pauseAction.kind === "pause" ? "SquareParking" : "Play"}
-                label={pauseAction.kind === "pause" ? "Park" : "Resume"}
-                showLabel
-                theme={theme}
-                disabled={pauseAction.busy}
-                state={pauseAction.state}
-                onPress={pauseAction.run}
-              />
-            )}
-            {relaunchAction === null ? null : (
-              <IconButton
-                icon="RotateCcw"
-                label="Relaunch owner"
-                showLabel
-                theme={theme}
-                disabled={relaunchAction.busy}
-                state={relaunchAction.state}
-                onPress={relaunchAction.run}
-              />
-            )}
-            {specChange === null ? null : <IconButton icon="Pencil" label="Change spec…" showLabel theme={theme} onPress={specChange} />}
-            {compactAction === null ? null : (
-              <IconButton
-                icon="Minimize2"
-                label="Compact"
-                showLabel
-                theme={theme}
-                disabled={compactAction.busy}
-                state={compactAction.state}
-                onPress={compactAction.run}
-              />
-            )}
-          </View>
-        )}
       </View>
       {pause === null
         ? null
@@ -504,6 +466,8 @@ function SummaryBlock({
           {approve === null ? null : <SummaryApprove decision={approve.decision} options={approve.options} presses={approve.presses} theme={theme} answeredFrom={answeredFrom} onAnswered={onAnswered} />}
         </View>,
         wanted ? colors.statusWarning : colors.foregroundMuted,
+        // Above Goal, which Approve's tooltip hangs over.
+        true,
       )}
       {row(
         "Star",
@@ -545,16 +509,21 @@ function SummaryApprove({
 }) {
   const answer = useRpc(answerDecision);
   return (
-    <IconButton
-      icon="Check"
-      label={options.approveLabel}
-      showLabel
-      tone="accent"
-      theme={theme}
-      disabled={presses.busy}
-      state={presses.stateOf(optionPress(options.approve))}
-      onPress={() => presses.press(optionPress(options.approve), () => answer({ key: decision.key, label: options.approve, text: "", from: answeredFrom }), { after: "hold", onSuccess: onAnswered })}
-    />
+    <TipAnchor theme={theme} text={TIPS.approve}>
+      {(tip) => (
+        <IconButton
+          icon="Check"
+          label={options.approveLabel}
+          showLabel
+          tone="accent"
+          theme={theme}
+          disabled={presses.busy}
+          state={presses.stateOf(optionPress(options.approve))}
+          onPress={() => presses.press(optionPress(options.approve), () => answer({ key: decision.key, label: options.approve, text: "", from: answeredFrom }), { after: "hold", onSuccess: onAnswered })}
+          tip={tip}
+        />
+      )}
+    </TipAnchor>
   );
 }
 
