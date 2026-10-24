@@ -62,6 +62,7 @@ import {
 } from "../shared/queue-check";
 import { hasHeadroom, type BoardAlert } from "../shared/recovery";
 import { refusedMessage } from "../shared/refused-commands";
+import { reopenRound, roundBranch } from "../shared/reopen";
 import { specChangeRefusal } from "../shared/spec-change";
 import { carriedQuestionLines, questionsToCarry } from "../shared/state";
 import { TARO_LABELS, TICKET_STATUSES, type ProjectConfig } from "../shared/project";
@@ -84,7 +85,7 @@ import type { ChatQueue } from "./chat-queue";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import { identityFromLabels, lastHumanMessageAt, managerHandoffPath, type Supervisor } from "./supervision";
-import { appendTicketNote, closeTicket, listTickets, recordChangesRequested, viewTicket, type TicketDetail, type TicketSummary } from "./tickets";
+import { appendTicketNote, closeRound as closeRoundRecord, closeTicket, listTickets, recordChangesRequested, reopenTicket as reopenTicketRecord, viewTicket, type TicketDetail, type TicketSummary } from "./tickets";
 import { usageReading, type Stats } from "./stats";
 import { isStopping, reportFailure } from "./stopping";
 import type { TrackerWatch } from "./tracker-watch";
@@ -308,7 +309,8 @@ export class Actions {
         outcome = url === null ? { kind: "surprise", found: "the ticket records no PR URL" } : await acceptPullRequest({ ...common, url, head, method: config.mergeMethod });
       else {
         const recorded = executionBranch(detail.implementationNotes);
-        const fallback = `taro/${ticket.toLowerCase()}`;
+        // A reopened round works on its own branch (TR-229); the first round's is merged and may be gone.
+        const fallback = roundBranch(ticket, reopenRound(detail.implementationNotes));
         outcome = await acceptLocalBranch({ ...common, head, branches: recorded === null || recorded === fallback ? [fallback] : [recorded, fallback] });
       }
     } catch (error) {
@@ -397,6 +399,61 @@ export class Actions {
     if (refusal !== null) throw new Error(refusal);
     await tellManager(paseo, project, await message(TEMPLATES.specChange, { ticket, title: detail.title, text: words }));
     await appendTicketNote(paths.tracker, ticket, `SCOPE-CHANGE ${new Date().toISOString()} — sent to the manager before an owner started; the user: "${words}"`).catch(() => undefined);
+  }
+
+  /**
+   * Reopen (TR-229): a Done ticket goes back to Queued with the user's note as a REOPENED record, and
+   * the manager hears of it to dispatch a fresh owner on the round's branch. A manager not running
+   * is no failure: the ticket is Queued, so the queue check wakes or restarts one as for any other.
+   */
+  async reopenTicket(paseo: PaseoApi, project: string, ticket: string, note: string): Promise<string> {
+    const paths = await projectPaths(project);
+    const words = note.trim();
+    // An owner that set Done and is still in its last turn is released only while the ticket stays Done (review S1).
+    const lastOwner = async () => {
+      const owner = await this.liveOwner(paseo, project, ticket);
+      if (owner === null) return;
+      if (isMidTurn(owner)) throw new Error(`${ticket}'s owner is still finishing its last turn; reopen it in a minute.`);
+      await paseo.agents.ref(owner.id).archive();
+    };
+    const reopened = await reopenTicketRecord(paths.tracker, ticket, words, new Date().toISOString(), lastOwner);
+    const text = await message(TEMPLATES.ticketReopened, {
+      ticket,
+      title: reopened.title,
+      round: String(reopened.round),
+      branch: roundBranch(ticket, reopened.round),
+      note: words,
+      pastOwners: reopened.pastOwners.length === 0 ? "none" : reopened.pastOwners.join(", "),
+    });
+    const told = await tellManager(paseo, project, text).then(
+      () => true,
+      (error: unknown) => {
+        console.warn(`[taro] ${project}: reopened ${ticket}, but the manager was not told: ${error instanceof Error ? error.message : String(error)}`);
+        return false;
+      },
+    );
+    return told ? `${ticket} is reopened and back in Queued: the manager starts a fresh owner.` : `${ticket} is reopened and back in Queued: the manager starts a fresh owner once it runs.`;
+  }
+
+  /**
+   * Close round (TR-229): the user ends a reopened ticket's round before its owner delivers. Every
+   * live agent of the ticket is archived, mid-turn or not, once the refusals pass, then the ticket is
+   * Done with a ROUND-CLOSED record and nothing merged. The release after Done archives only the
+   * workspaces of agents it archives itself, so the round owner's emptied workspace is archived here.
+   */
+  async closeRound(paseo: PaseoApi, project: string, ticket: string): Promise<string> {
+    // Under the project's tracker lock, with Resume and the minute check, so no owner starts on the round as it closes.
+    return serialized(`tracker-changed:${project}`, async () => {
+      const paths = await projectPaths(project);
+      let stopped: PaseoAgent[] = [];
+      const stopAgents = async () => {
+        stopped = await this.archiveTicketAgents(paseo, project, ticket);
+      };
+      const closed = await closeRoundRecord(paths.tracker, ticket, new Date().toISOString(), stopAgents);
+      await this.archiveOwnerWorkspaces(paseo, project, stopped);
+      const owner = stopped.length === 0 ? `round ${closed.round} had no agent running` : `its round ${closed.round} owner was stopped`;
+      return `${ticket} is back in Done; ${owner}. Nothing was merged.`;
+    });
   }
 
   /** A fresh owner in the same workspace, from the ticket's latest handoff or milestone (decision 30). */
@@ -513,21 +570,37 @@ export class Actions {
     const paths = await projectPaths(project);
     await appendTicketNote(paths.tracker, ticket, pausedHoldText(new Date().toISOString().slice(0, 16) + "Z", progress, handoffWritten));
     const archived = await this.archiveTicketAgents(paseo, project, ticket);
-    console.log(`[taro] ${project}: paused ${ticket} (${progress}); archived ${archived} agent(s)`);
+    console.log(`[taro] ${project}: paused ${ticket} (${progress}); archived ${archived.length} agent(s)`);
   }
 
-  /** Archives the live agents of a ticket and its children (never the manager); safe to repeat. Returns how many. */
-  private async archiveTicketAgents(paseo: PaseoApi, project: string, ticket: string): Promise<number> {
+  /** Archives the live agents of a ticket and its children (never the manager); safe to repeat. Returns them. */
+  private async archiveTicketAgents(paseo: PaseoApi, project: string, ticket: string): Promise<PaseoAgent[]> {
     const agents = (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] !== "manager" && doneTicketOf(agent.labels[TARO_LABELS.ticket], new Set([ticket])) !== null);
     for (const agent of agents) {
       await paseo.agents
         .ref(agent.id)
         .archive()
-        .catch((error: unknown) => console.warn(`[taro] pausing ${ticket}: could not archive ${agent.id}: ${error instanceof Error ? error.message : String(error)}`));
+        .catch((error: unknown) => console.warn(`[taro] archiving ${ticket}'s agents: could not archive ${agent.id}: ${error instanceof Error ? error.message : String(error)}`));
       await this.supervisor.withdrawDecisionsOf(agent.id);
       await this.state.forgetAgent(agent.id);
     }
-    return agents.length;
+    return agents;
+  }
+
+  /** The workspaces of the owners among `archived`, once no other agent lives in them (never the manager's), as the release after Done does. */
+  private async archiveOwnerWorkspaces(paseo: PaseoApi, project: string, archived: readonly PaseoAgent[]): Promise<void> {
+    const config = await requireProjectConfig(project);
+    const candidates = new Set(archived.flatMap((agent) => (agent.labels[TARO_LABELS.role] === "owner" && agent.workspaceId && agent.workspaceId !== config.managerWorkspaceId ? [agent.workspaceId] : [])));
+    if (candidates.size === 0) return;
+    const gone = new Set(archived.map((agent) => agent.id));
+    // Paseo archives a workspace with every agent in it: one where another agent lives (the user's own) is kept.
+    const occupied = await listTaroAgents(paseo, {}).then(
+      (all) => new Set(all.filter((agent) => !gone.has(agent.id)).flatMap((agent) => (agent.workspaceId ? [agent.workspaceId] : []))),
+      () => candidates,
+    );
+    for (const workspaceId of [...candidates].filter((candidate) => !occupied.has(candidate))) {
+      await paseo.workspaces.archive(workspaceId).catch((error: unknown) => console.warn(`[taro] ${project}: could not archive workspace ${workspaceId}: ${error instanceof Error ? error.message : String(error)}`));
+    }
   }
 
   /**
@@ -623,7 +696,7 @@ export class Actions {
     // A pause cut short after its HOLD (a reload, a failed archive) leaves agents alive under it: archive them now.
     for (const { ticket, notes } of await this.pauseCandidates(project, tickets)) {
       if (!pausedByTaro(notes)) continue;
-      const archived = await this.archiveTicketAgents(paseo, project, ticket.id);
+      const archived = (await this.archiveTicketAgents(paseo, project, ticket.id)).length;
       if (archived === 0) continue;
       console.log(`[taro] ${project}: finished pausing ${ticket.id}; archived ${archived} agent(s) left alive`);
       changed = true;

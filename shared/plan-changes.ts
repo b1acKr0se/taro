@@ -8,6 +8,7 @@
 import { z } from "zod";
 
 import type { ParsedPlan, PlanSection } from "./plan";
+import { roundNotes } from "./reopen";
 
 /** How the user last answered a plan: Approve (or an APPROVAL record), Request changes, or another option. */
 export const PlanAnswerKindSchema = z.enum(["approved", "changes requested", "answered"]);
@@ -45,9 +46,9 @@ export function planAnswerRecords(notes: string | null): PlanAnswerRecord[] {
   });
 }
 
-/** The notes' newest plan answer or APPROVAL record; null when the user has not answered a plan yet. */
+/** The newest plan answer or APPROVAL record of the round in progress (TR-229); null when the user has not answered its plan yet. */
 export function lastPlanAnswer(notes: string | null): PlanAnswerRecord | null {
-  const records = planAnswerRecords(notes);
+  const records = planAnswerRecords(roundNotes(notes));
   return records[records.length - 1] ?? null;
 }
 

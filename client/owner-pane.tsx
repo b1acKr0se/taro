@@ -3,19 +3,20 @@
  * agents — the live owner, a subagent, or an archived agent read-only — or its
  * ticket, and a way back to the manager. Nothing is pinned above the chat (TR-026):
  * each open decision is a card under the message that asked it, and a delivered
- * ticket's Accept / Request changes sit in a row at the composer.
+ * ticket's Accept / Request changes sit in a row at the composer. A reopened round's owner has Close
+ * round above its chat box (TR-229), as the Ticket tab's row has.
  * With the board hidden the ticket sits in its own panel beside, so the pane is the chat alone.
  * Opened by View plan (TR-061) it shows the Ticket tab, its Plan on top, and Back returns to where
  * View plan was pressed.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
-import { Icon } from "@getpaseo/plugin/client/react-native";
-import { useQueryClient } from "@tanstack/react-query";
+import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 
-import { tellAgent, type Card } from "../shared/contracts";
+import { closeRound, loadTicket, tellAgent, type Card } from "../shared/contracts";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { withoutDecisionBlocks } from "../shared/reports";
 import { offersSpecChange } from "../shared/spec-change";
@@ -30,13 +31,16 @@ import { askedElsewhere, openingPaneAgent, paneAgents, paneAgentJob, paneOpening
 import { KeyboardScrollView } from "./keyboard";
 import { PaneHeader } from "./pane-header";
 import { useTicketRecords } from "./plan-card";
+import { polled } from "./polling";
 import { SpecChangeBox } from "./spec-change-box";
 import { paneGutter, SPACE } from "./spacing";
+import { TIPS } from "./ticket-actions";
 import { TicketView } from "./ticket-view";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, Segmented } from "./ui";
 import { AgentChips } from "./agent-chips";
 import { KeptPane, useVisited } from "./kept-pane";
+import { useActions } from "./use-actions";
 import { useNow } from "./use-now";
 
 const ARCHIVED_NOTE = "Finished — this agent is archived; its conversation is read-only.";
@@ -134,6 +138,37 @@ export function OwnerPane({
   const shownAsks = useMemo(() => card.decisions.filter((decision) => decision.agentId === shown?.id), [card.decisions, shown?.id]);
   // A permission or question another of the ticket's agents asked is answered in that agent's chat.
   const elsewhere = askedElsewhere(card, shown?.id ?? null, agents);
+  // Close round (TR-229) is the ticket's detail flag: read, with the Ticket tab's cache, only for a top-level ticket being worked.
+  const load = useRpc(loadTicket);
+  const toast = useToast();
+  const closePresses = useActions();
+  const mayClose = card.parent === null && card.status !== "Done" && card.status !== "Cancelled" && card.status !== "Awaiting acceptance";
+  const detail = useQuery({ queryKey: ["taro", "ticket", project, card.id], queryFn: () => load({ project, ticket: card.id }), enabled: mayClose, ...polled(6_000) });
+  const closable = mayClose && detail.data?.closable === true && shown !== null && shown.live && shown.id === card.owner?.id;
+  const close = useRpc(closeRound);
+  const [closeTipOpen, setCloseTipOpen] = useState(false);
+  // One press closes the round, as Park stops an owner in one press; Reopen undoes a mistaken one.
+  const closeRoundLine = !closable ? null : (
+    <IconButton
+      icon="CircleCheck"
+      label="Close round"
+      showLabel
+      theme={theme}
+      disabled={closePresses.busy}
+      state={closePresses.stateOf("close-round")}
+      tip={{ text: TIPS.closeRound, onShow: setCloseTipOpen }}
+      onPress={() => {
+        setCloseTipOpen(false);
+        closePresses.press("close-round", () => close({ project, ticket: card.id }), {
+          onSuccess: (result) => {
+            toast.show(result.message, { variant: "success" });
+            void queries.invalidateQueries({ queryKey: ["taro", "ticket", project, card.id] });
+            onChanged();
+          },
+        });
+      }}
+    />
+  );
   const tabSwitch = (iconsOnly: boolean) => (
     <Segmented
       theme={theme}
@@ -234,22 +269,29 @@ export function OwnerPane({
                 context={{ used: shown.brief.contextUsedTokens, max: shown.brief.contextMaxTokens }}
                 identity={shown.brief}
                 actions={
-                  elsewhere === null ? undefined : (
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() => setChosen({ card: openKey, agent: elsewhere.agent.id })}
-                      style={{ width: "100%", flexDirection: "row", alignItems: "center", gap: SPACE.sm }}
-                    >
-                      <Icon name={elsewhere.permission ? "KeyRound" : "Hand"} size={13} color={elsewhere.blocking ? theme.colors.statusWarning : theme.colors.foregroundMuted} />
-                      <Text style={{ flex: 1, color: theme.colors.foreground, fontSize: FONT_SIZE.caption }} numberOfLines={1}>
-                        {elsewhere.text}
-                      </Text>
-                      <View style={rowButtonStyle(theme.colors)}>
-                        <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" }}>Open {paneAgentJob(elsewhere.agent.role)}</Text>
-                      </View>
-                    </Pressable>
+                  elsewhere === null && closeRoundLine === null ? undefined : (
+                    // Stacked when both apply: Close round on top, under its tooltip, then the question asked elsewhere.
+                    <View style={{ width: "100%", alignItems: "flex-start", gap: SPACE.sm }}>
+                      {closeRoundLine}
+                      {elsewhere === null ? null : (
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() => setChosen({ card: openKey, agent: elsewhere.agent.id })}
+                          style={{ width: "100%", flexDirection: "row", alignItems: "center", gap: SPACE.sm }}
+                        >
+                          <Icon name={elsewhere.permission ? "KeyRound" : "Hand"} size={13} color={elsewhere.blocking ? theme.colors.statusWarning : theme.colors.foregroundMuted} />
+                          <Text style={{ flex: 1, color: theme.colors.foreground, fontSize: FONT_SIZE.caption }} numberOfLines={1}>
+                            {elsewhere.text}
+                          </Text>
+                          <View style={rowButtonStyle(theme.colors)}>
+                            <Text style={{ color: theme.colors.accent, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "600" }}>Open {paneAgentJob(elsewhere.agent.role)}</Text>
+                          </View>
+                        </Pressable>
+                      )}
+                    </View>
                   )
                 }
+                actionsTip={closable && closeTipOpen ? TIPS.closeRound : null}
               />
             ) : (
               <AgentChat

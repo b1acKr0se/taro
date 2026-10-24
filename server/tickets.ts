@@ -3,8 +3,10 @@
  * is started for a ticket.
  */
 import { deliveryOnOffer } from "../shared/delivery-end";
-import { noteRecords } from "../shared/execution";
+import { executionBranch, executionOwners, noteRecords } from "../shared/execution";
 import { startsPlanning } from "../shared/owner-start";
+import { dispatchPending } from "../shared/pause";
+import { closeRoundRefusal, reopenedRecordText, reopenRefusal, reopenRound, roundClosedRecordText } from "../shared/reopen";
 import type { TicketPriority, TicketProblem } from "../shared/ticket-format";
 import { createTicketStore, type TicketStore } from "./ticket-store";
 
@@ -133,6 +135,71 @@ export async function startPlanning(trackerPath: string, ticketId: string, recor
 /** Appends the record and sets the ticket Done in one write: Accept run by the plugin (TR-141). */
 export async function closeTicket(trackerPath: string, ticketId: string, record: string): Promise<void> {
   await storeFor(trackerPath).edit(ticketId, { status: "Done", appendNotes: [record] });
+}
+
+/** What Reopen did: the round now open and the owners of the earlier ones. */
+export interface Reopened {
+  title: string;
+  round: number;
+  pastOwners: string[];
+}
+
+/**
+ * Reopen (TR-229): the REOPENED record (with a copy of the final summary, indented) and the ticket
+ * Queued, the final summary kept: a reopened round verifies what it describes, and its own FINAL
+ * replaces it at delivery. All in one write checked under the lock, so a ticket that changed
+ * since it was read (another Reopen, a late owner note) is refused rather than reopened twice.
+ * `beforeWrite` runs between the checks and the write.
+ */
+export async function reopenTicket(trackerPath: string, ticketId: string, note: string, at: string, beforeWrite: () => Promise<void> = async () => undefined): Promise<Reopened> {
+  const store = storeFor(trackerPath);
+  const ticket = await store.read(ticketId);
+  const refusal = reopenRefusal(ticket.id, { status: ticket.status, parent: ticket.parent, note });
+  if (refusal !== null) throw new Error(refusal);
+  // What the caller checks outside the tracker (the last owner); a ticket changed meanwhile is refused below.
+  await beforeWrite();
+  const notes = textOrNull(ticket.notes);
+  const round = reopenRound(notes) + 1;
+  const pastOwners = executionOwners(notes);
+  const record = reopenedRecordText({ at, note, round, pastOwners, finalSummary: textOrNull(ticket.finalSummary) });
+  const unchanged = (current: { status: string; notes: string; finalSummary: string }) =>
+    current.status === "Done" && current.notes === ticket.notes && current.finalSummary === ticket.finalSummary;
+  const written = await store.editIf(ticket.id, unchanged, { appendNotes: [record], status: "Queued" });
+  if (written === null) throw new Error(`${ticket.id} changed while it was being reopened; try again.`);
+  return { title: ticket.title, round, pastOwners };
+}
+
+/** What Close round did: the round it closed and the branch its owner worked on, if one started. */
+export interface RoundClosed {
+  round: number;
+  branch: string | null;
+}
+
+/**
+ * Close round (TR-229): the ROUND-CLOSED record and the ticket Done, the final summary left as Reopen
+ * kept it, in one write checked under the lock. Notes the owner wrote meanwhile do not refuse it (the user
+ * is stopping that owner); a ticket that left the round or a status Close round allows is refused,
+ * and so is one whose owner the manager is starting right now, as Park refuses it (TR-166): that
+ * owner would start on a Done ticket, with nothing live yet to stop.
+ * `beforeWrite` runs between the checks and the write.
+ */
+export async function closeRound(trackerPath: string, ticketId: string, at: string, beforeWrite: () => Promise<void> = async () => undefined): Promise<RoundClosed> {
+  const store = storeFor(trackerPath);
+  const ticket = await store.read(ticketId);
+  const notes = textOrNull(ticket.notes);
+  const round = reopenRound(notes);
+  const refusal = closeRoundRefusal(ticket.id, { status: ticket.status, parent: ticket.parent, round });
+  if (refusal !== null) throw new Error(refusal);
+  const starting = (text: string | null) => dispatchPending(text, Date.now());
+  if (starting(notes)) throw new Error(`The manager is starting ${ticket.id}'s owner right now: close its round in a minute, once the owner runs.`);
+  // What the caller does outside the tracker (stopping the round's agents) comes before the write.
+  await beforeWrite();
+  const branch = executionBranch(notes);
+  const stillOpen = (current: { status: string; notes: string }) =>
+    reopenRound(textOrNull(current.notes)) === round && closeRoundRefusal(ticket.id, { status: current.status, parent: ticket.parent, round }) === null && !starting(textOrNull(current.notes));
+  const written = await store.editIf(ticket.id, stillOpen, { appendNotes: [roundClosedRecordText({ at, round, branch })], status: "Done" });
+  if (written === null) throw new Error(`${ticket.id} changed while its round was being closed; try again.`);
+  return { round, branch };
 }
 
 /** The watcher saw `file` (a name under `tickets/`; every file when undefined) change: the next list reads it again. */

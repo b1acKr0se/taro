@@ -43,6 +43,7 @@ export const TEMPLATES = {
   acceptFreshOwner: "messages/accept-fresh-owner.md",
   requestChanges: "messages/request-changes.md",
   specChange: "messages/spec-change.md",
+  ticketReopened: "messages/ticket-reopened.md",
   dependencyCleared: "messages/dependency-cleared.md",
   ticketDone: "messages/ticket-done.md",
   afterDone: "messages/after-done.md",
