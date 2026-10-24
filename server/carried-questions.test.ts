@@ -23,7 +23,7 @@ vi.mock("./agents", () => ({
   isAgentGone: vi.fn(async () => false),
   isMidTurn: (agent: { status: string }) => agent.status === "running",
 }));
-vi.mock("./send", () => ({ sendFromPlugin: vi.fn(async () => undefined), sendWithoutInterrupting: vi.fn(async () => undefined), sendCommand: vi.fn() }));
+vi.mock("./send", () => ({ sendUserAnswer: vi.fn(async () => undefined), sendFromPlugin: vi.fn(async () => undefined), sendWithoutInterrupting: vi.fn(async () => undefined), sendCommand: vi.fn() }));
 // The real templates, so the test reads the message the new owner gets.
 vi.mock("./package-files", async (importOriginal) => ({ ...(await importOriginal<typeof import("./package-files")>()), skillDirectory: async () => "/skill" }));
 vi.mock("./projects", () => ({

@@ -77,7 +77,7 @@ import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { listProjectConfigs, projectPaths, requireProjectConfig } from "./projects";
 import { runCommand } from "./process";
 import { serialized } from "./serialize";
-import { sendFromPlugin, sendWithoutInterrupting } from "./send";
+import { sendFromPlugin, sendUserAnswer, sendWithoutInterrupting } from "./send";
 import { hasAttachments, sendWithAttachments, type Attachments } from "./uploads";
 import type { ChatQueue } from "./chat-queue";
 import type { Recovery } from "./recovery";
@@ -167,7 +167,7 @@ export class Actions {
     // Words typed on a plan without a button are Request changes, never approval (TR-140): bare, an owner took them for one.
     const changesRequested = option === null && decision.id === SCOPE_APPROVAL;
     // Tagged as the plugin's, so this answer closes only its own decision, not the agent's others.
-    await sendFromPlugin(paseo, decision.agentId, await message(changesRequested ? TEMPLATES.planChanges : TEMPLATES.answer, { text: words }));
+    await sendUserAnswer(paseo, decision.agentId, await message(changesRequested ? TEMPLATES.planChanges : TEMPLATES.answer, { text: words }));
     // A decision without a ticket is the manager's: answering it acts on a queued alert as a message would.
     if (decision.ticket === null) this.userToldManager(decision.project);
     const at = new Date().toISOString();

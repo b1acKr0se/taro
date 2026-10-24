@@ -29,7 +29,7 @@ vi.mock("./tickets", () => ({
   recordChangesRequested: vi.fn(async () => undefined),
 }));
 vi.mock("./evidence", () => ({ requireCompleteEvidence: async () => undefined }));
-vi.mock("./send", () => ({ sendWithoutInterrupting: vi.fn(async () => undefined), sendFromPlugin: vi.fn(async () => undefined) }));
+vi.mock("./send", () => ({ sendUserAnswer: vi.fn(async () => undefined), sendWithoutInterrupting: vi.fn(async () => undefined), sendFromPlugin: vi.fn(async () => undefined) }));
 vi.mock("./accept-merge", () => ({ acceptPullRequest: vi.fn(), acceptLocalBranch: vi.fn() }));
 vi.mock("./stopping", async (original) => ({ ...(await original<typeof import("./stopping")>()), isStopping: vi.fn(() => false) }));
 vi.mock("./models", () => ({ bypassModeId: async () => null }));

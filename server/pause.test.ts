@@ -39,7 +39,7 @@ vi.mock("./agents", () => ({
   isAgentGone: vi.fn(async () => false),
   isMidTurn: (agent: { status: string }) => agent.status === "running",
 }));
-vi.mock("./send", () => ({ sendFromPlugin: vi.fn(async () => undefined), sendWithoutInterrupting: vi.fn(async () => undefined), sendCommand: vi.fn() }));
+vi.mock("./send", () => ({ sendUserAnswer: vi.fn(async () => undefined), sendFromPlugin: vi.fn(async () => undefined), sendWithoutInterrupting: vi.fn(async () => undefined), sendCommand: vi.fn() }));
 vi.mock("./package-files", () => ({ TEMPLATES: { pause: "pause", relaunchOwner: "relaunch", unparkedHeld: "unparked-held" }, skillDirectory: async () => "/skill", message: async (path: string) => path }));
 vi.mock("./projects", () => ({
   projectPaths: async () => ({ tracker: "/tracker" }),

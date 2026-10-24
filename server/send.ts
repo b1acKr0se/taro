@@ -11,7 +11,7 @@
 import { randomUUID } from "node:crypto";
 
 import { CHAT_MESSAGE_PREFIX, COMPACTING_REFUSAL, isCompacting, type SendTimelineEntry } from "../shared/pending-sends";
-import { PLUGIN_MESSAGE_PREFIX } from "../shared/received-message";
+import { PLUGIN_MESSAGE_PREFIX, USER_ANSWER_PREFIX } from "../shared/received-message";
 import type { PaseoApi, TimelineItem } from "./host-types";
 
 type SendOptions = NonNullable<Parameters<ReturnType<PaseoApi["agents"]["ref"]>["send"]>[1]>;
@@ -37,6 +37,11 @@ export async function sendInterrupting(paseo: PaseoApi, agentId: string, text: s
 /** A message the plugin itself writes (nudge, report, reload, correction). */
 export async function sendFromPlugin(paseo: PaseoApi, agentId: string, text: string): Promise<void> {
   await sendWithoutInterrupting(paseo, agentId, text, { messageId: `${PLUGIN_MESSAGE_PREFIX}${randomUUID()}` });
+}
+
+/** The user's answer from a decision card: tagged as the plugin's for supervision (it closes only its own decision), shown as the user's own. */
+export async function sendUserAnswer(paseo: PaseoApi, agentId: string, text: string): Promise<void> {
+  await sendWithoutInterrupting(paseo, agentId, text, { messageId: `${USER_ANSWER_PREFIX}${randomUUID()}` });
 }
 
 /** A slash command must be a turn of its own, so it is a plain send, only to an idle agent. */

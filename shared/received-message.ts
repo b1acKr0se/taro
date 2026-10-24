@@ -13,12 +13,15 @@ export function receivedMessage(item: { type: string }): { sender: string; text:
 /** The message id prefix of everything the plugin itself sends to an agent (nudges, reports, reloads); the user's own ids never carry it. */
 export const PLUGIN_MESSAGE_PREFIX = "taro-";
 
+/** The id prefix of the user's own answers the plugin relays from a decision card: supervision treats them as the plugin's, the chat shows them as the user's. */
+export const USER_ANSWER_PREFIX = `${PLUGIN_MESSAGE_PREFIX}answer-`;
+
 /** The sender a plugin-delivered message shows under. */
 export const PLUGIN_SENDER = "Plugin";
 
 /** A user message the plugin sent, recognised by its message id, as a received message from the plugin; null for the user's own. */
 export function pluginMessage(item: { type: string; text?: string; clientMessageId?: string }): { sender: string; text: string } | null {
-  if (item.type !== "user_message" || !item.clientMessageId?.startsWith(PLUGIN_MESSAGE_PREFIX)) return null;
+  if (item.type !== "user_message" || !item.clientMessageId?.startsWith(PLUGIN_MESSAGE_PREFIX) || item.clientMessageId.startsWith(USER_ANSWER_PREFIX)) return null;
   const text = item.text?.trim() ?? "";
   return text === "" ? null : { sender: PLUGIN_SENDER, text };
 }
