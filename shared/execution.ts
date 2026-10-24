@@ -8,7 +8,7 @@
 
 import { MERGE_METHOD_TITLES, mergeFlag } from "./merge-method";
 import type { MergeMethod } from "./project";
-import { roundNotes } from "./reopen";
+import { reopenRound, roundNotes } from "./reopen";
 
 /** The notes split into records; each record starts a line with its upper-case name. */
 export function noteRecords(notes: string | null): string[] {
@@ -81,12 +81,14 @@ const PULL_REQUEST_URL = /https?:\/\/[^\s)<>`"'\]]+\/pull\/\d+/g;
 /**
  * The ticket's pull request: the newest one recorded as `pr: <url>`; else the newest PR URL in the
  * notes, then in the final summary. The label wins because notes also cite other projects' PRs.
+ * A reopened round never reads the final summary: Reopen keeps the earlier round's, whose pull
+ * request is merged already (TR-229).
  */
 export function pullRequestUrl(notes: string | null, finalSummary: string | null): string | null {
   return (
     newestRecordMatch(notes, new RegExp(`\\bpr\\b[*\\s]*[:=][\\s\`*"']*(${PULL_REQUEST_URL.source})`, "gi")) ??
     newestRecordMatch(notes, new RegExp(`(${PULL_REQUEST_URL.source})`, "g")) ??
-    finalSummary?.match(PULL_REQUEST_URL)?.[0] ??
+    (reopenRound(notes) === 1 ? finalSummary?.match(PULL_REQUEST_URL)?.[0] : undefined) ??
     null
   );
 }

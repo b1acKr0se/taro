@@ -32,6 +32,7 @@ const ROUND_OWNER = "bbbbbbbb-2222-4222-8222-222222222222";
 const IMPLEMENTER = "cccccccc-3333-4333-8333-333333333333";
 const ROUND_ONE = [`EXECUTION 2026-10-01T10:00Z — owner ${OLD_OWNER}, model claude/sonnet, workspace wks_1, branch taro/tr-7`, "ACCEPTANCE 2026-10-02T09:20Z — merge: merged 0a1b2c3"].join("\n\n");
 const REOPENED = `REOPENED 2026-10-03T08:00Z — user: "verify it on prod"; round 2; past owners: ${OLD_OWNER}`;
+const FINAL = "FINAL 2026-10-02T09:10Z — exported notes as Markdown\nPR: https://github.com/acme/notes-app/pull/12";
 const ROUND_TWO = `${ROUND_ONE}\n\n${REOPENED}\n\nEXECUTION 2026-10-03T08:05Z — owner ${ROUND_OWNER}, model claude/sonnet, workspace wks_2, branch taro/tr-7-2`;
 
 let sent: string[];
@@ -54,7 +55,7 @@ async function writeTicket(overrides: Partial<Ticket> & { id: string }): Promise
     plan: "",
     criteria: [],
     notes: ROUND_TWO,
-    finalSummary: "",
+    finalSummary: FINAL,
     extra: {},
     ...overrides,
   };
@@ -92,7 +93,7 @@ afterEach(async () => {
 });
 
 describe("Close round", () => {
-  it("stops the round's owner and subagents mid-turn, records ROUND-CLOSED and sets Done, the final summary left empty", async () => {
+  it("stops the round's owner and subagents mid-turn, records ROUND-CLOSED and sets Done, the final summary kept", async () => {
     await writeTicket({ id: "TR-7" });
     const answer = await actions.closeRound(paseo, "notes-app", "TR-7");
     expect(answer).toBe("TR-7 is back in Done; its round 2 owner was stopped. Nothing was merged.");
@@ -100,7 +101,7 @@ describe("Close round", () => {
     expect(archivedWorkspaces).toEqual(["wks_2"]);
     const detail = await viewTicket(tracker, "TR-7");
     expect(detail.status).toBe("Done");
-    expect(detail.finalSummary).toBeNull();
+    expect(detail.finalSummary).toBe(FINAL);
     expect(noteRecords(detail.implementationNotes).pop()).toMatch(
       /^ROUND-CLOSED \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z — round 2 closed by the user; nothing from this round was merged; branch taro\/tr-7-2 kept unmerged$/,
     );

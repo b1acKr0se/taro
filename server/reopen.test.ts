@@ -84,13 +84,13 @@ afterEach(async () => {
 });
 
 describe("Reopen", () => {
-  it("sets a Done ticket Queued with a REOPENED record that keeps the final summary indented, and clears it", async () => {
+  it("sets a Done ticket Queued with a REOPENED record that copies the final summary indented, and keeps the final summary", async () => {
     await writeTicket({ id: "TR-7" });
     const answer = await actions.reopenTicket(paseo, "notes-app", "TR-7", "  Verify the export on prod.  ");
     expect(answer).toBe("TR-7 is reopened and back in Queued: the manager starts a fresh owner.");
     const detail = await viewTicket(tracker, "TR-7");
     expect(detail.status).toBe("Queued");
-    expect(detail.finalSummary).toBeNull();
+    expect(detail.finalSummary).toBe(FINAL);
     const records = noteRecords(detail.implementationNotes);
     expect(records).toHaveLength(5);
     expect(records[4]).toMatch(

@@ -145,8 +145,9 @@ export interface Reopened {
 }
 
 /**
- * Reopen (TR-229): the REOPENED record (keeping the final summary, indented), the final summary
- * cleared and the ticket Queued, in one write checked under the lock, so a ticket that changed
+ * Reopen (TR-229): the REOPENED record (with a copy of the final summary, indented) and the ticket
+ * Queued, the final summary kept: a reopened round verifies what it describes, and its own FINAL
+ * replaces it at delivery. All in one write checked under the lock, so a ticket that changed
  * since it was read (another Reopen, a late owner note) is refused rather than reopened twice.
  * `beforeWrite` runs between the checks and the write.
  */
@@ -163,7 +164,7 @@ export async function reopenTicket(trackerPath: string, ticketId: string, note: 
   const record = reopenedRecordText({ at, note, round, pastOwners, finalSummary: textOrNull(ticket.finalSummary) });
   const unchanged = (current: { status: string; notes: string; finalSummary: string }) =>
     current.status === "Done" && current.notes === ticket.notes && current.finalSummary === ticket.finalSummary;
-  const written = await store.editIf(ticket.id, unchanged, { appendNotes: [record], finalSummary: "", status: "Queued" });
+  const written = await store.editIf(ticket.id, unchanged, { appendNotes: [record], status: "Queued" });
   if (written === null) throw new Error(`${ticket.id} changed while it was being reopened; try again.`);
   return { title: ticket.title, round, pastOwners };
 }
@@ -175,8 +176,8 @@ export interface RoundClosed {
 }
 
 /**
- * Close round (TR-229): the ROUND-CLOSED record and the ticket Done, the final summary left empty,
- * in one write checked under the lock. Notes the owner wrote meanwhile do not refuse it (the user
+ * Close round (TR-229): the ROUND-CLOSED record and the ticket Done, the final summary left as Reopen
+ * kept it, in one write checked under the lock. Notes the owner wrote meanwhile do not refuse it (the user
  * is stopping that owner); a ticket that left the round or a status Close round allows is refused,
  * and so is one whose owner the manager is starting right now, as Park refuses it (TR-166): that
  * owner would start on a Done ticket, with nothing live yet to stop.

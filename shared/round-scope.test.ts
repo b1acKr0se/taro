@@ -62,6 +62,7 @@ describe("a reopened ticket's earlier round", () => {
   it("is what the readers find before the Reopen (unchanged behaviour)", () => {
     expect(reviewHead(ROUND_ONE)).toBe(OLD_HEAD);
     expect(pullRequestUrl(ROUND_ONE, null)).toBe(OLD_PR);
+    expect(pullRequestUrl("MILESTONE 2026-10-01T11:00Z — built", `FINAL 2026-10-02T09:00Z — shipped\nPR: ${OLD_PR}`)).toBe(OLD_PR);
     expect(acceptanceMerge(ROUND_ONE)).toBe("merged 0a1b2c3");
     expect(pullRequestMerged(ROUND_ONE)).toBe(true);
     expect(parseEvidence(ROUND_ONE)?.checks).toHaveLength(1);
@@ -80,8 +81,9 @@ describe("a reopened ticket's earlier round", () => {
     expect(pullRequestMerged(notes)).toBe(false);
     expect(acceptanceMerge(notes)).toBeNull();
     expect(reviewHead(notes)).toBeNull();
-    // The cleared final summary is gone; the copy kept in the REOPENED record is not read.
+    // Neither the final summary Reopen keeps nor its copy in the REOPENED record is read: that pull request is merged.
     expect(pullRequestUrl(notes, null)).toBeNull();
+    expect(pullRequestUrl(notes, `FINAL 2026-10-02T09:00Z — shipped\nPR: ${OLD_PR}`)).toBeNull();
     expect(parseEvidence(notes)).toBeNull();
     expect(lastPlanAnswer(notes)).toBeNull();
     expect(planningTicket({ status: "Planning", notes })).toBe(true);
