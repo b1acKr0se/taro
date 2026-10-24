@@ -1,6 +1,7 @@
 // TR-068: the Ticket tab lists a parent's children with their status, which the store's view gives (TR-081).
 // TR-095: it offers Compact for the ticket's owner under the board's old rule.
 // TR-153: it says whether that owner is mid-turn, which holds a delivery's acceptance back.
+// TR-229: it offers Reopen on a Done ticket.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ticketSections } from "../shared/ticket-summary";
@@ -139,5 +140,16 @@ describe("loadTicketDetail ownerRunning", () => {
     vi.mocked(viewTicket).mockResolvedValue(parent([]));
     vi.mocked(projectAgents).mockRejectedValue(new Error("daemon away"));
     expect((await loadTicketDetail({} as PaseoApi, "notes", "NA-1")).ownerRunning).toBe(false);
+  });
+});
+
+describe("loadTicketDetail reopenable", () => {
+  it("offers Reopen on a Done top-level ticket only (TR-229), never beside Relaunch owner", async () => {
+    for (const [status, parentTaskId, reopenable] of [["Done", null, true], ["Done", "NA-0", false], ["Cancelled", null, false], ["In Progress", null, false], ["Queued", null, false]] as const) {
+      vi.mocked(viewTicket).mockResolvedValue({ ...parent([], parentTaskId), status } as Viewed);
+      const detail = await loadTicketDetail({} as PaseoApi, "notes", "NA-1");
+      expect(detail.reopenable).toBe(reopenable);
+      if (reopenable) expect(detail.relaunchable).toBe(false);
+    }
   });
 });

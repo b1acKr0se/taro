@@ -62,6 +62,7 @@ import {
 } from "../shared/queue-check";
 import { hasHeadroom, type BoardAlert } from "../shared/recovery";
 import { refusedMessage } from "../shared/refused-commands";
+import { roundBranch } from "../shared/reopen";
 import { specChangeRefusal } from "../shared/spec-change";
 import { carriedQuestionLines, questionsToCarry } from "../shared/state";
 import { TARO_LABELS, TICKET_STATUSES, type ProjectConfig } from "../shared/project";
@@ -84,7 +85,7 @@ import type { ChatQueue } from "./chat-queue";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import { identityFromLabels, lastHumanMessageAt, managerHandoffPath, type Supervisor } from "./supervision";
-import { appendTicketNote, closeTicket, listTickets, recordChangesRequested, viewTicket, type TicketDetail, type TicketSummary } from "./tickets";
+import { appendTicketNote, closeTicket, listTickets, recordChangesRequested, reopenTicket as reopenTicketRecord, viewTicket, type TicketDetail, type TicketSummary } from "./tickets";
 import { usageReading, type Stats } from "./stats";
 import { isStopping, reportFailure } from "./stopping";
 import type { TrackerWatch } from "./tracker-watch";
@@ -397,6 +398,33 @@ export class Actions {
     if (refusal !== null) throw new Error(refusal);
     await tellManager(paseo, project, await message(TEMPLATES.specChange, { ticket, title: detail.title, text: words }));
     await appendTicketNote(paths.tracker, ticket, `SCOPE-CHANGE ${new Date().toISOString()} — sent to the manager before an owner started; the user: "${words}"`).catch(() => undefined);
+  }
+
+  /**
+   * Reopen (TR-229): a Done ticket goes back to Queued with the user's note as a REOPENED record, and
+   * the manager hears of it to dispatch a fresh owner on the round's branch. A manager not running
+   * is no failure: the ticket is Queued, so the queue check wakes or restarts one as for any other.
+   */
+  async reopenTicket(paseo: PaseoApi, project: string, ticket: string, note: string): Promise<string> {
+    const paths = await projectPaths(project);
+    const words = note.trim();
+    const reopened = await reopenTicketRecord(paths.tracker, ticket, words, new Date().toISOString());
+    const text = await message(TEMPLATES.ticketReopened, {
+      ticket,
+      title: reopened.title,
+      round: String(reopened.round),
+      branch: roundBranch(ticket, reopened.round),
+      note: words,
+      pastOwners: reopened.pastOwners.length === 0 ? "none" : reopened.pastOwners.join(", "),
+    });
+    const told = await tellManager(paseo, project, text).then(
+      () => true,
+      (error: unknown) => {
+        console.warn(`[taro] ${project}: reopened ${ticket}, but the manager was not told: ${error instanceof Error ? error.message : String(error)}`);
+        return false;
+      },
+    );
+    return told ? `${ticket} is reopened and back in Queued: the manager starts a fresh owner.` : `${ticket} is reopened and back in Queued: the manager starts a fresh owner once it runs.`;
   }
 
   /** A fresh owner in the same workspace, from the ticket's latest handoff or milestone (decision 30). */

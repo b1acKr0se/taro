@@ -101,6 +101,14 @@ ticket (what you did, evidence with commands and `file:line`, recommendation), m
 acceptance, and raise an `investigation-done` decision. Before FINAL, record an EVIDENCE record with
 at least one `check:` line (format: `reference/tickets.md`).
 
+**Reopened tickets:** a Done ticket the user reopened has a REOPENED record (the user's words for
+this round, its number, the past owners) and you work on `taro/<id>-<round>`. Only records after the
+latest REOPENED count for this round: its plan approval, EVIDENCE, review head, PR and FINAL are
+new; the earlier ones are history. Write a new plan for the round and size it like a new ask. A
+round that only verifies (no code) delivers as an investigation: add the `investigation` label. A
+round that changes code removes that label if an earlier round left it, and goes through the usual
+flow on the round's branch.
+
 ## Subagents
 
 The agents you launch are **subagents**, each named by its job in its label, title and brief:

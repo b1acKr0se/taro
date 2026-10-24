@@ -78,4 +78,11 @@ describe("planRelease", () => {
     const agents = [agent("o1", "DM-1", "owner", "ws-1"), agent("o2", "DM-1", "owner", "ws-1")];
     expect(ids(planRelease(new Set(["DM-1"]), agents, options()))).toEqual({ archive: ["o1@DM-1", "o2@DM-1"], waiting: [], workspaces: ["ws-1"] });
   });
+
+  it("releases nothing of a reopened ticket (TR-229): no longer Done, its fresh owner and subagents stay, even beside its old owner's workspace", () => {
+    const agents = [agent("fresh", "DM-1", "owner", "ws-1-2"), agent("impl", "DM-1", "implementer", "ws-1-2"), agent("other", "DM-2", "owner", "ws-2")];
+    // DM-1 was Done and is Queued again; DM-2 is Done. Its old owner's workspace is among the archived ones.
+    expect(ids(planRelease(new Set(["DM-2"]), agents, options(["ws-1"])))).toEqual({ archive: ["other@DM-2"], waiting: [], workspaces: ["ws-2"] });
+    expect(ids(planRelease(new Set(), agents, options(["ws-1"])))).toEqual({ archive: [], waiting: [], workspaces: [] });
+  });
 });

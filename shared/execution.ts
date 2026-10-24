@@ -1,12 +1,14 @@
 /**
  * Facts read back from a ticket's EXECUTION records. Owners write these by hand,
  * so the parsing tolerates the usual variants (`workspace wks_…`, `workspace: wks_…`,
- * `workspace id \`wks_…\``) and reads every record, newest first: a relaunched
- * owner's record may leave out what an earlier one said.
+ * `workspace id \`wks_…\``) and reads every record of the round in progress, newest first: a
+ * relaunched owner's record may leave out what an earlier one said, and a reopened ticket's earlier
+ * rounds (TR-229) delivered something else.
  */
 
 import { MERGE_METHOD_TITLES, mergeFlag } from "./merge-method";
 import type { MergeMethod } from "./project";
+import { roundNotes } from "./reopen";
 
 /** The notes split into records; each record starts a line with its upper-case name. */
 export function noteRecords(notes: string | null): string[] {
@@ -17,8 +19,21 @@ export function noteRecords(notes: string | null): string[] {
     .filter((block) => block !== "");
 }
 
+/** The records of the round in progress (TR-229): after the latest REOPENED record, else all of them. */
+export function roundRecords(notes: string | null): string[] {
+  return noteRecords(roundNotes(notes));
+}
+
+/** The owners named in every round's EXECUTION records (`owner <id>`), oldest first, each once. */
+export function executionOwners(notes: string | null): string[] {
+  const owners = noteRecords(notes)
+    .filter((record) => /^EXECUTION\b/.test(record))
+    .flatMap((record) => [...record.matchAll(/\bowner[\s:=`*"']+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi)].map((match) => (match[1] ?? "").toLowerCase()));
+  return [...new Set(owners)];
+}
+
 function newestExecutionMatch(notes: string | null, pattern: RegExp): string | null {
-  const records = noteRecords(notes).filter((record) => /^EXECUTION\b/.test(record));
+  const records = roundRecords(notes).filter((record) => /^EXECUTION\b/.test(record));
   for (let index = records.length - 1; index >= 0; index--) {
     const match = pattern.exec(records[index] ?? "")?.[1];
     if (match !== undefined) return match;
@@ -39,7 +54,7 @@ export function executionMachine(notes: string | null): string | null {
 
 /** The last match's first group in the newest record that has one. */
 function newestRecordMatch(notes: string | null, pattern: RegExp): string | null {
-  const records = noteRecords(notes);
+  const records = roundRecords(notes);
   for (let index = records.length - 1; index >= 0; index--) {
     const matches = [...(records[index] ?? "").matchAll(pattern)];
     const last = matches[matches.length - 1]?.[1];
@@ -150,7 +165,7 @@ export function acceptedRecordText(at: string, merging: string | null, byPlugin 
  * moved, so nothing merged) or the user asked for changes (CHANGES-REQUESTED). Until the owner sets Done, the card says it merges.
  */
 export function acceptedRecord(notes: string | null): AcceptedRecord | null {
-  const records = noteRecords(notes);
+  const records = roundRecords(notes);
   for (let index = records.length - 1; index >= 0; index--) {
     const record = records[index] ?? "";
     if (/^(?:EVIDENCE|CHANGES-REQUESTED|NOT-MERGED|NOT-SYNCED)\b/.test(record)) return null;
@@ -170,7 +185,7 @@ export function acceptedRecord(notes: string | null): AcceptedRecord | null {
  */
 export function pluginAcceptPending(notes: string | null): boolean {
   if (acceptedRecord(notes) === null) return false;
-  const records = noteRecords(notes);
+  const records = roundRecords(notes);
   for (let index = records.length - 1; index >= 0; index--) {
     const record = records[index] ?? "";
     if (/^(?:ACCEPT-HANDOFF|ACCEPTANCE)\b/.test(record)) return false;
@@ -185,7 +200,7 @@ export function pluginAcceptPending(notes: string | null): boolean {
  * so only a name with a slash and no range counts: Taro's branches are `taro/<id>`.
  */
 export function executionBranch(notes: string | null): string | null {
-  const records = noteRecords(notes).filter((record) => /^EXECUTION\b/.test(record));
+  const records = roundRecords(notes).filter((record) => /^EXECUTION\b/.test(record));
   for (let index = records.length - 1; index >= 0; index--) {
     for (const match of (records[index] ?? "").matchAll(/\bbranch\b[\s:=`*"']*([A-Za-z0-9][A-Za-z0-9._/-]*[A-Za-z0-9_])/gi)) {
       const name = match[1] ?? "";
@@ -211,7 +226,7 @@ export interface NotMergedRecord {
  * owner asks a question that ends the delivery (DELIVERY-ENDED, TR-130), or the owner presents again (EVIDENCE, or a new review head): each makes the reason stale.
  */
 export function notMergedRecord(notes: string | null): NotMergedRecord | null {
-  const records = noteRecords(notes);
+  const records = roundRecords(notes);
   for (let index = records.length - 1; index >= 0; index--) {
     const record = records[index] ?? "";
     if (/^(?:EVIDENCE|CHANGES-REQUESTED|DELIVERY-ENDED|ACCEPTED)\b/.test(record)) return null;
@@ -236,7 +251,7 @@ const MERGE_FIELD = /(?:^|[\s;,(—])merge:[ \t]*(merged|not merged|none)\b/gi;
  * merge commit, counts as merged.
  */
 export function pullRequestMerged(notes: string | null): boolean {
-  const records = noteRecords(notes);
+  const records = roundRecords(notes);
   for (let index = records.length - 1; index >= 0; index--) {
     const record = records[index] ?? "";
     if (!/^ACCEPTANCE\b/.test(record)) continue;
@@ -260,7 +275,7 @@ const PULL_REQUEST_URL_ONCE = new RegExp(PULL_REQUEST_URL.source);
  * the field, its prose, clipped. Null with no ACCEPTANCE record (a ticket set Done by hand).
  */
 export function acceptanceMerge(notes: string | null): string | null {
-  const records = noteRecords(notes);
+  const records = roundRecords(notes);
   for (let index = records.length - 1; index >= 0; index--) {
     const record = records[index] ?? "";
     if (!/^ACCEPTANCE\b/.test(record)) continue;

@@ -3,8 +3,9 @@
  * is started for a ticket.
  */
 import { deliveryOnOffer } from "../shared/delivery-end";
-import { noteRecords } from "../shared/execution";
+import { executionOwners, noteRecords } from "../shared/execution";
 import { startsPlanning } from "../shared/owner-start";
+import { reopenedRecordText, reopenRefusal, reopenRound } from "../shared/reopen";
 import type { TicketPriority, TicketProblem } from "../shared/ticket-format";
 import { createTicketStore, type TicketStore } from "./ticket-store";
 
@@ -133,6 +134,34 @@ export async function startPlanning(trackerPath: string, ticketId: string, recor
 /** Appends the record and sets the ticket Done in one write: Accept run by the plugin (TR-141). */
 export async function closeTicket(trackerPath: string, ticketId: string, record: string): Promise<void> {
   await storeFor(trackerPath).edit(ticketId, { status: "Done", appendNotes: [record] });
+}
+
+/** What Reopen did: the round now open and the owners of the earlier ones. */
+export interface Reopened {
+  title: string;
+  round: number;
+  pastOwners: string[];
+}
+
+/**
+ * Reopen (TR-229): the REOPENED record (keeping the final summary, indented), the final summary
+ * cleared and the ticket Queued, in one write checked under the lock, so a ticket that changed
+ * since it was read (another Reopen, a late owner note) is refused rather than reopened twice.
+ */
+export async function reopenTicket(trackerPath: string, ticketId: string, note: string, at: string): Promise<Reopened> {
+  const store = storeFor(trackerPath);
+  const ticket = await store.read(ticketId);
+  const refusal = reopenRefusal(ticket.id, { status: ticket.status, parent: ticket.parent, note });
+  if (refusal !== null) throw new Error(refusal);
+  const notes = textOrNull(ticket.notes);
+  const round = reopenRound(notes) + 1;
+  const pastOwners = executionOwners(notes);
+  const record = reopenedRecordText({ at, note, round, pastOwners, finalSummary: textOrNull(ticket.finalSummary) });
+  const unchanged = (current: { status: string; notes: string; finalSummary: string }) =>
+    current.status === "Done" && current.notes === ticket.notes && current.finalSummary === ticket.finalSummary;
+  const written = await store.editIf(ticket.id, unchanged, { appendNotes: [record], finalSummary: "", status: "Queued" });
+  if (written === null) throw new Error(`${ticket.id} changed while it was being reopened; try again.`);
+  return { title: ticket.title, round, pastOwners };
 }
 
 /** The watcher saw `file` (a name under `tickets/`; every file when undefined) change: the next list reads it again. */

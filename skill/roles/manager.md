@@ -72,6 +72,13 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
 7. Reply in one line: the ticket id and title, and that its owner is in the "<ID> · <title>" tab.
    End with `done: dispatched <ID>`.
 
+**Reopened tickets:** when the user reopens a Done ticket, the plugin sets it Queued, appends a
+REOPENED record (their words, the round, the past owners) and tells you the round. Dispatch it like
+any other Queued ticket (cap, threads), with a new DISPATCH-INTENT, the owner's model from the Kind
+line, branch `taro/<id-lowercase>-<n>` and worktree slug `<id-lowercase>-<n>` (`n` is the round).
+The brief says: the REOPENED record is the user's words for this round; the past owners' ids, each
+read with `paseo logs <id> > <file>` and then searched for what the ticket lacks, never read whole.
+
 ## While work runs
 
 You are not told about owners' turns; the plugin supervises them. You are woken for:

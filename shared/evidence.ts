@@ -2,9 +2,9 @@
  * The evidence an owner records before Accept (TR-021): an `EVIDENCE <time> — …` notes record whose
  * lines are `check:`, `review:`, `ux:`, `coverage:`, `screenshot:` and `screenshots: none`. Owners write it by hand, so
  * the parsing tolerates the label's case, a bullet in front, and three separators. Only the newest
- * record counts; whether it is enough is judged here, whether a file exists is told by the caller.
+ * record of the round in progress counts (TR-229: a reopened ticket presents again); whether it is enough is judged here, whether a file exists is told by the caller.
  */
-import { noteRecords } from "./execution";
+import { roundRecords } from "./execution";
 
 export interface ParsedEvidence {
   checks: { command: string; result: string }[];
@@ -46,11 +46,11 @@ export function splitAtSeparator(text: string): [string, string] {
 /** A line that belongs to an EVIDENCE record even in capitals (`CHECK: …`), which `noteRecords` takes for a record of its own. */
 const EVIDENCE_LINE = /^(checks?|review|ux|coverage|screenshots?)\s*:/i;
 
-/** The notes' EVIDENCE records, each with the capitalised evidence lines `noteRecords` split off it. */
+/** The EVIDENCE records of the round in progress (TR-229), each with the capitalised evidence lines `noteRecords` split off it. */
 function evidenceRecords(notes: string | null): string[] {
   const records: string[] = [];
   let open = false;
-  for (const record of noteRecords(notes)) {
+  for (const record of roundRecords(notes)) {
     if (/^EVIDENCE\b/.test(record)) {
       records.push(record);
       open = true;

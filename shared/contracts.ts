@@ -314,6 +314,8 @@ export const TicketDetailSchema = z.object({
   compactOwner: z.string().nullable().default(null),
   /** Relaunch owner is offered (`shared/relaunch.ts`, TR-219). */
   relaunchable: z.boolean().default(false),
+  /** Reopen is offered: a Done ticket with no parent (`shared/reopen.ts`, TR-229). */
+  reopenable: z.boolean().default(false),
   /** Change spec… is offered: Queued with no owner (`shared/spec-change.ts`, TR-129). */
   specChangeable: z.boolean().default(false),
   /** The plan the user last answered, when and how (TR-151), so a plan asked again marks what changed since; null before any answer. */
@@ -452,6 +454,12 @@ export const changeQueuedSpec = defineRpc({
   name: "taro.ticket.change-spec",
   input: z.object({ project: ProjectNameSchema, ticket: z.string(), text: z.string().min(1) }),
   output: Empty,
+});
+/** Reopen on a Done ticket (TR-229): back to Queued with the user's note, for a fresh owner; `message` is what the user is told. */
+export const reopenTicket = defineRpc({
+  name: "taro.ticket.reopen",
+  input: z.object({ project: ProjectNameSchema, ticket: z.string(), note: z.string().min(1) }),
+  output: z.object({ message: z.string() }),
 });
 export const dismissSuggestion = defineRpc({
   name: "taro.suggestions.dismiss",
