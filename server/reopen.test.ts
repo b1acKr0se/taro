@@ -8,18 +8,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { noteRecords } from "../shared/execution";
 import { serializeTicket, type Ticket } from "../shared/ticket-format";
 import { Actions } from "./actions";
-import { fetchLiveAgent } from "./agents";
+import { fetchLiveAgent, projectAgents } from "./agents";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
 import type { Supervisor } from "./supervision";
-import { viewTicket } from "./tickets";
+import { appendTicketNote, viewTicket } from "./tickets";
 import type { TrackerWatch } from "./tracker-watch";
 
 let tracker: string;
 
-vi.mock("./agents", async (original) => ({ ...(await original<typeof import("./agents")>()), fetchLiveAgent: vi.fn() }));
+vi.mock("./agents", async (original) => ({ ...(await original<typeof import("./agents")>()), fetchLiveAgent: vi.fn(), projectAgents: vi.fn(async () => []) }));
 vi.mock("./projects", async (original) => ({
   ...(await original<typeof import("./projects")>()),
   requireProjectConfig: async (project: string) => ({ project, managerAgentId: "manager-1" }),
@@ -38,6 +38,7 @@ const FINAL = "FINAL 2026-10-02T09:30Z — exported notes as Markdown\nPR: https
 
 let managerLive: boolean;
 let sent: { agentId: string; text: string }[];
+let archived: string[];
 let paseo: PaseoApi;
 let actions: Actions;
 
@@ -72,7 +73,8 @@ beforeEach(async () => {
   managerLive = true;
   sent = [];
   vi.mocked(fetchLiveAgent).mockImplementation(async (_paseo, id) => (managerLive && id === "manager-1" ? ({ id, status: "idle" } as unknown as PaseoAgent) : null));
-  paseo = { agents: { ref: (agentId: string) => ({ send: async (text: string) => void sent.push({ agentId, text }) }) } } as unknown as PaseoApi;
+  archived = [];
+  paseo = { agents: { ref: (agentId: string) => ({ send: async (text: string) => void sent.push({ agentId, text }), archive: async () => void archived.push(agentId) }) } } as unknown as PaseoApi;
   actions = new Actions({} as PluginState, {} as Supervisor, {} as TrackerWatch, {} as Stats, {} as Recovery);
 });
 
@@ -134,6 +136,49 @@ describe("Reopen", () => {
     await expect(actions.reopenTicket(paseo, "notes-app", "TR-8.1", "Verify it")).rejects.toThrow("TR-8.1 is part of TR-8; reopen TR-8 instead.");
     await expect(actions.reopenTicket(paseo, "notes-app", "TR-8", "  \n ")).rejects.toThrow("Say what the owner should do first.");
     expect(await Promise.all(["TR-7", "TR-8", "TR-8.1"].map(ticketFile))).toEqual(before);
+    expect(sent).toEqual([]);
+  });
+  // Review S1: an owner that set Done and is still writing its last message is released only while the ticket stays Done.
+  it("refuses while the last round's owner is still in its turn, writing nothing", async () => {
+    await writeTicket({ id: "TR-7" });
+    vi.mocked(projectAgents).mockResolvedValue([{ id: RELAUNCHED_OWNER, status: "running", labels: { "taro.ticket": "TR-7" }, updatedAt: "2026-10-02T09:31:00Z" } as unknown as PaseoAgent]);
+    const before = await ticketFile("TR-7");
+    await expect(actions.reopenTicket(paseo, "notes-app", "TR-7", "Verify it")).rejects.toThrow("TR-7's owner is still finishing its last turn; reopen it in a minute.");
+    expect(await ticketFile("TR-7")).toBe(before);
+    expect(sent).toEqual([]);
+    expect(archived).toEqual([]);
+  });
+
+  it("archives an idle owner the release has not archived yet, then reopens", async () => {
+    await writeTicket({ id: "TR-7" });
+    vi.mocked(projectAgents).mockResolvedValue([{ id: RELAUNCHED_OWNER, status: "idle", labels: { "taro.ticket": "TR-7" }, updatedAt: "2026-10-02T09:31:00Z" } as unknown as PaseoAgent]);
+    await actions.reopenTicket(paseo, "notes-app", "TR-7", "Verify it");
+    expect(archived).toEqual([RELAUNCHED_OWNER]);
+    expect((await viewTicket(tracker, "TR-7")).status).toBe("Queued");
+  });
+
+  // Review B1: two Reopens at once (the card and the phone) open one round.
+  it("opens one round when two Reopens arrive together", async () => {
+    await writeTicket({ id: "TR-7" });
+    const results = await Promise.allSettled([actions.reopenTicket(paseo, "notes-app", "TR-7", "Verify it"), actions.reopenTicket(paseo, "notes-app", "TR-7", "Verify it too")]);
+    expect(results.map((result) => result.status).sort()).toEqual(["fulfilled", "rejected"]);
+    const detail = await viewTicket(tracker, "TR-7");
+    expect(noteRecords(detail.implementationNotes).filter((record) => record.startsWith("REOPENED"))).toHaveLength(1);
+    expect(detail.status).toBe("Queued");
+    expect(sent).toHaveLength(1);
+  });
+
+  it("refuses when the ticket changed between its read and the write, writing nothing more", async () => {
+    await writeTicket({ id: "TR-7" });
+    // A late note from the old owner lands while Reopen looks for live owners.
+    vi.mocked(projectAgents).mockImplementation(async () => {
+      await appendTicketNote(tracker, "TR-7", "MILESTONE 2026-10-02T09:32Z — last words");
+      return [];
+    });
+    await expect(actions.reopenTicket(paseo, "notes-app", "TR-7", "Verify it")).rejects.toThrow("TR-7 changed while it was being reopened; try again.");
+    const detail = await viewTicket(tracker, "TR-7");
+    expect(detail.status).toBe("Done");
+    expect(detail.implementationNotes).not.toContain("REOPENED");
     expect(sent).toEqual([]);
   });
 });

@@ -147,12 +147,15 @@ export interface Reopened {
  * Reopen (TR-229): the REOPENED record (keeping the final summary, indented), the final summary
  * cleared and the ticket Queued, in one write checked under the lock, so a ticket that changed
  * since it was read (another Reopen, a late owner note) is refused rather than reopened twice.
+ * `beforeWrite` runs between the checks and the write.
  */
-export async function reopenTicket(trackerPath: string, ticketId: string, note: string, at: string): Promise<Reopened> {
+export async function reopenTicket(trackerPath: string, ticketId: string, note: string, at: string, beforeWrite: () => Promise<void> = async () => undefined): Promise<Reopened> {
   const store = storeFor(trackerPath);
   const ticket = await store.read(ticketId);
   const refusal = reopenRefusal(ticket.id, { status: ticket.status, parent: ticket.parent, note });
   if (refusal !== null) throw new Error(refusal);
+  // What the caller checks outside the tracker (the last owner); a ticket changed meanwhile is refused below.
+  await beforeWrite();
   const notes = textOrNull(ticket.notes);
   const round = reopenRound(notes) + 1;
   const pastOwners = executionOwners(notes);

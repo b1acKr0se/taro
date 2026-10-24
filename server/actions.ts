@@ -409,7 +409,14 @@ export class Actions {
   async reopenTicket(paseo: PaseoApi, project: string, ticket: string, note: string): Promise<string> {
     const paths = await projectPaths(project);
     const words = note.trim();
-    const reopened = await reopenTicketRecord(paths.tracker, ticket, words, new Date().toISOString());
+    // An owner that set Done and is still in its last turn is released only while the ticket stays Done (review S1).
+    const lastOwner = async () => {
+      const owner = await this.liveOwner(paseo, project, ticket);
+      if (owner === null) return;
+      if (isMidTurn(owner)) throw new Error(`${ticket}'s owner is still finishing its last turn; reopen it in a minute.`);
+      await paseo.agents.ref(owner.id).archive();
+    };
+    const reopened = await reopenTicketRecord(paths.tracker, ticket, words, new Date().toISOString(), lastOwner);
     const text = await message(TEMPLATES.ticketReopened, {
       ticket,
       title: reopened.title,
