@@ -116,6 +116,25 @@ describe("Close round", () => {
     expect(reopenRefusal(detail.id, { status: detail.status, parent: detail.parentTaskId, note: "again" })).toBeNull();
   });
 
+  it("refuses while the manager is starting the round's owner, writing nothing and stopping no one", async () => {
+    vi.mocked(projectAgents).mockResolvedValue([]);
+    const intent = `DISPATCH-INTENT ${new Date(Date.now() - 60_000).toISOString().slice(0, 16)}Z — starting an owner on branch taro/tr-7-2`;
+    await writeTicket({ id: "TR-7", status: "Queued", notes: `${ROUND_ONE}\n\n${REOPENED}\n\n${intent}` });
+    await expect(actions.closeRound(paseo, "notes-app", "TR-7")).rejects.toThrow("The manager is starting TR-7's owner right now: close its round in a minute, once the owner runs.");
+    const detail = await viewTicket(tracker, "TR-7");
+    expect(detail.status).toBe("Queued");
+    expect(noteRecords(detail.implementationNotes).pop()).toBe(intent);
+    expect(archived).toEqual([]);
+  });
+
+  it("closes a round whose dispatch intent is old: a launch that failed", async () => {
+    vi.mocked(projectAgents).mockResolvedValue([]);
+    const intent = "DISPATCH-INTENT 2026-10-03T08:00Z — starting an owner on branch taro/tr-7-2";
+    await writeTicket({ id: "TR-7", status: "Queued", notes: `${ROUND_ONE}\n\n${REOPENED}\n\n${intent}` });
+    await actions.closeRound(paseo, "notes-app", "TR-7");
+    expect((await viewTicket(tracker, "TR-7")).status).toBe("Done");
+  });
+
   it("closes a Queued round with no owner yet: no branch", async () => {
     vi.mocked(projectAgents).mockResolvedValue([]);
     await writeTicket({ id: "TR-7", status: "Queued", notes: `${ROUND_ONE}\n\n${REOPENED}` });

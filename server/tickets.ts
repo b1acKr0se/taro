@@ -5,6 +5,7 @@
 import { deliveryOnOffer } from "../shared/delivery-end";
 import { executionBranch, executionOwners, noteRecords } from "../shared/execution";
 import { startsPlanning } from "../shared/owner-start";
+import { dispatchPending } from "../shared/pause";
 import { closeRoundRefusal, reopenedRecordText, reopenRefusal, reopenRound, roundClosedRecordText } from "../shared/reopen";
 import type { TicketPriority, TicketProblem } from "../shared/ticket-format";
 import { createTicketStore, type TicketStore } from "./ticket-store";
@@ -176,7 +177,9 @@ export interface RoundClosed {
 /**
  * Close round (TR-229): the ROUND-CLOSED record and the ticket Done, the final summary left empty,
  * in one write checked under the lock. Notes the owner wrote meanwhile do not refuse it (the user
- * is stopping that owner); a ticket that left the round or a status Close round allows is refused.
+ * is stopping that owner); a ticket that left the round or a status Close round allows is refused,
+ * and so is one whose owner the manager is starting right now, as Park refuses it (TR-166): that
+ * owner would start on a Done ticket, with nothing live yet to stop.
  * `beforeWrite` runs between the checks and the write.
  */
 export async function closeRound(trackerPath: string, ticketId: string, at: string, beforeWrite: () => Promise<void> = async () => undefined): Promise<RoundClosed> {
@@ -186,11 +189,13 @@ export async function closeRound(trackerPath: string, ticketId: string, at: stri
   const round = reopenRound(notes);
   const refusal = closeRoundRefusal(ticket.id, { status: ticket.status, parent: ticket.parent, round });
   if (refusal !== null) throw new Error(refusal);
+  const starting = (text: string | null) => dispatchPending(text, Date.now());
+  if (starting(notes)) throw new Error(`The manager is starting ${ticket.id}'s owner right now: close its round in a minute, once the owner runs.`);
   // What the caller does outside the tracker (stopping the round's agents) comes before the write.
   await beforeWrite();
   const branch = executionBranch(notes);
   const stillOpen = (current: { status: string; notes: string }) =>
-    reopenRound(textOrNull(current.notes)) === round && closeRoundRefusal(ticket.id, { status: current.status, parent: ticket.parent, round }) === null;
+    reopenRound(textOrNull(current.notes)) === round && closeRoundRefusal(ticket.id, { status: current.status, parent: ticket.parent, round }) === null && !starting(textOrNull(current.notes));
   const written = await store.editIf(ticket.id, stillOpen, { appendNotes: [roundClosedRecordText({ at, round, branch })], status: "Done" });
   if (written === null) throw new Error(`${ticket.id} changed while its round was being closed; try again.`);
   return { round, branch };
