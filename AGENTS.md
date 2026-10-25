@@ -93,6 +93,10 @@ EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
 - The `before("agent.session_open")` hook also runs on resume; it sees the working directory and
   title but not labels, so Taro agents are recognised by working directory. Env set there reaches
   the agent's shell.
+- Since Paseo 0.13.0 the `agent.turn_ended` hook's `timeline` is always empty (deprecated): supervision
+  reads the turn from `paseo.agents.ref(id).timeline.refetch` (projected), cut at the hook's `turnId`
+  (TR-233). Each turn end logs what it read (`[taro] <id> turn ended …`); a missed status line or card
+  starts there.
 - Each Claude agent costs about 65 of the host's 2,048 threads; read
   `/sys/fs/cgroup/pids.current` and `pids.max` before starting agents or daemons.
 

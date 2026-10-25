@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentState, StoredDecision } from "../shared/state";
 import { fetchLiveAgent, listTaroAgents } from "./agents";
-import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
+import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TimelinePage, TurnOutcome } from "./host-types";
 import { sendFromPlugin } from "./send";
 import { branchName, commitsPast } from "./branch-commits";
 import { readProjectConfig } from "./projects";
@@ -10,7 +10,7 @@ import { appendTicketNote, endDelivery, viewTicket } from "./tickets";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
-import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, humanMessages, identityFromLabels, Supervisor, tabMessages, turnIdentity } from "./supervision";
+import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, humanMessages, identityFromLabels, Supervisor, tabMessages, throughTurn, turnEndLine, turnIdentity } from "./supervision";
 
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
@@ -22,6 +22,11 @@ vi.mock("./package-files", () => ({
 vi.mock("./projects", () => ({ readProjectConfig: vi.fn(async () => null), projectPaths: async () => ({ tracker: "/tracker" }) }));
 vi.mock("./branch-commits", () => ({ commitsPast: vi.fn(async () => 0), branchName: vi.fn(async () => "taro/tr-9") }));
 vi.mock("./tickets", () => ({ viewTicket: vi.fn(), endDelivery: vi.fn(async () => true), appendTicketNote: vi.fn(async () => undefined) }));
+
+/** Paseo's projected timeline holding `items`, where supervision reads a turn at its end (TR-233: the hook's is empty). */
+function withTimeline(items: readonly TimelineItem[]): PaseoApi {
+  return { agents: { ref: () => ({ timeline: { refetch: async () => ({ entries: items.map((item) => ({ item })), hasOlder: false, startCursor: null }) } }) } } as unknown as PaseoApi;
+}
 
 const recovery = { onCrash: vi.fn(async () => undefined), recoverLeftovers: async () => 0 } as unknown as Recovery;
 
@@ -186,21 +191,21 @@ describe("Supervisor.onTurnEnded after an automatic compaction", () => {
     it(`sends the reload once for a ${provider} automatic compaction`, async () => {
       const taro = supervisor();
       const first = items(userTurn, compaction, reply);
-      await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, first, null, undefined);
+      await taro.onTurnEnded(withTimeline(first), hookAgent, completed, null, undefined);
       expect(reloads()).toBe(1);
       expect(vi.mocked(sendFromPlugin).mock.calls[0]?.[2]).toBe("reload:TR-9");
 
       // The reload's own turn, and any later one: the compaction is still in the stored timeline.
-      await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, items(...first, reloadTurn, reply), null, undefined);
-      await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, items(...first, reloadTurn, reply, userTurn, reply), null, undefined);
+      await taro.onTurnEnded(withTimeline(items(...first, reloadTurn, reply)), hookAgent, completed, null, undefined);
+      await taro.onTurnEnded(withTimeline(items(...first, reloadTurn, reply, userTurn, reply)), hookAgent, completed, null, undefined);
       expect(reloads()).toBe(1);
     });
   }
 
   it("sends no reload for a manual or still-loading compaction", async () => {
     const taro = supervisor();
-    await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, items(userTurn, claudeManual, reply), null, undefined);
-    await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, items(userTurn, codexLoading, reply), null, undefined);
+    await taro.onTurnEnded(withTimeline(items(userTurn, claudeManual, reply)), hookAgent, completed, null, undefined);
+    await taro.onTurnEnded(withTimeline(items(userTurn, codexLoading, reply)), hookAgent, completed, null, undefined);
     expect(reloads()).toBe(0);
   });
 });
@@ -249,7 +254,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
   const plugin = (text: string) => ({ type: "user_message", text, messageId: "taro-x" });
 
   async function run(taro: Supervisor, ...timeline: readonly object[]): Promise<void> {
-    await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, items(...timeline), null, undefined);
+    await taro.onTurnEnded(withTimeline(items(...timeline)), hookAgent, completed, null, undefined);
   }
 
   beforeEach(() => {
@@ -844,7 +849,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     const { state, agents } = fakeState();
     const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
     const failed = { kind: "failed" } as unknown as TurnOutcome;
-    await taro.onTurnEnded({} as PaseoApi, hookAgent, failed, items(human("go"), reply, human("again"), { type: "tool_call", callId: "c2", name: "shell", status: "failed" }), null, undefined);
+    await taro.onTurnEnded(withTimeline(items(human("go"), reply, human("again"), { type: "tool_call", callId: "c2", name: "shell", status: "failed" })), hookAgent, failed, null, undefined);
     expect(agents[owner.id]?.lastStatus).toBeNull();
   });
 });
@@ -919,15 +924,15 @@ describe("Supervisor.onTurnEnded after a crash (TR-012)", () => {
   it("hands any role's crash, the manager's included, to recovery and sends nothing else", async () => {
     const taro = new Supervisor(fakeState(), stats, recovery);
     const crash = "Claude stopped unexpectedly (signal SIGABRT). Any background shells, monitors or other work it had running were terminated with it.";
-    await taro.onTurnEnded({} as PaseoApi, hookAgent, failed(crash), items(userTurn, reply), null, undefined);
+    await taro.onTurnEnded(withTimeline(items(userTurn, reply)), hookAgent, failed(crash), null, undefined);
     expect(vi.mocked(recovery.onCrash).mock.calls.map(([, agent, identity, error]) => [agent.id, identity.role, error])).toEqual([[manager.id, "manager", crash]]);
     expect(sendFromPlugin).not.toHaveBeenCalled();
   });
 
   it("leaves other failures to the existing handling", async () => {
     const taro = new Supervisor(fakeState(), stats, recovery);
-    await taro.onTurnEnded({} as PaseoApi, hookAgent, failed("API Error: 529 overloaded"), items(userTurn, reply), null, undefined);
-    await taro.onTurnEnded({} as PaseoApi, hookAgent, { kind: "completed" } as unknown as TurnOutcome, items(userTurn, reply), null, undefined);
+    await taro.onTurnEnded(withTimeline(items(userTurn, reply)), hookAgent, failed("API Error: 529 overloaded"), null, undefined);
+    await taro.onTurnEnded(withTimeline(items(userTurn, reply)), hookAgent, { kind: "completed" } as unknown as TurnOutcome, null, undefined);
     expect(recovery.onCrash).not.toHaveBeenCalled();
   });
 });
@@ -963,7 +968,7 @@ describe("Supervisor.onTurnEnded delivers a subagent's report", () => {
     const agent = subagent(label);
     vi.mocked(fetchLiveAgent).mockImplementation(async (_paseo, id) => (id === agent.id ? agent : id === owner.id ? owner : null) as unknown as PaseoAgent);
     vi.mocked(sendFromPlugin).mockClear();
-    await supervisor().onTurnEnded({} as PaseoApi, { id: agent.id, parentAgentId: owner.id } as unknown as HookAgent, { kind: "completed" } as unknown as TurnOutcome, items(userTurn, reply), null, undefined);
+    await supervisor().onTurnEnded(withTimeline(items(userTurn, reply)), { id: agent.id, parentAgentId: owner.id } as unknown as HookAgent, { kind: "completed" } as unknown as TurnOutcome, null, undefined);
     expect(vi.mocked(sendFromPlugin).mock.calls.map(([, id, text]) => [id, text])).toEqual([[owner.id, `report:${job}:done: tests pass`]]);
   });
 
@@ -1002,7 +1007,7 @@ describe("Supervisor.onTurnEnded reminds about missing evidence", () => {
   }
 
   async function turn(): Promise<void> {
-    await taro.onTurnEnded({} as PaseoApi, hookAgent, completed, waiting, null, undefined);
+    await taro.onTurnEnded(withTimeline(waiting), hookAgent, completed, null, undefined);
   }
 
   function reminders(): string[] {
@@ -1077,7 +1082,7 @@ describe("Supervisor.onTurnEnded records the agent's cost (TR-097)", () => {
     } as unknown as PluginState;
     const turnEnded = vi.fn(async () => undefined);
     const taro = new Supervisor(state, { turnEnded, count: async () => undefined } as unknown as Stats, recovery);
-    await taro.onTurnEnded({} as PaseoApi, { id: subagent.id, parentAgentId: null } as unknown as HookAgent, { kind: "completed" } as unknown as TurnOutcome, items(userTurn, reply), null, 4_000);
+    await taro.onTurnEnded(withTimeline(items(userTurn, reply)), { id: subagent.id, parentAgentId: null } as unknown as HookAgent, { kind: "completed" } as unknown as TurnOutcome, null, 4_000);
     return turnEnded.mock.calls[0] ?? [];
   }
 
@@ -1126,7 +1131,7 @@ describe("Supervisor.onTurnEnded with commits and no plan", () => {
     vi.mocked(viewTicket).mockResolvedValue({ status, implementationPlan, acceptanceCriteria: [], implementationNotes: null, labels: [] } as unknown as Awaited<ReturnType<typeof viewTicket>>);
   const told = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("no-plan:"));
   const records = () => vi.mocked(appendTicketNote).mock.calls.map(([, , record]) => record);
-  const end = (taro: Supervisor) => taro.onTurnEnded({} as PaseoApi, hookAgent, completed, reply, null, undefined);
+  const end = (taro: Supervisor) => taro.onTurnEnded(withTimeline(reply), hookAgent, completed, null, undefined);
 
   beforeEach(() => {
     commits = 0;
@@ -1196,5 +1201,168 @@ describe("Supervisor.onTurnEnded with commits and no plan", () => {
     await end(supervisor());
     expect(told()).toEqual([]);
     expect(records()).toEqual([]);
+  });
+});
+
+describe("Supervisor.onTurnEnded on Paseo 0.13.0, whose hook timeline is always empty (TR-233)", () => {
+  const owner = {
+    id: "owner-7",
+    provider: "claude",
+    model: "haiku",
+    title: "TR-1 · owner",
+    status: "idle",
+    labels: { "taro.project": "notes", "taro.role": "owner", "taro.ticket": "TR-1" },
+  };
+  const hookAgent = { id: owner.id, parentAgentId: null } as unknown as HookAgent;
+  const completed = { kind: "completed" } as unknown as TurnOutcome;
+  const ask =
+    "Which colour scheme should the notes app use?\n\n```decision\nid: colour-scheme\nquestion: Which colour scheme should the notes app use?\nwhy: The palette sets every screen's look\nblocking: true\noptions:\n  - label: Light\n    prompt: Use the light scheme\n  - label: Dark\n    prompt: Use the dark scheme\nrecommended: Light\nreason: Most notes are read in daylight\n```\n\nwaiting: the user's choice of colour scheme";
+  const entry = (seq: number, turnId: string, item: object, collapsed: string[] = []) => ({
+    provider: "claude",
+    item: item as TimelineItem,
+    timestamp: `2026-10-25T14:28:${String(30 + seq).padStart(2, "0")}.000Z`,
+    seqStart: seq,
+    seqEnd: seq,
+    sourceSeqRanges: [{ startSeq: seq, endSeq: seq }],
+    turnId,
+    collapsed,
+  });
+  // Paseo 0.13.0's projected page for an owner's first two turns, as `timeline.refetch` returned it on a
+  // throwaway daemon: the reply's streamed pieces merged into one message, the nudge keeping its plugin id.
+  const firstTurn = [
+    entry(1, "foreground-turn-1", { type: "user_message", text: "Ask which colour scheme to use.", messageId: "a1b2c3d4-0001" }),
+    entry(2, "foreground-turn-1", { type: "assistant_message", text: ask, messageId: "msg_0001" }, ["assistant_merge"]),
+  ];
+  const secondTurn = [
+    entry(9, "foreground-turn-2", { type: "user_message", text: "Carry on.", clientMessageId: "taro-0002", messageId: "taro-0002" }),
+    entry(10, "foreground-turn-2", { type: "assistant_message", text: "Still yours to choose.\n\nwaiting: the user's choice of colour scheme", messageId: "msg_0002" }, ["assistant_merge"]),
+  ];
+
+  function fakeState(): { state: PluginState; decisions: StoredDecision[]; agents: Record<string, AgentState> } {
+    const decisions: StoredDecision[] = [];
+    const agents: Record<string, AgentState> = {};
+    const state = {
+      allDecisions: async () => decisions,
+      updateDecisions: async <T>(change: (stored: StoredDecision[]) => T) => change(decisions),
+      agent: async (agentId: string) => agents[agentId] ?? null,
+      updateAgent: async <T>(agentId: string, initial: () => AgentState, change: (record: AgentState) => T) => {
+        const record = agents[agentId] ?? initial();
+        agents[agentId] = record;
+        return change(record);
+      },
+    } as unknown as PluginState;
+    return { state, decisions, agents };
+  }
+  const supervisor = (state: PluginState) => new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+  const paged = (...pages: readonly (readonly object[])[]) => {
+    const refetch = vi.fn(async (options: { direction: string; cursor?: number }) => {
+      const index = options.direction === "tail" ? pages.length - 1 : (options.cursor ?? 0) - 1;
+      return { entries: pages[index] ?? [], hasOlder: index > 0, startCursor: index };
+    });
+    return { paseo: { agents: { ref: () => ({ timeline: { refetch } }) } } as unknown as PaseoApi, refetch };
+  };
+  const nudges = () => vi.mocked(sendFromPlugin).mock.calls.filter(([, , text]) => text.startsWith("nudge"));
+  const logged = () => vi.mocked(console.log).mock.calls.map(([line]) => String(line)).filter((line) => line.includes("turn ended"));
+
+  beforeEach(() => {
+    vi.mocked(fetchLiveAgent).mockResolvedValue(owner as unknown as PaseoAgent);
+    vi.mocked(viewTicket).mockResolvedValue({ status: "Planning", labels: [], implementationNotes: null } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+    vi.mocked(sendFromPlugin).mockClear();
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.mocked(console.log).mockRestore();
+    vi.mocked(viewTicket).mockReset();
+  });
+
+  it("reads a correct waiting turn from the agent's timeline: its card is stored, no nudge, never Stalled", async () => {
+    const { state, decisions, agents } = fakeState();
+    const taro = supervisor(state);
+    await taro.onTurnEnded(paged(firstTurn).paseo, hookAgent, completed, "foreground-turn-1", undefined);
+    expect(nudges()).toEqual([]);
+    expect(decisions.map((decision) => [decision.id, decision.status, decision.blocking])).toEqual([["colour-scheme", "open", true]]);
+    expect(agents[owner.id]?.lastStatus).toMatchObject({ state: "waiting", text: "the user's choice of colour scheme" });
+
+    await taro.onTurnEnded(paged([...firstTurn, ...secondTurn]).paseo, hookAgent, completed, "foreground-turn-2", undefined);
+    expect(nudges()).toEqual([]);
+    expect(agents[owner.id]).toMatchObject({ stallCount: 0, stalled: false });
+    expect(logged()).toEqual([
+      "[taro] owner-7 turn ended (completed, foreground-turn-1): read 2 items, 2 in this turn; status waiting; decisions colour-scheme",
+      "[taro] owner-7 turn ended (completed, foreground-turn-2): read 4 items, 2 in this turn; status waiting; decisions none",
+    ]);
+  });
+
+  it("stops at the turn the hook names when the next one has already started", async () => {
+    const { state, decisions, agents } = fakeState();
+    // The user's queued message went at once: the page already holds the next turn's opening.
+    await supervisor(state).onTurnEnded(paged([...firstTurn, secondTurn[0]!]).paseo, hookAgent, completed, "foreground-turn-1", undefined);
+    expect(nudges()).toEqual([]);
+    expect(decisions.map((decision) => decision.id)).toEqual(["colour-scheme"]);
+    expect(agents[owner.id]?.lastStatus?.state).toBe("waiting");
+  });
+
+  it("pages back for the turn's opening when a newer turn fills the tail", async () => {
+    const { state, decisions } = fakeState();
+    const { paseo, refetch } = paged([firstTurn[0]!], [firstTurn[1]!, secondTurn[0]!]);
+    await supervisor(state).onTurnEnded(paseo, hookAgent, completed, "foreground-turn-1", undefined);
+    expect(refetch).toHaveBeenCalledTimes(2);
+    expect(decisions[0]?.turn).not.toBeNull();
+    expect(nudges()).toEqual([]);
+  });
+
+  it("neither nudges nor counts a stall for a turn whose timeline could not be read, and logs it", async () => {
+    const { state, agents } = fakeState();
+    const taro = supervisor(state);
+    const failing = { agents: { ref: () => ({ timeline: { refetch: async () => Promise.reject(new Error("socket closed")) } }) } } as unknown as PaseoApi;
+    await taro.onTurnEnded(failing, hookAgent, completed, "foreground-turn-1", undefined);
+    await taro.onTurnEnded(failing, hookAgent, completed, "foreground-turn-2", undefined);
+    expect(nudges()).toEqual([]);
+    expect(agents[owner.id]).toMatchObject({ stallCount: 0, stalled: false });
+    expect(logged()[0]).toBe("[taro] owner-7 turn ended (completed, foreground-turn-1): its timeline could not be read, so no status line or decision was looked for and no nudge is sent");
+  });
+
+  it("still nudges a turn that really ended without a status line", async () => {
+    const { state, agents } = fakeState();
+    const silent = [firstTurn[0]!, entry(2, "foreground-turn-1", { type: "assistant_message", text: "Looked around." })];
+    await supervisor(state).onTurnEnded(paged(silent).paseo, hookAgent, completed, "foreground-turn-1", undefined);
+    expect(nudges()).toHaveLength(1);
+    expect(agents[owner.id]?.stallCount).toBe(1);
+  });
+});
+
+describe("throughTurn", () => {
+  const entry = (turnId: string | undefined, text: string) => ({ item: { type: "assistant_message", text } as TimelineItem, ...(turnId === undefined ? {} : { turnId }) }) as unknown as TimelinePage["entries"][number];
+  const texts = (read: readonly TimelineItem[]) => read.map((item) => (item.type === "assistant_message" ? item.text : ""));
+  const page = [entry("t-1", "a"), entry("t-1", "b"), entry("t-2", "c"), entry(undefined, "d")];
+
+  it("keeps the entries up to the named turn's last one", () => {
+    expect(texts(throughTurn(page, "t-1"))).toEqual(["a", "b"]);
+    expect(texts(throughTurn(page, "t-2"))).toEqual(["a", "b", "c"]);
+  });
+
+  it("keeps them all with no turn id, an id no entry carries, or an empty page", () => {
+    expect(texts(throughTurn(page, null))).toEqual(["a", "b", "c", "d"]);
+    expect(texts(throughTurn(page, "t-9"))).toEqual(["a", "b", "c", "d"]);
+    expect(throughTurn([], "t-1")).toEqual([]);
+  });
+
+  it("takes the latest run of a turn id Paseo reused after a restart", () => {
+    expect(texts(throughTurn([entry("t-1", "old"), entry("t-2", "x"), entry("t-1", "new"), entry("t-2", "next")], "t-1"))).toEqual(["old", "x", "new"]);
+  });
+});
+
+describe("turnEndLine", () => {
+  const decision = (id: string) => ({ id }) as unknown as Parameters<typeof turnEndLine>[5][number];
+
+  it("names the outcome, the turn, what was read, the status and every decision", () => {
+    expect(turnEndLine("a-1", "completed", "foreground-turn-3", { items: 12, turn: 5 }, { state: "waiting", text: "approval" }, [decision("scope"), decision("colour")])).toBe(
+      "[taro] a-1 turn ended (completed, foreground-turn-3): read 12 items, 5 in this turn; status waiting; decisions scope, colour",
+    );
+  });
+
+  it("says none for a missing status or decisions, and when there was no turn id or no read", () => {
+    expect(turnEndLine("a-1", "canceled", null, { items: 0, turn: 0 }, null, [])).toBe("[taro] a-1 turn ended (canceled, no turn id): read 0 items, 0 in this turn; status none; decisions none");
+    expect(turnEndLine("a-1", "failed", "t", null, null, [])).toMatch(/^\[taro\] a-1 turn ended \(failed, t\): its timeline could not be read/);
   });
 });

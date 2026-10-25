@@ -138,6 +138,11 @@ beforeEach(async () => {
   } as unknown as PaseoApi;
 });
 
+/** A turn as Paseo records it in the agent's timeline, where supervision reads it at the turn's end (TR-233). */
+function recordTurn(agentId: string, items: readonly TimelineItem[]): void {
+  (timelines[agentId] ??= []).push(...items.map((item) => ({ item, timestamp: new Date(clock).toISOString() })));
+}
+
 afterEach(async () => {
   // A send a failed test left waiting would hold the agent's send lock for every test after it.
   sendGate?.release();
@@ -572,7 +577,8 @@ describe("turn ends drain the queue (Supervisor.onTurnEnded)", () => {
       // Paseo sets the agent idle before it fires the hook (agent-manager.js finalizeForegroundTurn).
       end: async (outcome) => {
         agents["agent-1"]!.status = "idle";
-        await supervisor.onTurnEnded(paseo, hookAgent, outcome, timeline, null, undefined);
+        recordTurn("agent-1", timeline);
+        await supervisor.onTurnEnded(paseo, hookAgent, outcome, null, undefined);
       },
     };
   }
@@ -843,11 +849,13 @@ describe("subagent reports wait behind the owner's queued messages (S6)", () => 
       supervisor,
       endOwner: async () => {
         agents["owner-1"]!.status = "idle";
-        await supervisor.onTurnEnded(paseo, { id: "owner-1", parentAgentId: null } as unknown as HookAgent, completed, ownerTurn, null, undefined);
+        recordTurn("owner-1", ownerTurn);
+        await supervisor.onTurnEnded(paseo, { id: "owner-1", parentAgentId: null } as unknown as HookAgent, completed, null, undefined);
       },
       endSubagent: async () => {
         agents["sub-1"]!.status = "idle";
-        await supervisor.onTurnEnded(paseo, { id: "sub-1", parentAgentId: "owner-1" } as unknown as HookAgent, completed, subagentTurn, null, undefined);
+        recordTurn("sub-1", subagentTurn);
+        await supervisor.onTurnEnded(paseo, { id: "sub-1", parentAgentId: "owner-1" } as unknown as HookAgent, completed, null, undefined);
       },
       reports: () => sent.filter((each) => each.agentId === "owner-1" && each.text.includes("the notes list")),
     };
