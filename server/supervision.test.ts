@@ -1311,15 +1311,42 @@ describe("Supervisor.onTurnEnded on Paseo 0.13.0, whose hook timeline is always 
     expect(nudges()).toEqual([]);
   });
 
-  it("neither nudges nor counts a stall for a turn whose timeline could not be read, and logs it", async () => {
+  it("reads a turn again a moment later when the first read fails", async () => {
+    const { state, decisions } = fakeState();
+    const refetch = vi.fn().mockRejectedValueOnce(new Error("socket closed")).mockResolvedValue({ entries: firstTurn, hasOlder: false, startCursor: null });
+    await supervisor(state).onTurnEnded({ agents: { ref: () => ({ timeline: { refetch } }) } } as unknown as PaseoApi, hookAgent, completed, "foreground-turn-1", undefined);
+    expect(refetch).toHaveBeenCalledTimes(2);
+    expect(decisions.map((decision) => decision.id)).toEqual(["colour-scheme"]);
+    expect(nudges()).toEqual([]);
+  });
+
+  it("neither nudges nor counts a stall for a turn whose timeline could not be read twice, logs it, and leaves it for the reconcile", async () => {
     const { state, agents } = fakeState();
     const taro = supervisor(state);
+    const silent = [firstTurn[0]!, entry(2, "foreground-turn-1", { type: "assistant_message", text: "Looked around." })];
+    await taro.onTurnEnded(paged(silent).paseo, hookAgent, completed, "foreground-turn-1", undefined);
+    expect(nudges()).toHaveLength(1);
+    const seen = agents[owner.id]?.lastTurnEndedAt;
+    const refetch = vi.fn(async () => Promise.reject(new Error("socket closed")));
+    await taro.onTurnEnded({ agents: { ref: () => ({ timeline: { refetch } }) } } as unknown as PaseoApi, hookAgent, completed, "foreground-turn-2", undefined);
+    expect(refetch).toHaveBeenCalledTimes(2);
+    expect(nudges()).toHaveLength(1);
+    expect(agents[owner.id]).toMatchObject({ stallCount: 1, stalled: false, lastTurnEndedAt: seen });
+    expect(logged()[1]).toBe("[taro] owner-7 turn ended (completed, foreground-turn-2): its timeline could not be read, so no status line or decision was looked for and no nudge is sent");
+  });
+
+  it("delivers a subagent's report its unread turn end missed at the reconcile after a restart", async () => {
+    const { state } = fakeState();
+    const taro = supervisor(state);
+    const implementer = { id: "implementer-7", title: "TR-1 · implementer: building the palette", status: "idle", updatedAt: new Date().toISOString(), labels: { "taro.project": "notes", "taro.role": "implementer", "taro.ticket": "TR-1", "paseo.parent-agent-id": owner.id } };
+    vi.mocked(fetchLiveAgent).mockImplementation(async (_paseo, id) => (id === implementer.id ? implementer : owner) as unknown as PaseoAgent);
+    const report = [entry(1, "foreground-turn-1", { type: "user_message", text: "Build the palette.", clientMessageId: "taro-0003" }), entry(2, "foreground-turn-1", { type: "assistant_message", text: "Built it.\n\ndone: the palette" })];
     const failing = { agents: { ref: () => ({ timeline: { refetch: async () => Promise.reject(new Error("socket closed")) } }) } } as unknown as PaseoApi;
-    await taro.onTurnEnded(failing, hookAgent, completed, "foreground-turn-1", undefined);
-    await taro.onTurnEnded(failing, hookAgent, completed, "foreground-turn-2", undefined);
-    expect(nudges()).toEqual([]);
-    expect(agents[owner.id]).toMatchObject({ stallCount: 0, stalled: false });
-    expect(logged()[0]).toBe("[taro] owner-7 turn ended (completed, foreground-turn-1): its timeline could not be read, so no status line or decision was looked for and no nudge is sent");
+    await taro.onTurnEnded(failing, { id: implementer.id, parentAgentId: owner.id } as unknown as HookAgent, completed, "foreground-turn-1", undefined);
+    expect(vi.mocked(sendFromPlugin).mock.calls).toEqual([]);
+    vi.mocked(listTaroAgents).mockResolvedValueOnce([implementer as unknown as PaseoAgent]);
+    await taro.reconcile(paged(report).paseo, ["notes"]);
+    expect(vi.mocked(sendFromPlugin).mock.calls.map(([, id, text]) => [id, text])).toEqual([[owner.id, "report:implementer:Built it.\n\ndone: the palette"]]);
   });
 
   it("still nudges a turn that really ended without a status line", async () => {

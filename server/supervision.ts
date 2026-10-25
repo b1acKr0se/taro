@@ -159,6 +159,17 @@ async function latestTurnItems(paseo: PaseoApi, agentId: string, turnId: string 
   return items;
 }
 
+/** How long a turn end waits before reading the turn again after a failed read. */
+export const TURN_READ_RETRY_MS = 1_000;
+
+/** The turn the hook named, read once more a moment later if the first read fails: an unread turn loses its status line, card or report. */
+async function readEndedTurn(paseo: PaseoApi, agentId: string, turnId: string | null): Promise<TimelineItem[] | null> {
+  const first = await latestTurnItems(paseo, agentId, turnId);
+  if (first !== null) return first;
+  await new Promise((resolve) => setTimeout(resolve, TURN_READ_RETRY_MS));
+  return latestTurnItems(paseo, agentId, turnId);
+}
+
 /** The plugin log's line for a Taro agent's turn end: what supervision read, so a missed status line or card can be traced. */
 export function turnEndLine(agentId: string, outcome: TurnOutcome["kind"], turnId: string | null, read: { items: number; turn: number } | null, status: ReturnType<typeof parseStatusLine>, decisions: readonly ParsedDecision[]): string {
   const head = `[taro] ${agentId} turn ended (${outcome}, ${turnId ?? "no turn id"})`;
@@ -267,7 +278,7 @@ export class Supervisor {
     const now = new Date().toISOString();
     // Since Paseo 0.13.0 the hook's timeline is always empty (TR-233): the turn is read from the
     // agent's own, as Paseo's types direct. Null when that read failed: nothing is known of the turn.
-    const read = await latestTurnItems(paseo, live.id, turnId);
+    const read = await readEndedTurn(paseo, live.id, turnId);
     const timeline = read ?? [];
     // Only the turn that ended: earlier turns' blocks would reopen answered decisions, their user words
     // would close new ones, and a turn without text would reuse their reply.
@@ -279,7 +290,6 @@ export class Supervisor {
     const closing = closingText(turn);
     // Reports are deduplicated by their text: turn ids ("foreground-turn-1") may repeat, and the
     // reconcile after a restart must recognise a report the hook already delivered.
-    void turnId;
     const turnKey = hashText(closing);
 
     const status = parseStatusLine(closing);
@@ -297,7 +307,8 @@ export class Supervisor {
     const stage = await this.state.updateAgent(live.id, () => freshState(identity), (record) => {
       record.ticket = identity.ticket;
       record.title = identity.title;
-      record.lastTurnEndedAt = now;
+      // Left as it was when the turn could not be read, so the reconcile after a restart reads it again.
+      if (read !== null) record.lastTurnEndedAt = now;
       record.idleCompaction = idleCompactionAfterTurn(record.idleCompaction, record.compaction);
       if (status !== null) record.lastStatus = { ...status, at: now };
       // Working again after the plugin gave up on its crashes (the user restarted it by hand).
