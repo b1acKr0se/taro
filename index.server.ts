@@ -20,6 +20,8 @@ import {
   stopAgentTurn,
   pauseTicket,
   relaunchOwner,
+  reopenTicket,
+  closeRound,
   resumeTicket,
   requestChanges,
   changeQueuedSpec,
@@ -389,6 +391,16 @@ export default function contribute(server: PluginServerContext) {
     const result = await actions.resume(keep(paseo), project, ticket);
     invalidateBoards();
     return result;
+  });
+  server.handle(reopenTicket, async ({ project, ticket, note }, { paseo }) => {
+    const text = await actions.reopenTicket(keep(paseo), project, ticket, note);
+    invalidateBoards();
+    return { message: text };
+  });
+  server.handle(closeRound, async ({ project, ticket }, { paseo }) => {
+    const text = await actions.closeRound(keep(paseo), project, ticket);
+    invalidateBoards();
+    return { message: text };
   });
   server.handle(relaunchOwner, async ({ project, ticket }, { paseo }) => ({ agentId: await actions.relaunchOwner(keep(paseo), project, ticket) }));
   server.handle(resolveTrackerSyncRpc, async ({ project, resolution }) => {

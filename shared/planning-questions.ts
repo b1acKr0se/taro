@@ -3,7 +3,7 @@
  * then can change the whole plan, so going on with a default wastes the plan built on it. The plugin
  * shows such a question as blocking whatever its flag says. Pure.
  */
-import { noteRecords } from "./execution";
+import { roundRecords } from "./execution";
 
 /** Statuses before the build starts (reference/tickets.md); Ready and later come after approval. */
 const BEFORE_BUILD: ReadonlySet<string> = new Set(["Queued", "Planning"]);
@@ -13,7 +13,7 @@ const BEFORE_BUILD: ReadonlySet<string> = new Set(["Queued", "Planning"]);
  * ticket goes straight to In Progress without one, and its later questions keep their own flag.
  */
 export function planningTicket(ticket: { status: string; notes: string | null }): boolean {
-  return BEFORE_BUILD.has(ticket.status) && !noteRecords(ticket.notes).some((record) => /^APPROVAL\b/.test(record));
+  return BEFORE_BUILD.has(ticket.status) && !roundRecords(ticket.notes).some((record) => /^APPROVAL\b/.test(record));
 }
 
 /** The decision as the plugin stores it: blocking while planning, marked so the chat still matches its block. */

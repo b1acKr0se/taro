@@ -7,11 +7,11 @@
  * relaunches at once with a free slot; without one the RELEASE says "queued to resume" and the plugin
  * relaunches it when a slot frees, oldest first with the Queued tickets, and marks that with a
  * RESUMED record. Everything here reads the ticket's notes, which are append-only, so record order
- * is time order. Pure.
+ * is time order; only the round in progress counts (TR-229), as a reopened ticket starts afresh. Pure.
  */
 import { z } from "zod";
 
-import { noteRecords } from "./execution";
+import { roundRecords } from "./execution";
 import { TICKET_STATUSES } from "./project";
 import { holdReason } from "./queue-check";
 
@@ -48,7 +48,7 @@ function recordTime(record: string): string | null {
 }
 
 function lastHoldOrRelease(notes: string | null): string | null {
-  const records = noteRecords(notes).filter((record) => /^(?:HOLD|RELEASE)\b/.test(record));
+  const records = roundRecords(notes).filter((record) => /^(?:HOLD|RELEASE)\b/.test(record));
   return records[records.length - 1] ?? null;
 }
 
@@ -68,7 +68,7 @@ export function pausedHold(notes: string | null): PausedHold | null {
  */
 export function pausedByTaro(notes: string | null): boolean {
   if (pausedHold(notes) === null) return false;
-  const records = noteRecords(notes);
+  const records = roundRecords(notes);
   let seenHold = false;
   for (let index = records.length - 1; index >= 0; index--) {
     const record = records[index] ?? "";
@@ -87,7 +87,7 @@ export function pausedByTaro(notes: string | null): boolean {
  * Whether an owner is alive is the caller's to check.
  */
 export function queuedToResume(notes: string | null): boolean {
-  const records = noteRecords(notes);
+  const records = roundRecords(notes);
   for (let index = records.length - 1; index >= 0; index--) {
     const record = records[index] ?? "";
     if (/^(?:RESUMED|EXECUTION|HOLD)\b/.test(record)) return false;
@@ -98,7 +98,7 @@ export function queuedToResume(notes: string | null): boolean {
 
 /** The newest PAUSE-REQUESTED record's time, unless a HOLD or RELEASE since ended that pause. */
 export function pauseRequestedAt(notes: string | null): string | null {
-  const records = noteRecords(notes);
+  const records = roundRecords(notes);
   for (let index = records.length - 1; index >= 0; index--) {
     const record = records[index] ?? "";
     if (/^(?:HOLD|RELEASE)\b/.test(record)) return null;
@@ -109,7 +109,7 @@ export function pauseRequestedAt(notes: string | null): string | null {
 
 /** Whether a HANDOFF record follows the newest PAUSE-REQUESTED record. */
 export function handoffSincePauseRequest(notes: string | null): boolean {
-  const records = noteRecords(notes);
+  const records = roundRecords(notes);
   for (let index = records.length - 1; index >= 0; index--) {
     const record = records[index] ?? "";
     if (/^PAUSE-REQUESTED\b/.test(record)) return false;
@@ -154,7 +154,7 @@ export function unparkedReleaseText(at: string): string {
  * held it before the park (a HOLD of its own, not released), that hold again, so Resume never lifts it.
  */
 export function unparkedRecordText(at: string, notes: string | null): string {
-  const records = noteRecords(notes).filter((record) => /^(?:HOLD|RELEASE)\b/.test(record));
+  const records = roundRecords(notes).filter((record) => /^(?:HOLD|RELEASE)\b/.test(record));
   const before = records.slice(0, -1);
   const earlier = holdReason(before.join("\n\n"));
   return earlier === null || isParkReason(earlier) ? unparkedReleaseText(at) : `HOLD ${at} — ${earlier}`;
@@ -165,7 +165,7 @@ export function unparkedRecordText(at: string, notes: string | null): string {
  * from what the earlier pause left, a HANDOFF or, without one, the latest milestone.
  */
 export function pausedAgainHoldText(at: string, notes: string | null): string {
-  const records = noteRecords(notes);
+  const records = roundRecords(notes);
   const earlier = [...records].reverse().find((record) => /^HOLD\b/.test(record)) ?? "";
   const from = /\bno handoff\b/i.test(earlier) ? "no handoff: resume from the latest milestone" : "resume from the latest HANDOFF";
   return `HOLD ${at} — ${PARKED_REASON} again before it resumed; ${from}`;
@@ -205,7 +205,7 @@ export const DISPATCH_PENDING_MS = 10 * 60_000;
  * never told (TR-166); an older intent is a launch that failed, and parking is safe.
  */
 export function dispatchPending(notes: string | null, now: number): boolean {
-  const records = noteRecords(notes);
+  const records = roundRecords(notes);
   for (let index = records.length - 1; index >= 0; index--) {
     const record = records[index] ?? "";
     if (/^EXECUTION\b/.test(record)) return false;

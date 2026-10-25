@@ -21,6 +21,7 @@ import { pauseRefusal, pauseView, type PauseView } from "../shared/pause";
 import { holdReason, queuedTickets, recount, type Recount } from "../shared/queue-check";
 import { queuedSlot, queuedWait } from "../shared/queued-wait";
 import { offersRelaunch } from "../shared/relaunch";
+import { closeRoundRefusal, reopenRefusal, reopenRound, roundFinalSummary } from "../shared/reopen";
 import { offersSpecChange } from "../shared/spec-change";
 import { isSubagentRole, roleFromLabel, TARO_LABELS } from "../shared/project";
 import { boardAlerts, type BoardAlert } from "../shared/recovery";
@@ -304,7 +305,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         notMerged: ticket.status === "Awaiting acceptance" ? facts?.notMerged ?? null : null,
         // A finished ticket waits on nobody, whatever its agents still ask.
         permission: column === "done" ? null : firstAsk(askers),
-        delivered: ticket.status === "Awaiting acceptance" ? deliveredLine(facts?.finalSummary ?? null) : null,
+        delivered: ticket.status === "Awaiting acceptance" ? deliveredLine(roundFinalSummary(facts?.notes ?? null, facts?.finalSummary ?? null)) : null,
         pause: pausing.pause,
         pausable: pausing.pausable,
         queuedWait: waits,
@@ -416,6 +417,8 @@ export async function loadTicketDetail(paseo: PaseoApi, project: string, ticketI
     compactOwner:
       owner !== null && offersCompact({ parent: detail.parentTaskId, owner: { status: owner.status, contextUsedTokens: owner.lastUsage?.contextWindowUsedTokens ?? null } }) ? owner.id : null,
     specChangeable: offersSpecChange({ status: detail.status, parent: detail.parentTaskId, ownerRunning: owner !== null, paused: pausing.pause !== null }),
+    closable: closeRoundRefusal(detail.id, { status: detail.status, parent: detail.parentTaskId, round: reopenRound(detail.implementationNotes) }) === null,
+    reopenable: reopenRefusal(detail.id, { status: detail.status, parent: detail.parentTaskId, note: "reopen" }) === null,
     relaunchable: offersRelaunch({ status: detail.status, parent: detail.parentTaskId, paused: pausing.pause !== null, ownerRunning: owner !== null && isMidTurn(owner) }),
     previousPlan: detail.implementationPlan === null ? null : await previousPlan(tracker, detail.id, detail.implementationNotes),
     ownerRunning: owner !== null && isMidTurn(owner),

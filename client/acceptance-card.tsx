@@ -15,6 +15,7 @@ import { acceptTicket, loadTicket, requestChanges, type Card } from "../shared/c
 import { evidenceSummary } from "../shared/evidence";
 import { finalSummaryBody } from "../shared/execution";
 import { pullRequestMark } from "../shared/pull-request-state";
+import { roundFinalSummary } from "../shared/reopen";
 import { acceptanceReady } from "./card-calls";
 import { notMergedText } from "./card-now";
 import { ChangeBox } from "./change-box";
@@ -63,7 +64,9 @@ export function AcceptanceCard({
   const actions = useActions(acceptanceCall(project, card.id));
   const busy = actions.busy;
   const { colors } = theme;
-  const summary = detail.data?.finalSummary === null || detail.data?.finalSummary === undefined ? null : finalSummaryBody(detail.data.finalSummary);
+  // A reopened round's own FINAL only: the Result Reopen kept is the earlier round's delivery.
+  const delivered = detail.data === undefined ? null : roundFinalSummary(detail.data.notes, detail.data.finalSummary);
+  const summary = delivered === null ? null : finalSummaryBody(delivered);
   const evidence = detail.data?.evidence ?? null;
   const ready = acceptanceReady(card);
   const pullRequestLook = pullRequestMark(card.pullRequestState, card.pullRequestMerged);

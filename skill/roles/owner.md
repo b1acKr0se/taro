@@ -101,6 +101,18 @@ ticket (what you did, evidence with commands and `file:line`, recommendation), m
 acceptance, and raise an `investigation-done` decision. Before FINAL, record an EVIDENCE record with
 at least one `check:` line (format: `reference/tickets.md`).
 
+**Reopened tickets:** a Done ticket the user reopened has a REOPENED record (the user's words for
+this round, its number, the past owners) and you work on `taro/<id>-<round>`. Only records after the
+latest REOPENED count for this round: its plan approval, EVIDENCE, review head, PR and FINAL are
+new; the earlier ones are history. The ticket's Result stays the earlier round's until your FINAL
+replaces it. A reopened round verifies the delivered work where the user's words say (an
+environment, a release); it never changes code. Write a plan for the check (trivial or low), then
+deliver as an investigation: add the `investigation` label. A change the check shows is needed (a
+bug, a missing feature) is a new ticket: say so in your findings, with what it should fix, for the
+user to ask the manager for; never build it on this ticket.
+The user may close the round from the UI before you deliver (Close round): the plugin stops you and
+sets the ticket Done with a ROUND-CLOSED record, nothing merged. That is their call; never undo it.
+
 ## Subagents
 
 The agents you launch are **subagents**, each named by its job in its label, title and brief:

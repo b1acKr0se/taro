@@ -6,7 +6,7 @@
  * wake-up, a fresh manager twenty minutes after it. A deliberate hold is a HOLD record on the ticket,
  * lifted by a later RELEASE record; a held ticket is never woken for. Pure.
  */
-import { noteRecords } from "./execution";
+import { roundRecords } from "./execution";
 import { dependsOn, ticketsCountingTowardsCap, type CapOwner, type CapTicket } from "./owner-cap";
 import { TARO_LABELS } from "./project";
 import { hasHeadroom, type BoardAlert } from "./recovery";
@@ -50,7 +50,7 @@ export interface Recount {
  * `HOLD <time> — <reason>`; the reason is what follows the first dash, or the whole record.
  */
 export function holdReason(notes: string | null): string | null {
-  const records = noteRecords(notes).filter((record) => /^(?:HOLD|RELEASE)\b/.test(record));
+  const records = roundRecords(notes).filter((record) => /^(?:HOLD|RELEASE)\b/.test(record));
   const last = records[records.length - 1];
   if (last === undefined || !last.startsWith("HOLD")) return null;
   const body = last.replace(/^HOLD\b\s*/, "");

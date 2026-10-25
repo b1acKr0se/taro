@@ -778,8 +778,17 @@ export function AgentChat({
               </Pressable>
             )}
             {suggestions === undefined ? (
-              // An owner's chat: its one action is a full-width link.
-              actions === undefined ? null : <View style={styles.quick}>{actions}</View>
+              // An owner's chat: a full-width link, and Close round on a reopened round (TR-229) with its tooltip above.
+              actions === undefined ? null : (
+                <View style={{ zIndex: 1 }}>
+                  <View style={styles.quick}>{actions}</View>
+                  {actionsTip === null || actionsTip === undefined ? null : (
+                    <View pointerEvents="none" style={styles.actionsTip}>
+                      <Text style={styles.actionsTipText}>{actionsTip}</Text>
+                    </View>
+                  )}
+                </View>
+              )
             ) : (
               // The tooltip sits outside the sideways scroll, which would clip it.
               <View style={{ zIndex: 1 }}>
