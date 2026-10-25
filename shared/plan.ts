@@ -5,13 +5,14 @@
  * section is an older free-form one and stays Markdown.
  */
 
-export type PlanSectionKey = "goal" | "choices" | "see" | "outOfScope" | "proof" | "size";
+export type PlanSectionKey = "goal" | "choices" | "see" | "mockups" | "outOfScope" | "proof" | "size";
 
 /** The template's sections in order, each with its limit: one line for Goal and Size, none (null) for the bullet sections, which the template guides by what belongs in them. */
 export const PLAN_SECTIONS: readonly { key: PlanSectionKey; heading: string; limit: number | null }[] = [
   { key: "goal", heading: "Goal", limit: 1 },
   { key: "choices", heading: "Choices I made", limit: null },
   { key: "see", heading: "What you'll see", limit: null },
+  { key: "mockups", heading: "Mockups", limit: null },
   { key: "outOfScope", heading: "Out of scope", limit: null },
   { key: "proof", heading: "How I'll prove it", limit: null },
   { key: "size", heading: "Size", limit: 1 },

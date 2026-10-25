@@ -15,9 +15,9 @@ import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, huma
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", acceptQuestionRefused: "accept-question-refused", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question", noPlan: "no-plan" },
+  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", acceptQuestionRefused: "accept-question-refused", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question", noPlan: "no-plan", planWithoutMockups: "plan-without-mockups" },
   skillDirectory: async () => "/skill",
-  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "accept-question-refused" ? `accept-question-refused:${values.refused}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : path === "no-plan" ? `no-plan:${values.ticket}:${values.branch}:${values.commits}:${values.base}` : `${path}:${values.ticket ?? ""}`),
+  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "accept-question-refused" ? `accept-question-refused:${values.refused}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : path === "plan-without-mockups" ? `plan-without-mockups:${values.ticket}:${values.missing}` : path === "no-plan" ? `no-plan:${values.ticket}:${values.branch}:${values.commits}:${values.base}` : `${path}:${values.ticket ?? ""}`),
 }));
 vi.mock("./projects", () => ({ readProjectConfig: vi.fn(async () => null), projectPaths: async () => ({ tracker: "/tracker" }) }));
 vi.mock("./branch-commits", () => ({ commitsPast: vi.fn(async () => 0), branchName: vi.fn(async () => "taro/tr-9") }));
@@ -491,6 +491,60 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       await run(taro, human("start"), ask("accept-tr-9", "Accept TR-9 and merge PR #88?"));
       expect(decisions).toEqual([]);
       expect(refusals()).toHaveLength(1);
+    });
+  });
+
+  // TR-235: a plan approval comes with its mockups, or says there is no UI change.
+  describe("plan mockups", () => {
+    const withPlan = (plan: string | null) => vi.mocked(viewTicket).mockResolvedValue({ status: "Planning", implementationPlan: plan, implementationNotes: "" } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+    const told = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("plan-without-mockups:"));
+
+    beforeEach(() => {
+      vi.mocked(sendFromPlugin).mockClear();
+    });
+    afterEach(() => {
+      vi.mocked(viewTicket).mockReset();
+    });
+
+    it("holds a scope-approval whose plan has no Mockups section, and tells the owner what is missing", async () => {
+      withPlan("## Goal\nG\n## Size\nS");
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      await run(taro, human("start"), ask("scope-approval", "Approve the plan for TR-9?"));
+      expect(decisions.map((decision) => [decision.id, decision.status, decision.held])).toEqual([["scope-approval", "withdrawn", true]]);
+      expect(told()).toHaveLength(1);
+      expect(told()[0]).toContain("a Mockups section");
+    });
+
+    it("holds one that names a mockup file that is not in the evidence folder", async () => {
+      withPlan("## Goal\nG\n## Mockups\n- mockup-board-phone.png — a badge\n## Size\nS");
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      await run(taro, human("start"), ask("scope-approval", "Approve the plan for TR-9?"));
+      expect(decisions[0]?.status).toBe("withdrawn");
+      expect(told()[0]).toContain("mockup file mockup-board-phone.png");
+    });
+
+    it("shows one whose plan says there is no UI change, and any other decision regardless", async () => {
+      withPlan("## Goal\nG\n## Mockups\n- none — skill text only\n## Size\nS");
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      await run(taro, human("start"), ask("scope-approval", "Approve the plan for TR-9?"));
+      expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
+      expect(told()).toEqual([]);
+
+      withPlan("## Goal\nG\n## Size\nS");
+      const other = fakeState();
+      await run(new Supervisor(other.state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery), human("start"), ask("naming", "naming?"));
+      expect(other.decisions.map((decision) => decision.status)).toEqual(["open"]);
+    });
+
+    it("leaves a plan in no template shape alone", async () => {
+      withPlan("Just do it, free-form.");
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      await run(taro, human("start"), ask("scope-approval", "Approve the plan for TR-9?"));
+      expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
     });
   });
 

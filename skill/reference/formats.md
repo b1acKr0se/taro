@@ -100,6 +100,8 @@ Every image you show the user (evidence screenshots, mockups) is a file in `$TAR
   `screenshot:` line or an option's `images:` line, the alt text of an image in a message
   (`![the board on a phone](/absolute/path/after-phone-board.png)`). A screenshot line without a
   caption fails the evidence check; an option image without one is an incomplete block.
+- Plan mockups (TR-235): `mockup-<what>-<device>.png`, listed in the plan's Mockups section as `file —
+  description` (`templates/plan.md`); the description says what changes, not just what is shown.
 - Options with images: name them `option-<letter>-<what>-<device>.png`, so each file says which
   option it belongs to even outside the card.
 

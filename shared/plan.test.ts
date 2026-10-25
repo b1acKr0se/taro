@@ -35,7 +35,7 @@ describe("parsePlan", () => {
     expect(plan?.sections.map((section) => section.key)).toEqual(["goal", "choices", "see", "outOfScope", "proof", "size"]);
     expect(plan?.sections[2]?.items).toEqual(["A compact card in chat, Inbox and on the board.", "View plan opens the ticket's Plan."]);
     expect(plan?.intro).toBe("");
-    expect(Object.values(plan?.over ?? {})).toEqual([0, 0, 0, 0, 0, 0]);
+    expect(Object.values(plan?.over ?? {})).toEqual([0, 0, 0, 0, 0, 0, 0]);
   });
 
   it("splits each choice at its first dash: —, -- or -", () => {
@@ -79,7 +79,7 @@ describe("parsePlan", () => {
   it("counts only Goal and Size lines past their limit, never bullets", () => {
     const bullets = (count: number) => Array.from({ length: count }, (_, index) => `- item ${index + 1}`).join("\n");
     const plan = parsePlan(`## Goal\nLine one\nLine two\n## Choices I made\n${bullets(9)}\n## What you'll see\n${bullets(9)}\n## Out of scope\n${bullets(9)}\n## How I'll prove it\n${bullets(9)}\n## Size\nS`);
-    expect(plan?.over).toEqual({ goal: 1, choices: 0, see: 0, outOfScope: 0, proof: 0, size: 0 });
+    expect(plan?.over).toEqual({ goal: 1, choices: 0, see: 0, mockups: 0, outOfScope: 0, proof: 0, size: 0 });
     expect(plan?.sections[1]?.items).toHaveLength(9);
     expect(plan?.goal).toBe("Line one Line two");
   });

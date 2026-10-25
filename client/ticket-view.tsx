@@ -218,7 +218,7 @@ function TicketDetail({
         return (
           <View style={{ gap: SPACE.sm }}>
             {plan !== null ? (
-              <PlanBody plan={plan} marks={planMarks} theme={theme} proof={criteria} />
+              <PlanBody plan={plan} marks={planMarks} theme={theme} proof={criteria} mockups={detail.data?.mockups ?? null} />
             ) : (
               <View style={{ gap: SPACE.md }}>
                 {/* A plan in no template shape stays Markdown, as written. */}

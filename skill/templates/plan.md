@@ -1,4 +1,4 @@
-<!-- The plan of every ticket, trivial included (a trivial one is one line per section and asks no approval), written with `taro ticket edit <ID> --plan`. Keep the six sections, in this order, with these headings. Goal and Size are one line each; the bullet sections have no count limit, so write as many bullets as the section's purpose needs: every one earns its place, and near-duplicates merge into one. The approval card shows Goal, Choices I made and Size; View plan shows the rest. -->
+<!-- The plan of every ticket, trivial included (a trivial one is one line per section and asks no approval), written with `taro ticket edit <ID> --plan`. Keep the seven sections, in this order, with these headings. Goal and Size are one line each; the bullet sections have no count limit, so write as many bullets as the section's purpose needs: every one earns its place, and near-duplicates merge into one. The approval card shows Goal, Choices I made, the mockups and Size; View plan shows the rest. -->
 ## Goal
 <the user outcome, one line>
 
@@ -9,6 +9,10 @@
 ## What you'll see
 - <a user-visible change>
 <one bullet per change the user will see or do differently, in their terms (screens, wording, behaviour), so nothing visible is missing; not internal mechanisms>
+
+## Mockups
+- <mockup-what-device.png> — <what changes on that screen>
+<one line per screenshot of the changed screen (phone and desktop, in the theme it touches), saved in `$TARO_EVIDENCE/<ID>/` and described in the user's terms: what is new or different. A plan with no UI change writes `- none — <why>`. The plugin does not show the approval card until this section is complete>
 
 ## Out of scope
 - <what this does not do>
