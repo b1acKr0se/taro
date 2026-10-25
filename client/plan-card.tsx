@@ -558,7 +558,7 @@ export function PlanBody({ plan, marks = null, theme, proof = null, mockups = nu
             <Text accessibilityRole="header" style={styles.heading}>
               {section.heading}
             </Text>
-            {section.prose === "" ? null : changes?.prose === true && !section.prose.includes("\n") ? (
+            {section.prose === "" || (section.key === "mockups" && mockups !== null) ? null : changes?.prose === true && !section.prose.includes("\n") ? (
               <Text style={[styles.text, styles.changed]}>{inline(section.prose)}</Text>
             ) : changes?.prose === true ? (
               <View style={styles.changedBlock}>

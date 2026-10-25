@@ -539,6 +539,31 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       expect(other.decisions.map((decision) => decision.status)).toEqual(["open"]);
     });
 
+    it("opens the approval asked again in a later turn once the plan is complete, with no second message; the held turn read again says nothing more", async () => {
+      withPlan("## Goal\nG\n## Size\nS");
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      const first = [human("start"), ask("scope-approval", "Approve the plan for TR-9?")];
+      await run(taro, ...first);
+      await run(taro, ...first);
+      expect(decisions.map((decision) => decision.status)).toEqual(["withdrawn"]);
+      expect(told()).toHaveLength(1);
+
+      withPlan("## Goal\nG\n## Mockups\n- none — wording only\n## Size\nS");
+      await run(taro, ...first, plugin("the plan is complete now"), ask("scope-approval", "Approve the plan for TR-9?"));
+      expect(decisions.map((decision) => [decision.status, decision.held])).toEqual([["open", undefined]]);
+      expect(told()).toHaveLength(1);
+    });
+
+    it("shows the approval when the ticket cannot be read", async () => {
+      vi.mocked(viewTicket).mockRejectedValue(new Error("tracker busy"));
+      const { state, decisions } = fakeState();
+      const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+      await run(taro, human("start"), ask("scope-approval", "Approve the plan for TR-9?"));
+      expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
+      expect(told()).toEqual([]);
+    });
+
     it("leaves a plan in no template shape alone", async () => {
       withPlan("Just do it, free-form.");
       const { state, decisions } = fakeState();
