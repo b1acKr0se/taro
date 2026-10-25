@@ -324,7 +324,7 @@ function PlanSummary({ plan, marks, mockups, theme, compact, brief }: { plan: Pa
       ),
     });
   }
-  if (mockups !== null) rows.push({ label: "MOCKUPS", content: <MockupList mockups={mockups} theme={theme} limit={brief ? 1 : 2} /> });
+  if (mockups !== null) rows.push({ label: "MOCKUPS", content: <MockupList mockups={mockups} theme={theme} limit={1} stacked={stacked} /> });
   if (plan.size !== "") {
     rows.push({
       label: "SIZE",

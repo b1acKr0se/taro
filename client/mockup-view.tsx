@@ -15,7 +15,8 @@ const MOCKUP_HEIGHT = 72;
 /** The thumbnails' column: a desktop shot at the row's height fills it, a phone shot sits centred in it. */
 const MOCKUP_COLUMN = MOCKUP_HEIGHT * 1.6;
 
-export function MockupList({ mockups, theme, limit = null }: { mockups: MockupsView; theme: PluginTheme; limit?: number | null }) {
+/** `stacked`: the description under its thumbnail, for a column too narrow to hold both side by side (the board's cards). */
+export function MockupList({ mockups, theme, limit = null, stacked = false }: { mockups: MockupsView; theme: PluginTheme; limit?: number | null; stacked?: boolean }) {
   const { colors } = theme;
   const text = { color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: lineHeightFor(FONT_SIZE.small) };
   if (mockups.images.length === 0) {
@@ -27,8 +28,8 @@ export function MockupList({ mockups, theme, limit = null }: { mockups: MockupsV
   return (
     <View style={{ gap: SPACE.sm }}>
       {shown.map((image) => (
-        <View key={image.file} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.md }}>
-          <View style={{ width: MOCKUP_COLUMN, alignItems: "center" }}>
+        <View key={image.file} style={stacked ? { gap: SPACE.xs } : { flexDirection: "row", alignItems: "center", gap: SPACE.md }}>
+          <View style={stacked ? { alignItems: "flex-start" } : { width: MOCKUP_COLUMN, alignItems: "center" }}>
             {image.present ? (
               <ImageThumbnail
                 source={image.path}
@@ -42,11 +43,11 @@ export function MockupList({ mockups, theme, limit = null }: { mockups: MockupsV
               <Text style={{ color: colors.statusDanger, fontSize: FONT_SIZE.caption, textAlign: "center" }}>missing</Text>
             )}
           </View>
-          <Text style={[text, { flex: 1, minWidth: 0 }]}>{image.description}</Text>
+          <Text style={[text, stacked ? null : { flex: 1, minWidth: 0 }]}>{image.description}</Text>
         </View>
       ))}
       {limit !== null && mockups.images.length > limit ? (
-        <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption }}>+{mockups.images.length - limit} more in the plan</Text>
+        <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption }}>+{mockups.images.length - limit} more {mockups.images.length - limit === 1 ? "mockup" : "mockups"} in the plan</Text>
       ) : null}
     </View>
   );
