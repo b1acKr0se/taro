@@ -47,7 +47,7 @@ export function MockupList({ mockups, theme, limit = null, stacked = false }: { 
         </View>
       ))}
       {limit !== null && mockups.images.length > limit ? (
-        <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption }}>+{mockups.images.length - limit} more {mockups.images.length - limit === 1 ? "mockup" : "mockups"} in the plan</Text>
+        <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption }}>+{mockups.images.length - limit} more in the plan</Text>
       ) : null}
     </View>
   );
