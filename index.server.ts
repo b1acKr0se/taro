@@ -473,13 +473,13 @@ export default function contribute(server: PluginServerContext) {
   });
 
   // Supervision (decisions 28, 30, 35, 36): every Taro agent's turn end.
-  const removeTurnHook = server.on("agent.turn_ended", async ({ agent, outcome, timeline, turnId }, { paseo }) => {
+  const removeTurnHook = server.on("agent.turn_ended", async ({ agent, outcome, turnId }, { paseo }) => {
     // Every agent's turn start is taken here, first: queued before `keep` can queue the drop of stale
     // starts, and before supervision prompts the agent into a new turn whose start must survive.
     const taking = stats.takeTurnDuration(agent.id).catch(() => undefined);
     keep(paseo);
     const activeMs = await taking;
-    await supervisor.onTurnEnded(paseo, agent, outcome, timeline, turnId, activeMs).catch((error: unknown) => {
+    await supervisor.onTurnEnded(paseo, agent, outcome, turnId, activeMs).catch((error: unknown) => {
       reportFailure(`[taro] supervising ${agent.id}:`, error);
     });
     // After supervision has read the turn: an agent mid-turn when its ticket reached Done is released now (TR-024).

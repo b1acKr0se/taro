@@ -1,6 +1,7 @@
 /**
  * The plugin's share of supervision (decisions 28, 30, 35, 36, 37), driven by
- * `agent.turn_ended`. No model turns: it reads what agents wrote, stores
+ * `agent.turn_ended`. No model turns: it reads what agents wrote (from their
+ * timeline: since Paseo 0.13.0 the hook's own is always empty), stores
  * decisions and status lines, delivers subagents' reports to the ticket's current
  * owner, nudges a stalled owner once, and runs the compaction pipeline.
  */
@@ -20,7 +21,7 @@ import { openQuestionHolding, withdrawOpenDecisions, type AgentState, type HeldR
 import { watchTrimmedTurn } from "./agent-trim";
 import { fetchLiveAgent, isMidTurn, listTaroAgents } from "./agents";
 import { branchName, commitsPast } from "./branch-commits";
-import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TurnOutcome } from "./host-types";
+import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TimelinePage, TurnOutcome } from "./host-types";
 import { ticketEvidence, ticketEvidenceDirectory } from "./evidence";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { projectPaths, readProjectConfig } from "./projects";
@@ -126,27 +127,59 @@ function earlierText(timeline: readonly TimelineItem[], turn: readonly TimelineI
   return allAssistantText(timeline.slice(0, timeline.length - turn.length));
 }
 
+type TimelineEntry = TimelinePage["entries"][number];
+
 /**
- * The end of an agent's projected timeline, reaching back to the message that opened its latest turn:
- * without it the turn has no identity, and a re-ask in a long turn would be taken for a replay (TR-108).
- * Bounded, as the very first turn may have no such message at all.
+ * The entries up to the last one of the turn the hook named: a turn that started since (a queued
+ * message sent at once) is not the one that ended. All of them when none carries that id.
  */
-async function latestTurnItems(paseo: PaseoApi, agentId: string): Promise<TimelineItem[] | null> {
+export function throughTurn(entries: readonly TimelineEntry[], turnId: string | null): TimelineItem[] {
+  const last = turnId === null ? -1 : entries.map((entry) => entry.turnId === turnId).lastIndexOf(true);
+  return (last === -1 ? entries : entries.slice(0, last + 1)).map((entry) => entry.item);
+}
+
+/**
+ * The end of an agent's projected timeline, reaching back to the message that opened its latest turn
+ * (or the turn `turnId` names): without it the turn has no identity, and a re-ask in a long turn would
+ * be taken for a replay (TR-108). Bounded, as the very first turn may have no such message at all.
+ */
+async function latestTurnItems(paseo: PaseoApi, agentId: string, turnId: string | null = null): Promise<TimelineItem[] | null> {
   const timeline = paseo.agents.ref(agentId).timeline;
   let page = await timeline.refetch({ direction: "tail", limit: 40, projection: "projected" }).catch(() => null);
   if (page === null) return null;
-  let items = page.entries.map((entry) => entry.item);
+  let entries = page.entries;
+  let items = throughTurn(entries, turnId);
   for (let older = 0; older < 10 && !items.some(opensTurn); older++) {
     if (!page.hasOlder || page.startCursor === null) break;
     page = await timeline.refetch({ direction: "before", cursor: page.startCursor, limit: 40, projection: "projected" }).catch(() => null);
     if (page === null) break;
-    items = [...page.entries.map((entry) => entry.item), ...items];
+    entries = [...page.entries, ...entries];
+    items = throughTurn(entries, turnId);
   }
   return items;
 }
 
+/** How long a turn end waits before reading the turn again after a failed read. */
+export const TURN_READ_RETRY_MS = 1_000;
+
+/** The turn the hook named, read once more a moment later if the first read fails: an unread turn loses its status line, card or report. */
+async function readEndedTurn(paseo: PaseoApi, agentId: string, turnId: string | null): Promise<TimelineItem[] | null> {
+  const first = await latestTurnItems(paseo, agentId, turnId);
+  if (first !== null) return first;
+  await new Promise((resolve) => setTimeout(resolve, TURN_READ_RETRY_MS));
+  return latestTurnItems(paseo, agentId, turnId);
+}
+
+/** The plugin log's line for a Taro agent's turn end: what supervision read, so a missed status line or card can be traced. */
+export function turnEndLine(agentId: string, outcome: TurnOutcome["kind"], turnId: string | null, read: { items: number; turn: number } | null, status: ReturnType<typeof parseStatusLine>, decisions: readonly ParsedDecision[]): string {
+  const head = `[taro] ${agentId} turn ended (${outcome}, ${turnId ?? "no turn id"})`;
+  if (read === null) return `${head}: its timeline could not be read, so no status line or decision was looked for and no nudge is sent`;
+  const found = decisions.length === 0 ? "none" : decisions.map((decision) => decision.id).join(", ");
+  return `${head}: read ${read.items} items, ${read.turn} in this turn; status ${status === null ? "none" : status.state}; decisions ${found}`;
+}
+
 /**
- * Whether the provider compacted this turn on its own. The hook passes the whole stored timeline,
+ * Whether the provider compacted this turn on its own. The timeline read reaches back past the turn,
  * so only the current turn counts, or every later turn (the reload included) would reload again.
  * Claude marks it `trigger: "auto"`; Codex sets only "manual", so its automatic ones carry none.
  */
@@ -235,7 +268,7 @@ export class Supervisor {
     });
   }
 
-  async onTurnEnded(paseo: PaseoApi, hookAgent: HookAgent, outcome: TurnOutcome, timeline: readonly TimelineItem[], turnId: string | null, activeMs: number | undefined): Promise<void> {
+  async onTurnEnded(paseo: PaseoApi, hookAgent: HookAgent, outcome: TurnOutcome, turnId: string | null, activeMs: number | undefined): Promise<void> {
     const live = await fetchLiveAgent(paseo, hookAgent.id);
     if (live === null) return;
     const identity = identityFromLabels(live.labels, live.title ?? null);
@@ -243,8 +276,12 @@ export class Supervisor {
     const model = live.model === null || live.model === undefined ? live.provider : `${live.provider}/${live.model}`;
     await this.stats.turnEnded(identity.project, identity.ticket, { id: live.id, role: identity.role, model, title: identity.title }, activeMs, usageReading(live.lastUsage)).catch(() => undefined);
     const now = new Date().toISOString();
-    // The hook passes the agent's whole stored timeline: earlier turns' blocks would reopen answered
-    // decisions, their user words would close new ones, and a turn without text would reuse their reply.
+    // Since Paseo 0.13.0 the hook's timeline is always empty (TR-233): the turn is read from the
+    // agent's own, as Paseo's types direct. Null when that read failed: nothing is known of the turn.
+    const read = await readEndedTurn(paseo, live.id, turnId);
+    const timeline = read ?? [];
+    // Only the turn that ended: earlier turns' blocks would reopen answered decisions, their user words
+    // would close new ones, and a turn without text would reuse their reply.
     const turn = currentTurn(timeline);
     // What a trimmed owner or subagent reached for that Taro removed, and what it started with (TR-139).
     await watchTrimmedTurn(this.stats, live, identity, turn).catch((error: unknown) => {
@@ -253,11 +290,11 @@ export class Supervisor {
     const closing = closingText(turn);
     // Reports are deduplicated by their text: turn ids ("foreground-turn-1") may repeat, and the
     // reconcile after a restart must recognise a report the hook already delivered.
-    void turnId;
     const turnKey = hashText(closing);
 
     const status = parseStatusLine(closing);
     const decisions = parseDecisionBlocks(allAssistantText(turn));
+    console.log(turnEndLine(live.id, outcome.kind, turnId, read === null ? null : { items: timeline.length, turn: turn.length }, status, decisions));
     // Only the manager's tab: an owner's also takes the manager's `paseo send`, which Paseo records just
     // like words the user typed, and it closed the owner's open cards (TR-134).
     const userWords = identity.role === "manager" ? tabMessages(turn) : [];
@@ -270,7 +307,8 @@ export class Supervisor {
     const stage = await this.state.updateAgent(live.id, () => freshState(identity), (record) => {
       record.ticket = identity.ticket;
       record.title = identity.title;
-      record.lastTurnEndedAt = now;
+      // Left as it was when the turn could not be read, so the reconcile after a restart reads it again.
+      if (read !== null) record.lastTurnEndedAt = now;
       record.idleCompaction = idleCompactionAfterTurn(record.idleCompaction, record.compaction);
       if (status !== null) record.lastStatus = { ...status, at: now };
       // Working again after the plugin gave up on its crashes (the user restarted it by hand).
@@ -323,7 +361,8 @@ export class Supervisor {
     if (identity.role !== "owner") return;
 
     if (outcome.kind === "completed" && (await this.flagCommitsWithoutPlan(paseo, live, identity))) return;
-    if (outcome.kind === "completed") {
+    // A turn that could not be read is not taken for one without a status line.
+    if (outcome.kind === "completed" && read !== null) {
       const stalled = (status === null || status.state === "working") && !openBlocking;
       const nudge = await this.state.updateAgent(live.id, () => freshState(identity), (record) => {
         if (!stalled) {

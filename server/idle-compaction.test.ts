@@ -62,18 +62,23 @@ function setup() {
   return { taro, agents, stats };
 }
 
+/** Paseo's projected timeline holding `items`, where supervision reads a turn at its end (TR-233: the hook's is empty). */
+function withTimeline(items: readonly TimelineItem[]): PaseoApi {
+  return { agents: { ref: () => ({ timeline: { refetch: async () => ({ entries: items.map((item) => ({ item })), hasOlder: false, startCursor: null }) } }) } } as unknown as PaseoApi;
+}
+
 /** The plugin saw `id`'s last turn end at `endedAt`. */
 async function seenIdle(taro: Supervisor, live: PaseoAgent): Promise<void> {
   vi.mocked(fetchLiveAgent).mockResolvedValue(live);
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(Date.parse(endedAt));
-  await taro.onTurnEnded({} as PaseoApi, { id: live.id, parentAgentId: null } as unknown as HookAgent, completed, turn, null, undefined);
+  await taro.onTurnEnded(withTimeline(turn), { id: live.id, parentAgentId: null } as unknown as HookAgent, completed, null, undefined);
   vi.useRealTimers();
 }
 
 async function endTurn(taro: Supervisor, live: PaseoAgent): Promise<void> {
   vi.mocked(fetchLiveAgent).mockResolvedValue(live);
-  await taro.onTurnEnded({} as PaseoApi, { id: live.id, parentAgentId: null } as unknown as HookAgent, completed, turn, null, undefined);
+  await taro.onTurnEnded(withTimeline(turn), { id: live.id, parentAgentId: null } as unknown as HookAgent, completed, null, undefined);
 }
 
 const sent = () => vi.mocked(sendFromPlugin).mock.calls.map(([, id, text]) => `${id} ${text}`);
