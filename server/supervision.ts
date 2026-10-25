@@ -11,6 +11,7 @@ import { asksToAccept, deliveryEndedRecord, deliveryTakenBackRecord, questionEnd
 import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compaction";
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
+import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { lacksPlan, noPlanRecord } from "../shared/no-plan";
 import { asPlanningQuestion, asStored, planningTicket } from "../shared/planning-questions";
 import type { DrainTrigger } from "../shared/chat-queue";
@@ -22,7 +23,7 @@ import { watchTrimmedTurn } from "./agent-trim";
 import { fetchLiveAgent, isMidTurn, listTaroAgents } from "./agents";
 import { branchName, commitsPast } from "./branch-commits";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TimelinePage, TurnOutcome } from "./host-types";
-import { ticketEvidence, ticketEvidenceDirectory } from "./evidence";
+import { mockupsMissing, ticketEvidence, ticketEvidenceDirectory } from "./evidence";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
 import { projectPaths, readProjectConfig } from "./projects";
 import { appendTicketNote, endDelivery, viewTicket } from "./tickets";
@@ -532,9 +533,12 @@ export class Supervisor {
     const earlierBlocks = turn === null || earlier === "" ? [] : parseDecisionBlocks(earlier);
     // Read only when a question would go on without the user: everything else keeps its own flag.
     const planning = identity.role === "owner" && decisions.some((decision) => !decision.withdrawn && !decision.blocking) && (await this.ticketPlanning(identity));
+    // A plan approval asked without its mockups is held back (TR-235).
+    const mockupGap = identity.role === "owner" && decisions.some((decision) => !decision.withdrawn && decision.id === SCOPE_APPROVAL) ? await this.planMockupsMissing(identity) : [];
     const newlyAsked: string[] = [];
     const opened: StoredDecision[] = [];
     const held: { id: string; open: string }[] = [];
+    const unmocked: string[] = [];
     const refused: string[] = [];
     const corrections = await this.state.updateDecisions((stored) => {
       const problems: string[] = [];
@@ -579,6 +583,13 @@ export class Supervisor {
           // The same block seen again (a repeated hook, a replayed turn) does not reopen an answered decision; asked in a later turn, it does.
           continue;
         }
+        if (mockupGap.length > 0 && block.id === SCOPE_APPROVAL && !asksToAccept(block)) {
+          const withheld = { ...next, status: "withdrawn" as const, held: true };
+          if (existing === undefined) stored.push(withheld);
+          else stored[index] = withheld;
+          unmocked.push(block.id);
+          continue;
+        }
         // An owner asks one question at a time (TR-124): the next one, in this turn or a later one, waits
         // for the open one's answer. Stored withdrawn, so its turn seen again stays quiet and the tab says so.
         const holding = identity.role === "owner" ? openQuestionHolding(stored, agent.id, key) : undefined;
@@ -610,12 +621,26 @@ export class Supervisor {
     if (refused.length > 0) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.acceptQuestionRefused, { refused: refused.map((id) => `\`${id}\``).join(", ") }));
     }
+    if (unmocked.length > 0 && identity.ticket !== null) {
+      await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.planWithoutMockups, { ticket: identity.ticket, missing: mockupGap.join("; "), skill: await skillDirectory() }));
+    }
     if (held.length > 0) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.decisionHeld, { held: held.map((each) => `\`${each.id}\``).join(", "), open: held[0]!.open }));
     }
     // A turn that already stopped for the user needs no reminder to.
     if (madeBlocking.length > 0 && !waiting) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.planningQuestion, { question: `\`${madeBlocking[0]!.id}\`` }));
+    }
+  }
+
+  /** What the owner's plan lacks of its mockups (TR-235); unreadable counts as nothing missing, as a ticket the plugin cannot read blocks nothing else here. */
+  private async planMockupsMissing(identity: TaroIdentity): Promise<string[]> {
+    if (identity.ticket === null) return [];
+    try {
+      const detail = await viewTicket((await projectPaths(identity.project)).tracker, identity.ticket);
+      return await mockupsMissing(identity.project, identity.ticket, detail.implementationPlan);
+    } catch {
+      return [];
     }
   }
 

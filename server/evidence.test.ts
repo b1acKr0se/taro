@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadTicketDetail } from "./board";
 import type { PaseoApi } from "./host-types";
-import { requireCompleteEvidence, ticketEvidence, ticketEvidenceDirectory } from "./evidence";
+import { mockupsMissing, requireCompleteEvidence, ticketEvidence, ticketEvidenceDirectory, ticketMockups } from "./evidence";
 import { viewTicket } from "./tickets";
 
 vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: "/tracker" }) }));
@@ -93,5 +93,26 @@ describe("loadTicketDetail evidence", () => {
     expect((await loadTicketDetail({} as PaseoApi, "notes", "NA-1")).evidence?.missing).toEqual(["an EVIDENCE record"]);
     detail("In Progress", complete);
     expect((await loadTicketDetail({} as PaseoApi, "notes", "NA-1")).evidence?.checks).toHaveLength(1);
+  });
+});
+
+// TR-235: a plan's mockups against the files in the ticket's evidence folder.
+describe("plan mockups", () => {
+  const plan = "## Goal\nG\n## Mockups\n- mockup-list-phone.png — the list gains a badge\n## Size\nS";
+
+  it("finds the mockup files with their absolute paths, and reports one that is absent", async () => {
+    await addShot("mockup-list-phone.png");
+    const view = await ticketMockups("notes", "NA-1", plan);
+    expect(view?.images).toEqual([{ file: "mockup-list-phone.png", description: "the list gains a badge", present: true, path: join(home, "plugin-data", "taro", "evidence", "notes", "NA-1", "mockup-list-phone.png") }]);
+    expect(view?.missing).toEqual([]);
+    expect(await mockupsMissing("notes", "NA-2", plan)).toEqual(["mockup file mockup-list-phone.png in the evidence folder"]);
+  });
+
+  it("has no view without a Mockups section, and asks for one of a template plan", async () => {
+    expect(await ticketMockups("notes", "NA-1", "## Goal\nG")).toBeNull();
+    expect(await ticketMockups("notes", "NA-1", null)).toBeNull();
+    expect(await mockupsMissing("notes", "NA-1", "## Goal\nG")).toHaveLength(1);
+    expect(await mockupsMissing("notes", "NA-1", "free-form plan")).toEqual([]);
+    expect(await mockupsMissing("notes", "NA-1", null)).toEqual([]);
   });
 });

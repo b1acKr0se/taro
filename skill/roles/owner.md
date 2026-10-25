@@ -27,7 +27,7 @@ the flow.
 3. **Rate complexity** and write the **proposal** into the ticket (`-d`, `--plan`, `--add-label
    complexity-<level>`), sized to the level. **Every level writes a plan, trivial included**: no
    code is committed while the ticket has none (the plugin flags it with a NO-PLAN record and stops
-   you, TR-206). The plan follows `templates/plan.md`: its six sections
+   you, TR-206). The plan follows `templates/plan.md`: its seven sections
    in order; Goal and Size are one line, the other sections have no bullet limit and say what
    belongs in them. FINAL, MILESTONE and HANDOFF keep their limits: cut rather than exceed them, and
    detail beyond goes in the children's definitions of done. Its "How I'll prove it" holds the criteria, so new tickets get no
@@ -39,6 +39,15 @@ the flow.
    | low | small and clear, one area | the plan, 1–2 lines per section | you | self |
    | medium | a feature in one subsystem | half a page: decisions, criteria, short plan | you | one independent round + fix check |
    | high | several subsystems, contracts, real ambiguity | full spec: decisions, numbered criteria, task list or children | implementers | up to two rounds + fix check |
+
+   **Mockups (TR-235):** a plan that adds or changes UI shows the user what would change before
+   they approve it, and you make the mockups, never the manager (a subagent may, for a big one).
+   Run the changed screen on a throwaway daemon with the change roughed in (a temporary edit, never
+   committed), capture it on phone and desktop in the theme it touches, and save each in
+   `$TARO_EVIDENCE/<ID>/` as `mockup-<what>-<device>.png`. The plan's Mockups section has a `file —
+   what changes` line per image, written for someone who has not seen the screen; a plan with no UI
+   change says `- none — <why>`. Draw a sketch only when the screen cannot be run. The plugin holds
+   the approval card, and tells you, while that section is missing or incomplete.
 
    **Risk floor:** anything touching contracts, money or fee math, auth, or stored data is at least
    medium.

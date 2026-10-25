@@ -6,7 +6,9 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { EvidenceView } from "../shared/contracts";
+import type { EvidenceView, MockupsView } from "../shared/contracts";
+import { judgeMockups, parseMockups } from "../shared/mockups";
+import { parsePlan } from "../shared/plan";
 import { judgeEvidence, parseEvidence, type ParsedEvidence } from "../shared/evidence";
 import { evidenceDirectory } from "./data-dir";
 
@@ -38,4 +40,20 @@ export function ticketEvidence(project: string, ticket: string, notes: string | 
 export async function requireCompleteEvidence(project: string, ticket: string, notes: string | null, labels: readonly string[]): Promise<void> {
   const evidence = await ticketEvidence(project, ticket, notes, labels);
   if (!evidence.complete) throw new Error(`${ticket} cannot be accepted yet: the evidence is missing ${evidence.missing.join("; ")}.`);
+}
+
+/** The ticket's plan mockups against its evidence folder (TR-235); null when the plan has no Mockups section. */
+export async function ticketMockups(project: string, ticket: string, plan: string | null): Promise<MockupsView | null> {
+  const parsed = parsePlan(plan);
+  if (parseMockups(parsed).section === null) return null;
+  const folder = ticketEvidenceDirectory(project, ticket);
+  return judgeMockups(parsed, await filesIn(folder), folder);
+}
+
+/** What a plan still lacks before its approval may be asked; empty when it may. A plan in no template shape (older, free-form) is not judged. */
+export async function mockupsMissing(project: string, ticket: string, plan: string | null): Promise<string[]> {
+  const parsed = parsePlan(plan);
+  if (parsed === null) return [];
+  const folder = ticketEvidenceDirectory(project, ticket);
+  return judgeMockups(parsed, await filesIn(folder), folder).missing;
 }

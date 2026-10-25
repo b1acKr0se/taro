@@ -29,7 +29,7 @@ import { decisionsOfLiveAgents, type StoredDecision } from "../shared/state";
 import { currentSuggestions, parseSuggestions, suggestionKey, withoutFixedActions } from "../shared/suggestions";
 import { isMidTurn, projectAgents, projectArchivedAgents } from "./agents";
 import { statePath } from "./data-dir";
-import { judgeTicketEvidence, ticketEvidence } from "./evidence";
+import { judgeTicketEvidence, ticketEvidence, ticketMockups } from "./evidence";
 import { readHeadroom } from "./headroom";
 import { readJsonIfPresent, readTextIfPresent, writeJsonAtomically } from "./files";
 import type { PaseoAgent, PaseoApi } from "./host-types";
@@ -412,6 +412,7 @@ export async function loadTicketDetail(paseo: PaseoApi, project: string, ticketI
     dependencies: detail.dependencies,
     children: await Promise.all(detail.subtasks.map(async (child) => ({ id: child.id, title: child.title, status: child.status, evidence: await childEvidence(project, tracker, child.id) }))),
     evidence: hasRecord || detail.status === "Awaiting acceptance" ? await ticketEvidence(project, detail.id, detail.implementationNotes, detail.labels, detail.status) : null,
+    mockups: await ticketMockups(project, detail.id, detail.implementationPlan),
     pause: pausing.pause,
     pausable: pausing.pausable,
     compactOwner:

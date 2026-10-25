@@ -204,6 +204,14 @@ export const EvidenceViewSchema = z.object({
 });
 export type EvidenceView = z.infer<typeof EvidenceViewSchema>;
 
+/** A plan's mockups judged against the evidence folder (shared/mockups.ts, TR-235); each image's absolute path on the daemon. */
+export const MockupsViewSchema = z.object({
+  images: z.array(z.object({ file: z.string(), description: z.string(), present: z.boolean(), path: z.string() })),
+  none: z.string().nullable(),
+  missing: z.array(z.string()),
+});
+export type MockupsView = z.infer<typeof MockupsViewSchema>;
+
 export const CardSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -307,6 +315,8 @@ export const TicketDetailSchema = z.object({
   children: z.array(z.object({ id: z.string(), title: z.string(), status: z.string().nullable(), evidence: EvidenceViewSchema.nullable().default(null) })),
   /** The judged evidence, when the notes hold an EVIDENCE record or the ticket is Awaiting acceptance. */
   evidence: EvidenceViewSchema.nullable().default(null),
+  /** The plan's mockups (TR-235); null without a plan section for them. */
+  mockups: MockupsViewSchema.nullable().default(null),
   /** Pausing, paused or queued to resume (TR-088), else null. */
   pause: PauseViewSchema.nullable().default(null),
   pausable: z.boolean().default(false),

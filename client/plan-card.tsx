@@ -17,13 +17,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 
-import { answerDecision, loadTicket, type TicketDetailView } from "../shared/contracts";
+import { answerDecision, loadTicket, type MockupsView, type TicketDetailView } from "../shared/contracts";
 import { SCOPE_APPROVAL, planCardOptions, planChangeBox, type PlanActionsPlace } from "../shared/decision-view";
 import { parsePlan, splitChoice, type ParsedPlan, type PlanSection } from "../shared/plan";
 import { noPlanChanges, planChanges, planChangesCaption, type PlanChanges } from "../shared/plan-changes";
 import type { StoredDecision } from "../shared/state";
 import { ChangeBox } from "./change-box";
 import { Pressable } from "./focus";
+import { MockupList } from "./mockup-view";
 import { errorText, formatClock, formatDay } from "./format";
 import { useRevealFocused } from "./keyboard";
 import { Markdown, MarkdownInline } from "./markdown";
@@ -137,13 +138,14 @@ export function PlanDecision({
   const plan = useMemo(() => parsePlan(source), [source]);
   const marks = usePlanMarks(plan, detail?.previousPlan);
   if (!eligible || options === null || plan === null || marks === null) return <>{children}</>;
-  return <PlanCard decision={decision} plan={plan} marks={marks} options={options} theme={theme} compact={compact} head={head} onOpen={onOpen} brief={brief} answeredFrom={answeredFrom} onAnswered={onAnswered} fill={fill} />;
+  return <PlanCard decision={decision} plan={plan} marks={marks} mockups={detail?.mockups ?? null} options={options} theme={theme} compact={compact} head={head} onOpen={onOpen} brief={brief} answeredFrom={answeredFrom} onAnswered={onAnswered} fill={fill} />;
 }
 
 function PlanCard({
   decision,
   plan,
   marks,
+  mockups,
   options,
   theme,
   compact,
@@ -157,6 +159,7 @@ function PlanCard({
   decision: StoredDecision;
   plan: ParsedPlan;
   marks: PlanMarks;
+  mockups: MockupsView | null;
   options: PlanCardOptions;
   theme: PluginTheme;
   compact: boolean;
@@ -212,7 +215,7 @@ function PlanCard({
   const body = (
     <>
       {titles}
-      {unfolded ? <PlanBody plan={plan} marks={marks} theme={theme} /> : <PlanSummary plan={plan} marks={marks} theme={theme} compact={compact} brief={brief} />}
+      {unfolded ? <PlanBody plan={plan} marks={marks} theme={theme} mockups={mockups} /> : <PlanSummary plan={plan} marks={marks} mockups={mockups} theme={theme} compact={compact} brief={brief} />}
       <View style={styles.buttons}>
         <PlanActions
           decision={decision}
@@ -247,7 +250,7 @@ function ChangesCaption({ caption, theme, lines }: { caption: string | null; the
 }
 
 /** Goal, the choices and Size as labelled rows in a tinted box; labels above their text where the box is narrow. */
-function PlanSummary({ plan, marks, theme, compact, brief }: { plan: ParsedPlan; marks: PlanMarks; theme: PluginTheme; compact: boolean; brief: boolean }) {
+function PlanSummary({ plan, marks, mockups, theme, compact, brief }: { plan: ParsedPlan; marks: PlanMarks; mockups: MockupsView | null; theme: PluginTheme; compact: boolean; brief: boolean }) {
   const [width, setWidth] = useState<number | null>(null);
   const stacked = width === null ? compact : width < STACK_BELOW_WIDTH;
   const openLink = useOpenLink();
@@ -321,6 +324,7 @@ function PlanSummary({ plan, marks, theme, compact, brief }: { plan: ParsedPlan;
       ),
     });
   }
+  if (mockups !== null) rows.push({ label: "MOCKUPS", content: <MockupList mockups={mockups} theme={theme} limit={1} stacked={stacked} /> });
   if (plan.size !== "") {
     rows.push({
       label: "SIZE",
@@ -490,7 +494,7 @@ function useOpenLink(): (url: string) => void {
  * choice's why muted), and a "+N more" fold past the section's limit. `proof` goes under How I'll
  * prove it (an older ticket's criteria), in a section of its own when the plan has none.
  */
-export function PlanBody({ plan, marks = null, theme, proof = null }: { plan: ParsedPlan; marks?: PlanMarks | null; theme: PluginTheme; proof?: ReactNode }) {
+export function PlanBody({ plan, marks = null, theme, proof = null, mockups = null }: { plan: ParsedPlan; marks?: PlanMarks | null; theme: PluginTheme; proof?: ReactNode; mockups?: MockupsView | null }) {
   const openLink = useOpenLink();
   const [unfolded, setUnfolded] = useState<ReadonlySet<number>>(new Set());
   const { colors } = theme;
@@ -554,7 +558,7 @@ export function PlanBody({ plan, marks = null, theme, proof = null }: { plan: Pa
             <Text accessibilityRole="header" style={styles.heading}>
               {section.heading}
             </Text>
-            {section.prose === "" ? null : changes?.prose === true && !section.prose.includes("\n") ? (
+            {section.prose === "" || (section.key === "mockups" && mockups !== null) ? null : changes?.prose === true && !section.prose.includes("\n") ? (
               <Text style={[styles.text, styles.changed]}>{inline(section.prose)}</Text>
             ) : changes?.prose === true ? (
               <View style={styles.changedBlock}>
@@ -563,7 +567,8 @@ export function PlanBody({ plan, marks = null, theme, proof = null }: { plan: Pa
             ) : (
               <Markdown source={section.prose} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
             )}
-            {shown.map((item, index) => {
+            {section.key === "mockups" && mockups !== null ? <MockupList mockups={mockups} theme={theme} /> : null}
+            {(section.key === "mockups" && mockups !== null ? [] : shown).map((item, index) => {
               const changed = changes?.items[index] === true;
               return (
                 <View key={`${index}:${item}`} style={styles.bullet}>
