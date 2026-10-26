@@ -273,6 +273,8 @@ export const BoardSchema = z.object({
   project: z.string(),
   cards: z.array(CardSchema),
   managerDecisions: z.array(StoredDecisionSchema),
+  /** Manager questions the user dismissed from Needs you (TR-234): still open, so the manager's chat draws them as cards. */
+  dismissedManagerDecisions: z.array(StoredDecisionSchema).default([]),
   /** Open questions live agents ask on tickets, every ticket's whether or not its card is on a page: the Inbox lists each (TR-123). */
   ticketQuestions: z.number().int().default(0),
   /** The first permission the manager or one of its own subagents (no ticket) waits on (TR-096). */
@@ -478,6 +480,12 @@ export const closeRound = defineRpc({
   name: "taro.ticket.close-round",
   input: z.object({ project: ProjectNameSchema, ticket: z.string() }),
   output: z.object({ message: z.string() }),
+});
+/** Hides a manager question from Needs you without a word to the manager (TR-234); it stays in the chat. */
+export const dismissManagerQuestion = defineRpc({
+  name: "taro.decision.dismiss",
+  input: z.object({ project: ProjectNameSchema, key: z.string() }),
+  output: Empty,
 });
 export const dismissSuggestion = defineRpc({
   name: "taro.suggestions.dismiss",

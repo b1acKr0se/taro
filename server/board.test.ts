@@ -533,3 +533,15 @@ describe("loadBoard pages Queued and Done (TR-082)", () => {
     expect((await board({ limits: { done: 5 } })).cards.filter((card) => card.column === "done")).toHaveLength(5);
   });
 });
+
+describe("a dismissed manager question (TR-234)", () => {
+  it("leaves the board's manager questions but stays open for the chat, and an owner's question is not affected", async () => {
+    vi.mocked(projectAgents).mockResolvedValue([agent("manager", "manager", "TR-0", "2026-10-13T14:40:00Z"), agent("owner-live", "owner", "TR-1", "2026-10-13T14:50:00Z")]);
+    const asked = (id: string, extra: Partial<StoredDecision> = {}) => ({ ...stored("manager", "TR-1"), key: `manager:${id}`, id, ticket: null, ...extra }) as StoredDecision;
+    const decisions = [asked("storage"), asked("sync", { dismissedFromBoard: true }), { ...stored("owner-live", "TR-1"), dismissedFromBoard: true } as StoredDecision];
+    const board = await loadBoard({} as PaseoApi, state(decisions), "taro");
+    expect(board.managerDecisions.map((decision) => decision.id)).toEqual(["storage"]);
+    expect(decisions[1]?.status).toBe("open");
+    expect(board.cards.find((card) => card.id === "TR-1")?.decisions.map((decision) => decision.agentId)).toEqual(["owner-live"]);
+  });
+});

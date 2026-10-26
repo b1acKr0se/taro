@@ -7,6 +7,7 @@ import {
   loadStats,
   catchUp,
   compactAgent,
+  dismissManagerQuestion as dismissManagerQuestionRpc,
   dismissSuggestion as dismissSuggestionRpc,
   dismissQueueAlert,
   findAgentTicket,
@@ -75,6 +76,7 @@ import { dismissSuggestion, invalidateBoards, liveOpenDecisions, loadBoard, load
 import type { PaseoApi } from "./server/host-types";
 import { Recovery } from "./server/recovery";
 import { PluginState } from "./server/state";
+import { dismissManagerQuestion } from "./shared/state";
 import { Stats, turnMayStillEnd } from "./server/stats";
 import { withSavedContext } from "./shared/past-context";
 import { summarize, waitingTickets } from "./shared/stats";
@@ -422,6 +424,11 @@ export default function contribute(server: PluginServerContext) {
   });
   server.handle(changeQueuedSpec, async ({ project, ticket, text }, { paseo }) => {
     await actions.changeQueuedSpec(keep(paseo), project, ticket, text);
+    return {};
+  });
+  server.handle(dismissManagerQuestionRpc, async ({ project, key }) => {
+    await state.updateDecisions((decisions) => dismissManagerQuestion(decisions, project, key));
+    invalidateBoards();
     return {};
   });
   server.handle(dismissSuggestionRpc, async ({ project, label, prompt }) => {

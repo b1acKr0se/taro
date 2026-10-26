@@ -294,6 +294,21 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     expect(decisions.map((decision) => decision.status)).toEqual(["open"]);
   });
 
+  // TR-234: a question dismissed from the Needs you board stays dismissed while the same turn is read again, and shows again when asked in a later turn.
+  it("keeps a dismissal from the board across a replay of the same turn, and clears it when asked again in a later turn", async () => {
+    const { state, decisions } = fakeState();
+    const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+    const first = [human("start"), ask("naming", "Which name?")];
+    await run(taro, ...first);
+    decisions[0]!.dismissedFromBoard = true;
+
+    await run(taro, ...first);
+    expect(decisions.map((decision) => [decision.status, decision.dismissedFromBoard])).toEqual([["open", true]]);
+
+    await run(taro, ...first, human("any news?"), ask("naming", "Which name?"));
+    expect(decisions.map((decision) => [decision.status, decision.dismissedFromBoard])).toEqual([["open", undefined]]);
+  });
+
   it("reopens a re-ask whose turn opens with the same words, as its text differs", async () => {
     const { state, decisions } = fakeState();
     const taro = new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
