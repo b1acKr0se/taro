@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { carriedQuestionLines, decisionsOfLiveAgents, openQuestionHolding, questionsToCarry, StoredDecisionSchema, withdrawOpenDecisions, type StoredDecision } from "./state";
+import { carriedQuestionLines, decisionsOfLiveAgents, dismissManagerQuestion, openQuestionHolding, questionsToCarry, StoredDecisionSchema, withdrawOpenDecisions, type StoredDecision } from "./state";
 
 function decision(agentId: string, id: string, status: StoredDecision["status"] = "open", project = "taro"): StoredDecision {
   return {
@@ -158,5 +158,28 @@ describe("StoredDecisionSchema", () => {
     const { turn: _turn, ...stored } = decision("owner-1", "scope-approval", "answered");
     expect(StoredDecisionSchema.parse(stored).turn).toBeNull();
     expect(StoredDecisionSchema.parse({ ...stored, turn: "abc" }).turn).toBe("abc");
+  });
+});
+
+describe("dismissManagerQuestion (TR-234)", () => {
+  const managerQuestion = (status: StoredDecision["status"] = "open") => ({ ...decision("manager", "storage", status), ticket: null });
+
+  it("hides an open manager question, once", () => {
+    const decisions = [managerQuestion()];
+    expect(dismissManagerQuestion(decisions, "taro", "manager:storage")).toBe(true);
+    expect(decisions[0]?.dismissedFromBoard).toBe(true);
+    expect(decisions[0]?.status).toBe("open");
+    expect(dismissManagerQuestion(decisions, "taro", "manager:storage")).toBe(false);
+  });
+
+  it("leaves an owner's question, another project's, a closed one and an unknown key alone", () => {
+    const owners = [decision("owner", "scope-approval")];
+    expect(dismissManagerQuestion(owners, "taro", "owner:scope-approval")).toBe(false);
+    const elsewhere = [managerQuestion()];
+    expect(dismissManagerQuestion(elsewhere, "notes-app", "manager:storage")).toBe(false);
+    const answered = [managerQuestion("answered")];
+    expect(dismissManagerQuestion(answered, "taro", "manager:storage")).toBe(false);
+    expect(dismissManagerQuestion([], "taro", "manager:storage")).toBe(false);
+    expect([owners[0], elsewhere[0], answered[0]].some((each) => each?.dismissedFromBoard === true)).toBe(false);
   });
 });

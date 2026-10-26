@@ -31,6 +31,8 @@ export const StoredDecisionSchema = ParsedDecisionSchema.extend({
   carriedTo: z.string().optional(),
   /** Held back while another of its owner's questions was open (TR-124), so never shown; true until shown or withdrawn. */
   held: z.boolean().optional(),
+  /** The user dismissed this manager question from the Needs you board (TR-234): it stays open in the chat. Asking it again clears it. */
+  dismissedFromBoard: z.boolean().optional(),
   /**
    * Stored blocking by the plugin whatever its block said (TR-146): asked by an owner while its ticket
    * was planning, or still open when its owner delivered.
@@ -84,6 +86,17 @@ export type AgentState = z.infer<typeof AgentStateSchema>;
 /** Open decisions whose agent Paseo still has unarchived: answering any other would message no one. */
 export function decisionsOfLiveAgents<T extends Pick<StoredDecision, "agentId" | "status">>(decisions: readonly T[], liveAgentIds: ReadonlySet<string>): T[] {
   return decisions.filter((decision) => decision.status === "open" && liveAgentIds.has(decision.agentId));
+}
+
+/**
+ * Hides one open manager question from the board (TR-234); true when it was shown there. A question
+ * with a ticket is an owner's, which this leaves alone, and a repeated dismissal changes nothing.
+ */
+export function dismissManagerQuestion(decisions: StoredDecision[], project: string, key: string): boolean {
+  const decision = decisions.find((candidate) => candidate.key === key && candidate.project === project);
+  if (decision === undefined || decision.status !== "open" || decision.ticket !== null || decision.dismissedFromBoard === true) return false;
+  decision.dismissedFromBoard = true;
+  return true;
 }
 
 /**

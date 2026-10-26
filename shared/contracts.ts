@@ -479,6 +479,12 @@ export const closeRound = defineRpc({
   input: z.object({ project: ProjectNameSchema, ticket: z.string() }),
   output: z.object({ message: z.string() }),
 });
+/** Hides a manager question from Needs you without a word to the manager (TR-234); it stays in the chat. */
+export const dismissManagerQuestion = defineRpc({
+  name: "taro.decision.dismiss",
+  input: z.object({ project: ProjectNameSchema, key: z.string() }),
+  output: Empty,
+});
 export const dismissSuggestion = defineRpc({
   name: "taro.suggestions.dismiss",
   input: z.object({ project: ProjectNameSchema, label: z.string(), prompt: z.string() }),
