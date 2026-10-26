@@ -8,12 +8,13 @@
  * Queued column in a section folded under its "Parked · N" head, so Queued itself means "starts next".
  */
 import type { PluginTheme } from "@getpaseo/plugin";
+import { useRpc } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { memo, useMemo, useRef, useState } from "react";
 import { ScrollView, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 
 import { BOARD_COLUMNS, boardCounts, COLUMN_IDS, COLUMN_META, COLUMN_TITLES, emptyTotals, isPagedColumn, needsYouExtras, type BoardColumn, type ColumnId, type PagedColumn } from "../shared/board";
-import type { Card, ProjectSummary } from "../shared/contracts";
+import { dismissManagerQuestion, type Card, type ProjectSummary } from "../shared/contracts";
 import { AlertCard } from "./alert-card";
 import { SectionHeading } from "./badges";
 import { useBoard, useLoadMore, useRefreshBoard, useShowLess } from "./board-data";
@@ -59,7 +60,7 @@ export function ProjectBoard({
   /** Opens a ticket by id; the screen fetches its card when it is past its column's page (TR-082). */
   onOpenTicket: (card: Pick<Card, "id">) => void;
   /** Shows the manager's chat, where its decisions are answered. */
-  onOpenManager: () => void;
+  onOpenManager: (decisionKey?: string) => void;
   /** Opens an agent in Paseo: a subagent of the manager's that asks permission (TR-096); null where the host cannot. */
   onOpenAgent?: ((agentId: string) => void) | null;
 }) {
@@ -67,6 +68,7 @@ export function ProjectBoard({
   const board = useBoard(project);
   const stats = useStats(project);
   const refresh = useRefreshBoard(project);
+  const dismiss = useRpc(dismissManagerQuestion);
   const loadMore = useLoadMore(project);
   const showLess = useShowLess(project);
   // The board's scroller, how far it is scrolled and where the columns start in it, for Show less (TR-117).
@@ -180,7 +182,7 @@ export function ProjectBoard({
         ? [
             ...(managerAsk === null ? [] : [<PermissionAskCard key="manager-permission" ask={managerAsk} theme={theme} compact={compact} onOpen={openManagerAsk} />]),
             ...managerQuestions.map((decision) => (
-              <QuestionCard key={decision.key} decision={decision} asker="The manager" theme={theme} compact={compact} onOpen={onOpenManager} onAnswered={changed} />
+              <QuestionCard key={decision.key} decision={decision} asker="The manager" theme={theme} compact={compact} onOpen={() => onOpenManager(decision.key)} onAnswered={changed} onDismiss={() => void dismiss({ project, key: decision.key }).then(changed)} />
             )),
           ]
         : [];

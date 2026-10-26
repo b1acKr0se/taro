@@ -472,7 +472,13 @@ function ProjectView({
     onTicket(card.id);
   });
   // The manager's questions are answered in its chat: on a phone its tab, on a wide screen the left pane.
-  const openManager = useLatestCallback(() => (compact ? onPhoneTab("manager") : onShowManager()));
+  // The question a Needs you card asked to see: the manager's chat lands on it (TR-234). A nonce, so tapping the same card twice lands twice.
+  const [managerFocus, setManagerFocus] = useState<{ key: string; nonce: number } | null>(null);
+  const openManager = useLatestCallback((decisionKey?: string) => {
+    if (decisionKey !== undefined) setManagerFocus((last) => ({ key: decisionKey, nonce: (last?.nonce ?? 0) + 1 }));
+    return compact ? onPhoneTab("manager") : onShowManager();
+  });
+  const managerFocused = useLatestCallback(() => setManagerFocus(null));
   const openElsewhere = useLatestCallback(onOpenElsewhere);
   // Stable callbacks, so a tab switch does not redraw the memoised manager and ticket panes beneath it.
   const settings = useLatestCallback(onSettings);
@@ -484,10 +490,17 @@ function ProjectView({
   const showBoardLatest = useLatestCallback(() => onShowBoard?.());
   const showBoard = onShowBoard === null ? null : showBoardLatest;
 
+  // Dismissed from Needs you, a question is still open: the chat draws it as a card (TR-234).
+  const managerChatDecisions = useMemo(
+    () => (board.data?.dismissedManagerDecisions.length ? [...(board.data.managerDecisions ?? []), ...board.data.dismissedManagerDecisions] : (board.data?.managerDecisions ?? NO_DECISIONS)),
+    [board.data?.managerDecisions, board.data?.dismissedManagerDecisions],
+  );
   const managerPane = (
     <MemoManagerPane
       summary={summary}
-      decisions={board.data?.managerDecisions ?? NO_DECISIONS}
+      decisions={managerChatDecisions}
+      focus={managerFocus}
+      onFocused={managerFocused}
       suggestions={board.data?.suggestions ?? NO_SUGGESTIONS}
       theme={theme}
       compact={compact}
@@ -644,6 +657,8 @@ function useWarmUp(count: number, enabled: boolean): number {
 function ManagerPane({
   summary,
   decisions,
+  focus,
+  onFocused,
   suggestions,
   theme,
   compact,
@@ -655,6 +670,9 @@ function ManagerPane({
   summary: ProjectSummary;
   /** The manager's open decisions, drawn in its chat where it asked them (TR-026). */
   decisions: readonly StoredDecision[];
+  /** The question the chat lands on, until it has (TR-234). */
+  focus: { key: string; nonce: number } | null;
+  onFocused: () => void;
   /** Its suggestions, offered above its composer (TR-045). */
   suggestions: readonly Suggestion[];
   theme: PluginTheme;
@@ -761,7 +779,7 @@ function ManagerPane({
         placeholder="Tell the manager what you need…"
         picks={{ project }}
         transformText={withoutDecisionBlocks}
-        asks={{ decisions, onAnswered: onChanged }}
+        asks={{ decisions, onAnswered: onChanged, focus, onFocused }}
         suggestions={<SuggestionPills project={project} suggestions={suggestions} theme={theme} onChanged={onChanged} beforeSend={replaceTip === null ? undefined : (send) => replaceFirst("suggestion", send)} />}
         onSend={async (text, attachments, messageId, answersRequest) => ({ queued: (await tell({ project, text, ...attachments, messageId, answersRequest })).queued })}
         beforeSend={beforeSend}

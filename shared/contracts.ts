@@ -273,6 +273,8 @@ export const BoardSchema = z.object({
   project: z.string(),
   cards: z.array(CardSchema),
   managerDecisions: z.array(StoredDecisionSchema),
+  /** Manager questions the user dismissed from Needs you (TR-234): still open, so the manager's chat draws them as cards. */
+  dismissedManagerDecisions: z.array(StoredDecisionSchema).default([]),
   /** Open questions live agents ask on tickets, every ticket's whether or not its card is on a page: the Inbox lists each (TR-123). */
   ticketQuestions: z.number().int().default(0),
   /** The first permission the manager or one of its own subagents (no ticket) waits on (TR-096). */

@@ -27,6 +27,7 @@ export function QuestionCard({
   compact,
   onOpen,
   onAnswered,
+  onDismiss,
   fill = false,
 }: {
   decision: StoredDecision;
@@ -37,6 +38,8 @@ export function QuestionCard({
   /** Opens the full card where it is answered. */
   onOpen: () => void;
   onAnswered: () => void;
+  /** Takes the card off the board without answering (TR-234); given only to the manager's questions in Needs you. */
+  onDismiss?: () => void;
   /** Grows to its grid row's height, its buttons at the bottom, so cards side by side line up (TR-105). */
   fill?: boolean;
 }) {
@@ -47,6 +50,8 @@ export function QuestionCard({
       card: { borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: compact ? SPACE.md : SPACE.lg - 2, gap: SPACE.sm, backgroundColor: colors.surface0, ...(fill ? { flexGrow: 1 } : {}) },
       buttons: { gap: SPACE.sm, ...(fill ? { flexGrow: 1, justifyContent: "flex-end" as const } : {}) },
       head: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm },
+      // Pulled into the head row's height so the card does not grow taller than without it.
+      dismiss: { width: 26, height: 26, marginVertical: -4, alignItems: "center" as const, justifyContent: "center" as const, borderRadius: 6, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface1 },
       dot: { width: 8, height: 8, borderRadius: 4 },
       asker: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
       line: { flexDirection: "row" as const, alignItems: "flex-start" as const, gap: SPACE.sm },
@@ -81,6 +86,17 @@ export function QuestionCard({
         <Text style={styles.asker} numberOfLines={1}>
           {asker}
         </Text>
+        {onDismiss === undefined ? null : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Dismiss: ${decision.question}`}
+            hitSlop={6}
+            style={styles.dismiss}
+            onPress={onDismiss}
+          >
+            <Icon name="X" size={14} color={colors.foregroundMuted} />
+          </Pressable>
+        )}
       </View>
       <View style={styles.line}>
         <View style={styles.lineIcon}>

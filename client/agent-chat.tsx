@@ -17,6 +17,7 @@ import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { ActionRow } from "./action-row";
 import { droppedFilesAsAttachments, imagesFromPaste, pickAttachments } from "./attachment-pickers";
 import { availableSources, type AttachmentSource } from "./attachment-sources";
+import { focusState } from "./chat-focus";
 import { AttachButton, AttachmentPreviews, DropBackdrop } from "./composer-attachments";
 import type { StoredDecision } from "../shared/state";
 import { WRITING_A_QUESTION } from "../shared/streaming-text";
@@ -150,7 +151,13 @@ export function AgentChat({
    * answered there, the first brought into view on opening, and a jump link at the composer while it
    * is off screen. No pinned area.
    */
-  asks?: { decisions: readonly StoredDecision[]; onAnswered: () => void };
+  asks?: {
+    decisions: readonly StoredDecision[];
+    onAnswered: () => void;
+    /** A question the user asked to see (a Needs you card tapped, TR-234): the chat lands on it, then calls `onFocused`. `nonce` makes a second tap on the same question count. */
+    focus?: { key: string; nonce: number } | null;
+    onFocused?: () => void;
+  };
   /**
    * A delivered ticket's acceptance card (TR-026), handled like a question: brought into view on
    * opening when nothing is asked, and `label` as a row at the composer while it is off screen, with
@@ -263,8 +270,33 @@ export function AgentChat({
     setFirstOnScreen(layout === undefined || cardOnScreen(layout.y, layout.height, offset, viewportHeight));
   });
 
+  /** The question to land on, until it is laid out and shown (TR-234). */
+  const pendingFocus = useRef<string | null>(null);
+  useEffect(() => {
+    if (asks?.focus == null) return;
+    pendingFocus.current = asks.focus.key;
+    placeFirst();
+  }, [asks?.focus?.nonce]);
+
+  /** Brings the question the user asked to see into view; true while it is still wanted, so the first one waits. */
+  function landOnFocus(): boolean {
+    const target = pendingFocus.current;
+    if (target === null) return false;
+    const state = focusState(target, (asks?.decisions ?? []).map((decision) => decision.key), cardLayouts.current);
+    if (state.kind === "waiting") return true;
+    pendingFocus.current = null;
+    if (state.kind === "ready") follow.revealRow(target, state.layout, offsetShowingCard);
+    asks?.onFocused?.();
+    return state.kind === "ready";
+  }
+
   /** Brings the first open decision into view on opening, and says whether the jump link is needed. */
   function placeFirst(): void {
+    if (landOnFocus()) {
+      const layout = firstKey === null ? undefined : cardLayouts.current.get(firstKey);
+      if (layout !== undefined) setFirstOnScreen(cardOnScreen(layout.y, layout.height, follow.offset.current, follow.viewport.current));
+      return;
+    }
     const layout = firstKey === null ? undefined : cardLayouts.current.get(firstKey);
     if (firstKey === null || layout === undefined) return;
     if (openingCard.current?.agentId !== agent.id) openingCard.current = { agentId: agent.id, key: firstKey };
