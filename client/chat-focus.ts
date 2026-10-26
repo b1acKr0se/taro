@@ -1,14 +1,11 @@
-import type { LayoutRectangle } from "react-native";
-
 /**
  * Where the chat stands on a question the user asked to see, from a Needs you card (TR-234): the
- * question is gone (answered or withdrawn since the tap), its card is not laid out yet, or it is
- * there to scroll to.
+ * question is gone (answered or withdrawn since the tap), its card is not drawn yet, or it is there
+ * to measure and scroll to.
  */
-export type FocusState = { kind: "gone" } | { kind: "waiting" } | { kind: "ready"; layout: LayoutRectangle };
+export type FocusState = { kind: "gone" } | { kind: "waiting" } | { kind: "ready" };
 
-export function focusState(key: string, openKeys: readonly string[], layouts: ReadonlyMap<string, LayoutRectangle>): FocusState {
+export function focusState(key: string, openKeys: readonly string[], drawnKeys: ReadonlySet<string>): FocusState {
   if (!openKeys.includes(key)) return { kind: "gone" };
-  const layout = layouts.get(key);
-  return layout === undefined ? { kind: "waiting" } : { kind: "ready", layout };
+  return drawnKeys.has(key) ? { kind: "ready" } : { kind: "waiting" };
 }

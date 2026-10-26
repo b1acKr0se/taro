@@ -7,7 +7,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc } from "@getpaseo/plugin/client";
 import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Keyboard, Platform, ScrollView, Text, useWindowDimensions, View, type LayoutRectangle, type TextInput as NativeTextInput } from "react-native";
 
 import { attachmentProblem, refuseOversizedImages, type DraftAttachment } from "../shared/attachments";
@@ -23,7 +23,7 @@ import type { StoredDecision } from "../shared/state";
 import { WRITING_A_QUESTION } from "../shared/streaming-text";
 import { AgentControlsBar, type AgentIdentity } from "./agent-controls-bar";
 import { ContextMeter } from "./context-meter";
-import { useOnPaneHidden } from "./pane-visibility";
+import { PaneVisibilityContext, useOnPaneHidden } from "./pane-visibility";
 import { DecisionCard } from "./decision-card";
 import { drafts } from "./draft";
 import { watchFileDrops } from "./file-drop";
@@ -272,22 +272,65 @@ export function AgentChat({
 
   /** The question to land on, until it is laid out and shown (TR-234). */
   const pendingFocus = useRef<string | null>(null);
+  const visibility = useContext(PaneVisibilityContext);
+  const placeFirstLatest = useRef(placeFirst);
+  placeFirstLatest.current = placeFirst;
+  // Landing waits for the pane to show; its transcript lays out again a moment after.
+  useEffect(() => {
+    if (visibility === null) return;
+    return visibility.listen(() => {
+      if (!visibility.shown() || pendingFocus.current === null) return;
+      let tries = 0;
+      const tick = () => {
+        if (pendingFocus.current === null || tries++ > 20) return;
+        placeFirstLatest.current();
+        setTimeout(tick, 100);
+      };
+      setTimeout(tick, 100);
+    });
+  }, [visibility]);
   useEffect(() => {
     if (asks?.focus == null) return;
     pendingFocus.current = asks.focus.key;
     placeFirst();
   }, [asks?.focus?.nonce]);
 
+  /** The question cards as drawn, by decision key, to measure the one asked to see. */
+  const decisionViews = useRef(new Map<string, View>());
   /** Brings the question the user asked to see into view; true while it is still wanted, so the first one waits. */
   function landOnFocus(): boolean {
     const target = pendingFocus.current;
     if (target === null) return false;
-    const state = focusState(target, (asks?.decisions ?? []).map((decision) => decision.key), cardLayouts.current);
-    if (state.kind === "waiting") return true;
-    pendingFocus.current = null;
-    if (state.kind === "ready") follow.revealRow(target, state.layout, offsetShowingCard);
-    asks?.onFocused?.();
-    return state.kind === "ready";
+    const state = focusState(target, (asks?.decisions ?? []).map((decision) => decision.key), new Set(decisionViews.current.keys()));
+    if (state.kind === "gone") {
+      pendingFocus.current = null;
+      asks?.onFocused?.();
+      return false;
+    }
+    // On a phone the chat sits in a tab the tap has not shown yet: nothing measures until it is.
+    const card = decisionViews.current.get(target);
+    const anchor = contentAnchor.current;
+    if (state.kind === "waiting" || card === undefined || anchor === null || (visibility !== null && !visibility.shown())) return true;
+    let anchorAt: { left: number; top: number } | null = null;
+    let cardAt: LayoutRectangle | null = null;
+    // Both measured on screen at once, as the acceptance card is (TR-131): a web browser's onLayout reports only a resize.
+    const both = () => {
+      if (anchorAt === null || cardAt === null || pendingFocus.current !== target) return;
+      if (cardAt.width <= 0 || cardAt.height <= 0) return;
+      pendingFocus.current = null;
+      // Not `revealRow`: it scrolls to a card once, and the question may have been shown already.
+      follow.scrollTo(offsetShowingCard(cardAt.y - anchorAt.top, cardAt.height, follow.viewport.current));
+      asks?.onFocused?.();
+    };
+    anchor.measureInWindow((left, top) => {
+      anchorAt = { left, top };
+      both();
+    });
+    card.measureInWindow((x, y, width, height) => {
+      cardAt = { x, y, width, height };
+      both();
+    });
+    return true;
   }
 
   /** Brings the first open decision into view on opening, and says whether the jump link is needed. */
@@ -383,7 +426,16 @@ export function AgentChat({
 
   function decisionCards(decisions: readonly StoredDecision[]) {
     return decisions.map((decision) => (
-      <DecisionCard key={decision.key} decision={decision} theme={theme} compact={compact} onAnswered={asks?.onAnswered ?? (() => undefined)} />
+      <View
+        key={decision.key}
+        ref={(node) => {
+          if (node === null) decisionViews.current.delete(decision.key);
+          else decisionViews.current.set(decision.key, node);
+        }}
+        collapsable={false}
+      >
+        <DecisionCard decision={decision} theme={theme} compact={compact} onAnswered={asks?.onAnswered ?? (() => undefined)} />
+      </View>
     ));
   }
   const { pending, respond } = usePendingRequests(agent.id, timeline.agent?.pendingPermissions, follow.pin);
