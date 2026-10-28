@@ -399,7 +399,7 @@ describe("taro ticket edit", { timeout: CLI_TIMEOUT_MS }, () => {
     const plain = ok(["edit", "TR-002", "-s", "Blocked", "--plain"]).stdout;
     expect(plain).toContain("Status: Blocked");
     expect(plain).toMatch(/Revision: [0-9a-f]{16}/);
-    expect(JSON.parse(ok(["edit", "TR-002", "-s", "Done", "--json"]).stdout).ticket.status).toBe("Done");
+    expect(JSON.parse(ok(["edit", "TR-002", "-s", "Cancelled", "--json"]).stdout).ticket.status).toBe("Cancelled");
   });
 
   it("rejects an unknown status with a usage error and a bad edit with nothing to change", () => {
@@ -534,3 +534,15 @@ describe("the command lines in skill/reference/tickets.md", { timeout: CLI_TIMEO
     expect(readTicket("TR-012").criteria[0]?.checked).toBe(true);
   });
 });
+
+describe("Accept guard (TR-237)", () => {
+  it("refuses an agent's ACCEPTANCE and Done on a delivered ticket with no Accept", () => {
+    ok(["create", "T", "-s", "Awaiting acceptance"]);
+    const id = readdirSync(join(tracker, "tickets"))[0]!.replace(".md", "");
+    const done = ticketCommand(["edit", id, "-s", "Done"]);
+    expect(done.code).toBe(2);
+    expect(done.stderr).toMatch(/press of Accept/);
+    expect(ticketCommand(["edit", id, "--append-notes", "ACCEPTANCE x"]).code).toBe(2);
+    expect(readTicket(id).status).toBe("Awaiting acceptance");
+  });
+}, CLI_TIMEOUT_MS);
