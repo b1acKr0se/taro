@@ -53,6 +53,7 @@ export const TEMPLATES = {
   recount: "messages/recount.md",
   managerQueueRestart: "messages/manager-queue-restart.md",
   answer: "messages/answer.md",
+  questionDismissed: "messages/question-dismissed.md",
   planChanges: "messages/plan-changes.md",
   crashRecovery: "messages/crash-recovery.md",
   subagentCrashed: "messages/subagent-crashed.md",

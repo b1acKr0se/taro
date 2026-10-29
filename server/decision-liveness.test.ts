@@ -6,7 +6,7 @@ import { Actions } from "./actions";
 import { isAgentLive, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
 import { invalidateBoards, liveOpenDecisions, loadBoard } from "./board";
 import type { PaseoAgent, PaseoApi } from "./host-types";
-import { sendUserAnswer } from "./send";
+import { sendFromPlugin, sendUserAnswer } from "./send";
 import type { Recovery } from "./recovery";
 import { appendTicketNote } from "./tickets";
 import type { PluginState } from "./state";
@@ -23,8 +23,8 @@ vi.mock("./agents", async (original) => ({
   listTaroAgents: vi.fn(async () => []),
   isMidTurn: () => false,
 }));
-vi.mock("./send", () => ({ sendUserAnswer: vi.fn(async () => undefined), sendWithoutInterrupting: vi.fn(async () => undefined), sendCommand: vi.fn() }));
-vi.mock("./package-files", () => ({ TEMPLATES: { answer: "answer", planChanges: "plan-changes", relaunchOwner: "relaunch", carriedQuestions: "carried" }, skillDirectory: async () => "/skill", message: async (path: string) => path }));
+vi.mock("./send", () => ({ sendFromPlugin: vi.fn(async () => undefined), sendUserAnswer: vi.fn(async () => undefined), sendWithoutInterrupting: vi.fn(async () => undefined), sendCommand: vi.fn() }));
+vi.mock("./package-files", () => ({ TEMPLATES: { answer: "answer", questionDismissed: "question-dismissed", planChanges: "plan-changes", relaunchOwner: "relaunch", carriedQuestions: "carried" }, skillDirectory: async () => "/skill", message: async (path: string) => path }));
 vi.mock("./projects", () => ({
   projectPaths: async () => ({ tracker: "/tracker", suggestions: "/nonexistent/taro-suggestions.md" }),
   readProjectConfig: async () => null,
@@ -292,5 +292,39 @@ describe("Actions.relaunchOwner", () => {
     expect(archive).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledTimes(1);
     expect(decisions.map((decision) => decision.status)).toEqual(["withdrawn", "open"]);
+  });
+});
+
+// TR-239: Dismiss on a question card closes it without an answer; an owner is told, the manager is not.
+describe("Actions.dismissDecision", () => {
+  const live = { agents: { ref: () => ({ refresh: async () => ({ agent: { id: "owner", status: "idle", archivedAt: null } }) }) } } as unknown as PaseoApi;
+  const actionsOver = (decisions: StoredDecision[]): Actions => {
+    const state = stateOver(decisions);
+    return new Actions(state, new Supervisor(state, {} as Stats, {} as Recovery), {} as TrackerWatch, {} as Stats, {} as Recovery);
+  };
+
+  it("closes an owner's question, tells the owner and notes the ticket", async () => {
+    vi.mocked(sendFromPlugin).mockClear();
+    vi.mocked(appendTicketNote).mockClear();
+    const decisions = [stored("owner")];
+    await actionsOver(decisions).dismissDecision(live, "owner:scope-approval");
+    expect(decisions[0]?.status).toBe("dismissed");
+    expect(sendFromPlugin).toHaveBeenCalledTimes(1);
+    expect(sendUserAnswer).not.toHaveBeenCalled();
+    expect(vi.mocked(appendTicketNote).mock.calls[0]?.[2]).toMatch(/^DISMISSED /);
+  });
+
+  it("closes a manager's question silently", async () => {
+    vi.mocked(sendFromPlugin).mockClear();
+    const decisions = [{ ...stored("manager"), ticket: null } as StoredDecision];
+    await actionsOver(decisions).dismissDecision(live, "manager:scope-approval");
+    expect(decisions[0]?.status).toBe("dismissed");
+    expect(sendFromPlugin).not.toHaveBeenCalled();
+  });
+
+  it("refuses a question that is no longer open", async () => {
+    const decisions = [stored("owner", "taro", "answered")];
+    await expect(actionsOver(decisions).dismissDecision(live, "owner:scope-approval")).rejects.toThrow("That decision is no longer open.");
+    expect(decisions[0]?.status).toBe("answered");
   });
 });

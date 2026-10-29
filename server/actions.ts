@@ -64,7 +64,7 @@ import { hasHeadroom, type BoardAlert } from "../shared/recovery";
 import { refusedMessage } from "../shared/refused-commands";
 import { reopenRound, roundBranch } from "../shared/reopen";
 import { specChangeRefusal } from "../shared/spec-change";
-import { carriedQuestionLines, questionsToCarry } from "../shared/state";
+import { carriedQuestionLines, dismissDecision, questionsToCarry } from "../shared/state";
 import { TARO_LABELS, TICKET_STATUSES, type ProjectConfig } from "../shared/project";
 import { acceptLocalBranch, acceptPullRequest } from "./accept-merge";
 import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
@@ -185,6 +185,33 @@ export class Actions {
       await appendTicketNote(paths.tracker, decision.ticket, `ANSWER ${at} — ${decision.id}: "${decision.question}" → ${option === null ? (changesRequested ? `Request changes ("${words}")` : `"${words}"`) : `${option.label} ("${words}")`} (the user, from ${from === "tab" ? "the agent's tab" : "the Taro screen"})`).catch(
         (error: unknown) => console.warn(`[taro] could not record the answer on ${decision.ticket}: ${error instanceof Error ? error.message : String(error)}`),
       );
+    }
+  }
+
+  /**
+   * Closes an open question without answering it (TR-239). The manager is told nothing; an owner is,
+   * so it carries on instead of waiting. Marked first, so a note that fails to send leaves it closed.
+   */
+  async dismissDecision(paseo: PaseoApi, key: string): Promise<void> {
+    if (this.answering.has(key)) throw new Error("That decision is already being answered.");
+    this.answering.add(key);
+    try {
+      const decision = await this.state.decision(key);
+      if (decision === null || decision.status !== "open") throw new Error("That decision is no longer open.");
+      const at = new Date().toISOString();
+      await this.state.updateDecisions((decisions) => dismissDecision(decisions, key, at));
+      if (decision.ticket === null) return;
+      if (!(await isAgentGone(paseo, decision.agentId))) {
+        await sendFromPlugin(paseo, decision.agentId, await message(TEMPLATES.questionDismissed, { id: decision.id, question: decision.question })).catch(
+          (error: unknown) => console.warn(`[taro] could not tell ${decision.agentId} its question was dismissed: ${error instanceof Error ? error.message : String(error)}`),
+        );
+      }
+      const paths = await projectPaths(decision.project);
+      await appendTicketNote(paths.tracker, decision.ticket, `DISMISSED ${at} — ${decision.id}: "${decision.question}" (the user)`).catch(
+        (error: unknown) => console.warn(`[taro] could not record the dismissal on ${decision.ticket}: ${error instanceof Error ? error.message : String(error)}`),
+      );
+    } finally {
+      this.answering.delete(key);
     }
   }
 

@@ -23,7 +23,7 @@ export const StoredDecisionSchema = ParsedDecisionSchema.extend({
   askedAt: z.string(),
   /** The turn that asked it (`turnIdentity`): the same block in another turn is asked again (TR-108). Null before it was recorded. */
   turn: z.string().nullable().default(null),
-  status: z.enum(["open", "answered", "withdrawn"]),
+  status: z.enum(["open", "answered", "withdrawn", "dismissed"]),
   answer: DecisionAnswerSchema.nullable().default(null),
   /** Withdrawn because the agent that asked went away, not by the agent itself (TR-136). */
   withdrawnWithAgent: z.boolean().optional(),
@@ -31,8 +31,8 @@ export const StoredDecisionSchema = ParsedDecisionSchema.extend({
   carriedTo: z.string().optional(),
   /** Held back while another of its owner's questions was open (TR-124), so never shown; true until shown or withdrawn. */
   held: z.boolean().optional(),
-  /** The user dismissed this manager question from the Needs you board (TR-234): it stays open in the chat. Asking it again clears it. */
-  dismissedFromBoard: z.boolean().optional(),
+  /** When the user dismissed it (TR-239): status "dismissed", no answer sent. */
+  dismissedAt: z.string().optional(),
   /**
    * Stored blocking by the plugin whatever its block said (TR-146): asked by an owner while its ticket
    * was planning, or still open when its owner delivered.
@@ -89,13 +89,14 @@ export function decisionsOfLiveAgents<T extends Pick<StoredDecision, "agentId" |
 }
 
 /**
- * Hides one open manager question from the board (TR-234); true when it was shown there. A question
- * with a ticket is an owner's, which this leaves alone, and a repeated dismissal changes nothing.
+ * Closes one open question without an answer (TR-239); true when it was open. Asked again in a later
+ * turn it is a new question, as for an answered one.
  */
-export function dismissManagerQuestion(decisions: StoredDecision[], project: string, key: string): boolean {
-  const decision = decisions.find((candidate) => candidate.key === key && candidate.project === project);
-  if (decision === undefined || decision.status !== "open" || decision.ticket !== null || decision.dismissedFromBoard === true) return false;
-  decision.dismissedFromBoard = true;
+export function dismissDecision(decisions: StoredDecision[], key: string, at: string): boolean {
+  const decision = decisions.find((candidate) => candidate.key === key);
+  if (decision === undefined || decision.status !== "open") return false;
+  decision.status = "dismissed";
+  decision.dismissedAt = at;
   return true;
 }
 
