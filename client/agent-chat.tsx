@@ -47,7 +47,7 @@ import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
 import { cardFits, cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
 import { groupRows, toolRunSummary, type Group, type ToolRow } from "./tool-runs";
-import { ATTACHMENTS_ONLY, endStoppedTools, transcriptRows, whileWriting, withoutOpenTurn } from "./transcript-rows";
+import { ATTACHMENTS_ONLY, compactionState, endStoppedTools, transcriptRows, whileWriting, withoutOpenTurn } from "./transcript-rows";
 import { TurnFooterView } from "./turn-footer";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
@@ -1221,14 +1221,31 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, pastA
           {row.text}
         </Text>
       );
-    default:
+    default: {
+      const compaction = row.kind === "event" ? compactionState(row.text) : null;
+      if (compaction !== null) return <CompactionLine key={row.key} state={compaction} text={row.text} theme={theme} styles={styles} />;
       return (
         <View key={row.key} style={styles.line}>
           <Icon name="Bell" size={11} color={theme.colors.foregroundMuted} />
           <Text style={styles.lineText}>{row.text}</Text>
         </View>
       );
+    }
   }
+}
+
+/** A compaction as Paseo's marker draws it: a rule each side, the icon and the words between, the words at the tool-call size. */
+function CompactionLine({ state, text, theme, styles }: { state: "running" | "done" | "stopped"; text: string; theme: PluginTheme; styles: ChatStyles }) {
+  return (
+    <View style={styles.compaction}>
+      <View style={styles.compactionRule} />
+      <View style={styles.compactionLabel}>
+        {state === "running" ? <Spinner size={12} color={theme.colors.foregroundMuted} /> : <Icon name="Scissors" size={12} color={theme.colors.foregroundMuted} />}
+        <Text style={styles.compactionText}>{text}</Text>
+      </View>
+      <View style={styles.compactionRule} />
+    </View>
+  );
 }
 
 const TranscriptGroup = memo(
@@ -1338,6 +1355,10 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
     toolHeadOpen: { alignSelf: "stretch" as const, paddingHorizontal: SPACE.sm, backgroundColor: colors.surface2 },
     toolList: { gap: SPACE.xs, paddingHorizontal: SPACE.sm },
     toolLine: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm, paddingVertical: 2 },
+    compaction: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm, paddingVertical: SPACE.md },
+    compactionRule: { flex: 1, height: 1, backgroundColor: colors.border },
+    compactionLabel: { flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm },
+    compactionText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body) },
     lineText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.caption },
     lineTop: { alignItems: "flex-start" as const },
     lineTextHeight: { lineHeight: lineHeightFor(FONT_SIZE.caption) },

@@ -87,8 +87,17 @@ export function injectedSummary(text: string, clientMessageId?: string): string 
 }
 
 const COMPACTING = "Compacting context…";
+const COMPACTED = "Context compacted";
 /** A compaction cut short (a message sent during it, an interrupt): Paseo never says it ended (TR-102). */
 const COMPACTION_STOPPED = "Compaction stopped before it finished";
+
+/** Whether an event row is a compaction's line: Paseo draws those as a rule with the words in it, not as a notice. */
+export function compactionState(text: string): "running" | "done" | "stopped" | null {
+  if (text === COMPACTING) return "running";
+  if (text === COMPACTED) return "done";
+  if (text === COMPACTION_STOPPED) return "stopped";
+  return null;
+}
 
 /**
  * Adds a compaction's line to `rows`. A compaction arrives as two entries, one
@@ -103,10 +112,10 @@ export function pushCompaction<Row extends { kind: string; text?: string; key: s
 ): void {
   const last = rows[rows.length - 1];
   if (status === "completed" && last !== undefined && last.kind === "event" && last.text === COMPACTING) {
-    rows[rows.length - 1] = make(last.key, "Context compacted");
+    rows[rows.length - 1] = make(last.key, COMPACTED);
     return;
   }
-  rows.push(make(key, status === "loading" ? COMPACTING : "Context compacted"));
+  rows.push(make(key, status === "loading" ? COMPACTING : COMPACTED));
 }
 
 /**
