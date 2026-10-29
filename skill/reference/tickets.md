@@ -142,10 +142,10 @@ rather than exceed it.
 - **NOT-SYNCED** (older tickets only, TR-215): a pull request merged while the base branch in the main
   checkout could not fast-forward to origin's. It is no longer written: the ticket closes, and
   ACCEPTANCE says `local <base> not updated: <reason>`. The next Accept on an old one closes it.
-- **ACCEPTED**, **ACCEPT-HANDOFF**: (`taro ticket edit` refuses an agent writing them, and ACCEPTANCE or Done before a hand-off, TR-237) written by the plugin when the user presses Accept (the card
+- **ACCEPTED**, **ACCEPT-HANDOFF**: written by the plugin when the user presses Accept (the card
   says it merges), and when its own merge stops on something that needs an owner: who took over
   and why (the owner, or a fresh owner when the owner had been idle 5 minutes or more), then what
-  it found. The plugin itself writes ACCEPTANCE and NOT-MERGED on the routine
+  it found. `taro ticket edit` refuses an agent writing either, and an agent's ACCEPTANCE or Done before a hand-off (TR-237). The plugin itself writes ACCEPTANCE and NOT-MERGED on the routine
   path; an owner writes them only after a hand-off.
 - **ANSWER**: written by the plugin when the user answers a decision.
 - **NO-PLAN**: written by the plugin when an owner's turn ends with commits on its branch and no
