@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HOLD_MS, type PressShown } from "./press-guard";
-import { acceptanceCall, createSharedPresses, decisionCall, optionPress } from "./shared-presses";
+import { acceptanceCall, createSharedPresses, decisionCall, optionPress, submitLook } from "./shared-presses";
 
 function pending<Value>() {
   let resolve: (value: Value) => void = () => undefined;
@@ -114,5 +114,23 @@ describe("createSharedPresses", () => {
     expect(presses.guardFor(again).run(optionPress("Approve"), async () => undefined, "hold")).not.toBeNull();
     // The same asking read again keeps its call, so a press in flight stays held.
     expect(decisionCall({ key: "owner:scope-approval", turn: "turn-1" })).toBe(first);
+  });
+});
+
+// TR-240: a Dismiss press greyed Submit with a spinner, as Submit read the group's busy flag.
+describe("submitLook", () => {
+  it("spins Submit only for its own press", () => {
+    expect(submitLook("busy", true, false)).toBe("busy");
+    expect(submitLook("busy", false, false)).toBe("busy");
+    expect(submitLook("done", true, false)).toBe("done");
+  });
+
+  it("leaves Submit without a spinner while Dismiss runs, and while idle", () => {
+    expect(submitLook(undefined, true, true)).toBeUndefined();
+    expect(submitLook(undefined, false, false)).toBeUndefined();
+  });
+
+  it("spins Submit while another surface answers the decision and nothing here is pressed", () => {
+    expect(submitLook(undefined, true, false)).toBe("busy");
   });
 });

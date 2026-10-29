@@ -84,6 +84,16 @@ export function optionPress(label: string): string {
   return `option:${label}`;
 }
 
+/**
+ * The look of a decision's Submit: its own press spins. While another surface answers the decision it spins
+ * too, as nothing is picked here to spin instead (TR-191). A press on Dismiss leaves it greyed, not spinning
+ * (TR-240): Dismiss spins alone.
+ */
+export function submitLook(own: "busy" | "done" | undefined, busy: boolean, dismissing: boolean): "busy" | "done" | undefined {
+  if (own !== undefined) return own;
+  return busy && !dismissing ? "busy" : undefined;
+}
+
 let shared: SharedPresses | null = null;
 
 /** The app's one registry, made on first use. A reload starts a fresh one: a hold lost then only ends early. */
