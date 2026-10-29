@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { INTERRUPT_NOTE_END, INTERRUPT_NOTE_START } from "../shared/chat-queue";
-import { endStoppedTools, transcriptRows, withoutOpenTurn, type TimelineEntry, type TranscriptRow } from "./transcript-rows";
+import { compactionState, endStoppedTools, transcriptRows, withoutOpenTurn, type TimelineEntry, type TranscriptRow } from "./transcript-rows";
 
 /** The rows without their turn footers, which have tests of their own below. */
 function rowsOf(entries: readonly TimelineEntry[], cwd?: string | null): TranscriptRow[] {
@@ -261,5 +261,14 @@ describe("transcriptRows plugin messages (TR-228)", () => {
 
   it("skips an empty plugin message as a user row", () => {
     expect(rowsOf([withId(1, "  ", "taro-2")]).map((row) => row.kind)).toEqual(["user"]);
+  });
+});
+
+describe("compactionState", () => {
+  it("names only a compaction's own lines, so other notices keep the notice style", () => {
+    expect(compactionState("Compacting context…")).toBe("running");
+    expect(compactionState("Context compacted")).toBe("done");
+    expect(compactionState("Compaction stopped before it finished")).toBe("stopped");
+    expect(compactionState("Agent notice")).toBeNull();
   });
 });
