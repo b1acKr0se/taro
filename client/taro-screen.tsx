@@ -490,15 +490,10 @@ function ProjectView({
   const showBoardLatest = useLatestCallback(() => onShowBoard?.());
   const showBoard = onShowBoard === null ? null : showBoardLatest;
 
-  // Dismissed from Needs you, a question is still open: the chat draws it as a card (TR-234).
-  const managerChatDecisions = useMemo(
-    () => (board.data?.dismissedManagerDecisions.length ? [...(board.data.managerDecisions ?? []), ...board.data.dismissedManagerDecisions] : (board.data?.managerDecisions ?? NO_DECISIONS)),
-    [board.data?.managerDecisions, board.data?.dismissedManagerDecisions],
-  );
   const managerPane = (
     <MemoManagerPane
       summary={summary}
-      decisions={managerChatDecisions}
+      decisions={board.data?.managerDecisions ?? NO_DECISIONS}
       focus={managerFocus}
       onFocused={managerFocused}
       suggestions={board.data?.suggestions ?? NO_SUGGESTIONS}

@@ -155,6 +155,12 @@ describe("questionCards", () => {
     ]);
   });
 
+  it("says a dismissed question was dismissed, with the time", () => {
+    const rows = [message("a", [block("one")])];
+    const dismissed = stored("one", { status: "dismissed", answer: null, dismissedAt: "2026-01-19T10:07:00Z" });
+    expect(cards(rows, [dismissed]).get("a")).toEqual([{ id: "one", subject: "Question one?", outcome: "Dismissed", tone: "neutral", time: "10:07", words: null }]);
+  });
+
   it("never quotes an option's own prompt as the user's words, and drops it from words typed after it", () => {
     const options = [
       { label: "In memory", prompt: "Keep it in memory", consequence: "", images: [] },

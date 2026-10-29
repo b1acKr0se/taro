@@ -76,7 +76,6 @@ import { dismissSuggestion, invalidateBoards, liveOpenDecisions, loadBoard, load
 import type { PaseoApi } from "./server/host-types";
 import { Recovery } from "./server/recovery";
 import { PluginState } from "./server/state";
-import { dismissManagerQuestion } from "./shared/state";
 import { Stats, turnMayStillEnd } from "./server/stats";
 import { withSavedContext } from "./shared/past-context";
 import { summarize, waitingTickets } from "./shared/stats";
@@ -426,8 +425,8 @@ export default function contribute(server: PluginServerContext) {
     await actions.changeQueuedSpec(keep(paseo), project, ticket, text);
     return {};
   });
-  server.handle(dismissManagerQuestionRpc, async ({ project, key }) => {
-    await state.updateDecisions((decisions) => dismissManagerQuestion(decisions, project, key));
+  server.handle(dismissManagerQuestionRpc, async ({ key }, { paseo }) => {
+    await actions.dismissDecision(keep(paseo), key);
     invalidateBoards();
     return {};
   });

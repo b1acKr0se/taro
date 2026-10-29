@@ -37,7 +37,7 @@ export function DecisionBlockItem({ agentId, item, theme, layout }: PluginTimeli
     queryFn: () => get({ agentId, id: block.id }),
     enabled: !block.withdrawn,
     // A settled decision does not change again; an open or not yet recorded one may.
-    refetchInterval: (query) => (query.state.data?.decision?.status === "answered" || query.state.data?.decision?.status === "withdrawn" ? false : 4_000),
+    refetchInterval: (query) => (query.state.data?.decision?.status === "answered" || query.state.data?.decision?.status === "withdrawn" || query.state.data?.decision?.status === "dismissed" ? false : 4_000),
   });
   const view = decisionBlockView(
     block,

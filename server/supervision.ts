@@ -600,8 +600,6 @@ export class Supervisor {
           held.push({ id: decision.id, open: holding.id });
           continue;
         }
-        // The same turn read again keeps a dismissal from the board; asked in a later turn, it is shown again (TR-234).
-        if (existing?.status === "open" && existing.dismissedFromBoard === true && existing.turn === turn) next.dismissedFromBoard = true;
         if (existing === undefined) stored.push(next);
         else stored[index] = next;
         if (existing === undefined || existing.status !== "open") opened.push(next);

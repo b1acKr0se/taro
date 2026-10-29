@@ -40,7 +40,7 @@ export function decisionBlockView(block: ParsedDecision, lookup: DecisionLookup)
   if (stored === null) return { kind: "read-only", note: READ_ONLY_NOTES.untracked };
   if (!sameQuestion(asStored(block, stored), stored)) return { kind: "replaced" };
   if (stored.status === "answered") return { kind: "answered", answer: stored.answer?.text ?? "", label: stored.answer?.label ?? null };
-  if (stored.status === "withdrawn" || !lookup.agentLive) return { kind: "withdrawn" };
+  if (stored.status === "withdrawn" || stored.status === "dismissed" || !lookup.agentLive) return { kind: "withdrawn" };
   return { kind: "open", decision: stored };
 }
 

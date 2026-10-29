@@ -99,6 +99,10 @@ describe("decisionBlockView", () => {
     expect(decisionBlockView(asked, done(stored(asked, { status: "withdrawn" })))).toEqual({ kind: "withdrawn" });
   });
 
+  it("is withdrawn for a dismissed decision, never an open card (TR-239)", () => {
+    expect(decisionBlockView(asked, done(stored(asked, { status: "dismissed" })))).toEqual({ kind: "withdrawn" });
+  });
+
   it("shows the answer once answered, whether the agent lives or not", () => {
     const answered = stored(asked, { status: "answered", answer: { text: "Yes please", label: "Yes", at: "t" } });
     expect(decisionBlockView(asked, done(answered, false))).toEqual({ kind: "answered", answer: "Yes please", label: "Yes" });

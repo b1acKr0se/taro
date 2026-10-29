@@ -166,6 +166,7 @@ export function storedDecisionView(decision: StoredDecision, clock: (iso: string
   if (decision.status === "withdrawn") {
     return { outcome: decision.withdrawnWithAgent === true ? "Withdrawn: its agent went away" : "Withdrawn", tone: "neutral", time: null, words: null };
   }
+  if (decision.status === "dismissed") return { outcome: "Dismissed", tone: "neutral", time: decision.dismissedAt === undefined ? null : clock(decision.dismissedAt), words: null };
   if (decision.status !== "answered") return null;
   const answer = decision.answer;
   const label = answer?.label ?? null;

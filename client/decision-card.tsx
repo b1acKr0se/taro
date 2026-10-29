@@ -2,7 +2,7 @@
  * One decision an agent asked (decision 28): the question, why it matters,
  * the options as a light radio list (label, then a muted description; the
  * recommended one tagged with its reason), the default for a non-blocking
- * decision, then Other, the reply box and Dismiss / Submit. TR-030: the
+ * decision, then Other, the reply box and Dismiss (closes the question, TR-239) / Submit. TR-030: the
  * side-by-side option boxes broke on long text and phones; the list follows
  * Claude Code's question prompt. TR-083: Submit sends the picked option alone,
  * or with words when it ends with "…" (TR-028); the box is greyed, keeping what
@@ -17,7 +17,7 @@ import { useToast } from "@getpaseo/plugin/client/react-native";
 import { useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 
-import { answerDecision } from "../shared/contracts";
+import { answerDecision, dismissManagerQuestion } from "../shared/contracts";
 import { answerPlaceholder, askedBy, decisionOptionRows, decisionSubmit, type DecisionPick } from "../shared/decision-view";
 import { sendUnlessRefused } from "../shared/refused-commands";
 import type { StoredDecision } from "../shared/state";
@@ -75,6 +75,7 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
   const actions = useRef<View>(null);
   const reveal = useRevealFocused(actions);
   const answer = useRpc(answerDecision);
+  const dismiss = useRpc(dismissManagerQuestion);
   const [typed, setTyped] = useState("");
   const [picked, setPicked] = useState<DecisionPick>(null);
   const [whyOpen, setWhyOpen] = useState(false);
@@ -237,7 +238,25 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
             onPressGreyed={busy ? undefined : () => setPicked("other")}
           />
           <View style={styles.actions}>
-            <IconButton icon="X" label="Dismiss" showLabel theme={theme} disabled={busy || picked === null} onPress={() => setPicked(null)} />
+            <IconButton
+              icon="X"
+              label="Dismiss"
+              showLabel
+              theme={theme}
+              disabled={busy}
+              state={presses.stateOf("dismiss")}
+              // Closes the question without an answer (TR-239); it leaves with the next read, so the button stays busy until it does.
+              onPress={() =>
+                presses.press("dismiss", () => dismiss({ project: decision.project, key: decision.key }), {
+                  after: "hold",
+                  onSuccess: () => {
+                    setTyped("");
+                    setPicked(null);
+                    onAnswered();
+                  },
+                })
+              }
+            />
             <IconButton
               icon="Check"
               label="Submit"
