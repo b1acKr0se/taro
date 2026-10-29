@@ -236,7 +236,10 @@ export function AgentChat({
   const echoes = sends.views.filter((view) => view.rowKey === null && !sendingRows.some((row) => row.id === view.send.id));
   const places = useMemo(() => (asks === undefined || asks.decisions.length === 0 ? null : placeDecisions(agentRows, asks.decisions)), [agentRows, asks?.decisions]);
   // A question stays where it was asked (TR-239): read back to its message rather than draw it as new at the end.
-  const unplacedNow = places === null || (groups.length === 0 && timeline.loading) ? "none" : unplacedAction(places.unplaced.length, { hasOlder: timeline.hasOlder, loading: timeline.loading || timeline.loadingOlder, error: timeline.error !== null });
+  // A failed read stays failed for this agent: a later tail read clears the error, and the card would flicker between the end and gone.
+  const readBackFailed = useRef<string | null>(null);
+  if (timeline.error !== null) readBackFailed.current = agent.id;
+  const unplacedNow = places === null || (groups.length === 0 && timeline.loading) ? "none" : unplacedAction(places.unplaced.length, { hasOlder: timeline.hasOlder, loading: timeline.loading || timeline.loadingOlder, error: readBackFailed.current === agent.id });
   useEffect(() => {
     if (unplacedNow === "load") timeline.loadOlder();
   }, [unplacedNow, timeline.entries.length]);
