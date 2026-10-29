@@ -14,9 +14,9 @@ const chat = readFileSync(join(__dirname, "agent-chat.tsx"), "utf8");
 const transcript = chat.slice(chat.indexOf("<KeyboardRevealProvider"), chat.indexOf("</KeyboardRevealProvider>"));
 
 describe("a decision with no message in the transcript", () => {
-  it("is drawn at the end only once the first read is done", () => {
+  it("is drawn at the end only once the first read is done and nothing older is left to read (TR-239)", () => {
     const atEnd = transcript.slice(transcript.indexOf("echoes.map("), transcript.indexOf("decisionCards(places.unplaced)"));
-    expect(atEnd).toMatch(/\{places === null \|\| places\.unplaced\.length === 0 \|\| \(groups\.length === 0 && timeline\.loading\) \? null : \(/);
+    expect(atEnd).toMatch(/\{unplacedNow !== "end" \|\| places === null \? null : \(/);
   });
 
   it("is the only place unplaced decisions are drawn", () => {

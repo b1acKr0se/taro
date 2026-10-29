@@ -9,7 +9,7 @@ import { walkOrder } from "./walk-order";
 export interface DecisionPlaces {
   /** Row key → the open decisions drawn under that message, in the order it asked them. */
   byRow: Map<string, StoredDecision[]>;
-  /** Open decisions no loaded message asks (the message is older than the timeline): drawn at its end. */
+  /** Open decisions no loaded message asks (the message is older than the timeline, and nothing older is left to read): drawn at its end. */
   unplaced: StoredDecision[];
   /** The decision to bring into view and jump to: the first in Walk me through order. */
   first: StoredDecision | null;
@@ -39,6 +39,17 @@ export function placeDecisions(rows: readonly { key: string; text: string }[], o
   }
   const unplaced = open.filter((decision) => !placed.has(decision.key));
   return { byRow, unplaced, first: walkOrder(open)[0] ?? null };
+}
+
+/**
+ * What to do about open decisions whose message is not loaded (TR-239): they stay where they were
+ * asked, so the chat reads back until a page holds the message ("load"), and draws them at the end
+ * only once there is nothing older to read or reading failed ("end"). "wait" while a page is coming.
+ */
+export function unplacedAction(unplaced: number, older: { hasOlder: boolean; loading: boolean; error: boolean }): "none" | "load" | "wait" | "end" {
+  if (unplaced === 0) return "none";
+  if (older.error || !older.hasOlder) return "end";
+  return older.loading ? "wait" : "load";
 }
 
 /**

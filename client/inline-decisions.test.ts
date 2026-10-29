@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { StoredDecision } from "../shared/state";
-import { cardFits, cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
+import { cardFits, cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions, unplacedAction } from "./inline-decisions";
 
 function decision(id: string, parts: Partial<StoredDecision> = {}): StoredDecision {
   return {
@@ -162,5 +162,20 @@ describe("deliveryRowKey (TR-131)", () => {
   it("is null with no messages or no delivery loaded", () => {
     expect(deliveryRowKey([])).toBeNull();
     expect(deliveryRowKey([{ key: "r1", text: "Working on it.\n\nwaiting: implementer" }])).toBeNull();
+  });
+});
+
+describe("unplacedAction (TR-239)", () => {
+  const more = { hasOlder: true, loading: false, error: false };
+  it("reads back while the asking message may be older", () => {
+    expect(unplacedAction(2, more)).toBe("load");
+    expect(unplacedAction(2, { ...more, loading: true })).toBe("wait");
+  });
+  it("draws at the end only when nothing older is left or reading failed", () => {
+    expect(unplacedAction(1, { ...more, hasOlder: false })).toBe("end");
+    expect(unplacedAction(1, { ...more, error: true })).toBe("end");
+  });
+  it("does nothing without unplaced decisions", () => {
+    expect(unplacedAction(0, more)).toBe("none");
   });
 });

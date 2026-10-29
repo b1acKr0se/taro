@@ -45,7 +45,7 @@ import { createCursorStore, listTakesKeys, type PickKeyEvent } from "./pick-list
 import { BottomSafeArea } from "./safe-area";
 import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
-import { cardFits, cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions } from "./inline-decisions";
+import { cardFits, cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions, unplacedAction } from "./inline-decisions";
 import { groupRows, toolRunSummary, type Group, type ToolRow } from "./tool-runs";
 import { ATTACHMENTS_ONLY, compactionState, endStoppedTools, transcriptRows, whileWriting, withoutOpenTurn } from "./transcript-rows";
 import { TurnFooterView } from "./turn-footer";
@@ -235,6 +235,11 @@ export function AgentChat({
   const sendingRows = useMemo(() => sendingToQueue(sends.views, working), [sends.views, working]);
   const echoes = sends.views.filter((view) => view.rowKey === null && !sendingRows.some((row) => row.id === view.send.id));
   const places = useMemo(() => (asks === undefined || asks.decisions.length === 0 ? null : placeDecisions(agentRows, asks.decisions)), [agentRows, asks?.decisions]);
+  // A question stays where it was asked (TR-239): read back to its message rather than draw it as new at the end.
+  const unplacedNow = places === null || (groups.length === 0 && timeline.loading) ? "none" : unplacedAction(places.unplaced.length, { hasOlder: timeline.hasOlder, loading: timeline.loading || timeline.loadingOlder, error: timeline.error !== null });
+  useEffect(() => {
+    if (unplacedNow === "load") timeline.loadOlder();
+  }, [unplacedNow, timeline.entries.length]);
   /** The message whose plan is the live card; every other plan asking gets its line. */
   const livePlanRow = useMemo(() => (places === null ? null : ([...places.byRow].find(([, decisions]) => decisions.some((decision) => decision.id === SCOPE_APPROVAL))?.[0] ?? null)), [places]);
   const pastPlans = useMemo(() => (records?.plans == null ? null : planLines(rows, records.plans, livePlanRow, records.settling)), [rows, records?.plans, records?.settling, livePlanRow]);
@@ -802,7 +807,7 @@ export function AgentChat({
               />
             ))}
             {/* Not during the first read, when no message is in yet: the opening scroll would go to the empty transcript's end, clamped, and read as the reader's (TR-133). */}
-            {places === null || places.unplaced.length === 0 || (groups.length === 0 && timeline.loading) ? null : (
+            {unplacedNow !== "end" || places === null ? null : (
               <View style={styles.agentRow} onLayout={(event) => noteLayout(places.unplaced.map((decision) => decision.key), event.nativeEvent.layout)}>
                 {decisionCards(places.unplaced)}
               </View>
