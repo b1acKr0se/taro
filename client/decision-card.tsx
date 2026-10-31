@@ -30,7 +30,7 @@ import { ImageThumbnail } from "./image-view";
 import { PlanDecision } from "./plan-card";
 import { ReplyBox } from "./reply-box";
 import { IconButton } from "./ui";
-import { decisionCall, optionPress } from "./shared-presses";
+import { decisionCall, optionPress, submitLook } from "./shared-presses";
 import { useActions } from "./use-actions";
 
 /** The height of an option's thumbnails; a phone shot is half as wide, a desktop one 1.6 times. */
@@ -264,8 +264,8 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
               tone="accent"
               theme={theme}
               disabled={busy || !submit.enabled}
-              // Busy too while another surface answers this decision, as nothing is picked here to spin instead.
-              state={presses.stateOf(submitPress) ?? (busy ? "busy" : undefined)}
+              // Busy too while another surface answers this decision, as nothing is picked here to spin instead; not while Dismiss runs (TR-240).
+              state={submitLook(presses.stateOf(submitPress), busy, presses.stateOf("dismiss") !== undefined)}
               // The answered decision leaves, so Submit stays busy until it does.
               // A typed /clear is refused before the press starts, so Submit never spins for it (TR-232).
               onPress={() =>
