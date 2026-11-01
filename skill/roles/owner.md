@@ -59,7 +59,7 @@ the flow.
    (phone screenshot)", not "the field scrolls above the keyboard". A criterion met to the letter
    while the user would still reject the result is not met. Mechanisms go in "Choices I made" only
    when the user must check them.
-4. **Approval** — ask for it **whenever you made a choice the user did not**: an interpretation, a
+4. **Approval** — at medium and high, ask for it **whenever you made a choice the user did not**: an interpretation, a
    design, a fix approach that could differ from what they meant. Write the plan first (`--plan`,
    step 3), after the answer to any question from step 2 and with that answer in it, never in the
    same message as a question; then ask with a blocking decision `scope-approval` whose question is `Approve the plan
@@ -101,7 +101,7 @@ the flow.
 **Bugs:** reproduce first (end to end; separate trigger from symptom; compare with a path that
 works). The reproduction becomes the regression test and must fail before the fix. Clear cause and
 one correct fix that changes nothing else → trivial; otherwise low, with a cause / fix /
-alternatives proposal.
+alternatives plan.
 
 **Escapes:** whenever your ticket (of any kind) fixes a defect an earlier ticket shipped, append an
 **ESCAPE** record to that ticket naming the check that should have caught it

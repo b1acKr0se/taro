@@ -72,7 +72,8 @@ export function AcceptanceCard({
   const summary = delivered === null ? null : finalSummaryBody(delivered);
   const evidence = detail.data?.evidence ?? null;
   // A trivial or low ticket may be built before it is planned (TR-241): its plan is shown here, at delivery, instead of on an approval card.
-  const plan = useMemo(() => (detail.data === undefined || !mayBuildBeforePlan(detail.data.labels) ? null : parsePlan(detail.data.plan)), [detail.data]);
+  const planSource = detail.data === undefined || !mayBuildBeforePlan(detail.data.labels) ? null : (detail.data.plan ?? "").trim();
+  const plan = useMemo(() => parsePlan(planSource), [planSource]);
   const ready = acceptanceReady(card);
   const pullRequestLook = pullRequestMark(card.pullRequestState, card.pullRequestMerged);
   const openLink = (url: string) => void openExternalUrl(url).catch((caught: unknown) => toast.error(errorText(caught)));
@@ -120,11 +121,12 @@ export function AcceptanceCard({
       ) : (
         <Markdown source={summary} theme={theme} onOpenLink={openLink} />
       )}
-      {plan === null ? null : (
+      {planSource === null || planSource === "" ? null : (
         <>
           <View style={styles.rule} />
           <Text style={styles.section}>PLAN</Text>
-          <PlanBody plan={plan} theme={theme} />
+          {/* A plan that does not follow the template shows as written, like the Ticket tab's older plans. */}
+          {plan === null ? <Markdown source={planSource} theme={theme} onOpenLink={openLink} /> : <PlanBody plan={plan} theme={theme} />}
         </>
       )}
       {evidence === null ? null : (

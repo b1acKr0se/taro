@@ -42,7 +42,7 @@ Never go on without the tracker: the ticket is the record of the work (SKILL.md 
 ## Statuses
 
 `Queued → Planning → Ready → In Progress → Reviewing → Awaiting acceptance → Done`, plus `Blocked`
-and `Cancelled`. Trivial tasks go from Planning straight to In Progress once their plan is written (no approval card).
+and `Cancelled`. Trivial and low tasks go from Planning straight to In Progress (no approval card) and write their plan before delivery.
 
 | Status | Who sets it | When |
 | --- | --- | --- |

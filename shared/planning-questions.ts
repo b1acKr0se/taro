@@ -10,7 +10,7 @@ const BEFORE_BUILD: ReadonlySet<string> = new Set(["Queued", "Planning"]);
 
 /**
  * Whether the ticket is still being planned: Queued or Planning, with no APPROVAL record. A trivial
- * ticket goes straight to In Progress without one, and its later questions keep their own flag.
+ * or low ticket goes straight to In Progress without one, and its later questions keep their own flag.
  */
 export function planningTicket(ticket: { status: string; notes: string | null }): boolean {
   return BEFORE_BUILD.has(ticket.status) && !roundRecords(ticket.notes).some((record) => /^APPROVAL\b/.test(record));

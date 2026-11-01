@@ -1125,6 +1125,18 @@ describe("Supervisor.onTurnEnded reminds about missing evidence", () => {
     vi.mocked(sendFromPlugin).mockClear();
   });
 
+  it("asks a trivial or low owner for its missing plan at delivery, and not once the plan is written (TR-241)", async () => {
+    const delivered = (plan: string | null) =>
+      vi.mocked(viewTicket).mockResolvedValue({ status: "Awaiting acceptance", labels: ["investigation", "complexity-low"], implementationPlan: plan, acceptanceCriteria: [], implementationNotes: recordWith("check: grep foo — 2 hits") } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+    delivered(null);
+    await turn();
+    expect(reminders()).toHaveLength(1);
+    expect(reminders()[0]).toContain("the plan: write it with `taro ticket edit --plan`");
+    delivered("## Goal\nFix it");
+    await turn();
+    expect(reminders()).toHaveLength(1);
+  });
+
   it("sends once per distinct missing set, again after it changes, and again after a complete one clears it", async () => {
     ticket("Awaiting acceptance", null);
     await turn();
