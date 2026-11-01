@@ -60,7 +60,7 @@ import { COMPOSER_CONTROL_SIZE, composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
 import { Shimmer, WorkingStatus } from "./loading";
-import { SHIMMER_LIGHT, shimmerCopyText } from "./shimmer";
+import { fadeColour, SHIMMER_LIGHT, shimmerCopyText } from "./shimmer";
 import { useLatestCallback } from "./latest-callback";
 import { BREAK_LONG_WORDS } from "./long-word-wrap";
 import { senderPillColours } from "./sender-pill";
@@ -1139,16 +1139,17 @@ function ToolLine({ tool, theme, styles }: { tool: ToolRow; theme: PluginTheme; 
       <Shimmer
         active={running}
         characters={tool.label.length + (tool.summary?.length ?? 0)}
+        spanCharacters={tool.label.length + shimmerCopyText(tool.summary ?? "").length}
         style={styles.toolWords}
-        render={(tone) => (
+        render={(tone, paint) => (
           <>
             {/* Apart, not one text with spaces: the web build collapses the spaces Paseo's gap stands for. */}
             <Text style={[styles.toolLabel, tone === "peak" ? styles.toolPeak : running ? styles.toolLabelRunning : null]} numberOfLines={1}>
-              {tool.label}
+              {tone === "peak" ? tool.label : paint(tool.label, 0, running ? fadeColour(theme.colors.foreground, 0.72) : theme.colors.foreground)}
             </Text>
             {tool.summary === undefined ? null : (
               <Text style={[styles.toolText, tone === "peak" ? styles.toolPeak : null]} numberOfLines={1}>
-                {tone === "peak" ? shimmerCopyText(tool.summary) : tool.summary}
+                {tone === "peak" ? shimmerCopyText(tool.summary) : paint(tool.summary, tool.label.length, theme.colors.foregroundMuted)}
               </Text>
             )}
           </>
@@ -1177,13 +1178,14 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, pastA
           <Shimmer
             active={summary.state === "running"}
             characters={summary.title.length}
+            spanCharacters={summary.title.length + (summary.failed > 0 ? `· ${summary.failed} failed`.length : 0)}
             style={styles.toolTitleWords}
-            render={(tone) => (
+            render={(tone, paint) => (
               <>
                 {/* Never cut: the counts are what the reader wants. */}
-                <Text style={[styles.toolTitle, open ? styles.toolTitleOpen : null, tone === "peak" ? styles.toolPeak : summary.state === "running" ? styles.toolLabelRunning : null]}>{summary.title}</Text>
+                <Text style={[styles.toolTitle, open ? styles.toolTitleOpen : null, tone === "peak" ? styles.toolPeak : summary.state === "running" ? styles.toolLabelRunning : null]}>{tone === "peak" ? summary.title : paint(summary.title, 0, summary.state === "running" ? fadeColour(theme.colors.foreground, 0.72) : open ? theme.colors.foreground : theme.colors.foregroundMuted)}</Text>
                 {/* Its own text, so a long summary is cut before the failure is. */}
-                {summary.failed > 0 ? <Text style={[styles.toolFailed, tone === "peak" ? styles.toolPeak : null]}>{`· ${summary.failed} failed`}</Text> : null}
+                {summary.failed > 0 ? <Text style={[styles.toolFailed, tone === "peak" ? styles.toolPeak : null]}>{tone === "peak" ? `· ${summary.failed} failed` : paint(`· ${summary.failed} failed`, summary.title.length, theme.colors.statusDanger)}</Text> : null}
               </>
             )}
           />
@@ -1375,7 +1377,7 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
     toolWords: { flex: 1, flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm },
     toolTitleWords: { flexShrink: 1, flexDirection: "row" as const, alignItems: "center" as const, gap: SPACE.sm },
     // While it runs, as Paseo: the label a little dim, so the band brightening it shows.
-    toolLabelRunning: { color: colors.foreground, opacity: 0.72 },
+    toolLabelRunning: { color: fadeColour(colors.foreground, 0.72) },
     // Paseo's band, white in either theme; the web clips its gradient to these letters instead (TR-184).
     toolPeak: { color: SHIMMER_LIGHT, opacity: 1 },
     toolText: { flex: 1, color: colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: labelLineHeightFor(FONT_SIZE.body) },

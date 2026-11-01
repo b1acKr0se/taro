@@ -53,10 +53,23 @@ describe("the loader and the shimmer", () => {
     const loop = loading.slice(loading.indexOf("function useLoop("), loading.indexOf("\n}\n", loading.indexOf("function useLoop(")));
     expect(loop).toMatch(/value\.setValue\(from\);\s*if \(still\) return;\s*const loop = Animated\.loop/);
     expect(loading).toMatch(/useLoop\(step, 0, SYNCED_LOADER_DOT_COUNT, SYNCED_LOADER_DURATION_MS, reduced\)/);
-    expect(loading).toMatch(/const moving = active && !reduced && size\.width > 0;/);
-    expect(loading).toMatch(/useLoop\(travel, metrics\.from, metrics\.to, metrics\.durationMs, !moving \|\| WEB\)/);
+    expect(loading).toMatch(/const running = active && !reduced;/);
+    // The phone's letters are recoloured by a timer that runs only while moving (TR-246).
+    expect(loading).toMatch(/useBandPosition\(running && !WEB,/);
     // The web's copy, whose animation runs in the browser, is drawn only while moving (TR-184).
-    expect(loading).toMatch(/if \(moving && WEB\) \{/);
+    expect(loading).toMatch(/if \(WEB && running && size\.width > 0 && webShimmerSupported\(\)\) \{/);
+  });
+
+  it("crosses only the letters the measured row shows, on the phone too (TR-246)", () => {
+    expect(loading).toMatch(/shimmerMetrics\(visibleLetters\(spanCharacters, size\.width\)\)/);
+    expect(loading).toMatch(/onLayout=\{WEB \|\| active \? measure : undefined\}/);
+  });
+
+  it("draws the phone's shimmer in the words' own text, never as copies laid over them (TR-246)", () => {
+    expect(loading).not.toMatch(/ShimmerBand|shimmerLayers|overflow: "hidden"/);
+    const shimmer = loading.slice(loading.indexOf("export function Shimmer("));
+    expect(shimmer).toMatch(/shimmerRuns\(text, start, position, metrics\.peakLetters\)/);
+    expect(shimmer).toMatch(/if \(WEB \|\| !running\) return text;/);
   });
 
   it("styles the web's copy before the browser paints it, and again when its words change (TR-184)", () => {
@@ -66,7 +79,7 @@ describe("the loader and the shimmer", () => {
   it("hides the shimmer's copies of the words from screen readers, on the web too", () => {
     const body = (name: string) => loading.slice(loading.indexOf(`function ${name}(`), loading.indexOf("\n}\n", loading.indexOf(`function ${name}(`)));
     expect(body("WebShimmerCopy")).toMatch(/^\s+aria-hidden$/m);
-    for (const name of ["ShimmerBand", "WebShimmerCopy"]) {
+    for (const name of ["WebShimmerCopy"]) {
       expect(body(name)).toMatch(/accessibilityElementsHidden/);
       expect(body(name)).toMatch(/importantForAccessibility="no-hide-descendants"/);
     }
