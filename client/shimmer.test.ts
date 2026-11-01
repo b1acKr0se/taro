@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { shimmerLayers, shimmerMetrics, WEB_SHIMMER_COPY_BOX, webShimmerTrack } from "./shimmer";
+import { SHIMMER_COPY_LIMIT, shimmerCopyText, shimmerLayers, shimmerMetrics, WEB_SHIMMER_COPY_BOX, webShimmerTrack } from "./shimmer";
 
 describe("shimmerMetrics", () => {
   it("starts the band wholly before the words and ends it past them", () => {
@@ -84,5 +84,18 @@ describe("WEB_SHIMMER_COPY_BOX (TR-189)", () => {
     const copy = /function WebShimmerCopy[\s\S]*?\n}\n/.exec(source)?.[0] ?? "";
     expect(copy).toContain("WEB_SHIMMER_COPY_BOX");
     expect(copy).not.toMatch(/width: size\.width/);
+  });
+});
+
+describe("shimmerCopyText", () => {
+  it("keeps only the first line of a multi-line command", () => {
+    expect(shimmerCopyText("cd app; t=$(date)\ntaro ticket edit\ngo test ./...")).toBe("cd app; t=$(date)");
+    expect(shimmerCopyText("one\r\ntwo")).toBe("one");
+  });
+
+  it("cuts a very long line and leaves short text and the empty string alone", () => {
+    expect(shimmerCopyText("x".repeat(SHIMMER_COPY_LIMIT + 50))).toHaveLength(SHIMMER_COPY_LIMIT);
+    expect(shimmerCopyText("go vet")).toBe("go vet");
+    expect(shimmerCopyText("")).toBe("");
   });
 });

@@ -16,7 +16,7 @@ describe("a tool call's line", () => {
   it("draws the label and the detail as separate texts, never one text spaced apart", () => {
     expect(toolLine).not.toBe("");
     expect(toolLine).toMatch(/<Text style=\{\[?styles\.toolLabel\b[^>]*>\s*\{tool\.label\}\s*<\/Text>/);
-    expect(toolLine).toMatch(/<Text style=\{\[?styles\.toolText\b[^>]*>\s*\{tool\.summary\}\s*<\/Text>/);
+    expect(toolLine).toMatch(/<Text style=\{\[?styles\.toolText\b[^>]*>\s*\{tone === "peak" \? shimmerCopyText\(tool\.summary\) : tool\.summary\}\s*<\/Text>/);
     expect(toolLine).not.toMatch(/` +\$\{tool\.summary\}`/);
   });
 

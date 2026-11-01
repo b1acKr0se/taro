@@ -60,7 +60,7 @@ import { COMPOSER_CONTROL_SIZE, composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
 import { Shimmer, WorkingStatus } from "./loading";
-import { SHIMMER_LIGHT } from "./shimmer";
+import { SHIMMER_LIGHT, shimmerCopyText } from "./shimmer";
 import { useLatestCallback } from "./latest-callback";
 import { BREAK_LONG_WORDS } from "./long-word-wrap";
 import { senderPillColours } from "./sender-pill";
@@ -1148,7 +1148,7 @@ function ToolLine({ tool, theme, styles }: { tool: ToolRow; theme: PluginTheme; 
             </Text>
             {tool.summary === undefined ? null : (
               <Text style={[styles.toolText, tone === "peak" ? styles.toolPeak : null]} numberOfLines={1}>
-                {tool.summary}
+                {tone === "peak" ? shimmerCopyText(tool.summary) : tool.summary}
               </Text>
             )}
           </>
