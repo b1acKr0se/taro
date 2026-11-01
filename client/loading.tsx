@@ -8,14 +8,14 @@
  * `src/agent-stream/turn-footer.tsx`, and the tool call's shimmer from `src/components/message.tsx`.
  * Changed: React Native's `Animated` in place of Reanimated; on the web the shimmer's styles go on the
  * copy's elements (`web-shimmer.ts`); on a phone, which has no masked view for a plugin, the gradient
- * is layers of a white copy of the words, each seen through a window sliding with the band (TR-184);
+ * is the letters themselves recoloured toward white under the band (`shimmerRuns`, TR-246);
  * and the time redraws when its text changes (`working-time.ts`), not every second.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AccessibilityInfo, Animated, Easing, Platform, Text, View, type LayoutChangeEvent } from "react-native";
 
-import { shimmerDurationMs, shimmerLayers, shimmerMetrics, WEB_SHIMMER_COPY_BOX } from "./shimmer";
+import { blendToWhite, shimmerDurationMs, shimmerMetrics, shimmerRuns, WEB_SHIMMER_COPY_BOX } from "./shimmer";
 import { SPACE } from "./spacing";
 import { SYNCED_LOADER_DOT_COUNT, SYNCED_LOADER_DURATION_MS, syncedLoaderDotSteps } from "./synced-loader-state";
 import { FONT_SIZE } from "./type-scale";
@@ -106,41 +106,6 @@ function WorkingStatusRow({ theme, turnStartedAt }: { theme: PluginTheme; turnSt
   );
 }
 
-/** The phone's gradient, in layers: enough that its steps read as one soft band, as Paseo's. */
-const SHIMMER_LAYERS = shimmerLayers(8);
-
-/** A phone's layer: a window `share` of the band wide sliding with it, over the white copy held still beneath (the copy moves back as far as the window moves). */
-function ShimmerBand({
-  band,
-  travel,
-  peakWidth,
-  size,
-  style,
-  children,
-}: {
-  band: (typeof SHIMMER_LAYERS)[number];
-  travel: Animated.Value;
-  peakWidth: number;
-  size: { width: number; height: number };
-  style: object | undefined;
-  children: ReactNode;
-}) {
-  const offset = (peakWidth * (1 - band.share)) / 2;
-  const left = useMemo(() => Animated.add(travel, offset), [travel, offset]);
-  const back = useMemo(() => Animated.multiply(left, -1), [left]);
-  return (
-    // Hidden from readers and touches: a copy of the words above, for the light only.
-    <Animated.View
-      pointerEvents="none"
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-      style={{ position: "absolute", left: 0, top: 0, width: peakWidth * band.share, height: size.height, overflow: "hidden", opacity: band.opacity, transform: [{ translateX: left }] }}
-    >
-      <Animated.View style={[style, { position: "absolute", left: 0, top: 0, width: size.width, height: size.height, transform: [{ translateX: back }] }]}>{children}</Animated.View>
-    </Animated.View>
-  );
-}
-
 /** The web's copy of the words, laid over them, with Paseo's gradient clipped to its letters (`web-shimmer.ts`). */
 function WebShimmerCopy({ durationMs, size, style, children }: { durationMs: number; size: { width: number; height: number }; style: object | undefined; children: ReactNode }) {
   const copy = useRef<View>(null);
@@ -162,41 +127,77 @@ function WebShimmerCopy({ durationMs, size, style, children }: { durationMs: num
   );
 }
 
+/** How often the phone's letters are recoloured: smooth to the eye, and only the few letters under the band change. */
+const PHONE_FRAME_MS = 33;
+
+/** The band's left edge, in letters, while `running`: from `from` to `to` every `durationMs`, as Paseo's track. */
+function useBandPosition(running: boolean, from: number, to: number, durationMs: number): number {
+  const [position, setPosition] = useState(from);
+  useEffect(() => {
+    setPosition(from);
+    if (!running) return;
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      const share = ((Date.now() - startedAt) % durationMs) / durationMs;
+      setPosition(from + (to - from) * share);
+    }, PHONE_FRAME_MS);
+    return () => clearInterval(timer);
+  }, [running, from, to, durationMs]);
+  return position;
+}
+
 /**
- * Words that shimmer while `active`: `render("base")` draws them as they read, and a copy,
- * `render("peak")` (in `SHIMMER_LIGHT` on a phone), carries the light across them. The copy is laid
- * out at the words' width, so it lines up letter for letter, cut where the words are cut.
- * `characters` sets the pace, as in Paseo.
+ * Words that shimmer while `active`. `render("base", paint)` draws them as they read; on a phone
+ * `paint(text, start, colour)` gives the letters of `text` (whose first letter is letter `start` of the
+ * words) in `colour`, those under the band mixed toward white, so it is one text with nothing laid
+ * over it. On the web a copy, `render("peak")`, carries the light across them, clipped to its letters
+ * (`web-shimmer.ts`). `characters` sets the pace, as in Paseo; `spanCharacters` (default the same) is
+ * how many letters the words show, which the band crosses.
  */
-export function Shimmer({ active, characters, style, render }: { active: boolean; characters: number; style?: object; render: (tone: "base" | "peak") => ReactNode }) {
+export function Shimmer({
+  active,
+  characters,
+  spanCharacters = characters,
+  style,
+  render,
+}: {
+  active: boolean;
+  characters: number;
+  spanCharacters?: number;
+  style?: object;
+  render: (tone: "base" | "peak", paint: (text: string, start: number, colour: string) => ReactNode) => ReactNode;
+}) {
   const reduced = useReducedMotion();
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const moving = active && !reduced && size.width > 0;
-  const metrics = shimmerMetrics(characters, size.width);
-  const travel = useRef(new Animated.Value(metrics.from)).current;
-  useLoop(travel, metrics.from, metrics.to, metrics.durationMs, !moving || WEB);
+  const running = active && !reduced;
+  const metrics = shimmerMetrics(spanCharacters);
+  const durationMs = shimmerDurationMs(characters);
+  const position = useBandPosition(running && !WEB, metrics.from, metrics.to, durationMs);
   const measure = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
     if (width !== size.width || height !== size.height) setSize({ width, height });
   };
+  const paint = (text: string, start: number, colour: string): ReactNode => {
+    if (WEB || !running) return text;
+    const runs = shimmerRuns(text, start, position, metrics.peakLetters);
+    if (runs.every((run) => run.level === 0)) return text;
+    return runs.map((run, index) => (run.level === 0 ? run.text : (
+      // inherits colour: the run's own, a mix of the text's with white.
+      <Text key={index} style={{ color: blendToWhite(colour, run.level) }}>{run.text}</Text>
+    )));
+  };
   let light: ReactNode = null;
-  if (moving && WEB) {
-    light = webShimmerSupported() ? (
-      <WebShimmerCopy durationMs={shimmerDurationMs(characters)} size={size} style={style}>
-        {render("peak")}
+  if (WEB && running && size.width > 0 && webShimmerSupported()) {
+    light = (
+      <WebShimmerCopy durationMs={durationMs} size={size} style={style}>
+        {render("peak", paint)}
       </WebShimmerCopy>
-    ) : null;
-  } else if (moving) {
-    light = SHIMMER_LAYERS.map((band, index) => (
-      <ShimmerBand key={index} band={band} travel={travel} peakWidth={metrics.peakWidth} size={size} style={style}>
-        {render("peak")}
-      </ShimmerBand>
-    ));
+    );
   }
   return (
     // Measured on the web while idle too: react-native-web watches a view's layout only when it has `onLayout` from the start.
-    <View style={style} onLayout={active || WEB ? measure : undefined}>
-      {render("base")}
+    <View style={style} onLayout={WEB ? measure : undefined}>
+      {render("base", paint)}
       {light}
     </View>
   );

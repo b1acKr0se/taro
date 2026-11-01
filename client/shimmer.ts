@@ -4,7 +4,7 @@
  *
  * Ported from Paseo (5293dda, Apache-2.0): `computeShimmerMetrics`, `SHIMMER_GRADIENT` and the native
  * shimmer's track and gradient in `packages/app/src/components/message.tsx`. Changed: the phone's
- * gradient is drawn as layers of the words (`shimmerLayers`), as a plugin has no masked view there.
+ * gradient is drawn by colouring the letters themselves (`shimmerRuns`), as a plugin has no masked view there.
  */
 
 /**
@@ -31,10 +31,83 @@ export function shimmerDurationMs(characters: number): number {
   return Math.round(seconds * 1000);
 }
 
-/** The phone's band: 28% of the words' row (32 to 120 wide), its left edge from a band before the row to a band past it. */
-export function shimmerMetrics(characters: number, width: number): { durationMs: number; peakWidth: number; from: number; to: number } {
-  const peakWidth = Math.max(32, Math.min(120, width > 0 ? width * 0.28 : 0));
-  return { durationMs: shimmerDurationMs(characters), peakWidth, from: -peakWidth, to: Math.max(0, width) + peakWidth };
+/** Pixels one letter takes, on average: turns Paseo's 32 to 120 px band into letters, as a phone cannot measure single letters. */
+const LETTER_WIDTH = 7;
+
+/**
+ * The phone's band over `characters` letters, as Paseo's: 28% of the words' width (32 to 120 px,
+ * here in letters), its left edge from a band before the words to a band past them, in the time
+ * `shimmerDurationMs` gives. It spans the words, never their row, so a short text crosses as slowly as a long one.
+ */
+export function shimmerMetrics(characters: number): { durationMs: number; peakLetters: number; from: number; to: number } {
+  const letters = Math.max(0, characters);
+  const peakLetters = Math.max(32 / LETTER_WIDTH, Math.min(120 / LETTER_WIDTH, letters * 0.28));
+  return { durationMs: shimmerDurationMs(letters), peakLetters, from: -peakLetters, to: letters + peakLetters };
+}
+
+/** Paseo's gradient at `across` (0 to 1) of the band: clear at the edges, 45% at a quarter, white across the middle fifth. */
+export function shimmerBandLevel(across: number): number {
+  if (!(across > 0 && across < 1)) return 0;
+  const stops: [number, number][] = [[0, 0], [0.24, 0.45], [0.4, 1], [0.6, 1], [0.76, 0.45], [1, 0]];
+  for (let index = 1; index < stops.length; index += 1) {
+    const [end, endLevel] = stops[index]!;
+    const [start, startLevel] = stops[index - 1]!;
+    if (across <= end) return startLevel + ((endLevel - startLevel) * (across - start)) / (end - start);
+  }
+  return 0;
+}
+
+/** How white each letter is drawn, in steps of a sixteenth so neighbours merge into one run. */
+const LEVEL_STEPS = 16;
+
+/**
+ * `text` (whose first letter is letter `start` of the words) cut into runs of letters at one level of
+ * white, the band's left edge at letter `position` and `peakLetters` wide. Letters out of the band are
+ * one run at level 0 however long, so a long command costs no more than a short one.
+ */
+export function shimmerRuns(text: string, start: number, position: number, peakLetters: number): { text: string; level: number }[] {
+  const runs: { text: string; level: number }[] = [];
+  const push = (piece: string, level: number) => {
+    if (piece === "") return;
+    const previous = runs[runs.length - 1];
+    if (previous !== undefined && previous.level === level) previous.text += piece;
+    else runs.push({ text: piece, level });
+  };
+  const first = Math.max(0, Math.min(text.length, Math.floor(position - start)));
+  const last = Math.max(first, Math.min(text.length, Math.ceil(position + peakLetters - start)));
+  push(text.slice(0, first), 0);
+  Array.from(text.slice(first, last)).reduce((offset, letter) => {
+    const across = (start + offset + 0.5 - position) / peakLetters;
+    push(letter, Math.round(shimmerBandLevel(across) * LEVEL_STEPS) / LEVEL_STEPS);
+    return offset + letter.length;
+  }, first);
+  push(text.slice(last), 0);
+  return runs;
+}
+
+/** `colour` mixed with white by `level` (0 to 1): hex or rgb()/rgba(); a colour it cannot read turns white past one half. */
+export function blendToWhite(colour: string, level: number): string {
+  if (level <= 0) return colour;
+  const channels = readChannels(colour);
+  if (channels === null) return level >= 0.5 ? SHIMMER_LIGHT : colour;
+  const [red, green, blue, alpha] = channels;
+  const mix = (channel: number) => Math.round(channel + (255 - channel) * level);
+  return `rgba(${mix(red)}, ${mix(green)}, ${mix(blue)}, ${Math.round((alpha + (1 - alpha) * level) * 1000) / 1000})`;
+}
+
+function readChannels(colour: string): [number, number, number, number] | null {
+  const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(colour.trim())?.[1];
+  if (hex !== undefined) {
+    const full = hex.length <= 4 ? Array.from(hex, (digit) => digit + digit).join("") : hex;
+    const byte = (index: number) => parseInt(full.slice(index * 2, index * 2 + 2), 16);
+    return [byte(0), byte(1), byte(2), full.length === 8 ? byte(3) / 255 : 1];
+  }
+  const functional = /^rgba?\(([^)]*)\)$/i.exec(colour.trim())?.[1];
+  if (functional !== undefined) {
+    const parts = functional.split(/[\s,/]+/).filter((part) => part !== "").map(Number);
+    if (parts.length >= 3 && parts.every((part) => Number.isFinite(part))) return [parts[0]!, parts[1]!, parts[2]!, parts[3] ?? 1];
+  }
+  return null;
 }
 
 /**
@@ -45,20 +118,6 @@ export function webShimmerTrack(spanStart: number, spanEnd: number): { peakWidth
   const spanWidth = Math.max(1, spanEnd - spanStart);
   const peakWidth = Math.max(42, Math.min(120, spanWidth * 0.22));
   return { peakWidth, trackStart: spanStart - peakWidth, trackEnd: spanEnd };
-}
-
-/**
- * Paseo's phone gradient (clear, white at the middle, clear) as `count` layers of white words, each
- * narrower and centred in the last, outermost first. Laid over one another, the layers covering a
- * point build up `step / count` of white there, so the light rises in even steps to full white at the
- * middle: layer k's opacity is what takes the white from (k-1)/count to k/count.
- */
-export function shimmerLayers(count: number): { share: number; opacity: number }[] {
-  return Array.from({ length: count }, (_, index) => {
-    const before = index / count;
-    const after = (index + 1) / count;
-    return { share: (count - index) / count, opacity: 1 - (1 - after) / (1 - before) };
-  });
 }
 
 /** Most letters the light's copy lays out: a phone row shows far fewer, and each copy is drawn every frame. */

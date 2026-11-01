@@ -4,33 +4,36 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { SHIMMER_COPY_LIMIT, shimmerCopyText, shimmerLayers, shimmerMetrics, WEB_SHIMMER_COPY_BOX, webShimmerTrack } from "./shimmer";
+import { blendToWhite, SHIMMER_COPY_LIMIT, shimmerBandLevel, shimmerCopyText, shimmerMetrics, shimmerRuns, WEB_SHIMMER_COPY_BOX, webShimmerTrack } from "./shimmer";
 
-describe("shimmerMetrics", () => {
-  it("starts the band wholly before the words and ends it past them", () => {
-    const metrics = shimmerMetrics(30, 300);
-    expect(metrics.from).toBe(-metrics.peakWidth);
-    // Paseo's phone track: on until the band is a band past the words (TR-184).
-    expect(metrics.to).toBe(300 + metrics.peakWidth);
+describe("shimmerMetrics (TR-246)", () => {
+  it("runs the band from a band before the words to a band past them, in letters", () => {
+    const metrics = shimmerMetrics(30);
+    expect(metrics.from).toBe(-metrics.peakLetters);
+    expect(metrics.to).toBe(30 + metrics.peakLetters);
   });
 
-  it("sizes the band at 28% of the words' width, between 32 and 120", () => {
-    expect(shimmerMetrics(30, 200).peakWidth).toBeCloseTo(56);
-    expect(shimmerMetrics(30, 50).peakWidth).toBe(32);
-    expect(shimmerMetrics(30, 1000).peakWidth).toBe(120);
-    expect(shimmerMetrics(30, 0).peakWidth).toBe(32);
+  it("sizes the band at 28% of the words, between 32 and 120 px of letters", () => {
+    expect(shimmerMetrics(30).peakLetters).toBeCloseTo(8.4);
+    expect(shimmerMetrics(2).peakLetters).toBeCloseTo(32 / 7);
+    expect(shimmerMetrics(1000).peakLetters).toBeCloseTo(120 / 7);
+    expect(shimmerMetrics(0).peakLetters).toBeCloseTo(32 / 7);
   });
 
-  it("takes Paseo's time: quicker for short text, between 1 and 2.3 seconds", () => {
-    expect(shimmerMetrics(4, 100).durationMs).toBe(1032);
-    expect(shimmerMetrics(13, 100).durationMs).toBe(1354);
-    expect(shimmerMetrics(0, 100).durationMs).toBe(1000);
-    expect(shimmerMetrics(500, 100).durationMs).toBe(2300);
+  it("takes Paseo's time: quicker for short text, between 1 and 2.3 seconds, however wide the row", () => {
+    expect(shimmerMetrics(4).durationMs).toBe(1032);
+    expect(shimmerMetrics(13).durationMs).toBe(1354);
+    expect(shimmerMetrics(0).durationMs).toBe(1000);
+    expect(shimmerMetrics(500).durationMs).toBe(2300);
   });
 
-  it("never travels backwards before the words are measured", () => {
-    expect(shimmerMetrics(10, 0).to).toBe(32);
-    expect(shimmerMetrics(10, -5).to).toBe(32);
+  it("crosses a short text's own length, not the row's (it ran too fast over a whole row)", () => {
+    const short = shimmerMetrics(4);
+    expect(short.to - short.from).toBeLessThan(20);
+  });
+
+  it("never travels backwards for empty or negative words", () => {
+    expect(shimmerMetrics(-5).to).toBe(shimmerMetrics(-5).peakLetters);
   });
 });
 
@@ -51,26 +54,81 @@ describe("webShimmerTrack (TR-184)", () => {
   });
 });
 
-describe("shimmerLayers (TR-184)", () => {
-  /** How white a point is under the layers covering it: each lays its opacity over what is below. */
-  const whiteUnder = (layers: { opacity: number }[]) => 1 - layers.reduce((clear, layer) => clear * (1 - layer.opacity), 1);
-
-  it("narrows each layer inside the last, the outermost the whole band", () => {
-    const shares = shimmerLayers(8).map((layer) => layer.share);
-    expect(shares[0]).toBe(1);
-    expect(shares.at(-1)).toBe(1 / 8);
-    shares.slice(1).forEach((share, index) => expect(share).toBeLessThan(shares[index] ?? 0));
+describe("shimmerBandLevel (TR-246)", () => {
+  it("is Paseo's gradient: clear at the edges, 45% at a quarter, white across the middle fifth", () => {
+    expect(shimmerBandLevel(0)).toBe(0);
+    expect(shimmerBandLevel(1)).toBe(0);
+    expect(shimmerBandLevel(0.24)).toBeCloseTo(0.45);
+    expect(shimmerBandLevel(0.4)).toBeCloseTo(1);
+    expect(shimmerBandLevel(0.5)).toBe(1);
+    expect(shimmerBandLevel(0.76)).toBeCloseTo(0.45);
   });
 
-  it("builds the white in even steps to full white at the middle, as Paseo's gradient rises", () => {
-    const layers = shimmerLayers(8);
-    for (let covering = 1; covering <= 8; covering += 1) expect(whiteUnder(layers.slice(0, covering))).toBeCloseTo(covering / 8);
-    expect(layers.at(-1)?.opacity).toBe(1);
+  it("rises and falls without a step, and is clear outside the band", () => {
+    expect(shimmerBandLevel(-1)).toBe(0);
+    expect(shimmerBandLevel(2)).toBe(0);
+    expect(shimmerBandLevel(Number.NaN)).toBe(0);
+    for (let across = 0.01; across < 0.4; across += 0.01) expect(shimmerBandLevel(across + 0.01)).toBeGreaterThanOrEqual(shimmerBandLevel(across));
+  });
+});
+
+describe("shimmerRuns (TR-246)", () => {
+  const joined = (runs: { text: string }[]) => runs.map((run) => run.text).join("");
+
+  it("keeps every letter in order, whatever the band does", () => {
+    for (const position of [-20, -3, 0, 4.5, 9, 14, 40]) expect(joined(shimmerRuns("cd /root/app", 0, position, 8))).toBe("cd /root/app");
   });
 
-  it("is one full layer when only one is asked for, and none for zero", () => {
-    expect(shimmerLayers(1)).toEqual([{ share: 1, opacity: 1 }]);
-    expect(shimmerLayers(0)).toEqual([]);
+  it("leaves letters out of the band as one clear run, however long", () => {
+    const runs = shimmerRuns("x".repeat(500), 0, 100, 10);
+    expect(runs[0]).toEqual({ text: "x".repeat(100), level: 0 });
+    expect(runs.at(-1)?.level).toBe(0);
+    expect(runs.length).toBeLessThan(14);
+  });
+
+  it("is white at the band's middle and clear at its ends", () => {
+    const runs = shimmerRuns("abcdefghijklmnopqrst", 0, 5, 10);
+    const levels = new Map(runs.flatMap((run) => Array.from(run.text, (letter) => [letter, run.level] as const)));
+    expect(levels.get("j")).toBe(1);
+    expect(levels.get("e")).toBe(0);
+    expect(levels.get("p")).toBe(0);
+  });
+
+  it("is all clear when the band is before or past the words, and for empty text", () => {
+    expect(shimmerRuns("abc", 0, -20, 5)).toEqual([{ text: "abc", level: 0 }]);
+    expect(shimmerRuns("abc", 0, 30, 5)).toEqual([{ text: "abc", level: 0 }]);
+    expect(shimmerRuns("", 0, 0, 5)).toEqual([]);
+  });
+
+  it("places a later text by its first letter's place in the words", () => {
+    const label = shimmerRuns("Read", 0, 5, 6);
+    const summary = shimmerRuns("file.ts", 4, 5, 6);
+    expect(label.every((run) => run.level === 0)).toBe(true);
+    expect(summary.some((run) => run.level > 0)).toBe(true);
+  });
+
+  it("does not split a letter outside the basic plane", () => {
+    expect(joined(shimmerRuns("a😀b", 0, 0, 6))).toBe("a😀b");
+  });
+});
+
+describe("blendToWhite (TR-246)", () => {
+  it("leaves the colour alone at level 0 and gives white at level 1", () => {
+    expect(blendToWhite("#808080", 0)).toBe("#808080");
+    expect(blendToWhite("#808080", 1)).toBe("rgba(255, 255, 255, 1)");
+  });
+
+  it("mixes hex, short hex, rgb and rgba colours", () => {
+    expect(blendToWhite("#000000", 0.5)).toBe("rgba(128, 128, 128, 1)");
+    expect(blendToWhite("#000", 0.5)).toBe("rgba(128, 128, 128, 1)");
+    expect(blendToWhite("rgb(0, 0, 0)", 0.5)).toBe("rgba(128, 128, 128, 1)");
+    expect(blendToWhite("rgba(0, 0, 0, 0.5)", 1)).toBe("rgba(255, 255, 255, 1)");
+    expect(blendToWhite("#00000080", 0.5)).toBe("rgba(128, 128, 128, 0.751)");
+  });
+
+  it("turns a colour it cannot read white only past one half", () => {
+    expect(blendToWhite("tomato", 0.4)).toBe("tomato");
+    expect(blendToWhite("tomato", 0.6)).toBe("#ffffff");
   });
 });
 
