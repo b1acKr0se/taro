@@ -60,3 +60,15 @@ export function shimmerLayers(count: number): { share: number; opacity: number }
     return { share: (count - index) / count, opacity: 1 - (1 - after) / (1 - before) };
   });
 }
+
+/** Most letters the light's copy lays out: a phone row shows far fewer, and each copy is drawn every frame. */
+export const SHIMMER_COPY_LIMIT = 200;
+
+/**
+ * What the phone's light copy draws of a one-line `numberOfLines={1}` text: its first line, cut at
+ * `SHIMMER_COPY_LIMIT`, so a long multi-line command costs each of the layers no more than a short one (TR-243).
+ */
+export function shimmerCopyText(text: string): string {
+  const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
+  return firstLine.slice(0, SHIMMER_COPY_LIMIT);
+}
