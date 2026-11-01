@@ -60,6 +60,11 @@ describe("the loader and the shimmer", () => {
     expect(loading).toMatch(/if \(WEB && running && size\.width > 0 && webShimmerSupported\(\)\) \{/);
   });
 
+  it("crosses only the letters the measured row shows, on the phone too (TR-246)", () => {
+    expect(loading).toMatch(/shimmerMetrics\(visibleLetters\(spanCharacters, size\.width\)\)/);
+    expect(loading).toMatch(/onLayout=\{WEB \|\| active \? measure : undefined\}/);
+  });
+
   it("draws the phone's shimmer in the words' own text, never as copies laid over them (TR-246)", () => {
     expect(loading).not.toMatch(/ShimmerBand|shimmerLayers|overflow: "hidden"/);
     const shimmer = loading.slice(loading.indexOf("export function Shimmer("));
