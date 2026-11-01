@@ -109,6 +109,8 @@ export class Actions {
   private readonly releasing = new Map<string, Promise<void>>();
   /** Agents already archived here: Paseo may still list one for a moment after archiving it. */
   private readonly released = new Set<string>();
+  /** Tickets (`project:ticket`) whose owner is being replaced: the old one's archive frees no slot, as the new one takes it (TR-245). */
+  private readonly replacing = new Set<string>();
   /** The escalation ladder per project (TR-062); in memory, so a reload starts it again. */
   private readonly queues = new Map<string, QueueWatch>();
   /** The manager's condition per project at the last minute check, which the queued alert's text follows. */
@@ -486,6 +488,16 @@ export class Actions {
   /** A fresh owner in the same workspace, from the ticket's latest handoff or milestone (decision 30). */
   /** `then`: what the new owner does first, after reading in (a hand-off on Accept, TR-141). */
   async relaunchOwner(paseo: PaseoApi, project: string, ticket: string, then = ""): Promise<string> {
+    const key = `${project}:${ticket.toUpperCase()}`;
+    this.replacing.add(key);
+    try {
+      return await this.startReplacementOwner(paseo, project, ticket, then);
+    } finally {
+      this.replacing.delete(key);
+    }
+  }
+
+  private async startReplacementOwner(paseo: PaseoApi, project: string, ticket: string, then: string): Promise<string> {
     const config = await requireProjectConfig(project);
     const paths = await projectPaths(project);
     const previous = (await this.owners(paseo, project, ticket)).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
@@ -1039,7 +1051,7 @@ export class Actions {
   }
 
   /** The plugin's recount (TR-062): owners from Paseo, the queue from the tracker, threads from the host. */
-  private async recountQueue(paseo: PaseoApi, project: string, tickets: readonly TicketSummary[], cap: number, withOwners = false): Promise<Recount> {
+  private async recountQueue(paseo: PaseoApi, project: string, tickets: readonly TicketSummary[], cap: number, withOwners = false, excluding: string | null = null): Promise<Recount> {
     const paths = await projectPaths(project);
     const queued: QueuedTicket[] = [];
     for (const ticket of queuedTickets(tickets)) {
@@ -1056,7 +1068,7 @@ export class Actions {
     }
     // With nothing queued only a resume needs the count (TR-088); a wake-up does not.
     const counted = withOwners || queued.length > 0;
-    const owners = !counted ? [] : (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner");
+    const owners = !counted ? [] : (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner" && agent.id !== excluding);
     const headroom = !counted ? null : await readHeadroom();
     return recount({ owners, tickets, queued, cap, threads: headroom === null ? null : { current: headroom.current, max: headroom.max } });
   }
@@ -1128,12 +1140,13 @@ export class Actions {
     const ticketId = archived?.labels[TARO_LABELS.ticket];
     if (archived === undefined || project === undefined || ticketId === undefined || archived.labels[TARO_LABELS.role] !== "owner") return;
     await serialized(`tracker-changed:${project}`, async () => {
+      if (this.replacing.has(`${project}:${ticketId.toUpperCase()}`)) return;
       const config = await requireProjectConfig(project);
       const paths = await projectPaths(project);
       const tickets = await listTickets(paths.tracker);
       const freed = tickets.find((candidate) => dependsOn([ticketId], candidate.id));
       if (freed === undefined || freed.parentTaskId !== null || !holdsSlot(freed.status) || queuedTickets(tickets).length === 0) return;
-      const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners);
+      const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners, false, agentId);
       if (!count.freeSlot || count.startable.length === 0 || this.queueWatch(project).wokenFor === situationKey(count)) return;
       const manager = await fetchLiveAgent(paseo, config.managerAgentId);
       if (manager === null) return;

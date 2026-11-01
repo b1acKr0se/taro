@@ -614,6 +614,34 @@ describe("an archived owner frees its slot without a status change (TR-245)", ()
     expect(told).toEqual([]);
   });
 
+  it("still wakes it while Paseo lists the archived owner for a moment", async () => {
+    const owner = agent("one", "DM-1", "owner");
+    live = [owner, agent("two", "DM-2", "owner")];
+    await archive(owner, [ticket("DM-1", "In Progress"), ticket("DM-2", "Planning"), ticket("DM-3", "Queued")]);
+    expect(told.map((entry) => [entry.path, entry.counting, entry.startable])).toEqual([["messages/owner-slot-freed.md", "1", "DM-3"]]);
+  });
+
+  it("stays quiet while the ticket's owner is being replaced: the new one takes the slot", async () => {
+    (actions as unknown as { replacing: Set<string> }).replacing.add("demo:DM-1");
+    await archive(agent("one", "DM-1", "owner"), [ticket("DM-1", "In Progress"), ticket("DM-3", "Queued")]);
+    expect(told).toEqual([]);
+  });
+
+  it("tells no one when no manager is live", async () => {
+    vi.mocked(fetchLiveAgent).mockResolvedValue(null);
+    await archive(agent("one", "DM-1", "owner"), [ticket("DM-1", "In Progress"), ticket("DM-3", "Queued")]);
+    expect(told).toEqual([]);
+  });
+
+  it("does not count a wake-up held for threads as made, so the idle check still wakes the manager", async () => {
+    tell = async () => "held";
+    const tickets = [ticket("DM-1", "In Progress"), ticket("DM-3", "Queued")];
+    await archive(agent("one", "DM-1", "owner"), tickets);
+    tell = async (text) => void told.push(flatten(text));
+    await archive(agent("one", "DM-1", "owner"), tickets);
+    expect(told.map((entry) => entry.path)).toEqual(["messages/owner-slot-freed.md"]);
+  });
+
   it("does not wake twice for the same situation", async () => {
     const tickets = [ticket("DM-1", "In Progress"), ticket("DM-3", "Queued")];
     await archive(agent("one", "DM-1", "owner"), tickets);
