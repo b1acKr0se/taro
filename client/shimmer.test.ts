@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { blendToWhite, SHIMMER_COPY_LIMIT, shimmerBandLevel, shimmerCopyText, shimmerMetrics, shimmerRuns, WEB_SHIMMER_COPY_BOX, webShimmerTrack } from "./shimmer";
+import { blendToWhite, SHIMMER_COPY_LIMIT, shimmerBandLevel, shimmerCopyText, shimmerMetrics, shimmerRuns, fadeColour, visibleLetters, WEB_SHIMMER_COPY_BOX, webShimmerTrack } from "./shimmer";
 
 describe("shimmerMetrics (TR-246)", () => {
   it("runs the band from a band before the words to a band past them, in letters", () => {
@@ -155,5 +155,26 @@ describe("shimmerCopyText", () => {
     expect(shimmerCopyText("x".repeat(SHIMMER_COPY_LIMIT + 50))).toHaveLength(SHIMMER_COPY_LIMIT);
     expect(shimmerCopyText("go vet")).toBe("go vet");
     expect(shimmerCopyText("")).toBe("");
+  });
+});
+
+describe("visibleLetters (TR-246)", () => {
+  it("crosses a cut-off command's visible row, not its hidden letters", () => {
+    const metrics = shimmerMetrics(visibleLetters(120, 340));
+    expect(metrics.to - metrics.from).toBeLessThan(340 / 7 + 2 * (120 / 7));
+    expect(visibleLetters(120, 340)).toBeCloseTo(340 / 7);
+  });
+
+  it("keeps a short text's own length in a wide row, and all letters before the row is measured", () => {
+    expect(visibleLetters(4, 340)).toBe(4);
+    expect(visibleLetters(120, 0)).toBe(120);
+  });
+});
+
+describe("fadeColour (TR-246)", () => {
+  it("dims a colour by alpha, as the label's opacity did, so a white span on it is not dimmed too", () => {
+    expect(fadeColour("#ffffff", 0.72)).toBe("rgba(255, 255, 255, 0.72)");
+    expect(fadeColour("rgba(0, 0, 0, 0.5)", 0.5)).toBe("rgba(0, 0, 0, 0.25)");
+    expect(fadeColour("tomato", 0.5)).toBe("tomato");
   });
 });

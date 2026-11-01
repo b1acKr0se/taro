@@ -32,7 +32,7 @@ export function shimmerDurationMs(characters: number): number {
 }
 
 /** Pixels one letter takes, on average: turns Paseo's 32 to 120 px band into letters, as a phone cannot measure single letters. */
-const LETTER_WIDTH = 7;
+export const LETTER_WIDTH = 7;
 
 /**
  * The phone's band over `characters` letters, as Paseo's: 28% of the words' width (32 to 120 px,
@@ -43,6 +43,11 @@ export function shimmerMetrics(characters: number): { durationMs: number; peakLe
   const letters = Math.max(0, characters);
   const peakLetters = Math.max(32 / LETTER_WIDTH, Math.min(120 / LETTER_WIDTH, letters * 0.28));
   return { durationMs: shimmerDurationMs(letters), peakLetters, from: -peakLetters, to: letters + peakLetters };
+}
+
+/** The letters of the words the row of `width` px shows, at most `characters`: the band crosses these, never the letters the row cuts off. Unmeasured (0 or less) shows all. */
+export function visibleLetters(characters: number, width: number): number {
+  return width > 0 ? Math.min(characters, width / LETTER_WIDTH) : characters;
 }
 
 /** Paseo's gradient at `across` (0 to 1) of the band: clear at the edges, 45% at a quarter, white across the middle fifth. */
@@ -93,6 +98,13 @@ export function blendToWhite(colour: string, level: number): string {
   const [red, green, blue, alpha] = channels;
   const mix = (channel: number) => Math.round(channel + (255 - channel) * level);
   return `rgba(${mix(red)}, ${mix(green)}, ${mix(blue)}, ${Math.round((alpha + (1 - alpha) * level) * 1000) / 1000})`;
+}
+
+/** `colour` at `alpha` of its own strength (a hex or rgb colour; one it cannot read is returned as it is). */
+export function fadeColour(colour: string, alpha: number): string {
+  const channels = readChannels(colour);
+  if (channels === null) return colour;
+  return `rgba(${channels[0]}, ${channels[1]}, ${channels[2]}, ${Math.round(channels[3] * alpha * 1000) / 1000})`;
 }
 
 function readChannels(colour: string): [number, number, number, number] | null {

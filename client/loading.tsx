@@ -15,7 +15,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AccessibilityInfo, Animated, Easing, Platform, Text, View, type LayoutChangeEvent } from "react-native";
 
-import { blendToWhite, shimmerDurationMs, shimmerMetrics, shimmerRuns, WEB_SHIMMER_COPY_BOX } from "./shimmer";
+import { blendToWhite, shimmerDurationMs, shimmerMetrics, shimmerRuns, visibleLetters, WEB_SHIMMER_COPY_BOX } from "./shimmer";
 import { SPACE } from "./spacing";
 import { SYNCED_LOADER_DOT_COUNT, SYNCED_LOADER_DURATION_MS, syncedLoaderDotSteps } from "./synced-loader-state";
 import { FONT_SIZE } from "./type-scale";
@@ -170,7 +170,9 @@ export function Shimmer({
   const reduced = useReducedMotion();
   const [size, setSize] = useState({ width: 0, height: 0 });
   const running = active && !reduced;
-  const metrics = shimmerMetrics(spanCharacters);
+  // The band crosses the letters the row shows, as Paseo's crosses its measured row: a command cut off
+  // by the row would otherwise run it over hidden letters, too fast and dark for most of each cycle.
+  const metrics = shimmerMetrics(visibleLetters(spanCharacters, size.width));
   const durationMs = shimmerDurationMs(characters);
   const position = useBandPosition(running && !WEB, metrics.from, metrics.to, durationMs);
   const measure = (event: LayoutChangeEvent) => {
@@ -196,7 +198,7 @@ export function Shimmer({
   }
   return (
     // Measured on the web while idle too: react-native-web watches a view's layout only when it has `onLayout` from the start.
-    <View style={style} onLayout={WEB ? measure : undefined}>
+    <View style={style} onLayout={WEB || active ? measure : undefined}>
       {render("base", paint)}
       {light}
     </View>
