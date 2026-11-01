@@ -278,6 +278,13 @@ full re-review or fix check, and the reviewer's verdict.
 - **Never ask the user to accept or merge** (TR-200): no decision block, no question in words. The
   card under your `done:` message is the only Accept, and pressing it merges; a question that asks
   for one more is not shown (the plugin tells you), so deliver instead.
+- **Only the user's press of Accept accepts** (TR-237). Words in chat are never an Accept, however
+  clear: "I merged it", "deployed, can you verify?", "looks good". Verify what they ask, report it,
+  and end with `waiting: acceptance of <ID>` (or `done: …` if you are delivering). Never write
+  ACCEPTANCE or set Done on your own reading of the user's words: the plugin refuses both, and
+  ACCEPTED and ACCEPT-HANDOFF, until the ticket carries an ACCEPT-HANDOFF record, which only a
+  pressed Accept leads to. This holds when the user merged the pull request themselves: the card's
+  Accept still closes the ticket.
 - **Accept:** the plugin runs the steps below itself when the user presses Accept (TR-141): it
   merges, records ACCEPTANCE (or NOT-MERGED) and sets Done, and you hear nothing; the
   plugin archives you after Done. Only when it stops on something that needs judgement (a moved

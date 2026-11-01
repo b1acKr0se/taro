@@ -19,6 +19,7 @@ import {
   type TicketStatus,
   type TicketSummary,
 } from "../shared/ticket-format.ts";
+import { acceptRefusal } from "../shared/accept-guard.ts";
 import {
   createTicketStore,
   RevisionConflict,
@@ -350,6 +351,10 @@ async function editVerb({ store, io, parsed }: VerbContext): Promise<number> {
   const changes = changesOf(parsed);
   if (Object.keys(changes).length === 0) throw new UsageError("Nothing to change: give at least one edit option.");
   const revision = single(parsed, "revision");
+  // The agent's command only; the plugin closes a ticket on Accept through the store itself (TR-237).
+  const current = (await store.view(id)).ticket;
+  const refusal = acceptRefusal(current, { status: changes.status, appendNotes: changes.appendNotes ?? [] });
+  if (refusal !== null) throw new UsageError(refusal);
   const ticket = await store.edit(id, changes, revision === undefined ? {} : { revision });
   if (has(parsed, "json")) {
     io.stdout(json({ ticket }));
