@@ -316,6 +316,7 @@ function TicketDetail({
         theme={theme}
         status={data.status}
         labels={data.labels}
+        dependencies={data.status === "Queued" ? data.dependencies : []}
         pause={data.pause}
         summary={summary}
         approve={approving === null ? null : { ...approving, presses: approvePresses }}
@@ -405,6 +406,7 @@ function SummaryBlock({
   theme,
   status,
   labels,
+  dependencies,
   pause,
   summary,
   approve,
@@ -415,6 +417,8 @@ function SummaryBlock({
   theme: PluginTheme;
   status: string;
   labels: readonly string[];
+  /** What a Queued ticket depends on, in full: its card names at most a few. */
+  dependencies: readonly string[];
   pause: PauseView | null;
   summary: TicketSummary;
   approve: { decision: StoredDecision; options: PlanCardOptions; presses: Actions } | null;
@@ -457,6 +461,7 @@ function SummaryBlock({
             pauseRow(pause, now).label,
             <Text style={text}>{pauseRow(pause, now).value}</Text>,
           )}
+      {dependencies.length === 0 ? null : row("Clock", colors.foregroundMuted, "Depends on:", <Text style={text}>{dependencies.join(", ")}</Text>)}
       {row(
         wanted ? "Hand" : "CircleCheck",
         wanted ? colors.statusWarning : colors.foregroundMuted,
