@@ -1116,6 +1116,32 @@ export class Actions {
     }
   }
 
+  /**
+   * An owner was archived (a park, an Archive, a close that was not relaunched): when its ticket held a
+   * slot, no status changes, so nothing else would tell the manager. Same wake-up as a freed slot, with
+   * the recount, once per situation (TR-245). An owner of a ticket already in a slot-free status was
+   * announced by that status change.
+   */
+  async onOwnerArchived(paseo: PaseoApi, agentId: string): Promise<void> {
+    const archived = (await paseo.agents.ref(agentId).refresh())?.agent;
+    const project = archived?.labels[TARO_LABELS.project];
+    const ticketId = archived?.labels[TARO_LABELS.ticket];
+    if (archived === undefined || project === undefined || ticketId === undefined || archived.labels[TARO_LABELS.role] !== "owner") return;
+    await serialized(`tracker-changed:${project}`, async () => {
+      const config = await requireProjectConfig(project);
+      const paths = await projectPaths(project);
+      const tickets = await listTickets(paths.tracker);
+      const freed = tickets.find((candidate) => dependsOn([ticketId], candidate.id));
+      if (freed === undefined || freed.parentTaskId !== null || !holdsSlot(freed.status) || queuedTickets(tickets).length === 0) return;
+      const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners);
+      if (!count.freeSlot || count.startable.length === 0 || this.queueWatch(project).wokenFor === situationKey(count)) return;
+      const manager = await fetchLiveAgent(paseo, config.managerAgentId);
+      if (manager === null) return;
+      const text = await message(TEMPLATES.ownerSlotFreed, { ticket: freed.id, status: freed.status, recount: await recountText(count) });
+      await this.recovery.tellManagerWhenHeadroom(paseo, project, manager.id, text, () => this.woken(project, count, `${freed.id}'s owner was archived, freeing its slot`));
+    });
+  }
+
   /** New Queued tickets that could start now, with the manager idle: it may have miscounted (TR-062). */
   private async wakeForNewTickets(paseo: PaseoApi, project: string, tickets: readonly TicketSummary[], lastLook: ReadonlyMap<string, string>): Promise<void> {
     const config = await requireProjectConfig(project);

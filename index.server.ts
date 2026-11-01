@@ -502,6 +502,7 @@ export default function contribute(server: PluginServerContext) {
     await removeReloadFile(agent.id).catch((error: unknown) => reportFailure(`[taro] removing ${agent.id}'s reload file:`, error));
     await chatQueue.forget(agent.id).catch((error: unknown) => reportFailure(`[taro] removing ${agent.id}'s chat queue:`, error));
     forgetOwnerStart(agent.id);
+    await actions.onOwnerArchived(paseo, agent.id).catch((error: unknown) => reportFailure(`[taro] waking the manager for ${agent.id}'s freed slot:`, error));
     const withdrawn = await supervisor.withdrawDecisionsOf(agent.id).catch((error: unknown) => {
       reportFailure(`[taro] withdrawing ${agent.id}'s decisions:`, error);
       return 0;
