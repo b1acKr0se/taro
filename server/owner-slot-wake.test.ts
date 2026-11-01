@@ -575,3 +575,77 @@ describe("a tracker onboarded again", () => {
     expect(told.map((entry) => [entry.ticket, entry.status])).toEqual([["DM-1", "Awaiting acceptance"]]);
   });
 });
+
+describe("an archived owner frees its slot without a status change (TR-245)", () => {
+  /** The archive hook's agent, read back by `refresh`; the owner is gone from the live list. */
+  async function archive(owner: PaseoAgent, tickets: ReturnType<typeof ticket>[]): Promise<void> {
+    vi.mocked(listTickets).mockResolvedValue(tickets);
+    const archivedPaseo = { agents: { ref: () => ({ refresh: async () => ({ agent: owner }) }) } } as unknown as PaseoApi;
+    await actions.onOwnerArchived(archivedPaseo, owner.id);
+  }
+
+  it("wakes the manager when a parked ticket's owner is archived and a queued ticket can start", async () => {
+    live = [agent("two", "DM-2", "owner")];
+    await archive(agent("one", "DM-1", "owner"), [ticket("DM-1", "In Progress"), ticket("DM-2", "Planning"), ticket("DM-3", "Queued")]);
+    expect(told.map((entry) => [entry.path, entry.ticket, entry.status, entry.counting, entry.startable])).toEqual([["messages/owner-slot-freed.md", "DM-1", "In Progress", "1", "DM-3"]]);
+  });
+
+  it("stays quiet when the owners still counting fill the cap", async () => {
+    live = [agent("two", "DM-2", "owner"), agent("three", "DM-3", "owner")];
+    await archive(agent("one", "DM-1", "owner"), [ticket("DM-1", "In Progress"), ticket("DM-2", "Planning"), ticket("DM-3", "Planning"), ticket("DM-4", "Queued")]);
+    expect(told).toEqual([]);
+  });
+
+  it("stays quiet when nothing is queued", async () => {
+    await archive(agent("one", "DM-1", "owner"), [ticket("DM-1", "In Progress")]);
+    expect(told).toEqual([]);
+  });
+
+  it("stays quiet for an owner of a ticket whose status change already announced the slot", async () => {
+    await archive(agent("one", "DM-1", "owner"), [ticket("DM-1", "Awaiting acceptance"), ticket("DM-2", "Queued")]);
+    await archive(agent("one", "DM-1", "owner"), [ticket("DM-1", "Done"), ticket("DM-2", "Queued")]);
+    expect(told).toEqual([]);
+  });
+
+  it("stays quiet for a subagent, and for a held ticket that cannot start", async () => {
+    await archive(agent("sub", "DM-1", "implementer"), [ticket("DM-1", "In Progress"), ticket("DM-2", "Queued")]);
+    notes = { "DM-2": "HOLD 2026-11-01T17:12Z — waiting on the user" };
+    await archive(agent("one", "DM-1", "owner"), [ticket("DM-1", "In Progress"), ticket("DM-2", "Queued")]);
+    expect(told).toEqual([]);
+  });
+
+  it("still wakes it while Paseo lists the archived owner for a moment", async () => {
+    const owner = agent("one", "DM-1", "owner");
+    live = [owner, agent("two", "DM-2", "owner")];
+    await archive(owner, [ticket("DM-1", "In Progress"), ticket("DM-2", "Planning"), ticket("DM-3", "Queued")]);
+    expect(told.map((entry) => [entry.path, entry.counting, entry.startable])).toEqual([["messages/owner-slot-freed.md", "1", "DM-3"]]);
+  });
+
+  it("stays quiet while the ticket's owner is being replaced: the new one takes the slot", async () => {
+    (actions as unknown as { replacing: Set<string> }).replacing.add("demo:DM-1");
+    await archive(agent("one", "DM-1", "owner"), [ticket("DM-1", "In Progress"), ticket("DM-3", "Queued")]);
+    expect(told).toEqual([]);
+  });
+
+  it("tells no one when no manager is live", async () => {
+    vi.mocked(fetchLiveAgent).mockResolvedValue(null);
+    await archive(agent("one", "DM-1", "owner"), [ticket("DM-1", "In Progress"), ticket("DM-3", "Queued")]);
+    expect(told).toEqual([]);
+  });
+
+  it("does not count a wake-up held for threads as made, so the idle check still wakes the manager", async () => {
+    tell = async () => "held";
+    const tickets = [ticket("DM-1", "In Progress"), ticket("DM-3", "Queued")];
+    await archive(agent("one", "DM-1", "owner"), tickets);
+    tell = async (text) => void told.push(flatten(text));
+    await archive(agent("one", "DM-1", "owner"), tickets);
+    expect(told.map((entry) => entry.path)).toEqual(["messages/owner-slot-freed.md"]);
+  });
+
+  it("does not wake twice for the same situation", async () => {
+    const tickets = [ticket("DM-1", "In Progress"), ticket("DM-3", "Queued")];
+    await archive(agent("one", "DM-1", "owner"), tickets);
+    await archive(agent("one", "DM-1", "owner"), tickets);
+    expect(told).toHaveLength(1);
+  });
+});
