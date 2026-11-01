@@ -1134,10 +1134,12 @@ function ToolLine({ tool, theme, styles }: { tool: ToolRow; theme: PluginTheme; 
   const running = tool.status === "running";
   // The label's width at rest, kept while the band recolours its letters: spans round differently from
   // one string, and the command beside it would move with the label's width (TR-246).
-  const [rested, setRested] = useState<{ label: string; width: number } | null>(null);
-  const pinned = Platform.OS !== "web" && rested !== null && rested.label === tool.label ? rested.width : undefined;
+  // Dropped when the label or the row's width changes (rotation, split view), as the label may then fit differently.
+  const [rowWidth, setRowWidth] = useState(0);
+  const [rested, setRested] = useState<{ label: string; rowWidth: number; width: number } | null>(null);
+  const pinned = Platform.OS !== "web" && rested !== null && rested.label === tool.label && rested.rowWidth === rowWidth ? rested.width : undefined;
   return (
-    <View style={styles.toolLine}>
+    <View style={styles.toolLine} onLayout={Platform.OS === "web" ? undefined : (event) => setRowWidth(event.nativeEvent.layout.width)}>
       {/* Its own icon while it runs, muted as in Paseo: the words shimmer instead (TR-183, TR-184). */}
       <Icon name={tool.status === "failed" ? "TriangleAlert" : tool.icon} size={13} color={tool.status === "failed" ? theme.colors.statusDanger : theme.colors.foregroundMuted} />
       <Shimmer
@@ -1151,7 +1153,7 @@ function ToolLine({ tool, theme, styles }: { tool: ToolRow; theme: PluginTheme; 
             <Text
               style={[styles.toolLabel, tone === "peak" ? styles.toolPeak : running ? styles.toolLabelRunning : null, pinned === undefined ? null : { width: pinned }]}
               numberOfLines={1}
-              onLayout={tone === "peak" || pinned !== undefined ? undefined : (event) => setRested({ label: tool.label, width: Math.ceil(event.nativeEvent.layout.width) })}
+              onLayout={tone === "peak" || pinned !== undefined ? undefined : (event) => setRested({ label: tool.label, rowWidth, width: Math.ceil(event.nativeEvent.layout.width) })}
             >
               {tone === "peak" ? tool.label : paint(tool.label, 0, running ? fadeColour(theme.colors.foreground, 0.72) : theme.colors.foreground)}
             </Text>

@@ -15,6 +15,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AccessibilityInfo, Animated, Easing, Platform, Text, View, type LayoutChangeEvent } from "react-native";
 
+import { createBandClock, runBandClock, sameRuns, type BandClock } from "./band-clock";
 import { blendToWhite, shimmerDurationMs, shimmerMetrics, shimmerRuns, visibleLetters, WEB_SHIMMER_COPY_BOX } from "./shimmer";
 import { SPACE } from "./spacing";
 import { SYNCED_LOADER_DOT_COUNT, SYNCED_LOADER_DURATION_MS, syncedLoaderDotSteps } from "./synced-loader-state";
@@ -130,26 +131,9 @@ function WebShimmerCopy({ durationMs, size, style, children }: { durationMs: num
 /** How often the phone's letters are recoloured: smooth to the eye, and only the few letters under the band change. */
 const PHONE_FRAME_MS = 33;
 
-/**
- * The band's left edge, in letters, ticking while `running`. A store apart from React state: the tool
- * line does not render on a tick, only the `PaintedWords` that subscribed (TR-246).
- */
-type BandClock = { position: number; listeners: Set<() => void> };
-
 function useBandClock(running: boolean, from: number, to: number, durationMs: number): BandClock {
-  const clock = useRef<BandClock>({ position: from, listeners: new Set() }).current;
-  useEffect(() => {
-    clock.position = from;
-    clock.listeners.forEach((listener) => listener());
-    if (!running) return;
-    const startedAt = Date.now();
-    const timer = setInterval(() => {
-      const share = ((Date.now() - startedAt) % durationMs) / durationMs;
-      clock.position = from + (to - from) * share;
-      clock.listeners.forEach((listener) => listener());
-    }, PHONE_FRAME_MS);
-    return () => clearInterval(timer);
-  }, [clock, running, from, to, durationMs]);
+  const clock = useRef<BandClock>(createBandClock(from)).current;
+  useEffect(() => runBandClock(clock, running, from, to, durationMs, PHONE_FRAME_MS), [clock, running, from, to, durationMs]);
   return clock;
 }
 
@@ -179,10 +163,6 @@ function PaintedWords({ clock, text, start, colour, peakLetters }: { clock: Band
       ))}
     </>
   );
-}
-
-function sameRuns(left: { text: string; level: number }[], right: { text: string; level: number }[]): boolean {
-  return left.length === right.length && left.every((run, index) => run.level === right[index]!.level && run.text === right[index]!.text);
 }
 
 /**

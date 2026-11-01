@@ -76,6 +76,7 @@ describe("the loader and the shimmer", () => {
     // The tick never sets the Shimmer's own state, so the tool line does not render again.
     const clockBody = loading.slice(loading.indexOf("function useBandClock("), loading.indexOf("function PaintedWords("));
     expect(clockBody).not.toMatch(/setState|setPosition|useState/);
+    expect(loading).toMatch(/return \(\) => \{\s*clock\.listeners\.delete\(follow\);/);
     expect(loading).toMatch(/sameRuns\(current, next\) \? current : next/);
   });
 
