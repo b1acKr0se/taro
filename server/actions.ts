@@ -1140,6 +1140,7 @@ export class Actions {
     const ticketId = archived?.labels[TARO_LABELS.ticket];
     if (archived === undefined || project === undefined || ticketId === undefined || archived.labels[TARO_LABELS.role] !== "owner") return;
     await serialized(`tracker-changed:${project}`, async () => {
+      // A relaunch that then fails leaves the slot free unannounced; the minute idle check wakes the manager for it.
       if (this.replacing.has(`${project}:${ticketId.toUpperCase()}`)) return;
       const config = await requireProjectConfig(project);
       const paths = await projectPaths(project);
