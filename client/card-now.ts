@@ -160,11 +160,14 @@ function callLines(call: CardCall, others: readonly CardCall[], now: number): Li
  */
 export function queuedWaitLines(wait: QueuedWait): Lines {
   if (wait.slot !== null && wait.dependencies.length === 0 && wait.hold === null) return queuedSlotLines(wait.slot);
-  const on = wait.on.map((ticket) => (ticket.status === null ? ticket.id : `${ticket.id} (${ticket.status})`));
-  const why = joined([wait.dependencies.length === 0 ? null : `Depends on ${wait.dependencies.join(", ")}`, wait.hold === null ? null : `Held: ${wait.hold}`]);
-  if (on.length === 0) return { headline: "Held by the manager", detail: wait.hold === null ? null : capitalised(wait.hold) };
-  return { headline: `Waits on ${on.join(", ")}`, detail: why };
+  if (wait.on.length === 0) return { headline: "Held by the manager", detail: wait.hold === null ? null : capitalised(wait.hold) };
+  // Ids only, once: the status of each is in the ticket view, and a long list is a count (TR-247).
+  const named = wait.on.length <= WAIT_NAMED_LIMIT ? wait.on.map((ticket) => ticket.id).join(", ") : `${wait.on.length} tickets`;
+  return { headline: `Waits on ${named}`, detail: wait.hold === null ? null : `Held: ${wait.hold}` };
 }
+
+/** Most tickets a Queued card names; more are counted. */
+const WAIT_NAMED_LIMIT = 3;
 
 /**
  * A startable ticket's wait (TR-142): every slot taken, else threads too high to start an owner, else a
