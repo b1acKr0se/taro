@@ -78,6 +78,7 @@ describe("ticket store", () => {
 
   it("creates a ticket, stamps created and updated, and views it", async () => {
     const tickets = store();
+    await writeTicketFile({ id: "TR-074" });
     const created = await tickets.create({
       title: 'Quotes "and": colons\nand a newline',
       description: "Some text",
@@ -86,13 +87,32 @@ describe("ticket store", () => {
       priority: "high",
       status: "Ready",
     });
-    expect(created).toMatchObject({ id: "TR-001", created: "2026-10-14T16:20:31Z", updated: "2026-10-14T16:20:31Z" });
-    const viewed = await tickets.view("TR-001");
+    expect(created).toMatchObject({ id: "TR-075", created: "2026-10-14T16:20:31Z", updated: "2026-10-14T16:20:31Z" });
+    const viewed = await tickets.view("TR-075");
     expect(viewed.ticket).toEqual(created);
     expect(viewed.ticket.labels).toEqual(["needs review", "two words"]);
     expect(viewed.ticket.title).toBe('Quotes "and": colons\nand a newline');
     expect(viewed.revision).toMatch(/^[0-9a-f]{16}$/);
-    expect(viewed.file).toBe("tickets/TR-001.md");
+    expect(viewed.file).toBe("tickets/TR-075.md");
+  });
+
+  it("rejects a dependency that is malformed or names no ticket, on create and on edit, writing nothing", async () => {
+    const tickets = store();
+    await writeTicketFile({ id: "TR-001" });
+    await expect(tickets.create({ title: "x", dependsOn: ["TR-001 TR-002"] })).rejects.toThrow(/not a ticket id/);
+    await expect(tickets.create({ title: "x", dependsOn: ["TR-009"] })).rejects.toThrow(/names no existing ticket/);
+    await expect(tickets.edit("TR-001", { addDependencies: ["tr 5"] })).rejects.toThrow(/not a ticket id/);
+    await expect(tickets.edit("TR-001", { addDependencies: ["TR-009"] })).rejects.toThrow(/names no existing ticket/);
+    await expect(tickets.editIf("TR-001", () => true, { addDependencies: ["TR-009"] })).rejects.toThrow(/names no existing ticket/);
+    expect((await tickets.view("TR-001")).ticket.dependsOn).toEqual([]);
+    expect((await tickets.list()).tickets.map((ticket) => ticket.id)).toEqual(["TR-001"]);
+  });
+
+  it("removeDependencies removes by exact text, including a stored entry that is not an id", async () => {
+    const tickets = store();
+    await writeTicketFile({ id: "TR-001", dependsOn: ["TR-002", "TR-003 TR-004", "TR-005"] });
+    await tickets.edit("TR-001", { removeDependencies: ["TR-003 TR-004", "TR-002", "TR-777"] });
+    expect((await tickets.view("TR-001")).ticket.dependsOn).toEqual(["TR-005"]);
   });
 
   it("rejects an empty title, an unknown status and a missing parent", async () => {
@@ -104,6 +124,7 @@ describe("ticket store", () => {
 
   describe("edit", () => {
     it("applies every kind of change in one write", async () => {
+      await writeTicketFile({ id: "TR-002" });
       await writeTicketFile({
         id: "TR-001",
         labels: ["a", "b"],

@@ -59,6 +59,8 @@ export interface TicketChanges {
   addLabels?: string[];
   removeLabels?: string[];
   addDependencies?: string[];
+  /** Removed by exact text, so a stored entry that is not a ticket id can be cleared too. */
+  removeDependencies?: string[];
   appendNotes?: string[];
   checkCriteria?: number[];
   uncheckCriteria?: number[];
@@ -150,7 +152,7 @@ const OWNERLESS_LOCK_STALE_MS = 10_000;
 const BREAKER_STALE_MS = 5_000;
 const STRAY_TEMP_MS = 60_000;
 const TRACKER_SCHEMA = 1;
-const ID_PATTERN = /^[A-Za-z][A-Za-z0-9]*-\d+(\.\d+)*$/;
+export const ID_PATTERN = /^[A-Za-z][A-Za-z0-9]*-\d+(\.\d+)*$/;
 const TICKET_FILE = /^[^.].*\.md$/;
 const TEMP_FILE = /\.tmp$/;
 
@@ -201,6 +203,16 @@ function compareIds(left: string, right: string): number {
 
 function assertId(id: string): void {
   if (!ID_PATTERN.test(id)) throw new Error(`"${id}" is not a ticket id (like TR-081 or TR-081.01).`);
+}
+
+/** Refuses a dependency that is not a ticket id or names no ticket file in `names`; the first bad one is named. */
+export function assertDependencies(dependencies: readonly string[], names: readonly string[]): void {
+  for (const dependency of dependencies) {
+    if (!ID_PATTERN.test(dependency)) {
+      throw new Error(`Dependency "${dependency}" is not a ticket id (like TR-081 or TR-081.01); pass one id per --dep, or a comma-separated list.`);
+    }
+    if (!names.includes(`${dependency}.md`)) throw new Error(`Dependency "${dependency}" names no existing ticket.`);
+  }
 }
 
 function unique(values: readonly string[]): string[] {
@@ -486,6 +498,10 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
       ticket.labels = ticket.labels.filter((label) => !removed.has(label));
     }
     if (changes.addDependencies !== undefined) ticket.dependsOn = unique([...ticket.dependsOn, ...changes.addDependencies]);
+    if (changes.removeDependencies !== undefined) {
+      const removed = new Set(changes.removeDependencies);
+      ticket.dependsOn = ticket.dependsOn.filter((dependency) => !removed.has(dependency));
+    }
     if (changes.checkCriteria !== undefined) setCriteria(ticket, changes.checkCriteria, true);
     if (changes.uncheckCriteria !== undefined) setCriteria(ticket, changes.uncheckCriteria, false);
     for (const record of changes.appendNotes ?? []) ticket.notes = withNote(ticket.notes, record);
@@ -583,6 +599,7 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
       await mkdir(ticketsDirectory, { recursive: true });
       const names = await ticketNames();
       if (parent !== null && !names.includes(`${parent}.md`)) throw new TicketNotFound(parent);
+      assertDependencies(input.dependsOn ?? [], names);
       const tracker = await readTracker(names);
       const id = nextId(tracker, names, parent);
       const stamp = timestampOf(now());
@@ -627,6 +644,7 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
       if (editOptions.revision !== undefined && editOptions.revision !== revision) {
         throw new RevisionConflict(id, editOptions.revision, revision);
       }
+      assertDependencies(changes.addDependencies ?? [], await ticketNames());
       applyChanges(ticket, changes);
       ticket.updated = timestampOf(now());
       await writeTicket(ticket);
@@ -640,6 +658,7 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
     return locked(async () => {
       const { ticket } = await readTicket(id);
       if (!when(ticket)) return null;
+      assertDependencies(changes.addDependencies ?? [], await ticketNames());
       applyChanges(ticket, changes);
       ticket.updated = timestampOf(now());
       await writeTicket(ticket);
