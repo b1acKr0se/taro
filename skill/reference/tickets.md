@@ -13,9 +13,10 @@ taro ticket edit SH-012 -s "Planning"
 taro ticket edit SH-012 --plan "<plan>" --revision <rev>   # templates/plan.md; its How I'll prove it holds the criteria
 taro ticket edit SH-012 --add-label complexity-medium
 taro ticket edit SH-012 --append-notes "<record>" --plain
+taro ticket edit SH-012 --dep SH-011 --remove-dep SH-009   # one id each, or comma-separated; --dep needs an existing ticket
 taro ticket edit SH-012 --check-ac 1                # an older ticket's acceptance criterion
 taro ticket edit SH-012 --final-summary "<FINAL>" -s "Awaiting acceptance" --revision <rev>   # templates/final.md
-taro ticket check                             # problems in any ticket file, one per line; exit 0 when clean
+taro ticket check                             # problems in any ticket file, bad dependencies included, one per line; exit 0 when clean
 ```
 
 After `ticket create`, read the allocated id back from its output (`Created <ID>`) — never invent one.

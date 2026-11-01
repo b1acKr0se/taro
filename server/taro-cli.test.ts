@@ -268,10 +268,12 @@ describe("taro ticket create", { timeout: CLI_TIMEOUT_MS }, () => {
 
   it("takes -l a,b, repeated -l, --dep lists, --priority and -s", () => {
     ok(["create", "Dep"]);
-    ok(["create", "One", "-l", "a,b", "-l", "c", "--dep", "TR-001,TR-009", "--dep", "TR-010", "--priority", "low", "-s", "Planning", "-d", "text"]);
-    expect(readTicket("TR-002")).toMatchObject({
+    ok(["create", "Dep two"]);
+    ok(["create", "Dep three"]);
+    ok(["create", "One", "-l", "a,b", "-l", "c", "--dep", "TR-001,TR-002", "--dep", "TR-003", "--priority", "low", "-s", "Planning", "-d", "text"]);
+    expect(readTicket("TR-004")).toMatchObject({
       labels: ["a", "b", "c"],
-      dependsOn: ["TR-001", "TR-009", "TR-010"],
+      dependsOn: ["TR-001", "TR-002", "TR-003"],
       priority: "low",
       status: "Planning",
       description: "text",
@@ -337,8 +339,51 @@ describe("taro ticket edit", { timeout: CLI_TIMEOUT_MS }, () => {
   });
 
   it("--dep adds dependencies", () => {
-    ok(["edit", "TR-002", "--dep", "TR-001,TR-003", "--dep", "TR-004"]);
-    expect(readTicket("TR-002").dependsOn).toEqual(["TR-001", "TR-003", "TR-004"]);
+    ok(["edit", "TR-002", "--dep", "TR-001,TR-001.01"]);
+    expect(readTicket("TR-002").dependsOn).toEqual(["TR-001", "TR-001.01"]);
+  });
+
+  it("--remove-dep removes listed dependencies, comma lists too, and ignores one not listed", () => {
+    writeTicket({ id: "TR-003", dependsOn: ["TR-001", "TR-002", "TR-001.01"] });
+    ok(["edit", "TR-003", "--remove-dep", "TR-001", "--remove-dep", "TR-001.01,TR-009"]);
+    expect(readTicket("TR-003").dependsOn).toEqual(["TR-002"]);
+  });
+
+  it("--remove-dep clears a stored entry that is not a ticket id, which --dep would refuse", () => {
+    writeTicket({ id: "TR-003", dependsOn: ["TR-001 TR-002", "TR-001"] });
+    ok(["edit", "TR-003", "--remove-dep", "TR-001 TR-002"]);
+    expect(readTicket("TR-003").dependsOn).toEqual(["TR-001"]);
+  });
+
+  it("--dep refuses a value joined with spaces and an unknown ticket, and changes nothing", () => {
+    const joined = ticketCommand(["edit", "TR-002", "--dep", "TR-001 TR-001.01"]);
+    expect(joined.code).toBe(1);
+    expect(joined.stderr).toContain('Dependency "TR-001 TR-001.01" is not a ticket id');
+    const unknown = ticketCommand(["edit", "TR-002", "--dep", "TR-001,TR-099"]);
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toContain('Dependency "TR-099" names no existing ticket');
+    expect(readTicket("TR-002").dependsOn).toEqual([]);
+  });
+
+  it("--dep forgives case and stores the ticket's spelling; --remove-dep forgives it when no exact entry matches", () => {
+    ok(["edit", "TR-002", "--dep", "tr-001"]);
+    expect(readTicket("TR-002").dependsOn).toEqual(["TR-001"]);
+    writeTicket({ id: "TR-003", dependsOn: ["tr-001"] });
+    ok(["edit", "TR-003", "--remove-dep", "TR-001"]);
+    expect(readTicket("TR-003").dependsOn).toEqual([]);
+    writeTicket({ id: "TR-004", dependsOn: ["TR-001", "tr-001"] });
+    ok(["edit", "TR-004", "--remove-dep", "tr-001"]);
+    expect(readTicket("TR-004").dependsOn).toEqual(["TR-001"]);
+  });
+
+  it("create refuses a bad --dep and creates nothing", () => {
+    const joined = ticketCommand(["create", "New", "--dep", "TR-001 TR-002"]);
+    expect(joined.code).toBe(1);
+    expect(joined.stderr).toContain("is not a ticket id");
+    const unknown = ticketCommand(["create", "New", "--dep", "TR-099"]);
+    expect(unknown.code).toBe(1);
+    expect(unknown.stderr).toContain("names no existing ticket");
+    expect(readdirSync(join(tracker, "tickets")).sort()).toEqual(["TR-001.01.md", "TR-001.md", "TR-002.md"]);
   });
 
   it("--priority sets it", () => {
@@ -376,7 +421,7 @@ describe("taro ticket edit", { timeout: CLI_TIMEOUT_MS }, () => {
     const before = readTicket("TR-001").updated;
     ok([
       "edit", "TR-001", "-s", "Reviewing", "-t", "All at once", "-d", "d", "--plan", "p", "--final-summary", "f",
-      "--add-label", "n", "--remove-label", "bug", "--dep", "TR-003", "--priority", "low", "--append-notes", "note",
+      "--add-label", "n", "--remove-label", "bug", "--dep", "TR-001.01", "--priority", "low", "--append-notes", "note",
       "--check-ac", "2", "--uncheck-ac", "1",
     ]);
     const ticket = readTicket("TR-001");
@@ -387,7 +432,7 @@ describe("taro ticket edit", { timeout: CLI_TIMEOUT_MS }, () => {
       plan: "p",
       finalSummary: "f",
       labels: ["web", "n"],
-      dependsOn: ["TR-002", "TR-003"],
+      dependsOn: ["TR-002", "TR-001.01"],
       priority: "low",
       notes: "MILESTONE one\n\nnote",
     });
@@ -476,6 +521,29 @@ describe("taro ticket check", { timeout: CLI_TIMEOUT_MS }, () => {
     expect(lines.some((line) => line.startsWith("tickets/TR-002.md"))).toBe(false);
     const parsed = JSON.parse(ticketCommand(["check", "--json"]).stdout);
     expect(parsed.problems[0]).toMatchObject({ file: "tickets/TR-003.md" });
+  });
+
+  it("reports a dependency that is not a ticket id or names no ticket, on its depends_on line", () => {
+    fullTicket();
+    writeTicket({ id: "TR-003", dependsOn: ["TR-001", "TR-001 TR-002", "TR-099"] });
+    const result = ticketCommand(["check"]);
+    expect(result.code).toBe(1);
+    const line = readFileSync(fileOf("TR-003"), "utf8").split("\n").findIndex((text) => text.startsWith("depends_on:")) + 1;
+    expect(result.stdout).toBe(
+      `tickets/TR-003.md:${line}: depends on "TR-001 TR-002", which is not a ticket id\n` +
+        `tickets/TR-003.md:${line}: depends on "TR-099", which names no existing ticket\n2 problems\n`,
+    );
+    expect(JSON.parse(ticketCommand(["check", "--json"]).stdout).problems).toHaveLength(2);
+  });
+
+  it("does not call a dependency on an unparseable ticket, or one differing in case, missing", () => {
+    fullTicket();
+    writeFileSync(fileOf("TR-003"), "no frontmatter at all\n");
+    writeTicket({ id: "TR-004", dependsOn: ["TR-003", "tr-001"] });
+    const result = ticketCommand(["check"]);
+    expect(result.stdout).toContain("tickets/TR-003.md");
+    expect(result.stdout).not.toContain("TR-004.md");
+    expect(result.stdout).toMatch(/\n1 problem\n$/);
   });
 
   it("reports a bad tracker.json", () => {

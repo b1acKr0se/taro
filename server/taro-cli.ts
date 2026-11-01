@@ -5,7 +5,7 @@
  *
  * The first word picks the command from `commands`.
  */
-import { readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,7 @@ import {
 import { acceptRefusal } from "../shared/accept-guard.ts";
 import {
   createTicketStore,
+  ID_PATTERN,
   RevisionConflict,
   TicketInvalid,
   TicketNotFound,
@@ -47,11 +48,12 @@ const USAGE = `Usage:
   taro ticket create <title> [-d <text>] [-l <label>]... [-p <parent>] [--dep <ID>]...
                      [--priority high|medium|low] [-s <status>]
   taro ticket edit <ID> [-s <status>] [-t <title>] [-d <text>] [--plan <text>] [--final-summary <text>]
-                   [--add-label <l>]... [--remove-label <l>]... [--dep <ID>]... [--priority <p>]
+                   [--add-label <l>]... [--remove-label <l>]... [--dep <ID>]... [--remove-dep <ID>]...
+                   [--priority <p>]
                    [--append-notes <text>]... [--check-ac <n>]... [--uncheck-ac <n>]...
                    [--revision <rev>] [--plain]
   taro ticket check [--json]
-Every ticket command takes --tracker <path> (or $TARO_TRACKER). -l and --dep accept comma-separated lists.`;
+Every ticket command takes --tracker <path> (or $TARO_TRACKER). -l, --dep and --remove-dep accept comma-separated lists.`;
 
 class UsageError extends Error {}
 
@@ -254,6 +256,7 @@ const EDIT_OPTIONS: OptionTable = {
   "--add-label": { key: "addLabel", value: true },
   "--remove-label": { key: "removeLabel", value: true },
   "--dep": { key: "dep", value: true },
+  "--remove-dep": { key: "removeDep", value: true },
   "--priority": { key: "priority", value: true },
   "--append-notes": { key: "appendNotes", value: true },
   "--check-ac": { key: "checkAc", value: true },
@@ -336,6 +339,8 @@ function changesOf(parsed: Parsed): TicketChanges {
   if (removeLabels !== undefined) changes.removeLabels = removeLabels;
   const dependencies = commaList(parsed, "dep");
   if (dependencies !== undefined) changes.addDependencies = dependencies;
+  const removedDependencies = commaList(parsed, "removeDep");
+  if (removedDependencies !== undefined) changes.removeDependencies = removedDependencies;
   const notes = parsed.options.get("appendNotes");
   if (notes !== undefined) changes.appendNotes = notes;
   const checked = numberList(parsed, "checkAc", "--check-ac");
@@ -402,9 +407,28 @@ async function trackerFileProblems(trackerPath: string): Promise<TicketProblem[]
   return problems;
 }
 
+/** Dependencies that are not ticket ids or name no ticket, one problem each, on the file's depends_on line. */
+async function dependencyProblems(trackerPath: string, tickets: readonly TicketSummary[]): Promise<TicketProblem[]> {
+  // From the file names, so a ticket that fails to parse still counts as existing; case is forgiven as the queue does.
+  const known = new Set((await readdir(join(trackerPath, "tickets")).catch(() => [] as string[])).filter((name) => name.endsWith(".md")).map((name) => name.slice(0, -3).toLowerCase()));
+  const problems: TicketProblem[] = [];
+  for (const ticket of tickets) {
+    const bad = ticket.dependsOn.filter((dependency) => !known.has(dependency.toLowerCase()));
+    if (bad.length === 0) continue;
+    const lines = (await readFile(join(trackerPath, ticket.file), "utf8")).split("\n");
+    const found = lines.findIndex((line) => line.startsWith("depends_on:"));
+    for (const dependency of bad) {
+      const reason = ID_PATTERN.test(dependency) ? "names no existing ticket" : "is not a ticket id";
+      problems.push({ file: ticket.file, line: found + 1 || 1, message: `depends on ${JSON.stringify(dependency)}, which ${reason}` });
+    }
+  }
+  return problems;
+}
+
 async function checkVerb({ store, trackerPath, io, parsed }: VerbContext): Promise<number> {
   expectPositionals(parsed, 0, "no arguments besides options");
-  const problems = [...(await trackerFileProblems(trackerPath)), ...(await store.list()).problems];
+  const listed = await store.list();
+  const problems = [...(await trackerFileProblems(trackerPath)), ...listed.problems, ...(await dependencyProblems(trackerPath, listed.tickets))];
   if (has(parsed, "json")) {
     io.stdout(json({ problems }));
   } else {
