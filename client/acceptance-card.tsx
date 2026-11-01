@@ -14,6 +14,8 @@ import { Text, View } from "react-native";
 import { acceptTicket, loadTicket, requestChanges, type Card } from "../shared/contracts";
 import { evidenceSummary } from "../shared/evidence";
 import { finalSummaryBody } from "../shared/execution";
+import { mayBuildBeforePlan } from "../shared/no-plan";
+import { parsePlan } from "../shared/plan";
 import { pullRequestMark } from "../shared/pull-request-state";
 import { roundFinalSummary } from "../shared/reopen";
 import { acceptanceReady } from "./card-calls";
@@ -21,6 +23,7 @@ import { notMergedText } from "./card-now";
 import { ChangeBox } from "./change-box";
 import { EvidenceBlock } from "./evidence-view";
 import { Pressable } from "./focus";
+import { PlanBody } from "./plan-card";
 import { errorText, pullRequestLabel, pullRequestNumberLabel } from "./format";
 import { pullRequestColor } from "./github-colors";
 import { useRevealFocused } from "./keyboard";
@@ -68,6 +71,9 @@ export function AcceptanceCard({
   const delivered = detail.data === undefined ? null : roundFinalSummary(detail.data.notes, detail.data.finalSummary);
   const summary = delivered === null ? null : finalSummaryBody(delivered);
   const evidence = detail.data?.evidence ?? null;
+  // A trivial or low ticket may be built before it is planned (TR-241): its plan is shown here, at delivery, instead of on an approval card.
+  const planSource = detail.data === undefined || !mayBuildBeforePlan(detail.data.labels) ? null : (detail.data.plan ?? "").trim();
+  const plan = useMemo(() => parsePlan(planSource), [planSource]);
   const ready = acceptanceReady(card);
   const pullRequestLook = pullRequestMark(card.pullRequestState, card.pullRequestMerged);
   const openLink = (url: string) => void openExternalUrl(url).catch((caught: unknown) => toast.error(errorText(caught)));
@@ -114,6 +120,14 @@ export function AcceptanceCard({
         <Text style={styles.muted}>{detail.isLoading ? "Loading the delivery…" : "No delivery summary recorded."}</Text>
       ) : (
         <Markdown source={summary} theme={theme} onOpenLink={openLink} />
+      )}
+      {planSource === null || planSource === "" ? null : (
+        <>
+          <View style={styles.rule} />
+          <Text style={styles.section}>PLAN</Text>
+          {/* A plan that does not follow the template shows as written, like the Ticket tab's older plans. */}
+          {plan === null ? <Markdown source={planSource} theme={theme} onOpenLink={openLink} /> : <PlanBody plan={plan} theme={theme} />}
+        </>
       )}
       {evidence === null ? null : (
         <>

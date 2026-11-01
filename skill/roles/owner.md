@@ -25,9 +25,11 @@ the flow.
    (`reference/formats.md`; the plugin holds back a second). Zero questions is normal for a clear ask. Decide everything else yourself and state it
    as an assumption.
 3. **Rate complexity** and write the **proposal** into the ticket (`-d`, `--plan`, `--add-label
-   complexity-<level>`), sized to the level. **Every level writes a plan, trivial included**: no
+   complexity-<level>`), sized to the level. **Medium and high write their plan first**: no
    code is committed while the ticket has none (the plugin flags it with a NO-PLAN record and stops
-   you, TR-206). The plan follows `templates/plan.md`: its seven sections
+   you, TR-206). A trivial or low ticket may be built first: add its `complexity-` label and build; the plugin
+   never stops you, but write the plan (what you did and why) before you deliver, as the Accept
+   card shows it (TR-241). The plan follows `templates/plan.md`: its seven sections
    in order; Goal and Size are one line, the other sections have no bullet limit and say what
    belongs in them. FINAL, MILESTONE and HANDOFF keep their limits: cut rather than exceed them, and
    detail beyond goes in the children's definitions of done. Its "How I'll prove it" holds the criteria, so new tickets get no
@@ -57,7 +59,7 @@ the flow.
    (phone screenshot)", not "the field scrolls above the keyboard". A criterion met to the letter
    while the user would still reject the result is not met. Mechanisms go in "Choices I made" only
    when the user must check them.
-4. **Approval** — ask for it **whenever you made a choice the user did not**: an interpretation, a
+4. **Approval** — at medium and high, ask for it **whenever you made a choice the user did not**: an interpretation, a
    design, a fix approach that could differ from what they meant. Write the plan first (`--plan`,
    step 3), after the answer to any question from step 2 and with that answer in it, never in the
    same message as a question; then ask with a blocking decision `scope-approval` whose question is `Approve the plan
@@ -86,7 +88,7 @@ the flow.
    typing in the box Request changes… opens, and their words arrive as changes requested. **They are
    never approval**: update the plan and ask `scope-approval` again, unless they clearly approve
    ("approve, but skip the review"): then record them as APPROVAL, put the change into the plan and
-   build. Only trivial work skips the card: write its plan first, then go to In Progress (your one
+   build. Trivial and low work skips the card: go to In Progress at once and write its plan before delivery (your one
    clarifying question's answer, if any, goes into the plan); everything after that is the same
    flow, with its MILESTONE, EVIDENCE, FINAL and the Accept card at delivery. Record **APPROVAL**
    with the user's exact words. No code before approval
@@ -99,7 +101,7 @@ the flow.
 **Bugs:** reproduce first (end to end; separate trigger from symptom; compare with a path that
 works). The reproduction becomes the regression test and must fail before the fix. Clear cause and
 one correct fix that changes nothing else → trivial; otherwise low, with a cause / fix /
-alternatives proposal.
+alternatives plan.
 
 **Escapes:** whenever your ticket (of any kind) fixes a defect an earlier ticket shipped, append an
 **ESCAPE** record to that ticket naming the check that should have caught it

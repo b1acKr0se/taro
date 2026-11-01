@@ -1125,6 +1125,18 @@ describe("Supervisor.onTurnEnded reminds about missing evidence", () => {
     vi.mocked(sendFromPlugin).mockClear();
   });
 
+  it("asks a trivial or low owner for its missing plan at delivery, and not once the plan is written (TR-241)", async () => {
+    const delivered = (plan: string | null) =>
+      vi.mocked(viewTicket).mockResolvedValue({ status: "Awaiting acceptance", labels: ["investigation", "complexity-low"], implementationPlan: plan, acceptanceCriteria: [], implementationNotes: recordWith("check: grep foo — 2 hits") } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+    delivered(null);
+    await turn();
+    expect(reminders()).toHaveLength(1);
+    expect(reminders()[0]).toContain("the plan: write it with `taro ticket edit --plan`");
+    delivered("## Goal\nFix it");
+    await turn();
+    expect(reminders()).toHaveLength(1);
+  });
+
   it("sends once per distinct missing set, again after it changes, and again after a complete one clears it", async () => {
     ticket("Awaiting acceptance", null);
     await turn();
@@ -1221,8 +1233,8 @@ describe("Supervisor.onTurnEnded with commits and no plan", () => {
     } as unknown as PluginState;
     return new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
   }
-  const ticket = (status: string, implementationPlan: string | null) =>
-    vi.mocked(viewTicket).mockResolvedValue({ status, implementationPlan, acceptanceCriteria: [], implementationNotes: null, labels: [] } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+  const ticket = (status: string, implementationPlan: string | null, labels: string[] = []) =>
+    vi.mocked(viewTicket).mockResolvedValue({ status, implementationPlan, acceptanceCriteria: [], implementationNotes: null, labels } as unknown as Awaited<ReturnType<typeof viewTicket>>);
   const told = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("no-plan:"));
   const records = () => vi.mocked(appendTicketNote).mock.calls.map(([, , record]) => record);
   const end = (taro: Supervisor) => taro.onTurnEnded(withTimeline(reply), hookAgent, completed, null, undefined);
@@ -1270,6 +1282,23 @@ describe("Supervisor.onTurnEnded with commits and no plan", () => {
     ticket("In Progress", "");
     await end(taro);
     expect(told()).toEqual(["no-plan:TR-9:taro/tr-9:1 commit:main", "no-plan:TR-9:taro/tr-9:1 commit:main"]);
+  });
+
+  it("never stops a trivial or low owner that committed before its plan (TR-241)", async () => {
+    commits = 2;
+    for (const label of ["complexity-trivial", "complexity-low"]) {
+      ticket("In Progress", null, [label]);
+      await end(supervisor());
+    }
+    expect(told()).toEqual([]);
+    expect(records()).toEqual([]);
+  });
+
+  it("still stops a medium owner that committed before its plan", async () => {
+    commits = 2;
+    ticket("In Progress", null, ["complexity-medium"]);
+    await end(supervisor());
+    expect(told()).toHaveLength(1);
   });
 
   it("leaves an older ticket alone whose criteria checklist stands for its plan", async () => {

@@ -12,7 +12,7 @@ import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compa
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
-import { lacksPlan, noPlanRecord } from "../shared/no-plan";
+import { lacksPlan, mayBuildBeforePlan, noPlanRecord } from "../shared/no-plan";
 import { asPlanningQuestion, asStored, planningTicket } from "../shared/planning-questions";
 import type { DrainTrigger } from "../shared/chat-queue";
 import { receivedMessage } from "../shared/received-message";
@@ -444,7 +444,13 @@ export class Supervisor {
     let missing: string[] = [];
     try {
       const detail = await viewTicket((await projectPaths(identity.project)).tracker, identity.ticket);
-      if (detail.status === "Awaiting acceptance") missing = (await ticketEvidence(identity.project, identity.ticket, detail.implementationNotes, detail.labels)).missing;
+      if (detail.status === "Awaiting acceptance") {
+        missing = (await ticketEvidence(identity.project, identity.ticket, detail.implementationNotes, detail.labels)).missing;
+        // A trivial or low owner may build first (TR-241), but the Accept card shows its plan: it is due at delivery.
+        if (mayBuildBeforePlan(detail.labels) && lacksPlan({ status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length, labels: [] })) {
+          missing = [...missing, "the plan: write it with `taro ticket edit --plan` (what you did and why, following the plan template); the Accept card shows it"];
+        }
+      }
     } catch {
       return false;
     }
@@ -478,7 +484,7 @@ export class Supervisor {
     let found: { commits: number; branch: string; base: string } | null = null;
     try {
       const detail = await viewTicket((await projectPaths(identity.project)).tracker, identity.ticket);
-      lacking = lacksPlan({ status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length });
+      lacking = lacksPlan({ status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length, labels: detail.labels });
       const base = lacking ? (await readProjectConfig(identity.project))?.baseBranch : undefined;
       const commits = base === undefined ? 0 : await commitsPast(agent.cwd, base);
       if (base !== undefined && commits > 0) found = { commits, branch: await branchName(agent.cwd), base };
