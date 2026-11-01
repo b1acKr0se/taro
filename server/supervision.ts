@@ -478,7 +478,7 @@ export class Supervisor {
     let found: { commits: number; branch: string; base: string } | null = null;
     try {
       const detail = await viewTicket((await projectPaths(identity.project)).tracker, identity.ticket);
-      lacking = lacksPlan({ status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length });
+      lacking = lacksPlan({ status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length, labels: detail.labels });
       const base = lacking ? (await readProjectConfig(identity.project))?.baseBranch : undefined;
       const commits = base === undefined ? 0 : await commitsPast(agent.cwd, base);
       if (base !== undefined && commits > 0) found = { commits, branch: await branchName(agent.cwd), base };

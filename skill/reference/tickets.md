@@ -150,8 +150,8 @@ rather than exceed it.
   path; an owner writes them only after a hand-off.
 - **ANSWER**: written by the plugin when the user answers a decision.
 - **NO-PLAN**: written by the plugin when an owner's turn ends with commits on its branch and no
-  plan on the ticket (TR-206); the owner is told to stop, write the plan and, above trivial, ask
-  `scope-approval` before building on.
+  plan on the ticket (TR-206); the owner is told to stop, write the plan and ask `scope-approval`
+  before building on. A ticket labelled `complexity-trivial` or `complexity-low` is never flagged (TR-241).
 - **ESCAPE**: on a delivered ticket, when a later ticket fixes a defect it shipped; written by the
   later ticket's owner. What escaped, the fixing ticket, and the check that should have caught it
   (coverage map, alignment, placeholder text, a test, a review area):
