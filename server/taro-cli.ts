@@ -5,7 +5,7 @@
  *
  * The first word picks the command from `commands`.
  */
-import { readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -409,10 +409,11 @@ async function trackerFileProblems(trackerPath: string): Promise<TicketProblem[]
 
 /** Dependencies that are not ticket ids or name no ticket, one problem each, on the file's depends_on line. */
 async function dependencyProblems(trackerPath: string, tickets: readonly TicketSummary[]): Promise<TicketProblem[]> {
-  const known = new Set(tickets.map((ticket) => ticket.id));
+  // From the file names, so a ticket that fails to parse still counts as existing; case is forgiven as the queue does.
+  const known = new Set((await readdir(join(trackerPath, "tickets")).catch(() => [] as string[])).filter((name) => name.endsWith(".md")).map((name) => name.slice(0, -3).toLowerCase()));
   const problems: TicketProblem[] = [];
   for (const ticket of tickets) {
-    const bad = ticket.dependsOn.filter((dependency) => !known.has(dependency));
+    const bad = ticket.dependsOn.filter((dependency) => !known.has(dependency.toLowerCase()));
     if (bad.length === 0) continue;
     const lines = (await readFile(join(trackerPath, ticket.file), "utf8")).split("\n");
     const found = lines.findIndex((line) => line.startsWith("depends_on:"));

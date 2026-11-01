@@ -108,6 +108,15 @@ describe("ticket store", () => {
     expect((await tickets.list()).tickets.map((ticket) => ticket.id)).toEqual(["TR-001"]);
   });
 
+  it("stores a dependency in the ticket file's spelling when given another case", async () => {
+    const tickets = store();
+    await writeTicketFile({ id: "TR-001" });
+    const created = await tickets.create({ title: "x", dependsOn: ["tr-001"] });
+    expect(created.dependsOn).toEqual(["TR-001"]);
+    const edited = await tickets.edit("TR-001", { addDependencies: ["tr-002"] });
+    expect(edited.dependsOn).toEqual(["TR-002"]);
+  });
+
   it("removeDependencies removes by exact text, including a stored entry that is not an id", async () => {
     const tickets = store();
     await writeTicketFile({ id: "TR-001", dependsOn: ["TR-002", "TR-003 TR-004", "TR-005"] });

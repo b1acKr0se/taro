@@ -365,6 +365,17 @@ describe("taro ticket edit", { timeout: CLI_TIMEOUT_MS }, () => {
     expect(readTicket("TR-002").dependsOn).toEqual([]);
   });
 
+  it("--dep forgives case and stores the ticket's spelling; --remove-dep forgives it when no exact entry matches", () => {
+    ok(["edit", "TR-002", "--dep", "tr-001"]);
+    expect(readTicket("TR-002").dependsOn).toEqual(["TR-001"]);
+    writeTicket({ id: "TR-003", dependsOn: ["tr-001"] });
+    ok(["edit", "TR-003", "--remove-dep", "TR-001"]);
+    expect(readTicket("TR-003").dependsOn).toEqual([]);
+    writeTicket({ id: "TR-004", dependsOn: ["TR-001", "tr-001"] });
+    ok(["edit", "TR-004", "--remove-dep", "tr-001"]);
+    expect(readTicket("TR-004").dependsOn).toEqual(["TR-001"]);
+  });
+
   it("create refuses a bad --dep and creates nothing", () => {
     const joined = ticketCommand(["create", "New", "--dep", "TR-001 TR-002"]);
     expect(joined.code).toBe(1);
@@ -523,6 +534,16 @@ describe("taro ticket check", { timeout: CLI_TIMEOUT_MS }, () => {
         `tickets/TR-003.md:${line}: depends on "TR-099", which names no existing ticket\n2 problems\n`,
     );
     expect(JSON.parse(ticketCommand(["check", "--json"]).stdout).problems).toHaveLength(2);
+  });
+
+  it("does not call a dependency on an unparseable ticket, or one differing in case, missing", () => {
+    fullTicket();
+    writeFileSync(fileOf("TR-003"), "no frontmatter at all\n");
+    writeTicket({ id: "TR-004", dependsOn: ["TR-003", "tr-001"] });
+    const result = ticketCommand(["check"]);
+    expect(result.stdout).toContain("tickets/TR-003.md");
+    expect(result.stdout).not.toContain("TR-004.md");
+    expect(result.stdout).toMatch(/\n1 problem\n$/);
   });
 
   it("reports a bad tracker.json", () => {
