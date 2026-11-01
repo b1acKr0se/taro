@@ -1132,6 +1132,10 @@ function SendMarkLine({
 /** One tool call as Paseo lists it: its icon, its label and, quieter, the command or path, on one line. */
 function ToolLine({ tool, theme, styles }: { tool: ToolRow; theme: PluginTheme; styles: ChatStyles }) {
   const running = tool.status === "running";
+  // The label's width at rest, kept while the band recolours its letters: spans round differently from
+  // one string, and the command beside it would move with the label's width (TR-246).
+  const [rested, setRested] = useState<{ label: string; width: number } | null>(null);
+  const pinned = Platform.OS !== "web" && rested !== null && rested.label === tool.label ? rested.width : undefined;
   return (
     <View style={styles.toolLine}>
       {/* Its own icon while it runs, muted as in Paseo: the words shimmer instead (TR-183, TR-184). */}
@@ -1144,7 +1148,11 @@ function ToolLine({ tool, theme, styles }: { tool: ToolRow; theme: PluginTheme; 
         render={(tone, paint) => (
           <>
             {/* Apart, not one text with spaces: the web build collapses the spaces Paseo's gap stands for. */}
-            <Text style={[styles.toolLabel, tone === "peak" ? styles.toolPeak : running ? styles.toolLabelRunning : null]} numberOfLines={1}>
+            <Text
+              style={[styles.toolLabel, tone === "peak" ? styles.toolPeak : running ? styles.toolLabelRunning : null, pinned === undefined ? null : { width: pinned }]}
+              numberOfLines={1}
+              onLayout={tone === "peak" || pinned !== undefined ? undefined : (event) => setRested({ label: tool.label, width: Math.ceil(event.nativeEvent.layout.width) })}
+            >
               {tone === "peak" ? tool.label : paint(tool.label, 0, running ? fadeColour(theme.colors.foreground, 0.72) : theme.colors.foreground)}
             </Text>
             {tool.summary === undefined ? null : (

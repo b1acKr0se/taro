@@ -55,7 +55,7 @@ describe("the loader and the shimmer", () => {
     expect(loading).toMatch(/useLoop\(step, 0, SYNCED_LOADER_DOT_COUNT, SYNCED_LOADER_DURATION_MS, reduced\)/);
     expect(loading).toMatch(/const running = active && !reduced;/);
     // The phone's letters are recoloured by a timer that runs only while moving (TR-246).
-    expect(loading).toMatch(/useBandPosition\(running && !WEB,/);
+    expect(loading).toMatch(/useBandClock\(running && !WEB,/);
     // The web's copy, whose animation runs in the browser, is drawn only while moving (TR-184).
     expect(loading).toMatch(/if \(WEB && running && size\.width > 0 && webShimmerSupported\(\)\) \{/);
   });
@@ -68,8 +68,21 @@ describe("the loader and the shimmer", () => {
   it("draws the phone's shimmer in the words' own text, never as copies laid over them (TR-246)", () => {
     expect(loading).not.toMatch(/ShimmerBand|shimmerLayers|overflow: "hidden"/);
     const shimmer = loading.slice(loading.indexOf("export function Shimmer("));
-    expect(shimmer).toMatch(/shimmerRuns\(text, start, position, metrics\.peakLetters\)/);
-    expect(shimmer).toMatch(/if \(WEB \|\| !running\) return text;/);
+    expect(loading).toMatch(/shimmerRuns\(text, start, clock\.position, peakLetters\)/);
+    expect(shimmer).toMatch(/if \(WEB \|\| !active\) return text;/);
+  });
+
+  it("recolours on a tick only the painted spans, and only when a shade changed (TR-246)", () => {
+    // The tick never sets the Shimmer's own state, so the tool line does not render again.
+    const clockBody = loading.slice(loading.indexOf("function useBandClock("), loading.indexOf("function PaintedWords("));
+    expect(clockBody).not.toMatch(/setState|setPosition|useState/);
+    expect(loading).toMatch(/sameRuns\(current, next\) \? current : next/);
+  });
+
+  it("keeps the label's width from rest while the band recolours it (TR-246)", () => {
+    const chat = read("agent-chat.tsx");
+    expect(chat).toMatch(/\{ width: pinned \}/);
+    expect(chat).toMatch(/Math\.ceil\(event\.nativeEvent\.layout\.width\)/);
   });
 
   it("styles the web's copy before the browser paints it, and again when its words change (TR-184)", () => {
