@@ -15,6 +15,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AccessibilityInfo, Animated, Easing, Platform, Text, View, type LayoutChangeEvent } from "react-native";
 
+import { createBandClock, runBandClock, sameRuns, type BandClock } from "./band-clock";
 import { blendToWhite, shimmerDurationMs, shimmerMetrics, shimmerRuns, visibleLetters, WEB_SHIMMER_COPY_BOX } from "./shimmer";
 import { SPACE } from "./spacing";
 import { SYNCED_LOADER_DOT_COUNT, SYNCED_LOADER_DURATION_MS, syncedLoaderDotSteps } from "./synced-loader-state";
@@ -130,20 +131,38 @@ function WebShimmerCopy({ durationMs, size, style, children }: { durationMs: num
 /** How often the phone's letters are recoloured: smooth to the eye, and only the few letters under the band change. */
 const PHONE_FRAME_MS = 33;
 
-/** The band's left edge, in letters, while `running`: from `from` to `to` every `durationMs`, as Paseo's track. */
-function useBandPosition(running: boolean, from: number, to: number, durationMs: number): number {
-  const [position, setPosition] = useState(from);
+function useBandClock(running: boolean, from: number, to: number, durationMs: number): BandClock {
+  const clock = useRef<BandClock>(createBandClock(from)).current;
+  useEffect(() => runBandClock(clock, running, from, to, durationMs, PHONE_FRAME_MS), [clock, running, from, to, durationMs]);
+  return clock;
+}
+
+/**
+ * The phone's words, one span per run of letters at one shade. It follows the clock itself and
+ * renders again only when some letter's shade changed, so a tick costs these spans and not the line.
+ */
+function PaintedWords({ clock, text, start, colour, peakLetters }: { clock: BandClock; text: string; start: number; colour: string; peakLetters: number }) {
+  const runsAt = () => shimmerRuns(text, start, clock.position, peakLetters);
+  const [runs, setRuns] = useState(runsAt);
   useEffect(() => {
-    setPosition(from);
-    if (!running) return;
-    const startedAt = Date.now();
-    const timer = setInterval(() => {
-      const share = ((Date.now() - startedAt) % durationMs) / durationMs;
-      setPosition(from + (to - from) * share);
-    }, PHONE_FRAME_MS);
-    return () => clearInterval(timer);
-  }, [running, from, to, durationMs]);
-  return position;
+    const follow = () => {
+      const next = runsAt();
+      setRuns((current) => (sameRuns(current, next) ? current : next));
+    };
+    follow();
+    clock.listeners.add(follow);
+    return () => {
+      clock.listeners.delete(follow);
+    };
+  }, [clock, text, start, peakLetters]);
+  return (
+    <>
+      {runs.map((run, index) => (
+        // inherits colour: the run's own, a mix of the text's with white (level 0 is the text's own).
+        <Text key={index} style={{ color: blendToWhite(colour, run.level) }}>{run.text}</Text>
+      ))}
+    </>
+  );
 }
 
 /**
@@ -174,19 +193,15 @@ export function Shimmer({
   // by the row would otherwise run it over hidden letters, too fast and dark for most of each cycle.
   const metrics = shimmerMetrics(visibleLetters(spanCharacters, size.width));
   const durationMs = shimmerDurationMs(characters);
-  const position = useBandPosition(running && !WEB, metrics.from, metrics.to, durationMs);
+  const clock = useBandClock(running && !WEB, metrics.from, metrics.to, durationMs);
   const measure = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
     if (width !== size.width || height !== size.height) setSize({ width, height });
   };
+  // On a phone the same spans at rest and mid-run, so the words' layout never changes with the band.
   const paint = (text: string, start: number, colour: string): ReactNode => {
-    if (WEB || !running) return text;
-    const runs = shimmerRuns(text, start, position, metrics.peakLetters);
-    if (runs.every((run) => run.level === 0)) return text;
-    return runs.map((run, index) => (run.level === 0 ? run.text : (
-      // inherits colour: the run's own, a mix of the text's with white.
-      <Text key={index} style={{ color: blendToWhite(colour, run.level) }}>{run.text}</Text>
-    )));
+    if (WEB || !active) return text;
+    return <PaintedWords clock={clock} text={text} start={start} colour={colour} peakLetters={metrics.peakLetters} />;
   };
   let light: ReactNode = null;
   if (WEB && running && size.width > 0 && webShimmerSupported()) {

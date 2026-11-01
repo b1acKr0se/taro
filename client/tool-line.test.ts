@@ -15,7 +15,7 @@ const toolLine = chat.slice(chat.indexOf("function ToolLine("), chat.indexOf("\n
 describe("a tool call's line", () => {
   it("draws the label and the detail as separate texts, never one text spaced apart", () => {
     expect(toolLine).not.toBe("");
-    expect(toolLine).toMatch(/<Text style=\{\[?styles\.toolLabel\b[^>]*>\s*\{tone === "peak" \? tool\.label : paint\(tool\.label, 0, running \? fadeColour\(theme\.colors\.foreground, 0\.72\) : theme\.colors\.foreground\)\}\s*<\/Text>/);
+    expect(toolLine).toMatch(/<Text\s[^>]*?styles\.toolLabel\b[\s\S]*?>\s*\{tone === "peak" \? tool\.label : paint\(tool\.label, 0, running \? fadeColour\(theme\.colors\.foreground, 0\.72\) : theme\.colors\.foreground\)\}\s*<\/Text>/);
     expect(toolLine).toMatch(/<Text style=\{\[?styles\.toolText\b[^>]*>\s*\{tone === "peak" \? shimmerCopyText\(tool\.summary\) : paint\(tool\.summary, tool\.label\.length, theme\.colors\.foregroundMuted\)\}\s*<\/Text>/);
     expect(toolLine).not.toMatch(/` +\$\{tool\.summary\}`/);
   });
