@@ -359,6 +359,15 @@ function TicketDetail({
         onReopened={told}
         closable={data.closable}
       />
+      {data.pullRequestBodyWarning === null ? null : (
+        // The PR's description does not follow the default template (TR-250): a warning, nothing is blocked.
+        <View style={styles.line}>
+          <View style={styles.lineIcon}>
+            <Icon name="TriangleAlert" size={15} color={colors.statusWarning} />
+          </View>
+          <Text style={styles.text}>{data.pullRequestBodyWarning}</Text>
+        </View>
+      )}
       {data.specChangeable ? <SpecChangeBox project={project} ticket={ticket} theme={theme} open={specOpen} onOpenChange={setSpecOpen} onSent={() => void detail.refetch()} /> : null}
       {sections.length === 0 ? null : (
         <View

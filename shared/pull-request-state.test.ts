@@ -1,7 +1,7 @@
 // TR-152: the PR mark follows the pull request's state on GitHub.
 import { describe, expect, it } from "vitest";
 
-import { parsePullRequestState, pullRequestMark, stateLifetimeMs } from "./pull-request-state";
+import { parsePullRequestDescription, parsePullRequestState, pullRequestMark, stateLifetimeMs } from "./pull-request-state";
 
 describe("parsePullRequestState", () => {
   it("reads draft, open, merged and closed, whatever the case", () => {
@@ -50,5 +50,22 @@ describe("pullRequestMark", () => {
 
   it("lets a recorded merge win over an older answer from GitHub", () => {
     for (const state of ["draft", "open", "closed"] as const) expect(pullRequestMark(state, true).tone).toBe("merged");
+  });
+});
+
+describe("parsePullRequestDescription", () => {
+  it("reads the body and each commit's whole message", () => {
+    const stdout = JSON.stringify({
+      body: "Body",
+      commits: [{ messageHeadline: "feat: a", messageBody: "Why.\n" }, { messageHeadline: "fix: b", messageBody: "" }],
+    });
+    expect(parsePullRequestDescription(stdout)).toEqual({ body: "Body", commitMessages: ["feat: a\n\nWhy.\n", "fix: b"] });
+  });
+
+  it("is null when gh does not say", () => {
+    expect(parsePullRequestDescription("")).toBeNull();
+    expect(parsePullRequestDescription(JSON.stringify({ body: "x" }))).toBeNull();
+    expect(parsePullRequestDescription(JSON.stringify({ commits: [] }))).toBeNull();
+    expect(parsePullRequestDescription(JSON.stringify({ body: "x", commits: [{ messageBody: "only" }] }))).toEqual({ body: "x", commitMessages: [] });
   });
 });

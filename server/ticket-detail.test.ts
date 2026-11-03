@@ -10,7 +10,12 @@ import { loadTicketDetail } from "./board";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import { childRecords, listTickets, viewTicket } from "./tickets";
 
-vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: "/tracker" }) }));
+const config = vi.hoisted(() => ({ value: null as { delivery: string; repoPath: string } | null }));
+const template = vi.hoisted(() => ({ present: false }));
+const described = vi.hoisted(() => ({ value: null as { body: string; commitMessages: string[] } | null }));
+vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: "/tracker" }), readProjectConfig: async () => config.value }));
+vi.mock("./repository-template", () => ({ hasRepositoryTemplate: async () => template.present }));
+vi.mock("./pull-request-states", () => ({ createPullRequestStates: () => ({ current: () => "open", description: () => described.value }) }));
 vi.mock("./agents", async (original) => ({ ...(await original<typeof import("./agents")>()), projectAgents: vi.fn(async () => []) }));
 vi.mock("./tickets", () => ({ listTickets: vi.fn(), viewTicket: vi.fn(), childRecords: vi.fn() }));
 
@@ -38,6 +43,9 @@ beforeEach(() => {
   vi.mocked(viewTicket).mockReset();
   vi.mocked(childRecords).mockReset().mockImplementation(async (_tracker, id) => ({ id, status: "Done", labels: [], notes: null }));
   vi.mocked(projectAgents).mockReset().mockResolvedValue([]);
+  config.value = null;
+  template.present = false;
+  described.value = null;
 });
 
 describe("loadTicketDetail children", () => {
@@ -169,5 +177,41 @@ describe("loadTicketDetail closable", () => {
       vi.mocked(viewTicket).mockResolvedValue({ ...parent([], parentTaskId), status, implementationNotes } as Viewed);
       expect((await loadTicketDetail({} as PaseoApi, "notes", "NA-1")).closable).toBe(closable);
     }
+  });
+});
+
+// TR-250: the Ticket tab warns when a default-template pull request has a free-form body; never more than a warning.
+describe("loadTicketDetail pullRequestBodyWarning", () => {
+  const FREE_FORM = { body: "Pins notes.", commitMessages: ["feat: pin notes"] };
+  async function warning(options: { status?: string; notes?: string; delivery?: string; hasTemplate?: boolean; description?: typeof described.value } = {}) {
+    config.value = { delivery: options.delivery ?? "pull-request", repoPath: "/repo" };
+    template.present = options.hasTemplate ?? false;
+    described.value = options.description === undefined ? FREE_FORM : options.description;
+    const viewed = parent([]);
+    vi.mocked(viewTicket).mockResolvedValue({
+      ...viewed,
+      status: options.status ?? "Awaiting acceptance",
+      implementationNotes: options.notes ?? "EXECUTION 2026-01-01T10:00Z — pr: https://github.com/example/notes-app/pull/7",
+    } as unknown as Viewed);
+    return (await loadTicketDetail({} as PaseoApi, "notes", "NA-1")).pullRequestBodyWarning;
+  }
+
+  it("warns on a body without the template's headings", async () => {
+    expect(await warning()).toBe("The pull request description has no What changed, Ticket, Checks, Evidence sections, but the default template applies. Fix the description, or record why the template does not fit.");
+  });
+
+  it("stays silent for a good body, an unread one, a repository template, local-only delivery, a waiver or another status", async () => {
+    expect(await warning({ description: { body: "x\n## What changed\n## Ticket\n## Checks\n## Evidence", commitMessages: [] } })).toBeNull();
+    expect(await warning({ description: null })).toBeNull();
+    expect(await warning({ hasTemplate: true })).toBeNull();
+    expect(await warning({ delivery: "local-only" })).toBeNull();
+    expect(await warning({ notes: "EXECUTION 2026-01-01T10:00Z — pr: https://github.com/example/notes-app/pull/7\n\nPR-TEMPLATE 2026-01-01T10:05Z — the repository asks for a changelog body" })).toBeNull();
+    expect(await warning({ status: "In Progress" })).toBeNull();
+  });
+
+  it("is silent when the project cannot be read", async () => {
+    config.value = null;
+    vi.mocked(viewTicket).mockResolvedValue(parent([]));
+    expect((await loadTicketDetail({} as PaseoApi, "notes", "NA-1")).pullRequestBodyWarning).toBeNull();
   });
 });

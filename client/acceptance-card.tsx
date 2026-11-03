@@ -116,6 +116,13 @@ export function AcceptanceCard({
           <Text style={[styles.muted, { flex: 1, color: colors.foreground }]}>{notMergedText(card.notMerged)}</Text>
         </View>
       )}
+      {card.pullRequestBodyWarning === null ? null : (
+        // The PR's description does not follow the default template (TR-250): a warning, Accept stays.
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm }}>
+          <Icon name="TriangleAlert" size={14} color={colors.statusWarning} />
+          <Text style={[styles.muted, { flex: 1, color: colors.foreground }]}>{card.pullRequestBodyWarning}</Text>
+        </View>
+      )}
       {summary === null || summary === "" ? (
         <Text style={styles.muted}>{detail.isLoading ? "Loading the delivery…" : "No delivery summary recorded."}</Text>
       ) : (

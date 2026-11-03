@@ -3,23 +3,39 @@
  * and the PR mark each state gets: grey draft, green open (ready), purple merged, red closed.
  */
 
+import type { PullRequestDescription } from "./pull-request-template";
+
 export const PULL_REQUEST_STATES = ["draft", "open", "merged", "closed"] as const;
 
 export type PullRequestState = (typeof PULL_REQUEST_STATES)[number];
 
 /** The fields asked of `gh pr view --json`. */
-export const GH_STATE_FIELDS = "state,isDraft";
+export const GH_STATE_FIELDS = "state,isDraft,body,commits";
 
-/** `gh pr view --json state,isDraft` output as a state; null when it does not say (not JSON, a field missing, a state GitHub added later). */
-export function parsePullRequestState(stdout: string): PullRequestState | null {
-  let parsed: unknown;
+function parseObject(stdout: string): Record<string, unknown> | null {
   try {
-    parsed = JSON.parse(stdout);
+    const parsed: unknown = JSON.parse(stdout);
+    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
   } catch {
     return null;
   }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const { state, isDraft } = parsed as Record<string, unknown>;
+}
+
+/** The pull request's text from `gh pr view --json body,commits` output; null when it does not say (TR-250). */
+export function parsePullRequestDescription(stdout: string): PullRequestDescription | null {
+  const { body, commits } = parseObject(stdout) ?? {};
+  if (typeof body !== "string" || !Array.isArray(commits)) return null;
+  const commitMessages = commits.flatMap((commit: unknown) => {
+    const { messageHeadline, messageBody } = (typeof commit === "object" && commit !== null ? commit : {}) as Record<string, unknown>;
+    if (typeof messageHeadline !== "string") return [];
+    return [typeof messageBody === "string" && messageBody !== "" ? `${messageHeadline}\n\n${messageBody}` : messageHeadline];
+  });
+  return { body, commitMessages };
+}
+
+/** `gh pr view --json state,isDraft` output as a state; null when it does not say (not JSON, a field missing, a state GitHub added later). */
+export function parsePullRequestState(stdout: string): PullRequestState | null {
+  const { state, isDraft } = parseObject(stdout) ?? {};
   if (typeof state !== "string" || typeof isDraft !== "boolean") return null;
   switch (state.toUpperCase()) {
     case "MERGED":

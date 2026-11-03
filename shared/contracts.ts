@@ -233,6 +233,8 @@ export const CardSchema = z.object({
   pullRequestMerged: z.boolean().default(false),
   /** What GitHub last said of the PR (TR-152); null until it has answered, or with no gh. */
   pullRequestState: z.enum(PULL_REQUEST_STATES).nullable().default(null),
+  /** Why the PR's description does not follow the default template (TR-250), set only while Awaiting acceptance; a warning, never a gate. */
+  pullRequestBodyWarning: z.string().nullable().default(null),
   lastStatus: LastStatusSchema.nullable(),
   stalled: z.boolean(),
   /** Why the plugin left it stalled, when the status line does not say (a crash past the recovery limit). */
@@ -315,6 +317,8 @@ export const TicketDetailSchema = z.object({
   children: z.array(z.object({ id: z.string(), title: z.string(), status: z.string().nullable(), evidence: EvidenceViewSchema.nullable().default(null) })),
   /** The judged evidence, when the notes hold an EVIDENCE record or the ticket is Awaiting acceptance. */
   evidence: EvidenceViewSchema.nullable().default(null),
+  /** Why the PR's description does not follow the default template (TR-250); as on the card. */
+  pullRequestBodyWarning: z.string().nullable().default(null),
   /** The plan's mockups (TR-235); null without a plan section for them. */
   mockups: MockupsViewSchema.nullable().default(null),
   /** Pausing, paused or queued to resume (TR-088), else null. */

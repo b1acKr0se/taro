@@ -10,7 +10,7 @@ import type { PaseoApi } from "./host-types";
 import { mockupsMissing, requireCompleteEvidence, ticketEvidence, ticketEvidenceDirectory, ticketMockups } from "./evidence";
 import { viewTicket } from "./tickets";
 
-vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: "/tracker" }) }));
+vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: "/tracker" }), readProjectConfig: async () => null }));
 vi.mock("./tickets", () => ({ listTickets: vi.fn(), viewTicket: vi.fn() }));
 
 const complete = [

@@ -223,6 +223,10 @@ full re-review or fix check, and the reviewer's verdict.
     one under `.github/PULL_REQUEST_TEMPLATE/` or `docs/`) is the body instead; a title format in
     its instructions (AGENTS.md, CLAUDE.md, CONTRIBUTING) replaces the default, and if they forbid
     ticket IDs in titles, leave the ID out.
+  - **The plugin warns on the Accept card** when a default-template body is empty, copies the commit
+    message or lacks the template's headings (TR-250); it never blocks Awaiting acceptance. Fix the
+    body (`gh pr edit --body-file`), or when the template truly does not fit (a repository rule in
+    AGENTS.md, CONTRIBUTING or the like) append `PR-TEMPLATE <time> — <why>` to the ticket.
 - **local-only delivery:** leave a clean branch that fast-forwards from the base branch.
 - **Show it as the user will see it** (any visible change, at every level):
   - Capture with **realistic content**: text of real length and shape, with the markup real text
