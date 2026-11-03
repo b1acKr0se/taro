@@ -80,6 +80,8 @@ export const AgentStateSchema = z.object({
   evidenceReminded: z.string().nullable().default(null),
   /** Told its commits have no plan on the ticket (TR-206); cleared once the plan is there, so a later gap is told again. */
   noPlanFlagged: z.boolean().default(false),
+  /** Turns in a row that ended waiting for acceptance with the ticket not yet Awaiting acceptance (TR-252); reminders back off. */
+  prematureWaits: z.number().int().default(0),
 });
 export type AgentState = z.infer<typeof AgentStateSchema>;
 
