@@ -27,7 +27,7 @@ describe("createPullRequestStates", () => {
     const { states, calls, pending } = harness();
     expect(states.current(url(1))).toBeNull();
     expect(states.current(url(1))).toBeNull();
-    expect(calls).toEqual([["gh", "pr", "view", url(1), "--json", "state,isDraft"]]);
+    expect(calls).toEqual([["gh", "pr", "view", url(1), "--json", "state,isDraft,body,commits"]]);
     pending[0]?.(answer("OPEN", true));
     await settle();
     expect(states.current(url(1))).toBe("draft");
@@ -110,5 +110,22 @@ describe("createPullRequestStates", () => {
     pending[2]?.(answer("OPEN"));
     await settle();
     expect(calls).toHaveLength(5);
+  });
+});
+
+describe("description", () => {
+  it("comes from the same read as the state, and survives a failed read", async () => {
+    const { states, calls, pending, advance } = harness();
+    expect(states.description(url(1))).toBeNull();
+    pending[0]?.({ code: 0, stdout: JSON.stringify({ state: "OPEN", isDraft: false, body: "Hello", commits: [] }), stderr: "" });
+    await settle();
+    expect(states.description(url(1))).toEqual({ body: "Hello", commitMessages: [] });
+    expect(states.current(url(1))).toBe("open");
+    expect(calls).toHaveLength(1);
+    advance(60_000);
+    states.description(url(1));
+    pending[1]?.({ code: 1, stdout: "", stderr: "offline" });
+    await settle();
+    expect(states.description(url(1))).toEqual({ body: "Hello", commitMessages: [] });
   });
 });

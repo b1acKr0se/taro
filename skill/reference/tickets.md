@@ -126,6 +126,8 @@ rather than exceed it.
 
   `$TARO_EVIDENCE` is `$PASEO_HOME/plugin-data/taro/evidence/<project>` when unset
   (`~/.paseo/…` without `PASEO_HOME`).
+- **PR-TEMPLATE**: why the default pull-request body (`templates/pull-request.md`) does not fit this
+  ticket's PR, which clears the plugin's warning about it: `PR-TEMPLATE 2026-01-05T10:00Z — CONTRIBUTING.md asks for a changelog entry as the body`.
 - **FINAL**: set with `--final-summary`, following `templates/final.md`: What changed (at most 5
   bullets; the first is the ticket's one-line result), How it was verified (at most 3, the review
   among them), Limitations (at most 3), then `Revision: <sha> on <branch> · PR: <URL or none>`.

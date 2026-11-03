@@ -16,7 +16,9 @@ import { latestMilestone, type Milestone } from "../shared/milestones";
 import { deliveredLine, firstAsk } from "../shared/needs-you";
 import { dependsOn } from "../shared/owner-cap";
 import { pastTicketAgents } from "../shared/past-agents";
+import { pullRequestBodyProblem, pullRequestBodyWarning, pullRequestTemplateWaived } from "../shared/pull-request-template";
 import { createPullRequestStates } from "./pull-request-states";
+import { hasRepositoryTemplate } from "./repository-template";
 import { pauseRefusal, pauseView, type PauseView } from "../shared/pause";
 import { holdReason, queuedTickets, recount, type Recount } from "../shared/queue-check";
 import { queuedSlot, queuedWait } from "../shared/queued-wait";
@@ -127,6 +129,19 @@ function cachedActivity(paseo: PaseoApi, agent: PaseoAgent | null): Promise<Acti
   return activity;
 }
 
+/** TR-250: the default PR template applies to pull-request delivery in a repository with no template of its own. */
+async function defaultTemplateApplies(config: { delivery: string; repoPath: string } | null): Promise<boolean> {
+  return config !== null && config.delivery === "pull-request" && !(await hasRepositoryTemplate(config.repoPath));
+}
+
+/** The warning once delivered, unless the owner recorded why the template does not fit; null until gh has answered. */
+function bodyWarning(status: string, pullRequest: string | null, notes: string | null): string | null {
+  if (status !== "Awaiting acceptance" || pullRequest === null || pullRequestTemplateWaived(notes)) return null;
+  const description = pullRequestStates.description(pullRequest);
+  const problem = description === null ? null : pullRequestBodyProblem(description);
+  return problem === null ? null : pullRequestBodyWarning(problem);
+}
+
 /** Not forgotten after an action: a merge at Accept shows from its record at once. */
 const pullRequestStates = createPullRequestStates();
 
@@ -194,6 +209,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
     readHeadroom(),
   ]);
 
+  const bodyChecked = await defaultTemplateApplies(await readProjectConfig(project).catch(() => null));
   const byTicket = groupByTicket(agents);
   const archivedByTicket = groupByTicket(archived);
   // Only questions a live agent asked: one archived outside the plugin may not be withdrawn yet.
@@ -292,6 +308,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         pullRequest,
         pullRequestMerged: pullRequestFacts?.pullRequestMerged ?? false,
         pullRequestState: pullRequest === null ? null : pullRequestStates.current(pullRequest),
+        pullRequestBodyWarning: bodyChecked ? bodyWarning(ticket.status, pullRequest, facts?.notes ?? null) : null,
         lastStatus: ownLine ? ownerState?.lastStatus ?? null : null,
         stalled: ownerState?.stalled ?? false,
         stalledReason: ownerState?.stalled === true ? ownerState.stalledReason : null,
@@ -413,6 +430,9 @@ export async function loadTicketDetail(paseo: PaseoApi, project: string, ticketI
     children: await Promise.all(detail.subtasks.map(async (child) => ({ id: child.id, title: child.title, status: child.status, evidence: await childEvidence(project, tracker, child.id) }))),
     evidence: hasRecord || detail.status === "Awaiting acceptance" ? await ticketEvidence(project, detail.id, detail.implementationNotes, detail.labels, detail.status) : null,
     mockups: await ticketMockups(project, detail.id, detail.implementationPlan),
+    pullRequestBodyWarning: (await defaultTemplateApplies(await readProjectConfig(project).catch(() => null)))
+      ? bodyWarning(detail.status, pullRequestUrl(detail.implementationNotes, detail.finalSummary), detail.implementationNotes)
+      : null,
     pause: pausing.pause,
     pausable: pausing.pausable,
     compactOwner:

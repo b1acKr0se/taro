@@ -73,6 +73,7 @@ function card(parts: Partial<Card>): Card {
     pullRequest: null,
     pullRequestMerged: false,
     pullRequestState: null,
+    pullRequestBodyWarning: null,
     lastStatus: null,
     stalled: false,
     stalledReason: null,
