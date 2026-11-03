@@ -61,6 +61,7 @@ export const TEMPLATES = {
   headroomRecovered: "messages/headroom-recovered.md",
   evidenceMissing: "messages/evidence-missing.md",
   noPlan: "messages/no-plan.md",
+  acceptingTooEarly: "messages/accepting-too-early.md",
   permissionDenied: "messages/permission-denied.md",
   permissionRules: "permission-rules.md",
 } as const;

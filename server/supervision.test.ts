@@ -15,9 +15,9 @@ import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, huma
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", acceptQuestionRefused: "accept-question-refused", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question", noPlan: "no-plan", planWithoutMockups: "plan-without-mockups" },
+  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", acceptQuestionRefused: "accept-question-refused", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question", noPlan: "no-plan", acceptingTooEarly: "accepting-too-early", planWithoutMockups: "plan-without-mockups" },
   skillDirectory: async () => "/skill",
-  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "accept-question-refused" ? `accept-question-refused:${values.refused}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : path === "plan-without-mockups" ? `plan-without-mockups:${values.ticket}:${values.missing}` : path === "no-plan" ? `no-plan:${values.ticket}:${values.branch}:${values.commits}:${values.base}` : `${path}:${values.ticket ?? ""}`),
+  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "accept-question-refused" ? `accept-question-refused:${values.refused}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : path === "plan-without-mockups" ? `plan-without-mockups:${values.ticket}:${values.missing}` : path === "accepting-too-early" ? `accepting-too-early:${values.ticket}:${values.status}:${values.missing}` : path === "no-plan" ? `no-plan:${values.ticket}:${values.branch}:${values.commits}:${values.base}` : `${path}:${values.ticket ?? ""}`),
 }));
 vi.mock("./projects", () => ({ readProjectConfig: vi.fn(async () => null), projectPaths: async () => ({ tracker: "/tracker" }) }));
 vi.mock("./branch-commits", () => ({ commitsPast: vi.fn(async () => 0), branchName: vi.fn(async () => "taro/tr-9") }));
@@ -1514,5 +1514,62 @@ describe("turnEndLine", () => {
   it("says none for a missing status or decisions, and when there was no turn id or no read", () => {
     expect(turnEndLine("a-1", "canceled", null, { items: 0, turn: 0 }, null, [])).toBe("[taro] a-1 turn ended (canceled, no turn id): read 0 items, 0 in this turn; status none; decisions none");
     expect(turnEndLine("a-1", "failed", "t", null, null, [])).toMatch(/^\[taro\] a-1 turn ended \(failed, t\): its timeline could not be read/);
+  });
+});
+
+// PSA-022's owner opened a pull request and ended "waiting: user's accept" with its ticket still Planning (TR-252).
+describe("Supervisor.onTurnEnded waiting for acceptance too early", () => {
+  const owner = { id: "owner-pw", provider: "claude", model: "sonnet", title: "TR-9 · x", status: "idle", cwd: "/work/tr-9", labels: { "taro.project": "taro", "taro.role": "owner", "taro.ticket": "TR-9" } };
+  const hookAgent = { id: owner.id, parentAgentId: null } as unknown as HookAgent;
+  const completed = { kind: "completed" } as unknown as TurnOutcome;
+  const ending = (line: string) => withTimeline([{ type: "user_message", text: "go" }, { type: "assistant_message", text: `Opened PR #11.\n\n${line}` }] as unknown as TimelineItem[]);
+  const ticket = (status: string) =>
+    vi.mocked(viewTicket).mockResolvedValue({ status, implementationPlan: null, acceptanceCriteria: [], implementationNotes: null, labels: [], finalSummary: null } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+  const told = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("accepting-too-early:"));
+
+  function supervisor(): Supervisor {
+    const agents: Record<string, AgentState> = {};
+    const state = {
+      allDecisions: async () => [],
+      updateDecisions: async <T>(change: (decisions: never[]) => T) => change([]),
+      agent: async (agentId: string) => agents[agentId] ?? null,
+      updateAgent: async <T>(agentId: string, initial: () => AgentState, change: (record: AgentState) => T) => {
+        const record = agents[agentId] ?? initial();
+        agents[agentId] = record;
+        return change(record);
+      },
+    } as unknown as PluginState;
+    return new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, {} as unknown as Recovery);
+  }
+
+  beforeEach(() => {
+    vi.mocked(fetchLiveAgent).mockResolvedValue(owner as unknown as PaseoAgent);
+    vi.mocked(sendFromPlugin).mockClear();
+  });
+  afterEach(() => vi.mocked(viewTicket).mockReset());
+
+  it("tells the owner what is missing, then backs off while it repeats", async () => {
+    ticket("Planning");
+    const taro = supervisor();
+    const end = () => taro.onTurnEnded(ending("waiting: user's accept"), hookAgent, completed, null, undefined);
+    await end();
+    expect(told()).toHaveLength(1);
+    expect(told()[0]).toMatch(/^accepting-too-early:TR-9:Planning:- the plan.*EVIDENCE record.*FINAL summary.*status step/s);
+    await end();
+    await end();
+    await end();
+    expect(told()).toHaveLength(3);
+  });
+
+  it("stays quiet when delivered, and starts over after another ending", async () => {
+    const taro = supervisor();
+    ticket("Awaiting acceptance");
+    await taro.onTurnEnded(ending("waiting: user's accept"), hookAgent, completed, null, undefined);
+    expect(told()).toEqual([]);
+    ticket("Planning");
+    await taro.onTurnEnded(ending("waiting: user's accept"), hookAgent, completed, null, undefined);
+    await taro.onTurnEnded(ending("done: nothing"), hookAgent, completed, null, undefined);
+    await taro.onTurnEnded(ending("waiting: user's accept"), hookAgent, completed, null, undefined);
+    expect(told()).toHaveLength(2);
   });
 });

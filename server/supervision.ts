@@ -12,6 +12,7 @@ import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compa
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
+import { remindsAtCount, waitsPrematurely } from "../shared/premature-wait";
 import { lacksPlan, mayBuildBeforePlan, noPlanRecord } from "../shared/no-plan";
 import { asPlanningQuestion, asStored, planningTicket } from "../shared/planning-questions";
 import type { DrainTrigger } from "../shared/chat-queue";
@@ -225,6 +226,7 @@ export function freshState(identity: TaroIdentity): AgentState {
     lastTurnEndedAt: null,
     evidenceReminded: null,
     noPlanFlagged: false,
+    prematureWaits: 0,
   };
 }
 
@@ -386,6 +388,7 @@ export class Supervisor {
     if (outcome.kind === "completed" && (await this.takeBackDeliveryWithOpenQuestion(paseo, live, identity))) return;
     if (await this.flushHeldReports(paseo, live.id)) return;
     if (outcome.kind === "completed" && (await this.remindAboutEvidence(paseo, live, identity))) return;
+    if (outcome.kind === "completed" && read !== null && (await this.remindAboutPrematureWait(paseo, live, identity, status))) return;
     await this.maybeStartCompaction(paseo, live, identity);
   }
 
@@ -468,6 +471,54 @@ export class Supervisor {
         ticket: identity.ticket,
         missing: missing.map((gap) => `- ${gap}`).join("\n"),
         folder: ticketEvidenceDirectory(identity.project, identity.ticket),
+        skill: await skillDirectory(),
+      }),
+    );
+    return true;
+  }
+
+  /**
+   * An owner that ends waiting for acceptance while its ticket is not Awaiting acceptance (TR-252) is told
+   * what is missing: the first time, then with backoff while it keeps doing so. Any other ending resets it.
+   */
+  private async remindAboutPrematureWait(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, status: ReturnType<typeof parseStatusLine>): Promise<boolean> {
+    if (identity.ticket === null) return false;
+    let missing: string[] = [];
+    let ticketStatus = "";
+    let premature = false;
+    try {
+      if (status !== null && status.state === "waiting") {
+        const detail = await viewTicket((await projectPaths(identity.project)).tracker, identity.ticket);
+        ticketStatus = detail.status;
+        premature = waitsPrematurely(status, detail.status);
+        if (premature) {
+          if (lacksPlan({ status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length, labels: [] })) {
+            missing.push("the plan: write it with `taro ticket edit --plan` and get the user's approval where the ticket needs it");
+          }
+          missing = [...missing, ...(await ticketEvidence(identity.project, identity.ticket, detail.implementationNotes, detail.labels)).missing];
+          if ((detail.finalSummary ?? "").trim() === "") missing.push("the FINAL summary: write it with `taro ticket edit --final-summary` (templates/final.md)");
+          missing.push("the status step: move the ticket to Awaiting acceptance with `taro ticket edit -s \"Awaiting acceptance\"` together with it");
+        }
+      }
+    } catch {
+      return false;
+    }
+    const tell = await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
+      if (!premature) {
+        record.prematureWaits = 0;
+        return false;
+      }
+      record.prematureWaits += 1;
+      return remindsAtCount(record.prematureWaits);
+    });
+    if (!tell) return false;
+    await sendFromPlugin(
+      paseo,
+      agent.id,
+      await message(TEMPLATES.acceptingTooEarly, {
+        ticket: identity.ticket,
+        status: ticketStatus,
+        missing: missing.map((gap) => `- ${gap}`).join("\n"),
         skill: await skillDirectory(),
       }),
     );
