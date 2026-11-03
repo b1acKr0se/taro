@@ -160,5 +160,4 @@ imperative, with no ticket number (put it in the body if needed).
 
 ## Delivery
 
-This project is local-only: leave a clean branch that fast-forwards from `main`. The user reloads
-the real plugin after merging.
+The user reloads the real plugin after merging.
