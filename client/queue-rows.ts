@@ -4,7 +4,7 @@
  */
 import { imageFileName, type DraftAttachment, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
 import { NOT_QUEUED, type QueuedMessageSummary } from "../shared/chat-queue";
-import type { SendView } from "../shared/pending-sends";
+import type { PendingSend, SendView } from "../shared/pending-sends";
 
 export type QueueRowMessage = QueuedMessageSummary;
 
@@ -145,4 +145,20 @@ export async function afterQueueRead<Answer extends { queued: boolean }>(
   if (!answer.queued) return answer;
   await Promise.race([readQueue().catch(() => undefined), wait(QUEUE_READ_WAIT_MS)]);
   return answer;
+}
+
+/**
+ * A queued message as the transcript's echo once Send now is pressed (the daemon's call takes seconds
+ * to cut the turn off), so the row hands over in one step instead of lingering with a spinner. Null for
+ * a message with attachments, whose data stays on the daemon: it keeps its row until the call answers.
+ * Marked `sentWhileIdle` so the queue track does not draw it again; the timeline's own row replaces it.
+ */
+export function handedOverSend(message: QueueRowMessage, now: number): PendingSend | null {
+  if (message.imageCount + message.fileNames.length > 0) return null;
+  return { id: message.id, text: message.text, attachments: [], at: now, state: "sent", sentWhileIdle: true };
+}
+
+/** The queue's rows without those already handed over to the transcript. */
+export function withoutHandedOver(messages: readonly QueueRowMessage[], handedOver: ReadonlySet<string>): readonly QueueRowMessage[] {
+  return handedOver.size === 0 ? messages : messages.filter((message) => !handedOver.has(message.id));
 }

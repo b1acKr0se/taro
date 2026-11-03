@@ -54,7 +54,7 @@ import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from
 import { composerNotice, hasSomethingToSend, sendLabel } from "./composer-notice";
 import { usePendingSends, type ChatSend } from "./use-pending-sends";
 import { isCompacting, isWorking, replyIsBeingWritten, showsLoader, statusWithTurn, takeBack, type SendMark, type SendView } from "../shared/pending-sends";
-import { chatQueueKey, EDIT_SENT_MEANWHILE, editRefusal, editRemoval, queueCompacting, sendingToQueue, takenAttachments, type QueueRowAction, type QueueRowMessage } from "./queue-rows";
+import { chatQueueKey, EDIT_SENT_MEANWHILE, editRefusal, editRemoval, queueCompacting, sendingToQueue, takenAttachments, withoutHandedOver, type QueueRowAction, type QueueRowMessage } from "./queue-rows";
 import { QueueTrack, useChatQueue } from "./queue-track";
 import { COMPOSER_CONTROL_SIZE, composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
@@ -626,6 +626,9 @@ export function AgentChat({
       .catch((caught: unknown) => toast.error(errorText(caught)))
       .finally(() => setStoppingAgent((current) => (current === agentId ? null : current)));
   }
+  // Rows of messages Send now already echoed in the transcript: hidden until the queue is read again.
+  const [handedOver, setHandedOver] = useState<ReadonlySet<string>>(new Set());
+  const queueShown = useMemo(() => withoutHandedOver(queue.messages, handedOver), [queue.messages, handedOver]);
   const [queueBusy, setQueueBusy] = useState<{ id: string; action: QueueRowAction } | null>(null);
   /** Edit, Send now or Retry on a queued message (TR-171); an error's sentence goes to a toast, and the queue is read again either way. */
   function queueAction(message: QueueRowMessage, action: QueueRowAction): void {
@@ -663,12 +666,19 @@ export function AgentChat({
             });
           })
         : (action === "send-now" ? sendQueuedNow(input) : retryQueued(input)).then(() => follow.pin());
+    const echoed = action === "send-now" && sends.handOver(message);
+    if (echoed) setHandedOver((current) => new Set(current).add(message.id));
     setQueueBusy({ id: message.id, action });
     void call
-      .catch((caught: unknown) => toast.error(errorText(caught)))
+      .catch((caught: unknown) => {
+        // Not sent: the echo goes and the row, back at the queue's front, comes back with the reason.
+        if (echoed) sends.forget(message.id);
+        toast.error(errorText(caught));
+      })
       .finally(() => {
         setQueueBusy(null);
-        void refreshQueue();
+        // The row stays gone (or stays, on a failure) until the queue was read, so it does not blink.
+        void refreshQueue().finally(() => setHandedOver((current) => (current.has(message.id) ? new Set([...current].filter((id) => id !== message.id)) : current)));
       });
   }
 
@@ -896,7 +906,7 @@ export function AgentChat({
               </View>
             )}
             {/* Directly above the box, as Paseo draws its own queue. */}
-            <QueueTrack messages={queue.messages} sending={sendingRows} compacting={compacting} busy={queueBusy} theme={theme} onAction={queueAction} />
+            <QueueTrack messages={queueShown} sending={sendingRows} compacting={compacting} busy={queueBusy} theme={theme} onAction={queueAction} />
             {notice === null ? null : (
               <View style={styles.quick}>
                 <Icon name="AlertTriangle" size={13} color={theme.colors.statusWarning} />
