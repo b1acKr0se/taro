@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { NOT_QUEUED } from "../shared/chat-queue";
-import { afterQueueRead, chatQueueKey, EDIT_REFUSAL, editRefusal, editRemoval, queueCompacting, takenAttachments, queuePollMs, queueRowActions, queueRowText, QUEUE_POLL_BUSY_MS, QUEUE_POLL_QUIET_MS, type QueueRowMessage, sendingToQueue } from "./queue-rows";
+import { afterQueueRead, chatQueueKey, EDIT_REFUSAL, editRefusal, editRemoval, queueCompacting, takenAttachments, queuePollMs, queueRowActions, queueRowText, QUEUE_POLL_BUSY_MS, QUEUE_POLL_QUIET_MS, type QueueRowMessage, sendingToQueue, handedOverSend, withoutHandedOver } from "./queue-rows";
 import type { PendingSend, SendView } from "../shared/pending-sends";
 
 function queued(change: Partial<QueueRowMessage> = {}): QueueRowMessage {
@@ -222,5 +222,25 @@ describe("afterQueueRead (TR-188)", () => {
     waited();
     await flush();
     expect(answered).toBe(true);
+  });
+});
+
+describe("Send now's handover (TR-249)", () => {
+  it("echoes a queued message in the transcript at once, not in the queue track", () => {
+    const echo = handedOverSend(queued(), 5);
+    expect(echo).toEqual({ id: "chat-a", text: "Also check the footer", attachments: [], at: 5, state: "sent", sentWhileIdle: true });
+    const shown: SendView = { send: echo as PendingSend, mark: "waiting", rowKey: null };
+    expect(sendingToQueue([shown], true)).toEqual([]);
+  });
+
+  it("keeps the row of a message whose attachments the client does not hold", () => {
+    expect(handedOverSend(queued({ imageCount: 1 }), 5)).toBeNull();
+    expect(handedOverSend(queued({ fileNames: ["notes.txt"] }), 5)).toBeNull();
+  });
+
+  it("hides handed-over rows and nothing else", () => {
+    const rows = [queued(), queued({ id: "chat-b" })];
+    expect(withoutHandedOver(rows, new Set(["chat-a"])).map((row) => row.id)).toEqual(["chat-b"]);
+    expect(withoutHandedOver(rows, new Set())).toBe(rows);
   });
 });

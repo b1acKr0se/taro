@@ -11,7 +11,7 @@ import { outgoingAttachments, type DraftAttachment, type OutgoingFile, type Outg
 import { isWorking, newChatMessageId, STOPPED_GRACE_MS, turnIsOpen, viewSends, type PendingSend, type SendTimelineEntry, type SendView } from "../shared/pending-sends";
 import { useLatestCallback } from "./latest-callback";
 import { pendingSends } from "./pending-send-store";
-import { afterQueueRead } from "./queue-rows";
+import { afterQueueRead, handedOverSend, type QueueRowMessage } from "./queue-rows";
 
 /**
  * Sends the words and attachments under the chat's own message id; `answersRequest` when the chat shows
@@ -36,6 +36,8 @@ export interface PendingSends {
   resend(id: string): void;
   /** Sends a failed message again, under its own id. */
   retry(id: string): void;
+  /** Shows a message the daemon is sending now (Send now) in the transcript at once; false when it cannot be echoed. */
+  handOver(message: QueueRowMessage): boolean;
   /** Forgets a message: an unread one loses its mark, a failed one is taken back. */
   forget(id: string): PendingSend | null;
 }
@@ -112,6 +114,12 @@ export function usePendingSends({
     },
     retry(id) {
       pendingSends.retry(agentId, id);
+    },
+    handOver(message) {
+      const echo = handedOverSend(message, Date.now());
+      if (echo === null) return false;
+      pendingSends.add(agentId, echo);
+      return true;
     },
     forget(id) {
       const gone = pendingSends.get(agentId).find((send) => send.id === id) ?? null;
