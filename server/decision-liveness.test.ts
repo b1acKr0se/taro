@@ -154,6 +154,21 @@ describe("Actions.answerDecision", () => {
     expect(sendUserAnswer).toHaveBeenCalledTimes(1);
   });
 
+  // TR-251: the lists drop an answered decision on their next poll, which would unmount the card and what the user picked
+  // while the answer is still being noted (the note waits on the tracker lock). So the decision stays open until then.
+  it("keeps the decision in the open lists while its answer is noted on the ticket", async () => {
+    vi.mocked(projectAgents).mockImplementation(async () => [agent("owner")]);
+    const live = paseoWhere(async () => ({ agent: { id: "owner", status: "idle", archivedAt: null } }));
+    const decisions = [stored("owner")];
+    const listedWhileNoting: string[] = [];
+    vi.mocked(appendTicketNote).mockImplementationOnce(async () => {
+      listedWhileNoting.push(...(await liveOpenDecisions({} as PaseoApi, stateOver(decisions), "taro")).map((decision) => decision.key));
+    });
+    await actionsOver(decisions).answerDecision(live, key, "Approve", "");
+    expect(listedWhileNoting).toEqual([key]);
+    expect(decisions[0]?.status).toBe("answered");
+  });
+
   it("still answers a live agent, closed ones included", async () => {
     for (const status of ["idle", "closed"]) {
       vi.mocked(sendUserAnswer).mockClear();

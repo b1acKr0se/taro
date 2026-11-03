@@ -175,6 +175,14 @@ export class Actions {
     // A decision without a ticket is the manager's: answering it acts on a queued alert as a message would.
     if (decision.ticket === null) this.userToldManager(decision.project);
     const at = new Date().toISOString();
+    // Marked answered only after the note: the note can wait on the tracker lock, and the lists drop an answered decision on
+    // their next poll, which would take its card (and what the user picked on it) away while the send is still under way (TR-251).
+    if (decision.ticket !== null) {
+      const paths = await projectPaths(decision.project);
+      await appendTicketNote(paths.tracker, decision.ticket, `ANSWER ${at} — ${decision.id}: "${decision.question}" → ${option === null ? (changesRequested ? `Request changes ("${words}")` : `"${words}"`) : `${option.label} ("${words}")`} (the user, from ${from === "tab" ? "the agent's tab" : "the Taro screen"})`).catch(
+        (error: unknown) => console.warn(`[taro] could not record the answer on ${decision.ticket}: ${error instanceof Error ? error.message : String(error)}`),
+      );
+    }
     await this.state.updateDecisions((decisions) => {
       const stored = decisions.find((candidate) => candidate.key === key);
       if (stored !== undefined) {
@@ -182,12 +190,6 @@ export class Actions {
         stored.answer = { text: words, label: option?.label ?? null, at };
       }
     });
-    if (decision.ticket !== null) {
-      const paths = await projectPaths(decision.project);
-      await appendTicketNote(paths.tracker, decision.ticket, `ANSWER ${at} — ${decision.id}: "${decision.question}" → ${option === null ? (changesRequested ? `Request changes ("${words}")` : `"${words}"`) : `${option.label} ("${words}")`} (the user, from ${from === "tab" ? "the agent's tab" : "the Taro screen"})`).catch(
-        (error: unknown) => console.warn(`[taro] could not record the answer on ${decision.ticket}: ${error instanceof Error ? error.message : String(error)}`),
-      );
-    }
   }
 
   /**
