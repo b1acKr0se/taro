@@ -66,6 +66,7 @@ function card(parts: Partial<Card>): Card {
     pullRequestMerged: false,
     pullRequestState: null,
     pullRequestBodyWarning: null,
+    deliveryMissing: null,
     lastStatus: null,
     stalled: false,
     stalledReason: null,
@@ -200,6 +201,10 @@ describe("acceptanceReady", () => {
   it("is ready without an evidence record to judge, and with complete evidence", () => {
     expect(acceptanceReady({ evidence: null })).toBe(true);
     expect(acceptanceReady({ evidence: { ...evidence, missing: [], complete: true } })).toBe(true);
+  });
+  it("withholds Accept while the delivery record is incomplete", () => {
+    expect(acceptanceReady({ evidence: null, deliveryMissing: "the ticket records no review-head" })).toBe(false);
+    expect(acceptanceReady({ evidence: null, deliveryMissing: null })).toBe(true);
   });
   it("withholds Accept while the evidence is incomplete", () => {
     expect(acceptanceReady({ evidence })).toBe(false);

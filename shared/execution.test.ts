@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { boardColumn } from "./board";
-import { acceptanceMerge, acceptedRecord, acceptedRecordText, executionMachine, executionWorkspace, finalSummaryBody, localMergeInstruction, noteRecords, notMergedRecord, pullRequestMergeInstruction, pullRequestMerged, pullRequestUrl, reviewHead } from "./execution";
+import { acceptanceMerge, acceptedRecord, acceptedRecordText, deliveryMissing, executionMachine, executionWorkspace, finalSummaryBody, localMergeInstruction, noteRecords, notMergedRecord, pullRequestMergeInstruction, pullRequestMerged, pullRequestUrl, reviewHead } from "./execution";
 
 const managerRecord = "EXECUTION 2026-10-13T11:22Z — owner agent d86f, workspace wks_67ddffd9312aa95a, machine devbox, worktree /w/tr-001";
 // As a Haiku owner wrote it on the throwaway daemon: the relaunch could not find its workspace (TR-001).
@@ -395,5 +395,22 @@ describe("acceptanceMerge", () => {
     expect(acceptanceMerge(null)).toBeNull();
     expect(acceptanceMerge("")).toBeNull();
     expect(acceptanceMerge("ACCEPTED 2026-10-16T03:00:00.000Z — the user accepted; merging: the pull request")).toBeNull();
+  });
+});
+
+describe("deliveryMissing (TR-254)", () => {
+  const head = "a".repeat(40);
+  const merging = { acceptAlsoMerges: true, delivery: "pull-request" };
+  it("names the missing review-head, then the missing PR", () => {
+    expect(deliveryMissing(merging, false, null, null)).toBe("the ticket records no review-head");
+    expect(deliveryMissing(merging, false, `review-head: ${head}`, null)).toBe("the ticket records no PR URL");
+    expect(deliveryMissing(merging, false, `review-head: ${head}\npr: https://example.com/o/r/pull/3`, null)).toBeNull();
+  });
+  it("needs no PR for local delivery", () => {
+    expect(deliveryMissing({ acceptAlsoMerges: true, delivery: "local" }, false, `review-head: ${head}`, null)).toBeNull();
+  });
+  it("holds nothing when Accept would not merge", () => {
+    expect(deliveryMissing(merging, true, null, null)).toBeNull();
+    expect(deliveryMissing({ acceptAlsoMerges: false, delivery: "pull-request" }, false, null, null)).toBeNull();
   });
 });

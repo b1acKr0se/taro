@@ -298,3 +298,19 @@ function clip(text: string): string {
   return flat.length <= MERGE_TEXT_LIMIT ? flat : `${flat.slice(0, MERGE_TEXT_LIMIT - 1).trimEnd()}…`;
 }
 
+
+/**
+ * Why Accept could not merge yet: the reviewed head, or for pull-request delivery the PR URL, is not
+ * recorded (TR-254). Null when Accept would not merge (an investigation, Accept-also-merges off) or can.
+ */
+export function deliveryMissing(
+  config: { acceptAlsoMerges: boolean; delivery: string },
+  investigation: boolean,
+  notes: string | null,
+  finalSummary: string | null,
+): string | null {
+  if (investigation || !config.acceptAlsoMerges) return null;
+  if (reviewHead(notes) === null) return "the ticket records no review-head";
+  if (config.delivery === "pull-request" && pullRequestUrl(notes, finalSummary) === null) return "the ticket records no PR URL";
+  return null;
+}

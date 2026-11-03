@@ -144,6 +144,7 @@ export function AcceptanceCard({
         </>
       )}
       {/* The evidence names what is missing itself; until it loads, the card's summary does. */}
+      {card.deliveryMissing == null ? null : <Text style={[styles.muted, { color: colors.statusWarning }]}>{`Accept waits: ${card.deliveryMissing}. The owner is asked to record it.`}</Text>}
       {ready || evidence !== null || card.evidence === null ? null : <Text style={[styles.muted, { color: colors.statusWarning }]}>{evidenceSummary(card.evidence)}</Text>}
       <View style={styles.rule} />
       <View ref={foot} collapsable={false} style={writing ? styles.writing : styles.foot}>

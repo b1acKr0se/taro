@@ -61,8 +61,8 @@ export function waitingOnPermissions(count: number): string {
  * Whether Accept may be offered: incomplete evidence withholds it (the server refuses it too). One
  * test for the card's wording and icon and the composer row's Accept, so they cannot disagree.
  */
-export function acceptanceReady(card: Pick<Card, "evidence">): boolean {
-  return card.evidence === null || card.evidence.complete;
+export function acceptanceReady(card: Pick<Card, "evidence"> & { deliveryMissing?: string | null }): boolean {
+  return (card.evidence === null || card.evidence.complete) && (card.deliveryMissing ?? null) === null;
 }
 
 /** The link that opens the call where it is answered in full. */

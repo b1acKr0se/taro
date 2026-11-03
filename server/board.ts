@@ -10,7 +10,7 @@ import { ticketFileAlerts } from "../shared/alerts";
 import { boardColumn, complexityOf, FIRST_PAGE, hasStarted, newestOwner, PAGED_COLUMNS, pageColumns, questionsForUser, ticketAgents } from "../shared/board";
 import { offersCompact } from "../shared/compact";
 import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
-import { acceptedRecord, executionMachine, notMergedRecord, pullRequestMerged, pullRequestUrl, type AcceptedRecord, type NotMergedRecord } from "../shared/execution";
+import { acceptedRecord, deliveryMissing, executionMachine, notMergedRecord, pullRequestMerged, pullRequestUrl, type AcceptedRecord, type NotMergedRecord } from "../shared/execution";
 import type { Board, BoardPaging, Card, EvidenceView, TicketDetailView } from "../shared/contracts";
 import { latestMilestone, type Milestone } from "../shared/milestones";
 import { deliveredLine, firstAsk } from "../shared/needs-you";
@@ -209,7 +209,8 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
     readHeadroom(),
   ]);
 
-  const bodyChecked = await defaultTemplateApplies(await readProjectConfig(project).catch(() => null));
+  const projectConfig = await readProjectConfig(project).catch(() => null);
+  const bodyChecked = await defaultTemplateApplies(projectConfig);
   const byTicket = groupByTicket(agents);
   const archivedByTicket = groupByTicket(archived);
   // Only questions a live agent asked: one archived outside the plugin may not be withdrawn yet.
@@ -309,6 +310,10 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         pullRequestMerged: pullRequestFacts?.pullRequestMerged ?? false,
         pullRequestState: pullRequest === null ? null : pullRequestStates.current(pullRequest),
         pullRequestBodyWarning: bodyChecked ? bodyWarning(ticket.status, pullRequest, facts?.notes ?? null) : null,
+        deliveryMissing:
+          ticket.status === "Awaiting acceptance" && projectConfig !== null && facts !== null
+            ? deliveryMissing(projectConfig, investigation, facts.notes, facts.finalSummary)
+            : null,
         lastStatus: ownLine ? ownerState?.lastStatus ?? null : null,
         stalled: ownerState?.stalled ?? false,
         stalledReason: ownerState?.stalled === true ? ownerState.stalledReason : null,

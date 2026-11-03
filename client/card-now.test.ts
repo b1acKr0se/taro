@@ -74,6 +74,7 @@ function card(parts: Partial<Card>): Card {
     pullRequestMerged: false,
     pullRequestState: null,
     pullRequestBodyWarning: null,
+    deliveryMissing: null,
     lastStatus: null,
     stalled: false,
     stalledReason: null,
