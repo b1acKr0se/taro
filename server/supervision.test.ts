@@ -15,9 +15,9 @@ import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, huma
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", acceptQuestionRefused: "accept-question-refused", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question", noPlan: "no-plan", acceptingTooEarly: "accepting-too-early", planWithoutMockups: "plan-without-mockups" },
+  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", acceptQuestionRefused: "accept-question-refused", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question", noPlan: "no-plan", acceptingTooEarly: "accepting-too-early", deliveryMissing: "delivery-missing", planWithoutMockups: "plan-without-mockups" },
   skillDirectory: async () => "/skill",
-  message: async (path: string, values: Record<string, string> = {}) => (path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "accept-question-refused" ? `accept-question-refused:${values.refused}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : path === "plan-without-mockups" ? `plan-without-mockups:${values.ticket}:${values.missing}` : path === "accepting-too-early" ? `accepting-too-early:${values.ticket}:${values.status}:${values.missing}` : path === "no-plan" ? `no-plan:${values.ticket}:${values.branch}:${values.commits}:${values.base}` : `${path}:${values.ticket ?? ""}`),
+  message: async (path: string, values: Record<string, string> = {}) => (path === "delivery-missing" ? `delivery-missing:${values.ticket}:${values.missing}` : path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "accept-question-refused" ? `accept-question-refused:${values.refused}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : path === "plan-without-mockups" ? `plan-without-mockups:${values.ticket}:${values.missing}` : path === "accepting-too-early" ? `accepting-too-early:${values.ticket}:${values.status}:${values.missing}` : path === "no-plan" ? `no-plan:${values.ticket}:${values.branch}:${values.commits}:${values.base}` : `${path}:${values.ticket ?? ""}`),
 }));
 vi.mock("./projects", () => ({ readProjectConfig: vi.fn(async () => null), projectPaths: async () => ({ tracker: "/tracker" }) }));
 vi.mock("./branch-commits", () => ({ commitsPast: vi.fn(async () => 0), branchName: vi.fn(async () => "taro/tr-9") }));
@@ -1571,5 +1571,73 @@ describe("Supervisor.onTurnEnded waiting for acceptance too early", () => {
     await taro.onTurnEnded(ending("done: nothing"), hookAgent, completed, null, undefined);
     await taro.onTurnEnded(ending("waiting: user's accept"), hookAgent, completed, null, undefined);
     expect(told()).toHaveLength(2);
+  });
+});
+
+// TR-254: the Accept card is held while the delivery record is incomplete, so the plugin asks the owner for it.
+describe("Supervisor.onTurnEnded with an incomplete delivery record", () => {
+  const owner = { id: "owner-dm", provider: "claude", model: "sonnet", title: "TR-8 · x", status: "idle", cwd: "/work/tr-8", labels: { "taro.project": "taro", "taro.role": "owner", "taro.ticket": "TR-8" } };
+  const hookAgent = { id: owner.id, parentAgentId: null } as unknown as HookAgent;
+  const completed = { kind: "completed" } as unknown as TurnOutcome;
+  const head = "a".repeat(40);
+  const ended = () => withTimeline([{ type: "user_message", text: "go" }, { type: "assistant_message", text: "Delivered.\n\ndone: delivered" }] as unknown as TimelineItem[]);
+  const ticket = (notes: string | null, labels: string[] = []) =>
+    vi.mocked(viewTicket).mockResolvedValue({ status: "Awaiting acceptance", implementationPlan: "p", acceptanceCriteria: [], implementationNotes: notes, labels, finalSummary: null } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+  const config = (acceptAlsoMerges: boolean) => vi.mocked(readProjectConfig).mockResolvedValue({ acceptAlsoMerges, delivery: "pull-request" } as unknown as Awaited<ReturnType<typeof readProjectConfig>>);
+  const told = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("delivery-missing:"));
+
+  function supervisor(): Supervisor {
+    const agents: Record<string, AgentState> = {};
+    const state = {
+      allDecisions: async () => [],
+      updateDecisions: async <T>(change: (decisions: never[]) => T) => change([]),
+      agent: async (agentId: string) => agents[agentId] ?? null,
+      updateAgent: async <T>(agentId: string, initial: () => AgentState, change: (record: AgentState) => T) => {
+        const record = agents[agentId] ?? initial();
+        agents[agentId] = record;
+        return change(record);
+      },
+    } as unknown as PluginState;
+    return new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, {} as unknown as Recovery);
+  }
+
+  beforeEach(() => {
+    vi.mocked(fetchLiveAgent).mockResolvedValue(owner as unknown as PaseoAgent);
+    vi.mocked(sendFromPlugin).mockClear();
+  });
+  afterEach(() => {
+    vi.mocked(viewTicket).mockReset();
+    vi.mocked(readProjectConfig).mockResolvedValue(null);
+  });
+
+  it("tells the owner once per gap and again when the gap changes or comes back", async () => {
+    const taro = supervisor();
+    config(true);
+    ticket(null);
+    const end = () => taro.onTurnEnded(ended(), hookAgent, completed, null, undefined);
+    await end();
+    await end();
+    expect(told()).toHaveLength(1);
+    expect(told()[0]).toContain("no review-head");
+    ticket(`review-head: ${head}`);
+    await end();
+    expect(told()).toHaveLength(2);
+    expect(told()[1]).toContain("no PR URL");
+    ticket(`review-head: ${head}\npr: https://example.com/o/r/pull/3`);
+    await end();
+    ticket(null);
+    await end();
+    expect(told()).toHaveLength(3);
+  });
+
+  it("says nothing for an investigation or a project that does not merge on Accept", async () => {
+    const taro = supervisor();
+    config(true);
+    ticket(null, ["investigation"]);
+    await taro.onTurnEnded(ended(), hookAgent, completed, null, undefined);
+    config(false);
+    ticket(null);
+    await taro.onTurnEnded(ended(), hookAgent, completed, null, undefined);
+    expect(told()).toEqual([]);
   });
 });

@@ -82,6 +82,8 @@ export const AgentStateSchema = z.object({
   noPlanFlagged: z.boolean().default(false),
   /** Turns in a row that ended waiting for acceptance with the ticket not yet Awaiting acceptance (TR-252); reminders back off. */
   prematureWaits: z.number().int().default(0),
+  /** What the owner was last told its delivery record lacked (TR-254); null once complete, so a later gap is told again. */
+  deliveryReminded: z.string().nullable().default(null),
 });
 export type AgentState = z.infer<typeof AgentStateSchema>;
 
