@@ -302,9 +302,14 @@ full re-review or fix check, and the reviewer's verdict.
     1. The PR is already `MERGED` (an earlier Accept merged it, then was cut off) → go to 3.
     2. Merge only when the PR's `headRefOid` still equals the recorded review head, with the merge
        method the message names: `gh pr merge <url> --merge|--rebase|--squash --match-head-commit
-       <sha>`, then confirm `state` is `MERGED`. A moved head → present it again. A conflict →
-       update from the base branch and rerun checks; merge only if the resolution is mechanical,
-       otherwise present again. GitHub refusing the method → never try another: record
+       <sha>`, then confirm `state` is `MERGED`. A moved head → present it again. A conflict or a
+       branch behind the base →
+       merge the base branch into yours, push, rerun the quick checks, wait until `gh pr view --json
+       mergeable` is not `UNKNOWN`, and merge with `--match-head-commit` set to the new head (name it
+       in ACCEPTANCE); the base moves while you work, so repeat until it merges. Do this only if the
+       resolution is mechanical, otherwise present again. Never end a turn with the pull request open
+       and the ticket not Done: the plugin tells you each time you do, and after three the card
+       returns to the user. GitHub refusing the method → never try another: record
        **NOT-MERGED** with GitHub's reason and what the user does (pick another Merge method in the
        project's settings, or allow it on GitHub), then Accept again; end with `waiting: <reason>`.
        Any other refusal → say why.
