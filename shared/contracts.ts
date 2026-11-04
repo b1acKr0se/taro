@@ -235,6 +235,8 @@ export const CardSchema = z.object({
   pullRequestState: z.enum(PULL_REQUEST_STATES).nullable().default(null),
   /** Why the PR's description does not follow the default template (TR-250), set only while Awaiting acceptance; a warning, never a gate. */
   pullRequestBodyWarning: z.string().nullable().default(null),
+  /** Why Accept cannot merge yet (no review-head or PR URL recorded, TR-254), else null: the Accept card waits. */
+  deliveryMissing: z.string().nullable().default(null),
   lastStatus: LastStatusSchema.nullable(),
   stalled: z.boolean(),
   /** Why the plugin left it stalled, when the status line does not say (a crash past the recovery limit). */

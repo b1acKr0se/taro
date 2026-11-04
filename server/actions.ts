@@ -13,7 +13,7 @@ import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { questionHoldingAccept } from "../shared/delivery-end";
 import { doneTicketOf, planRelease } from "../shared/done-release";
 import { acceptanceText, handoffText, ownerIsWarm, type AcceptOutcome, type Handover } from "../shared/accept-merge";
-import { acceptanceMerge, acceptedRecord, acceptedRecordText, executionBranch, executionWorkspace, localMergeInstruction, pluginAcceptPending, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
+import { acceptanceMerge, acceptedRecord, acceptedRecordText, deliveryMissing, executionBranch, executionWorkspace, localMergeInstruction, pluginAcceptPending, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
 import { ownerRelaunchedText, ownerRelaunchFailedText, ticketsWithClosedOwner } from "../shared/closed-owner";
 import { dependsOn, holdsSlot, shouldWakeManager, statusChanges, withRecordedStatuses, type StatusChange } from "../shared/owner-cap";
 import {
@@ -1405,13 +1405,10 @@ function acceptPlan(config: ProjectConfig, detail: TicketDetail): { merging: str
   const notes = detail.implementationNotes;
   if (detail.labels.includes("investigation")) return { merging: null, instruction: "Record ACCEPTANCE with my words and set the ticket Done.", missing: null };
   if (!config.acceptAlsoMerges) return { merging: null, instruction: "Do not merge; record ACCEPTANCE with my words and set the ticket Done.", missing: null };
-  const head = reviewHead(notes);
   if (config.delivery === "pull-request") {
-    const url = pullRequestUrl(notes, detail.finalSummary);
     const instruction = pullRequestMergeInstruction(notes, detail.finalSummary, { method: config.mergeMethod, baseBranch: config.baseBranch, repoPath: config.repoPath });
-    const missing = head === null ? "the ticket records no review-head" : url === null ? "the ticket records no PR URL" : null;
-    return { merging: "the pull request", instruction, missing };
+    return { merging: "the pull request", instruction, missing: deliveryMissing(config, false, notes, detail.finalSummary) };
   }
   const instruction = localMergeInstruction(notes, config.baseBranch, config.repoPath);
-  return { merging: `into ${config.baseBranch}`, instruction, missing: head === null ? "the ticket records no review-head" : null };
+  return { merging: `into ${config.baseBranch}`, instruction, missing: deliveryMissing(config, false, notes, detail.finalSummary) };
 }

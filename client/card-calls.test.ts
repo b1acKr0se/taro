@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Card } from "../shared/contracts";
 import type { StoredDecision } from "../shared/state";
-import { acceptanceReady, callAction, cardCalls, offersAcceptance } from "./card-calls";
+import { acceptanceReady, heldAcceptNote, callAction, cardCalls, offersAcceptance } from "./card-calls";
 
 const owner = {
   id: "agent-1",
@@ -66,6 +66,7 @@ function card(parts: Partial<Card>): Card {
     pullRequestMerged: false,
     pullRequestState: null,
     pullRequestBodyWarning: null,
+    deliveryMissing: null,
     lastStatus: null,
     stalled: false,
     stalledReason: null,
@@ -201,7 +202,19 @@ describe("acceptanceReady", () => {
     expect(acceptanceReady({ evidence: null })).toBe(true);
     expect(acceptanceReady({ evidence: { ...evidence, missing: [], complete: true } })).toBe(true);
   });
+  it("withholds Accept while the delivery record is incomplete", () => {
+    expect(acceptanceReady({ evidence: null, deliveryMissing: "the ticket records no review-head" })).toBe(false);
+    expect(acceptanceReady({ evidence: null, deliveryMissing: null })).toBe(true);
+  });
   it("withholds Accept while the evidence is incomplete", () => {
     expect(acceptanceReady({ evidence })).toBe(false);
+  });
+});
+
+describe("heldAcceptNote", () => {
+  it("says why Accept waits, and nothing when it does not", () => {
+    expect(heldAcceptNote({ deliveryMissing: "the ticket records no review-head" })).toBe("Accept waits: the ticket records no review-head.");
+    expect(heldAcceptNote({ deliveryMissing: null })).toBeNull();
+    expect(heldAcceptNote({})).toBeNull();
   });
 });

@@ -12,6 +12,7 @@ import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compa
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
+import { deliveryMissing } from "../shared/execution";
 import { remindsAtCount, waitsPrematurely } from "../shared/premature-wait";
 import { lacksPlan, mayBuildBeforePlan, noPlanRecord } from "../shared/no-plan";
 import { asPlanningQuestion, asStored, planningTicket } from "../shared/planning-questions";
@@ -227,6 +228,7 @@ export function freshState(identity: TaroIdentity): AgentState {
     evidenceReminded: null,
     noPlanFlagged: false,
     prematureWaits: 0,
+    deliveryReminded: null,
   };
 }
 
@@ -388,6 +390,7 @@ export class Supervisor {
     if (outcome.kind === "completed" && (await this.takeBackDeliveryWithOpenQuestion(paseo, live, identity))) return;
     if (await this.flushHeldReports(paseo, live.id)) return;
     if (outcome.kind === "completed" && (await this.remindAboutEvidence(paseo, live, identity))) return;
+    if (outcome.kind === "completed" && (await this.remindAboutDelivery(paseo, live, identity))) return;
     if (outcome.kind === "completed" && read !== null && (await this.remindAboutPrematureWait(paseo, live, identity, status))) return;
     await this.maybeStartCompaction(paseo, live, identity);
   }
@@ -474,6 +477,32 @@ export class Supervisor {
         skill: await skillDirectory(),
       }),
     );
+    return true;
+  }
+
+  /**
+   * An owner whose ticket is Awaiting acceptance without what Accept merges (TR-254: no review-head, or no PR
+   * URL) is told so once per gap: the card holds Accept back, so nobody else would ask for it.
+   */
+  private async remindAboutDelivery(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity): Promise<boolean> {
+    if (identity.ticket === null) return false;
+    let missing: string | null = null;
+    try {
+      const detail = await viewTicket((await projectPaths(identity.project)).tracker, identity.ticket);
+      const config = await readProjectConfig(identity.project);
+      if (detail.status === "Awaiting acceptance" && config !== null && config !== undefined) {
+        missing = deliveryMissing(config, detail.labels.includes("investigation"), detail.implementationNotes, detail.finalSummary);
+      }
+    } catch {
+      return false;
+    }
+    const changed = await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
+      if (record.deliveryReminded === missing) return false;
+      record.deliveryReminded = missing;
+      return missing !== null;
+    });
+    if (!changed || missing === null) return false;
+    await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.deliveryMissing, { ticket: identity.ticket, missing, skill: await skillDirectory() }));
     return true;
   }
 

@@ -325,6 +325,33 @@ describe("loadBoard", () => {
     expect(board.cards[1]?.evidence).toBeNull();
   });
 
+  // TR-254: an Awaiting acceptance card carries why Accept would stop, so the card holds Accept back.
+  it("sets deliveryMissing on an Awaiting acceptance card that lacks what Accept merges, and not otherwise", async () => {
+    const head = "a".repeat(40);
+    vi.mocked(listTickets).mockResolvedValue([ticket("TR-1", "Awaiting acceptance"), ticket("TR-3", "In Progress")] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    const configured = (acceptAlsoMerges: boolean) => vi.mocked(readProjectConfig).mockResolvedValue({ acceptAlsoMerges, delivery: "pull-request", repoPath: "/nonexistent/repo" } as unknown as Awaited<ReturnType<typeof readProjectConfig>>);
+    const load = async (notes: string) => {
+      invalidateBoards();
+      vi.mocked(viewTicket).mockResolvedValue({ implementationNotes: notes, finalSummary: "", labels: [] } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+      return (await loadBoard({} as PaseoApi, state([]), "taro")).cards;
+    };
+    configured(true);
+    const cards = await load("nothing yet");
+    expect(cards[0]?.deliveryMissing).toBe("the ticket records no review-head");
+    // Only the owner can fix it, so it is not the user's move.
+    expect(cards[0]?.column).toBe("working");
+    expect(cards[1]?.deliveryMissing).toBeNull();
+    expect((await load(`review-head: ${head}`))[0]?.deliveryMissing).toBe("the ticket records no PR URL");
+    const complete = (await load(`review-head: ${head}\npr: https://example.com/o/r/pull/3`))[0];
+    expect(complete?.deliveryMissing).toBeNull();
+    expect(complete?.column).toBe("needs-you");
+    configured(false);
+    expect((await load("nothing yet"))[0]?.deliveryMissing).toBeNull();
+    configured(true);
+    vi.mocked(listTickets).mockResolvedValue([{ ...ticket("TR-1", "Awaiting acceptance"), labels: ["investigation"] }] as unknown as Awaited<ReturnType<typeof listTickets>>);
+    expect((await load("nothing yet"))[0]?.deliveryMissing).toBeNull();
+  });
+
   // TR-045: a card shows what the owner's permission asks and, awaiting acceptance, the delivery in a line.
   it("carries the owner's first pending permission as what it asks, with its request id", async () => {
     const owner = {

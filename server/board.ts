@@ -10,7 +10,7 @@ import { ticketFileAlerts } from "../shared/alerts";
 import { boardColumn, complexityOf, FIRST_PAGE, hasStarted, newestOwner, PAGED_COLUMNS, pageColumns, questionsForUser, ticketAgents } from "../shared/board";
 import { offersCompact } from "../shared/compact";
 import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
-import { acceptedRecord, executionMachine, notMergedRecord, pullRequestMerged, pullRequestUrl, type AcceptedRecord, type NotMergedRecord } from "../shared/execution";
+import { acceptedRecord, deliveryMissing, executionMachine, notMergedRecord, pullRequestMerged, pullRequestUrl, type AcceptedRecord, type NotMergedRecord } from "../shared/execution";
 import type { Board, BoardPaging, Card, EvidenceView, TicketDetailView } from "../shared/contracts";
 import { latestMilestone, type Milestone } from "../shared/milestones";
 import { deliveredLine, firstAsk } from "../shared/needs-you";
@@ -209,7 +209,8 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
     readHeadroom(),
   ]);
 
-  const bodyChecked = await defaultTemplateApplies(await readProjectConfig(project).catch(() => null));
+  const projectConfig = await readProjectConfig(project).catch(() => null);
+  const bodyChecked = await defaultTemplateApplies(projectConfig);
   const byTicket = groupByTicket(agents);
   const archivedByTicket = groupByTicket(archived);
   // Only questions a live agent asked: one archived outside the plugin may not be withdrawn yet.
@@ -242,6 +243,8 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
       const accepted = ticket.status === "Awaiting acceptance" ? facts?.accepted ?? null : null;
       const elsewhere = needsHost ? facts?.hostElsewhere ?? null : null;
       const pausing = ticketPause(ticket, owner, facts);
+      // Held back for want of a delivery record (TR-254): the owner's to complete, so it is not the user's move.
+      const held = ticket.status === "Awaiting acceptance" && projectConfig !== null && facts !== null ? deliveryMissing(projectConfig, ticket.labels.includes("investigation"), facts.notes, facts.finalSummary) : null;
       const column = boardColumn({
         status: ticket.status,
         ownerElsewhere: elsewhere !== null,
@@ -250,7 +253,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         openQuestions: questionsForUser(ticketDecisions),
         stalledAfterNudge: ownerState?.stalled ?? false,
         crashedOut: ownLine && ownerState?.stalled === true && ownerState.stalledReason !== null,
-        accepted: accepted !== null,
+        accepted: accepted !== null || held !== null,
         parked: pausing.pause?.state === "paused",
         queuedToResume: pausing.pause?.state === "queued-to-resume",
       });
@@ -309,6 +312,10 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         pullRequestMerged: pullRequestFacts?.pullRequestMerged ?? false,
         pullRequestState: pullRequest === null ? null : pullRequestStates.current(pullRequest),
         pullRequestBodyWarning: bodyChecked ? bodyWarning(ticket.status, pullRequest, facts?.notes ?? null) : null,
+        deliveryMissing:
+          ticket.status === "Awaiting acceptance" && projectConfig !== null && facts !== null
+            ? deliveryMissing(projectConfig, investigation, facts.notes, facts.finalSummary)
+            : null,
         lastStatus: ownLine ? ownerState?.lastStatus ?? null : null,
         stalled: ownerState?.stalled ?? false,
         stalledReason: ownerState?.stalled === true ? ownerState.stalledReason : null,

@@ -18,7 +18,7 @@ import { mayBuildBeforePlan } from "../shared/no-plan";
 import { parsePlan } from "../shared/plan";
 import { pullRequestMark } from "../shared/pull-request-state";
 import { roundFinalSummary } from "../shared/reopen";
-import { acceptanceReady } from "./card-calls";
+import { acceptanceReady, heldAcceptNote } from "./card-calls";
 import { notMergedText } from "./card-now";
 import { ChangeBox } from "./change-box";
 import { EvidenceBlock } from "./evidence-view";
@@ -75,6 +75,7 @@ export function AcceptanceCard({
   const planSource = detail.data === undefined || !mayBuildBeforePlan(detail.data.labels) ? null : (detail.data.plan ?? "").trim();
   const plan = useMemo(() => parsePlan(planSource), [planSource]);
   const ready = acceptanceReady(card);
+  const heldNote = heldAcceptNote(card);
   const pullRequestLook = pullRequestMark(card.pullRequestState, card.pullRequestMerged);
   const openLink = (url: string) => void openExternalUrl(url).catch((caught: unknown) => toast.error(errorText(caught)));
   const styles = useMemo(
@@ -144,6 +145,7 @@ export function AcceptanceCard({
         </>
       )}
       {/* The evidence names what is missing itself; until it loads, the card's summary does. */}
+      {heldNote === null ? null : <Text style={[styles.muted, { color: colors.statusWarning }]}>{heldNote}</Text>}
       {ready || evidence !== null || card.evidence === null ? null : <Text style={[styles.muted, { color: colors.statusWarning }]}>{evidenceSummary(card.evidence)}</Text>}
       <View style={styles.rule} />
       <View ref={foot} collapsable={false} style={writing ? styles.writing : styles.foot}>
