@@ -642,14 +642,25 @@ export function AgentChat({
       }
     }
     const input = { agentId: agent.id, messageId: message.id };
+    // A message without attachments is all in its row: its words go into the box and the row leaves at once (TR-255),
+    // the daemon's calls run behind and a failure puts the box and the row back.
+    const instantEdit = action === "edit" && message.imageCount + message.fileNames.length === 0;
+    const boxBefore = { text: drafts.get(agent.id), attachments: draftAttachments.get(agent.id) };
+    const boxAfter = instantEdit ? takeBack(boxBefore, { text: message.text, attachments: [] }) : null;
+    if (boxAfter !== null) {
+      setDraft(boxAfter.text);
+      setAttachments(boxAfter.attachments);
+    }
     const call =
       action === "edit"
         ? takeQueued(input).then(async (taken) => {
             // The box first, then the message out of the queue: a lost answer on either loses nothing.
-            const before = { text: drafts.get(agent.id), attachments: draftAttachments.get(agent.id) };
-            const back = takeBack(before, { text: taken.text, attachments: takenAttachments(message.id, taken) });
-            setDraft(back.text);
-            setAttachments(back.attachments);
+            const before = boxBefore;
+            if (!instantEdit) {
+              const back = takeBack(before, { text: taken.text, attachments: takenAttachments(message.id, taken) });
+              setDraft(back.text);
+              setAttachments(back.attachments);
+            }
             await removeQueued(input).catch(async (caught: unknown) => {
               const queuedIds = await listQueued({ agentId: agent.id }).then(
                 (listed) => listed.messages.map((each) => each.id),
@@ -667,12 +678,17 @@ export function AgentChat({
           })
         : (action === "send-now" ? sendQueuedNow(input) : retryQueued(input)).then(() => follow.pin());
     const echoed = action === "send-now" && sends.handOver(message);
-    if (echoed) setHandedOver((current) => new Set(current).add(message.id));
+    if (echoed || instantEdit) setHandedOver((current) => new Set(current).add(message.id));
     setQueueBusy({ id: message.id, action });
     void call
       .catch((caught: unknown) => {
         // Not sent: the echo goes and the row, back at the queue's front, comes back with the reason.
         if (echoed) sends.forget(message.id);
+        // Only if the box still holds what Edit put there: words typed meanwhile are not thrown away.
+        if (boxAfter !== null && drafts.get(agent.id) === boxAfter.text) {
+          setDraft(boxBefore.text);
+          setAttachments(boxBefore.attachments);
+        }
         toast.error(errorText(caught));
       })
       .finally(() => {
