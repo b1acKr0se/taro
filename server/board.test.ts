@@ -338,9 +338,13 @@ describe("loadBoard", () => {
     configured(true);
     const cards = await load("nothing yet");
     expect(cards[0]?.deliveryMissing).toBe("the ticket records no review-head");
+    // Only the owner can fix it, so it is not the user's move.
+    expect(cards[0]?.column).toBe("working");
     expect(cards[1]?.deliveryMissing).toBeNull();
     expect((await load(`review-head: ${head}`))[0]?.deliveryMissing).toBe("the ticket records no PR URL");
-    expect((await load(`review-head: ${head}\npr: https://example.com/o/r/pull/3`))[0]?.deliveryMissing).toBeNull();
+    const complete = (await load(`review-head: ${head}\npr: https://example.com/o/r/pull/3`))[0];
+    expect(complete?.deliveryMissing).toBeNull();
+    expect(complete?.column).toBe("needs-you");
     configured(false);
     expect((await load("nothing yet"))[0]?.deliveryMissing).toBeNull();
     configured(true);

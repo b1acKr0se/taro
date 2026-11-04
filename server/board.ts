@@ -243,6 +243,8 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
       const accepted = ticket.status === "Awaiting acceptance" ? facts?.accepted ?? null : null;
       const elsewhere = needsHost ? facts?.hostElsewhere ?? null : null;
       const pausing = ticketPause(ticket, owner, facts);
+      // Held back for want of a delivery record (TR-254): the owner's to complete, so it is not the user's move.
+      const held = ticket.status === "Awaiting acceptance" && projectConfig !== null && facts !== null ? deliveryMissing(projectConfig, ticket.labels.includes("investigation"), facts.notes, facts.finalSummary) : null;
       const column = boardColumn({
         status: ticket.status,
         ownerElsewhere: elsewhere !== null,
@@ -251,7 +253,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         openQuestions: questionsForUser(ticketDecisions),
         stalledAfterNudge: ownerState?.stalled ?? false,
         crashedOut: ownLine && ownerState?.stalled === true && ownerState.stalledReason !== null,
-        accepted: accepted !== null,
+        accepted: accepted !== null || held !== null,
         parked: pausing.pause?.state === "paused",
         queuedToResume: pausing.pause?.state === "queued-to-resume",
       });
