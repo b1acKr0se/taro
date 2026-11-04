@@ -63,6 +63,7 @@ export const TEMPLATES = {
   noPlan: "messages/no-plan.md",
   acceptingTooEarly: "messages/accepting-too-early.md",
   deliveryMissing: "messages/delivery-missing.md",
+  acceptUnfinished: "messages/accept-unfinished.md",
   permissionDenied: "messages/permission-denied.md",
   permissionRules: "permission-rules.md",
 } as const;

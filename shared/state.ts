@@ -84,6 +84,8 @@ export const AgentStateSchema = z.object({
   prematureWaits: z.number().int().default(0),
   /** What the owner was last told its delivery record lacked (TR-254); null once complete, so a later gap is told again. */
   deliveryReminded: z.string().nullable().default(null),
+  /** Turns in a row an Accept hand-off owner ended with the ticket still waiting on its merge (TR-256). */
+  acceptStalls: z.number().int().default(0),
 });
 export type AgentState = z.infer<typeof AgentStateSchema>;
 

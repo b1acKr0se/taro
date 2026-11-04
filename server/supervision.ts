@@ -14,6 +14,9 @@ import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { deliveryMissing } from "../shared/execution";
 import { remindsAtCount, waitsPrematurely } from "../shared/premature-wait";
+import { ACCEPT_STALL_LIMIT, acceptHandoffOpen, acceptStallReason } from "../shared/accept-stall";
+import { pullRequestUrl } from "../shared/execution";
+import { runCommand } from "./process";
 import { lacksPlan, mayBuildBeforePlan, noPlanRecord } from "../shared/no-plan";
 import { asPlanningQuestion, asStored, planningTicket } from "../shared/planning-questions";
 import type { DrainTrigger } from "../shared/chat-queue";
@@ -229,6 +232,7 @@ export function freshState(identity: TaroIdentity): AgentState {
     noPlanFlagged: false,
     prematureWaits: 0,
     deliveryReminded: null,
+    acceptStalls: 0,
   };
 }
 
@@ -366,6 +370,7 @@ export class Supervisor {
     if (identity.role !== "owner") return;
 
     if (outcome.kind === "completed" && (await this.flagCommitsWithoutPlan(paseo, live, identity))) return;
+    if (outcome.kind === "completed" && read !== null && (await this.finishAcceptHandoff(paseo, live, identity, openBlocking))) return;
     // A turn that could not be read is not taken for one without a status line.
     if (outcome.kind === "completed" && read !== null) {
       const stalled = (status === null || status.state === "working") && !openBlocking;
@@ -551,6 +556,45 @@ export class Supervisor {
         skill: await skillDirectory(),
       }),
     );
+    return true;
+  }
+
+  /**
+   * The owner an Accept was handed to (TR-141) that ends its turn with the ticket still waiting on the merge
+   * (TR-256) is told to finish it, each time. After ACCEPT_STALL_LIMIT such turns in a row the user is asked
+   * instead (NOT-MERGED puts the card back in Needs you with Accept offered), as nothing else would retry.
+   */
+  private async finishAcceptHandoff(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, openBlocking: boolean): Promise<boolean> {
+    if (identity.ticket === null || openBlocking) return false;
+    const tracker = (await projectPaths(identity.project)).tracker;
+    let pullRequest = "";
+    let open = false;
+    try {
+      const detail = await viewTicket(tracker, identity.ticket);
+      open = detail.status === "Awaiting acceptance" && acceptHandoffOpen(detail.implementationNotes);
+      const url = open ? pullRequestUrl(detail.implementationNotes, detail.finalSummary) : null;
+      if (url === null) pullRequest = "No pull request is recorded for this ticket (a local-branch delivery).";
+      else {
+        const view = await runCommand("gh", ["pr", "view", url, "--json", "state,mergeable"], { timeoutMs: 60_000 }).catch(() => null);
+        pullRequest = view !== null && view.code === 0 ? `Pull request ${url} now reads ${view.stdout.trim().replace(/\s+/g, " ")}.` : `Pull request ${url} could not be read.`;
+      }
+    } catch {
+      return false;
+    }
+    let turns = 0;
+    await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
+      turns = open ? record.acceptStalls + 1 : 0;
+      // At the limit the count starts over, so the next hand-off's owner is told again before the user is.
+      record.acceptStalls = turns >= ACCEPT_STALL_LIMIT ? 0 : turns;
+      return false;
+    });
+    if (!open) return false;
+    if (turns >= ACCEPT_STALL_LIMIT) {
+      await appendTicketNote(tracker, identity.ticket, `NOT-MERGED ${new Date().toISOString()} — ${acceptStallReason(turns, pullRequest === "" ? "no pull request is recorded" : pullRequest.replace(/\.$/, ""))}`).catch(() => undefined);
+      // The card is back with the user: no nudge or stall reminder on top of it.
+      return true;
+    }
+    await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.acceptUnfinished, { ticket: identity.ticket, pullRequest, skill: await skillDirectory() }));
     return true;
   }
 

@@ -127,6 +127,9 @@ export function pullRequestMergeInstruction(notes: string | null, finalSummary: 
     `git -C ${repoPath} fetch origin ${baseBranch}, then git -C ${repoPath} merge --ff-only origin/${baseBranch}. ` +
     "Then record ACCEPTANCE ending with its merge field, merge: merged <merge commit>, and set the ticket Done. " +
     "If the head moved, do not merge; present it again. " +
+    `If the merge fails because the branch conflicts with or is behind ${baseBranch} (${baseBranch} moves while you work): merge origin/${baseBranch} into your branch, resolve what is mechanical, push, run the project's quick checks, then merge again with --match-head-commit set to the new head and name that head in ACCEPTANCE. ` +
+    `Wait for GitHub to compute mergeability (gh pr view ${url} --json mergeable, until it is not UNKNOWN) and repeat all of this each time ${baseBranch} moves again. If a conflict is not mechanical, present it again. ` +
+    "Never end your turn while the pull request is open and the ticket is not Done, unless you are waiting for my answer. " +
     `If GitHub refuses the ${title} method, do not use another: record NOT-MERGED with GitHub's reason. ` +
     `If ${baseBranch} cannot fast-forward (uncommitted changes, another branch checked out, commits origin lacks, the fetch failed), do not touch it, and still finish: the pull request merged, so the ticket closes. Say in the ACCEPTANCE prose that local ${baseBranch} was not updated, with the reason and what I do.`
   );

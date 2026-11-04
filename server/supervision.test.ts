@@ -4,6 +4,7 @@ import type { AgentState, StoredDecision } from "../shared/state";
 import { fetchLiveAgent, listTaroAgents } from "./agents";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TimelinePage, TurnOutcome } from "./host-types";
 import { sendFromPlugin } from "./send";
+import { runCommand } from "./process";
 import { branchName, commitsPast } from "./branch-commits";
 import { readProjectConfig } from "./projects";
 import { appendTicketNote, endDelivery, viewTicket } from "./tickets";
@@ -15,11 +16,12 @@ import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, huma
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", acceptQuestionRefused: "accept-question-refused", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question", noPlan: "no-plan", acceptingTooEarly: "accepting-too-early", deliveryMissing: "delivery-missing", planWithoutMockups: "plan-without-mockups" },
+  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", acceptQuestionRefused: "accept-question-refused", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question", noPlan: "no-plan", acceptingTooEarly: "accepting-too-early", acceptUnfinished: "accept-unfinished", deliveryMissing: "delivery-missing", planWithoutMockups: "plan-without-mockups" },
   skillDirectory: async () => "/skill",
-  message: async (path: string, values: Record<string, string> = {}) => (path === "delivery-missing" ? `delivery-missing:${values.ticket}:${values.missing}` : path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "accept-question-refused" ? `accept-question-refused:${values.refused}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : path === "plan-without-mockups" ? `plan-without-mockups:${values.ticket}:${values.missing}` : path === "accepting-too-early" ? `accepting-too-early:${values.ticket}:${values.status}:${values.missing}` : path === "no-plan" ? `no-plan:${values.ticket}:${values.branch}:${values.commits}:${values.base}` : `${path}:${values.ticket ?? ""}`),
+  message: async (path: string, values: Record<string, string> = {}) => (path === "delivery-missing" ? `delivery-missing:${values.ticket}:${values.missing}` : path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "accept-question-refused" ? `accept-question-refused:${values.refused}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : path === "plan-without-mockups" ? `plan-without-mockups:${values.ticket}:${values.missing}` : path === "accept-unfinished" ? `accept-unfinished:${values.ticket}:${values.pullRequest}` : path === "accepting-too-early" ? `accepting-too-early:${values.ticket}:${values.status}:${values.missing}` : path === "no-plan" ? `no-plan:${values.ticket}:${values.branch}:${values.commits}:${values.base}` : `${path}:${values.ticket ?? ""}`),
 }));
 vi.mock("./projects", () => ({ readProjectConfig: vi.fn(async () => null), projectPaths: async () => ({ tracker: "/tracker" }) }));
+vi.mock("./process", async (original) => ({ ...(await original<typeof import("./process")>()), runCommand: vi.fn(async () => ({ code: 0, stdout: '{"state":"OPEN","mergeable":"CONFLICTING"}', stderr: "" })) }));
 vi.mock("./branch-commits", () => ({ commitsPast: vi.fn(async () => 0), branchName: vi.fn(async () => "taro/tr-9") }));
 vi.mock("./tickets", () => ({ viewTicket: vi.fn(), endDelivery: vi.fn(async () => true), appendTicketNote: vi.fn(async () => undefined) }));
 
@@ -1639,5 +1641,76 @@ describe("Supervisor.onTurnEnded with an incomplete delivery record", () => {
     ticket(null);
     await taro.onTurnEnded(ended(), hookAgent, completed, null, undefined);
     expect(told()).toEqual([]);
+  });
+});
+
+// PSA-045's hand-off owner pushed its conflict fix, then ended with the pull request open and nothing retried (TR-256).
+describe("Supervisor.onTurnEnded with an Accept hand-off unfinished", () => {
+  const owner = { id: "owner-ah", provider: "claude", model: "sonnet", title: "TR-9 · x", status: "idle", cwd: "/work/tr-9", labels: { "taro.project": "taro", "taro.role": "owner", "taro.ticket": "TR-9" } };
+  const hookAgent = { id: owner.id, parentAgentId: null } as unknown as HookAgent;
+  const completed = { kind: "completed" } as unknown as TurnOutcome;
+  const ending = () => withTimeline([{ type: "user_message", text: "go" }, { type: "assistant_message", text: "Pushed the fix.\n\nworking: waiting for GitHub" }] as unknown as TimelineItem[]);
+  const notes = "ACCEPTED 2026-11-04T01:05Z — merging: yes\n\nACCEPT-HANDOFF 2026-11-04T01:05Z — Same owner: gh pr merge failed";
+  const ticket = (implementationNotes: string) =>
+    vi.mocked(viewTicket).mockResolvedValue({ status: "Awaiting acceptance", implementationPlan: null, acceptanceCriteria: [], implementationNotes: `${implementationNotes}\n\nEXECUTION 2026-11-04T01:00Z — PR https://github.com/example/notes-app/pull/32`, labels: [], finalSummary: null } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+  const told = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("accept-unfinished:"));
+  const notMerged = () => vi.mocked(appendTicketNote).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("NOT-MERGED"));
+
+  function supervisor(): Supervisor {
+    const agents: Record<string, AgentState> = {};
+    const state = {
+      allDecisions: async () => [],
+      updateDecisions: async <T>(change: (decisions: never[]) => T) => change([]),
+      agent: async (agentId: string) => agents[agentId] ?? null,
+      updateAgent: async <T>(agentId: string, initial: () => AgentState, change: (record: AgentState) => T) => {
+        const record = agents[agentId] ?? initial();
+        agents[agentId] = record;
+        return change(record);
+      },
+    } as unknown as PluginState;
+    return new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, {} as unknown as Recovery);
+  }
+
+  beforeEach(() => {
+    vi.mocked(fetchLiveAgent).mockResolvedValue(owner as unknown as PaseoAgent);
+    vi.mocked(sendFromPlugin).mockClear();
+    vi.mocked(appendTicketNote).mockClear();
+  });
+  afterEach(() => vi.mocked(viewTicket).mockReset());
+
+  it("tells the owner to finish, with the pull request's state, then asks the user at the limit", async () => {
+    ticket(notes);
+    const taro = supervisor();
+    await taro.onTurnEnded(ending(), hookAgent, completed, null, undefined);
+    await taro.onTurnEnded(ending(), hookAgent, completed, null, undefined);
+    expect(told()).toHaveLength(2);
+    expect(told()[0]).toContain("CONFLICTING");
+    expect(notMerged()).toEqual([]);
+    await taro.onTurnEnded(ending(), hookAgent, completed, null, undefined);
+    expect(told()).toHaveLength(2);
+    expect(vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("nudge"))).toEqual([]);
+    expect(notMerged()).toHaveLength(1);
+    expect(notMerged()[0]).toMatch(/ended 3 turns without finishing.*CONFLICTING/);
+  });
+
+  it("tells the owner again after the user was asked, and copes with a gh failure and a local delivery", async () => {
+    ticket(notes);
+    const taro = supervisor();
+    for (let turn = 0; turn < 4; turn++) await taro.onTurnEnded(ending(), hookAgent, completed, null, undefined);
+    expect(notMerged()).toHaveLength(1);
+    expect(told()).toHaveLength(3);
+    vi.mocked(runCommand).mockResolvedValueOnce({ code: 1, stdout: "", stderr: "no" });
+    await taro.onTurnEnded(ending(), hookAgent, completed, null, undefined);
+    expect(told()[3]).toContain("could not be read");
+    vi.mocked(viewTicket).mockResolvedValue({ status: "Awaiting acceptance", implementationPlan: null, acceptanceCriteria: [], implementationNotes: notes, labels: [], finalSummary: null } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+    await supervisor().onTurnEnded(ending(), hookAgent, completed, null, undefined);
+    expect(told()[4]).toContain("local-branch");
+  });
+
+  it("stays quiet once the hand-off is closed", async () => {
+    ticket(`${notes}\n\nACCEPTANCE 2026-11-04T01:09Z — merged`);
+    await supervisor().onTurnEnded(ending(), hookAgent, completed, null, undefined);
+    expect(told()).toEqual([]);
+    expect(notMerged()).toEqual([]);
   });
 });
