@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Card } from "../shared/contracts";
 import type { StoredDecision } from "../shared/state";
-import { acceptanceReady, callAction, cardCalls, offersAcceptance } from "./card-calls";
+import { acceptanceReady, heldAcceptNote, callAction, cardCalls, offersAcceptance } from "./card-calls";
 
 const owner = {
   id: "agent-1",
@@ -208,5 +208,13 @@ describe("acceptanceReady", () => {
   });
   it("withholds Accept while the evidence is incomplete", () => {
     expect(acceptanceReady({ evidence })).toBe(false);
+  });
+});
+
+describe("heldAcceptNote", () => {
+  it("says why Accept waits, and nothing when it does not", () => {
+    expect(heldAcceptNote({ deliveryMissing: "the ticket records no review-head" })).toBe("Accept waits: the ticket records no review-head.");
+    expect(heldAcceptNote({ deliveryMissing: null })).toBeNull();
+    expect(heldAcceptNote({})).toBeNull();
   });
 });

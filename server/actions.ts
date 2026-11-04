@@ -1406,7 +1406,6 @@ function acceptPlan(config: ProjectConfig, detail: TicketDetail): { merging: str
   if (detail.labels.includes("investigation")) return { merging: null, instruction: "Record ACCEPTANCE with my words and set the ticket Done.", missing: null };
   if (!config.acceptAlsoMerges) return { merging: null, instruction: "Do not merge; record ACCEPTANCE with my words and set the ticket Done.", missing: null };
   if (config.delivery === "pull-request") {
-    const url = pullRequestUrl(notes, detail.finalSummary);
     const instruction = pullRequestMergeInstruction(notes, detail.finalSummary, { method: config.mergeMethod, baseBranch: config.baseBranch, repoPath: config.repoPath });
     return { merging: "the pull request", instruction, missing: deliveryMissing(config, false, notes, detail.finalSummary) };
   }
