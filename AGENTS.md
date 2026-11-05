@@ -78,6 +78,10 @@ EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
   one locked path in `server/ticket-store.ts`. The `taro` command (`bin/taro`) runs `.ts` under
   Node ≥ 22.18 type stripping, so every file reachable from `server/taro-cli.ts` uses erasable
   syntax (no enums, namespaces or parameter properties), `.ts` import extensions and no npm packages.
+- Every button action also has a `taro` command (`taro ticket accept|reopen|…`, `taro decision answer|dismiss`, TR-258;
+  `skill/reference/actions.md`): it speaks the daemon's websocket as `server/daemon-cancel.ts` does and calls the same RPC
+  (`server/plugin-rpc.ts`, wire names in `ACTIONS` in `server/taro-cli.ts`). A new button action adds its row there; the test
+  in `server/taro-cli-actions.test.ts` checks each input against the contract.
 - Agent-facing text lives in `skill/` (what agents read) and `templates/` (what the plugin writes or
   sends), never in code.
 - Comments explain why, briefly. Full identifiers, no abbreviations.
