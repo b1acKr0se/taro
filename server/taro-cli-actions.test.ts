@@ -165,7 +165,7 @@ describe("words", () => {
 describe("inside an agent session (TR-237)", () => {
   const AGENT = { PASEO_AGENT_ID: "3f2a9c1d-0000-4000-8000-000000000001" };
 
-  it("refuses the user's actions without calling the daemon, exit 2", async () => {
+  it("refuses the user's actions without calling the daemon, exit 1", async () => {
     const requests = stubDaemon(() => ({ output: {} }));
     for (const args of [
       ["ticket", "accept", "TR-7"],
@@ -177,7 +177,7 @@ describe("inside an agent session (TR-237)", () => {
       ["decision", "dismiss", "q1"],
     ]) {
       const result = await run(args, AGENT);
-      expect(result.code, args.join(" ")).toBe(2);
+      expect(result.code, args.join(" ")).toBe(1);
       expect(result.stderr).toContain("outside an agent session");
     }
     expect(requests).toEqual([]);
@@ -196,7 +196,7 @@ describe("bin/taro", () => {
     const bin = resolve(import.meta.dirname, "..", "bin", "taro");
     expect(spawnSync(bin, ["--help"], { encoding: "utf8" }).stdout).toContain("taro ticket accept");
     const guarded = spawnSync(bin, ["ticket", "accept", "TR-7", "--project", "p"], { encoding: "utf8", env: { ...process.env, PASEO_AGENT_ID: "a1", PASEO_HOME: home } });
-    expect(guarded.status).toBe(2);
+    expect(guarded.status).toBe(1);
     expect(guarded.stderr).toContain("outside an agent session");
     // No lock file in this home, so nothing is dialled (the lock file the other tests write names the real daemon's port).
     const down = spawnSync(bin, ["ticket", "pause", "TR-7", "--project", "p"], { encoding: "utf8", env: { ...process.env, PASEO_HOME: join(home, "no-daemon") } });

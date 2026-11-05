@@ -520,7 +520,7 @@ async function runAction(group: string, verbName: string, args: readonly string[
   expectPositionals(parsed, 1, action.subject === "ticket" ? "one ticket id" : "one question key");
   const agent = io.env.PASEO_AGENT_ID;
   if (action.userOnly && agent !== undefined && agent !== "") {
-    throw new UsageError(`${group} ${verbName} is the user's action (it is not an agent's to take): run it outside an agent session.`);
+    throw new RpcRefused(`${group} ${verbName} is the user's action (it is not an agent's to take): run it outside an agent session.`);
   }
   const subject = parsed.positionals[0] as string;
   const words = action.words === undefined ? undefined : await wordsOf(parsed, action.words, io);

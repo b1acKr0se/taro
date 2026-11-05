@@ -14,5 +14,5 @@ user's own terminal.
   (default `~/.paseo`). `--note -` and `--text -` read standard input. `--json` prints the daemon's answer.
 - Exit codes: 0 done, 1 the action refused (its reason on stderr), 2 usage, 4 the daemon is not reachable.
 - **Accept, reopen, request-changes, change-spec, close-round and the decision verbs are the user's**
-  (TR-237): they refuse inside an agent session (`$PASEO_AGENT_ID` set). Never work around that; an
+  (TR-237): they refuse inside an agent session (`$PASEO_AGENT_ID` set; exit 1, like any refusal). Never work around that; an
   agent asks the user. Pause, resume and relaunch-owner run anywhere.
