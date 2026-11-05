@@ -52,15 +52,7 @@ export function modelLabel(agent: { provider: string; model: string | null }): s
   return agent.model === null ? agent.provider : `${agent.provider}/${agent.model}`;
 }
 
-/** The handler's own sentence, without the RPC wrapper ("Request failed: … requestType=… code=…"). */
-export function errorText(caught: unknown): string {
-  const raw = caught instanceof Error ? caught.message : String(caught);
-  const clean = raw
-    .replace(/^Request failed:\s*/, "")
-    .replace(/\s+requestType=\S+(\s+code=\S+)?\s*$/, "")
-    .trim();
-  return clean === "" ? raw : clean;
-}
+export { errorText } from "../shared/error-text";
 
 /** A span of time at a glance: "40s", "12m", "2h 05m", "3d 4h"; "—" for nothing. */
 export function formatDuration(ms: number): string {

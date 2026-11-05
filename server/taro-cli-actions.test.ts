@@ -63,7 +63,8 @@ function stubDaemon(reply: (method: string) => { output?: unknown; error?: strin
       const answer = reply(method);
       queueMicrotask(() => {
         this.say({ type: "rpc_error", payload: { requestId: "someone-else", error: "not this one" } });
-        if (answer.error !== undefined) this.say({ type: "rpc_error", payload: { requestId, error: answer.error } });
+        // Paseo wraps a handler's message as it does for the button.
+        if (answer.error !== undefined) this.say({ type: "rpc_error", payload: { requestId, error: `Request failed: ${answer.error} requestType=plugin.rpc.invoke.request code=handler_error` } });
         else this.say({ type: "plugin.rpc.invoke.response", payload: { requestId, output: answer.output ?? {} } });
       });
     }

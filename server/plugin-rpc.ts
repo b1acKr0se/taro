@@ -6,6 +6,7 @@
  */
 import { randomUUID } from "node:crypto";
 
+import { errorText } from "../shared/error-text.ts";
 import { daemonEndpoint, openNodeSocket, sessionMessage, type DaemonSocket } from "./daemon-cancel.ts";
 
 export interface PluginRpcOptions {
@@ -73,7 +74,7 @@ export async function invokePluginRpc(method: string, input: unknown, options: P
       if (Reflect.get(payload, "requestId") !== requestId) return;
       if (message.type === "rpc_error") {
         const reason: unknown = Reflect.get(payload, "error");
-        finish(new RpcRefused(typeof reason === "string" && reason.trim() !== "" ? reason.trim() : "The daemon refused the action."), undefined);
+        finish(new RpcRefused(typeof reason === "string" && reason.trim() !== "" ? errorText(reason) : "The daemon refused the action."), undefined);
       } else if (message.type === "plugin.rpc.invoke.response") {
         finish(null, Reflect.get(payload, "output"));
       }
