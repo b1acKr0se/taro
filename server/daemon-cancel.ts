@@ -59,7 +59,7 @@ export function daemonSocketUrl(listen: unknown): string | null {
   return `ws://${plain[1] === "0.0.0.0" ? "127.0.0.1" : plain[1]}:${plain[2]}/ws`;
 }
 
-function openNodeSocket(url: string): DaemonSocket | null {
+export function openNodeSocket(url: string): DaemonSocket | null {
   const Socket = (globalThis as { WebSocket?: new (url: string) => DaemonSocket }).WebSocket;
   return Socket === undefined ? null : new Socket(url);
 }
@@ -73,7 +73,7 @@ async function readText(path: string): Promise<string | null> {
 }
 
 /** A session message's inner message, or null for anything else. */
-function sessionMessage(data: unknown): { type?: unknown; payload?: unknown } | null {
+export function sessionMessage(data: unknown): { type?: unknown; payload?: unknown } | null {
   try {
     const parsed: unknown = JSON.parse(String(data));
     if (typeof parsed !== "object" || parsed === null || Reflect.get(parsed, "type") !== "session") return null;
@@ -84,14 +84,9 @@ function sessionMessage(data: unknown): { type?: unknown; payload?: unknown } | 
   }
 }
 
-/**
- * Ends the agent's turn through the daemon's websocket. Resolves once the daemon answered that it
- * did (or that no turn was running); throws `DaemonCancelError` when the daemon refused or did not
- * answer a cancel it has in time, and `DirectCancelUnavailable` when this route could not be used,
- * so the caller tries the CLI.
- */
-export async function cancelOverSocket(agentId: string, options: DirectCancelOptions): Promise<void> {
-  const lockText = await readText(join(options.home, "paseo.pid"));
+/** Where the daemon in `home` listens and the credential that opens a session; `DirectCancelUnavailable` when either is missing. */
+export async function daemonEndpoint(home: string): Promise<{ url: string; token: string }> {
+  const lockText = await readText(join(home, "paseo.pid"));
   let listen: unknown = null;
   try {
     listen = lockText === null ? null : Reflect.get(JSON.parse(lockText) as object, "listen");
@@ -100,8 +95,19 @@ export async function cancelOverSocket(agentId: string, options: DirectCancelOpt
   }
   const url = daemonSocketUrl(listen);
   if (url === null) throw new DirectCancelUnavailable(`no websocket address in the daemon's lock file (${JSON.stringify(listen)})`);
-  const token = (await readText(join(options.home, "local-credential")))?.trim() ?? "";
+  const token = (await readText(join(home, "local-credential")))?.trim() ?? "";
   if (!CREDENTIAL.test(token)) throw new DirectCancelUnavailable("no local credential in the daemon's home");
+  return { url, token };
+}
+
+/**
+ * Ends the agent's turn through the daemon's websocket. Resolves once the daemon answered that it
+ * did (or that no turn was running); throws `DaemonCancelError` when the daemon refused or did not
+ * answer a cancel it has in time, and `DirectCancelUnavailable` when this route could not be used,
+ * so the caller tries the CLI.
+ */
+export async function cancelOverSocket(agentId: string, options: DirectCancelOptions): Promise<void> {
+  const { url, token } = await daemonEndpoint(options.home);
   const socket = (options.open ?? openNodeSocket)(url);
   if (socket === null) throw new DirectCancelUnavailable("this Node has no WebSocket");
   const requestId = `taro-stop-${randomUUID()}`;

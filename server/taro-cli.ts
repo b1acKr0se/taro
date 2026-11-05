@@ -7,6 +7,7 @@
  */
 import { readdir, readFile, stat } from "node:fs/promises";
 import { realpathSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,6 +21,7 @@ import {
   type TicketSummary,
 } from "../shared/ticket-format.ts";
 import { acceptRefusal } from "../shared/accept-guard.ts";
+import { DaemonUnreachable, invokePluginRpc, RpcRefused } from "./plugin-rpc.ts";
 import {
   createTicketStore,
   ID_PATTERN,
@@ -34,12 +36,15 @@ export interface CliIo {
   stdout(text: string): void;
   stderr(text: string): void;
   env: Record<string, string | undefined>;
+  /** All of standard input, for `--note -`; absent where there is none. */
+  readStdin?(): Promise<string>;
 }
 
 const EXIT_OK = 0;
 const EXIT_FAILURE = 1;
 const EXIT_USAGE = 2;
 const EXIT_CONFLICT = 3;
+const EXIT_UNREACHABLE = 4;
 
 const USAGE = `Usage:
   taro ticket list [-s <status>] [-l <label>] [-p <parent>] [--plain|--json]
@@ -53,6 +58,14 @@ const USAGE = `Usage:
                    [--append-notes <text>]... [--check-ac <n>]... [--uncheck-ac <n>]...
                    [--revision <rev>] [--plain]
   taro ticket check [--json]
+The buttons, from a script (they call the running daemon, with the button's own checks; --project or $TARO_PROJECT,
+--home or $PASEO_HOME, --json prints the daemon's answer; \`--note -\` and \`--text -\` read standard input):
+  taro ticket accept|close-round|pause|resume|relaunch-owner <ID>
+  taro ticket reopen <ID> --note <text>
+  taro ticket request-changes|change-spec <ID> --text <text>
+  taro decision answer <key> [--label <option>] [--text <words>]
+  taro decision dismiss <key>
+Accept, reopen, request-changes, change-spec, close-round and the decision verbs are the user's: they refuse inside an agent session.
 Every ticket command takes --tracker <path> (or $TARO_TRACKER). -l, --dep and --remove-dep accept comma-separated lists.`;
 
 class UsageError extends Error {}
@@ -452,8 +465,91 @@ const TICKET_VERBS: Record<string, Verb> = {
   check: { options: {}, run: checkVerb },
 };
 
+
+// ---------------------------------------------------------------- the buttons (TR-258)
+
+interface ActionOptionSpec {
+  /** The option holding the user's words, if the action takes any. */
+  words?: "note" | "text";
+  /** Whether the words are required, as the contract's `min(1)` makes them. */
+  wordsRequired?: boolean;
+}
+
+interface Action {
+  method: string;
+  /** What the button's user alone decides (TR-237): refused inside an agent session. */
+  userOnly: boolean;
+  /** `ticket` verbs name a ticket; `decision` verbs a question key. */
+  subject: "ticket" | "decision";
+  words?: ActionOptionSpec["words"];
+  label?: boolean;
+}
+
+const ACTIONS: Record<string, Action> = {
+  "ticket accept": { method: "taro.ticket.accept", userOnly: true, subject: "ticket" },
+  "ticket reopen": { method: "taro.ticket.reopen", userOnly: true, subject: "ticket", words: "note" },
+  "ticket request-changes": { method: "taro.ticket.request-changes", userOnly: true, subject: "ticket", words: "text" },
+  "ticket change-spec": { method: "taro.ticket.change-spec", userOnly: true, subject: "ticket", words: "text" },
+  "ticket close-round": { method: "taro.ticket.close-round", userOnly: true, subject: "ticket" },
+  "ticket pause": { method: "taro.ticket.pause", userOnly: false, subject: "ticket" },
+  "ticket resume": { method: "taro.ticket.resume", userOnly: false, subject: "ticket" },
+  "ticket relaunch-owner": { method: "taro.owner.relaunch", userOnly: false, subject: "ticket" },
+  "decision answer": { method: "taro.decision.answer", userOnly: true, subject: "decision", words: "text", label: true },
+  "decision dismiss": { method: "taro.decision.dismiss", userOnly: true, subject: "decision" },
+};
+
+const ACTION_OPTIONS: OptionTable = {
+  "--project": { key: "project", value: true },
+  "--home": { key: "home", value: true },
+  "--note": { key: "note", value: true },
+  "--text": { key: "text", value: true },
+  "--label": { key: "label", value: true },
+};
+
+/** The option's value; `-` reads standard input. */
+async function wordsOf(parsed: Parsed, key: string, io: CliIo): Promise<string | undefined> {
+  const value = single(parsed, key);
+  if (value !== "-") return value;
+  if (io.readStdin === undefined) throw new UsageError(`--${key} - needs standard input.`);
+  return (await io.readStdin()).trim();
+}
+
+async function runAction(group: string, verbName: string, args: readonly string[], io: CliIo): Promise<number> {
+  const action = ACTIONS[`${group} ${verbName}`] as Action;
+  const parsed = parseArguments(args, ACTION_OPTIONS);
+  expectPositionals(parsed, 1, action.subject === "ticket" ? "one ticket id" : "one question key");
+  const agent = io.env.PASEO_AGENT_ID;
+  if (action.userOnly && agent !== undefined && agent !== "") {
+    throw new RpcRefused(`${group} ${verbName} is the user's action (it is not an agent's to take): run it outside an agent session.`);
+  }
+  const subject = parsed.positionals[0] as string;
+  const words = action.words === undefined ? undefined : await wordsOf(parsed, action.words, io);
+  const label = action.label === true ? single(parsed, "label") : undefined;
+  if (action.words !== undefined && (words === undefined || words === "") && !(action.label === true && label !== undefined)) {
+    throw new UsageError(action.label === true ? "Give --label <option>, --text <words>, or both." : `${verbName} needs --${action.words} <text>.`);
+  }
+  const project = single(parsed, "project") ?? io.env.TARO_PROJECT;
+  if (action.subject === "ticket" || action.words === undefined) {
+    if (project === undefined || project === "") throw new UsageError("No project: pass --project <name> or set TARO_PROJECT.");
+  }
+  let input: Record<string, unknown>;
+  if (action.subject === "decision" && action.label === true) input = { key: subject, label: label ?? null, text: words ?? "" };
+  else if (action.subject === "decision") input = { project, key: subject };
+  else input = { project, ticket: subject, ...(action.words === undefined ? {} : { [action.words]: words }) };
+  const home = single(parsed, "home") ?? io.env.PASEO_HOME ?? join(homedir(), ".paseo");
+  const output = await invokePluginRpc(action.method, input, { home });
+  if (has(parsed, "json")) {
+    io.stdout(json(output ?? {}));
+  } else {
+    const message = typeof output === "object" && output !== null ? Reflect.get(output, "message") : undefined;
+    io.stdout(`${typeof message === "string" && message !== "" ? message : `${verbName} done for ${subject}.`}\n`);
+  }
+  return EXIT_OK;
+}
+
 async function ticketCommand(args: readonly string[], io: CliIo): Promise<number> {
   const verbName = args[0];
+  if (verbName !== undefined && Object.hasOwn(ACTIONS, `ticket ${verbName}`)) return runAction("ticket", verbName, args.slice(1), io);
   const verb = verbName === undefined ? undefined : TICKET_VERBS[verbName];
   if (verb === undefined || !Object.hasOwn(TICKET_VERBS, verbName as string)) {
     throw new UsageError(verbName === undefined ? "Missing ticket verb." : `Unknown ticket verb "${verbName}".`);
@@ -471,9 +567,18 @@ async function ticketCommand(args: readonly string[], io: CliIo): Promise<number
   return verb.run({ store: createTicketStore(trackerPath), trackerPath, io, parsed });
 }
 
+async function decisionCommand(args: readonly string[], io: CliIo): Promise<number> {
+  const verbName = args[0];
+  if (verbName === undefined || !Object.hasOwn(ACTIONS, `decision ${verbName}`)) {
+    throw new UsageError(verbName === undefined ? "Missing decision verb." : `Unknown decision verb "${verbName}".`);
+  }
+  return runAction("decision", verbName, args.slice(1), io);
+}
+
 /** The first word of the command line picks the handler. */
 const commands: Record<string, (args: readonly string[], io: CliIo) => Promise<number>> = {
   ticket: ticketCommand,
+  decision: decisionCommand,
 };
 
 function errorMessage(error: unknown): string {
@@ -506,6 +611,14 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       io.stderr(`${errorMessage(error)}\n`);
       return EXIT_CONFLICT;
     }
+    if (error instanceof DaemonUnreachable) {
+      io.stderr(`${error.message}\n`);
+      return EXIT_UNREACHABLE;
+    }
+    if (error instanceof RpcRefused) {
+      io.stderr(`${error.message}\n`);
+      return EXIT_FAILURE;
+    }
     if (error instanceof TicketNotFound) {
       io.stderr(`${error.message}\n`);
       return EXIT_FAILURE;
@@ -530,5 +643,10 @@ if (runDirectly()) {
     stdout: (text) => void process.stdout.write(text),
     stderr: (text) => void process.stderr.write(text),
     env: process.env,
+    readStdin: async () => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+      return Buffer.concat(chunks).toString("utf8");
+    },
   });
 }
