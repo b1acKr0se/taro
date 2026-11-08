@@ -82,6 +82,8 @@ EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
   `skill/reference/actions.md`): it speaks the daemon's websocket as `server/daemon-cancel.ts` does and calls the same RPC
   (`server/plugin-rpc.ts`, wire names in `ACTIONS` in `server/taro-cli.ts`). A new button action adds its row there; the test
   in `server/taro-cli-actions.test.ts` checks each input against the contract.
+- An owner's child agent without `taro.project` (found by `paseo.parent-agent-id`, `server/unlabelled-agents.ts`, TR-259) cannot be labelled
+  afterwards: each minute's sweep messages the owner, notes the ticket once and keeps a board alert until the agent is archived.
 - Agent-facing text lives in `skill/` (what agents read) and `templates/` (what the plugin writes or
   sends), never in code.
 - Comments explain why, briefly. Full identifiers, no abbreviations.
