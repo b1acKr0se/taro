@@ -66,6 +66,8 @@ import { inboxCount } from "./shared/board";
 import { askFromRequest } from "./shared/permission-asks";
 import { ProjectSettingsSchema } from "./shared/project";
 import { Actions } from "./server/actions";
+import { createUnlabelledAgents } from "./server/unlabelled-agents";
+import type { BoardAlert } from "./shared/recovery";
 import { inTabOrder, saveTabOrder } from "./server/project-order";
 import { ChatQueue } from "./server/chat-queue";
 import { createCrashTrail } from "./server/crash-trail";
@@ -111,6 +113,8 @@ export default function contribute(server: PluginServerContext) {
   const recovery = new Recovery(state, stats, chatQueue);
   const supervisor = new Supervisor(state, stats, recovery, chatQueue);
   const actions = new Actions(state, supervisor, trackers, stats, recovery, chatQueue);
+  const unlabelled = createUnlabelledAgents();
+  const alertsFor = (project: string): BoardAlert[] => [...actions.queueAlerts(project), ...unlabelled.alerts(project)];
   recovery.setRelaunchOwner((paseo, project, ticket) => actions.relaunchOwner(paseo, project, ticket));
   // Each Needs-you check also records which cards wait on the user, for Stats' Waiting on you (TR-100).
   const crashTrail = createCrashTrail();
@@ -180,6 +184,17 @@ export default function contribute(server: PluginServerContext) {
         if (changed) invalidateBoards();
       })
       .catch((error: unknown) => reportFailure("[taro] queue check failed:", error))
+      // Agents an owner started without Taro's labels (TR-259) ride the same minute.
+      .then(async () => {
+        if (kept === null || isStopping()) return;
+        const paseo = kept;
+        const changed = await unlabelled.sweep(paseo, (await listProjectConfigs()).map((config) => config.project));
+        if (changed) {
+          invalidateBoards();
+          checkNotifications();
+        }
+      })
+      .catch((error: unknown) => reportFailure("[taro] unlabelled-agent check failed:", error))
       .finally(() => {
         backstopping = false;
       });
@@ -198,7 +213,7 @@ export default function contribute(server: PluginServerContext) {
     const paseo = kept;
     notifying = true;
     void listProjectConfigs()
-      .then((configs) => Promise.all(configs.map((config) => notifier.check(paseo, state, config.project, actions.queueAlerts(config.project)).catch((error: unknown) => reportFailure(`[taro] notifications for ${config.project}:`, error)))))
+      .then((configs) => Promise.all(configs.map((config) => notifier.check(paseo, state, config.project, alertsFor(config.project)).catch((error: unknown) => reportFailure(`[taro] notifications for ${config.project}:`, error)))))
       .catch((error: unknown) => reportFailure("[taro] notification check failed:", error))
       .finally(() => {
         notifying = false;
@@ -254,7 +269,7 @@ export default function contribute(server: PluginServerContext) {
       configs.map(async (config) => {
         const manager = await fetchLiveAgent(paseo, config.managerAgentId);
         void trackers.pullIfDue(config.project);
-        const board = await loadBoard(paseo, state, config.project, actions.queueAlerts(config.project)).catch(() => null);
+        const board = await loadBoard(paseo, state, config.project, alertsFor(config.project)).catch(() => null);
         const trackerSyncProblem = config.trackerSync === "remote" ? trackers.syncProblem(config.project) : null;
         const needsYou = inboxCount(board, trackerSyncProblem !== null);
         const managerLastTurnEndedAt = manager === null ? null : ((await state.agent(manager.id))?.lastTurnEndedAt ?? null);
@@ -328,7 +343,7 @@ export default function contribute(server: PluginServerContext) {
 
   server.handle(loadBoardRpc, async ({ project, limits, include }, { paseo }) => {
     void trackers.pullIfDue(project);
-    const [board, saved] = await Promise.all([loadBoard(keep(paseo), state, project, actions.queueAlerts(project), { limits, include }), stats.all(project)]);
+    const [board, saved] = await Promise.all([loadBoard(keep(paseo), state, project, alertsFor(project), { limits, include }), stats.all(project)]);
     return withSavedContext(board, saved);
   });
   server.handle(loadTicket, async ({ project, ticket }, { paseo }) => {
