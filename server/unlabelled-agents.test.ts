@@ -64,7 +64,9 @@ describe("createUnlabelledAgents", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     await unlabelled.sweep(paseo, ["ff"]);
     expect(appendTicketNote).not.toHaveBeenCalled();
+    expect(unlabelled.alerts("ff")[0]?.text).toContain("could not reach");
     await unlabelled.sweep(paseo, ["ff"]);
     expect(appendTicketNote).toHaveBeenCalledTimes(1);
+    expect(unlabelled.alerts("ff")[0]?.text).toContain("has been told");
   });
 });

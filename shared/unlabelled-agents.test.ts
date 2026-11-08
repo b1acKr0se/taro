@@ -25,6 +25,12 @@ describe("unlabelledChildren", () => {
     expect(unlabelledChildren(owner, [bare]).map((agent) => agent.id)).toEqual(["d"]);
   });
 
+  it("finds a child with only some of the labels, since the board lists none of them", () => {
+    const partial = { "paseo.parent-agent-id": "owner-1", "taro.project": "ff" };
+    const noTicket = { ...partial, "taro.role": "reviewer" };
+    expect(unlabelledChildren(owner, [child({ id: "e", labels: partial }), child({ id: "f", labels: noTicket })]).map((agent) => agent.id)).toEqual(["e", "f"]);
+  });
+
   it("finds none among no children", () => {
     expect(unlabelledChildren(owner, [])).toEqual([]);
   });
@@ -33,7 +39,7 @@ describe("unlabelledChildren", () => {
 describe("alerts and records", () => {
   const [agent] = unlabelledChildren(owner, [child({})]);
   it("names the agent, the ticket and what is lost, one alert per agent", () => {
-    const alerts = unlabelledAlerts(agent === undefined ? [] : [agent]);
+    const alerts = unlabelledAlerts(agent === undefined ? [] : [agent], new Set(["57bc922c-0000"]));
     expect(alerts).toHaveLength(1);
     expect(alerts[0]?.id).toBe("unlabelled-57bc922c-0000");
     expect(alerts[0]?.text).toContain("reviewer (57bc922c)");
@@ -41,8 +47,14 @@ describe("alerts and records", () => {
     expect(alerts[0]?.text).toContain("permission ask");
   });
 
+  it("does not say the owner was told until they were", () => {
+    const text = unlabelledAlerts(agent === undefined ? [] : [agent], new Set())[0]?.text ?? "";
+    expect(text).not.toContain("has been told");
+    expect(text).toContain("tries again every minute");
+  });
+
   it("falls back to the id when the agent has no title", () => {
-    expect(unlabelledAlerts([{ id: "57bc922c-0000", title: null, ticket: "FF-021", ownerId: "o" }])[0]?.text).toMatch(/^57bc922c was started/);
+    expect(unlabelledAlerts([{ id: "57bc922c-0000", title: null, ticket: "FF-021", ownerId: "o" }], new Set())[0]?.text).toMatch(/^57bc922c was started/);
   });
 
   it("recognises a recorded agent in the notes and no other", () => {
