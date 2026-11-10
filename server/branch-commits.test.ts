@@ -42,6 +42,18 @@ describe("commitsPast", () => {
     expect(await branchName(clone)).toBe("taro/tr-1");
   });
 
+  it("does not count the commits of a branch the owner started from, ahead of the base", async () => {
+    const { clone } = cloneWithOrigin();
+    git(clone, "checkout", "-q", "-b", "develop");
+    commit(clone, "develop 1");
+    commit(clone, "develop 2");
+    git(clone, "checkout", "-q", "-b", "taro/ff-25", "develop");
+    // The base is main, which lacks develop's two commits; the branch's start is what excludes them.
+    expect(await commitsPast(clone, "main")).toBe(0);
+    commit(clone, "owner's work");
+    expect(await commitsPast(clone, "main")).toBe(1);
+  });
+
   it("counts against the local base in a repository with no remote", async () => {
     const repo = mkdtempSync(join(scratch, "local-"));
     git(repo, "init", "-q", "-b", "main");
