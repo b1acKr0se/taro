@@ -7,7 +7,9 @@ import { runChecked } from "./process";
 /**
  * Commits on the worktree's HEAD that neither the local base branch nor origin's has; 0 when git
  * cannot tell. Both, as either may lag: the owner branched from origin's, and a local base left
- * behind would count origin's new commits as the owner's.
+ * behind would count origin's new commits as the owner's. Commits the branch started from do not count
+ * either: a project whose work branches from develop, ahead of the base, would otherwise charge the
+ * owner with develop's commits.
  */
 export async function commitsPast(cwd: string, base: string): Promise<number> {
   const git = (args: readonly string[]) => runChecked("git", ["-C", cwd, ...args], { timeoutMs: 15_000 });
@@ -16,8 +18,22 @@ export async function commitsPast(cwd: string, base: string): Promise<number> {
     if (await git(["rev-parse", "--verify", "--quiet", ref]).then(() => true, () => false)) refs.push(ref);
   }
   if (refs.length === 0) return 0;
-  const counted = await git(["rev-list", "--count", "HEAD", "--not", ...refs]).catch(() => "0");
+  const started = await branchStart(cwd);
+  const counted = await git(["rev-list", "--count", "HEAD", "--not", ...refs, ...(started === null ? [] : [started])]).catch(() => "0");
   return Number.parseInt(counted.trim(), 10) || 0;
+}
+
+/**
+ * The commit the worktree's branch was created at: the oldest entry of the branch's reflog. Null when
+ * HEAD is detached or the reflog is gone (expired, or a branch that was never created here).
+ */
+async function branchStart(cwd: string): Promise<string | null> {
+  const git = (args: readonly string[]) => runChecked("git", ["-C", cwd, ...args], { timeoutMs: 15_000 });
+  const branch = (await git(["symbolic-ref", "--quiet", "HEAD"]).catch(() => "")).trim();
+  if (branch === "") return null;
+  const entries = (await git(["reflog", "show", "--format=%H", branch]).catch(() => "")).trim().split("\n");
+  const oldest = entries[entries.length - 1]?.trim() ?? "";
+  return /^[0-9a-f]{40,64}$/.test(oldest) ? oldest : null;
 }
 
 /** The worktree's branch, or words that stand in for it in a message. */
