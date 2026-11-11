@@ -20,7 +20,10 @@ facts; `reference/tickets.md` and `reference/paseo.md` have the commands.
 
 ## Filing and dispatch
 
-1. Create the ticket with the **two-part brief** (`templates/brief.md`) as its description:
+1. Create the ticket with a **title that names what the ticket does**, in a few words ("Add dark mode to the
+   notes app"), never how it is worked: kind, process ("brainstorm first"), model, priority and other
+   notes go in the brief's notes. The title is the ticket's name on the board, in the owner's tab and
+   in the pull request. Give it the **two-part brief** (`templates/brief.md`) as its description:
    the user's intent nearly verbatim, then at most 5 bullets of notes (the outcomes the user
    expects, related tickets, PRs and known facts, likely areas, out of scope, kind). Cut rather
    than exceed: the owner reads the code, and the Ticket tab folds the notes away. **Choose the
