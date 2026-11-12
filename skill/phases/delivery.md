@@ -69,7 +69,7 @@ and any later reply while you await acceptance with `waiting: acceptance of <ID>
 
 ## After delivery
 
-- **An investigation** delivers as any ticket, FINAL with its recommended next steps. After Accept, "build it" in chat means build it here as children, after a plan approval.
+- **An investigation** delivers as any ticket, FINAL with recommended next steps. Awaiting acceptance, "build it" in chat: set In Progress, drop the `investigation` label, plan children, ask scope-approval.
 
 - **Request changes:** the user's words arrive as a message, and the plugin has already moved the
   ticket back to In Progress (if
