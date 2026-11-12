@@ -22,7 +22,6 @@ import { SCOPE_APPROVAL, planCardOptions, planChangeBox, type PlanActionsPlace }
 import { choiceDefault, parsePlan, splitChoice, type ParsedPlan, type PlanSection } from "../shared/plan";
 import { noPlanChanges, planChanges, planChangesCaption, type PlanChanges } from "../shared/plan-changes";
 import type { StoredDecision } from "../shared/state";
-import { unbreakableIds } from "../shared/unbreakable-ids";
 import { ChangeBox } from "./change-box";
 import { Pressable } from "./focus";
 import { MockupList } from "./mockup-view";
@@ -292,7 +291,7 @@ function PlanSummary({ plan, marks, mockups, theme, compact, brief }: { plan: Pa
     label: "GOAL",
     content: (
       <Text style={[styles.goal, changes.goal ? styles.changed : null]} numberOfLines={brief ? BRIEF_LINES.goal : undefined}>
-        <MarkdownInline text={unbreakableIds(plan.goal)} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
+        <MarkdownInline text={plan.goal} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} wholeIds />
       </Text>
     ),
   });
@@ -305,13 +304,13 @@ function PlanSummary({ plan, marks, mockups, theme, compact, brief }: { plan: Pa
             <View key={`${index}:${choice.choice}`} style={styles.bullet}>
               <Text style={[styles.marker, changes.choices[index] === true ? styles.changed : null]}>•</Text>
               <Text style={[styles.text, styles.bulletText, changes.choices[index] === true ? styles.changed : null]} numberOfLines={brief ? BRIEF_LINES.choice : undefined}>
-                <MarkdownInline text={unbreakableIds(choice.choice)} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
+                <MarkdownInline text={choice.choice} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} wholeIds />
                 {choice.why === "" || (brief && choiceDefault(choice) === "") ? null : (
                   // inherits colour: inside the choice's Text, muted unless changed
                   <Text style={changes.choices[index] === true ? null : styles.muted}>
                     {brief ? " — default: " : " — "}
                     {/* The short card shows a high plan choice's default alone, so the user sees what they approve; View plan has the why. */}
-                    <MarkdownInline text={unbreakableIds(brief ? choiceDefault(choice) : choice.why)} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
+                    <MarkdownInline text={brief ? choiceDefault(choice) : choice.why} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} wholeIds />
                   </Text>
                 )}
               </Text>
@@ -333,7 +332,7 @@ function PlanSummary({ plan, marks, mockups, theme, compact, brief }: { plan: Pa
       label: "SIZE",
       content: (
         <Text style={[styles.text, changes.size ? styles.changed : styles.muted]} numberOfLines={brief ? BRIEF_LINES.size : undefined}>
-          <MarkdownInline text={unbreakableIds(plan.size)} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
+          <MarkdownInline text={plan.size} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} wholeIds />
         </Text>
       ),
     });
@@ -518,7 +517,7 @@ export function PlanBody({ plan, marks = null, theme, proof = null, mockups = nu
     }),
     [colors],
   );
-  const inline = (text: string) => <MarkdownInline text={unbreakableIds(text)} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />;
+  const inline = (text: string) => <MarkdownInline text={text} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} wholeIds />;
 
   function bulletText(section: PlanSection, item: string, changed: boolean): ReactNode {
     if (section.key !== "choices") return inline(item);
@@ -548,7 +547,7 @@ export function PlanBody({ plan, marks = null, theme, proof = null, mockups = nu
   const hasProof = plan.sections.some((section) => section.key === "proof");
   return (
     <View style={styles.body}>
-      {plan.intro === "" ? null : <Markdown source={unbreakableIds(plan.intro)} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />}
+      {plan.intro === "" ? null : <Markdown source={plan.intro} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} wholeIds />}
       <ChangesCaption caption={marks?.caption ?? null} theme={theme} />
       {plan.sections.map((section, sectionIndex) => {
         const open = unfolded.has(sectionIndex);
@@ -565,10 +564,10 @@ export function PlanBody({ plan, marks = null, theme, proof = null, mockups = nu
               <Text style={[styles.text, styles.changed]}>{inline(section.prose)}</Text>
             ) : changes?.prose === true ? (
               <View style={styles.changedBlock}>
-                <Markdown source={unbreakableIds(section.prose)} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
+                <Markdown source={section.prose} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} wholeIds />
               </View>
             ) : (
-              <Markdown source={unbreakableIds(section.prose)} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
+              <Markdown source={section.prose} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} wholeIds />
             )}
             {section.key === "mockups" && mockups !== null ? <MockupList mockups={mockups} theme={theme} /> : null}
             {(section.key === "mockups" && mockups !== null ? [] : shown).map((item, index) => {
