@@ -12,7 +12,7 @@
  * own check, then the delivery.
  */
 import { acceptHandoffOpen } from "./accept-stall";
-import { workApproved } from "./approval-gate";
+import { planAnswerRecords, workApproved } from "./approval-gate";
 import { executionBranch, roundRecords } from "./execution";
 import { isPlanReview } from "./plan-lint";
 import { reopenRound, roundBranch } from "./reopen";
@@ -56,15 +56,45 @@ export interface StepTicket {
 export interface Step {
   page: StepPage;
   facts: Record<string, string>;
+  /**
+   * The round's plan approval, when a REVIEW of the round came before it (an investigation turned into
+   * a build): pages from then on are remembered apart from those sent before it, so its delivery comes again.
+   */
+  since?: string;
 }
 
 const FINISHED: ReadonlySet<string> = new Set(["Done", "Cancelled"]);
 
-/** The round's newest REVIEW record of the work (a plan review before approval is not one) says nothing is left to fix: `verdict: clean`. */
+const isWorkReview = (record: string) => /^REVIEW\b/.test(record) && !isPlanReview(record);
+
+/** Where the round's newest plan approval (an APPROVAL record or the user's Approve) sits among its records; -1 without one. */
+function approvalIndex(records: readonly string[]): number {
+  let found = -1;
+  records.forEach((record, index) => {
+    if (planAnswerRecords(record).some((answer) => answer.kind === "approved")) found = index;
+  });
+  return found;
+}
+
+/**
+ * The round's newest REVIEW record of the work (a plan review before approval is not one) says nothing
+ * is left to fix: `verdict: clean`. Only a REVIEW after the round's newest plan approval counts, when
+ * there is one: an investigation turned into a build has its own self-check before the approval.
+ */
 export function reviewClean(notes: string | null): boolean {
-  const reviews = roundRecords(notes).filter((record) => /^REVIEW\b/.test(record) && !isPlanReview(record));
+  const records = roundRecords(notes);
+  const reviews = records.slice(approvalIndex(records) + 1).filter(isWorkReview);
   const newest = reviews[reviews.length - 1];
   return newest !== undefined && /\bverdict:\s*clean\b/i.test(newest);
+}
+
+/** The round's plan approval's time when a REVIEW of the round came before it; null otherwise. */
+function approvalAfterReview(notes: string | null): string | null {
+  const records = roundRecords(notes);
+  const index = approvalIndex(records);
+  if (index < 0 || !records.slice(0, index).some(isWorkReview)) return null;
+  const approved = planAnswerRecords(records[index] ?? "").filter((answer) => answer.kind === "approved");
+  return approved[approved.length - 1]?.at ?? null;
 }
 
 /** Children in build order: each after the children it depends on, otherwise by id. */
@@ -98,6 +128,12 @@ function everyChildDone(children: readonly StepChild[]): boolean {
 
 /** The page for the ticket's current step, with the facts to fill it; null when there is none (unrated, closed, or only Accept is left). */
 export function nextStep(ticket: StepTicket): Step | null {
+  const step = pickStep(ticket);
+  const since = step === null ? null : approvalAfterReview(ticket.notes);
+  return step === null || since === null ? step : { ...step, since };
+}
+
+function pickStep(ticket: StepTicket): Step | null {
   if (FINISHED.has(ticket.status)) return null;
   const rated: Level | null = ticketLevel(ticket.labels);
   if (rated === null) return null;
@@ -127,7 +163,7 @@ function gapsFact(gaps: readonly string[]): string {
   return gaps.length === 0 ? "- nothing the plugin checks: finish as the page says" : gaps.map((gap) => `- ${gap}`).join("\n");
 }
 
-/** What the plugin remembers having sent: a page once per round of the ticket. */
+/** What the plugin remembers having sent: a page once per round of the ticket, and once more after an approval that followed a REVIEW. */
 export function stepKey(ticket: string, step: Step): string {
-  return `${ticket}#${step.facts.round ?? "1"}:${step.page}`;
+  return `${ticket}#${step.facts.round ?? "1"}:${step.page}${step.since === undefined ? "" : `@${step.since}`}`;
 }

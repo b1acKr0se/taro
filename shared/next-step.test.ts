@@ -175,6 +175,36 @@ describe("an investigation rated medium or high", () => {
   });
 });
 
+// Second review: an investigation turned into a build kept its own clean self-check as the round's newest REVIEW.
+describe("an investigation turned into a build", () => {
+  const CHECKED = "REVIEW 2026-11-01T11:00Z — self-check of the findings — verdict: clean";
+  const APPROVED_LATER = 'APPROVAL 2026-11-01T12:00Z — user: "Approve the plan for SH-12"';
+  const REVIEWED_LATER = "REVIEW 2026-11-01T15:00Z — reviewer r2 over main..taro/sh-12: nothing to fix — verdict: clean";
+
+  it("is not sent the delivery for a clean REVIEW older than the plan's approval, but the build", () => {
+    const planning = ticket({ labels: ["complexity-high"], status: "Planning", notes: notes(EXECUTION, CHECKED) });
+    const approved = nextStep({ ...planning, status: "In Progress", notes: notes(EXECUTION, CHECKED, APPROVED_LATER) });
+    expect(approved?.page).toBe("phases/build.md");
+    // The user's Approve on the card counts as the approval too.
+    expect(nextStep({ ...planning, status: "In Progress", notes: notes(EXECUTION, CHECKED, APPROVED) })?.page).toBe("phases/build.md");
+  });
+
+  it("is sent the delivery by a clean REVIEW newer than the approval, again though one was sent before the approval", () => {
+    const before = nextStep(ticket({ labels: ["complexity-medium", "investigation"], status: "In Progress", notes: notes(EXECUTION, CHECKED) }))!;
+    expect(before.page).toBe("phases/delivery.md");
+    const after = nextStep(ticket({ labels: ["complexity-medium"], status: "In Progress", notes: notes(EXECUTION, CHECKED, APPROVED_LATER, REVIEWED_LATER) }))!;
+    expect(after.page).toBe("phases/delivery.md");
+    expect(stepKey("SH-12", after)).not.toBe(stepKey("SH-12", before));
+  });
+
+  it("keeps the step memory of a ticket approved before its review as it was", () => {
+    const delivered = nextStep(ticket({ status: "In Progress", notes: notes(EXECUTION, APPROVAL, REVIEW_CLEAN) }))!;
+    expect(delivered.page).toBe("phases/delivery.md");
+    expect(stepKey("SH-12", delivered)).toBe("SH-12#1:phases/delivery.md");
+    expect(stepKey("SH-12", nextStep(ticket({ status: "In Progress", notes: notes(EXECUTION, APPROVAL) }))!)).toBe("SH-12#1:phases/build.md");
+  });
+});
+
 describe("a reopened round", () => {
   const delivered = notes(EXECUTION, APPROVAL, REVIEW_CLEAN, "FINAL 2026-11-01T13:00Z", REOPENED);
 

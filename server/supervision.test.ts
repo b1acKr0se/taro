@@ -2288,6 +2288,22 @@ describe("Supervisor.onTurnEnded sends each step's page once", () => {
     expect(sent()).toEqual(["step:levels/high.md:round 1", "step:phases/build.md:round 1", "step:phases/review.md:round 1", "step:phases/delivery.md:round 1"]);
   });
 
+  // Second review: the delivery page sent for the investigation's self-check must not stop the build's own.
+  it("sends an investigation turned into a build its build page, then the delivery again for the review after the approval", async () => {
+    const taro = supervisor();
+    const SELF_CHECK = "REVIEW 2026-11-01T09:00Z — self-check of the findings — verdict: clean";
+    const LATER = "REVIEW 2026-11-01T15:00Z — reviewer r2 over main..taro/tr-9: no findings — verdict: clean";
+    at({ labels: ["complexity-medium", "investigation"], status: "In Progress", notes: SELF_CHECK });
+    await end(taro);
+    at({ labels: ["complexity-medium"], notes: `${SELF_CHECK}\n\n${APPROVAL}` });
+    await end(taro);
+    await end(taro);
+    at({ notes: `${SELF_CHECK}\n\n${APPROVAL}\n\n${LATER}` });
+    await end(taro);
+    await end(supervisor());
+    expect(sent()).toEqual(["step:phases/delivery.md:round 1", "step:phases/build.md:round 1", "step:phases/delivery.md:round 1"]);
+  });
+
   it("remembers what it sent across a plugin reload", async () => {
     at({ labels: ["complexity-medium"] });
     await end(supervisor());
