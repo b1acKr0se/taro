@@ -197,6 +197,14 @@ export default function contribute(server: PluginServerContext) {
         }
       })
       .catch((error: unknown) => reportFailure("[taro] unlabelled-agent check failed:", error))
+      // A step page whose ticket could not be read at the turn end rides the same minute.
+      .then(async () => {
+        if (kept === null || isStopping()) return;
+        const paseo = kept;
+        const sent = await supervisor.retryUnreadSteps(paseo, (await listProjectConfigs()).map((config) => config.project));
+        if (sent > 0) console.log(`[taro] sent ${sent} step page(s) whose ticket could not be read before`);
+      })
+      .catch((error: unknown) => reportFailure("[taro] step page retry failed:", error))
       .finally(() => {
         backstopping = false;
       });

@@ -2174,6 +2174,60 @@ describe("Supervisor.onTurnEnded sends each step's page once", () => {
     expect(sent()).toEqual([]);
   });
 
+  it("sends a page lost to a reload: the reconcile finds the idle owner whose turn end the hook missed, and sends it once", async () => {
+    at({ labels: ["complexity-medium"] });
+    const idle = () => vi.mocked(listTaroAgents).mockResolvedValueOnce([{ ...owner, updatedAt: new Date().toISOString() } as unknown as PaseoAgent]);
+    idle();
+    await supervisor().reconcile(withTimeline(reply), ["taro"]);
+    expect(sent()).toEqual(["step:levels/medium.md:round 1"]);
+    // Another reload, and the turn end after: the page stays sent.
+    idle();
+    await supervisor().reconcile(withTimeline(reply), ["taro"]);
+    await end(supervisor());
+    expect(sent()).toEqual(["step:levels/medium.md:round 1"]);
+  });
+
+  it("reads the ticket again at the minute's sweep when the turn end could not, and sends the page once", async () => {
+    at({ labels: ["complexity-low"] });
+    vi.mocked(stepTicket).mockRejectedValueOnce(new Error("tracker locked"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    await end(supervisor());
+    warn.mockRestore();
+    expect(sent()).toEqual([]);
+    vi.mocked(listTaroAgents).mockResolvedValue([{ ...owner, updatedAt: new Date().toISOString() } as unknown as PaseoAgent]);
+    try {
+      expect(await supervisor().retryUnreadSteps(withTimeline(reply), ["taro"])).toBe(1);
+      expect(await supervisor().retryUnreadSteps(withTimeline(reply), ["taro"])).toBe(0);
+    } finally {
+      vi.mocked(listTaroAgents).mockReset();
+      vi.mocked(listTaroAgents).mockResolvedValue([]);
+    }
+    await end(supervisor());
+    expect(sent()).toEqual(["step:levels/light.md:round 1"]);
+  });
+
+  it("holds the page while the owner waits on a blocking question, and sends it at the turn end after the answer", async () => {
+    at({ labels: ["complexity-medium"] });
+    const taro = supervisor();
+    const question = items(
+      { type: "user_message", text: "go" },
+      { type: "assistant_message", text: "One call first.\n\n```decision\nid: storage\nquestion: Store notes as files or rows?\nwhy: it shapes the export\nblocking: true\noptions:\n  - label: Files\n    prompt: Files\n  - label: Rows\n    prompt: Rows\nrecommended: Files\nreason: simpler\n```\n\nwaiting: storage" },
+    );
+    await taro.onTurnEnded(withTimeline(question), { id: owner.id, parentAgentId: null } as unknown as HookAgent, completed, null, undefined);
+    expect(sent()).toEqual([]);
+    const stored = new StoredPluginState();
+    expect((await stored.allDecisions()).filter((decision) => decision.status === "open" && decision.blocking).map((decision) => decision.id)).toEqual(["storage"]);
+    // The minute's sweep and a reload hold it too.
+    vi.mocked(listTaroAgents).mockResolvedValueOnce([{ ...owner, updatedAt: new Date().toISOString() } as unknown as PaseoAgent]);
+    await supervisor().reconcile(withTimeline(question), ["taro"]);
+    expect(sent()).toEqual([]);
+    await stored.updateDecisions((decisions) => {
+      for (const decision of decisions) decision.status = "answered";
+    });
+    await end(supervisor());
+    expect(sent()).toEqual(["step:levels/medium.md:round 1"]);
+  });
+
   it("sends nothing, and says why in the log, when the ticket cannot be read", async () => {
     vi.mocked(stepTicket).mockRejectedValue(new Error("tracker locked"));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);

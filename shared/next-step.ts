@@ -7,11 +7,16 @@
  * Phases, newest first: Accept handed over → accept; the round's review recorded clean → delivery;
  * Reviewing, or every child Done → review (medium and high); the round's plan approved → build
  * (medium and high); a `complexity-` label → its level's page. No label: nothing yet (the owner rates first).
+ * A reopened round (above 1) is worked as low, an investigation that changes no code (roles/owner.md),
+ * whatever the first round was rated: light's page, its own check, then the delivery.
  */
 import { acceptHandoffOpen } from "./accept-stall";
 import { workApproved } from "./approval-gate";
 import { executionBranch, roundRecords } from "./execution";
 import { reopenRound, roundBranch } from "./reopen";
+import { isLightLevel, type Level, ticketLevel } from "./ticket-level";
+
+export { type Level, ticketLevel } from "./ticket-level";
 
 export const STEP_PAGES = {
   light: "levels/light.md",
@@ -51,17 +56,7 @@ export interface Step {
   facts: Record<string, string>;
 }
 
-export type Level = "trivial" | "low" | "medium" | "high";
-
-const LEVELS: readonly Level[] = ["trivial", "low", "medium", "high"];
 const FINISHED: ReadonlySet<string> = new Set(["Done", "Cancelled"]);
-
-/** The ticket's level from its `complexity-` labels; the highest when there are several. Null when unrated. */
-export function ticketLevel(labels: readonly string[]): Level | null {
-  let found: Level | null = null;
-  for (const level of LEVELS) if (labels.includes(`complexity-${level}`)) found = level;
-  return found;
-}
 
 /** The round's newest REVIEW record says nothing is left to fix: `verdict: clean`. */
 export function reviewClean(notes: string | null): boolean {
@@ -102,16 +97,17 @@ function everyChildDone(children: readonly StepChild[]): boolean {
 /** The page for the ticket's current step, with the facts to fill it; null when there is none (unrated, closed, or only Accept is left). */
 export function nextStep(ticket: StepTicket): Step | null {
   if (FINISHED.has(ticket.status)) return null;
-  const level = ticketLevel(ticket.labels);
-  if (level === null) return null;
+  const rated: Level | null = ticketLevel(ticket.labels);
+  if (rated === null) return null;
   const round = reopenRound(ticket.notes);
-  const facts = { ticket: ticket.id, level, round: String(round) };
+  const level: Level = round > 1 ? "low" : rated;
+  const facts = { ticket: ticket.id, level: round > 1 ? `${rated}, and this reopened round is worked as low` : rated, round: String(round) };
   if (ticket.status === "Awaiting acceptance") {
     if (acceptHandoffOpen(ticket.notes)) return { page: STEP_PAGES.accept, facts };
     return ticket.deliveryGaps.length === 0 ? null : { page: STEP_PAGES.delivery, facts: { ...facts, missing: gapsFact(ticket.deliveryGaps) } };
   }
   if (reviewClean(ticket.notes)) return { page: STEP_PAGES.delivery, facts: { ...facts, missing: gapsFact(ticket.deliveryGaps) } };
-  const light = level === "trivial" || level === "low";
+  const light = isLightLevel(level);
   if (!light && (ticket.status === "Reviewing" || everyChildDone(ticket.children))) {
     const branch = executionBranch(ticket.notes) ?? roundBranch(ticket.id, round);
     return { page: STEP_PAGES.review, facts: { ...facts, range: `${ticket.baseBranch}..${branch}` } };

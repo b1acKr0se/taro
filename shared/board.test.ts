@@ -91,6 +91,11 @@ describe("complexityOf", () => {
     expect(complexityOf(["investigation", "complexity-medium"])).toBe("medium");
     expect(complexityOf([])).toBeNull();
   });
+
+  it("shows the highest when a raised ticket kept its old label", () => {
+    expect(complexityOf(["complexity-low", "complexity-medium"])).toBe("medium");
+    expect(complexityOf(["complexity-high", "complexity-trivial"])).toBe("high");
+  });
 });
 
 function agent(id: string, role: string, ticket: string, status: string, title: string, updatedAt = "2026-10-13T10:00:00Z", pendingPermissions: unknown[] = []): JoinedAgent & { id: string } {

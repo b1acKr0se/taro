@@ -39,6 +39,11 @@ describe("a trivial or low ticket (TR-241)", () => {
     expect(mayBuildBeforePlan(["complexity-low"])).toBe(true);
     expect(mayBuildBeforePlan(["complexity-medium"])).toBe(false);
   });
+
+  it("gates a ticket raised from low at its new level, though the low label was left on", () => {
+    expect(mayBuildBeforePlan(["complexity-low", "complexity-medium"])).toBe(false);
+    expect(lacksPlan({ status: "In Progress", plan: null, criteria: 0, labels: ["complexity-low", "complexity-medium"] })).toBe(true);
+  });
 });
 
 describe("noPlanRecord", () => {

@@ -238,6 +238,7 @@ export function freshState(identity: TaroIdentity): AgentState {
     deliveryReminded: null,
     acceptStalls: 0,
     stepsSent: [],
+    stepUnread: false,
   };
 }
 
@@ -324,9 +325,7 @@ export class Supervisor {
     if (userWords.length > 0) await this.closeAnsweredInTab(live.id, userWords, decisions, now);
     if (decisions.length > 0) await this.storeDecisions(paseo, live, identity, decisions, turnIdentity(turn), now, status?.state === "waiting", earlierText(timeline, turn));
 
-    const openBlocking = (await this.state.allDecisions()).some(
-      (decision) => decision.agentId === live.id && decision.status === "open" && decision.blocking,
-    );
+    const openBlocking = await this.waitsOnBlockingQuestion(live.id);
     const stage = await this.state.updateAgent(live.id, () => freshState(identity), (record) => {
       record.ticket = identity.ticket;
       record.title = identity.title;
@@ -418,7 +417,8 @@ export class Supervisor {
   /**
    * After a reload or restart (decision 37): re-read each idle Taro agent's
    * latest turn the plugin did not see end, rebuild its status line, and deliver
-   * subagent reports that finished while the plugin was down. No nudges here.
+   * subagent reports that finished while the plugin was down, and send an idle owner the step page
+   * it has not had. No nudges here.
    */
   async reconcile(paseo: PaseoApi, projects: readonly string[]): Promise<number> {
     let repaired = 0;
@@ -432,28 +432,61 @@ export class Supervisor {
         if (isMidTurn(agent) || agent.status === "closed") continue;
         const identity = identityFromLabels(agent.labels, agent.title ?? null);
         if (identity === null) continue;
-        const known = await this.state.agent(agent.id);
-        // Seen by the hook already (its clock and Paseo's differ by moments, hence the minute's slack).
-        const seenAt = known?.lastTurnEndedAt === null || known?.lastTurnEndedAt === undefined ? Number.NaN : Date.parse(known.lastTurnEndedAt);
-        if (!Number.isNaN(seenAt) && seenAt >= Date.parse(agent.updatedAt) - 60_000) continue;
-        const items = await latestTurnItems(paseo, agent.id);
-        if (items === null) continue;
-        const turn = currentTurn(items);
-        const closing = closingText(turn);
-        const status = parseStatusLine(closing);
-        await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
-          record.lastTurnEndedAt = agent.updatedAt;
-          if (status !== null) record.lastStatus = { ...status, at: agent.updatedAt };
-        });
-        const decisions = parseDecisionBlocks(allAssistantText(turn));
-        if (decisions.length > 0) await this.storeDecisions(paseo, agent, identity, decisions, turnIdentity(turn), agent.updatedAt, status?.state === "waiting", earlierText(items, turn));
-        if (isSubagentRole(identity.role)) {
-          await this.deliverReport(paseo, agent, identity, closing, hashText(closing), agent.labels["paseo.parent-agent-id"] ?? null);
-        }
-        repaired += 1;
+        if (await this.repairTurn(paseo, agent, identity)) repaired += 1;
+        // A step page lost to a reload, or to a turn end the hook never saw; one already sent stays sent.
+        if (identity.role === "owner") await this.sendIdleStep(paseo, agent, identity);
       }
     }
     return repaired;
+  }
+
+  /** The idle agent's latest turn, when the plugin did not see it end: its status line, decisions and report. Whether it was repaired. */
+  private async repairTurn(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity): Promise<boolean> {
+    const known = await this.state.agent(agent.id);
+    // Seen by the hook already (its clock and Paseo's differ by moments, hence the minute's slack).
+    const seenAt = known?.lastTurnEndedAt === null || known?.lastTurnEndedAt === undefined ? Number.NaN : Date.parse(known.lastTurnEndedAt);
+    if (!Number.isNaN(seenAt) && seenAt >= Date.parse(agent.updatedAt) - 60_000) return false;
+    const items = await latestTurnItems(paseo, agent.id);
+    if (items === null) return false;
+    const turn = currentTurn(items);
+    const closing = closingText(turn);
+    const status = parseStatusLine(closing);
+    await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
+      record.lastTurnEndedAt = agent.updatedAt;
+      if (status !== null) record.lastStatus = { ...status, at: agent.updatedAt };
+    });
+    const decisions = parseDecisionBlocks(allAssistantText(turn));
+    if (decisions.length > 0) await this.storeDecisions(paseo, agent, identity, decisions, turnIdentity(turn), agent.updatedAt, status?.state === "waiting", earlierText(items, turn));
+    if (isSubagentRole(identity.role)) {
+      await this.deliverReport(paseo, agent, identity, closing, hashText(closing), agent.labels["paseo.parent-agent-id"] ?? null);
+    }
+    return true;
+  }
+
+  /**
+   * Step pages a turn end could not send because the ticket could not be read (a locked tracker, a
+   * slow disk): read again once a minute for each idle owner left with one. Returns how many went.
+   */
+  async retryUnreadSteps(paseo: PaseoApi, projects: readonly string[]): Promise<number> {
+    let sent = 0;
+    for (const project of projects) {
+      for (const agent of await listTaroAgents(paseo, { [TARO_LABELS.project]: project })) {
+        if (isMidTurn(agent) || agent.status === "closed") continue;
+        const identity = identityFromLabels(agent.labels, agent.title ?? null);
+        if (identity === null || identity.role !== "owner") continue;
+        if ((await this.state.agent(agent.id))?.stepUnread !== true) continue;
+        if (await this.sendIdleStep(paseo, agent, identity)) sent += 1;
+      }
+    }
+    return sent;
+  }
+
+  /** The step page for an owner the plugin found idle outside a turn end: not mid-compaction, and not ahead of the user's queued message. */
+  private async sendIdleStep(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity): Promise<boolean> {
+    const known = await this.state.agent(agent.id);
+    if (known !== undefined && known !== null && known.compaction !== "none") return false;
+    if (await this.userMessagesQueued(agent.id)) return false;
+    return this.sendStep(paseo, agent, identity);
   }
 
   /** An archived agent never reads an answer, whoever archived it: the plugin, the user, the CLI. */
@@ -815,26 +848,39 @@ export class Supervisor {
     }
   }
 
-  /** What the owner's plan lacks of its mockups (TR-235); unreadable counts as nothing missing, as a ticket the plugin cannot read blocks nothing else here. */
   /**
    * The page for the step the owner's ticket has reached (its level, the build, the review, the
    * delivery), sent once per round of the ticket. Awaiting acceptance has its own reminders and the
-   * Accept hand-off its own message, so neither is sent from here.
+   * Accept hand-off its own message, so neither is sent from here. Nor while the owner waits on a
+   * blocking question: the page would end that wait, as a nudge would, so it goes at the turn end after
+   * the answer. A ticket that cannot be read is marked, and read again by the minute's sweep.
    */
   private async sendStep(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity): Promise<boolean> {
     const ticket = identity.ticket;
     if (ticket === null) return false;
+    if (await this.waitsOnBlockingQuestion(agent.id)) return false;
     let step: Step | null;
     try {
       const facts = await stepTicket(identity.project, ticket);
       step = facts.status === "Awaiting acceptance" ? null : nextStep(facts);
     } catch (error) {
-      console.warn(`[taro] reading ${ticket}'s step: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(`[taro] reading ${ticket}'s step: ${error instanceof Error ? error.message : String(error)}; read again at the next minute's sweep`);
+      await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
+        record.stepUnread = true;
+      });
       return false;
     }
-    if (step === null || step.page === STEP_PAGES.accept) return false;
+    if (step === null || step.page === STEP_PAGES.accept) {
+      if ((await this.state.agent(agent.id))?.stepUnread === true) {
+        await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
+          record.stepUnread = false;
+        });
+      }
+      return false;
+    }
     const key = stepKey(ticket, step);
     const fresh = await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
+      record.stepUnread = false;
       if (record.stepsSent.includes(key)) return false;
       record.stepsSent = [...record.stepsSent, key];
       return true;
@@ -845,6 +891,12 @@ export class Supervisor {
     return true;
   }
 
+  /** Whether the agent has a blocking question open: it waits on the user, and the plugin does not talk over the wait. */
+  private async waitsOnBlockingQuestion(agentId: string): Promise<boolean> {
+    return (await this.state.allDecisions()).some((decision) => decision.agentId === agentId && decision.status === "open" && decision.blocking);
+  }
+
+  /** What the owner's plan lacks of its mockups (TR-235); unreadable counts as nothing missing, as a ticket the plugin cannot read blocks nothing else here. */
   private async planMockupsMissing(identity: TaroIdentity): Promise<string[]> {
     if (identity.ticket === null) return [];
     try {

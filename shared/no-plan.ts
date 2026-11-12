@@ -3,13 +3,14 @@
  * the ticket and stops the owner. A trivial or low ticket is exempt (TR-241): its owner may build first and
  * write the plan afterwards, and the acceptance card shows it. Pure.
  */
+import { isLightLevel, ticketLevel } from "./ticket-level.ts";
 
 /** Statuses after which nobody builds on the ticket any more. */
 const CLOSED: ReadonlySet<string> = new Set(["Done", "Cancelled"]);
 
-/** Whether the owner rated the ticket trivial or low: the levels that may build before they plan. */
+/** Whether the owner rated the ticket trivial or low, the levels that may build before they plan; a raised label wins over the one it raised. */
 export function mayBuildBeforePlan(labels: readonly string[]): boolean {
-  return labels.includes("complexity-trivial") || labels.includes("complexity-low");
+  return isLightLevel(ticketLevel(labels));
 }
 
 /**

@@ -33,6 +33,7 @@ describe("the level page", () => {
 
   it("takes the highest of several labels", () => {
     expect(ticketLevel(["complexity-low", "complexity-high"])).toBe("high");
+    expect(nextStep(ticket({ labels: ["complexity-low", "complexity-medium"] }))?.page).toBe("levels/medium.md");
   });
 
   it("stays while the plan is only asked or changes are requested", () => {
@@ -154,18 +155,22 @@ describe("the accept page", () => {
 describe("a reopened round", () => {
   const delivered = notes(EXECUTION, APPROVAL, REVIEW_CLEAN, "FINAL 2026-11-01T13:00Z", REOPENED);
 
-  it("starts again at the level page: the earlier approval and review are history", () => {
+  it("starts again at the light page, whatever the first round was rated: a reopened round is low, an investigation", () => {
     const step = nextStep(ticket({ status: "Planning", notes: delivered }));
-    expect(step).toEqual({ page: "levels/medium.md", facts: { ticket: "SH-12", level: "medium", round: "2" } });
+    expect(step).toEqual({ page: "levels/light.md", facts: { ticket: "SH-12", level: "medium, and this reopened round is worked as low", round: "2" } });
+    expect(nextStep(ticket({ labels: ["complexity-high"], notes: delivered }))?.page).toBe("levels/light.md");
   });
 
-  it("reads its own approval, and reviews the round's branch", () => {
-    const step = nextStep(ticket({ status: "Reviewing", notes: notes(delivered, 'APPROVAL 2026-11-02T09:30Z — user: "Approve"') }));
-    expect(step?.facts).toMatchObject({ round: "2", range: "main..taro/sh-12-2" });
+  it("is checked by its owner, not sent to an independent review, and its clean check brings the delivery", () => {
+    const reviewing = ticket({ status: "Reviewing", notes: notes(delivered, 'APPROVAL 2026-11-02T09:30Z — user: "Approve"') });
+    expect(nextStep(reviewing)?.page).toBe("levels/light.md");
+    const checked = nextStep({ ...reviewing, notes: notes(delivered, "REVIEW 2026-11-02T10:00Z — self-check on staging: holds — verdict: clean") });
+    expect(checked?.page).toBe("phases/delivery.md");
+    expect(checked?.facts.round).toBe("2");
   });
 
   it("is remembered apart from the first round's pages", () => {
-    const first = nextStep(ticket())!;
+    const first = nextStep(ticket({ labels: ["complexity-low"] }))!;
     const second = nextStep(ticket({ notes: delivered }))!;
     expect(first.page).toBe(second.page);
     expect(stepKey("SH-12", first)).not.toBe(stepKey("SH-12", second));

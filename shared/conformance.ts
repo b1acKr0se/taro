@@ -7,6 +7,7 @@
  */
 import { planAnswerRecords } from "./approval-gate.ts";
 import { parseTicket } from "./ticket-format.ts";
+import { isLightLevel, ticketLevel } from "./ticket-level.ts";
 
 export interface ConformanceViolation {
   kind: string;
@@ -161,7 +162,9 @@ export function conformanceViolations(ticketText: string, options: ConformanceOp
   if (!parsed.ok) return [{ kind: "unreadable", detail: "the ticket file does not parse" }];
   const ticket = parsed.ticket;
   const found: ConformanceViolation[] = [];
-  const trivial = ticket.labels.includes("complexity-trivial");
+  // The highest label counts: a ticket raised from trivial is checked at its new level.
+  const level = ticketLevel(ticket.labels);
+  const trivial = level === "trivial";
   const notes = records(ticket.notes);
   const startedBuilding = PAST_PLANNING.has(ticket.status);
   const delivered = ticket.status === "Awaiting acceptance" || ticket.status === "Done";
@@ -180,7 +183,7 @@ export function conformanceViolations(ticketText: string, options: ConformanceOp
   if (startedBuilding && approvals.length === 0 && !trivial) {
     found.push({ kind: "no-approval", detail: `In Progress${inProgressAt === undefined ? "" : ` at ${inProgressAt}`} with no APPROVAL` });
   }
-  found.push(...approvalGateViolations(notes, approvals[0]?.at ?? null, inProgressAt ?? null, trivial || ticket.labels.includes("complexity-low")));
+  found.push(...approvalGateViolations(notes, approvals[0]?.at ?? null, inProgressAt ?? null, isLightLevel(level)));
 
   if (delivered) {
     const evidence = notes.filter((record) => /^EVIDENCE\b/.test(record)).pop();

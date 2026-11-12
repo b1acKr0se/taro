@@ -45,6 +45,8 @@ describe("buildGap", () => {
   it("exempts trivial and low tickets, closed ones, and a child whose parent is approved", () => {
     expect(gap(null, ["complexity-low"], null)).toBeNull();
     expect(gap(null, ["complexity-trivial"])).toBeNull();
+    // Raised from low: the low label left on does not exempt it.
+    expect(gap(null, ["complexity-low", "complexity-medium"], PLAN)).not.toBeNull();
     expect(buildGap({ status: "Done", plan: PLAN, criteria: 0, labels: [], notes: null })).toBeNull();
     expect(buildGap({ status: "Cancelled", plan: PLAN, criteria: 0, labels: [], notes: null })).toBeNull();
     expect(gap(null, ["complexity-medium"], PLAN, APPROVE)).toBeNull();

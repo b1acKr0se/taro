@@ -98,6 +98,8 @@ export const AgentStateSchema = z.object({
   acceptStalls: z.number().int().default(0),
   /** The step pages sent to this owner, by ticket, round and page (`shared/next-step.ts` stepKey): each is sent once. */
   stepsSent: z.array(z.string()).default([]),
+  /** The ticket could not be read when a step page was due: the minute's sweep reads it again, so the page is not lost. */
+  stepUnread: z.boolean().default(false),
 });
 export type AgentState = z.infer<typeof AgentStateSchema>;
 

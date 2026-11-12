@@ -112,6 +112,8 @@ describe("conformanceViolations", () => {
     const transitions = [{ from: "Queued", to: "In Progress", at: "b" }];
     expect(kinds(ticket(), { transitions })).toEqual(["status-skip"]);
     expect(kinds(ticket({ labels: '"complexity-trivial"', plan: "" }), { transitions })).toEqual([]);
+    // Raised from trivial: checked at its new level.
+    expect(kinds(ticket({ labels: '"complexity-trivial", "complexity-medium"', plan: "" }), { transitions })).toContain("status-skip");
   });
 
   it("flags a plan missing a section", () => {

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { wentOnWithDefault } from "./planning-questions";
 import { isSubagentRole, roleFromLabel, TARO_LABELS } from "./project";
 import type { StatusState } from "./reports";
+import { ticketLevel } from "./ticket-level";
 
 /**
  * Where a card is placed. Parked tickets (TR-166) are placed apart from Queued, so Queued means
@@ -217,8 +218,10 @@ function byNewest<Agent extends JoinedAgent>(agents: readonly Agent[]): Agent[] 
   return [...agents].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
-/** The complexity label the owner set (`complexity-low` → `low`), or null. */
+/** The complexity label the owner set (`complexity-low` → `low`), the highest of several, or null. */
 export function complexityOf(labels: readonly string[]): string | null {
+  const level = ticketLevel(labels);
+  if (level !== null) return level;
   const label = labels.find((candidate) => candidate.startsWith("complexity-"));
   return label === undefined ? null : label.slice("complexity-".length);
 }
