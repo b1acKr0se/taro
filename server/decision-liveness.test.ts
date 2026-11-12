@@ -379,6 +379,30 @@ describe("Actions.dismissDecision", () => {
     expect(sendFromPlugin).not.toHaveBeenCalled();
   });
 
+  it("closes a card asking several questions whole, as one question", async () => {
+    vi.mocked(sendFromPlugin).mockClear();
+    vi.mocked(appendTicketNote).mockClear();
+    vi.mocked(sendUserAnswer).mockClear();
+    const option = (label: string, prompt: string) => ({ label, prompt, consequence: "", images: [] });
+    const several = {
+      ...stored("owner"),
+      key: "owner:export",
+      id: "export",
+      question: "2 questions: Tags · Folders",
+      options: [],
+      questions: [
+        { header: "Tags", question: "Tags as?", why: "", options: [option("YAML", "Use YAML")], recommended: "YAML", reason: "" },
+        { header: "Folders", question: "Layout?", why: "", options: [option("Flat", "One folder")], recommended: "Flat", reason: "" },
+      ],
+    } as StoredDecision;
+    const decisions = [several];
+    await actionsOver(decisions).dismissDecision(live, "owner:export");
+    expect(decisions[0]?.status).toBe("dismissed");
+    expect(sendFromPlugin).toHaveBeenCalledTimes(1);
+    expect(sendUserAnswer).not.toHaveBeenCalled();
+    expect(vi.mocked(appendTicketNote).mock.calls[0]?.[2]).toMatch(/^DISMISSED \S+ — export: "2 questions: Tags · Folders" \(the user\)$/);
+  });
+
   it("refuses a question that is no longer open", async () => {
     const decisions = [stored("owner", "taro", "answered")];
     await expect(actionsOver(decisions).dismissDecision(live, "owner:scope-approval")).rejects.toThrow("That decision is no longer open.");

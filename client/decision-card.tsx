@@ -187,13 +187,15 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
 /**
  * A card asking several questions (TR-207): a tab per header (answered ones ticked, the shown one
  * outlined), the answers so far, then the shown question as a single card draws it. Back and Next
- * step through; the last question's Submit sends every answer in one message, once all have one.
+ * step through; the last question's Submit sends every answer in one message, once all have one, and
+ * Dismiss closes the whole question as on a single card (a pick is cleared by tapping it again).
  * The picks are kept per decision (`./several-drafts`), so the board's pills and a reconnect keep them.
  */
 function SeveralCard({ decision, theme, compact, onAnswered, showAgent = false, answeredFrom = "screen", readOnlyNote = null }: DecisionCardProps) {
   const actions = useRef<View>(null);
   const reveal = useRevealFocused(actions);
   const answer = useRpc(answerDecision);
+  const dismiss = useRpc(dismissManagerQuestion);
   const [whyOpen, setWhyOpen] = useState(false);
   const presses = useActions(decisionCall(decision));
   const busy = presses.busy;
@@ -286,7 +288,24 @@ function SeveralCard({ decision, theme, compact, onAnswered, showAgent = false, 
             onPressGreyed={busy ? undefined : () => pick("other")}
           />
           <View style={[styles.actions, styles.actionsWrap]}>
-            <IconButton icon="X" label="Dismiss" showLabel theme={theme} disabled={busy || draft === null} onPress={() => setDraft(null)} />
+            <IconButton
+              icon="X"
+              label="Dismiss"
+              showLabel
+              theme={theme}
+              disabled={busy}
+              state={presses.stateOf("dismiss")}
+              // Closes the whole question as a single card's Dismiss does (TR-239); a pick is cleared by tapping it again.
+              onPress={() =>
+                presses.press("dismiss", () => dismiss({ project: decision.project, key: decision.key }), {
+                  after: "hold",
+                  onSuccess: () => {
+                    kept.forget();
+                    onAnswered();
+                  },
+                })
+              }
+            />
             {current === 0 ? null : <IconButton icon="ArrowLeft" label="Back" showLabel theme={theme} disabled={busy} onPress={() => go(current - 1)} />}
             {!last ? (
               <IconButton icon="Check" label="Next" showLabel tone="accent" theme={theme} disabled={busy || answered[current] !== true} onPress={() => go(current + 1)} />
@@ -298,7 +317,7 @@ function SeveralCard({ decision, theme, compact, onAnswered, showAgent = false, 
                 tone="accent"
                 theme={theme}
                 disabled={busy || !ready}
-                state={presses.stateOf("submit") ?? (busy ? "busy" : undefined)}
+                state={submitLook(presses.stateOf("submit"), busy, presses.stateOf("dismiss") !== undefined)}
                 onPress={() =>
                   presses.press("submit", () => answer({ key: decision.key, label: null, text: "", from: answeredFrom, answers: draftAnswers(questions, drafts) }), {
                     after: "hold",
