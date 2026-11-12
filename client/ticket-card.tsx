@@ -352,9 +352,16 @@ export function TicketCard({
             </View>
             <Text style={styles.muted}>
               {childrenDone}/{card.children.length} children done
-              {card.childrenWorking > 0 ? ` · ${card.childrenWorking} ${card.childrenWorking === 1 ? "child" : "children"} working` : ""}
             </Text>
           </Pressable>
+          {card.childrenWorking === 0 ? null : (
+            <View style={styles.row}>
+              <View style={[styles.dot, { backgroundColor: colors.statusSuccess }]} />
+              <Text style={styles.muted}>
+                {card.childrenWorking} {card.childrenWorking === 1 ? "child" : "children"} working
+              </Text>
+            </View>
+          )}
           {childrenOpen
             ? card.children.map((child) => (
                 // A narrow column has no room for a badge beside the title: the status is its icon and colour in a
