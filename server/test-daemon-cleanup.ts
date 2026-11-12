@@ -3,6 +3,9 @@
  * (Park archives it too), every test daemon recorded for the ticket is stopped, what it left is
  * killed by pid and its throwaway home deleted. Owners forgot them, and each held threads.
  */
+import { readdir } from "node:fs/promises";
+import { dirname } from "node:path";
+
 import { paseoCli } from "./cli";
 import { pluginDataDirectory } from "./data-dir";
 import { daemonRecordPath, readDaemonRecords, stopTestDaemons } from "./test-daemons";
@@ -15,4 +18,20 @@ export async function stopTicketDaemons(project: string, ticket: string, reason:
     const problems = stopped.problems.length === 0 ? "" : `; ${stopped.problems.join("; ")}`;
     console.log(`[taro] stopped ${ticket}'s test daemon ${stopped.record.home} (port ${stopped.record.port}) because ${reason}: ${killed}${problems}`);
   }
+}
+
+/**
+ * An archived owner's daemons and those recorded under its child tickets (`<ID>.json`, `<ID>.*.json`):
+ * its implementers and reviewers start them for the child they work on, and nobody uses them after it.
+ */
+export async function stopOwnerDaemons(project: string, ticket: string, reason: string): Promise<void> {
+  const id = ticket.toUpperCase();
+  const folder = dirname(daemonRecordPath(pluginDataDirectory(), project, id));
+  const files = await readdir(folder).catch(() => [] as string[]);
+  const tickets = files.flatMap((file) => {
+    const match = /^(.+)\.json$/.exec(file);
+    const recorded = match?.[1];
+    return recorded !== undefined && (recorded === id || recorded.startsWith(`${id}.`)) ? [recorded] : [];
+  });
+  for (const recorded of tickets.sort()) await stopTicketDaemons(project, recorded, recorded === id ? reason : `the owner of its parent ${id} was archived`);
 }

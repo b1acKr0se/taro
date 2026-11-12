@@ -89,7 +89,7 @@ import { appendTicketNote, closeRound as closeRoundRecord, closeTicket, listTick
 import { usageReading, type Stats } from "./stats";
 import { isStopping, reportFailure } from "./stopping";
 import type { TrackerWatch } from "./tracker-watch";
-import { stopTicketDaemons } from "./test-daemon-cleanup";
+import { stopOwnerDaemons, stopTicketDaemons } from "./test-daemon-cleanup";
 
 export class Actions {
   /** Last seen status per project and ticket, to notice transitions to Done; on disk once acted on (TR-043). */
@@ -1146,8 +1146,8 @@ export class Actions {
     const project = archived?.labels[TARO_LABELS.project];
     const ticketId = archived?.labels[TARO_LABELS.ticket];
     if (archived === undefined || project === undefined || ticketId === undefined || archived.labels[TARO_LABELS.role] !== "owner") return;
-    // Its test daemons go with it (TR-263): parked, archived or replaced, nobody uses them any more.
-    await stopTicketDaemons(project, ticketId, "its owner was archived").catch((error: unknown) => reportFailure(`[taro] stopping ${ticketId}'s test daemons:`, error));
+    // Its test daemons and its child tickets' go with it (TR-263): parked, archived or replaced, nobody uses them any more.
+    await stopOwnerDaemons(project, ticketId, "its owner was archived").catch((error: unknown) => reportFailure(`[taro] stopping ${ticketId}'s test daemons:`, error));
     await serialized(`tracker-changed:${project}`, async () => {
       // A relaunch that then fails leaves the slot free unannounced; the minute idle check wakes the manager for it.
       if (this.replacing.has(`${project}:${ticketId.toUpperCase()}`)) return;

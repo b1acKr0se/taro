@@ -1,12 +1,12 @@
 /** The plugin's stop of a ticket's test daemons, on real processes: a stub `paseo`, a leftover that names the daemon's home. */
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { daemonRecordPath } from "./test-daemons";
+import { daemonRecordPath, readDaemonRecords, startTestDaemon, stopTestDaemons } from "./test-daemons";
 
 let scratch = "";
 let home = "";
@@ -73,5 +73,122 @@ describe("stopTicketDaemons", () => {
     const { stopTicketDaemons } = await import("./test-daemon-cleanup");
     await stopTicketDaemons("notes-app", "TR-91", "TR-91 is Done");
     expect(existsSync(join(scratch, "calls.log"))).toBe(false);
+  });
+});
+
+/** A fresh path directly in /tmp, nothing there yet: removed after the test. */
+const madePaths: string[] = [];
+function freshTmp(prefix: string): string {
+  const made = mkdtempSync(`/tmp/${prefix}`);
+  rmSync(made, { recursive: true });
+  madePaths.push(made);
+  return made;
+}
+
+afterEach(() => {
+  for (const path of madePaths.splice(0)) rmSync(path, { recursive: true, force: true });
+});
+
+describe("startTestDaemon refuses a home that is not a new throwaway folder (fake HOME, stub paseo)", () => {
+  function setup(): { fakeHome: string; realHome: string; options: Parameters<typeof startTestDaemon>[0] } {
+    const fakeHome = join(scratch, "user");
+    const realHome = join(fakeHome, ".paseo");
+    mkdirSync(realHome, { recursive: true });
+    writeFileSync(join(realHome, "config.json"), "real\n");
+    const options = { paseo: process.env.PASEO_CLI as string, recordPath: join(scratch, "records", "TR-90.json"), ticket: "TR-90", real: { userHome: fakeHome, paseoHome: null }, startedBy: null };
+    return { fakeHome, realHome, options };
+  }
+
+  it("a /tmp/paseo-… link to the real home", async () => {
+    const { realHome, options } = setup();
+    const link = freshTmp("paseo-TR-90-link-");
+    symlinkSync(realHome, link);
+    await expect(startTestDaemon({ ...options, home: link })).rejects.toThrow(`real Paseo daemon's home (${realHome})`);
+    expect(readFileSync(join(realHome, "config.json"), "utf8")).toBe("real\n");
+    expect(existsSync(join(scratch, "calls.log"))).toBe(false);
+  });
+
+  it("a home under a linked parent that lands on the real home", async () => {
+    const { fakeHome, realHome, options } = setup();
+    const parent = freshTmp("paseo-TR-90-parent-");
+    symlinkSync(fakeHome, parent);
+    await expect(startTestDaemon({ ...options, home: join(parent, ".paseo") })).rejects.toThrow("real Paseo daemon's home");
+    expect(readFileSync(join(realHome, "config.json"), "utf8")).toBe("real\n");
+    expect(existsSync(join(scratch, "calls.log"))).toBe(false);
+  });
+
+  it("a link to the real home when the real home is itself reached through a link", async () => {
+    const { fakeHome, options } = setup();
+    const actual = join(scratch, "actual-paseo");
+    mkdirSync(actual);
+    symlinkSync(actual, join(fakeHome, "paseo-link"));
+    const link = freshTmp("paseo-TR-90-link-");
+    symlinkSync(actual, link);
+    await expect(startTestDaemon({ ...options, real: { userHome: fakeHome, paseoHome: join(fakeHome, "paseo-link") }, home: link })).rejects.toThrow("real Paseo daemon's home");
+    expect(existsSync(join(scratch, "calls.log"))).toBe(false);
+  });
+
+  it("a link elsewhere, and a folder already holding files", async () => {
+    const { options } = setup();
+    const link = freshTmp("paseo-TR-90-link-");
+    const elsewhere = join(scratch, "elsewhere");
+    mkdirSync(elsewhere);
+    symlinkSync(elsewhere, link);
+    await expect(startTestDaemon({ ...options, home: link })).rejects.toThrow("symbolic link");
+    const full = freshTmp("paseo-TR-90-full-");
+    mkdirSync(full);
+    writeFileSync(join(full, "notes.txt"), "mine\n");
+    await expect(startTestDaemon({ ...options, home: full })).rejects.toThrow("already holds files");
+    expect(readFileSync(join(full, "notes.txt"), "utf8")).toBe("mine\n");
+    expect(existsSync(join(scratch, "calls.log"))).toBe(false);
+  });
+});
+
+describe("a recorded daemon is stopped only while its pid is still it (start time)", () => {
+  /** A process standing in for the daemon's supervisor: its own session, like Paseo's. */
+  function sleeper(): number {
+    const child = spawn(process.execPath, ["-e", "setTimeout(() => undefined, 300_000)"], { detached: true, stdio: "ignore" });
+    child.unref();
+    return child.pid as number;
+  }
+
+  it("records the start time, then stops the daemon and kills its session", async () => {
+    const pid = sleeper();
+    // The stub plays `paseo daemon start`: it writes paseo.pid in the home it is given.
+    writeFileSync(process.env.PASEO_CLI as string, `#!/bin/sh\necho "$@" >> "${join(scratch, "calls.log")}"\nif [ "$1" = daemon ] && [ "$2" = start ]; then echo '{"pid":${pid}}' > "$4/paseo.pid"; fi\n`);
+    const target = freshTmp("paseo-TR-90-run-");
+    const recordPath = join(scratch, "records", "TR-90.json");
+    const record = await startTestDaemon({ paseo: process.env.PASEO_CLI as string, recordPath, ticket: "TR-90", real: { userHome: join(scratch, "user"), paseoHome: null }, home: target, startedBy: null });
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    expect(record).toMatchObject({ pid, startTime: stat.slice(stat.lastIndexOf(")") + 1).trim().split(/\s+/)[19] });
+    const [stopped] = await stopTestDaemons({ paseo: process.env.PASEO_CLI as string, recordPath });
+    expect(stopped?.killed).toEqual([pid]);
+    expect(readFileSync(join(scratch, "calls.log"), "utf8")).toContain(`daemon stop --home ${target} --force`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(alive(pid)).toBe(false);
+  });
+
+  it("spares a reused pid named Paseo Daemon whose start time differs, and an old record's session", async () => {
+    // exec -a gives the process Paseo's name, as a later daemon that got the pid would have.
+    const child = spawn("bash", ["-c", "exec -a 'Paseo Daemon' sleep 300"], { detached: true, stdio: "ignore" });
+    child.unref();
+    const pid = child.pid as number;
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const recordPath = join(scratch, "records", "TR-90.json");
+      mkdirSync(join(recordPath, ".."), { recursive: true });
+      const records = [
+        { home: freshTmp("paseo-TR-90-old-"), port: 6851, pid, startTime: "1", startedAt: "2026-11-12T07:00:00.000Z", startedBy: null },
+        { home: freshTmp("paseo-TR-90-older-"), port: 6852, pid, startedAt: "2026-11-12T07:00:00.000Z", startedBy: null },
+      ];
+      writeFileSync(recordPath, JSON.stringify(records));
+      const stopped = await stopTestDaemons({ paseo: process.env.PASEO_CLI as string, recordPath });
+      expect(stopped.map((each) => each.killed)).toEqual([[], []]);
+      expect(existsSync(join(scratch, "calls.log"))).toBe(false);
+      expect(alive(pid)).toBe(true);
+      expect(await readDaemonRecords(recordPath)).toEqual([]);
+    } finally {
+      process.kill(pid, "SIGKILL");
+    }
   });
 });

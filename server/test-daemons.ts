@@ -4,18 +4,23 @@
  * recorded under the plugin data folder, `state/test-daemons/<project>/<ID>.json`, which is how the
  * plugin finds them. Plain Node, erasable TypeScript: the `taro` command reaches it.
  */
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 import {
   daemonCleanupPlan,
   daemonTargetRefusal,
   parseDaemonRecords,
   parseProcessTable,
+  procStartTime,
+  realDaemonHomes,
+  REAL_DAEMON_PORT,
   TEST_PORT_FIRST,
   TEST_PORT_LAST,
   type DaemonRecord,
+  type HomeKind,
+  type ProcessEntry,
 } from "../shared/test-daemons.ts";
 import { commandError, runCommand } from "./process.ts";
 
@@ -77,17 +82,55 @@ export interface StartOptions {
   startedBy: string | null;
 }
 
+/** The path with every symlink on its way resolved; the part that does not exist yet is kept as written. */
+async function resolveThrough(path: string): Promise<string> {
+  const absolute = resolve(path);
+  const missing: string[] = [];
+  for (let existing = absolute; ; existing = dirname(existing)) {
+    try {
+      return join(await realpath(existing), ...missing.reverse());
+    } catch {
+      if (dirname(existing) === existing) return absolute;
+      missing.push(basename(existing));
+    }
+  }
+}
+
+async function homeKind(home: string): Promise<HomeKind> {
+  try {
+    const status = await lstat(home);
+    if (status.isSymbolicLink()) return "symlink";
+    if (!status.isDirectory()) return "not-folder";
+    return (await readdir(home)).length === 0 ? "empty" : "not-empty";
+  } catch {
+    return "missing";
+  }
+}
+
+/** Why a test daemon may not use this home and port, looking at the disk: links resolved, the real homes too. */
+export async function targetRefusal(home: string, port: number, real: RealDaemon): Promise<string | null> {
+  const realHomes = await Promise.all(realDaemonHomes(real).map(async (path) => [path, await resolveThrough(path)]));
+  return daemonTargetRefusal({ home, port, resolvedHome: await resolveThrough(home), kind: await homeKind(home) }, [...new Set(realHomes.flat())]);
+}
+
+/** The process's start time, or null where there is no `/proc` or it is gone. */
+async function startTimeOf(pid: number): Promise<string | null> {
+  const stat = await readText(`/proc/${pid}/stat`);
+  return stat === null ? null : procStartTime(stat);
+}
+
 /** Starts a throwaway daemon as the repository instructions do, and records it; throws with the reason when it cannot. */
 export async function startTestDaemon(options: StartOptions): Promise<DaemonRecord> {
-  if (options.home !== undefined || options.port !== undefined) {
-    const refusal = daemonTargetRefusal({ home: options.home ?? `/tmp/paseo-${options.ticket}`, port: options.port ?? TEST_PORT_FIRST }, options.real);
+  if (options.port === REAL_DAEMON_PORT) throw new Error(`Port ${REAL_DAEMON_PORT} is the real Paseo daemon's: a test daemon never uses it.`);
+  if (options.home !== undefined) {
+    const refusal = await targetRefusal(options.home, options.port ?? TEST_PORT_FIRST, options.real);
     if (refusal !== null) throw new Error(refusal);
   }
   const port = options.port ?? (await freeTestPort());
   if (port === null) throw new Error(`No free port in ${TEST_PORT_FIRST}-${TEST_PORT_LAST}: stop a test daemon first (taro daemon stop).`);
   if (!(await portFree(port))) throw new Error(`Port ${port} is in use.`);
   const home = options.home ?? (await mkdtemp(`/tmp/paseo-${options.ticket}-`));
-  const refusal = daemonTargetRefusal({ home, port }, options.real);
+  const refusal = await targetRefusal(home, port, options.real);
   if (refusal !== null) throw new Error(refusal);
   await mkdir(home, { recursive: true });
   const config = { version: 1, daemon: { listen: `127.0.0.1:${port}` }, pluginsEnabled: true, features: { webUi: { enabled: true } } };
@@ -101,7 +144,8 @@ export async function startTestDaemon(options: StartOptions): Promise<DaemonReco
   } catch {
     pid = null;
   }
-  const record: DaemonRecord = { home, port, pid, startedAt: new Date().toISOString(), startedBy: options.startedBy };
+  const startTime = pid === null ? null : await startTimeOf(pid);
+  const record: DaemonRecord = { home, port, pid, startTime, startedAt: new Date().toISOString(), startedBy: options.startedBy };
   // Recorded before anything else can fail, so a half-started daemon is still stopped later.
   await writeDaemonRecords(options.recordPath, [...(await readDaemonRecords(options.recordPath)), record]);
   if (started.code !== 0) {
@@ -115,10 +159,18 @@ export async function startTestDaemon(options: StartOptions): Promise<DaemonReco
   return record;
 }
 
-async function processTable(): Promise<ReturnType<typeof parseProcessTable>> {
+/** The process table, with the start time of each recorded daemon's pid that still runs. */
+async function processTable(records: readonly DaemonRecord[]): Promise<ProcessEntry[]> {
   const result = await runCommand("ps", ["-eo", "pid=,ppid=,pgid=,sid=,args="], { timeoutMs: 15_000 });
   if (result.code !== 0) throw new Error(`ps failed: ${commandError(result)}`);
-  return parseProcessTable(result.stdout);
+  const recorded = new Set(records.flatMap((record) => (record.pid === null ? [] : [record.pid])));
+  return Promise.all(
+    parseProcessTable(result.stdout).map(async (entry) => {
+      if (!recorded.has(entry.pid)) return entry;
+      const startTime = await startTimeOf(entry.pid);
+      return startTime === null ? entry : { ...entry, startTime };
+    }),
+  );
 }
 
 export interface StoppedDaemon {
@@ -137,7 +189,7 @@ export async function stopTestDaemons(options: { paseo: string; recordPath: stri
   const chosen = records.filter((record) => options.home === undefined || record.home === options.home);
   if (chosen.length === 0) return [];
   const problems = new Map<string, string[]>(chosen.map((record) => [record.home, []]));
-  for (const step of daemonCleanupPlan(chosen, await processTable(), process.pid)) {
+  for (const step of daemonCleanupPlan(chosen, await processTable(chosen), process.pid)) {
     if (!step.stop) continue;
     const stopped = await runCommand(options.paseo, ["daemon", "stop", "--home", step.record.home, "--force"], { timeoutMs: 40_000 }).catch((error: unknown) => ({
       code: 1,
@@ -147,7 +199,7 @@ export async function stopTestDaemons(options: { paseo: string; recordPath: stri
     if (stopped.code !== 0) problems.get(step.record.home)?.push(`paseo daemon stop: ${commandError(stopped)}`);
   }
   const results: StoppedDaemon[] = [];
-  for (const step of daemonCleanupPlan(chosen, await processTable(), process.pid)) {
+  for (const step of daemonCleanupPlan(chosen, await processTable(chosen), process.pid)) {
     const killed: number[] = [];
     for (const pid of step.kill) {
       try {
