@@ -562,6 +562,13 @@ export class Actions {
     return agentId;
   }
 
+  /** Whether the ticket has a live owner other than this agent (a replacement); when Paseo cannot say, it may (daemons left running beat daemons stopped mid-work). */
+  private async otherLiveOwner(paseo: PaseoApi, project: string, ticket: string, agentId: string): Promise<boolean> {
+    const owners = await projectAgents(paseo, project, "owner").catch(() => null);
+    if (owners === null) return true;
+    return owners.some((agent) => agent.id !== agentId && agent.status !== "closed" && (agent.archivedAt ?? null) === null && dependsOn([agent.labels[TARO_LABELS.ticket] ?? ""], ticket));
+  }
+
   /** A ticket's live owner, if any; ids compare without case. */
   private async liveOwner(paseo: PaseoApi, project: string, ticket: string): Promise<PaseoAgent | null> {
     const owners = (await projectAgents(paseo, project, "owner")).filter((agent) => agent.status !== "closed" && dependsOn([agent.labels[TARO_LABELS.ticket] ?? ""], ticket));
@@ -1146,8 +1153,12 @@ export class Actions {
     const project = archived?.labels[TARO_LABELS.project];
     const ticketId = archived?.labels[TARO_LABELS.ticket];
     if (archived === undefined || project === undefined || ticketId === undefined || archived.labels[TARO_LABELS.role] !== "owner") return;
-    // Its test daemons and its child tickets' go with it (TR-263): parked, archived or replaced, nobody uses them any more.
-    await stopOwnerDaemons(project, ticketId, "its owner was archived").catch((error: unknown) => reportFailure(`[taro] stopping ${ticketId}'s test daemons:`, error));
+    // A relaunch (crash recovery, resume, a fresh owner) archives the old owner while the work goes on:
+    // its daemons stay for the new one; Done or Cancelled stops them later. The archive event may come
+    // while the relaunch runs or after it, when the new owner is live.
+    const replaced = this.replacing.has(`${project}:${ticketId.toUpperCase()}`) || (await this.otherLiveOwner(paseo, project, ticketId, agentId));
+    // Otherwise its test daemons and its child tickets' go with it (TR-263): parked or archived, nobody uses them any more.
+    if (!replaced) await stopOwnerDaemons(project, ticketId, "its owner was archived").catch((error: unknown) => reportFailure(`[taro] stopping ${ticketId}'s test daemons:`, error));
     await serialized(`tracker-changed:${project}`, async () => {
       // A relaunch that then fails leaves the slot free unannounced; the minute idle check wakes the manager for it.
       if (this.replacing.has(`${project}:${ticketId.toUpperCase()}`)) return;

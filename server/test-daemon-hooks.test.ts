@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Actions } from "./actions";
+import { projectAgents } from "./agents";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
@@ -73,6 +74,49 @@ describe("test daemons", () => {
     expect(vi.mocked(stopOwnerDaemons).mock.calls).toEqual([["demo", "DM-1", "its owner was archived"]]);
   });
 
+  it("stay while the owner is relaunched: an archive during the relaunch, or after it with the new owner live", async () => {
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "In Progress")]);
+    // relaunchOwner holds the ticket while it archives the old owner and starts the new one.
+    (actions as unknown as { replacing: Set<string> }).replacing.add("demo:DM-1");
+    await actions.onOwnerArchived(paseo, "owner");
+    (actions as unknown as { replacing: Set<string> }).replacing.delete("demo:DM-1");
+    expect(stopOwnerDaemons).not.toHaveBeenCalled();
+    // The archive event came after the relaunch finished: the new owner is live.
+    vi.mocked(projectAgents).mockResolvedValueOnce([{ id: "owner-2", status: "idle", archivedAt: null, labels: { "taro.project": "demo", "taro.role": "owner", "taro.ticket": "DM-1" } } as unknown as PaseoAgent]);
+    await actions.onOwnerArchived(paseo, "owner");
+    expect(stopOwnerDaemons).not.toHaveBeenCalled();
+  });
+
+  it("stay, records and homes, when the owner is archived during a relaunch (real cleanup, not mocked)", async () => {
+    const scratch = mkdtempSync(join(tmpdir(), "taro-relaunch-daemons-"));
+    const previous = { PASEO_HOME: process.env.PASEO_HOME };
+    try {
+      process.env.PASEO_HOME = join(scratch, "paseo-home");
+      const recordPath = daemonRecordPath(join(scratch, "paseo-home", "plugin-data", "taro"), "demo", "DM-1");
+      mkdirSync(join(recordPath, ".."), { recursive: true });
+      const home = join(scratch, "home-DM-1");
+      mkdirSync(home);
+      writeFileSync(recordPath, JSON.stringify([{ home, port: 6851, pid: null, startedAt: "2026-11-12T07:00:00.000Z", startedBy: null }]));
+      const actual = await vi.importActual<typeof import("./test-daemon-cleanup")>("./test-daemon-cleanup");
+      vi.mocked(stopOwnerDaemons).mockImplementation(actual.stopOwnerDaemons);
+      vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "In Progress")]);
+      (actions as unknown as { replacing: Set<string> }).replacing.add("demo:DM-1");
+      await actions.onOwnerArchived(paseo, "owner");
+      expect([existsSync(recordPath), existsSync(home)]).toEqual([true, true]);
+      // Parked later (no relaunch): now they go.
+      (actions as unknown as { replacing: Set<string> }).replacing.delete("demo:DM-1");
+      const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+      await actions.onOwnerArchived(paseo, "owner");
+      log.mockRestore();
+      expect(existsSync(recordPath)).toBe(false);
+    } finally {
+      vi.mocked(stopOwnerDaemons).mockImplementation(async () => undefined);
+      if (previous.PASEO_HOME === undefined) delete process.env.PASEO_HOME;
+      else process.env.PASEO_HOME = previous.PASEO_HOME;
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
   it("of an archived owner's child tickets are stopped with its own, not those of a ticket whose id only starts the same", async () => {
     const scratch = mkdtempSync(join(tmpdir(), "taro-owner-daemons-"));
     const previous = { PASEO_HOME: process.env.PASEO_HOME, PASEO_CLI: process.env.PASEO_CLI };
@@ -93,9 +137,9 @@ describe("test daemons", () => {
       await actual.stopOwnerDaemons("demo", "dm-1", "its owner was archived");
       expect(["DM-1", "DM-1.02", "DM-1.02.01", "DM-12", "DM-2"].map((id) => existsSync(recordOf(id)))).toEqual([false, false, false, true, true]);
       expect(log.mock.calls.map((call) => String(call[0]))).toEqual([
-        `[taro] stopped DM-1's test daemon ${homes.get("DM-1")} (port 6851) because its owner was archived: nothing left to kill`,
-        `[taro] stopped DM-1.02's test daemon ${homes.get("DM-1.02")} (port 6851) because the owner of its parent DM-1 was archived: nothing left to kill`,
-        `[taro] stopped DM-1.02.01's test daemon ${homes.get("DM-1.02.01")} (port 6851) because the owner of its parent DM-1 was archived: nothing left to kill`,
+        `[taro] cleared DM-1's test daemon ${homes.get("DM-1")} (port 6851), which no longer ran, because its owner was archived: nothing left to kill`,
+        `[taro] cleared DM-1.02's test daemon ${homes.get("DM-1.02")} (port 6851), which no longer ran, because the owner of its parent DM-1 was archived: nothing left to kill`,
+        `[taro] cleared DM-1.02.01's test daemon ${homes.get("DM-1.02.01")} (port 6851), which no longer ran, because the owner of its parent DM-1 was archived: nothing left to kill`,
       ]);
       log.mockRestore();
     } finally {

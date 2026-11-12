@@ -18,8 +18,9 @@ export interface DaemonRecord {
   port: number;
   pid: number | null;
   /**
-   * That process's start time (field 22 of `/proc/<pid>/stat`), read when it started: a pid the system
-   * gave to another process has another start time. Null when unread (an older record, no `/proc`).
+   * That process's start time as `ps -o lstart=` prints it (in the C locale, on Linux and macOS alike),
+   * read when it started: a pid the system gave to another process has another start time. Compared
+   * as text, never parsed. Null when it could not be read.
    */
   startTime: string | null;
   startedAt: string;
@@ -33,8 +34,8 @@ export interface ProcessEntry {
   pgid: number;
   sid: number;
   args: string;
-  /** Field 22 of `/proc/<pid>/stat`, read only for recorded pids; absent otherwise. */
-  startTime?: string;
+  /** Its `ps -o lstart=` text, read only for recorded pids; null when that read failed, absent when not read. */
+  startTime?: string | null;
 }
 
 /** `ps -eo pid=,ppid=,pgid=,sid=,args=` read into entries; lines that are not five fields are skipped. */
@@ -58,12 +59,10 @@ function inside(parent: string, path: string): boolean {
   return target === root || target.startsWith(`${root}/`);
 }
 
-/** The start time (field 22) in a `/proc/<pid>/stat` text, or null. The command name may hold spaces and parentheses, so fields count from the last `)`. */
-export function procStartTime(stat: string): string | null {
-  const close = stat.lastIndexOf(")");
-  if (close < 0) return null;
-  const field = stat.slice(close + 1).trim().split(/\s+/)[22 - 3];
-  return field !== undefined && /^\d+$/.test(field) ? field : null;
+/** `ps -o lstart=` output as one comparable line (spacing aside, the text is kept as printed), or null when empty. */
+export function psStartTime(output: string): string | null {
+  const line = output.trim().replace(/\s+/g, " ");
+  return line === "" ? null : line;
 }
 
 /** Whether the arguments name this home, not one that only starts with it: `/tmp/paseo-TR-1` is not in `/tmp/paseo-TR-12`. */
@@ -121,24 +120,29 @@ export function daemonTargetRefusal(target: DaemonTarget, realHomes: readonly st
 }
 
 /**
- * Whether the process at the record's pid is still that daemon: same pid and same start time. A pid the
- * system gave to something else (even another Paseo daemon) is not, nor is any pid of a record without a start time.
+ * Whether the record's daemon still runs: `running` while its pid shows the recorded start time,
+ * `gone` when the pid is free or the system gave it to another process (another start time, even
+ * another Paseo daemon), `unknown` when either start time could not be read. A record without a pid
+ * never identified a process, so it is `gone` too: only what names its home is its own.
  */
-function daemonAlive(record: DaemonRecord, processes: readonly ProcessEntry[]): boolean {
-  if (record.pid === null || record.startTime === null) return false;
-  const entry = processes.find((candidate) => candidate.pid === record.pid);
-  return entry !== undefined && entry.startTime === record.startTime;
+export type DaemonState = "running" | "gone" | "unknown";
+
+export function daemonState(record: DaemonRecord, processes: readonly ProcessEntry[]): DaemonState {
+  if (record.pid === null) return "gone";
+  const holder = processes.find((candidate) => candidate.pid === record.pid);
+  if (holder === undefined) return "gone";
+  if (record.startTime === null || holder.startTime === undefined || holder.startTime === null) return "unknown";
+  return holder.startTime === record.startTime ? "running" : "gone";
 }
 
 /**
  * What a daemon left running, to kill by pid: its session (the supervisor leads one, and a `git` its
  * plugin started keeps it after being reparented to PID 1) and anything naming its home. A session
  * counts only while the recorded pid is free or still the daemon (its start time matches): a reused pid
- * leads someone else's. A record without a start time kills only what names its home.
+ * leads someone else's.
  */
 export function daemonLeftovers(record: DaemonRecord, processes: readonly ProcessEntry[], selfPid: number): number[] {
-  const pidHolder = record.pid === null ? undefined : processes.find((entry) => entry.pid === record.pid);
-  const ownSession = record.pid !== null && record.startTime !== null && (pidHolder === undefined || daemonAlive(record, processes));
+  const ownSession = record.pid !== null && (processes.every((entry) => entry.pid !== record.pid) || daemonState(record, processes) === "running");
   const spared = lineage(selfPid, processes);
   return processes
     .filter((entry) => entry.pid > 1 && !spared.has(entry.pid))
@@ -160,22 +164,35 @@ function lineage(pid: number, processes: readonly ProcessEntry[]): Set<number> {
 
 export interface DaemonCleanupStep {
   record: DaemonRecord;
+  state: DaemonState;
   /** Ask the daemon to stop (`paseo daemon stop --home`) before killing what is left. */
   stop: boolean;
+  /**
+   * Touch nothing and keep the record and the home: whether the pid is still the daemon cannot be told
+   * (no start time). Where processes never name their home (macOS), killing by home would stop nothing
+   * while the record and home went, leaving a daemon nobody knows of.
+   */
+  keep: boolean;
   /** What to kill by pid, as the process table reads now. */
   kill: number[];
   /** Delete the home: it is a throwaway one. */
   removeHome: boolean;
 }
 
-/** For each recorded daemon: whether it still runs to stop, what to kill, whether its home goes. */
+/** For each recorded daemon: whether it still runs to stop, what to kill, whether its home goes, or that it is kept. */
 export function daemonCleanupPlan(records: readonly DaemonRecord[], processes: readonly ProcessEntry[], selfPid: number): DaemonCleanupStep[] {
-  return records.map((record) => ({
-    record,
-    stop: daemonAlive(record, processes),
-    kill: daemonLeftovers(record, processes, selfPid),
-    removeHome: isThrowawayHome(record.home),
-  }));
+  return records.map((record) => {
+    const state = daemonState(record, processes);
+    const keep = state === "unknown";
+    return {
+      record,
+      state,
+      stop: state === "running",
+      keep,
+      kill: keep ? [] : daemonLeftovers(record, processes, selfPid),
+      removeHome: !keep && isThrowawayHome(record.home),
+    };
+  });
 }
 
 /** The recorded daemons in a record file's text; anything unreadable is none. */

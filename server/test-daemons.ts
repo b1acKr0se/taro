@@ -13,7 +13,7 @@ import {
   daemonTargetRefusal,
   parseDaemonRecords,
   parseProcessTable,
-  procStartTime,
+  psStartTime,
   realDaemonHomes,
   REAL_DAEMON_PORT,
   TEST_PORT_FIRST,
@@ -113,10 +113,13 @@ export async function targetRefusal(home: string, port: number, real: RealDaemon
   return daemonTargetRefusal({ home, port, resolvedHome: await resolveThrough(home), kind: await homeKind(home) }, [...new Set(realHomes.flat())]);
 }
 
-/** The process's start time, or null where there is no `/proc` or it is gone. */
-async function startTimeOf(pid: number): Promise<string | null> {
-  const stat = await readText(`/proc/${pid}/stat`);
-  return stat === null ? null : procStartTime(stat);
+/**
+ * The process's start time as `ps -o lstart=` prints it, or null when it is gone or `ps` cannot say.
+ * `ps` rather than `/proc`, which macOS lacks; the C locale keeps the text the same whoever runs it.
+ */
+export async function startTimeOf(pid: number): Promise<string | null> {
+  const result = await runCommand("ps", ["-o", "lstart=", "-p", String(pid)], { timeoutMs: 15_000, env: { LC_ALL: "C" } }).catch(() => null);
+  return result === null || result.code !== 0 ? null : psStartTime(result.stdout);
 }
 
 /** Starts a throwaway daemon as the repository instructions do, and records it; throws with the reason when it cannot. */
@@ -167,14 +170,19 @@ async function processTable(records: readonly DaemonRecord[]): Promise<ProcessEn
   return Promise.all(
     parseProcessTable(result.stdout).map(async (entry) => {
       if (!recorded.has(entry.pid)) return entry;
-      const startTime = await startTimeOf(entry.pid);
-      return startTime === null ? entry : { ...entry, startTime };
+      return { ...entry, startTime: await startTimeOf(entry.pid) };
     }),
   );
 }
 
 export interface StoppedDaemon {
   record: DaemonRecord;
+  /**
+   * `stopped`: it ran and was asked to stop; `not-running`: it no longer ran, its leftovers and home
+   * were cleared; `kept`: whether its pid is still it could not be told, so nothing was touched and
+   * the record and home stay until that pid exits.
+   */
+  outcome: "stopped" | "not-running" | "kept";
   /** The pids killed after the daemon's own stop. */
   killed: number[];
   problems: string[];
@@ -182,15 +190,18 @@ export interface StoppedDaemon {
 
 /**
  * Stops the recorded daemons (only the one at `home` when given): asks each to stop, kills by pid
- * what it left, deletes its throwaway home, and forgets it.
+ * what it left, deletes its throwaway home, and forgets it. One whose pid cannot be told apart from
+ * a reused one (no start time) is kept, untouched.
  */
 export async function stopTestDaemons(options: { paseo: string; recordPath: string; home?: string }): Promise<StoppedDaemon[]> {
   const records = await readDaemonRecords(options.recordPath);
   const chosen = records.filter((record) => options.home === undefined || record.home === options.home);
   if (chosen.length === 0) return [];
   const problems = new Map<string, string[]>(chosen.map((record) => [record.home, []]));
+  const askedToStop = new Set<string>();
   for (const step of daemonCleanupPlan(chosen, await processTable(chosen), process.pid)) {
     if (!step.stop) continue;
+    askedToStop.add(step.record.home);
     const stopped = await runCommand(options.paseo, ["daemon", "stop", "--home", step.record.home, "--force"], { timeoutMs: 40_000 }).catch((error: unknown) => ({
       code: 1,
       stdout: "",
@@ -199,7 +210,14 @@ export async function stopTestDaemons(options: { paseo: string; recordPath: stri
     if (stopped.code !== 0) problems.get(step.record.home)?.push(`paseo daemon stop: ${commandError(stopped)}`);
   }
   const results: StoppedDaemon[] = [];
+  const kept = new Set<string>();
   for (const step of daemonCleanupPlan(chosen, await processTable(chosen), process.pid)) {
+    if (step.keep) {
+      kept.add(step.record.home);
+      const reason = step.record.startTime === null ? "its start time was not read when it started" : `the start time of pid ${step.record.pid} could not be read now`;
+      results.push({ record: step.record, outcome: "kept", killed: [], problems: [...(problems.get(step.record.home) ?? []), `kept: ${reason}, so pid ${step.record.pid} may be another process; the record and home stay until it exits`] });
+      continue;
+    }
     const killed: number[] = [];
     for (const pid of step.kill) {
       try {
@@ -210,9 +228,20 @@ export async function stopTestDaemons(options: { paseo: string; recordPath: stri
       }
     }
     if (step.removeHome) await rm(step.record.home, { recursive: true, force: true }).catch((error: unknown) => problems.get(step.record.home)?.push(`removing the home: ${String(error)}`));
-    results.push({ record: step.record, killed, problems: problems.get(step.record.home) ?? [] });
+    results.push({ record: step.record, outcome: askedToStop.has(step.record.home) ? "stopped" : "not-running", killed, problems: problems.get(step.record.home) ?? [] });
   }
   const remaining = await readDaemonRecords(options.recordPath);
-  await writeDaemonRecords(options.recordPath, remaining.filter((record) => !chosen.some((gone) => gone.home === record.home)));
+  await writeDaemonRecords(options.recordPath, remaining.filter((record) => kept.has(record.home) || !chosen.some((gone) => gone.home === record.home)));
   return results;
+}
+
+/** What happened to one recorded daemon, in words: never "stopped" unless it ran and was asked to stop. */
+export function stoppedDaemonLine(ticket: string, stopped: StoppedDaemon, reason?: string): string {
+  const which = `${ticket}'s test daemon ${stopped.record.home} (port ${stopped.record.port})`;
+  const because = reason === undefined ? "" : ` because ${reason}`;
+  const problems = stopped.problems.length === 0 ? "" : `; ${stopped.problems.join("; ")}`;
+  if (stopped.outcome === "kept") return `did not stop ${which}${because}: stopped nothing${problems}`;
+  const killed = stopped.killed.length === 0 ? "nothing left to kill" : `killed ${stopped.killed.join(", ")}`;
+  if (stopped.outcome === "not-running") return `cleared ${which}, which no longer ran,${because}: ${killed}${problems}`;
+  return `stopped ${which}${because}: ${killed}${problems}`;
 }

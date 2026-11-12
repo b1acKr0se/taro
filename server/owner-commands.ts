@@ -13,7 +13,7 @@ import { checkEvidenceLine, checkLogLine, checksAtHead, parseCheckLog, summaryLi
 import { isInvestigation, planDelivery, type DeliveryFacts } from "../shared/delivery-record.ts";
 import { executionBranch, executionOwners } from "../shared/execution.ts";
 import { commandError, runCommand, type CommandResult } from "./process.ts";
-import { daemonRecordPath, startTestDaemon, stopTestDaemons, readDaemonRecords } from "./test-daemons.ts";
+import { daemonRecordPath, startTestDaemon, stopTestDaemons, stoppedDaemonLine, readDaemonRecords } from "./test-daemons.ts";
 import { waitForThreads } from "./thread-check.ts";
 import type { TicketStore } from "./ticket-store.ts";
 
@@ -423,6 +423,9 @@ export async function daemonStart(options: { ticket: string; home: string | unde
       `  web app:  http://127.0.0.1:${record.port}/`,
       `  commands: --home ${record.home}   RPCs: TARO_DAEMON_URL=ws://127.0.0.1:${record.port}/ws`,
       `Stop it with taro daemon stop ${ticket}; the plugin stops it anyway when ${ticket} is Done or its owner is archived.`,
+      ...(record.pid !== null && record.startTime === null
+        ? [`Its start time could not be read (ps -o lstart= -p ${record.pid}): neither command nor plugin can tell it from a later process with that pid, so they keep it until pid ${record.pid} exits. Stop it with paseo daemon stop --home ${record.home}.`]
+        : []),
       "",
     ].join("\n"),
   );
@@ -439,8 +442,8 @@ export async function daemonStop(options: { ticket: string; home: string | undef
     return EXIT_OK;
   }
   for (const each of stopped) {
-    const killed = each.killed.length === 0 ? "nothing left to kill" : `killed ${each.killed.join(", ")}`;
-    io.stdout(`Stopped ${each.record.home} (port ${each.record.port}): ${killed}${each.problems.length === 0 ? "" : `; ${each.problems.join("; ")}`}.\n`);
+    const line = stoppedDaemonLine(ticket, each);
+    io.stdout(`${line.charAt(0).toUpperCase()}${line.slice(1)}.\n`);
   }
   return EXIT_OK;
 }

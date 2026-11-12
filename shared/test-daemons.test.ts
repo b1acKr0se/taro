@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { daemonCleanupPlan, daemonLeftovers, daemonTargetRefusal, isThrowawayHome, namesHome, parseDaemonRecords, parseProcessTable, procStartTime, realDaemonHomes, type DaemonRecord, type DaemonTarget, type ProcessEntry } from "./test-daemons";
+import { daemonCleanupPlan, daemonLeftovers, daemonTargetRefusal, isThrowawayHome, namesHome, parseDaemonRecords, parseProcessTable, psStartTime, realDaemonHomes, type DaemonRecord, type DaemonTarget, type ProcessEntry } from "./test-daemons";
 
 const HOME = "/tmp/paseo-TR-12-a1b2c3";
 const REAL = realDaemonHomes({ userHome: "/home/user", paseoHome: null });
@@ -10,7 +10,7 @@ function target(home: string, port = 6851, overrides: Partial<DaemonTarget> = {}
 }
 
 function record(overrides: Partial<DaemonRecord> = {}): DaemonRecord {
-  return { home: HOME, port: 6851, pid: 500, startTime: "4242", startedAt: "2026-11-12T07:00:00.000Z", startedBy: null, ...overrides };
+  return { home: HOME, port: 6851, pid: 500, startTime: STARTED, startedAt: "2026-11-12T07:00:00.000Z", startedBy: null, ...overrides };
 }
 
 function entry(pid: number, ppid: number, sid: number, args: string, pgid = sid, startTime?: string): ProcessEntry {
@@ -18,9 +18,10 @@ function entry(pid: number, ppid: number, sid: number, args: string, pgid = sid,
 }
 
 /** A running daemon as `ps` shows it: the supervisor leads a session its children share. */
+const STARTED = "Thu Nov 12 07:00:00 2026";
 const RUNNING: ProcessEntry[] = [
   entry(1, 0, 1, "/sbin/init"),
-  entry(500, 1, 500, "Paseo Supervisor", 500, "4242"),
+  entry(500, 1, 500, "Paseo Supervisor", 500, STARTED),
   entry(501, 500, 500, "Paseo Daemon"),
   entry(502, 501, 500, "/usr/bin/node terminal-worker-process.js"),
   entry(900, 1, 900, "Paseo Supervisor"),
@@ -41,7 +42,7 @@ describe("parseProcessTable", () => {
 describe("daemonCleanupPlan", () => {
   it("stops a running daemon first, then kills its whole session, never another daemon or the caller", () => {
     const [step] = daemonCleanupPlan([record()], RUNNING, 701);
-    expect(step).toMatchObject({ stop: true, kill: [500, 501, 502], removeHome: true });
+    expect(step).toMatchObject({ state: "running", stop: true, keep: false, kill: [500, 501, 502], removeHome: true });
   });
 
   it("kills what a daemon whose pid is gone left in its session, a git reparented to PID 1 included, without asking it to stop", () => {
@@ -51,21 +52,29 @@ describe("daemonCleanupPlan", () => {
   });
 
   it("leaves a reused pid's session alone and kills only what names the home", () => {
-    const reused = [entry(500, 1, 500, "postgres: main"), entry(510, 500, 500, "postgres: writer"), entry(600, 1, 600, `node plugin.js --data ${HOME}/plugins`)];
+    const reused = [entry(500, 1, 500, "postgres: main", 500, "Fri Nov 13 09:00:00 2026"), entry(510, 500, 500, "postgres: writer"), entry(600, 1, 600, `node plugin.js --data ${HOME}/plugins`)];
     const [step] = daemonCleanupPlan([record()], reused, 1234);
-    expect(step).toMatchObject({ stop: false, kill: [600] });
+    expect(step).toMatchObject({ state: "gone", stop: false, kill: [600], removeHome: true });
   });
 
   it("spares a reused pid that is another Paseo daemon: its start time differs", () => {
-    const other = [entry(1, 0, 1, "/sbin/init"), entry(500, 1, 500, "Paseo Daemon", 500, "9999"), entry(501, 500, 500, "/usr/bin/node terminal-worker-process.js")];
+    const other = [entry(1, 0, 1, "/sbin/init"), entry(500, 1, 500, "Paseo Daemon", 500, "Thu Nov 12 07:00:01 2026"), entry(501, 500, 500, "/usr/bin/node terminal-worker-process.js")];
     expect(daemonCleanupPlan([record()], other, 1234)[0]).toMatchObject({ stop: false, kill: [] });
   });
 
-  it("treats the session of a record without a start time as someone else's: kills only what names its home", () => {
-    const old = record({ startTime: null });
-    expect(daemonCleanupPlan([old], RUNNING, 701)[0]).toMatchObject({ stop: false, kill: [] });
+  it("keeps a record whose start time is unknown while its pid runs: touches nothing, keeps the home", () => {
+    // Started where the start time could not be read, or read now fails: the pid may be someone else's.
+    for (const [unread, table] of [
+      [record({ startTime: null }), RUNNING],
+      [record(), RUNNING.map((each) => (each.pid === 500 ? { ...each, startTime: null } : each))],
+    ] as const) {
+      expect(daemonCleanupPlan([unread], table, 701)[0]).toMatchObject({ state: "unknown", stop: false, keep: true, kill: [], removeHome: false });
+    }
+  });
+
+  it("clears a record without a start time once its pid is free: its session and what names its home", () => {
     const gone = [entry(1, 0, 1, "/sbin/init"), entry(640, 1, 500, "git fetch origin"), entry(600, 1, 600, `node plugin.js --data ${HOME}/plugins`)];
-    expect(daemonCleanupPlan([old], gone, 1234)[0]).toMatchObject({ stop: false, kill: [600] });
+    expect(daemonCleanupPlan([record({ startTime: null })], gone, 1234)[0]).toMatchObject({ state: "gone", stop: false, keep: false, kill: [640, 600], removeHome: true });
   });
 
   it("matches a home only up to a path boundary: TR-1's home is not TR-12's", () => {
@@ -129,10 +138,9 @@ describe("parseDaemonRecords", () => {
   });
 });
 
-describe("procStartTime", () => {
-  it("reads field 22, counting from the last parenthesis of a command that holds spaces and parentheses", () => {
-    const rest = Array.from({ length: 50 }, (_, index) => String(index + 3)).join(" ");
-    expect(procStartTime(`123 (Paseo (x) Daemon) ${rest}`)).toBe("22");
-    expect(procStartTime("garbage")).toBeNull();
+describe("psStartTime", () => {
+  it("keeps ps's text as printed, spacing aside, and reads nothing as none", () => {
+    expect(psStartTime("Thu Nov  5 07:00:00 2026\n")).toBe("Thu Nov 5 07:00:00 2026");
+    expect(psStartTime("  \n")).toBeNull();
   });
 });
