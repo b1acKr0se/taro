@@ -9,6 +9,7 @@
 import { deliveryGaps, pullRequestUrl, reviewHead } from "./execution.ts";
 import { judgeEvidence, parseEvidence, splitAtSeparator, type ParsedEvidence } from "./evidence.ts";
 import { withNote } from "./ticket-format.ts";
+import { isInvestigation } from "./ticket-level.ts";
 
 /** What the delivered branch is: its head, its name, and its pull request (null for local delivery). */
 export interface DeliveryFacts {
@@ -49,9 +50,7 @@ export interface DeliveryPlan {
   setStatus: boolean;
 }
 
-export function isInvestigation(labels: readonly string[]): boolean {
-  return labels.includes("investigation");
-}
+export { isInvestigation };
 
 /** FINAL's last line, as `templates/final.md` has it. */
 export function revisionLine(facts: DeliveryFacts): string {

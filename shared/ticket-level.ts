@@ -15,6 +15,14 @@ export function ticketLevel(labels: readonly string[]): Level | null {
   return found;
 }
 
+/**
+ * An investigation (`investigation` label) changes no code and delivers findings: it is worked as low
+ * whatever it was rated (`skill/roles/owner.md`, Investigations), with no approval card and no plan review.
+ */
+export function isInvestigation(labels: readonly string[]): boolean {
+  return labels.includes("investigation");
+}
+
 /** Trivial or low: built before the plan is written, reviewed by the owner itself. */
 export function isLightLevel(level: Level | null): boolean {
   return level === "trivial" || level === "low";

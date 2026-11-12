@@ -59,6 +59,13 @@ describe("lintPlan", () => {
     expect(lintPlan(ticket(empty)).length).toBeGreaterThan(0);
   });
 
+  // An investigation is worked as low whatever its rating: no children, no plan review, no high-level sections.
+  it("asks nothing of a high investigation's plan", () => {
+    const empty = { plan: plan("- SH-12.09 — missing — XL"), notes: null, children: [] };
+    expect(lintPlan(ticket({ ...empty, labels: ["complexity-high", "investigation"] }))).toEqual([]);
+    expect(lintPlan(ticket({ ...empty, labels: ["complexity-high", "investigation"], plan: "## Goal\nFind why exports fail" }))).toEqual([]);
+  });
+
   describe("Parts", () => {
     it("asks for Parts in a plan with no children and no Parts section (an old plan)", () => {
       const gaps = lintPlan(ticket({ plan: "## Goal\nG\n## Choices I made\n- c — w\n## Size\nHigh", children: [] }));

@@ -40,6 +40,7 @@ import type { PluginState } from "./state";
 import { usageReading, type Stats } from "./stats";
 import { nextStep, STEP_PAGES, stepKey, ticketLevel, type Step } from "../shared/next-step";
 import { lintPlan } from "../shared/plan-lint";
+import { isInvestigation } from "../shared/ticket-level";
 import { stepText, stepTicket } from "./next-step";
 
 /** A block the approval gate did not show as asked (TR-263), with what it did. */
@@ -951,7 +952,7 @@ export class Supervisor {
     try {
       const tracker = (await projectPaths(identity.project)).tracker;
       const detail = await viewTicket(tracker, identity.ticket);
-      if (ticketLevel(detail.labels) !== "high") return [];
+      if (ticketLevel(detail.labels) !== "high" || isInvestigation(detail.labels)) return [];
       const children = await Promise.all(
         detail.subtasks.map(async (subtask) => {
           const child = await viewTicket(tracker, subtask.id);

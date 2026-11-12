@@ -159,6 +159,22 @@ describe("the accept page", () => {
   });
 });
 
+// Review should-fix: an investigation rated medium or high got the medium or high page, with its approval card and plan review.
+describe("an investigation rated medium or high", () => {
+  it("gets the light page in its first round, saying it is worked as low", () => {
+    expect(nextStep(ticket({ labels: ["complexity-medium", "investigation"] }))).toEqual({ page: "levels/light.md", facts: { ticket: "SH-12", level: "medium, and as an investigation it is worked as low", round: "1" } });
+    expect(nextStep(ticket({ labels: ["complexity-high", "investigation"] }))).toEqual({ page: "levels/light.md", facts: { ticket: "SH-12", level: "high, and as an investigation it is worked as low", round: "1" } });
+    expect(nextStep(ticket({ labels: ["complexity-low", "investigation"] }))?.facts.level).toBe("low");
+  });
+
+  it("is not sent to the build or an independent review once approved or Reviewing; its own clean check brings the delivery", () => {
+    const labels = ["complexity-high", "investigation"];
+    expect(nextStep(ticket({ labels, status: "In Progress", notes: notes(EXECUTION, APPROVAL) }))?.page).toBe("levels/light.md");
+    expect(nextStep(ticket({ labels, status: "Reviewing" }))?.page).toBe("levels/light.md");
+    expect(nextStep(ticket({ labels, status: "In Progress", notes: notes(EXECUTION, "REVIEW 2026-11-01T12:00Z — self-check of the findings — verdict: clean") }))?.page).toBe("phases/delivery.md");
+  });
+});
+
 describe("a reopened round", () => {
   const delivered = notes(EXECUTION, APPROVAL, REVIEW_CLEAN, "FINAL 2026-11-01T13:00Z", REOPENED);
 

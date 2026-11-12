@@ -9,7 +9,7 @@
 import { roundRecords } from "./execution";
 import { parsePlan } from "./plan";
 import { reopenRound } from "./reopen";
-import { ticketLevel } from "./ticket-level";
+import { isInvestigation, ticketLevel } from "./ticket-level";
 
 /** A child ticket as the linter reads it. */
 export interface LintChild {
@@ -152,11 +152,11 @@ function planReviewed(notes: string | null, planUpdatedAt: string | null): boole
 
 /**
  * What the high plan still lacks before its approval may be asked, one line per gap in the owner's
- * terms; empty when it may be asked, and for any ticket that is not high (or a reopened round, worked
- * as low) or a plan not in the template's shape.
+ * terms; empty when it may be asked, and for any ticket that is not high (or a reopened round or an
+ * investigation, both worked as low) or a plan not in the template's shape.
  */
 export function lintPlan(ticket: LintTicket): string[] {
-  if (ticketLevel(ticket.labels) !== "high" || reopenRound(ticket.notes) > 1) return [];
+  if (ticketLevel(ticket.labels) !== "high" || reopenRound(ticket.notes) > 1 || isInvestigation(ticket.labels)) return [];
   const plan = parsePlan(ticket.plan);
   if (plan === null) return [];
   const gaps: string[] = [];

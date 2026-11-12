@@ -12,6 +12,10 @@ const gap = (notes: string | null, labels: string[] = ["complexity-medium"], pla
   buildGap({ status: "In Progress", plan, criteria: 0, labels, notes, parentNotes });
 
 describe("buildGap", () => {
+  it("is nothing for an investigation, worked as low whatever its rating", () => {
+    expect(gap(null, ["complexity-high", "investigation"], null)).toBeNull();
+    expect(gap(null, ["complexity-medium", "investigation"])).toBeNull();
+  });
 
   it("is no-plan without a plan, whatever the approval", () => {
     expect(gap(null, ["complexity-medium"], null)).toBe("no-plan");

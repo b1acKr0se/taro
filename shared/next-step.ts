@@ -7,15 +7,16 @@
  * Phases, newest first: Accept handed over → accept; the round's review recorded clean → delivery;
  * Reviewing, or every child Done → review (medium and high); the round's plan approved → build
  * (medium and high); a `complexity-` label → its level's page. No label: nothing yet (the owner rates first).
- * A reopened round (above 1) is worked as low, an investigation that changes no code (roles/owner.md),
- * whatever the first round was rated: light's page, its own check, then the delivery.
+ * A reopened round (above 1) is worked as low, as an investigation that changes no code (roles/owner.md),
+ * whatever the first round was rated; so is an investigation rated medium or high: light's page, its
+ * own check, then the delivery.
  */
 import { acceptHandoffOpen } from "./accept-stall";
 import { workApproved } from "./approval-gate";
 import { executionBranch, roundRecords } from "./execution";
 import { isPlanReview } from "./plan-lint";
 import { reopenRound, roundBranch } from "./reopen";
-import { isLightLevel, type Level, ticketLevel } from "./ticket-level";
+import { isInvestigation, isLightLevel, type Level, ticketLevel } from "./ticket-level";
 
 export { type Level, ticketLevel } from "./ticket-level";
 
@@ -101,8 +102,11 @@ export function nextStep(ticket: StepTicket): Step | null {
   const rated: Level | null = ticketLevel(ticket.labels);
   if (rated === null) return null;
   const round = reopenRound(ticket.notes);
-  const level: Level = round > 1 ? "low" : rated;
-  const facts = { ticket: ticket.id, level: round > 1 ? `${rated}, and this reopened round is worked as low` : rated, round: String(round) };
+  const reopened = round > 1;
+  const asLow = reopened || isInvestigation(ticket.labels);
+  const level: Level = asLow ? "low" : rated;
+  const worked = reopened ? `${rated}, and this reopened round is worked as low` : rated === level ? rated : `${rated}, and as an investigation it is worked as low`;
+  const facts = { ticket: ticket.id, level: worked, round: String(round) };
   if (ticket.status === "Awaiting acceptance") {
     if (acceptHandoffOpen(ticket.notes)) return { page: STEP_PAGES.accept, facts };
     return ticket.deliveryGaps.length === 0 ? null : { page: STEP_PAGES.delivery, facts: { ...facts, missing: gapsFact(ticket.deliveryGaps) } };

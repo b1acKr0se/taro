@@ -149,6 +149,18 @@ describe("conformanceViolations", () => {
     expect(kinds(ticket({ notes }))).toContain("no-approval");
   });
 
+  it("asks no plan up front or approval of an investigation rated medium or high, as the light page it gets", () => {
+    const notes = NOTES.replace(/APPROVAL.*\n\n/, "");
+    const transitions = [{ to: "In Progress", at: "2026-01-05T10:00Z" }];
+    for (const level of ["medium", "high"]) {
+      const labels = `"complexity-${level}", "investigation"`;
+      expect(kinds(ticket({ notes, labels, plan: "" }), { transitions })).not.toContain("no-plan");
+      expect(kinds(ticket({ notes, labels }), { transitions })).not.toContain("no-approval");
+      expect(kinds(ticket({ notes, labels }), { transitions })).not.toContain("build-before-approval");
+    }
+    expect(kinds(ticket({ notes, labels: '"complexity-high"' }))).toContain("no-approval");
+  });
+
   it("flags EVIDENCE without a check or a review line", () => {
     expect(kinds(ticket({ notes: NOTES.replace("check: npm test — 40 passed\n", "") }))).toEqual(["evidence-check"]);
     expect(kinds(ticket({ notes: NOTES.replace(/review:.*$/m, "") }))).toEqual(["evidence-review"]);

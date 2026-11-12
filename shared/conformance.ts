@@ -8,7 +8,7 @@
 import { planAnswerRecords } from "./approval-gate.ts";
 import { reopenRound } from "./reopen.ts";
 import { parseTicket } from "./ticket-format.ts";
-import { isLightLevel, ticketLevel } from "./ticket-level.ts";
+import { isInvestigation, isLightLevel, ticketLevel } from "./ticket-level.ts";
 
 export interface ConformanceViolation {
   kind: string;
@@ -172,9 +172,10 @@ export function conformanceViolations(ticketText: string, options: ConformanceOp
 
   found.push(...statusViolations(options, trivial));
 
-  // A reopened round is worked as low whatever the ticket was rated: no plan or approval is asked (buildGap).
-  const reopened = reopenRound(ticket.notes) > 1;
-  if (startedBuilding && !trivial && !reopened && ticket.plan.trim() === "") {
+  // A reopened round or an investigation is worked as low whatever the ticket was rated: no plan up
+  // front and no approval is asked (buildGap, the light page).
+  const asLow = reopenRound(ticket.notes) > 1 || isInvestigation(ticket.labels);
+  if (startedBuilding && !trivial && !asLow && ticket.plan.trim() === "") {
     found.push({ kind: "no-plan", detail: `${ticket.status} with no plan` });
   } else if (ticket.plan.trim() !== "" && !trivial) {
     found.push(...planViolations(ticket.plan));
@@ -183,10 +184,10 @@ export function conformanceViolations(ticketText: string, options: ConformanceOp
   // An APPROVAL record or the user's Approve on the scope-approval card (TR-263).
   const approvals = planAnswerRecords(ticket.notes).filter((record) => record.kind === "approved");
   const inProgressAt = options.transitions?.find((transition) => transition.to === "In Progress")?.at;
-  if (startedBuilding && approvals.length === 0 && !trivial && !reopened) {
+  if (startedBuilding && approvals.length === 0 && !trivial && !asLow) {
     found.push({ kind: "no-approval", detail: `In Progress${inProgressAt === undefined ? "" : ` at ${inProgressAt}`} with no APPROVAL` });
   }
-  found.push(...approvalGateViolations(notes, approvals[0]?.at ?? null, inProgressAt ?? null, isLightLevel(level)));
+  found.push(...approvalGateViolations(notes, approvals[0]?.at ?? null, inProgressAt ?? null, isLightLevel(level) || asLow));
 
   if (delivered) {
     const evidence = notes.filter((record) => /^EVIDENCE\b/.test(record)).pop();
