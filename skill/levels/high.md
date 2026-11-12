@@ -4,32 +4,33 @@ Everything in `levels/medium.md` holds; read it first. A high ticket adds a full
 children, and implementers build it. **The plan is complete when the brainstorm ends**: the one
 approval settles every child, and after it you work alone to delivery.
 
+## The brainstorm
+
+- Open with a question about a real case ("walk me through the last time this went wrong").
+- Play each settled part back in a line before the next; offer a look at the code or a short spike
+  when an answer depends on it. Say what the user needs to know to answer each question.
+
 ## The plan
 
-- A full spec: the decisions, numbered criteria, and a task list or children.
-- **Children** only for distinct deliverables. Before the approval card, create each one
+- A full spec: numbered criteria, Choices I made as `<decision> — default: <what I chose> — <why>`,
+  and Parts and Risks (`templates/plan.md`).
+- **Children** only for distinct deliverables. Before the card, create each
   (`taro ticket create "<title>" -p <ID> -d '<definition of done>'`, `templates/definition-of-done.md`)
-  with its whole definition of done, dependencies between them with `--dep`, and its
-  `complexity-` label.
-- The plan lists the children in build order, each with its size. Every child's design decisions are
-  in the parent's Choices I made, every child's mockups in its Mockups (one set, before approval),
-  and each child's definition of done is a bullet in How I'll prove it (its full text stays in the
-  child). Children run one at a time unless the plan says which may run in parallel.
-- Settle in the brainstorm every choice a child's definition of done needs. Writing those definitions
-  is what finds the holes (a missing type, two children that disagree, a choice nobody made): ask
-  about them before the approval card, not after.
-
-A plan with two children, in short:
+  with its whole definition of done, `--dep` between them, and its `complexity-` label. Children run
+  one at a time unless Parts says which may run in parallel.
+- A child's decisions, mockups and proof go in the parent's Choices I made, Mockups and How I'll
+  prove it. Writing the definitions finds the holes (two children that disagree, a choice nobody
+  made): ask about them before the card.
+- **Plan review**: one independent reviewer reads the plan and the child specs for coverage of every
+  criterion, interfaces that agree, and Review Focus gaps. Fix what it finds, then record
+  `REVIEW <time> — plan review by <reviewer>: <findings, each fixed or rejected> — verdict: <clean|findings>`.
+  The plugin holds the card until that record is newer than the plan's last edit.
 
     ## Choices I made
-    - Export: CSV with a header row (.01); its button sits beside Print (.02)
-    ## Mockups
-    - mockup-export-button-desktop.png — the new Export button beside Print
-    ## How I'll prove it
-    - SH-12.01 CSV writer: escapes commas and quotes — unit tests on fixed rows
-    - SH-12.02 Export button: downloads the file — desktop and phone screenshots
-    ## Size
-    High: 2 children in order (.01 then .02), one review over both; about 3 hours.
+    - Export format — default: CSV with a header row — opens in any spreadsheet
+    ## Parts
+    - SH-12.01 — CSV writer — S — depends on: none
+    - SH-12.02 — Export button beside Print — M — depends on: SH-12.01
 
 ## After the approval
 

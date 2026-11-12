@@ -1,10 +1,10 @@
-<!-- The plan of every ticket, trivial included (a trivial or low one asks no approval and may be written after the build: the Accept card shows it), written with `taro ticket edit <ID> --plan`. Keep the seven sections, in this order, with these headings. Goal and Size are one line each; the bullet sections have no count limit, so write as many bullets as the section's purpose needs: every one earns its place, and near-duplicates merge into one. The approval card shows Goal, Choices I made, the mockups and Size; View plan shows the rest. -->
+<!-- The plan of every ticket, trivial included (a trivial or low one asks no approval and may be written after the build: the Accept card shows it), written with `taro ticket edit <ID> --plan`. Keep the seven sections, in this order, with these headings; a high plan adds Parts and Risks after Out of scope. Goal and Size are one line each; the bullet sections have no count limit, so write as many bullets as the section's purpose needs: every one earns its place, and near-duplicates merge into one. The approval card shows Goal, Choices I made, the mockups and Size; View plan shows the rest. -->
 ## Goal
 <the user outcome, one line>
 
 ## Choices I made
 - <a choice the user did not make> — <one-line why>
-<every decision the user must check: an interpretation, a design, a fix approach, a scope boundary they did not state; never something they already decided or a detail they need not judge>
+<high: `- <decision> — default: <what I chose> — <why>`. Every decision the user must check: an interpretation, a design, a fix approach, a scope boundary they did not state; never something they already decided or a detail they need not judge>
 
 ## What you'll see
 - <a user-visible change>
@@ -17,6 +17,14 @@
 ## Out of scope
 - <what this does not do>
 <what the user might expect from the request but this ticket leaves alone; leave nothing out that they could assume is included>
+
+## Parts
+- <child id> — <what it does> — <S|M|L> — depends on: <ids or none>
+<high only: one line per child, in build order; over L is two children. The plugin holds the card while a child is missing or its definition of done lacks Owns, Interfaces or Tests>
+
+## Risks
+- <what could go wrong> — <how the plan meets it>
+<high only>
 
 ## How I'll prove it
 - <an outcome criterion and its evidence: a screenshot (phone, desktop) or a test>
