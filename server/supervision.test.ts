@@ -1042,6 +1042,20 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       expect(gated()).toHaveLength(1);
     });
 
+    it("does not show several questions on one card after approval: a record, and the owner told to ask one at a time", async () => {
+      withTicket(APPROVED);
+      const { state, decisions } = fakeState();
+      const several = {
+        type: "assistant_message",
+        text: "Two calls.\n\n```decision\nid: export\nblocking: true\nsurprise: criterion 2 needs both\nquestions:\n  - header: Tags\n    question: Tags as?\n    options:\n      - label: YAML\n        prompt: Use YAML\n      - label: Hashtags\n        prompt: Use hashtags\n    recommended: YAML\n    reason: sites read it\n  - header: Folders\n    question: Layout?\n    options:\n      - label: Flat\n        prompt: One folder\n      - label: Nested\n        prompt: A folder per notebook\n    recommended: Flat\n    reason: simpler\n```\n\nwaiting: export",
+      };
+      await run(supervisor(state), human("start"), several);
+      expect(decisions.filter((decision) => decision.status === "open")).toEqual([]);
+      expect(records()).toHaveLength(1);
+      expect(records()[0]).toMatch(/^BLOCKING-AFTER-APPROVAL \S+ — `export` asked several questions on one card after approval: not shown; the owner was told to ask one at a time$/);
+      expect(gated()).toEqual(["approval-repeated:TR-9:- `export`: not shown, as it asks several questions on one card; after approval ask them one at a time"]);
+    });
+
     it("shows a surprise question blocking, not held, behind one the owner went on with by default", async () => {
       const heldMessages = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("decision-held:"));
       withTicket(APPROVED);
