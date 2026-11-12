@@ -21,8 +21,10 @@ export interface TimingFacts {
   /** Needs-you stretches (`start`, `end`), in any order. */
   waiting: readonly { start: string; end: string }[];
   nudges?: number | undefined;
-  /** Time permission asks nobody's rules answered stayed open. */
-  permissionWaitMs?: number | undefined;
+  /** When each nudge was sent; nudges recorded before times were kept have none. */
+  nudgedAt?: readonly string[] | undefined;
+  /** Permission asks no rule answered, each from asked to ended, in any order. */
+  permissionWaits?: readonly { start: string; end: string }[] | undefined;
 }
 
 /** What the plugin did to hold an owner to the plan-and-approval order, counted from the round's records. */
@@ -33,7 +35,9 @@ export interface PluginCorrections {
   held: number;
   /** A blocking question shown not blocking after approval. */
   madeNonBlocking: number;
+  /** Nudges sent within the round, plus those recorded before nudge times were kept (`untimedNudges`), which cannot be placed. */
   nudges: number;
+  untimedNudges: number;
 }
 
 export interface DeliveryTimings {
@@ -46,25 +50,30 @@ export interface DeliveryTimings {
   /** Time on Needs you from Planning to the first Awaiting acceptance (or now), before and after the approval; with no approval all of it is before. */
   needsYouBeforeApprovalMs: number;
   needsYouAfterApprovalMs: number;
-  /** Cards other than the scope approval answered after the round's approval. */
+  /**
+   * Cards the user answered (the plugin's ANSWER records) after the round's first approval and before
+   * its first Awaiting acceptance (or now); a scope approval answered again counts, as the user was needed.
+   */
   cardsAnsweredAfterApproval: number;
   corrections: PluginCorrections;
+  /** Time permission asks no rule answered stayed open within the round, overlapping asks (a child's on its parent) once. */
   permissionWaitMs: number;
 }
 
-const ANSWERED_CARD = /^ANSWER (\S+) — ([^:]+):/;
+/** The plugin's record of a card the user answered; an owner's own ANSWER copy does not end this way. */
+const ANSWERED_CARD = /^ANSWER (\S+) — [^:\n]+:[\s\S]*\(the user, from [^)\n]*\)$/;
 const NO_PLAN = /^NO-PLAN \S+ —/;
 const NO_APPROVAL = /^NO-APPROVAL \S+ —/;
 const APPROVAL_REPEATED = /^APPROVAL-REPEATED \S+ —/;
 const BLOCKING_AFTER_APPROVAL = /^BLOCKING-AFTER-APPROVAL \S+ —/;
 
-function roundLines(notes: string | null): string[] {
-  return (notes ?? "").split("\n").map((line) => line.trim());
+/** The notes split into timestamped records, so a user's multi-line answer stays one record even where a line of it starts with a capitalised word. */
+function timedRecords(notes: string | null): string[] {
+  return (notes ?? "").split(/\n(?=[A-Z][A-Z-]{2,} \d{4}-\d{2}-\d{2}T)/).map((record) => record.trim()).filter((record) => record !== "");
 }
 
-/** The length of the part of [start, end] that lies within [from, to]. */
-function overlapMs(start: number, end: number, from: number, to: number): number {
-  return Math.max(0, Math.min(end, to) - Math.max(start, from));
+function roundLines(notes: string | null): string[] {
+  return (notes ?? "").split("\n").map((line) => line.trim());
 }
 
 /** The length of the union of intervals, so overlapping stretches (a child's repeated on its parent) count once. */
@@ -85,29 +94,41 @@ export function deliveryTimings(facts: TimingFacts, now: number = Date.now()): D
   const reopenedAt = reopenTime(facts.notes);
   const lines = roundLines(rounds);
 
-  // The round's first Planning, and the first Awaiting acceptance after it.
+  // The round's first Planning, and the first Awaiting acceptance after it (after the reopen, for a ticket that never planned).
   const planning = facts.transitions.find((transition) => transition.to === "Planning" && (reopenedAt === null || Date.parse(transition.at) >= reopenedAt));
   const planningMs = planning === undefined ? null : Date.parse(planning.at);
-  const awaiting = planningMs === null ? undefined : facts.transitions.find((transition) => transition.to === "Awaiting acceptance" && Date.parse(transition.at) >= planningMs);
+  const roundStart = planningMs ?? reopenedAt ?? -Infinity;
+  const awaiting = facts.transitions.find((transition) => transition.to === "Awaiting acceptance" && Date.parse(transition.at) >= roundStart);
   const awaitingMs = awaiting === undefined ? null : Date.parse(awaiting.at);
+  const roundEnd = awaitingMs ?? now;
 
   const approved = planAnswerRecords(rounds).find((record) => record.kind === "approved");
   const approvedMs = approved === undefined ? null : Date.parse(approved.at);
+  const stretchesOf = (list: readonly { start: string; end: string }[]): [number, number][] =>
+    list.map((stretch): [number, number] => [Date.parse(stretch.start), Date.parse(stretch.end)]).filter(([start, end]) => !Number.isNaN(start) && !Number.isNaN(end));
+  const clipped = (stretches: readonly (readonly [number, number])[], from: number, to: number) => unionLength(stretches.map(([start, end]): [number, number] => [Math.max(start, from), Math.min(end, to)]));
 
   let before = 0;
   let after = 0;
   if (planningMs !== null) {
-    const windowEnd = awaitingMs ?? now;
-    const split = approvedMs === null || Number.isNaN(approvedMs) ? windowEnd : Math.min(Math.max(approvedMs, planningMs), windowEnd);
-    const stretches = facts.waiting.map((stretch): [number, number] => [Date.parse(stretch.start), Date.parse(stretch.end)]).filter(([start, end]) => !Number.isNaN(start) && !Number.isNaN(end));
-    before = unionLength(stretches.map(([start, end]): [number, number] => [Math.max(start, planningMs), Math.min(end, split)]));
-    after = unionLength(stretches.map(([start, end]): [number, number] => [Math.max(start, split), Math.min(end, windowEnd)]));
+    const split = approvedMs === null || Number.isNaN(approvedMs) ? roundEnd : Math.min(Math.max(approvedMs, planningMs), roundEnd);
+    const stretches = stretchesOf(facts.waiting);
+    before = clipped(stretches, planningMs, split);
+    after = clipped(stretches, split, roundEnd);
   }
 
-  const cards = approvedMs === null ? 0 : lines.filter((line) => {
-    const answer = ANSWERED_CARD.exec(line);
-    return answer !== null && answer[2] !== "scope-approval" && Date.parse(answer[1] ?? "") > approvedMs;
+  const cards = approvedMs === null || Number.isNaN(approvedMs) ? 0 : timedRecords(rounds).filter((record) => {
+    const answer = ANSWERED_CARD.exec(record);
+    const at = Date.parse(answer?.[1] ?? "");
+    return answer !== null && at > approvedMs && at < roundEnd;
   }).length;
+
+  const inRound = (at: string): boolean => {
+    const time = Date.parse(at);
+    return time >= roundStart && time <= roundEnd;
+  };
+  const nudgedAt = facts.nudgedAt ?? [];
+  const untimedNudges = Math.max(0, (facts.nudges ?? 0) - nudgedAt.length);
 
   const count = (pattern: RegExp, keep: (line: string) => boolean = () => true) => lines.filter((line) => pattern.test(line) && keep(line)).length;
   return {
@@ -122,9 +143,10 @@ export function deliveryTimings(facts: TimingFacts, now: number = Date.now()): D
       noApproval: count(NO_APPROVAL),
       held: count(APPROVAL_REPEATED) + count(BLOCKING_AFTER_APPROVAL, (line) => !line.includes("shown not blocking")),
       madeNonBlocking: count(BLOCKING_AFTER_APPROVAL, (line) => line.includes("shown not blocking")),
-      nudges: facts.nudges ?? 0,
+      nudges: nudgedAt.filter(inRound).length + untimedNudges,
+      untimedNudges,
     },
-    permissionWaitMs: facts.permissionWaitMs ?? 0,
+    permissionWaitMs: clipped(stretchesOf(facts.permissionWaits ?? []), roundStart, roundEnd),
   };
 }
 

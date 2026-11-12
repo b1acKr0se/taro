@@ -9,6 +9,7 @@ import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, relative } from "node:path";
 
+import { askFromRequest, type AskRequest } from "../shared/permission-asks";
 import { isBypassMode, permissionRecord, ruleReasons, triagePermission, type ShellAsk } from "../shared/permission-triage";
 import { fetchLiveAgent } from "./agents";
 import type { PaseoApi } from "./host-types";
@@ -57,8 +58,41 @@ export async function countPermissionWait(
   if (Number.isNaN(waitedMs)) return false;
   const owner = (await state.agent(agentId)) ?? (await liveIdentity(agentId));
   if (owner === null || owner.ticket === null) return false;
-  await stats.permissionWaited(owner.project, owner.ticket, waitedMs);
+  await stats.permissionWaited(owner.project, owner.ticket, ask.askedAt, ask.answeredAt);
   return true;
+}
+
+/** What a permission ask's arrival needs from the plugin around it. */
+export interface PermissionRequestedContext {
+  state: Pick<PluginState, "agent" | "recordPermissionAsk" | "markPermissionAskByRules" | "clearPermissionAskRules">;
+  stats: Stats;
+  invalidateBoards(): void;
+  checkNotifications(): void;
+  reportFailure(context: string, error: unknown): void;
+}
+
+/**
+ * A permission ask arrived (TR-143, TR-149, TR-263): a Taro agent's ask is recorded first, so the
+ * rules can mark one as theirs before they answer it; then the rules answer it if they decide it.
+ * One they leave waits for the user: its ticket goes to Needs you with the card now, and the
+ * notification check runs now rather than at the next sweep. Nothing is answered for the user.
+ */
+export async function onPermissionRequested(paseo: PaseoApi, asker: PermissionAsker, request: PermissionRequest & AskRequest, context: PermissionRequestedContext): Promise<"allow" | "deny" | null> {
+  const { state } = context;
+  await isTaroAsker(paseo, (agentId) => state.agent(agentId), asker.id)
+    .then((taro) => (taro ? state.recordPermissionAsk(askFromRequest(asker.id, request, new Date().toISOString())) : undefined))
+    .catch((error: unknown) => context.reportFailure(`[taro] recording ${asker.id}'s permission ask:`, error));
+  const rulesMark: RulesMark = {
+    mark: (requestId, rule) => state.markPermissionAskByRules(asker.id, requestId, rule),
+    clear: (requestId) => state.clearPermissionAskRules(asker.id, requestId),
+  };
+  const decided = await triageAsk(paseo, context.stats, asker, request, rulesMark).catch((error: unknown) => {
+    context.reportFailure(`[taro] triaging ${asker.id}'s permission ask:`, error);
+    return null;
+  });
+  context.invalidateBoards();
+  if (decided === null) context.checkNotifications();
+  return decided;
 }
 
 /** Marks the recorded ask as answered by the rules, and takes the mark back (TR-149). */

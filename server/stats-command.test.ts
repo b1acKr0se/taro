@@ -36,7 +36,8 @@ beforeEach(() => {
   const tickets = {
     // Old record: no permission fields at all.
     "app:AP-1": { project: "app", ticket: "AP-1", title: "one", transitions: steps("02", "10:00", "11:00"), waiting: [{ start: at("02", "10:05"), end: at("02", "10:15") }], nudges: 1 },
-    "app:AP-2": { project: "app", ticket: "AP-2", title: "two", transitions: steps("10", "10:00", "12:00"), waiting: [], permissionWaitMs: 300_000 },
+    // A permission ask before Planning is not the round's; the one inside it is, its parent copy (same stretch) once.
+    "app:AP-2": { project: "app", ticket: "AP-2", title: "two", transitions: steps("10", "10:00", "12:00"), waiting: [], permissionWaits: [{ start: at("10", "09:30"), end: at("10", "09:40") }, { start: at("10", "10:10"), end: at("10", "10:15") }, { start: at("10", "10:10"), end: at("10", "10:15") }], nudges: 2, nudgedAt: [at("10", "09:20"), at("10", "10:20")] },
     "app:AP-3": { project: "app", ticket: "AP-3", title: "three", transitions: [{ from: null, to: "Planning", at: at("11", "10:00") }], waiting: [] },
     "other:OT-1": { project: "other", ticket: "OT-1", title: "x", transitions: [], waiting: [] },
   };
@@ -67,7 +68,7 @@ describe("taro stats", () => {
     expect(result.stdout).toContain("Planning → first Awaiting acceptance: 60 min");
     expect(result.stdout).toContain("In Needs you before approval: 5 min; after: 5 min");
     expect(result.stdout).toContain("Cards answered after approval: 1");
-    expect(result.stdout).toContain("nudges 1");
+    expect(result.stdout).toContain("nudges 1, 1 of them from before nudge times were kept, so not limited to this round");
     expect(result.stdout).toContain("Permission asks waited: 0 min");
   });
 
@@ -93,12 +94,12 @@ describe("taro stats", () => {
     const since = taro(["stats", "--project", "app", "--since", "2026-11-05"]);
     expect(since.stdout).toContain("planned since 2026-11-05: 2 tickets planned, 1 reached");
     expect(since.stdout).toContain("median 120 min, p90 120 min (1 tickets)");
-    expect(since.stdout).toContain("Plugin corrections: median 1, p90 1 (1 tickets)");
+    expect(since.stdout).toContain("Plugin corrections: median 2, p90 2 (1 tickets)");
   });
 
   it("prints JSON, and refuses a bad date, a missing ticket and no arguments", { timeout: TIMEOUT }, () => {
     const json = JSON.parse(taro(["stats", "AP-2", "--project", "app", "--json"]).stdout);
-    expect(json).toMatchObject({ ticket: "AP-2", planningToAwaitingMs: 7_200_000, permissionWaitMs: 300_000, corrections: { noApproval: 1 } });
+    expect(json).toMatchObject({ ticket: "AP-2", planningToAwaitingMs: 7_200_000, permissionWaitMs: 300_000, corrections: { noApproval: 1, nudges: 1, untimedNudges: 0 } });
     expect(taro(["stats", "--project", "app", "--since", "soon"]).code).toBe(2);
     expect(taro(["stats", "AP-9", "--project", "app"]).stderr).toContain("No stats recorded for AP-9");
     expect(taro(["stats"]).code).toBe(2);

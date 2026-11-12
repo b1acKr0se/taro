@@ -64,7 +64,6 @@ import {
   dismissCrash,
 } from "./shared/contracts";
 import { inboxCount } from "./shared/board";
-import { askFromRequest } from "./shared/permission-asks";
 import { ProjectSettingsSchema } from "./shared/project";
 import { Actions } from "./server/actions";
 import { createUnlabelledAgents } from "./server/unlabelled-agents";
@@ -93,7 +92,7 @@ import { forgetOwnerStart, markOwnerStarted } from "./server/owner-start";
 import { catchUpText, compactManager, launchManager, restartManager, resumeManager, tellManager, writeManagerInstructions } from "./server/manager";
 import { onboardProject, onboardingProblems } from "./server/onboard";
 import { listPaseoProjects, settingsTemplate } from "./server/paseo-projects";
-import { countPermissionWait, isTaroAsker, triageAsk } from "./server/permission-triage";
+import { countPermissionWait, onPermissionRequested } from "./server/permission-triage";
 import { readImage } from "./server/images";
 import { Notifier } from "./server/notifications";
 import { allowedMergeMethods } from "./server/merge-methods";
@@ -545,23 +544,7 @@ export default function contribute(server: PluginServerContext) {
   // A bypass-mode agent's shell ask is answered by fixed rules when they decide it; the rest wait for the user (TR-143).
   // A Taro agent's asks are recorded first, so the rules can mark one as theirs before they answer it (TR-149).
   const removePermissionHook = server.on("agent.permission_requested", async ({ agent, request }, { paseo }) => {
-    await isTaroAsker(paseo, (agentId) => state.agent(agentId), agent.id)
-      .then((taro) => (taro ? state.recordPermissionAsk(askFromRequest(agent.id, request, new Date().toISOString())) : undefined))
-      .catch((error: unknown) => reportFailure(`[taro] recording ${agent.id}'s permission ask:`, error));
-    const rulesMark = {
-      mark: (requestId: string, rule: string) => state.markPermissionAskByRules(agent.id, requestId, rule),
-      clear: (requestId: string) => state.clearPermissionAskRules(agent.id, requestId),
-    };
-    const decided = await triageAsk(paseo, stats, agent, request, rulesMark).catch((error: unknown) => {
-      reportFailure(`[taro] triaging ${agent.id}'s permission ask:`, error);
-      return null;
-    });
-    if (decided !== null) invalidateBoards();
-    // No rule answered it: its ticket goes to Needs you with the card now, and the notification goes out now (TR-263).
-    else {
-      invalidateBoards();
-      checkNotifications();
-    }
+    await onPermissionRequested(paseo, agent, request, { state, stats, invalidateBoards, checkNotifications, reportFailure });
   });
   // Whoever answered: the rules' mark on the ask says it was them, otherwise it was the user.
   const removePermissionResolvedHook = server.on("agent.permission_resolved", async ({ agent, requestId, resolution }, { paseo }) => {

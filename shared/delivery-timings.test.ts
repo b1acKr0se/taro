@@ -15,12 +15,12 @@ describe("deliveryTimings", () => {
 
   it("measures Planning to the first Awaiting acceptance and splits Needs you at the approval", () => {
     const notes = [approval("10:20"), answer("10:40", "which-library"), answer("10:50", "scope-approval"), answer("10:10", "early-card")].join("\n\n");
-    const timings = deliveryTimings({ notes, transitions: worked, waiting: [stretch("10:08", "10:20"), stretch("10:40", "10:45")], nudges: 2, permissionWaitMs: ms(3) }, Date.parse(at("12:00")));
+    const timings = deliveryTimings({ notes, transitions: worked, waiting: [stretch("10:08", "10:20"), stretch("10:40", "10:45")], nudges: 2, permissionWaits: [stretch("10:30", "10:33")] }, Date.parse(at("12:00")));
     expect(timings.planningToAwaitingMs).toBe(ms(60));
     expect(timings.approvedAt).toBe(at("10:20"));
     expect(timings.needsYouBeforeApprovalMs).toBe(ms(12));
     expect(timings.needsYouAfterApprovalMs).toBe(ms(5));
-    expect(timings.cardsAnsweredAfterApproval).toBe(1);
+    expect(timings.cardsAnsweredAfterApproval).toBe(2);
     expect(timings.permissionWaitMs).toBe(ms(3));
     expect(timings.corrections.nudges).toBe(2);
   });
@@ -51,7 +51,7 @@ describe("deliveryTimings", () => {
       `BLOCKING-AFTER-APPROVAL ${at("10:06")} — \`b\` asked blocking after approval, with no surprise and no default: not shown`,
       `BLOCKING-AFTER-APPROVAL ${at("10:07")} — \`c\` asked several questions on one card after approval: not shown; the owner was told to ask one at a time`,
     ].join("\n\n");
-    expect(deliveryTimings({ notes, transitions: worked, waiting: [], nudges: 1 }).corrections).toEqual({ noPlan: 1, noApproval: 1, held: 3, madeNonBlocking: 1, nudges: 1 });
+    expect(deliveryTimings({ notes, transitions: worked, waiting: [], nudges: 1 }).corrections).toEqual({ noPlan: 1, noApproval: 1, held: 3, madeNonBlocking: 1, nudges: 1, untimedNudges: 1 });
   });
 
   it("reads only the reopened round: its Planning, its approval and its records", () => {
@@ -81,10 +81,73 @@ describe("deliveryTimings", () => {
 
   it("reads a stats file written before the new fields: they load as zero", () => {
     const old = TicketStatsSchema.parse({ project: "app", ticket: "AP-1", transitions: worked.map((each) => ({ from: null, ...each })) });
-    expect(old).toMatchObject({ permissionAsks: 0, permissionWaitMs: 0 });
+    expect(old).toMatchObject({ permissionAsks: 0, permissionWaitMs: 0, permissionWaits: [], nudgedAt: [] });
     expect(summarize(old).status).toBe("Done");
-    expect(deliveryTimings({ notes: null, transitions: old.transitions, waiting: old.waiting, nudges: old.nudges, permissionWaitMs: old.permissionWaitMs }).permissionWaitMs).toBe(0);
+    expect(deliveryTimings({ notes: null, transitions: old.transitions, waiting: old.waiting, nudges: old.nudges, nudgedAt: old.nudgedAt, permissionWaits: old.permissionWaits }).permissionWaitMs).toBe(0);
     expect(deliveryTimings({ notes: null, transitions: worked, waiting: [] }).corrections.nudges).toBe(0);
+  });
+});
+
+describe("cards answered after approval", () => {
+  const worked = transitions(["Planning", "10:00"], ["In Progress", "10:30"], ["Awaiting acceptance", "12:00"], ["Done", "12:30"]);
+  const approveCard = (time: string) => `ANSWER ${at(time)} — scope-approval: "Approve the plan for AP-1?" → Approve ("Approve the plan for AP-1") (the user, from the Taro screen)`;
+
+  it("counts only the plugin's records, not an owner's copy of the same answer", () => {
+    const notes = [approveCard("10:10"), answer("10:40", "pick"), `ANSWER ${at("10:41")} — pick: the user: "A" — noted by the owner`, `ANSWER ${at("10:50")} — other: the user said "B" in chat`].join("\n\n");
+    expect(deliveryTimings({ notes, transitions: worked, waiting: [] }).cardsAnsweredAfterApproval).toBe(1);
+  });
+
+  it("does not count answers after the round's first Awaiting acceptance", () => {
+    const notes = [approveCard("10:10"), answer("11:00", "pick"), answer("12:10", "landing")].join("\n\n");
+    expect(deliveryTimings({ notes, transitions: worked, waiting: [] }).cardsAnsweredAfterApproval).toBe(1);
+  });
+
+  it("counts a scope approval answered again after the first one, but not the first itself", () => {
+    const notes = [approveCard("10:10"), `APPROVAL ${at("10:10")} — user: "Approve the plan for AP-1"`, approveCard("11:30")].join("\n\n");
+    expect(deliveryTimings({ notes, transitions: worked, waiting: [] }).cardsAnsweredAfterApproval).toBe(1);
+  });
+
+  it("reads the shape of a long ticket: changes requested before approval, four cards after it, a multi-line answer, owner copies and a re-approval", () => {
+    const changes = (time: string) => `ANSWER ${at(time)} — scope-approval: "Approve the plan for AP-1?" → Request changes ("why?") (the user, from the Taro screen)`;
+    const notes = [
+      changes("10:01"),
+      changes("10:02"),
+      approveCard("10:10"),
+      `APPROVAL ${at("10:10")} — user: "Approve the plan for AP-1". Approved the plan as it stands.`,
+      `ANSWER ${at("10:20")} — detail: "How detailed?" → "first line\n\nSECOND paragraph after a blank line\nlast line" (the user, from the Taro screen)`,
+      `APPROVAL ${at("10:21")} — user: "yes". Approved a scope change (detail).`,
+      answer("10:25", "split"),
+      answer("10:40", "rulings"),
+      `ANSWER ${at("10:40")} — rulings: the user: "Decision, why, cost"`,
+      answer("10:45", "chips"),
+      `ANSWER ${at("10:45")} — chips: the user: "Keep them at the bottom" — no change`,
+      `MILESTONE ${at("10:50")} — children re-split`,
+      approveCard("11:00"),
+    ].join("\n\n");
+    expect(deliveryTimings({ notes, transitions: worked, waiting: [] }).cardsAnsweredAfterApproval).toBe(4 + 1);
+  });
+});
+
+describe("round limits on nudges and permission waits", () => {
+  const history = transitions(["Queued", "09:00"], ["Planning", "10:00"], ["Awaiting acceptance", "11:00"], ["Done", "11:30"]);
+
+  it("counts permission waits only within Planning to the first Awaiting acceptance, overlapping ones once", () => {
+    const permissionWaits = [stretch("09:30", "09:40"), stretch("09:55", "10:05"), stretch("10:20", "10:30"), stretch("10:25", "10:35"), stretch("10:20", "10:30"), stretch("10:55", "11:10"), stretch("11:20", "11:25")];
+    expect(deliveryTimings({ notes: null, transitions: history, waiting: [], permissionWaits }).permissionWaitMs).toBe(ms(5 + 15 + 5));
+  });
+
+  it("counts a reopened round's own waits only", () => {
+    const reopened = [...history, ...transitions(["Queued", "12:00"], ["Planning", "12:10"])];
+    const notes = `REOPENED ${at("12:00")} — user: "again"; round 2; past owners: none`;
+    const timings = deliveryTimings({ notes, transitions: reopened, waiting: [], permissionWaits: [stretch("10:20", "10:30"), stretch("12:20", "12:22")], nudges: 2, nudgedAt: [at("10:30"), at("12:30")] }, Date.parse(at("13:00")));
+    expect(timings.permissionWaitMs).toBe(ms(2));
+    expect(timings.corrections.nudges).toBe(1);
+  });
+
+  it("counts nudges sent within the round, and adds nudges recorded before their times were kept", () => {
+    const nudgedAt = [at("09:30"), at("10:30"), at("11:10")];
+    expect(deliveryTimings({ notes: null, transitions: history, waiting: [], nudges: 3, nudgedAt }).corrections).toMatchObject({ nudges: 1, untimedNudges: 0 });
+    expect(deliveryTimings({ notes: null, transitions: history, waiting: [], nudges: 5, nudgedAt }).corrections).toMatchObject({ nudges: 3, untimedNudges: 2 });
   });
 });
 

@@ -31,13 +31,15 @@ interface RecordedTicket {
   transitions: { to: string; at: string }[];
   waiting: { start: string; end: string }[];
   nudges: number;
-  permissionWaitMs: number;
+  nudgedAt: string[];
+  permissionWaits: { start: string; end: string }[];
 }
 
 function recorded(value: unknown): RecordedTicket | null {
   if (typeof value !== "object" || value === null) return null;
   const raw = value as Record<string, unknown>;
   if (typeof raw.project !== "string" || typeof raw.ticket !== "string") return null;
+  const stretches = (field: string): { start: string; end: string }[] => list(field).flatMap((each) => (typeof each.start === "string" && typeof each.end === "string" ? [{ start: each.start, end: each.end }] : []));
   const list = (field: string): Record<string, unknown>[] => (Array.isArray(raw[field]) ? (raw[field] as unknown[]).filter((each): each is Record<string, unknown> => typeof each === "object" && each !== null) : []);
   const number = (field: string): number => (typeof raw[field] === "number" ? (raw[field] as number) : 0);
   return {
@@ -45,9 +47,10 @@ function recorded(value: unknown): RecordedTicket | null {
     ticket: raw.ticket,
     title: typeof raw.title === "string" ? raw.title : "",
     transitions: list("transitions").flatMap((each) => (typeof each.to === "string" && typeof each.at === "string" ? [{ to: each.to, at: each.at }] : [])),
-    waiting: list("waiting").flatMap((each) => (typeof each.start === "string" && typeof each.end === "string" ? [{ start: each.start, end: each.end }] : [])),
+    waiting: stretches("waiting"),
     nudges: number("nudges"),
-    permissionWaitMs: number("permissionWaitMs"),
+    nudgedAt: Array.isArray(raw.nudgedAt) ? raw.nudgedAt.filter((each): each is string => typeof each === "string") : [],
+    permissionWaits: stretches("permissionWaits"),
   };
 }
 
@@ -77,7 +80,7 @@ interface Row {
 async function rowFor(recordedTicket: RecordedTicket, tracker: string, now: number): Promise<Row | null> {
   const ticket = await createTicketStore(tracker).read(recordedTicket.ticket).catch(() => null);
   if (ticket === null) return null;
-  const timings = deliveryTimings({ notes: ticket.notes, transitions: recordedTicket.transitions, waiting: recordedTicket.waiting, nudges: recordedTicket.nudges, permissionWaitMs: recordedTicket.permissionWaitMs }, now);
+  const timings = deliveryTimings({ notes: ticket.notes, transitions: recordedTicket.transitions, waiting: recordedTicket.waiting, nudges: recordedTicket.nudges, nudgedAt: recordedTicket.nudgedAt, permissionWaits: recordedTicket.permissionWaits }, now);
   return { ticket: recordedTicket.ticket, title: ticket.title, timings };
 }
 
@@ -101,7 +104,7 @@ function ticketText(row: Row, state: string): string {
     `  Approved: ${timings.approvedAt ?? "not approved this round"}`,
     `  In Needs you before approval: ${minutes(timings.needsYouBeforeApprovalMs)} min; after: ${minutes(timings.needsYouAfterApprovalMs)} min`,
     `  Cards answered after approval: ${timings.cardsAnsweredAfterApproval}`,
-    `  Plugin corrections: ${correctionTotal(timings)} (NO-PLAN ${corrections.noPlan}, NO-APPROVAL ${corrections.noApproval}, held ${corrections.held}, made non-blocking ${corrections.madeNonBlocking}, nudges ${corrections.nudges})`,
+    `  Plugin corrections: ${correctionTotal(timings)} (NO-PLAN ${corrections.noPlan}, NO-APPROVAL ${corrections.noApproval}, held ${corrections.held}, made non-blocking ${corrections.madeNonBlocking}, nudges ${corrections.nudges}${corrections.untimedNudges === 0 ? "" : `, ${corrections.untimedNudges} of them from before nudge times were kept, so not limited to this round`})`,
     `  Permission asks waited: ${minutes(timings.permissionWaitMs)} min`,
     "",
   ].join("\n");

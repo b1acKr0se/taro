@@ -496,3 +496,27 @@ describe("starting context (TR-139)", () => {
     ]);
   });
 });
+
+describe("permission waits (TR-263)", () => {
+  const key = (ticket: string) => (all: Awaited<ReturnType<Stats["all"]>>) => all.find((each) => each.ticket === ticket);
+
+  it("records an ask on a child and on its parent, which had no stats yet, surviving a reload", async () => {
+    await new Stats().permissionWaited("taro", "TR-1.02", "2026-10-13T10:00:00Z", "2026-10-13T10:07:30Z");
+    const all = await new Stats().all("taro");
+    for (const ticket of ["TR-1.02", "TR-1"]) {
+      expect(key(ticket)(all)).toMatchObject({ ticket, permissionAsks: 1, permissionWaitMs: 450_000, permissionWaits: [{ start: "2026-10-13T10:00:00Z", end: "2026-10-13T10:07:30Z" }] });
+    }
+  });
+
+  it("clamps a wait that ends before it starts to zero", async () => {
+    await new Stats().permissionWaited("taro", "TR-1", "2026-10-13T10:07:30Z", "2026-10-13T10:00:00Z");
+    expect(key("TR-1")(await new Stats().all("taro"))).toMatchObject({ permissionAsks: 1, permissionWaitMs: 0, permissionWaits: [{ start: "2026-10-13T10:07:30Z", end: "2026-10-13T10:07:30Z" }] });
+  });
+
+  it("keeps when each nudge was sent", async () => {
+    await new Stats().count("taro", "TR-1", "nudges");
+    vi.setSystemTime(start + 60_000);
+    await new Stats().count("taro", "TR-1", "nudges");
+    expect(key("TR-1")(await new Stats().all("taro"))).toMatchObject({ nudges: 2, nudgedAt: ["2026-10-13T10:00:00.000Z", "2026-10-13T10:01:00.000Z"] });
+  });
+});

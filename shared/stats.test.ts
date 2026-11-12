@@ -27,6 +27,8 @@ describe("summarize", () => {
       permissionDenials: 3,
       permissionAsks: 0,
       permissionWaitMs: 0,
+      nudgedAt: [],
+      permissionWaits: [],
     });
     expect(summary.wallMs).toBe(45 * 60_000);
     expect(summary.byStatus).toEqual({ Queued: 60_000, Planning: 240_000, "In Progress": 600_000, "Awaiting acceptance": 1_800_000, Done: 0 });
@@ -57,6 +59,8 @@ describe("summarize", () => {
       permissionDenials: 0,
       permissionAsks: 0,
       permissionWaitMs: 0,
+      nudgedAt: [],
+      permissionWaits: [],
     });
     expect(summary).toMatchObject({ agents: 3, costUsd: 2, agentsWithoutCost: 1 });
   });
@@ -127,7 +131,7 @@ describe("projectTotals", () => {
 });
 
 function ticket(transitions: ReadonlyArray<[string, string]>, waiting: TicketStats["waiting"] = []): TicketStats {
-  return { project: "app", ticket: "AP-1", title: "x", transitions: transitions.map(([to, at], index) => ({ from: index === 0 ? null : (transitions[index - 1]?.[0] ?? null), to, at })), waiting, agents: {}, nudges: 0, decisions: 0, recoveries: 0, idleCompactions: 0, permissionDenials: 0, permissionAsks: 0, permissionWaitMs: 0 };
+  return { project: "app", ticket: "AP-1", title: "x", transitions: transitions.map(([to, at], index) => ({ from: index === 0 ? null : (transitions[index - 1]?.[0] ?? null), to, at })), waiting, agents: {}, nudges: 0, decisions: 0, recoveries: 0, idleCompactions: 0, permissionDenials: 0, permissionAsks: 0, permissionWaitMs: 0, nudgedAt: [], permissionWaits: [] };
 }
 
 describe("repeated statuses (TR-100)", () => {
