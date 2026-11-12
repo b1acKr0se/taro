@@ -870,6 +870,22 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       log.mockRestore();
     });
 
+    it("refuses one ask once, though its turn is read again (the reconcile after a start reads what the hook read)", async () => {
+      withTicket(APPROVED);
+      const { state, decisions } = fakeState();
+      const taro = supervisor(state);
+      const asked = [human("start"), ask("scope-approval", "Approve the plan for TR-9?")];
+      await Promise.all([run(taro, ...asked), run(taro, ...asked)]);
+      await run(taro, ...asked);
+      expect(decisions).toEqual([]);
+      expect(gated()).toHaveLength(1);
+      expect(records()).toHaveLength(1);
+
+      // Asked again in a later turn: refused again.
+      await run(taro, ...asked, plugin("build on"), ask("scope-approval", "Approve the plan for TR-9?"));
+      expect(gated()).toHaveLength(2);
+    });
+
     it("shows a scope-approval asked again with a surprise, before approval, and after the approval was taken back by Request changes", async () => {
       withTicket(APPROVED);
       const surprised = fakeState();

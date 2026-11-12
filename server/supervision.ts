@@ -256,7 +256,16 @@ export async function currentOwner(paseo: PaseoApi, project: string, ticket: str
   return null;
 }
 
+/** How many refused asks a Supervisor remembers, to stay quiet when the same turn is read again. */
+const REFUSED_ASKS_KEPT = 200;
+
 export class Supervisor {
+  /**
+   * Plan approvals refused after approval (TR-263), by agent, block and turn: nothing is stored for
+   * them, so the reconcile after a start, reading the turn the hook also read, would refuse it again.
+   */
+  private readonly refusedAsks = new Set<string>();
+
   constructor(
     private readonly state: PluginState,
     private readonly stats: Stats,
@@ -735,7 +744,10 @@ export class Supervisor {
         // question goes on with its default, unless the block names the approved line it would change.
         const gate = identity.role === "owner" ? approvalGate(block, facts.approved) : "ask";
         if (gate === "refuse") {
-          gated.push({ id: block.id, outcome: gate, default: block.default });
+          const ask = `${key}:${turn ?? `question ${hashText(block.question)}`}`;
+          if (!this.refusedAsks.has(ask)) gated.push({ id: block.id, outcome: gate, default: block.default });
+          this.refusedAsks.add(ask);
+          if (this.refusedAsks.size > REFUSED_ASKS_KEPT) this.refusedAsks.delete(this.refusedAsks.values().next().value ?? "");
           continue;
         }
         if (gate === "hold") {
