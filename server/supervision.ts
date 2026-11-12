@@ -239,7 +239,13 @@ export function freshState(identity: TaroIdentity): AgentState {
     acceptStalls: 0,
     stepsSent: [],
     stepUnread: false,
+    stepPages: "tracked",
   };
+}
+
+/** A record kept from before step pages, on its first turn end since: an owner with turns behind it is already in its step. */
+function settleStepPages(record: AgentState): void {
+  if (record.stepPages === "untracked") record.stepPages = record.lastTurnEndedAt === null ? "tracked" : "baseline";
 }
 
 /** The live owner of a ticket now: the creator if it is an owner, else by label, else the parent ticket's owner. */
@@ -329,6 +335,7 @@ export class Supervisor {
     const stage = await this.state.updateAgent(live.id, () => freshState(identity), (record) => {
       record.ticket = identity.ticket;
       record.title = identity.title;
+      settleStepPages(record);
       // Left as it was when the turn could not be read, so the reconcile after a restart reads it again.
       if (read !== null) record.lastTurnEndedAt = now;
       record.idleCompaction = idleCompactionAfterTurn(record.idleCompaction, record.compaction);
@@ -417,8 +424,8 @@ export class Supervisor {
   /**
    * After a reload or restart (decision 37): re-read each idle Taro agent's
    * latest turn the plugin did not see end, rebuild its status line, and deliver
-   * subagent reports that finished while the plugin was down, and send an idle owner the step page
-   * it has not had. No nudges here.
+   * subagent reports that finished while the plugin was down, and send an idle owner a step page
+   * lost while it was down. No nudges here.
    */
   async reconcile(paseo: PaseoApi, projects: readonly string[]): Promise<number> {
     let repaired = 0;
@@ -432,9 +439,11 @@ export class Supervisor {
         if (isMidTurn(agent) || agent.status === "closed") continue;
         const identity = identityFromLabels(agent.labels, agent.title ?? null);
         if (identity === null) continue;
-        if (await this.repairTurn(paseo, agent, identity)) repaired += 1;
-        // A step page lost to a reload, or to a turn end the hook never saw; one already sent stays sent.
-        if (identity.role === "owner") await this.sendIdleStep(paseo, agent, identity);
+        const missed = await this.repairTurn(paseo, agent, identity);
+        if (missed) repaired += 1;
+        // Only a step page lost: to a turn end the hook never saw, or to a ticket it could not read. An
+        // owner whose turn end was seen had its page then, or is past needing one.
+        if (identity.role === "owner" && (missed || (await this.state.agent(agent.id))?.stepUnread === true)) await this.sendIdleStep(paseo, agent, identity);
       }
     }
     return repaired;
@@ -452,6 +461,7 @@ export class Supervisor {
     const closing = closingText(turn);
     const status = parseStatusLine(closing);
     await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
+      settleStepPages(record);
       record.lastTurnEndedAt = agent.updatedAt;
       if (status !== null) record.lastStatus = { ...status, at: agent.updatedAt };
     });
@@ -481,10 +491,10 @@ export class Supervisor {
     return sent;
   }
 
-  /** The step page for an owner the plugin found idle outside a turn end: not mid-compaction, and not ahead of the user's queued message. */
+  /** The step page for an owner the plugin found idle outside a turn end: not mid-compaction, not Stalled (the page would wake it), and not ahead of the user's queued message. */
   private async sendIdleStep(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity): Promise<boolean> {
     const known = await this.state.agent(agent.id);
-    if (known !== undefined && known !== null && known.compaction !== "none") return false;
+    if (known !== null && (known.compaction !== "none" || known.stalled)) return false;
     if (await this.userMessagesQueued(agent.id)) return false;
     return this.sendStep(paseo, agent, identity);
   }
@@ -853,7 +863,8 @@ export class Supervisor {
    * delivery), sent once per round of the ticket. Awaiting acceptance has its own reminders and the
    * Accept hand-off its own message, so neither is sent from here. Nor while the owner waits on a
    * blocking question: the page would end that wait, as a nudge would, so it goes at the turn end after
-   * the answer. A ticket that cannot be read is marked, and read again by the minute's sweep.
+   * the answer. A ticket that cannot be read is marked, and read again by the minute's sweep. An owner
+   * already at work when step pages began has its current step recorded as sent, not sent.
    */
   private async sendStep(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity): Promise<boolean> {
     const ticket = identity.ticket;
@@ -870,22 +881,23 @@ export class Supervisor {
       });
       return false;
     }
-    if (step === null || step.page === STEP_PAGES.accept) {
-      if ((await this.state.agent(agent.id))?.stepUnread === true) {
-        await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
-          record.stepUnread = false;
-        });
-      }
+    const key = step === null || step.page === STEP_PAGES.accept ? null : stepKey(ticket, step);
+    const known = await this.state.agent(agent.id);
+    if (key === null && known !== null && known.stepUnread !== true && known.stepPages === "tracked") return false;
+    const outcome = await this.state.updateAgent(agent.id, () => freshState(identity), (record): "sent" | "recorded" | "none" => {
+      record.stepUnread = false;
+      settleStepPages(record);
+      const baseline = record.stepPages === "baseline";
+      record.stepPages = "tracked";
+      if (key === null || record.stepsSent.includes(key)) return "none";
+      record.stepsSent = [...record.stepsSent, key];
+      return baseline ? "recorded" : "sent";
+    });
+    if (step === null || outcome === "none") return false;
+    if (outcome === "recorded") {
+      console.log(`[taro] ${agent.id} was already at ${step.page} on ${ticket} when step pages began: recorded, not sent`);
       return false;
     }
-    const key = stepKey(ticket, step);
-    const fresh = await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
-      record.stepUnread = false;
-      if (record.stepsSent.includes(key)) return false;
-      record.stepsSent = [...record.stepsSent, key];
-      return true;
-    });
-    if (!fresh) return false;
     console.log(`[taro] ${agent.id} reached ${step.page} on ${ticket} (round ${step.facts.round ?? "1"}): page sent`);
     await sendFromPlugin(paseo, agent.id, await stepText(step));
     return true;

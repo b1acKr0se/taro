@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { questionHoldingAccept } from "../shared/delivery-end";
-import type { AgentState, StoredDecision } from "../shared/state";
+import { AgentStateSchema, type AgentState, type StoredDecision } from "../shared/state";
 import { fetchLiveAgent, listTaroAgents } from "./agents";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TimelinePage, TurnOutcome } from "./host-types";
 import { sendFromPlugin } from "./send";
@@ -1651,7 +1651,7 @@ describe("Supervisor.onTurnEnded with commits and no plan", () => {
       expect(stops()).toHaveLength(1);
     });
 
-    it("does not tell once approved and then asked to change (a surprise re-ask), and tells in a reopened round until it is approved anew", async () => {
+    it("does not tell once approved and then asked to change (a surprise re-ask), nor in a reopened round, worked as low", async () => {
       commits = 1;
       const taro = supervisor();
       const approved = answer("2026-01-05T10:05Z", 'Approve ("Approve")');
@@ -1662,7 +1662,10 @@ describe("Supervisor.onTurnEnded with commits and no plan", () => {
       expect(stops()).toHaveLength(0);
       ticket("In Progress", PLAN, [], `${approved}\n\nREOPENED 2026-01-06T09:00Z — user: "check it"; round 2; past owners: none`);
       await end(supervisor());
-      expect(stops()).toHaveLength(1);
+      ticket("In Progress", null, [], `${approved}\n\nREOPENED 2026-01-06T09:00Z — user: "check it"; round 2; past owners: none`);
+      await end(supervisor());
+      // Neither NO-APPROVAL nor NO-PLAN.
+      expect(vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => /^no-(plan|approval):/.test(text))).toEqual([]);
     });
 
     it("never stops a trivial or low owner, nor one with no commits", async () => {
@@ -2226,6 +2229,74 @@ describe("Supervisor.onTurnEnded sends each step's page once", () => {
     });
     await end(supervisor());
     expect(sent()).toEqual(["step:levels/medium.md:round 1"]);
+  });
+
+  // Review finding: the reconcile sent the current page to every idle owner, a Stalled one included.
+  it("sends nothing at a reload to an idle owner whose turn end was seen, though its ticket moved on since", async () => {
+    at({ labels: ["complexity-medium"] });
+    await end(supervisor());
+    // The user approves on the card; the plugin reloads before the owner's next turn ends.
+    at({ notes: APPROVAL, status: "In Progress" });
+    vi.mocked(listTaroAgents).mockResolvedValueOnce([{ ...owner, updatedAt: new Date().toISOString() } as unknown as PaseoAgent]);
+    await supervisor().reconcile(withTimeline(reply), ["taro"]);
+    expect(sent()).toEqual(["step:levels/medium.md:round 1"]);
+    // Its next turn end sends it.
+    await end(supervisor());
+    expect(sent()).toEqual(["step:levels/medium.md:round 1", "step:phases/build.md:round 1"]);
+  });
+
+  it("sends nothing at a reload to a Stalled owner, even for a turn end the hook missed", async () => {
+    at({ labels: ["complexity-medium"] });
+    await new StoredPluginState().updateAgent(owner.id, () => AgentStateSchema.parse({ project: "taro", role: "owner", ticket: "TR-9", stepPages: "tracked" }), (record) => {
+      record.stalled = true;
+    });
+    vi.mocked(listTaroAgents).mockResolvedValueOnce([{ ...owner, updatedAt: new Date().toISOString() } as unknown as PaseoAgent]);
+    await supervisor().reconcile(withTimeline(reply), ["taro"]);
+    expect(sent()).toEqual([]);
+  });
+
+  describe("an owner already at work when step pages began", () => {
+    // A record written before step pages: parsed with their fields' defaults, as a reload reads it.
+    const keptRecord = (lastTurnEndedAt: string | null) =>
+      new StoredPluginState().updateAgent(owner.id, () => AgentStateSchema.parse({ project: "taro", role: "owner", ticket: "TR-9", lastTurnEndedAt }), () => undefined);
+
+    it("is not sent the page of the step it is already in, at its turn end or across reloads, but gets the next one", async () => {
+      at({ labels: ["complexity-medium"], notes: APPROVAL, status: "In Progress" });
+      await keptRecord("2026-11-01T10:00:00.000Z");
+      const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+      await end(supervisor());
+      await end(supervisor());
+      expect(sent()).toEqual([]);
+      expect(log.mock.calls.some(([line]) => String(line).includes("already at phases/build.md on TR-9 when step pages began"))).toBe(true);
+      log.mockRestore();
+      at({ status: "Reviewing" });
+      await end(supervisor());
+      expect(sent()).toEqual(["step:phases/review.md:round 1"]);
+    });
+
+    it("is not sent it by the reconcile either, for a turn end the hook missed", async () => {
+      at({ labels: ["complexity-low"] });
+      await keptRecord("2026-11-01T10:00:00.000Z");
+      vi.mocked(listTaroAgents).mockResolvedValueOnce([{ ...owner, updatedAt: new Date().toISOString() } as unknown as PaseoAgent]);
+      await supervisor().reconcile(withTimeline(reply), ["taro"]);
+      await end(supervisor());
+      expect(sent()).toEqual([]);
+    });
+
+    it("still gets its pages when it had taken no turn yet", async () => {
+      at({ labels: ["complexity-low"] });
+      await keptRecord(null);
+      await end(supervisor());
+      expect(sent()).toEqual(["step:levels/light.md:round 1"]);
+    });
+
+    it("gets the level page it rates after the reload, having had no step before", async () => {
+      await keptRecord("2026-11-01T10:00:00.000Z");
+      await end(supervisor());
+      at({ labels: ["complexity-low"] });
+      await end(supervisor());
+      expect(sent()).toEqual(["step:levels/light.md:round 1"]);
+    });
   });
 
   it("sends nothing, and says why in the log, when the ticket cannot be read", async () => {

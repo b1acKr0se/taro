@@ -100,6 +100,12 @@ export const AgentStateSchema = z.object({
   stepsSent: z.array(z.string()).default([]),
   /** The ticket could not be read when a step page was due: the minute's sweep reads it again, so the page is not lost. */
   stepUnread: z.boolean().default(false),
+  /**
+   * Whether this owner's steps were followed from its start: `untracked` on a record kept from before the
+   * plugin sent step pages; `baseline` once such an owner is found to have taken turns, as it is already
+   * in its step (that page is recorded as sent, not sent); `tracked` otherwise.
+   */
+  stepPages: z.enum(["untracked", "baseline", "tracked"]).default("untracked"),
 });
 export type AgentState = z.infer<typeof AgentStateSchema>;
 

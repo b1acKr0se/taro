@@ -37,9 +37,12 @@ describe("buildGap", () => {
     expect(gap(`${APPROVE}\n\n${answer("2026-01-05T12:00Z", 'Request changes ("rename it")')}`)).toBeNull();
   });
 
-  it("is no-approval in a reopened round until that round approves its own plan", () => {
-    expect(gap(`${APPROVE}\n\n${REOPENED}`)).toBe("no-approval");
-    expect(gap(`${APPROVE}\n\n${REOPENED}\n\n${answer("2026-01-06T09:30Z", 'Approve ("Approve")')}`)).toBeNull();
+  // Review finding: a reopened round is worked as low, an investigation with no plan approval of its own.
+  it("exempts a reopened round, worked as low whatever the ticket was rated, with or without a plan", () => {
+    expect(gap(`${APPROVE}\n\n${REOPENED}`)).toBeNull();
+    expect(gap(REOPENED, ["complexity-high"])).toBeNull();
+    expect(gap(REOPENED, ["complexity-medium"], null)).toBeNull();
+    expect(gap(`${REOPENED}\n\n${answer("2026-01-06T09:30Z", 'Request changes ("not yet")')}`)).toBeNull();
   });
 
   it("exempts trivial and low tickets, closed ones, and a child whose parent is approved", () => {

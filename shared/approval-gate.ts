@@ -10,7 +10,7 @@
  * (`shared/conformance.ts`) can run it under plain `node` as the benchmark does.
  */
 import { lacksPlan, mayBuildBeforePlan } from "./no-plan.ts";
-import { roundNotes } from "./reopen.ts";
+import { reopenRound, roundNotes } from "./reopen.ts";
 
 /** The preset id of an owner's scope approval (`skill/reference/formats.md`). */
 export const SCOPE_APPROVAL = "scope-approval";
@@ -84,10 +84,11 @@ export type BuildGap = "no-plan" | "no-approval";
 
 /**
  * What an owner's commits came before, for a ticket still worked on: its plan (NO-PLAN, TR-206) or,
- * with a plan, the round's approval of it (NO-APPROVAL). A trivial or low ticket may build first (TR-241).
+ * with a plan, the round's approval of it (NO-APPROVAL). A trivial or low ticket may build first (TR-241),
+ * and so may a reopened round, worked as low whatever the ticket was rated (`shared/next-step.ts`).
  */
 export function buildGap(ticket: { status: string; plan: string | null; criteria: number; labels: readonly string[]; notes: string | null; parentNotes?: string | null }): BuildGap | null {
-  if (CLOSED.has(ticket.status) || mayBuildBeforePlan(ticket.labels)) return null;
+  if (CLOSED.has(ticket.status) || mayBuildBeforePlan(ticket.labels) || reopenRound(ticket.notes) > 1) return null;
   if (lacksPlan(ticket)) return "no-plan";
   return workApproved(ticket.notes, ticket.parentNotes ?? null) ? null : "no-approval";
 }
