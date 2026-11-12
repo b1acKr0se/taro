@@ -5,6 +5,8 @@
  */
 import { z } from "zod";
 
+export * from "./delivery-timings";
+
 export const TransitionSchema = z.object({ from: z.string().nullable(), to: z.string(), at: z.string() });
 export type Transition = z.infer<typeof TransitionSchema>;
 
@@ -40,6 +42,8 @@ export const TicketStatsSchema = z.object({
   waiting: z.array(WaitingSchema).default([]),
   agents: z.record(z.string(), AgentStatsSchema).default({}),
   nudges: z.number().int().default(0),
+  /** When each nudge was sent (TR-263), so a round counts only its own; nudges recorded before then have no time. */
+  nudgedAt: z.array(z.string()).default([]),
   decisions: z.number().int().default(0),
   /** Automatic recoveries of this ticket's agents from a crash (TR-012). */
   recoveries: z.number().int().default(0),
@@ -47,6 +51,11 @@ export const TicketStatsSchema = z.object({
   idleCompactions: z.number().int().default(0),
   /** Shell permission asks the plugin denied by its rules (TR-143): commands that broke shell.md. */
   permissionDenials: z.number().int().default(0),
+  /** Permission asks no rule answered (TR-263): how many, and how long they stayed open before the user (or a stop) ended them. */
+  permissionAsks: z.number().int().default(0),
+  permissionWaitMs: z.number().default(0),
+  /** Each of those asks as a stretch from asked to ended, so a round counts only its own and a parent counts overlapping children's once. */
+  permissionWaits: z.array(WaitingSchema).default([]),
 });
 export type TicketStats = z.infer<typeof TicketStatsSchema>;
 

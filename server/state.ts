@@ -168,6 +168,11 @@ export class PluginState {
       .sort((left, right) => Date.parse(left.askedAt) - Date.parse(right.askedAt));
   }
 
+  /** One recorded ask, or null. */
+  async permissionAsk(agentId: string, requestId: string): Promise<PermissionAsk | null> {
+    return (await this.loadPermissionAsks()).find((each) => each.agentId === agentId && each.requestId === requestId) ?? null;
+  }
+
   /** Changes the asks under one lock, drops those past keeping, and writes them back. */
   private updatePermissionAsks<T>(change: (asks: PermissionAsk[]) => T): Promise<T> {
     return serialized("state:permission-asks", async () => {
