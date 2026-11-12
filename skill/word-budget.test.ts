@@ -40,6 +40,7 @@ const BUDGETS: Record<string, number> = {
   "phases/accept.md": 780,
   "reference/formats.md": 730,
   "reference/images.md": 220,
+  "reference/several-questions.md": 330,
   "reference/shell.md": 480,
   "reference/tickets.md": 2150,
   "reference/paseo.md": 460,

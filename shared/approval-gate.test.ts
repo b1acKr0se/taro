@@ -108,6 +108,27 @@ describe("approvalGate", () => {
   });
 });
 
+describe("several questions on one card (before approval only)", () => {
+  const several = { id: "export", blocking: true, default: "", questions: [{}, {}] };
+
+  it("is shown as asked, all at once, before approval", () => {
+    expect(approvalGate(several, false)).toBe("ask");
+    expect(approvalGate({ ...several, blocking: false }, false)).toBe("ask");
+  });
+
+  it("is not shown after approval, even with a surprise: one at a time", () => {
+    expect(approvalGate(several, true)).toBe("single");
+    expect(approvalGate({ ...several, blocking: false }, true)).toBe("single");
+    expect(approvalGate({ ...several, surprise: "criterion 2 changes" }, true)).toBe("single");
+    expect(gateRecord("2026-11-12T10:00Z", "single", several)).toContain("one at a time");
+  });
+
+  it("a single question after approval is unchanged", () => {
+    expect(approvalGate({ ...several, questions: [] }, true)).toBe("hold");
+    expect(approvalGate({ ...several, questions: [], blocking: false }, true)).toBe("ask");
+  });
+});
+
 describe("records", () => {
   it("say what the gate did", () => {
     expect(noApprovalRecord("2026-01-05T10:00Z", 1, "taro/na-12", "main")).toBe(

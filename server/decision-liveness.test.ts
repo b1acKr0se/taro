@@ -275,13 +275,13 @@ describe("Actions.answerDecision", () => {
     beforeEach(() => vi.mocked(appendTicketNote).mockClear());
 
     it("sends one message, records each answer and the ANSWER record for two answers", async () => {
-      vi.mocked(sendFromPlugin).mockClear();
+      vi.mocked(sendUserAnswer).mockClear();
       const decisions = [several()];
       await actionsOver(decisions).answerDecision(live, "owner:export", null, "", "tab", [
         { header: "Tags", label: "YAML", text: "" },
         { header: "Folders", label: null, text: "one folder per notebook, flat inside" },
       ]);
-      expect(sendFromPlugin).toHaveBeenCalledTimes(1);
+      expect(sendUserAnswer).toHaveBeenCalledTimes(1);
       expect(decisions[0]?.answer).toMatchObject({ text: 'Tags: Use YAML\nFolders: "one folder per notebook, flat inside"', label: null, answers: [{ header: "Tags", label: "YAML" }, { header: "Folders", label: null }] });
       expect(vi.mocked(appendTicketNote).mock.calls[0]?.[2]).toMatch(
         /^ANSWER \S+ — export: "2 questions: Tags · Folders" → Tags: YAML \("Use YAML"\); Folders: Other \("one folder per notebook, flat inside"\) \(the user, from the agent's tab\)$/,
@@ -289,10 +289,10 @@ describe("Actions.answerDecision", () => {
     });
 
     it("refuses fewer answers than questions and sends nothing", async () => {
-      vi.mocked(sendFromPlugin).mockClear();
+      vi.mocked(sendUserAnswer).mockClear();
       const decisions = [several()];
       await expect(actionsOver(decisions).answerDecision(live, "owner:export", null, "", "screen", [{ header: "Tags", label: "YAML", text: "" }])).rejects.toThrow(/1 of 2 answered/);
-      expect(sendFromPlugin).not.toHaveBeenCalled();
+      expect(sendUserAnswer).not.toHaveBeenCalled();
       expect(decisions[0]?.status).toBe("open");
     });
   });

@@ -437,8 +437,8 @@ describe("a decision that asks several questions (TR-207)", () => {
     expect(decision.questions[0]?.options[0]?.label).toBe("YAML");
   });
 
-  it("reads the example in skill/reference/formats.md without a problem", () => {
-    const formats = readFileSync(join(__dirname, "..", "skill", "reference", "formats.md"), "utf8");
+  it("reads the example in skill/reference/several-questions.md without a problem", () => {
+    const formats = readFileSync(join(__dirname, "..", "skill", "reference", "several-questions.md"), "utf8");
     const example = /```decision\n(id: export-format[\s\S]*?)```/.exec(formats)?.[1] ?? "";
     const decision = parseDecisionBody(example);
     expect(decision.problems).toEqual([]);
