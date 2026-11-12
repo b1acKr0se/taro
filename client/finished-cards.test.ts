@@ -150,15 +150,26 @@ describe("questionCards", () => {
     const picked = stored("one", { answer: { text: "Yes", label: "Yes", at: "2026-01-19T10:05:00Z" } });
     const noted = stored("two", { answer: { text: "but later", label: "Yes", at: "2026-01-19T10:06:00Z" } });
     expect(cards(rows, [picked, noted]).get("a")).toEqual([
-      { id: "one", subject: "Question one?", outcome: "Answered", tone: "positive", time: "10:05", answer: "Yes", words: null },
-      { id: "two", subject: "Question two?", outcome: "Answered", tone: "positive", time: "10:06", answer: "Yes", words: "but later" },
+      { id: "one", subject: "Question one?", lead: "Question", outcome: "Answered", tone: "positive", time: "10:05", answer: "Yes", words: null },
+      { id: "two", subject: "Question two?", lead: "Question", outcome: "Answered", tone: "positive", time: "10:06", answer: "Yes", words: "but later" },
     ]);
   });
 
   it("says a dismissed question was dismissed, with the time", () => {
     const rows = [message("a", [block("one")])];
     const dismissed = stored("one", { status: "dismissed", answer: null, dismissedAt: "2026-01-19T10:07:00Z" });
-    expect(cards(rows, [dismissed]).get("a")).toEqual([{ id: "one", subject: "Question one?", outcome: "Dismissed", tone: "neutral", time: "10:07", words: null }]);
+    expect(cards(rows, [dismissed]).get("a")).toEqual([{ id: "one", subject: "Question one?", lead: "Question", outcome: "Dismissed", tone: "neutral", time: "10:07", words: null }]);
+  });
+
+  it("names a single question's card a Question, and leads a dismissed several-questions card with its summary alone", () => {
+    const several = "```decision\nid: export\nblocking: true\nquestions:\n  - header: Tags\n    question: Tags as?\n    options:\n      - label: YAML\n        prompt: Use YAML\n  - header: Folders\n    question: Layout?\n    options:\n      - label: Flat\n        prompt: One folder\n```";
+    const rows = [message("a", [several, block("one")])];
+    const dismissed = stored("export", { question: "2 questions: Tags · Folders", status: "dismissed", answer: null, dismissedAt: "2026-01-19T10:07:00Z" });
+    const out = cards(rows, [dismissed, stored("one", { status: "dismissed", answer: null, dismissedAt: "2026-01-19T10:08:00Z" })]).get("a");
+    expect(out?.map((card) => [card.lead, card.subject, card.outcome, card.time])).toEqual([
+      [null, "2 questions: Tags · Folders", "Dismissed", "10:07"],
+      ["Question", "Question one?", "Dismissed", "10:08"],
+    ]);
   });
 
   it("never quotes an option's own prompt as the user's words, and drops it from words typed after it", () => {
@@ -179,7 +190,7 @@ describe("questionCards", () => {
 
   it("quotes a typed answer without a label, with the same outcome as a picked one", () => {
     const typed = stored("one", { answer: { text: "Use SQLite", label: null, at: "2026-01-19T10:05:00Z" } });
-    expect(cards([message("a", [block("one")])], [typed]).get("a")).toEqual([{ id: "one", subject: "Question one?", outcome: "Answered", tone: "positive", time: "10:05", answer: null, words: "Use SQLite" }]);
+    expect(cards([message("a", [block("one")])], [typed]).get("a")).toEqual([{ id: "one", subject: "Question one?", lead: "Question", outcome: "Answered", tone: "positive", time: "10:05", answer: null, words: "Use SQLite" }]);
     const multiline = stored("one", { answer: { text: "Use SQLite.\n\nMove to Postgres later.", label: null, at: "2026-01-19T10:05:00Z" } });
     expect(cards([message("a", [block("one")])], [multiline]).get("a")?.[0]).toMatchObject({ outcome: "Answered", words: "Use SQLite.\n\nMove to Postgres later." });
     const empty = stored("one", { answer: { text: "  ", label: null, at: "2026-01-19T10:05:00Z" } });
@@ -250,7 +261,7 @@ describe("questionCards", () => {
     expect(cards([message("a", [block("one")])], []).size).toBe(0);
     expect(cards([{ key: "a", text: block("one") }], []).size).toBe(0);
     const old = cards([message("a", [block("one")], "2025-12-01T10:00:00Z")], []).get("a");
-    expect(old).toEqual([{ id: "one", subject: "Question one?", outcome: "No record kept", tone: "neutral", time: null, words: null }]);
+    expect(old).toEqual([{ id: "one", subject: "Question one?", lead: "Question", outcome: "No record kept", tone: "neutral", time: null, words: null }]);
   });
 
   it("marks every asking but the last as asked again, across three messages", () => {

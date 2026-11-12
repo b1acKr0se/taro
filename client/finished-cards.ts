@@ -4,7 +4,7 @@
  */
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import type { PermissionAsk } from "../shared/permission-asks";
-import { parseDecisionBlocks, parseStatusLine, questionsOf } from "../shared/reports";
+import { parseDecisionBlocks, parseStatusLine, questionsOf, type DecisionQuestion } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import type { PlanLine } from "./plan-lines";
 
@@ -160,6 +160,8 @@ export function sameAcceptanceRecord(left: DeliveryRecord | undefined, right: De
 /** A question's card: what was asked and how it ended. */
 export interface QuestionCardView extends FinishedView {
   subject: string;
+  /** Named before the subject: "Question", or none on a card asking several, whose subject says "2 questions: …". */
+  lead: string | null;
   /** The block's id, to tell a plan (`scope-approval`) from a question. */
   id: string;
 }
@@ -209,6 +211,11 @@ function typedBeside(typed: string, label: string, prompt: string): string | nul
   return lead !== "" && typed.startsWith(`${lead}: `) ? typed.slice(lead.length + 2).trim() || null : typed;
 }
 
+/** The word before a finished question's subject: none on a card asking several, which would read "Question: 2 questions: …". */
+export function questionLead(block: { questions?: DecisionQuestion[] | undefined }): string | null {
+  return questionsOf(block).length > 0 ? null : "Question";
+}
+
 /** A finished block's subject in Paseo's own tab: a plan names its ticket as the chat's card does, or has none; a question is its question. */
 export function blockCardSubject(block: { id: string; question: string }, ticket: string | null): string | null {
   if (block.id !== SCOPE_APPROVAL) return block.question;
@@ -243,7 +250,7 @@ export function questionCards(
     const here = (asked[index] ?? []).flatMap((block): QuestionCardView[] => {
       if (block.id === SCOPE_APPROVAL || seen.has(block.id)) return [];
       seen.add(block.id);
-      const base = { subject: block.question, id: block.id };
+      const base = { subject: block.question, lead: questionLead(block), id: block.id };
       if (asked.slice(index + 1).some((later) => later.some((each) => each.id === block.id))) {
         return [{ ...base, outcome: "Asked again below", tone: "neutral", time: laterTime(index, block.id, (each) => !each.withdrawn), words: null }];
       }

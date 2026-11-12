@@ -17,7 +17,7 @@ import { decisionBlockView, SCOPE_APPROVAL, untrackedDecision } from "../shared/
 import { ParsedDecisionSchema, type ParsedDecision } from "../shared/reports";
 import { DecisionCard } from "./decision-card";
 import { FinishedCard } from "./finished-card";
-import { blockCardSubject, storedDecisionView, type FinishedView } from "./finished-cards";
+import { blockCardSubject, questionLead, storedDecisionView, type FinishedView } from "./finished-cards";
 import { errorText, formatClock } from "./format";
 import { Markdown } from "./markdown";
 import { forgetSeveralDrafts } from "./several-drafts";
@@ -68,7 +68,7 @@ export function DecisionBlockItem({ agentId, item, theme, layout }: PluginTimeli
       return (
         <FinishedCard
           theme={theme}
-          lead={plan ? null : "Question"}
+          lead={plan ? null : questionLead(block)}
           subject={blockCardSubject(block, stored?.ticket ?? null)}
           outcome={outcome.outcome}
           tone={outcome.tone}
