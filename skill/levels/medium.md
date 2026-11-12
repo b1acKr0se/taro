@@ -17,7 +17,7 @@ prove it holds the criteria, so the ticket gets no `--acceptance-criteria`.
   user would still reject the result is not met. A mechanism goes in Choices I made only when the
   user must check it.
 - **Mockups**: a plan that adds or changes UI shows the user what would change before they approve.
-  You make them (a subagent may, for a big one): run the changed screen on a throwaway daemon with
+  You make them (a subagent may, for a big one): run the changed screen on a throwaway daemon (`taro daemon start <ID>`) with
   the change roughed in (a temporary edit, never committed), capture it on phone and desktop in the
   theme it touches, and save each as `$TARO_EVIDENCE/<ID>/mockup-<what>-<device>.png`
   (`reference/images.md`). The Mockups section has a `file — what changes` line per image, for

@@ -44,7 +44,7 @@ const BUDGETS: Record<string, number> = {
   "reference/tickets.md": 2150,
   "reference/paseo.md": 460,
   "reference/model-tiers.md": 280,
-  "reference/actions.md": 180,
+  "reference/actions.md": 260,
   "templates/plan.md": 360,
   "templates/final.md": 200,
   "templates/definition-of-done.md": 350,

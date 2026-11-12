@@ -1,6 +1,7 @@
 /**
  * The `taro` command (TR-081 spec S7): `taro ticket list|view|search|create|edit|check` over the
- * ticket store. Run by `bin/taro` under plain Node type stripping: erasable TypeScript only, `.ts`
+ * ticket store, the buttons over the daemon, and the owner's mechanical steps (`taro agent`,
+ * `taro check`, `taro deliver`, `taro daemon`, in `owner-commands.ts`). Run by `bin/taro` under plain Node type stripping: erasable TypeScript only, `.ts`
  * import extensions, Node builtins only, no npm packages.
  *
  * The first word picks the command from `commands`.
@@ -21,6 +22,18 @@ import {
   type TicketSummary,
 } from "../shared/ticket-format.ts";
 import { acceptRefusal } from "../shared/accept-guard.ts";
+import {
+  agentStart,
+  agentStop,
+  checkCommand,
+  CommandMisused,
+  CommandRefused,
+  daemonList,
+  daemonStart,
+  daemonStop,
+  deliverCommand,
+  type CommandIo,
+} from "./owner-commands.ts";
 import { DaemonUnreachable, invokePluginRpc, RpcRefused } from "./plugin-rpc.ts";
 import {
   createTicketStore,
@@ -38,6 +51,8 @@ export interface CliIo {
   env: Record<string, string | undefined>;
   /** All of standard input, for `--note -`; absent where there is none. */
   readStdin?(): Promise<string>;
+  /** Where git, gh and checks run; the process's own when absent. */
+  cwd?: string;
 }
 
 const EXIT_OK = 0;
@@ -66,6 +81,14 @@ The buttons, from a script (they call the running daemon, with the button's own 
   taro decision answer <key> [--label <option>] [--text <words>]
   taro decision dismiss <key>
   taro next <ID>      the page for the ticket's current step, as the plugin sends it when the step starts
+The owner's mechanical steps (they need $TARO_PROJECT; threads are checked first, waiting up to --wait seconds above 85%):
+  taro agent start implementer|reviewer|researcher <ID> --model <id> [--thinking <id>] --brief-file <path>
+                   [--task <doing what>] [--worktree] [--mode <id>] [--wait <seconds>] [--json]
+  taro agent stop <agent id> [--force]
+  taro check [--ticket <ID>] [--timeout <minutes>] -- <command>...   runs it and logs exit code and summary line
+  taro deliver <ID> [--evidence-from-checks]   records review-head, PR and FINAL's revision line, then Awaiting acceptance
+  taro daemon start <ID> [--plugin <path>] [--home /tmp/paseo-…] [--port <n>] [--wait <seconds>] [--json]
+  taro daemon stop <ID> [--home <path>]    taro daemon list <ID>
 Accept, reopen, request-changes, change-spec, close-round and the decision verbs are the user's: they refuse inside an agent session.
 Every ticket command takes --tracker <path> (or $TARO_TRACKER). -l, --dep and --remove-dep accept comma-separated lists.`;
 
@@ -597,11 +620,148 @@ async function nextCommand(args: readonly string[], io: CliIo): Promise<number> 
   return EXIT_OK;
 }
 
+// ---------------------------------------------------------------- the owner's mechanical steps (TR-263)
+
+function commandIo(io: CliIo): CommandIo {
+  return { stdout: io.stdout, stderr: io.stderr, env: io.env, cwd: io.cwd ?? process.cwd() };
+}
+
+function nonNegativeNumber(parsed: Parsed, key: string, flag: string, fallback: number): number {
+  const value = single(parsed, key);
+  if (value === undefined) return fallback;
+  if (!/^\d+$/.test(value)) throw new UsageError(`${flag} needs a whole number, not "${value}".`);
+  return Number(value);
+}
+
+/** The tracker as the ticket verbs find it: --tracker or $TARO_TRACKER, a directory. */
+async function openTracker(parsed: Parsed, io: CliIo): Promise<{ store: TicketStore; trackerPath: string }> {
+  const trackerPath = single(parsed, "tracker") ?? io.env.TARO_TRACKER;
+  if (trackerPath === undefined || trackerPath === "") throw new UsageError("No tracker: pass --tracker <path> or set TARO_TRACKER.");
+  const directory = await stat(trackerPath).catch(() => null);
+  if (directory === null || !directory.isDirectory()) throw new CommandRefused(`Tracker ${trackerPath} is not a directory.`);
+  return { store: createTicketStore(trackerPath), trackerPath };
+}
+
+const AGENT_OPTIONS: OptionTable = {
+  "--model": { key: "model", value: true },
+  "--thinking": { key: "thinking", value: true },
+  "--brief-file": { key: "briefFile", value: true },
+  "--task": { key: "task", value: true },
+  "--mode": { key: "mode", value: true },
+  "--worktree": { key: "worktree", value: false },
+  "--wait": { key: "wait", value: true },
+  "--force": { key: "force", value: false },
+};
+
+/** Up to ten minutes for threads to come back before starting an agent or a daemon. */
+const DEFAULT_THREAD_WAIT_SECONDS = 600;
+
+async function agentCommand(args: readonly string[], io: CliIo): Promise<number> {
+  const verbName = args[0];
+  const parsed = parseArguments(args.slice(1), AGENT_OPTIONS);
+  if (verbName === "start") {
+    expectPositionals(parsed, 2, "a job (implementer, reviewer or researcher) and a ticket id");
+    const model = single(parsed, "model");
+    const briefFile = single(parsed, "briefFile");
+    if (model === undefined || model === "") throw new UsageError("agent start needs --model <id>.");
+    if (briefFile === undefined || briefFile === "") throw new UsageError("agent start needs --brief-file <path>.");
+    const { store, trackerPath } = await openTracker(parsed, io);
+    return agentStart(
+      {
+        role: parsed.positionals[0] as string,
+        ticket: parsed.positionals[1] as string,
+        model,
+        thinking: single(parsed, "thinking"),
+        briefFile,
+        task: single(parsed, "task"),
+        mode: single(parsed, "mode"),
+        worktree: has(parsed, "worktree"),
+        waitSeconds: nonNegativeNumber(parsed, "wait", "--wait", DEFAULT_THREAD_WAIT_SECONDS),
+        json: has(parsed, "json"),
+        store,
+        trackerPath,
+      },
+      commandIo(io),
+    );
+  }
+  if (verbName === "stop") {
+    expectPositionals(parsed, 1, "one agent id");
+    return agentStop(parsed.positionals[0] as string, has(parsed, "force"), commandIo(io));
+  }
+  throw new UsageError(verbName === undefined ? "Missing agent verb (start, stop)." : `Unknown agent verb "${verbName}".`);
+}
+
+const CHECK_OPTIONS: OptionTable = {
+  "--ticket": { key: "ticket", value: true },
+  "--timeout": { key: "timeout", value: true },
+};
+
+/** A check may run long (a full test suite under load); two hours is past any the projects have. */
+const DEFAULT_CHECK_TIMEOUT_MINUTES = 120;
+
+async function checkVerbCommand(args: readonly string[], io: CliIo): Promise<number> {
+  // Everything after `--` is the check, untouched; before it, only taro's options.
+  const separator = args.indexOf("--");
+  const own = separator === -1 ? args : args.slice(0, separator);
+  const parsed = parseArguments(own, CHECK_OPTIONS);
+  const words = [...parsed.positionals, ...(separator === -1 ? [] : args.slice(separator + 1))];
+  const timeout = nonNegativeNumber(parsed, "timeout", "--timeout", DEFAULT_CHECK_TIMEOUT_MINUTES);
+  return checkCommand(words, { ticket: single(parsed, "ticket"), timeoutMinutes: timeout === 0 ? DEFAULT_CHECK_TIMEOUT_MINUTES : timeout }, commandIo(io));
+}
+
+const DELIVER_OPTIONS: OptionTable = {
+  "--evidence-from-checks": { key: "evidenceFromChecks", value: false },
+};
+
+async function deliverVerbCommand(args: readonly string[], io: CliIo): Promise<number> {
+  const parsed = parseArguments(args, DELIVER_OPTIONS);
+  expectPositionals(parsed, 1, "one ticket id");
+  const { store, trackerPath } = await openTracker(parsed, io);
+  return deliverCommand({ ticket: parsed.positionals[0] as string, evidenceFromChecks: has(parsed, "evidenceFromChecks"), store, trackerPath }, commandIo(io));
+}
+
+const DAEMON_OPTIONS: OptionTable = {
+  "--home": { key: "home", value: true },
+  "--port": { key: "port", value: true },
+  "--plugin": { key: "plugin", value: true },
+  "--wait": { key: "wait", value: true },
+};
+
+async function daemonCommand(args: readonly string[], io: CliIo): Promise<number> {
+  const verbName = args[0];
+  const parsed = parseArguments(args.slice(1), DAEMON_OPTIONS);
+  if (verbName !== "start" && verbName !== "stop" && verbName !== "list") {
+    throw new UsageError(verbName === undefined ? "Missing daemon verb (start, stop, list)." : `Unknown daemon verb "${verbName}".`);
+  }
+  expectPositionals(parsed, 1, "one ticket id");
+  const ticket = parsed.positionals[0] as string;
+  if (!ID_PATTERN.test(ticket)) throw new UsageError(`"${ticket}" is not a ticket id.`);
+  if (verbName === "list") return daemonList(ticket, commandIo(io));
+  if (verbName === "stop") return daemonStop({ ticket, home: single(parsed, "home") }, commandIo(io));
+  const port = single(parsed, "port");
+  if (port !== undefined && !/^\d+$/.test(port)) throw new UsageError(`--port needs a number, not "${port}".`);
+  return daemonStart(
+    {
+      ticket,
+      home: single(parsed, "home"),
+      port: port === undefined ? undefined : Number(port),
+      plugin: single(parsed, "plugin"),
+      waitSeconds: nonNegativeNumber(parsed, "wait", "--wait", DEFAULT_THREAD_WAIT_SECONDS),
+      json: has(parsed, "json"),
+    },
+    commandIo(io),
+  );
+}
+
 /** The first word of the command line picks the handler. */
 const commands: Record<string, (args: readonly string[], io: CliIo) => Promise<number>> = {
   ticket: ticketCommand,
   decision: decisionCommand,
   next: nextCommand,
+  agent: agentCommand,
+  check: checkVerbCommand,
+  deliver: deliverVerbCommand,
+  daemon: daemonCommand,
 };
 
 function errorMessage(error: unknown): string {
@@ -626,9 +786,13 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     if (command === undefined) throw new UsageError(name === undefined ? "Missing command." : `Unknown command "${name}".`);
     return await command(argv.slice(1), io);
   } catch (error) {
-    if (error instanceof UsageError) {
+    if (error instanceof UsageError || error instanceof CommandMisused) {
       io.stderr(`${error.message}\n${USAGE}\n`);
       return EXIT_USAGE;
+    }
+    if (error instanceof CommandRefused) {
+      io.stderr(`${error.message}\n`);
+      return EXIT_FAILURE;
     }
     if (error instanceof RevisionConflict) {
       io.stderr(`${errorMessage(error)}\n`);

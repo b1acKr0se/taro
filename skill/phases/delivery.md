@@ -54,13 +54,14 @@ Any visible change, at every level:
 2. **EVIDENCE** (`reference/tickets.md`): the checks with results, the review outcome, the `ux:`
    line and coverage map, the screenshots in `$TARO_EVIDENCE/<ID>/` (desktop and phone for visible
    changes), or `screenshots: none` with a reason. An investigation needs at least one `check:` line.
-3. A new EXECUTION record with `pr: <url>` (pull request) and `review-head: <sha>` (the full `headRefOid` from
-   `gh pr view <url> --json headRefOid`, or your branch head for local delivery): Accept merges
-   that head.
-4. **FINAL** (`--final-summary`, `templates/final.md`: What changed ≤5 bullets, How it was verified
-   ≤3, Limitations ≤3, Rulings ≤5 when you made any, the revision line), moving the ticket to
-   **Awaiting acceptance** in the same edit. An investigation then raises its `investigation-done`
-   decision.
+   Run the final checks as `taro check -- <command>`: `taro deliver` offers their results as
+   `check:` lines, recorded when you pass `--evidence-from-checks`.
+3. **FINAL** (`--final-summary`, `templates/final.md`: What changed ≤5 bullets, How it was verified
+   ≤3, Limitations ≤3, Rulings ≤5 when you made any, the revision line).
+4. **`taro deliver <ID>`**: it reads the PR and its head with gh (your branch head for local
+   delivery), records `pr:` and `review-head:` in EXECUTION (Accept merges that head), fills FINAL's
+   revision line and moves the ticket to **Awaiting acceptance**. When Accept would refuse, it lists
+   what is missing and writes nothing. An investigation then raises its `investigation-done` decision.
 
 The user accepts or requests changes from the card under your newest `done:` message: end the
 delivering turn with `done: …`

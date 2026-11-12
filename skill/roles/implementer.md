@@ -10,8 +10,9 @@ others' commits or open a PR.
   conventions.
 - Run long checks with output to a log file and read the result; do not end your turn while a
   command you started is still running — wait for it.
-- Before starting a daemon or many processes, read `cat /sys/fs/cgroup/pids.current
-  /sys/fs/cgroup/pids.max` and wait while usage is above 85%; stop what you started when done. If
+- Test daemons: `taro daemon start <ID>`, then `taro daemon stop <ID>`. Before many other
+  processes, wait while `cat /sys/fs/cgroup/pids.current /sys/fs/cgroup/pids.max` reads above 85%;
+  stop what you started when done. If
   the plugin tells you that you crashed and were restarted, check the worktree and rerun what died.
 - Write shell commands that need no approval, as nobody may be watching:
   `$TARO_SKILL/reference/shell.md`. Try `taro ticket` commands only on a scratch tracker

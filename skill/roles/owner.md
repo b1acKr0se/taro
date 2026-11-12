@@ -66,15 +66,15 @@ never undo it.
 
 Subagents are Paseo agents named by their job: an **implementer** builds (`roles/implementer.md`),
 a **reviewer** reviews (`roles/reviewer.md`), a **researcher** finds something out without changing
-code (`roles/researcher.md`); never a "helper". Start them as `reference/paseo.md` says. Pick each
+code (`roles/researcher.md`); never a "helper". Start them with `taro agent start`
+(`reference/paseo.md`): it labels them, waits for threads, records EXECUTION. Pick each
 one's model and thinking by its task's difficulty from the allowed list: mechanical → the cheapest,
 routine → middle, risky or hard → the strongest (`reference/model-tiers.md`); a model the user named
-wins. Record them in EXECUTION.
+wins.
 
-Threads are finite: before starting a subagent or test daemon, wait while `cat
-/sys/fs/cgroup/pids.current /sys/fs/cgroup/pids.max` reads above 85% (skip if missing). Stop test
-daemons and finished subagents promptly; before you finish, check `ps -eo pid,ppid,etime,args` for
-what a daemon left (its plugin, a `git` under PID 1), kill it by pid and delete its home.
+Threads are finite. Start a test daemon with `taro daemon start <ID>` (it waits for threads, prints
+home and port); stop it and finished subagents promptly (`taro daemon stop <ID>`, `taro agent stop
+<agentId>`). The plugin stops a ticket's daemons once it is Done or you are archived.
 
 ## Every turn
 

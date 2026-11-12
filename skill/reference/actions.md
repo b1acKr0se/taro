@@ -16,3 +16,15 @@ user's own terminal.
 - **Accept, reopen, request-changes, change-spec, close-round and the decision verbs are the user's**:
   they refuse inside an agent session (`$PASEO_AGENT_ID` set; exit 1, like any refusal). Never work around that; an
   agent asks the user. Pause, resume and relaunch-owner run anywhere.
+
+## The owner's mechanical steps
+
+    taro agent start <job> <ID> --model <id> [--thinking <id>] --brief-file <file> [--task "<task>"] [--worktree]
+    taro agent stop <agentId>
+    taro check [--ticket <ID>] -- <command>
+    taro deliver <ID> [--evidence-from-checks]
+    taro daemon start|stop|list <ID>
+
+- Starting an agent or a daemon waits while threads are above 85% (`--wait <seconds>`, then refuses).
+- `taro check` logs the exit code and summary line for the ticket its branch names; `taro deliver`
+  is the owner's (`phases/delivery.md`). A test daemon never uses port 6767 or `~/.paseo`.

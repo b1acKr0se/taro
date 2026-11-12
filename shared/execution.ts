@@ -6,9 +6,9 @@
  * rounds (TR-229) delivered something else.
  */
 
-import { MERGE_METHOD_TITLES, mergeFlag } from "./merge-method";
-import type { MergeMethod } from "./project";
-import { reopenRound, roundNotes } from "./reopen";
+import { MERGE_METHOD_TITLES, mergeFlag } from "./merge-method.ts";
+import type { MergeMethod } from "./project.ts";
+import { reopenRound, roundNotes } from "./reopen.ts";
 
 /** The notes split into records; each record starts a line with its upper-case name. */
 export function noteRecords(notes: string | null): string[] {

@@ -25,14 +25,16 @@ paseo run -d --workspace <workspaceId> --provider <ownerModel> [--thinking <id>]
 ## A subagent (task owner only)
 
 ```bash
-paseo run -d --workspace <your workspaceId> --provider <model> [--thinking <id>] --mode <bypass mode> \
-  --title "<ID> · <job>: <task>" \
-  --label taro.project=<project> --label taro.role=<job> --label taro.ticket=<ID> \
-  --env TARO_TRACKER=<tracker> --env TARO_PROJECT=<project> --env TARO_SKILL=<skill> \
-  --json "<brief: an implementer's is its definition of done>"
+taro agent start <job> <ID> --model <model> [--thinking <id>] --brief-file <file> \
+  --task "<task>" [--worktree]
+# → agentId. Write the brief to a file first; an implementer's is its definition of done.
+taro agent stop <agentId>     # archives it
 ```
 
-Never drop a label or run `paseo run` in another form: Paseo cannot add labels to a running agent, so an unlabelled subagent is not listed, supervised or heard from, and a permission ask from it shows no card. The plugin finds one within a minute and tells you to archive it and start it again.
+It passes the Taro labels and environment, the title `<ID> · <job>: <task>` and the bypass mode,
+waits while threads are above 85%, and records the subagent in EXECUTION. Never start one with
+`paseo run` yourself: Paseo cannot add labels to a running agent, so an unlabelled subagent is not
+listed, supervised or heard from, and a permission ask from it shows no card.
 
 `<ID>` is the ticket the subagent works on: a child's id for work on a child ticket, so its card
 shows the subagent and its state. `<job>` is what the subagent does: `implementer`, `reviewer` or `researcher`. Name it by that job in
@@ -41,10 +43,9 @@ at a glance, as a phrase starting with a verb in -ing: `building the board colum
 tab`, `checking the whole branch`. The board shows it as "Implementer building the board columns… ·
 26m"; never a bare "step 3" (a step number may follow as a hint: `…, 2 of 3`).
 
-Bypass mode ids: Claude `bypassPermissions`, Codex `full-access`. Models: `paseo provider models
-<provider> --json`; pick from the project's allowed list. Parallel children only: create their own
-worktree first (as for an owner, branching from your parent branch) and run them there.
+Models: pick from the project's allowed list (the command refuses others). Parallel children only:
+`--worktree` gives each its own worktree, branched from your branch.
 
 The plugin delivers each subagent's final message to you when its turn ends; you do not need to poll.
 To look anyway: `paseo inspect <agentId> --json`, `paseo logs <agentId>`. To steer a subagent:
-`paseo send <agentId> "<message>"`. To end one: `paseo archive <agentId>`.
+`paseo send <agentId> "<message>"`. To end one: `taro agent stop <agentId>`.

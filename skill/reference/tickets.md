@@ -15,7 +15,7 @@ taro ticket edit SH-012 --add-label complexity-medium
 taro ticket edit SH-012 --append-notes "<record>" --plain
 taro ticket edit SH-012 --dep SH-011 --remove-dep SH-009   # one id each, or comma-separated; --dep needs an existing ticket
 taro ticket edit SH-012 --check-ac 1                # an older ticket's acceptance criterion
-taro ticket edit SH-012 --final-summary "<FINAL>" -s "Awaiting acceptance" --revision <rev>   # templates/final.md
+taro ticket edit SH-012 --final-summary "<FINAL>" --revision <rev>   # templates/final.md; then taro deliver SH-012
 taro ticket check                             # problems in any ticket file, bad dependencies included, one per line; exit 0 when clean
 ```
 
@@ -75,7 +75,7 @@ rather than exceed it.
 
 - **DISPATCH-INTENT** (manager, before launching): ticket, unique token, intended branch.
 - **EXECUTION**: owner agent id, owner model, workspace id, machine (`hostname`), worktree path, branch, base
-  SHA; later the subagents (agent id, job, task) and `review-head: <sha>`.
+  SHA; later the subagents and `review-head: <sha>`, written by `taro agent start` and `taro deliver`.
 - **APPROVAL**: the user's exact words, time, and what they approved (the plan).
 - **MILESTONE**: one line of at most about 150 characters: what happened and what's next, e.g.
   `MILESTONE 2026-10-13T14:02Z — Picker built (6cdd38a), checks green; next: review`. Before a long
