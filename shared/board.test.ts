@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { boardColumn, columnCounts, complexityOf, inboxCount, isInboxTicket, needsYouExtras, questionsForUser, ticketAgents, type CardInputs, type JoinedAgent } from "./board";
+import { boardColumn, columnCounts, complexityOf, inboxCount, isInboxTicket, needsYouExtras, questionsForUser, ticketAgents, waitingOnUser, type CardInputs, type JoinedAgent } from "./board";
 
 const base: CardInputs = { status: "In Progress", ownerElsewhere: false, agent: { status: "idle", pendingPermissions: 0 }, lastStatus: "waiting", openQuestions: 0, stalledAfterNudge: false };
 
@@ -293,9 +293,9 @@ describe("needsYouExtras and inboxCount (TR-064)", () => {
 
 describe("inboxCount counts each card the Inbox lists (TR-123)", () => {
   const quiet = { managerDecisions: [], alerts: [] };
-  const question = { id: "scope-approval" };
+  const question: { id: string; madeNonBlocking?: boolean } = { id: "scope-approval" };
   // An owner's questions arrive as ticketQuestions; their tickets' cards carry them as decisions.
-  const owner = (column: "needs-you" | "working" | "queued" | "stalled", decisions: readonly unknown[]) => ({ column, decisions });
+  const owner = (column: "needs-you" | "working" | "queued" | "stalled", decisions: readonly { madeNonBlocking?: boolean }[]) => ({ column, decisions });
 
   // TR-186: a question asked after approval is non-blocking, and its idle owner's card sat in Working.
   it("puts a ticket with an open non-blocking question under Needs you, its owner idle or going on with the default", () => {
@@ -312,6 +312,20 @@ describe("inboxCount counts each card the Inbox lists (TR-123)", () => {
     // An implementer or researcher asking its owner is not a question for the user.
     expect(questionsForUser([{ blocking: false, agentRole: "implementer" }, { blocking: false, agentRole: "researcher" }, { blocking: false, agentRole: "reviewer" }])).toBe(0);
     expect(questionsForUser([{ blocking: true, agentRole: "implementer" }])).toBe(1);
+  });
+
+  // TR-263 RULING: a question the owner went on with by default after approval is the owner's call, answerable in the ticket chat.
+  it("does not wait on the user for an owner's question it went on with by default after approval", () => {
+    const defaulted = { blocking: false, agentRole: "owner", madeNonBlocking: true };
+    expect(questionsForUser([defaulted])).toBe(0);
+    expect(questionsForUser([defaulted, { blocking: false, agentRole: "owner" }])).toBe(1);
+    expect(waitingOnUser([defaulted, { blocking: true, agentRole: "owner", madeNonBlocking: false }])).toEqual([{ blocking: true, agentRole: "owner", madeNonBlocking: false }]);
+  });
+
+  it("lists a waiting ticket as itself when its only question was gone on with by default (TR-263)", () => {
+    expect(isInboxTicket(owner("needs-you", [{ madeNonBlocking: true }]))).toBe(true);
+    expect(inboxCount({ ...quiet, cards: [owner("needs-you", [{ madeNonBlocking: true }])], ticketQuestions: 0 }, false)).toBe(1);
+    expect(inboxCount({ ...quiet, cards: [owner("working", [{ madeNonBlocking: true }])], ticketQuestions: 0 }, false)).toBe(0);
   });
 
   it("counts an owner's non-blocking question once, its ticket drawn as that question in Needs you", () => {

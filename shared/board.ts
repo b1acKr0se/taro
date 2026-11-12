@@ -5,6 +5,7 @@
  */
 import { z } from "zod";
 
+import { wentOnWithDefault } from "./planning-questions";
 import { isSubagentRole, roleFromLabel, TARO_LABELS } from "./project";
 import type { StatusState } from "./reports";
 
@@ -67,10 +68,16 @@ export interface CardInputs {
 /**
  * The open questions on a ticket that wait on the user: every one its owner asks, blocking or not, as
  * the answer is the user's even while the owner goes on with its default (TR-186); a subagent's only
- * when blocking, as its owner answers the rest.
+ * when blocking, as its owner answers the rest. Not one the owner went on with by default after approval
+ * (TR-263): the owner decided it, and it stays answerable in the ticket chat.
  */
-export function questionsForUser(decisions: readonly { blocking: boolean; agentRole: string }[]): number {
-  return decisions.filter((decision) => decision.blocking || decision.agentRole === "owner").length;
+export function questionsForUser(decisions: readonly { blocking: boolean; agentRole: string; madeNonBlocking?: boolean | undefined }[]): number {
+  return waitingOnUser(decisions).filter((decision) => decision.blocking || decision.agentRole === "owner").length;
+}
+
+/** The open questions Needs you, the Inbox and its count list: all but those the owner went on with by default after approval (TR-263). */
+export function waitingOnUser<D extends { madeNonBlocking?: boolean | undefined }>(decisions: readonly D[]): D[] {
+  return decisions.filter((decision) => !wentOnWithDefault(decision));
 }
 
 const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing"]);
@@ -233,8 +240,8 @@ export function needsYouExtras(board: { managerDecisions: readonly unknown[]; ma
 }
 
 /** A ticket the Inbox lists as itself: one waiting on you with no question, which is drawn as that question instead, or a stalled one. */
-export function isInboxTicket(card: { column: ColumnId; decisions: readonly unknown[] }): boolean {
-  return (card.column === "needs-you" && card.decisions.length === 0) || card.column === "stalled";
+export function isInboxTicket(card: { column: ColumnId; decisions: readonly { madeNonBlocking?: boolean | undefined }[] }): boolean {
+  return (card.column === "needs-you" && waitingOnUser(card.decisions).length === 0) || card.column === "stalled";
 }
 
 /**
@@ -246,7 +253,7 @@ export function isInboxTicket(card: { column: ColumnId; decisions: readonly unkn
  */
 export function inboxCount(
   board: {
-    cards: readonly { column: ColumnId; decisions: readonly unknown[] }[];
+    cards: readonly { column: ColumnId; decisions: readonly { madeNonBlocking?: boolean | undefined }[] }[];
     managerDecisions: readonly unknown[];
     ticketQuestions?: number;
     managerPermission?: unknown;

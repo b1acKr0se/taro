@@ -26,3 +26,12 @@ export function asStored<D extends { blocking: boolean }>(block: D, stored: { ma
   if (stored.madeBlocking === true) return { ...block, blocking: true };
   return stored.madeNonBlocking === true ? { ...block, blocking: false } : block;
 }
+
+/**
+ * An owner's question asked after approval that the plugin showed not blocking, the owner going on with
+ * its default (TR-263): the owner decided it, so it holds neither the delivery nor Accept, and it is not
+ * counted in Needs you, the Inbox or a notification. It stays answerable in the ticket chat until delivery.
+ */
+export function wentOnWithDefault(decision: { madeNonBlocking?: boolean | undefined }): boolean {
+  return decision.madeNonBlocking === true;
+}

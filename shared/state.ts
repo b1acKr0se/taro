@@ -43,6 +43,8 @@ export const StoredDecisionSchema = ParsedDecisionSchema.extend({
    * after its plan was approved, with no `surprise:`; the owner goes on with its default.
    */
   madeNonBlocking: z.boolean().optional(),
+  /** Closed by the plugin as its owner delivered (TR-263): a question made not blocking, gone on with its default. Status "withdrawn". */
+  closedWithDefault: z.boolean().optional(),
 });
 export type StoredDecision = z.infer<typeof StoredDecisionSchema>;
 

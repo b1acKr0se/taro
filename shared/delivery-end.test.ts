@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deliveryEndedRecord, deliveryOnOffer, deliveryTakenBackRecord, asksToAccept, questionEndingDelivery, questionHoldingAccept, questionOpenAtDelivery, stillDelivering } from "./delivery-end";
+import { deliveryEndedRecord, deliveryOnOffer, deliveryTakenBackRecord, asksToAccept, questionEndingDelivery, questionHoldingAccept, questionOpenAtDelivery, questionsDefaultedAtDelivery, stillDelivering } from "./delivery-end";
 
 const asked = (id: string, blocking: boolean) => ({ id, blocking });
 
@@ -72,6 +72,14 @@ describe("questionOpenAtDelivery (TR-146)", () => {
     expect(questionOpenAtDelivery([stored("tone", "owner-1", "withdrawn"), stored("naming", "owner-1", "answered")], "owner-1")).toBeNull();
     expect(questionOpenAtDelivery([stored("investigation-done", "owner-1", "open")], "owner-1")).toBeNull();
   });
+
+  // TR-263: one the owner went on with by default after approval closes at delivery instead.
+  it("skips a question the owner went on with by default, and picks an ordinary one after it", () => {
+    const defaulted = { ...stored("naming", "owner-1", "open"), madeNonBlocking: true };
+    expect(questionOpenAtDelivery([defaulted], "owner-1")).toBeNull();
+    expect(questionOpenAtDelivery([defaulted, stored("tone", "owner-1", "open")], "owner-1")).toEqual(stored("tone", "owner-1", "open"));
+    expect(questionsDefaultedAtDelivery([defaulted, stored("tone", "owner-1", "open"), { ...defaulted, agentId: "owner-2" }, { ...defaulted, status: "answered" }], "owner-1")).toEqual([defaulted]);
+  });
 });
 
 describe("deliveryTakenBackRecord", () => {
@@ -89,6 +97,11 @@ describe("questionHoldingAccept (TR-146)", () => {
     expect(questionHoldingAccept([stored("schema", "implementer", "open"), stored("tone", "owner", "answered"), stored("investigation-done", "owner", "open")])).toBeNull();
     expect(questionHoldingAccept([stored("schema", "implementer", "open"), stored("count-style", "owner", "open")])).toEqual(stored("count-style", "owner", "open"));
     expect(questionHoldingAccept([])).toBeNull();
+  });
+
+  it("is not a question the owner went on with by default after approval (TR-263)", () => {
+    expect(questionHoldingAccept([{ ...stored("naming", "owner", "open"), madeNonBlocking: true }])).toBeNull();
+    expect(questionHoldingAccept([{ ...stored("naming", "owner", "open"), madeNonBlocking: true }, stored("tone", "owner", "open")])).toEqual(stored("tone", "owner", "open"));
   });
 });
 

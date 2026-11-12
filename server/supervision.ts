@@ -7,7 +7,7 @@
  */
 import { join } from "node:path";
 
-import { asksToAccept, deliveryEndedRecord, deliveryTakenBackRecord, questionEndingDelivery, questionOpenAtDelivery } from "../shared/delivery-end";
+import { asksToAccept, deliveryEndedRecord, deliveryOnOffer, deliveryTakenBackRecord, questionEndingDelivery, questionOpenAtDelivery, questionsDefaultedAtDelivery } from "../shared/delivery-end";
 import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compaction";
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
@@ -869,8 +869,12 @@ export class Supervisor {
    */
   private async takeBackDeliveryWithOpenQuestion(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity): Promise<boolean> {
     if (identity.ticket === null) return false;
-    const open = questionOpenAtDelivery(await this.state.allDecisions(), agent.id);
-    if (open === null) return false;
+    const decisions = await this.state.allDecisions();
+    const open = questionOpenAtDelivery(decisions, agent.id);
+    if (open === null) {
+      await this.closeDefaultedAtDelivery(identity, identity.ticket, questionsDefaultedAtDelivery(decisions, agent.id));
+      return false;
+    }
     try {
       // Written only while the delivery is on offer, checked under the tracker's lock.
       const tracker = (await projectPaths(identity.project)).tracker;
@@ -886,6 +890,29 @@ export class Supervisor {
     });
     await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.deliveryWithOpenQuestion, { ticket: identity.ticket, question: `\`${open.id}\`` }));
     return true;
+  }
+
+  /**
+   * The owner's questions it went on with by default after approval (TR-263), still open as it delivers:
+   * the owner decided them (each a RULING), so they close with the delivery rather than hold it.
+   */
+  private async closeDefaultedAtDelivery(identity: TaroIdentity, ticket: string, defaulted: readonly StoredDecision[]): Promise<void> {
+    if (defaulted.length === 0) return;
+    try {
+      const detail = await viewTicket((await projectPaths(identity.project)).tracker, ticket);
+      if (!deliveryOnOffer({ status: detail.status, notes: detail.implementationNotes })) return;
+    } catch (error) {
+      console.warn(`[taro] reading ${ticket} to close its defaulted questions: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    const keys = new Set(defaulted.map((decision) => decision.key));
+    await this.state.updateDecisions((stored) => {
+      for (const decision of stored) {
+        if (decision.status !== "open" || !keys.has(decision.key)) continue;
+        Object.assign(decision, { status: "withdrawn", closedWithDefault: true });
+      }
+    });
+    console.log(`[taro] ${ticket} delivered: closed ${defaulted.map((decision) => `\`${decision.id}\``).join(", ")} as gone on with the default`);
   }
 
   /**

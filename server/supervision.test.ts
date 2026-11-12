@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { questionHoldingAccept } from "../shared/delivery-end";
 import type { AgentState, StoredDecision } from "../shared/state";
 import { fetchLiveAgent, listTaroAgents } from "./agents";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TimelinePage, TurnOutcome } from "./host-types";
@@ -886,7 +887,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       expect(gated()).toHaveLength(2);
     });
 
-    it("shows a scope-approval asked again with a surprise, before approval, and after the approval was taken back by Request changes", async () => {
+    it("shows a scope-approval asked again with a surprise or before approval; a Request changes on a surprise re-ask keeps the round approved", async () => {
       withTicket(APPROVED);
       const surprised = fakeState();
       await run(supervisor(surprised.state), human("start"), extra(ask("scope-approval", "Approve the plan for TR-9?"), "surprise: Out of scope says no import, and the fix needs one"));
@@ -896,13 +897,14 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       withTicket(`${APPROVED}\n\nANSWER 2026-01-05T11:00Z — scope-approval: "Approve the plan for TR-9?" → Request changes ("no import") (the user, from the Taro screen)`);
       const changed = fakeState();
       await run(supervisor(changed.state), human("start"), ask("scope-approval", "Approve the plan for TR-9?"));
-      expect(shown(changed.decisions)).toEqual([["scope-approval", "open", true, undefined]]);
+      expect(changed.decisions).toEqual([]);
+      expect(gated()).toEqual(["approval-repeated:TR-9:- `scope-approval`: not shown; the plan stays approved"]);
 
       withTicket(null, "Planning");
       const first = fakeState();
       await run(supervisor(first.state), human("start"), ask("scope-approval", "Approve the plan for TR-9?"));
       expect(shown(first.decisions)).toEqual([["scope-approval", "open", true, undefined]]);
-      expect(gated()).toEqual([]);
+      expect(gated()).toHaveLength(1);
     });
 
     it("shows it again in a reopened round, which needs its own approval", async () => {
@@ -997,6 +999,52 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       const { state, decisions } = fakeState();
       await run(supervisor(state), human("start"), lightly(extra(ask("tone", "tone?"), "default: Yes")));
       expect(shown(decisions)).toEqual([["tone", "open", false, undefined]]);
+    });
+
+    // Review blocker: a question the owner went on with by default is its call; it must not hold the delivery.
+    it("closes a question gone on with by default as the owner delivers: the delivery stays, Accept is not held", async () => {
+      withTicket(APPROVED);
+      const { state, decisions } = fakeState();
+      const taro = supervisor(state);
+      const first = [human("start"), extra(ask("naming", "Call it Export or Save as?"), "default: Yes")];
+      await run(taro, ...first);
+      expect(shown(decisions)).toEqual([["naming", "open", false, true]]);
+      expect(questionHoldingAccept(decisions)).toBeNull();
+
+      // The owner delivers in a later turn, the defaulted question still open.
+      vi.mocked(endDelivery).mockClear();
+      vi.mocked(endDelivery).mockResolvedValue(true);
+      withTicket(APPROVED, "Awaiting acceptance");
+      await run(taro, ...first, plugin("go on"), reply);
+      expect(endDelivery).not.toHaveBeenCalled();
+      expect(vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("delivery-open-question:"))).toEqual([]);
+      expect(decisions.map((decision) => [decision.id, decision.status, decision.closedWithDefault])).toEqual([["naming", "withdrawn", true]]);
+    });
+
+    it("still takes back a delivery made with an ordinary question open after approval", async () => {
+      withTicket(APPROVED);
+      const { state, decisions } = fakeState();
+      const taro = supervisor(state);
+      const first = [human("start"), lightly(extra(ask("tone", "tone?"), "default: Yes"))];
+      await run(taro, ...first);
+      vi.mocked(endDelivery).mockClear();
+      vi.mocked(endDelivery).mockResolvedValue(true);
+      withTicket(APPROVED, "Awaiting acceptance");
+      await run(taro, ...first, plugin("go on"), reply);
+      expect(vi.mocked(endDelivery).mock.calls.map(([, , record]) => record.replace(/^DELIVERY-ENDED \S+/, "DELIVERY-ENDED <at>"))).toEqual([
+        "DELIVERY-ENDED <at> — the owner delivered with `tone` still open: back to In Progress until it is answered and the owner delivers again",
+      ]);
+      expect(decisions.map((decision) => [decision.id, decision.status, decision.closedWithDefault])).toEqual([["tone", "open", undefined]]);
+    });
+
+    it("keeps a defaulted question open while the delivery is not on offer", async () => {
+      withTicket(APPROVED);
+      const { state, decisions } = fakeState();
+      const taro = supervisor(state);
+      const first = [human("start"), extra(ask("naming", "Call it Export or Save as?"), "default: Yes")];
+      await run(taro, ...first);
+      await run(taro, ...first, plugin("go on"), reply);
+      expect(decisions.map((decision) => [decision.id, decision.status, decision.closedWithDefault])).toEqual([["naming", "open", undefined]]);
     });
 
     it("leaves every question as asked when the ticket cannot be read", async () => {
@@ -1542,7 +1590,7 @@ describe("Supervisor.onTurnEnded with commits and no plan", () => {
       expect(stops()).toHaveLength(1);
     });
 
-    it("tells again once approved and then asked to change, and in a reopened round until it is approved anew", async () => {
+    it("does not tell once approved and then asked to change (a surprise re-ask), and tells in a reopened round until it is approved anew", async () => {
       commits = 1;
       const taro = supervisor();
       const approved = answer("2026-01-05T10:05Z", 'Approve ("Approve")');
@@ -1550,9 +1598,10 @@ describe("Supervisor.onTurnEnded with commits and no plan", () => {
       await end(taro);
       ticket("In Progress", PLAN, [], `${approved}\n\n${answer("2026-01-05T12:00Z", 'Request changes ("rename it")')}`);
       await end(taro);
+      expect(stops()).toHaveLength(0);
       ticket("In Progress", PLAN, [], `${approved}\n\nREOPENED 2026-01-06T09:00Z — user: "check it"; round 2; past owners: none`);
       await end(supervisor());
-      expect(stops()).toHaveLength(2);
+      expect(stops()).toHaveLength(1);
     });
 
     it("never stops a trivial or low owner, nor one with no commits", async () => {

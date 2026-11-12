@@ -32,8 +32,9 @@ describe("buildGap", () => {
     expect(gap('APPROVAL 2026-01-05T10:05Z — the user: "approve, but skip the review"')).toBeNull();
   });
 
-  it("is no-approval again when a later Request changes takes the approval back", () => {
-    expect(gap(`${APPROVE}\n\n${answer("2026-01-05T12:00Z", 'Request changes ("rename it")')}`)).toBe("no-approval");
+  // Review finding: a Request changes answers the surprise a plan was asked again for, not the whole round.
+  it("stays approved when a later Request changes answers a plan asked again with a surprise", () => {
+    expect(gap(`${APPROVE}\n\n${answer("2026-01-05T12:00Z", 'Request changes ("rename it")')}`)).toBeNull();
   });
 
   it("is no-approval in a reopened round until that round approves its own plan", () => {
@@ -59,6 +60,14 @@ describe("approvedInRound and workApproved", () => {
     expect(workApproved(null, APPROVE)).toBe(true);
     expect(workApproved(APPROVE, null)).toBe(true);
     expect(workApproved(null, null)).toBe(false);
+  });
+
+  it("stays approved after a surprise re-ask answered Request changes, until the round is reopened", () => {
+    const reasked = `${APPROVE}\n\nMILESTONE 2026-01-05T11:00Z — asked scope-approval again with surprise: the import\n\n${answer("2026-01-05T11:30Z", 'Request changes ("keep the import out")')}`;
+    expect(approvedInRound(reasked)).toBe(true);
+    expect(approvedInRound(`${CHANGES}\n\n${APPROVE}`)).toBe(true);
+    expect(approvedInRound(CHANGES)).toBe(false);
+    expect(approvedInRound(`${reasked}\n\n${REOPENED}\n\n${CHANGES}`)).toBe(false);
   });
 
   it("does not take the plugin's APPROVAL-REPEATED record for an approval", () => {

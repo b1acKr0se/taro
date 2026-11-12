@@ -192,6 +192,11 @@ describe("questionCards", () => {
     expect(out?.map((card) => [card.outcome, card.tone, card.time])).toEqual([["Withdrawn", "neutral", null], ["Withdrawn: its agent went away", "neutral", null]]);
   });
 
+  it("says a question gone on with by default was closed at delivery, with the default (TR-263)", () => {
+    const closed = stored("one", { status: "withdrawn", answer: null, default: "Export", madeNonBlocking: true, closedWithDefault: true });
+    expect(cards([message("a", [block("one")])], [closed]).get("a")?.map((card) => [card.outcome, card.tone])).toEqual([["Closed at delivery: the owner went on with “Export”", "neutral"]]);
+  });
+
   it("dates a withdrawal by the agent's withdrawing message, and one the plugin made not at all", () => {
     const withdrawing = "```decision\nid: one\nstatus: withdrawn\n```";
     const rows = [message("a", [block("one"), block("two")]), message("b", [withdrawing], "2026-01-19T10:20:00Z")];

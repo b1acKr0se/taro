@@ -18,6 +18,11 @@ describe("decisionsOfProjects", () => {
     expect(decisionsOfProjects(open, summaries("alpha", "beta", "gamma")).map((each) => each.id)).toEqual(["a1", "b1", "a2", "c1"]);
   });
 
+  it("leaves out a question the owner went on with by default after approval (TR-263)", () => {
+    const defaulted = { ...decision("alpha", "a3"), madeNonBlocking: true } as StoredDecision;
+    expect(decisionsOfProjects([...open, defaulted], summaries("alpha")).map((each) => each.id)).toEqual(["a1", "a2"]);
+  });
+
   it("lists nothing for no projects or no decisions", () => {
     expect(decisionsOfProjects(open, [])).toEqual([]);
     expect(decisionsOfProjects([], summaries("alpha"))).toEqual([]);

@@ -59,11 +59,12 @@ export function lastPlanAnswer(notes: string | null): PlanAnswerRecord | null {
 }
 
 /**
- * Whether the round in progress has its plan approved: its newest plan answer is Approve or an
- * APPROVAL record. A later Request changes (to a plan asked again with a surprise) takes it back.
+ * Whether the round in progress has its plan approved: an Approve or an APPROVAL record after the
+ * latest REOPENED. A later Request changes answers only the surprise it was asked again for, so the
+ * round stays approved; only a reopened round needs approval again.
  */
 export function approvedInRound(notes: string | null): boolean {
-  return lastPlanAnswer(notes)?.kind === "approved";
+  return planAnswerRecords(roundNotes(notes)).some((record) => record.kind === "approved");
 }
 
 /** The parent of a child ticket (`TR-263.02` → `TR-263`); null for a top-level one. */

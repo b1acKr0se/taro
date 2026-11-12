@@ -164,6 +164,7 @@ const RECORD_KEPT_MS = 14 * 24 * 60 * 60 * 1000;
  */
 export function storedDecisionView(decision: StoredDecision, clock: (iso: string) => string | null): FinishedView | null {
   if (decision.status === "withdrawn") {
+    if (decision.closedWithDefault === true) return { outcome: `Closed at delivery: the owner went on with “${decision.default.trim()}”`, tone: "neutral", time: null, words: null };
     return { outcome: decision.withdrawnWithAgent === true ? "Withdrawn: its agent went away" : "Withdrawn", tone: "neutral", time: null, words: null };
   }
   if (decision.status === "dismissed") return { outcome: "Dismissed", tone: "neutral", time: decision.dismissedAt === undefined ? null : clock(decision.dismissedAt), words: null };

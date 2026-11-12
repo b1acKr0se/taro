@@ -107,6 +107,13 @@ describe("cardCalls", () => {
     expect(calls).toEqual([]);
   });
 
+  // TR-263 RULING: the owner went on with it by default; it is answered in the ticket chat, not called for on the card.
+  it("leaves out a question the owner went on with by default after approval, and does not hold Accept with it", () => {
+    const defaulted = decision({ default: "Yes", madeNonBlocking: true });
+    expect(cardCalls(card({ decisions: [defaulted] }))).toEqual([]);
+    expect(offersAcceptance(card({ status: "Awaiting acceptance", decisions: [defaulted] }))).toBe(true);
+  });
+
   it("offers acceptance only while an owner can hear it", () => {
     expect(cardCalls(card({ status: "Awaiting acceptance" }))).toEqual([{ kind: "acceptance", ready: true, delivered: null, evidence: null, notMerged: null }]);
     expect(cardCalls(card({ status: "Awaiting acceptance", delivered: "Drafts work offline." }))).toEqual([{ kind: "acceptance", ready: true, delivered: "Drafts work offline.", evidence: null, notMerged: null }]);
