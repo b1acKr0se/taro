@@ -91,9 +91,14 @@ the flow.
    build. Trivial and low work skips the card: go to In Progress at once and write its plan before delivery (your one
    clarifying question's answer, if any, goes into the plan); everything after that is the same
    flow, with its MILESTONE, EVIDENCE, FINAL and the Accept card at delivery. Record **APPROVAL**
-   with the user's exact words. No code before approval
-   except a throwaway check when feasibility is unknown. Changed scope needs a new approval; details
-   inside the scope do not (the plan's choices, criteria and review level are scope).
+   with the user's exact words. **No commit before this round's approval** (medium, high; a throwaway
+   check of feasibility excepted): the plugin records NO-APPROVAL and stops you (TR-263).
+   **After approval you decide** inside the approved goal, scope changes included: record each call
+   as a RULING (`reference/tickets.md`), list the costliest in FINAL's Rulings, and build on. Ask
+   the user only when an approved criterion or an Out of scope line would change, with `surprise:`
+   naming it (`reference/formats.md`). Without it the plugin does not show `scope-approval` again
+   (nor a child's under an approved parent) and shows any other blocking question as not blocking,
+   going on with its `default` (held if it has none).
 5. **Build** (In Progress; save a starting MILESTONE first). Low/medium: you write the code. High:
    implementers (below). Commit as you go, following the repository's conventions.
 6. **Review** (below), then deliver (below).
@@ -157,7 +162,7 @@ one a "helper".
 ## Children (decision 32)
 
 Split only high-complexity work with distinct deliverables. The breakdown is part of your proposal,
-so one approval covers both (a later split needs a `child-breakdown` decision). Create children with
+so one approval covers both (a later split is yours: a RULING). Create children with
 `taro ticket create … -p <your id>`. **Every child is worked by a subagent of its own**, labelled
 with the child's id (`reference/paseo.md`): an implementer to build it, a researcher for an
 investigation child, its model picked by the child's difficulty (Subagents). Never do a child's work
@@ -185,11 +190,10 @@ reviewer before it is Done. Children's questions come to you; bring real decisio
 You verify every finding against the code yourself (valid / partially valid / invalid, with
 evidence), fix the valid blockers and should-fix findings yourself, and record a REVIEW note that
 answers every finding: fixed, or rejected with the reason. A **Question** (a preference the user did
-not settle in their words or a decision: a label, wording, density, a layout choice) is not yours or the
-reviewer's to settle: fix the rest first, then raise it as a **blocking** decision with your
-recommendation, wait for the answer, and note it in the REVIEW record. Still one open at a time: raise
-the next Question once the user answers. Every Question is answered **before you deliver**: never
-deliver with one of your questions open (the plugin takes such a delivery back to In Progress, TR-146).
+not settle in their words or a decision: a label, wording, density, a layout choice) comes after
+approval, so it is yours: decide it as a RULING and note it in the REVIEW record; ask (with
+`surprise:`) only when it would change an approved criterion or Out of scope line. Never deliver
+with one of your questions open (the plugin takes such a delivery back to In Progress, TR-146).
 A reviewer blocker that is really a preference is a Question too. **Every** review checks test
 sufficiency: each changed behaviour has a test that would fail if it regressed; a bug fix keeps its
 reproduction; tests cover the input space (empty, zero, maximum, rounding, ordering), not the code's
@@ -263,7 +267,7 @@ full re-review or fix check, and the reviewer's verdict.
 - Record `pr: <url>` and `review-head: <sha>` (the full `headRefOid` from `gh pr view <url> --json
   headRefOid`) in a new EXECUTION record; Accept reads both from there. Write the FINAL summary
   (`--final-summary`) following `templates/final.md` (What changed ≤5 bullets, How it was verified
-  ≤3, Limitations ≤3, then the revision line) and move to **Awaiting acceptance**. The user accepts or requests changes
+  ≤3, Limitations ≤3, Rulings ≤5 when you made any, then the revision line) and move to **Awaiting acceptance**. The user accepts or requests changes
   from the card, which sits under your newest `done:` message: end the delivering turn with `done: …`
   and any later reply while you await acceptance with `waiting: acceptance of <ID>`.
 - **Request changes:** the user's words arrive as a message, and the plugin has already moved the

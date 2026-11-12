@@ -49,6 +49,7 @@ options:
 recommended: Per trade
 reason: audits need it; storage is cheap at current volume
 default: Per trade         # what you do if the user does not answer (non-blocking)
+surprise: Out of scope says "no schema change"   # only after approval, see below
 ```
 ````
 
@@ -57,10 +58,15 @@ default: Per trade         # what you do if the user does not answer (non-blocki
   assumption, keep going. An owner still settles it before delivering: answered, or withdrawn when
   the user answered it in words or it no longer applies (Accept waits until then).
 - **Blocking** (`blocking: true`): stop and wait. Only for real gates: an owner's question before
-  its plan is approved (every one: the plugin shows it as blocking whatever its flag), a reviewer's
-  Question (asked and answered before the owner delivers), scope approval when you made a choice the
-  user did not, a child breakdown, anything destructive, a review dispute you cannot settle.
-  An owner never delivers with a question open: the plugin takes such a delivery back.
+  its plan is approved (every one: the plugin shows it as blocking whatever its flag), scope
+  approval when you made a choice the user did not, anything destructive, and after approval only a
+  surprise (below). An owner never delivers with a question open: the plugin takes such a delivery back.
+- **`surprise:`** (owners, after the plan is approved this round, TR-263): the approved criterion or
+  Out of scope line the answer would change, quoted or named. After approval the owner decides
+  inside the approved goal and records a RULING; it asks the user only for such a change. Without
+  `surprise:` the plugin does not show `scope-approval` again (nor a child's, when its parent is
+  approved), shows any other blocking question as not blocking with its `default` (the card says
+  the owner went on with it), holds one with no `default`, and tells you. Before approval, leave it out.
 - The board shows the `question` and the option labels on a card with nothing else, and a tap on a
   label answers. So the `question` stands alone, in at most about three lines: say what is to be
   decided, never "three options", "recommends A" or "see above". Labels are a few words each and
@@ -113,9 +119,9 @@ Use these ids and options for recurring decisions (add free-form ones as needed)
 | --- | --- | --- |
 | `scope-approval` | Approve · Split into children (when proposed) | Approve; the `question` is `Approve the plan for <ID>?`, the plan in the ticket (`templates/plan.md`, `roles/owner.md`) |
 | `complexity` | Keep · Lower · Raise | Keep |
-| `child-breakdown` | Approve · Fewer children | Approve |
+| `child-breakdown` | Approve · Fewer children | Approve; after approval only with `surprise:` |
 | `investigation-done` | Build the recommendation · File follow-up · Close | Build |
-| `review-dispute` | Apply the fix · Accept as a limitation | your verdict |
+| `review-dispute` | Apply the fix · Accept as a limitation | your verdict; after approval only with `surprise:` |
 
 The user asks for a change, or another approach, by typing in the card's field (for a plan, the
 box Request changes… opens); no preset has an option for it.

@@ -130,7 +130,8 @@ rather than exceed it.
   ticket's PR, which clears the plugin's warning about it: `PR-TEMPLATE 2026-01-05T10:00Z — CONTRIBUTING.md asks for a changelog entry as the body`.
 - **FINAL**: set with `--final-summary`, following `templates/final.md`: What changed (at most 5
   bullets; the first is the ticket's one-line result), How it was verified (at most 3, the review
-  among them), Limitations (at most 3), then `Revision: <sha> on <branch> · PR: <URL or none>`.
+  among them), Limitations (at most 3), Rulings when there are any (at most 5: the costliest, then
+  `N more in the ticket`), then `Revision: <sha> on <branch> · PR: <URL or none>`.
   The evidence per criterion is the EVIDENCE record; do not repeat it.
 - **ACCEPTANCE**: the user's words, time, accepted revision and PR, and the merge result as one
   fixed field the board reads (a Done card shows GitHub's merged icon from it): `merge: merged
@@ -154,6 +155,12 @@ rather than exceed it.
 - **NO-PLAN**: written by the plugin when an owner's turn ends with commits on its branch and no
   plan on the ticket (TR-206); the owner is told to stop, write the plan and ask `scope-approval`
   before building on. A ticket labelled `complexity-trivial` or `complexity-low` is never flagged (TR-241).
+- **NO-APPROVAL**: the same with a plan the round has not approved (no APPROVAL and no Approve on
+  `scope-approval` since the latest REOPENED, nor on a child's parent; TR-263): stop, ask, wait.
+- **RULING** (owner, after approval): a call made inside the approved goal instead of asking:
+  `RULING 2026-01-05T10:00Z — <decision> — <why> — <cost if wrong>`. FINAL's Rulings lists them.
+- **APPROVAL-REPEATED**, **BLOCKING-AFTER-APPROVAL**: written by the plugin when an owner asked
+  after approval without `surprise:` (`reference/formats.md`): what it did with the question.
 - **ESCAPE**: on a delivered ticket, when a later ticket fixes a defect it shipped; written by the
   later ticket's owner. What escaped, the fixing ticket, and the check that should have caught it
   (coverage map, alignment, placeholder text, a test, a review area):
