@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>minisheet</title>
+<style>
+  body { font-family: sans-serif; margin: 0; padding: 8px; }
+  #toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  #cell-name { display: inline-block; min-width: 3em; padding: 2px 6px; border: 1px solid #aaa; background: #f5f5f5; font-weight: bold; }
+  #formula-bar { flex: 1; padding: 3px 6px; font-family: monospace; }
+  #status { color: #b00020; min-height: 1.2em; margin-bottom: 4px; }
+  #wrap { overflow: auto; max-height: calc(100vh - 90px); }
+  table#grid { border-collapse: collapse; font-family: monospace; outline: none; }
+  #grid th { background: #eee; border: 1px solid #ccc; padding: 2px 6px; position: sticky; top: 0; font-weight: normal; }
+  #grid tbody th { position: static; text-align: right; min-width: 2em; }
+  #grid td { border: 1px solid #ddd; min-width: 70px; height: 1.4em; padding: 1px 4px; white-space: nowrap; text-align: left; }
+  #grid td.num { text-align: right; }
+  #grid td.error { color: #b00020; }
+  #grid td.selected { outline: 2px solid #1a73e8; outline-offset: -2px; background: #e8f0fe; }
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <span id="cell-name"></span>
+  <input type="text" id="formula-bar" autocomplete="off" spellcheck="false">
+</div>
+<div id="status"></div>
+<div id="wrap">
+<table id="grid" tabindex="0">
+  <thead><tr id="head-row"></tr></thead>
+  <tbody id="body"></tbody>
+</table>
+</div>
+<script>
+(function () {
+  'use strict';
+  var COLS = 26, ROWS = 50;
+  var grid = document.getElementById('grid');
+  var bar = document.getElementById('formula-bar');
+  var nameEl = document.getElementById('cell-name');
+  var statusEl = document.getElementById('status');
+  var tds = {};      // ref -> td
+  var store = {};    // ref -> {raw, value, display}
+  var sel = { c: 0, r: 0 };
+
+  function colName(c) { return String.fromCharCode(65 + c); }
+  function refOf(c, r) { return colName(c) + (r + 1); }
+
+  // build table
+  (function build() {
+    var head = document.getElementById('head-row');
+    head.appendChild(document.createElement('th'));
+    for (var c = 0; c < COLS; c++) {
+      var th = document.createElement('th');
+      th.textContent = colName(c);
+      head.appendChild(th);
+    }
+    var body = document.getElementById('body');
+    for (var r = 0; r < ROWS; r++) {
+      var tr = document.createElement('tr');
+      var rh = document.createElement('th');
+      rh.textContent = String(r + 1);
+      tr.appendChild(rh);
+      for (var c2 = 0; c2 < COLS; c2++) {
+        var td = document.createElement('td');
+        var ref = refOf(c2, r);
+        td.setAttribute('data-ref', ref);
+        tds[ref] = td;
+        tr.appendChild(td);
+      }
+      body.appendChild(tr);
+    }
+  })();
+
+  function renderCell(ref) {
+    var td = tds[ref];
+    if (!td) return;
+    var cell = store[ref];
+    td.textContent = cell ? cell.display : '';
+    var isNum = !!cell && typeof cell.value === 'number';
+    var isErr = !!cell && cell.value !== null && typeof cell.value === 'object';
+    td.classList.toggle('num', isNum);
+    td.classList.toggle('error', isErr);
+    td.style.textAlign = isNum ? 'right' : 'left';
+  }
+
+  function rawOf(ref) { return store[ref] ? store[ref].raw : ''; }
+
+  function select(c, r) {
+    c = Math.max(0, Math.min(COLS - 1, c));
+    r = Math.max(0, Math.min(ROWS - 1, r));
+    var prev = tds[refOf(sel.c, sel.r)];
+    if (prev) prev.classList.remove('selected');
+    sel = { c: c, r: r };
+    var ref = refOf(c, r);
+    var td = tds[ref];
+    td.classList.add('selected');
+    nameEl.textContent = ref;
+    bar.value = rawOf(ref);
+    if (td.scrollIntoView) td.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  function apply(changed) {
+    Object.keys(changed).forEach(function (ref) {
+      var cell = changed[ref];
+      if (cell.raw === '') delete store[ref]; else store[ref] = cell;
+      renderCell(ref);
+    });
+  }
+
+  function commit(dc, dr) {
+    var c = sel.c, r = sel.r;
+    var ref = refOf(c, r);
+    var raw = bar.value;
+    function fail(msg) {
+      statusEl.textContent = msg;
+      bar.focus();
+    }
+    fetch('/api/cells', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ref: ref, raw: raw })
+    }).then(function (res) {
+      return res.text().then(function (text) {
+        var data = null;
+        try { data = JSON.parse(text); } catch (e) { data = null; }
+        if (res.ok && data && data.changed) {
+          apply(data.changed);
+          statusEl.textContent = '';
+          select(c + dc, r + dr);
+          grid.focus();
+        } else {
+          fail(data && typeof data.error === 'string' ? data.error : 'HTTP ' + res.status);
+        }
+      });
+    }).catch(function (err) {
+      fail(err && err.message ? err.message : 'network error');
+    });
+  }
+
+  bar.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commit(0, 1);
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      commit(1, 0);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      bar.value = rawOf(refOf(sel.c, sel.r));
+      grid.focus();
+    }
+  });
+
+  grid.addEventListener('click', function (e) {
+    var td = e.target.closest ? e.target.closest('td[data-ref]') : null;
+    if (td) {
+      var ref = td.getAttribute('data-ref');
+      select(ref.charCodeAt(0) - 65, parseInt(ref.slice(1), 10) - 1);
+    }
+    grid.focus();
+  });
+
+  grid.addEventListener('dblclick', function (e) {
+    var td = e.target.closest ? e.target.closest('td[data-ref]') : null;
+    if (td) {
+      var ref = td.getAttribute('data-ref');
+      select(ref.charCodeAt(0) - 65, parseInt(ref.slice(1), 10) - 1);
+      bar.focus();
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (document.activeElement === bar) return;
+    var k = e.key;
+    if (k === 'ArrowUp' || k === 'ArrowDown' || k === 'ArrowLeft' || k === 'ArrowRight') {
+      e.preventDefault();
+      var dc = k === 'ArrowRight' ? 1 : k === 'ArrowLeft' ? -1 : 0;
+      var dr = k === 'ArrowDown' ? 1 : k === 'ArrowUp' ? -1 : 0;
+      select(sel.c + dc, sel.r + dr);
+      return;
+    }
+    if (document.activeElement === grid && k.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      bar.value = k;
+      bar.focus();
+      bar.setSelectionRange(bar.value.length, bar.value.length);
+    }
+  });
+
+  fetch('/api/cells').then(function (res) { return res.json(); }).then(function (data) {
+    var cells = (data && data.cells) || {};
+    Object.keys(cells).forEach(function (ref) {
+      store[ref] = cells[ref];
+      renderCell(ref);
+    });
+    select(0, 0);
+    grid.focus();
+    document.body.setAttribute('data-ready', 'true');
+  }).catch(function (err) {
+    statusEl.textContent = err && err.message ? err.message : 'load failed';
+  });
+})();
+</script>
+</body>
+</html>
