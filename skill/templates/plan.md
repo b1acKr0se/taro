@@ -1,4 +1,4 @@
-<!-- The plan of every ticket, trivial included (a trivial or low one asks no approval and may be written after the build: the Accept card shows it), written with `taro ticket edit <ID> --plan`. Keep the seven sections, in this order, with these headings; a high plan adds Parts and Risks after Out of scope. Goal and Size are one line each; the bullet sections have no count limit, so write as many bullets as the section's purpose needs: every one earns its place, and near-duplicates merge into one. The approval card shows Goal, Choices I made, the mockups and Size; View plan shows the rest. -->
+<!-- The plan of every ticket, trivial included (a trivial or low one asks no approval and may be written after the build: the Accept card shows it), written with `taro ticket edit <ID> --plan`. Keep the seven sections, in this order, with these headings; a high plan adds Parts and Risks after Out of scope. Goal and Size are one line each; the bullet sections have no count limit: every bullet earns its place, and near-duplicates merge into one. The approval card shows Goal, Choices I made, the mockups and Size; View plan shows the rest. -->
 ## Goal
 <the user outcome, one line>
 
@@ -20,7 +20,7 @@
 
 ## Parts
 - <child id> — <what it does> — <S|M|L> — depends on: <ids or none>
-<high only: one line per child, in build order; over L is two children. The plugin holds the card while a child is missing or its definition of done lacks Owns, Interfaces or Tests>
+<high only: one line per child, in build order; over L is two children. `depends on: none` lets children run in parallel, so they never own one file. The plugin holds the card until each child exists with Owns, Interfaces and Tests>
 
 ## Risks
 - <what could go wrong> — <how the plan meets it>
