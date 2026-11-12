@@ -38,7 +38,8 @@ import type { ChatQueue } from "./chat-queue";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import { usageReading, type Stats } from "./stats";
-import { nextStep, STEP_PAGES, stepKey, type Step } from "../shared/next-step";
+import { nextStep, STEP_PAGES, stepKey, ticketLevel, type Step } from "../shared/next-step";
+import { lintPlan } from "../shared/plan-lint";
 import { stepText, stepTicket } from "./next-step";
 
 export interface TaroIdentity {
@@ -736,11 +737,14 @@ export class Supervisor {
     // Before approval a question that would go on without the user is made blocking; after it, never.
     const planning = facts.planning && !facts.approved;
     // A plan approval asked without its mockups is held back (TR-235).
-    const mockupGap = identity.role === "owner" && decisions.some((decision) => !decision.withdrawn && decision.id === SCOPE_APPROVAL) ? await this.planMockupsMissing(identity) : [];
+    const asksApproval = identity.role === "owner" && decisions.some((decision) => !decision.withdrawn && decision.id === SCOPE_APPROVAL);
+    const mockupGap = asksApproval ? await this.planMockupsMissing(identity) : [];
+    // A high plan's approval also waits for its children's specs and a plan review (TR-263).
+    const lintGap = asksApproval ? await this.planLintGaps(identity) : [];
     const newlyAsked: string[] = [];
     const opened: StoredDecision[] = [];
     const held: { id: string; open: string }[] = [];
-    const unmocked: string[] = [];
+    const heldPlans: string[] = [];
     const refused: string[] = [];
     // Blocks the approval gate did not show as asked (TR-263), each with its outcome.
     const gated: { id: string; outcome: "refuse" | "default" | "hold"; default: string }[] = [];
@@ -805,11 +809,11 @@ export class Supervisor {
           continue;
         }
         if (gate === "default") Object.assign(next, { blocking: false, madeNonBlocking: true });
-        if (mockupGap.length > 0 && block.id === SCOPE_APPROVAL && !asksToAccept(block)) {
+        if ((mockupGap.length > 0 || lintGap.length > 0) && block.id === SCOPE_APPROVAL && !asksToAccept(block)) {
           const withheld = { ...next, status: "withdrawn" as const, held: true };
           if (existing === undefined) stored.push(withheld);
           else stored[index] = withheld;
-          unmocked.push(block.id);
+          heldPlans.push(block.id);
           continue;
         }
         // An owner asks one question at a time (TR-124): the next one, in this turn or a later one, waits
@@ -845,8 +849,12 @@ export class Supervisor {
     if (refused.length > 0) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.acceptQuestionRefused, { refused: refused.map((id) => `\`${id}\``).join(", ") }));
     }
-    if (unmocked.length > 0 && identity.ticket !== null) {
+    if (heldPlans.length > 0 && identity.ticket !== null && mockupGap.length > 0) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.planWithoutMockups, { ticket: identity.ticket, missing: mockupGap.join("; "), skill: await skillDirectory() }));
+    }
+    if (heldPlans.length > 0 && identity.ticket !== null && lintGap.length > 0) {
+      console.log(`[taro] ${agent.id} asked scope-approval on ${identity.ticket}: held, the plan lint found ${lintGap.length} gap(s)`);
+      await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.planLint, { ticket: identity.ticket, gaps: lintGap.map((gap) => `- ${gap}`).join("\n"), skill: await skillDirectory() }));
     }
     if (gated.length > 0 && identity.ticket !== null) await this.tellGated(paseo, agent, identity.project, identity.ticket, gated);
     if (held.length > 0) {
@@ -915,6 +923,29 @@ export class Supervisor {
       const detail = await viewTicket((await projectPaths(identity.project)).tracker, identity.ticket);
       return await mockupsMissing(identity.project, identity.ticket, detail.implementationPlan);
     } catch {
+      return [];
+    }
+  }
+
+  /**
+   * What a high plan lacks before its approval (`shared/plan-lint.ts`): its children's specs and a
+   * plan review. Unreadable counts as nothing missing, as for the mockups.
+   */
+  private async planLintGaps(identity: TaroIdentity): Promise<string[]> {
+    if (identity.ticket === null) return [];
+    try {
+      const tracker = (await projectPaths(identity.project)).tracker;
+      const detail = await viewTicket(tracker, identity.ticket);
+      if (ticketLevel(detail.labels) !== "high") return [];
+      const children = await Promise.all(
+        detail.subtasks.map(async (subtask) => {
+          const child = await viewTicket(tracker, subtask.id);
+          return { id: child.id, description: child.description, labels: child.labels, dependencies: child.dependencies };
+        }),
+      );
+      return lintPlan({ labels: detail.labels, plan: detail.implementationPlan, notes: detail.implementationNotes, planUpdatedAt: detail.planUpdatedAt ?? null, children });
+    } catch (error) {
+      console.warn(`[taro] linting ${identity.ticket}'s plan: ${error instanceof Error ? error.message : String(error)}; not held`);
       return [];
     }
   }

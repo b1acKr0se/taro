@@ -13,6 +13,7 @@
 import { acceptHandoffOpen } from "./accept-stall";
 import { workApproved } from "./approval-gate";
 import { executionBranch, roundRecords } from "./execution";
+import { isPlanReview } from "./plan-lint";
 import { reopenRound, roundBranch } from "./reopen";
 import { isLightLevel, type Level, ticketLevel } from "./ticket-level";
 
@@ -58,9 +59,9 @@ export interface Step {
 
 const FINISHED: ReadonlySet<string> = new Set(["Done", "Cancelled"]);
 
-/** The round's newest REVIEW record says nothing is left to fix: `verdict: clean`. */
+/** The round's newest REVIEW record of the work (a plan review before approval is not one) says nothing is left to fix: `verdict: clean`. */
 export function reviewClean(notes: string | null): boolean {
-  const reviews = roundRecords(notes).filter((record) => /^REVIEW\b/.test(record));
+  const reviews = roundRecords(notes).filter((record) => /^REVIEW\b/.test(record) && !isPlanReview(record));
   const newest = reviews[reviews.length - 1];
   return newest !== undefined && /\bverdict:\s*clean\b/i.test(newest);
 }

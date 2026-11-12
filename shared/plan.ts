@@ -5,15 +5,18 @@
  * section is an older free-form one and stays Markdown.
  */
 
-export type PlanSectionKey = "goal" | "choices" | "see" | "mockups" | "outOfScope" | "proof" | "size";
+export type PlanSectionKey = "goal" | "choices" | "see" | "mockups" | "outOfScope" | "parts" | "risks" | "proof" | "size";
 
-/** The template's sections in order, each with its limit: one line for Goal and Size, none (null) for the bullet sections, which the template guides by what belongs in them. */
+/** The template's sections in order (Parts and Risks only in a high plan), each with its limit: one line for Goal and Size, none (null) for the bullet sections, which the template guides by what belongs in them. */
 export const PLAN_SECTIONS: readonly { key: PlanSectionKey; heading: string; limit: number | null }[] = [
   { key: "goal", heading: "Goal", limit: 1 },
   { key: "choices", heading: "Choices I made", limit: null },
   { key: "see", heading: "What you'll see", limit: null },
   { key: "mockups", heading: "Mockups", limit: null },
   { key: "outOfScope", heading: "Out of scope", limit: null },
+  // A high plan's own two: its children and its risks (TR-263); other levels leave them out.
+  { key: "parts", heading: "Parts", limit: null },
+  { key: "risks", heading: "Risks", limit: null },
   { key: "proof", heading: "How I'll prove it", limit: null },
   { key: "size", heading: "Size", limit: 1 },
 ];
@@ -39,6 +42,18 @@ export interface PlanChoice {
   why: string;
 }
 
+/**
+ * One line of a high plan's Parts: `<child id> — <what it does> — <S|M|L> — depends on: <ids or none>`.
+ * The fields after the id may come in any order; the size and the dependencies are found by their form.
+ */
+export interface PlanPart {
+  id: string;
+  what: string;
+  /** As written, upper case ("XL" included); "" when the line has none. */
+  size: string;
+  dependsOn: string[];
+}
+
 export interface ParsedPlan {
   /** Text before the first heading. */
   intro: string;
@@ -47,6 +62,8 @@ export interface ParsedPlan {
   goal: string;
   choices: PlanChoice[];
   size: string;
+  /** A high plan's Parts lines that name a child; empty for any other plan, and for `- none — <why>`. */
+  parts: PlanPart[];
   /** Past-limit counts per template section; 0 when within it or missing. */
   over: Record<PlanSectionKey, number>;
 }
@@ -106,6 +123,29 @@ export function splitChoice(item: string): PlanChoice {
   return { choice: item.slice(0, match.index).trim(), why: item.slice(match.index + match[0].length).trim() };
 }
 
+const PART_ID = /^[`*]*([A-Za-z][A-Za-z0-9]*-\d+(?:\.\d+)*)[`*]*:?/;
+const PART_SEPARATOR = / (?:—|–|--|-) /;
+const PART_SIZE = /^(?:size:?\s*)?(XXS|XS|S|M|L|XL|XXL)$/i;
+const PART_DEPENDS = /^depends? on:?\s*/i;
+const TICKET_ID = /[A-Za-z][A-Za-z0-9]*-\d+(?:\.\d+)*/g;
+
+/** A Parts bullet read as a child, or null for a line that names none (`none — <why>`, prose). */
+export function parsePart(item: string): PlanPart | null {
+  const id = PART_ID.exec(item.trim());
+  if (id === null) return null;
+  const fields = item.trim().slice(id[0].length).split(PART_SEPARATOR).map((field) => field.trim()).filter((field) => field !== "");
+  let size = "";
+  let dependsOn: string[] = [];
+  const what: string[] = [];
+  fields.forEach((field) => {
+    const sized = PART_SIZE.exec(field.replace(/[`*.]/g, ""));
+    if (sized !== null && size === "") size = (sized[1] ?? "").toUpperCase();
+    else if (PART_DEPENDS.test(field)) dependsOn = [...field.replace(PART_DEPENDS, "").matchAll(TICKET_ID)].map((match) => match[0]);
+    else what.push(field);
+  });
+  return { id: id[1] ?? "", what: what.join(" — "), size, dependsOn };
+}
+
 /** The plan's sections, or null when it has no Goal section (no plan, or an older free-form one). */
 export function parsePlan(markdown: string | null): ParsedPlan | null {
   if (markdown === null || markdown.trim() === "") return null;
@@ -149,6 +189,10 @@ export function parsePlan(markdown: string | null): ParsedPlan | null {
     goal: lineOf(goal),
     choices: (byKey("choices")?.items ?? []).map(splitChoice),
     size: lineOf(byKey("size")),
+    parts: (byKey("parts")?.items ?? []).flatMap((item) => {
+      const part = parsePart(item);
+      return part === null ? [] : [part];
+    }),
     over,
   };
 }

@@ -25,6 +25,7 @@ export const TEMPLATES = {
   decisionCorrection: "messages/decision-correction.md",
   decisionHeld: "messages/decision-held.md",
   planWithoutMockups: "messages/plan-without-mockups.md",
+  planLint: "messages/plan-lint.md",
   acceptQuestionRefused: "messages/accept-question-refused.md",
   planningQuestion: "messages/planning-question.md",
   deliveryWithOpenQuestion: "messages/delivery-with-open-question.md",

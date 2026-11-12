@@ -131,6 +131,13 @@ describe("the delivery page", () => {
     expect(nextStep(ticket({ labels: ["complexity-trivial"], status: "In Progress", notes: notes(EXECUTION, self) }))?.page).toBe("phases/delivery.md");
   });
 
+  it("is not brought by a clean plan review recorded before the approval", () => {
+    const planReview = "REVIEW 2026-11-01T09:00Z — plan review by r1: interfaces agree — verdict: clean";
+    expect(reviewClean(notes(planReview))).toBe(false);
+    expect(nextStep(ticket({ status: "Planning", notes: notes(planReview) }))?.page).not.toBe("phases/delivery.md");
+    expect(reviewClean(notes(planReview, REVIEW_CLEAN))).toBe(true);
+  });
+
   it("is not brought back by an older clean review once a newer one has findings", () => {
     expect(reviewClean(notes(REVIEW_CLEAN, REVIEW_FINDINGS))).toBe(false);
   });
