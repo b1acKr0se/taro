@@ -50,9 +50,10 @@ afterEach(() => {
   rmSync(home, { recursive: true, force: true });
 });
 
-function taro(args: string[]): { code: number; stdout: string; stderr: string } {
-  const env = { ...process.env, PASEO_HOME: home };
+function taro(args: string[], tracker?: string): { code: number; stdout: string; stderr: string } {
+  const env: Record<string, string | undefined> = { ...process.env, PASEO_HOME: home };
   delete env.TARO_TRACKER;
+  if (tracker !== undefined) env.TARO_TRACKER = tracker;
   delete env.TARO_PROJECT;
   const result = spawnSync(BIN, args, { encoding: "utf8", env, timeout: 60_000 });
   return { code: result.status ?? -1, stdout: result.stdout, stderr: result.stderr };
@@ -68,6 +69,12 @@ describe("taro stats", () => {
     expect(result.stdout).toContain("Cards answered after approval: 1");
     expect(result.stdout).toContain("nudges 1");
     expect(result.stdout).toContain("Permission asks waited: 0 min");
+  });
+
+  it("reads the tracker of the project it is given, not the agent's $TARO_TRACKER", { timeout: TIMEOUT }, () => {
+    const result = taro(["stats", "AP-1", "--project", "app"], join(home, "nowhere"));
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("Ticket AP-1");
   });
 
   it("prints a ticket still in Planning as not reached", { timeout: TIMEOUT }, () => {

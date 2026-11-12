@@ -160,7 +160,9 @@ export async function statsCommand(args: readonly string[], io: StatsIo): Promis
   if (since !== null && Number.isNaN(since)) throw new StatsUsage(`--since needs a date such as 2026-10-13, not "${sinceText}".`);
   const all = await readRecorded(home);
   const trackerFor = async (project: string): Promise<string> => {
-    const tracker = options.get("--tracker") ?? io.env.TARO_TRACKER ?? join(home, "plugin-data", "taro", "home", "projects", project, "tracker");
+    // An explicit --project names its own tracker under --home; $TARO_TRACKER (an agent's) serves the commands that name none.
+    const derived = join(home, "plugin-data", "taro", "home", "projects", project, "tracker");
+    const tracker = options.get("--tracker") ?? (options.has("--project") ? derived : (io.env.TARO_TRACKER ?? derived));
     const directory = await stat(tracker).catch(() => null);
     if (directory === null || !directory.isDirectory()) throw new StatsRefused(`Tracker ${tracker} is not a directory.`);
     return tracker;

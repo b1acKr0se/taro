@@ -43,12 +43,19 @@ export async function isTaroAsker(paseo: PaseoApi, known: (agentId: string) => P
  * A Taro agent's ask the user (or a stop) ended: the time it stayed open is added to its ticket's stats
  * (TR-263). An ask the rules answered waited on nobody, and one never recorded is not counted.
  */
-export async function countPermissionWait(state: Pick<PluginState, "agent" | "permissionAsk">, stats: Pick<Stats, "permissionWaited">, agentId: string, requestId: string): Promise<boolean> {
+export async function countPermissionWait(
+  state: Pick<PluginState, "agent" | "permissionAsk">,
+  stats: Pick<Stats, "permissionWaited">,
+  agentId: string,
+  requestId: string,
+  /** The agent's labels, for one asking in its first turn, before the plugin has a record of it. */
+  liveIdentity: (agentId: string) => Promise<{ project: string; ticket: string | null } | null> = async () => null,
+): Promise<boolean> {
   const ask = await state.permissionAsk(agentId, requestId);
   if (ask === null || ask.answeredAt === null || ask.by === "rules") return false;
   const waitedMs = Date.parse(ask.answeredAt) - Date.parse(ask.askedAt);
   if (Number.isNaN(waitedMs)) return false;
-  const owner = await state.agent(agentId);
+  const owner = (await state.agent(agentId)) ?? (await liveIdentity(agentId));
   if (owner === null || owner.ticket === null) return false;
   await stats.permissionWaited(owner.project, owner.ticket, waitedMs);
   return true;

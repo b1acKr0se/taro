@@ -564,9 +564,12 @@ export default function contribute(server: PluginServerContext) {
     }
   });
   // Whoever answered: the rules' mark on the ask says it was them, otherwise it was the user.
-  const removePermissionResolvedHook = server.on("agent.permission_resolved", async ({ agent, requestId, resolution }) => {
+  const removePermissionResolvedHook = server.on("agent.permission_resolved", async ({ agent, requestId, resolution }, { paseo }) => {
     await state.resolvePermissionAsk(agent.id, requestId, resolution, new Date().toISOString()).catch((error: unknown) => reportFailure(`[taro] recording the answer to ${agent.id}'s permission ask:`, error));
-    await countPermissionWait(state, stats, agent.id, requestId).catch((error: unknown) => reportFailure(`[taro] counting ${agent.id}'s permission wait:`, error));
+    await countPermissionWait(state, stats, agent.id, requestId, async (agentId) => {
+      const live = await fetchLiveAgent(paseo, agentId);
+      return live === null ? null : identityFromLabels(live.labels, live.title ?? null);
+    }).catch((error: unknown) => reportFailure(`[taro] counting ${agent.id}'s permission wait:`, error));
   });
 
   // Every Taro agent knows where its tracker and skill are, and has `taro` on PATH, on create and on resume (decision 38).

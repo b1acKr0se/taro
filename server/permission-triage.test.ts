@@ -181,6 +181,12 @@ describe("countPermissionWait (TR-263)", () => {
     expect((await run(ask({ outcome: "cancelled", by: null }), { project: "taro", ticket: "TR-1" })).counted).toBe(true);
   });
 
+  it("finds the ticket from the agent's labels when it asks in its first turn, before the plugin has a record of it", async () => {
+    const waits: unknown[][] = [];
+    const counted = await countPermissionWait({ permissionAsk: async () => ask({}), agent: async () => null } as never, { permissionWaited: async (...args: unknown[]) => void waits.push(args) } as never, "agent-1", "permission-1", async () => ({ project: "taro", ticket: "TR-2" }));
+    expect([counted, waits]).toEqual([true, [["taro", "TR-2", 450_000]]]);
+  });
+
   it("does not count an ask a rule answered", async () => {
     expect(await run(ask({ by: "rules", rule: "scratch-or-worktree" }), { project: "taro", ticket: "TR-1" })).toEqual({ counted: false, waits: [] });
   });
