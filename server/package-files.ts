@@ -68,6 +68,11 @@ export const TEMPLATES = {
   deliveryMissing: "messages/delivery-missing.md",
   acceptUnfinished: "messages/accept-unfinished.md",
   permissionDenied: "messages/permission-denied.md",
+  stepLevel: "messages/step-level.md",
+  stepBuild: "messages/step-build.md",
+  stepReview: "messages/step-review.md",
+  stepDelivery: "messages/step-delivery.md",
+  stepAccept: "messages/step-accept.md",
   permissionRules: "permission-rules.md",
 } as const;
 

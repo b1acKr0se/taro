@@ -21,6 +21,7 @@ import {
   stopAgentTurn,
   pauseTicket,
   relaunchOwner,
+  ticketNextStep,
   reopenTicket,
   closeRound,
   resumeTicket,
@@ -83,6 +84,7 @@ import { withSavedContext } from "./shared/past-context";
 import { summarize, waitingTickets } from "./shared/stats";
 import { idleCompactAfterMs } from "./shared/idle-compaction";
 import { Supervisor, identityFromLabels } from "./server/supervision";
+import { nextStepAnswer } from "./server/next-step";
 import { sessionEnvironment } from "./server/environment";
 import { readTextIfPresent, writeTextAtomically } from "./server/files";
 import { trimAgentLaunch } from "./server/agent-trim";
@@ -419,6 +421,10 @@ export default function contribute(server: PluginServerContext) {
     return { message: text };
   });
   server.handle(relaunchOwner, async ({ project, ticket }, { paseo }) => ({ agentId: await actions.relaunchOwner(keep(paseo), project, ticket) }));
+  server.handle(ticketNextStep, async ({ project, ticket }) => {
+    await requireProjectConfig(project);
+    return nextStepAnswer(project, ticket);
+  });
   server.handle(resolveTrackerSyncRpc, async ({ project, resolution }) => {
     await requireProjectConfig(project);
     return { problem: await trackers.resolve(project, resolution) };

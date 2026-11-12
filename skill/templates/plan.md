@@ -20,7 +20,7 @@
 
 ## How I'll prove it
 - <an outcome criterion and its evidence: a screenshot (phone, desktop) or a test>
-<one bullet per outcome criterion (roles/owner.md) with how it will be shown: the screenshots for the EVIDENCE `ux:` pass and the tests; every changed behaviour has one>
+<one bullet per outcome criterion (levels/medium.md) with how it will be shown: the screenshots for the EVIDENCE `ux:` pass and the tests; every changed behaviour has one>
 
 ## Size
 <complexity, review level, rough time, on one line: "Medium: one independent review; about 1 hour.">

@@ -32,7 +32,7 @@ paseo run -d --workspace <your workspaceId> --provider <model> [--thinking <id>]
   --json "<brief: an implementer's is its definition of done>"
 ```
 
-Never drop a label or run `paseo run` in another form: Paseo cannot add labels to a running agent, so an unlabelled subagent is not listed, supervised or heard from, and a permission ask from it shows no card. The plugin finds one within a minute and tells you to archive it and start it again (TR-259).
+Never drop a label or run `paseo run` in another form: Paseo cannot add labels to a running agent, so an unlabelled subagent is not listed, supervised or heard from, and a permission ask from it shows no card. The plugin finds one within a minute and tells you to archive it and start it again.
 
 `<ID>` is the ticket the subagent works on: a child's id for work on a child ticket, so its card
 shows the subagent and its state. `<job>` is what the subagent does: `implementer`, `reviewer` or `researcher`. Name it by that job in

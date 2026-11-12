@@ -1,5 +1,5 @@
 <!--
-Template the task owner fills for every implementer (decision 33), written into the child ticket
+Template the task owner fills for every implementer, written into the child ticket
 or the implementer's brief. It is the implementer's whole brief.
 Before dispatch the owner self-checks it: every criterion has a concrete check, no
 placeholders, no contradictions, every criterion traces to the approved spec.

@@ -8,7 +8,7 @@ import { INVESTIGATION_DONE } from "./approval-gate";
 import { acceptedRecord, notMergedRecord } from "./execution";
 import { wentOnWithDefault } from "./planning-questions";
 
-/** An investigation delivers by asking this (roles/owner.md): its question is the delivery itself. */
+/** An investigation delivers by asking this (phases/delivery.md): its question is the delivery itself. */
 const DELIVERING_QUESTION = INVESTIGATION_DONE;
 
 /**

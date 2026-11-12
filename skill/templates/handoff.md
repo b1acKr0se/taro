@@ -1,4 +1,4 @@
-<!-- Appended as a note before compaction or stopping (decision 35). A fresh owner must be able to continue from this alone. One line per item, within each limit (cut, never exceed): point to the records that hold the detail (APPROVAL, ANSWER, REVIEW, MILESTONE) instead of copying them. -->
+<!-- Appended as a note before compaction or stopping. A fresh owner must be able to continue from this alone. One line per item, within each limit (cut, never exceed): point to the records that hold the detail (APPROVAL, ANSWER, REVIEW, MILESTONE) instead of copying them. -->
 HANDOFF <ISO timestamp>
 - Phase: <status> — <what is happening right now> (1 line)
 - Done so far: <commits / results, with SHAs> (at most 3 lines)

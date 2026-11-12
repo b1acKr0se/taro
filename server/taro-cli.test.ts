@@ -3,9 +3,18 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync,
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseTicket, serializeTicket, type Ticket } from "../shared/ticket-format";
+import { currentStep, nextStepAnswer } from "./next-step";
+import { main } from "./taro-cli.ts";
+
+// `taro next` asks the daemon, whose handler reads the project's tracker and settings: here, the scratch tracker.
+const project = vi.hoisted(() => ({ tracker: "" }));
+vi.mock("./projects", () => ({
+  projectPaths: async () => ({ tracker: project.tracker }),
+  readProjectConfig: async () => ({ baseBranch: "main", delivery: "pull-request", acceptAlsoMerges: true }),
+}));
 
 const BIN = resolve(import.meta.dirname, "..", "bin", "taro");
 
@@ -614,3 +623,102 @@ describe("Accept guard (TR-237)", () => {
     expect(readTicket(id).status).toBe("Awaiting acceptance");
   });
 }, CLI_TIMEOUT_MS);
+
+describe("taro next", { timeout: CLI_TIMEOUT_MS }, () => {
+  const TOKEN = "A".repeat(43);
+  let home = "";
+  const previousHome = process.env.PASEO_HOME;
+  let requests: { method: string; input: { project: string; ticket: string } }[] = [];
+
+  /** Plays the daemon, answering `taro.ticket.next-step` with the plugin's own handler over the scratch tracker. */
+  function stubDaemon(): void {
+    requests = [];
+    class FakeWebSocket {
+      onopen: (() => void) | null = null;
+      onmessage: ((event: { data: unknown }) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+      constructor() {
+        queueMicrotask(() => this.onopen?.());
+      }
+      send(data: string) {
+        const sent = JSON.parse(data) as Record<string, any>;
+        if (sent.type === "hello") {
+          queueMicrotask(() => this.say({ type: "status", payload: { status: "server_info", protocolVersion: 1 } }));
+          return;
+        }
+        const { requestId, method, input } = sent.message;
+        requests.push({ method, input });
+        void nextStepAnswer(input.project, input.ticket).then((output) => this.say({ type: "plugin.rpc.invoke.response", payload: { requestId, output } }));
+      }
+      say(message: unknown) {
+        this.onmessage?.({ data: JSON.stringify({ type: "session", message }) });
+      }
+      close() {}
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+  }
+
+  async function next(args: string[], env: Record<string, string> = { TARO_PROJECT: "notes-app" }) {
+    let stdout = "";
+    let stderr = "";
+    const code = await main(["next", ...args], { stdout: (text) => void (stdout += text), stderr: (text) => void (stderr += text), env: { PASEO_HOME: home, ...env } });
+    return { code, stdout, stderr };
+  }
+
+  beforeEach(() => {
+    project.tracker = tracker;
+    home = join(scratch, "paseo");
+    mkdirSync(home);
+    writeFileSync(join(home, "paseo.pid"), JSON.stringify({ pid: 1, listen: "127.0.0.1:9" }));
+    writeFileSync(join(home, "local-credential"), `${TOKEN}\n`);
+    process.env.PASEO_HOME = home;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (previousHome === undefined) delete process.env.PASEO_HOME;
+    else process.env.PASEO_HOME = previousHome;
+  });
+
+  it("prints the build page for a plan approved while no turn end saw it, as the plugin would send it", async () => {
+    stubDaemon();
+    writeTicket({ id: "TR-020", status: "In Progress", labels: ["complexity-medium"], plan: "## Goal\nExport notes", notes: 'APPROVAL 2026-10-01T10:30Z — user: "Approve the plan for TR-020"' });
+    const result = await next(["TR-020"]);
+    expect(result).toMatchObject({ code: 0, stderr: "" });
+    expect(requests).toEqual([{ method: "taro.ticket.next-step", input: { project: "notes-app", ticket: "TR-020" } }]);
+    expect(result.stdout).toContain("TR-020's plan is approved: build it.");
+    expect(result.stdout).toContain("# Build");
+    expect(result.stdout).toBe(`${(await currentStep("notes-app", "TR-020"))?.text}\n`);
+  });
+
+  it("prints a high ticket's children in build order, and the delivery gaps once the review is clean", async () => {
+    stubDaemon();
+    writeTicket({ id: "TR-030", status: "In Progress", labels: ["complexity-high"], plan: "## Goal\nx", notes: 'APPROVAL 2026-10-01T10:30Z — user: "Approve"' });
+    writeTicket({ id: "TR-030.01", title: "CSV writer", parent: "TR-030", dependsOn: ["TR-030.02"] });
+    writeTicket({ id: "TR-030.02", title: "Export button", parent: "TR-030" });
+    expect((await next(["TR-030"])).stdout).toContain("1. TR-030.02 — Export button (Queued)\n2. TR-030.01 — CSV writer (Queued)");
+
+    writeTicket({ id: "TR-031", status: "Reviewing", labels: ["complexity-medium"], plan: "## Goal\nx", notes: 'APPROVAL 2026-10-01T10:30Z — user: "Approve"\n\nREVIEW 2026-10-01T12:00Z — reviewer r1: no findings — verdict: clean' });
+    const delivery = (await next(["TR-031"])).stdout;
+    expect(delivery).toContain("TR-031's review is clean: deliver it.");
+    expect(delivery).toContain("- the ticket records no review-head\n- the ticket records no PR URL");
+    expect(delivery).toContain("# Delivery");
+  });
+
+  it("says when there is no step, as for a ticket not rated yet", async () => {
+    stubDaemon();
+    writeTicket({ id: "TR-040", status: "Planning" });
+    expect((await next(["TR-040"])).stdout).toBe("TR-040 has no step to send now: it is not rated yet (add its complexity- label), closed, or waiting for the user's Accept.\n");
+  });
+
+  it("needs a ticket id and a project, and says when the daemon is not reachable", async () => {
+    stubDaemon();
+    expect((await next([])).code).toBe(2);
+    expect((await next(["TR-020"], {})).stderr).toContain("No project");
+    rmSync(join(home, "paseo.pid"));
+    const down = await next(["TR-020"]);
+    expect(down.code).toBe(4);
+    expect(down.stderr).toContain("Cannot reach the Paseo daemon");
+  });
+});

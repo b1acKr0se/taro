@@ -65,6 +65,7 @@ The buttons, from a script (they call the running daemon, with the button's own 
   taro ticket request-changes|change-spec <ID> --text <text>
   taro decision answer <key> [--label <option>] [--text <words>]
   taro decision dismiss <key>
+  taro next <ID>      the page for the ticket's current step, as the plugin sends it when the step starts
 Accept, reopen, request-changes, change-spec, close-round and the decision verbs are the user's: they refuse inside an agent session.
 Every ticket command takes --tracker <path> (or $TARO_TRACKER). -l, --dep and --remove-dep accept comma-separated lists.`;
 
@@ -575,10 +576,32 @@ async function decisionCommand(args: readonly string[], io: CliIo): Promise<numb
   return runAction("decision", verbName, args.slice(1), io);
 }
 
+/** The daemon's RPC for `taro next`: it reads the ticket's facts (evidence, project settings) as the plugin does. */
+export const NEXT_STEP_METHOD = "taro.ticket.next-step";
+
+/** `taro next <ID>`: the step page the plugin sends at the step's start, for an owner that missed it. */
+async function nextCommand(args: readonly string[], io: CliIo): Promise<number> {
+  const parsed = parseArguments(args, ACTION_OPTIONS);
+  expectPositionals(parsed, 1, "one ticket id");
+  const project = single(parsed, "project") ?? io.env.TARO_PROJECT;
+  if (project === undefined || project === "") throw new UsageError("No project: pass --project <name> or set TARO_PROJECT.");
+  const ticket = parsed.positionals[0] as string;
+  const home = single(parsed, "home") ?? io.env.PASEO_HOME ?? join(homedir(), ".paseo");
+  const output = await invokePluginRpc(NEXT_STEP_METHOD, { project, ticket }, { home, answerTimeoutMs: 60_000 });
+  if (has(parsed, "json")) {
+    io.stdout(json(output ?? {}));
+    return EXIT_OK;
+  }
+  const text = typeof output === "object" && output !== null ? Reflect.get(output, "message") : undefined;
+  io.stdout(`${typeof text === "string" && text !== "" ? text : `${ticket} has no step to print.`}\n`);
+  return EXIT_OK;
+}
+
 /** The first word of the command line picks the handler. */
 const commands: Record<string, (args: readonly string[], io: CliIo) => Promise<number>> = {
   ticket: ticketCommand,
   decision: decisionCommand,
+  next: nextCommand,
 };
 
 function errorMessage(error: unknown): string {

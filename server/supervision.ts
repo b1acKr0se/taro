@@ -38,6 +38,8 @@ import type { ChatQueue } from "./chat-queue";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import { usageReading, type Stats } from "./stats";
+import { nextStep, STEP_PAGES, stepKey, type Step } from "../shared/next-step";
+import { stepText, stepTicket } from "./next-step";
 
 export interface TaroIdentity {
   project: string;
@@ -235,6 +237,7 @@ export function freshState(identity: TaroIdentity): AgentState {
     prematureWaits: 0,
     deliveryReminded: null,
     acceptStalls: 0,
+    stepsSent: [],
   };
 }
 
@@ -382,6 +385,7 @@ export class Supervisor {
 
     if (outcome.kind === "completed" && (await this.flagCommitsWithoutPlan(paseo, live, identity))) return;
     if (outcome.kind === "completed" && read !== null && (await this.finishAcceptHandoff(paseo, live, identity, openBlocking))) return;
+    if (outcome.kind === "completed" && (await this.sendStep(paseo, live, identity))) return;
     // A turn that could not be read is not taken for one without a status line.
     if (outcome.kind === "completed" && read !== null) {
       const stalled = (status === null || status.state === "working") && !openBlocking;
@@ -812,6 +816,35 @@ export class Supervisor {
   }
 
   /** What the owner's plan lacks of its mockups (TR-235); unreadable counts as nothing missing, as a ticket the plugin cannot read blocks nothing else here. */
+  /**
+   * The page for the step the owner's ticket has reached (its level, the build, the review, the
+   * delivery), sent once per round of the ticket. Awaiting acceptance has its own reminders and the
+   * Accept hand-off its own message, so neither is sent from here.
+   */
+  private async sendStep(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity): Promise<boolean> {
+    const ticket = identity.ticket;
+    if (ticket === null) return false;
+    let step: Step | null;
+    try {
+      const facts = await stepTicket(identity.project, ticket);
+      step = facts.status === "Awaiting acceptance" ? null : nextStep(facts);
+    } catch (error) {
+      console.warn(`[taro] reading ${ticket}'s step: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+    if (step === null || step.page === STEP_PAGES.accept) return false;
+    const key = stepKey(ticket, step);
+    const fresh = await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
+      if (record.stepsSent.includes(key)) return false;
+      record.stepsSent = [...record.stepsSent, key];
+      return true;
+    });
+    if (!fresh) return false;
+    console.log(`[taro] ${agent.id} reached ${step.page} on ${ticket} (round ${step.facts.round ?? "1"}): page sent`);
+    await sendFromPlugin(paseo, agent.id, await stepText(step));
+    return true;
+  }
+
   private async planMockupsMissing(identity: TaroIdentity): Promise<string[]> {
     if (identity.ticket === null) return [];
     try {

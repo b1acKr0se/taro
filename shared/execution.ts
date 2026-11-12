@@ -121,7 +121,7 @@ export function pullRequestMergeInstruction(notes: string | null, finalSummary: 
   const { method, baseBranch, repoPath } = target;
   const title = MERGE_METHOD_TITLES[method];
   return (
-    `Merge ${url} now as roles/owner.md says (Accept, pull request), with the project's merge method, ${title}, only if its headRefOid is still the recorded review head ${head}: ` +
+    `Merge ${url} now as phases/accept.md says (pull request), with the project's merge method, ${title}, only if its headRefOid is still the recorded review head ${head}: ` +
     `gh pr merge ${url} ${mergeFlag(method)} --match-head-commit ${head}. Confirm its state is MERGED (an earlier Accept may have merged it already: then go on). ` +
     `Then bring ${baseBranch} in the main checkout (${repoPath}) up to origin, only while it is on ${baseBranch} and git -C ${repoPath} status --porcelain prints nothing (an untracked file counts): ` +
     `git -C ${repoPath} fetch origin ${baseBranch}, then git -C ${repoPath} merge --ff-only origin/${baseBranch}. ` +
@@ -137,14 +137,14 @@ export function pullRequestMergeInstruction(notes: string | null, finalSummary: 
 
 /**
  * What Accept tells the owner of a local-branch ticket (TR-109): fast-forward the base branch in the
- * main checkout to the reviewed head, or not at all. roles/owner.md holds what to do when a check fails.
+ * main checkout to the reviewed head, or not at all. phases/accept.md holds what to do when a check fails.
  */
 export function localMergeInstruction(notes: string | null, baseBranch: string, repoPath: string): string {
   const head = reviewHead(notes);
   // As for a pull request: without the head the user reviewed, a fast-forward could land unreviewed code.
   if (head === null) return "Do not merge: the ticket records no review-head. Record it in EXECUTION and present it again.";
   return (
-    `Fast-forward ${baseBranch} to your branch in the main checkout (${repoPath}) as roles/owner.md says (Accept, local branch), only while your branch head is still the recorded review head ${head} and the main checkout is clean and on ${baseBranch}. ` +
+    `Fast-forward ${baseBranch} to your branch in the main checkout (${repoPath}) as phases/accept.md says (local branch), only while your branch head is still the recorded review head ${head} and the main checkout is clean and on ${baseBranch}. ` +
     `If ${baseBranch} moved, rebase first, and fast-forward only if the rebase applied with no conflicts and the checks pass. Then record ACCEPTANCE and set the ticket Done. ` +
     "A moved head, a conflict or failing checks: do not merge; fix it on your branch and present it again. " +
     `A dirty main checkout or one on another branch: do not touch it; record NOT-MERGED with the reason.`
@@ -312,8 +312,19 @@ export function deliveryMissing(
   notes: string | null,
   finalSummary: string | null,
 ): string | null {
-  if (investigation || !config.acceptAlsoMerges) return null;
-  if (reviewHead(notes) === null) return "the ticket records no review-head";
-  if (config.delivery === "pull-request" && pullRequestUrl(notes, finalSummary) === null) return "the ticket records no PR URL";
-  return null;
+  return deliveryGaps(config, investigation, notes, finalSummary)[0] ?? null;
+}
+
+/** Every gap `deliveryMissing` reports the first of, for the delivery page's list. */
+export function deliveryGaps(
+  config: { acceptAlsoMerges: boolean; delivery: string },
+  investigation: boolean,
+  notes: string | null,
+  finalSummary: string | null,
+): string[] {
+  if (investigation || !config.acceptAlsoMerges) return [];
+  const gaps: string[] = [];
+  if (reviewHead(notes) === null) gaps.push("the ticket records no review-head");
+  if (config.delivery === "pull-request" && pullRequestUrl(notes, finalSummary) === null) gaps.push("the ticket records no PR URL");
+  return gaps;
 }

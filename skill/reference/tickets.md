@@ -19,6 +19,9 @@ taro ticket edit SH-012 --final-summary "<FINAL>" -s "Awaiting acceptance" --rev
 taro ticket check                             # problems in any ticket file, bad dependencies included, one per line; exit 0 when clean
 ```
 
+`taro next SH-012` prints the page for the ticket's current step, as the plugin sends it when the
+step starts (it asks the running daemon).
+
 After `ticket create`, read the allocated id back from its output (`Created <ID>`) — never invent one.
 On a timeout, view the ticket before retrying an append (appends are not deduplicated).
 
@@ -50,7 +53,7 @@ and `Cancelled`. Trivial and low tasks go from Planning straight to In Progress 
 | Planning | plugin | the owner started: orienting, asking, proposing |
 | Ready | owner | approved, waiting on dependencies |
 | In Progress | owner | building |
-| Reviewing | owner | draft PR open, review under way |
+| Reviewing | owner | built; review under way (a draft PR for pull-request delivery); brings the review page |
 | Awaiting acceptance | owner | delivered; FINAL written |
 | Done | owner | the user accepted (and it merged, when merging) |
 | Blocked | owner | an outside obstacle; record the resume phase and the action needed |
@@ -96,10 +99,11 @@ rather than exceed it.
 - **OWNER-STARTED**: written by the plugin as an owner's first turn starts on a Queued ticket; it
   sets Planning in the same write. A ticket already past Queued keeps its status.
 - **DELIVERY-ENDED**: written by the plugin when an owner asks a blocking question while its ticket
-  awaits acceptance; it moves the ticket to In Progress in the same write (`roles/owner.md`).
-- **REVIEW**: reviewer, revision, verdict, every finding answered (fixed, or rejected with the
-  reason); after fixes, what the fix check re-checked: its range, fix check or full re-review, and
-  its verdict (`roles/owner.md`, Review).
+  awaits acceptance; it moves the ticket to In Progress in the same write (`phases/delivery.md`).
+- **REVIEW**: reviewer (or self-review), the range, every finding answered (fixed, or rejected with
+  the reason); after fixes, what the fix check re-checked: its range, fix check or full re-review, and
+  its verdict. It ends with `verdict: clean` when nothing is left to fix, else `verdict: findings`;
+  the round's newest clean one brings the delivery page (`phases/review.md`).
 - **EVIDENCE**: what the user sees before Accept; the newest record counts. One fact per line,
   label in any case, separator ` — ` (` -- ` and ` - ` also work):
   `check: <command> — <result>` (one or more), `review: <outcome>`,
@@ -108,9 +112,9 @@ rather than exceed it.
   verdict if there was one, anything left open; required whenever there are screenshots),
   `coverage: <section or state> — <screenshot file>[, <file>…]` (one per section or state the diff
   renders, changes, moves or re-wraps, each naming screenshots of this record; required whenever there are
-  screenshots: `roles/owner.md`, Delivery),
+  screenshots: `phases/delivery.md`),
   `screenshot: <file name> — <caption>` (a bare name; the file is in `$TARO_EVIDENCE/<ID>/`; a name
-  that says what it shows and a caption are required: `reference/formats.md`, Images), or
+  that says what it shows and a caption are required: `reference/images.md`), or
   `screenshots: none — <reason>`. A change needs a check, a review line and screenshots with a `ux:`
   line (or none with a reason); an investigation needs a check. Accept is refused until it is complete.
 
@@ -143,20 +147,20 @@ rather than exceed it.
   method, and only then: the reason in one short line the user reads on the card, what they do
   first. It ends the "merging" state and puts the card back in Needs you:
   `NOT-MERGED 2026-01-06T09:00Z — commit or discard src/app.ts in the main checkout, then Accept again`.
-- **NOT-SYNCED** (older tickets only, TR-215): a pull request merged while the base branch in the main
+- **NOT-SYNCED** (older tickets only): a pull request merged while the base branch in the main
   checkout could not fast-forward to origin's. It is no longer written: the ticket closes, and
   ACCEPTANCE says `local <base> not updated: <reason>`. The next Accept on an old one closes it.
 - **ACCEPTED**, **ACCEPT-HANDOFF**: written by the plugin when the user presses Accept (the card
   says it merges), and when its own merge stops on something that needs an owner: who took over
   and why (the owner, or a fresh owner when the owner had been idle 5 minutes or more), then what
-  it found. `taro ticket edit` refuses an agent writing either, and an agent's ACCEPTANCE or Done before a hand-off (TR-237). The plugin itself writes ACCEPTANCE and NOT-MERGED on the routine
+  it found. `taro ticket edit` refuses an agent writing either, and an agent's ACCEPTANCE or Done before a hand-off. The plugin itself writes ACCEPTANCE and NOT-MERGED on the routine
   path; an owner writes them only after a hand-off.
 - **ANSWER**: written by the plugin when the user answers a decision.
 - **NO-PLAN**: written by the plugin when an owner's turn ends with commits on its branch and no
-  plan on the ticket (TR-206); the owner is told to stop, write the plan and ask `scope-approval`
-  before building on. A ticket labelled `complexity-trivial` or `complexity-low` is never flagged (TR-241).
+  plan on the ticket; the owner is told to stop, write the plan and ask `scope-approval`
+  before building on. A ticket labelled `complexity-trivial` or `complexity-low` is never flagged.
 - **NO-APPROVAL**: the same with a plan the round has not approved (no APPROVAL and no Approve on
-  `scope-approval` since the latest REOPENED, nor on a child's parent; TR-263): stop, ask, wait.
+  `scope-approval` since the latest REOPENED, nor on a child's parent): stop, ask, wait.
 - **RULING** (owner, after approval): a call made inside the approved goal instead of asking:
   `RULING 2026-01-05T10:00Z — <decision> — <why> — <cost if wrong>`. FINAL's Rulings lists them.
 - **APPROVAL-REPEATED**, **BLOCKING-AFTER-APPROVAL**: written by the plugin when an owner asked

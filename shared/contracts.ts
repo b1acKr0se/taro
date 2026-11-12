@@ -440,6 +440,12 @@ export const relaunchOwner = defineRpc({
   input: z.object({ project: ProjectNameSchema, ticket: z.string() }),
   output: z.object({ agentId: z.string() }),
 });
+/** The owner's next step (`taro next <ID>`): the page the plugin sends at the step's start, filled with the ticket's facts. */
+export const ticketNextStep = defineRpc({
+  name: "taro.ticket.next-step",
+  input: z.object({ project: ProjectNameSchema, ticket: z.string() }),
+  output: z.object({ message: z.string(), page: z.string().nullable() }),
+});
 /** Pause and Resume (TR-088): `message` is what the user is told; `agentId` the fresh owner Resume started, if any. */
 export const pauseTicket = defineRpc({ name: "taro.ticket.pause", input: z.object({ project: ProjectNameSchema, ticket: z.string() }), output: z.object({ message: z.string() }) });
 export const resumeTicket = defineRpc({

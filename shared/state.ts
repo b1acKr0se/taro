@@ -96,6 +96,8 @@ export const AgentStateSchema = z.object({
   deliveryReminded: z.string().nullable().default(null),
   /** Turns in a row an Accept hand-off owner ended with the ticket still waiting on its merge (TR-256). */
   acceptStalls: z.number().int().default(0),
+  /** The step pages sent to this owner, by ticket, round and page (`shared/next-step.ts` stepKey): each is sent once. */
+  stepsSent: z.array(z.string()).default([]),
 });
 export type AgentState = z.infer<typeof AgentStateSchema>;
 

@@ -1,6 +1,6 @@
 /**
  * Workflow conformance (TR-207): whether a ticket's trail shows the workflow the owner's rules ask
- * for (`skill/roles/owner.md`, `skill/reference/tickets.md`, the plan and FINAL templates). The
+ * for (`skill/roles/owner.md` with its level and phase pages, `skill/reference/tickets.md`, the plan and FINAL templates). The
  * benchmark gates on it and `bench/conformance.ts` runs it over a whole tracker. Pure, no Node
  * imports; it runs under `node` type stripping (the benchmark), so `.ts` import extensions and
  * erasable syntax only.

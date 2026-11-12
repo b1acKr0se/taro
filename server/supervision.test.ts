@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { questionHoldingAccept } from "../shared/delivery-end";
@@ -9,6 +12,9 @@ import { runCommand } from "./process";
 import { branchName, commitsPast } from "./branch-commits";
 import { readProjectConfig } from "./projects";
 import { appendTicketNote, endDelivery, viewTicket } from "./tickets";
+import { stepTicket } from "./next-step";
+import { PluginState as StoredPluginState } from "./state";
+import type { StepTicket } from "../shared/next-step";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
@@ -25,6 +31,12 @@ vi.mock("./projects", () => ({ readProjectConfig: vi.fn(async () => null), proje
 vi.mock("./process", async (original) => ({ ...(await original<typeof import("./process")>()), runCommand: vi.fn(async () => ({ code: 0, stdout: '{"state":"OPEN","mergeable":"CONFLICTING"}', stderr: "" })) }));
 vi.mock("./branch-commits", () => ({ commitsPast: vi.fn(async () => 0), branchName: vi.fn(async () => "taro/tr-9") }));
 vi.mock("./tickets", () => ({ viewTicket: vi.fn(), endDelivery: vi.fn(async () => true), appendTicketNote: vi.fn(async () => undefined) }));
+// The step's facts are read from the tracker in ./next-step; in tests that are not about steps the ticket is unrated, so no step.
+const UNRATED = { id: "TR-0", status: "Planning", labels: [], notes: null, children: [], baseBranch: "main", deliveryGaps: [] };
+vi.mock("./next-step", () => ({
+  stepTicket: vi.fn(async () => UNRATED),
+  stepText: vi.fn(async (step: { page: string; facts: Record<string, string> }) => `step:${step.page}:round ${step.facts.round}`),
+}));
 
 /** Paseo's projected timeline holding `items`, where supervision reads a turn at its end (TR-233: the hook's is empty). */
 function withTimeline(items: readonly TimelineItem[]): PaseoApi {
@@ -2065,5 +2077,109 @@ describe("Supervisor.onTurnEnded with an Accept hand-off unfinished", () => {
     await supervisor().onTurnEnded(ending(), hookAgent, completed, null, undefined);
     expect(told()).toEqual([]);
     expect(notMerged()).toEqual([]);
+  });
+});
+
+describe("Supervisor.onTurnEnded sends each step's page once", () => {
+  const owner = { id: "owner-step", provider: "claude", model: "sonnet", title: "TR-9 · x", status: "idle", cwd: "/work/tr-9", labels: { "taro.project": "taro", "taro.role": "owner", "taro.ticket": "TR-9" } };
+  const completed = { kind: "completed" } as unknown as TurnOutcome;
+  const reply = items({ type: "user_message", text: "go" }, { type: "assistant_message", text: "Rated it.\n\nwaiting: the medium page" });
+  const APPROVAL = 'APPROVAL 2026-11-01T10:30Z — user: "Approve the plan for TR-9"';
+  const CLEAN = "REVIEW 2026-11-01T12:30Z — reviewer r1 over main..taro/tr-9: no findings — verdict: clean";
+  let home = "";
+  let facts: StepTicket;
+  const previousHome = process.env.PASEO_HOME;
+
+  // The plugin's own state on disk, so a reload (a new state and supervisor over the same files) is real.
+  const supervisor = () => new Supervisor(new StoredPluginState(), { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+  const end = (taro: Supervisor, agentId = owner.id) => taro.onTurnEnded(withTimeline(reply), { id: agentId, parentAgentId: null } as unknown as HookAgent, completed, null, undefined);
+  const sent = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("step:"));
+  const at = (change: Partial<StepTicket>) => {
+    facts = { ...facts, ...change };
+  };
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), "taro-steps-"));
+    process.env.PASEO_HOME = home;
+    facts = { id: "TR-9", status: "Planning", labels: [], notes: null, children: [], baseBranch: "main", deliveryGaps: [] };
+    vi.mocked(fetchLiveAgent).mockImplementation(async (_paseo, id) => ({ ...owner, id }) as unknown as PaseoAgent);
+    vi.mocked(viewTicket).mockResolvedValue({ status: "Planning", implementationPlan: "## Goal\nx", acceptanceCriteria: [], implementationNotes: null, labels: [] } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+    vi.mocked(stepTicket).mockImplementation(async () => facts);
+    vi.mocked(sendFromPlugin).mockClear();
+  });
+
+  afterEach(() => {
+    vi.mocked(stepTicket).mockReset();
+    vi.mocked(stepTicket).mockResolvedValue(UNRATED);
+    vi.mocked(viewTicket).mockReset();
+    if (previousHome === undefined) delete process.env.PASEO_HOME;
+    else process.env.PASEO_HOME = previousHome;
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it("sends nothing while the ticket has no level label", async () => {
+    await end(supervisor());
+    expect(sent()).toEqual([]);
+  });
+
+  it("sends each phase's page as the ticket reaches it, once each", async () => {
+    const taro = supervisor();
+    at({ labels: ["complexity-high"] });
+    await end(taro);
+    await end(taro);
+    at({ status: "In Progress", notes: APPROVAL, children: [{ id: "TR-9.01", title: "a", status: "Queued", dependencies: [] }] });
+    await end(taro);
+    await end(taro);
+    at({ children: [{ id: "TR-9.01", title: "a", status: "Done", dependencies: [] }] });
+    await end(taro);
+    await end(taro);
+    at({ notes: `${APPROVAL}\n\n${CLEAN}`, status: "Reviewing" });
+    await end(taro);
+    await end(taro);
+    expect(sent()).toEqual(["step:levels/high.md:round 1", "step:phases/build.md:round 1", "step:phases/review.md:round 1", "step:phases/delivery.md:round 1"]);
+  });
+
+  it("remembers what it sent across a plugin reload", async () => {
+    at({ labels: ["complexity-medium"] });
+    await end(supervisor());
+    await end(supervisor());
+    at({ notes: APPROVAL, status: "In Progress" });
+    await end(supervisor());
+    await end(supervisor());
+    expect(sent()).toEqual(["step:levels/medium.md:round 1", "step:phases/build.md:round 1"]);
+  });
+
+  it("sends a reopened round's pages again, once", async () => {
+    const taro = supervisor();
+    at({ labels: ["complexity-low"] });
+    await end(taro);
+    at({ notes: `${CLEAN}\n\nREOPENED 2026-11-02T09:00Z — user: "check it on staging"; round 2; past owners: owner-step` });
+    await end(taro);
+    await end(supervisor());
+    expect(sent()).toEqual(["step:levels/light.md:round 1", "step:levels/light.md:round 2"]);
+  });
+
+  it("sends the current page to a new owner of the ticket, which has not read it", async () => {
+    at({ labels: ["complexity-medium"], notes: APPROVAL, status: "In Progress" });
+    await end(supervisor());
+    await end(supervisor(), "owner-relaunched");
+    expect(sent()).toEqual(["step:phases/build.md:round 1", "step:phases/build.md:round 1"]);
+  });
+
+  it("leaves Awaiting acceptance and an Accept hand-off to their own messages", async () => {
+    at({ labels: ["complexity-medium"], status: "Awaiting acceptance", notes: `${APPROVAL}\n\n${CLEAN}`, deliveryGaps: ["the ticket records no review-head"] });
+    await end(supervisor());
+    at({ notes: `${APPROVAL}\n\n${CLEAN}\n\nACCEPT-HANDOFF 2026-11-01T13:00Z — owner: the head moved` });
+    await end(supervisor());
+    expect(sent()).toEqual([]);
+  });
+
+  it("sends nothing, and says why in the log, when the ticket cannot be read", async () => {
+    vi.mocked(stepTicket).mockRejectedValue(new Error("tracker locked"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    await end(supervisor());
+    expect(sent()).toEqual([]);
+    expect(warn.mock.calls.some(([line]) => String(line).includes("reading TR-9's step: tracker locked"))).toBe(true);
+    warn.mockRestore();
   });
 });
