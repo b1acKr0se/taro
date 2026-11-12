@@ -28,7 +28,7 @@ paseo run -d --workspace <workspaceId> --provider <ownerModel> [--thinking <id>]
 taro agent start <job> <ID> --model <model> [--thinking <id>] --brief-file <file> \
   --task "<task>" [--worktree]
 # → agentId. Write the brief to a file first; an implementer's is its definition of done.
-taro agent stop <agentId>     # archives it
+taro agent stop <agentId>     # archives it, and its --worktree workspace once merged
 ```
 
 It passes the Taro labels and environment, the title `<ID> · <job>: <task>` and the bypass mode,

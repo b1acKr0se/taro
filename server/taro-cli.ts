@@ -86,7 +86,7 @@ The buttons, from a script (they call the running daemon, with the button's own 
 The owner's mechanical steps (they need $TARO_PROJECT; threads are checked first, waiting up to --wait seconds above 85%):
   taro agent start implementer|reviewer|researcher <ID> --model <id> [--thinking <id>] --brief-file <path>
                    [--task <doing what>] [--worktree] [--mode <id>] [--wait <seconds>] [--json]
-  taro agent stop <agent id> [--force]
+  taro agent stop <agent id> [--force]   also archives a --worktree child's workspace once its branch is merged into yours
   taro check [--ticket <ID>] [--timeout <minutes>] -- <command>...   runs it and logs exit code and summary line
   taro deliver <ID> [--evidence-from-checks]   records review-head, PR and FINAL's revision line, then Awaiting acceptance
   taro daemon start <ID> [--plugin <path>] [--home /tmp/paseo-…] [--port <n>] [--wait <seconds>] [--json]
@@ -688,7 +688,9 @@ async function agentCommand(args: readonly string[], io: CliIo): Promise<number>
   }
   if (verbName === "stop") {
     expectPositionals(parsed, 1, "one agent id");
-    return agentStop(parsed.positionals[0] as string, has(parsed, "force"), commandIo(io));
+    // The tracker shows whether `--worktree` made the agent's workspace; without one the workspace is kept.
+    const tracker = await openTracker(parsed, io).catch(() => null);
+    return agentStop(parsed.positionals[0] as string, has(parsed, "force"), commandIo(io), tracker?.store ?? null);
   }
   throw new UsageError(verbName === undefined ? "Missing agent verb (start, stop)." : `Unknown agent verb "${verbName}".`);
 }

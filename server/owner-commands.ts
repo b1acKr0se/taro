@@ -215,11 +215,81 @@ export async function agentStart(options: AgentStartOptions, io: CommandIo): Pro
   return EXIT_OK;
 }
 
-export async function agentStop(agentId: string, force: boolean, io: CommandIo): Promise<number> {
-  const result = await runCommand(paseoCommand(io.env), ["archive", agentId, ...(force ? ["--force"] : [])], { timeoutMs: 60_000 });
+/**
+ * Archives the agent, then the worktree workspace `taro agent start --worktree` made for it: nothing
+ * else ever archived one, so every parallel child left a workspace and a worktree behind. Only when the
+ * ticket's EXECUTION record shows `--worktree` made it for this agent, no other live agent works in it,
+ * and its branch is merged into the branch the owner stands on; otherwise it is kept and the reason printed.
+ */
+export async function agentStop(agentId: string, force: boolean, io: CommandIo, store: TicketStore | null = null): Promise<number> {
+  const paseo = paseoCommand(io.env);
+  // Read before archiving: the agent's title names its ticket, and its cwd the workspace.
+  const inspected = await runCommand(paseo, ["inspect", agentId, "--json"], { timeoutMs: 60_000 }).catch(() => null);
+  const result = await runCommand(paseo, ["archive", agentId, ...(force ? ["--force"] : [])], { timeoutMs: 60_000 });
   if (result.code !== 0) throw new CommandRefused(`paseo archive failed: ${commandError(result)}${force ? "" : " (an agent mid-turn needs --force)"}`);
   io.stdout(`Archived ${agentId}.\n`);
+  io.stdout(`${await archiveChildWorkspace(agentId, inspected, store, io)}\n`);
   return EXIT_OK;
+}
+
+/** The agent as `paseo inspect --json` shows it: its id, title and working directory. */
+function inspectedAgent(result: CommandResult | null): { id: string; name: string; cwd: string } | null {
+  if (result === null || result.code !== 0) return null;
+  try {
+    const parsed = JSON.parse(result.stdout) as { Id?: unknown; Name?: unknown; Cwd?: unknown };
+    return typeof parsed.Id === "string" && typeof parsed.Cwd === "string" ? { id: parsed.Id, name: typeof parsed.Name === "string" ? parsed.Name : "", cwd: parsed.Cwd } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `paseo ls` shortens paths under the home folder to `~`. */
+function expandHome(path: string): string {
+  return path === "~" || path.startsWith("~/") ? join(homedir(), path.slice(1)) : path;
+}
+
+function within(path: string, folder: string): boolean {
+  return path === folder || path.startsWith(`${folder.replace(/\/+$/, "")}/`);
+}
+
+/** What became of the agent's workspace, one line: archived, or kept and why. */
+async function archiveChildWorkspace(agentId: string, inspected: CommandResult | null, store: TicketStore | null, io: CommandIo): Promise<string> {
+  const keep = (why: string) => `Kept its workspace: ${why}.`;
+  const agent = inspectedAgent(inspected);
+  if (agent === null) return keep("paseo inspect did not show the agent's working directory");
+  const ticket = /^(\S+) · /.exec(agent.name)?.[1];
+  if (store === null || ticket === undefined) return keep("not made by taro agent start --worktree (no ticket to read its EXECUTION record from)");
+  const notes = await store.read(ticket).then((read) => read.notes, () => null);
+  const made = (notes ?? "").split("\n").some((line) => line.startsWith("EXECUTION ") && line.includes(` ${agent.id} started with taro agent start`) && line.trimEnd().endsWith(`; own worktree ${agent.cwd}`));
+  if (!made) return keep(`not made by taro agent start --worktree for this agent (no such EXECUTION record on ${ticket})`);
+  const paseo = paseoCommand(io.env);
+  const listed = await runCommand(paseo, ["workspace", "ls", "--json"], { timeoutMs: 60_000 }).catch(() => null);
+  let workspaces: { workspaceId?: unknown; cwd?: unknown; isolation?: unknown }[] = [];
+  try {
+    workspaces = listed !== null && listed.code === 0 ? (JSON.parse(listed.stdout) as typeof workspaces) : [];
+  } catch {
+    workspaces = [];
+  }
+  const workspace = workspaces.find((each) => each.cwd === agent.cwd && each.isolation === "worktree" && typeof each.workspaceId === "string");
+  if (workspace === undefined) return keep(`no Paseo worktree workspace at ${agent.cwd} (paseo workspace ls)`);
+  const agents = await runCommand(paseo, ["ls", "-g", "--background", "--json"], { timeoutMs: 60_000 }).catch(() => null);
+  let live: { id?: unknown; cwd?: unknown }[];
+  try {
+    if (agents === null || agents.code !== 0) throw new Error("paseo ls failed");
+    live = JSON.parse(agents.stdout) as typeof live;
+  } catch {
+    return keep("paseo ls did not list the live agents, so another may still work in it");
+  }
+  const others = live.filter((each) => each.id !== agent.id && typeof each.cwd === "string" && within(expandHome(each.cwd), agent.cwd));
+  if (others.length > 0) return keep(`${others.map((each) => String(each.id)).join(", ")} still ${others.length === 1 ? "works" : "work"} in it`);
+  const branch = await currentBranch(agent.cwd);
+  const ownerBranch = await currentBranch(io.cwd);
+  if (branch === null || ownerBranch === null) return keep(`cannot tell ${branch === null ? `the branch at ${agent.cwd}` : `your branch at ${io.cwd}`}`);
+  const merged = await git(io.cwd, ["merge-base", "--is-ancestor", branch, ownerBranch]);
+  if (merged.code !== 0) return keep(`${branch} is not merged into ${ownerBranch}`);
+  const archived = await runCommand(paseo, ["workspace", "archive", workspace.workspaceId as string, "--json"], { timeoutMs: 120_000 }).catch((error: unknown) => ({ code: null, stdout: "", stderr: error instanceof Error ? error.message : String(error) }));
+  if (archived.code !== 0) return keep(`paseo workspace archive failed: ${commandError(archived)}`);
+  return `Archived its workspace ${workspace.workspaceId as string} (${agent.cwd}): ${branch} is merged into ${ownerBranch}.`;
 }
 
 // ---------------------------------------------------------------- taro check

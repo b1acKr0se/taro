@@ -13,16 +13,17 @@ approved criterion or an Out of scope line would change, with `surprise:` naming
 
 ## Implementers and children
 
-- One implementer per task, **one at a time** in your workspace (a new tab), each with a filled
+- One implementer per task, each with a filled
   **definition of done** (`templates/definition-of-done.md`) in the child ticket or its brief.
   Check it first: every criterion has a concrete check, no placeholders, no contradiction, all traced to the approved plan. Tell each subagent to read `reference/shell.md`.
 - **Every child is worked by a subagent of its own**, labelled with the child's id: an implementer,
   or a researcher for an investigation child. Never do a child's work yourself: without an agent of its own its card repeats yours. Start its subagent with the
   child's definition of done, verify its report, and mark the child Done.
-- Children run one at a time on your branch, unless Parts shows no dependency between them, their
-  Owns are disjoint and each interface has an example: then they run at once, each started with `taro agent start <job> <child id> … --worktree` (branch
-  `taro/<child id>`). Start only as many as the thread check allows; when it refuses, wait. A child whose tests run another child's code waits for it. Merge each into your
-  branch once verified, in Parts order, rerunning the checks. A child touching
+- Implementers run **one at a time** on your branch (a new tab), unless Parts shows no dependency
+  between them, their Owns are disjoint and each interface has an example: then they run at once,
+  each started with `taro agent start <job> <child id> … --worktree` (branch `taro/<child id>`),
+  only as many as the thread check allows. A child whose tests run another child's code waits for it. Merge each into your
+  branch once verified, in Parts order, rerunning the checks; `taro agent stop` then archives its worktree. A child touching
   contracts, money, auth or stored data gets its own independent reviewer before it is Done.
 - **Verify every report**: it must hold real command output; rerun the checks yourself; review the
   commit range (`git diff --stat` first, then the risky files). A report without evidence goes back.

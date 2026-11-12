@@ -756,7 +756,18 @@ function ownerWorld() {
     writeFileSync(join(bin, name), `#!/bin/sh\n{ echo "=== ${name}"; for a in "$@"; do echo "$a"; done; } >> "${calls}"\n${body}\n`);
     chmodSync(join(bin, name), 0o755);
   };
-  stub("paseo", `case "$1" in run) echo '{"agentId":"${STUB_AGENT}","status":"running","cwd":"/tmp/wt"}';; archive) echo archived;; esac`);
+  stub(
+    "paseo",
+    [
+      'case "$1" in',
+      `  run) echo '{"agentId":"${STUB_AGENT}","status":"running","cwd":"/tmp/wt"}';;`,
+      "  archive) echo archived;;",
+      '  inspect) echo "$STUB_INSPECT";;',
+      '  ls) echo "${STUB_LS:-[]}";;',
+      '  workspace) case "$2" in ls) echo "${STUB_WORKSPACES:-[]}";; archive) echo "{}";; esac;;',
+      "esac",
+    ].join("\n"),
+  );
   stub(
     "gh",
     [
@@ -901,11 +912,70 @@ describe("taro agent", { timeout: CLI_TIMEOUT_MS }, () => {
     expect(world.invocations("paseo")).toEqual([]);
   });
 
-  it("archives an agent with stop", () => {
+  it("archives an agent with stop, keeping a workspace it cannot read", () => {
     const world = ownerWorld();
     const result = world.run(["agent", "stop", STUB_AGENT]);
     expect(result.code).toBe(0);
-    expect(world.invocations("paseo")).toEqual([["archive", STUB_AGENT]]);
+    expect(world.invocations("paseo")).toEqual([
+      ["inspect", STUB_AGENT, "--json"],
+      ["archive", STUB_AGENT],
+    ]);
+    expect(result.stdout).toContain("Kept its workspace: paseo inspect did not show the agent's working directory.");
+  });
+
+  // Review should-fix: every --worktree child left its Paseo workspace and worktree behind.
+  describe("a child's own worktree", () => {
+    function childWorld(record: "worktree" | "shared" = "worktree") {
+      const world = ownerWorld();
+      deliverableTicket();
+      const worktree = join(scratch, "wt-050-01");
+      world.git("worktree", "add", "-q", "-b", "taro/tr-050.01", worktree, "taro/tr-050");
+      writeFileSync(join(worktree, "child.txt"), "child\n");
+      world.git("-C", worktree, "add", "child.txt");
+      world.git("-C", worktree, "commit", "-q", "-m", "child work");
+      const where = record === "worktree" ? `; own worktree ${worktree}` : "";
+      writeTicket({ id: "TR-050.01", title: "Child", parent: "TR-050", status: "In Progress", notes: `EXECUTION 2026-11-12T10:00Z — implementer ${STUB_AGENT} started with taro agent start: claude/claude-opus-5-5${where}` });
+      const stubs = (live: object[] = []) => ({
+        STUB_INSPECT: JSON.stringify({ Id: STUB_AGENT, Name: "TR-050.01 · implementer", Cwd: worktree }),
+        STUB_WORKSPACES: JSON.stringify([{ workspaceId: "wks_child", cwd: worktree, isolation: "worktree", name: "taro/tr-050.01" }]),
+        STUB_LS: JSON.stringify(live),
+      });
+      const archivedWorkspaces = () => world.invocations("paseo").filter((args) => args[0] === "workspace" && args[1] === "archive");
+      return { world, worktree, stubs, archivedWorkspaces };
+    }
+
+    it("archives the workspace once its branch is merged into the owner's and no other agent works in it", () => {
+      const { world, worktree, stubs, archivedWorkspaces } = childWorld();
+      world.git("merge", "-q", "--no-edit", "taro/tr-050.01");
+      const result = world.run(["agent", "stop", STUB_AGENT], stubs());
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain(`Archived its workspace wks_child (${worktree}): taro/tr-050.01 is merged into taro/tr-050.`);
+      expect(archivedWorkspaces()).toEqual([["workspace", "archive", "wks_child", "--json"]]);
+    });
+
+    it("keeps it while its branch is not merged into the owner's branch", () => {
+      const { world, stubs, archivedWorkspaces } = childWorld();
+      const result = world.run(["agent", "stop", STUB_AGENT], stubs());
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("Kept its workspace: taro/tr-050.01 is not merged into taro/tr-050.");
+      expect(archivedWorkspaces()).toEqual([]);
+    });
+
+    it("keeps it while another live agent works in it", () => {
+      const { world, worktree, stubs, archivedWorkspaces } = childWorld();
+      world.git("merge", "-q", "--no-edit", "taro/tr-050.01");
+      const result = world.run(["agent", "stop", STUB_AGENT], stubs([{ id: "reviewer-9", cwd: join(worktree, "src") }]));
+      expect(result.stdout).toContain("Kept its workspace: reviewer-9 still works in it.");
+      expect(archivedWorkspaces()).toEqual([]);
+    });
+
+    it("keeps a workspace taro agent start --worktree did not make for this agent", () => {
+      const { world, stubs, archivedWorkspaces } = childWorld("shared");
+      world.git("merge", "-q", "--no-edit", "taro/tr-050.01");
+      const result = world.run(["agent", "stop", STUB_AGENT], stubs());
+      expect(result.stdout).toContain("Kept its workspace: not made by taro agent start --worktree for this agent (no such EXECUTION record on TR-050.01).");
+      expect(archivedWorkspaces()).toEqual([]);
+    });
   });
 });
 
