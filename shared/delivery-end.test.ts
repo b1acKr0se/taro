@@ -67,7 +67,7 @@ describe("questionOpenAtDelivery (TR-146)", () => {
     expect(questionOpenAtDelivery(decisions, "owner-1")).toEqual(stored("layout", "owner-1", "open"));
   });
 
-  it("is null with nothing open, only withdrawn or held-back ones, or only investigation-done", () => {
+  it("is null with nothing open, only withdrawn or held-back ones, or only an old investigation-done", () => {
     expect(questionOpenAtDelivery([], "owner-1")).toBeNull();
     expect(questionOpenAtDelivery([stored("tone", "owner-1", "withdrawn"), stored("naming", "owner-1", "answered")], "owner-1")).toBeNull();
     expect(questionOpenAtDelivery([stored("investigation-done", "owner-1", "open")], "owner-1")).toBeNull();

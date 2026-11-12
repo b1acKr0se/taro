@@ -6,6 +6,7 @@
  * erasable syntax only.
  */
 import { planAnswerRecords } from "./approval-gate.ts";
+import { reopenRound } from "./reopen.ts";
 import { parseTicket } from "./ticket-format.ts";
 import { isLightLevel, ticketLevel } from "./ticket-level.ts";
 
@@ -171,7 +172,9 @@ export function conformanceViolations(ticketText: string, options: ConformanceOp
 
   found.push(...statusViolations(options, trivial));
 
-    if (startedBuilding && !trivial && ticket.plan.trim() === "") {
+  // A reopened round is worked as low whatever the ticket was rated: no plan or approval is asked (buildGap).
+  const reopened = reopenRound(ticket.notes) > 1;
+  if (startedBuilding && !trivial && !reopened && ticket.plan.trim() === "") {
     found.push({ kind: "no-plan", detail: `${ticket.status} with no plan` });
   } else if (ticket.plan.trim() !== "" && !trivial) {
     found.push(...planViolations(ticket.plan));
@@ -180,7 +183,7 @@ export function conformanceViolations(ticketText: string, options: ConformanceOp
   // An APPROVAL record or the user's Approve on the scope-approval card (TR-263).
   const approvals = planAnswerRecords(ticket.notes).filter((record) => record.kind === "approved");
   const inProgressAt = options.transitions?.find((transition) => transition.to === "In Progress")?.at;
-  if (startedBuilding && approvals.length === 0 && !trivial) {
+  if (startedBuilding && approvals.length === 0 && !trivial && !reopened) {
     found.push({ kind: "no-approval", detail: `In Progress${inProgressAt === undefined ? "" : ` at ${inProgressAt}`} with no APPROVAL` });
   }
   found.push(...approvalGateViolations(notes, approvals[0]?.at ?? null, inProgressAt ?? null, isLightLevel(level)));

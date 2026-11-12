@@ -8,7 +8,7 @@ import { INVESTIGATION_DONE } from "./approval-gate";
 import { acceptedRecord, notMergedRecord } from "./execution";
 import { wentOnWithDefault } from "./planning-questions";
 
-/** An investigation delivers by asking this (phases/delivery.md): its question is the delivery itself. */
+/** An investigation once delivered by asking this; it now delivers like any ticket, but one still open from before closes as it did. */
 const DELIVERING_QUESTION = INVESTIGATION_DONE;
 
 /**
@@ -22,7 +22,7 @@ export function asksToAccept(decision: { id: string; question: string; questions
   return /^(merge|accept|acceptance)$|^accept-/i.test(decision.id) || opensWithAccept(decision.question) || (decision.questions ?? []).some((each) => opensWithAccept(each.question));
 }
 
-/** The first newly opened question that ends a delivery: blocking, and not the one an investigation delivers with. */
+/** The first newly opened question that ends a delivery: blocking, and not the old investigation-done. */
 export function questionEndingDelivery<D extends { id: string; blocking: boolean }>(opened: readonly D[]): D | null {
   return opened.find((decision) => decision.blocking && decision.id !== DELIVERING_QUESTION) ?? null;
 }

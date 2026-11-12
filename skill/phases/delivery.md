@@ -61,13 +61,15 @@ Any visible change, at every level:
 4. **`taro deliver <ID>`**: it reads the PR and its head with gh (your branch head for local
    delivery), records `pr:` and `review-head:` in EXECUTION (Accept merges that head), fills FINAL's
    revision line and moves the ticket to **Awaiting acceptance**. When Accept would refuse, it lists
-   what is missing and writes nothing. An investigation then raises its `investigation-done` decision.
+   what is missing and writes nothing.
 
 The user accepts or requests changes from the card under your newest `done:` message: end the
 delivering turn with `done: …`
 and any later reply while you await acceptance with `waiting: acceptance of <ID>`.
 
 ## After delivery
+
+- **An investigation** delivers as any ticket, FINAL with its recommended next steps. After Accept, "build it" in chat means build it here as children, after a plan approval.
 
 - **Request changes:** the user's words arrive as a message, and the plugin has already moved the
   ticket back to In Progress (if

@@ -141,6 +141,14 @@ describe("conformanceViolations", () => {
     expect(kinds(ticket({ notes, labels: '"complexity-trivial"', plan: "" }))).toEqual([]);
   });
 
+  it("asks no plan or approval of a reopened round, as the plugin does (buildGap)", () => {
+    const round = (number: number) => `REOPENED 2026-01-06T10:00Z — user: "verify it"; round ${number}; past owners: none\n\n`;
+    const notes = NOTES.replace(/APPROVAL.*\n\n/, "");
+    expect(kinds(ticket({ notes: notes + "\n\n" + round(2).trim(), plan: "" }))).not.toContain("no-plan");
+    expect(kinds(ticket({ notes: notes + "\n\n" + round(2).trim() }))).not.toContain("no-approval");
+    expect(kinds(ticket({ notes }))).toContain("no-approval");
+  });
+
   it("flags EVIDENCE without a check or a review line", () => {
     expect(kinds(ticket({ notes: NOTES.replace("check: npm test — 40 passed\n", "") }))).toEqual(["evidence-check"]);
     expect(kinds(ticket({ notes: NOTES.replace(/review:.*$/m, "") }))).toEqual(["evidence-review"]);

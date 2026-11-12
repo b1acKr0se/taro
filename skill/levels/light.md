@@ -7,7 +7,7 @@ the one question whose answer changes the code, before you build.
    repository's conventions, committing as you go. A bug is reproduced first, end to end (separate
    the trigger from the symptom; compare with a path that works); the reproduction becomes the
    regression test and must fail before the fix. An investigation or a reopened round writes
-   findings, not code: check, record them (`roles/owner.md`), then step 3.
+   findings, not code: check, record them (`roles/owner.md`), then steps 2 and 3.
 2. **Write the plan** before you deliver, with `taro ticket edit <ID> --plan` following
    `templates/plan.md`: what you did and why, one line per section (trivial) or one or two (low),
    your question's answer included; a low bug's plan gives the cause, the fix and the alternatives.

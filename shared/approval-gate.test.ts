@@ -98,7 +98,8 @@ describe("approvalGate", () => {
     expect(approvalGate(block("naming", true, "Export"), true)).toBe("default");
     expect(approvalGate(block("naming", true, "   "), true)).toBe("hold");
     expect(approvalGate(block("tone", false), true)).toBe("ask");
-    expect(approvalGate(block("investigation-done", true), true)).toBe("ask");
+    // An investigation delivers like any ticket now: an investigation-done asked blocking is gated as any question.
+    expect(approvalGate(block("investigation-done", true, "Build"), true)).toBe("default");
   });
 
   it("asks anything that names its surprise, but not a blank one", () => {

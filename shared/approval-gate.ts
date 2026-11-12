@@ -14,7 +14,7 @@ import { reopenRound, roundNotes } from "./reopen.ts";
 
 /** The preset id of an owner's scope approval (`skill/reference/formats.md`). */
 export const SCOPE_APPROVAL = "scope-approval";
-/** The question an investigation delivers with: the delivery itself, never gated. */
+/** The question an investigation once delivered with; one still open from before is never taken back. */
 export const INVESTIGATION_DONE = "investigation-done";
 
 /** How the user last answered a plan: Approve (or an APPROVAL record), Request changes, or another option. */
@@ -118,7 +118,7 @@ export function approvalGate(block: { id: string; blocking: boolean; default: st
   if ((block.questions?.length ?? 0) > 0) return "single";
   if ((block.surprise ?? "").trim() !== "") return "ask";
   if (block.id === SCOPE_APPROVAL) return "refuse";
-  if (!block.blocking || block.id === INVESTIGATION_DONE) return "ask";
+  if (!block.blocking) return "ask";
   return block.default.trim() === "" ? "hold" : "default";
 }
 

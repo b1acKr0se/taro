@@ -1105,7 +1105,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       expect(heldMessages()).toEqual(["decision-held:`storage`:naming"]);
     });
 
-    it("leaves a non-blocking question and the investigation's delivery question as asked", async () => {
+    it("leaves a non-blocking question as asked and gates investigation-done like any blocking question", async () => {
       withTicket(APPROVED);
       const { state, decisions } = fakeState();
       await run(supervisor(state), human("start"), lightly(extra(ask("tone", "tone?"), "default: Yes")));
@@ -1113,9 +1113,9 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       await run(supervisor(delivering.state), human("start"), ask("investigation-done", "Findings are in: what next?"));
       expect([...shown(decisions), ...shown(delivering.decisions)]).toEqual([
         ["tone", "open", false, undefined],
-        ["investigation-done", "open", true, undefined],
+        // An investigation delivers like any ticket now: no default, so held back.
+        ["investigation-done", "withdrawn", true, undefined],
       ]);
-      expect(gated()).toEqual([]);
     });
 
     it("before approval changes nothing: blocking stays blocking, and a planning question is still made blocking (TR-146)", async () => {

@@ -70,10 +70,8 @@ surprise: Out of scope says "no schema change"   # only after approval, below
 | id | Options | Recommend |
 | --- | --- | --- |
 | `scope-approval` | Approve · Split into children (when proposed) | Approve; the question is `Approve the plan for <ID>?` |
-| `complexity` | Keep · Lower · Raise | Keep |
-| `child-breakdown` | Approve · Fewer children | Approve; after approval only with `surprise:` |
-| `investigation-done` | Build the recommendation · File follow-up · Close | Build |
-| `review-dispute` | Apply the fix · Accept as a limitation | your verdict; after approval only with `surprise:` |
+| `child-breakdown` | Approve · Fewer children | Approve; after approval only when the scope changes, with `surprise:` |
+| `review-dispute` | Apply the fix · Accept as a limitation | after approval: Accept as a limitation, listed in FINAL, non-blocking; blocking only with `surprise:` |
 
 Acceptance and the merge are never a decision block: the plugin shows Accept on a delivered ticket,
 and does not show a question asking for one.

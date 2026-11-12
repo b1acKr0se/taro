@@ -53,7 +53,7 @@ page: run it when unsure what comes next, after a compaction, or when a page did
 
 **Investigations** (`investigation` label): no code and no PR. Findings go into the ticket (what you
 did, evidence with commands and `file:line`, a recommendation). Check them yourself and record a
-REVIEW ending `verdict: clean`: it brings the delivery page.
+REVIEW ending `verdict: clean`: it brings the delivery page, and you deliver as for any ticket, with recommended next steps in FINAL.
 
 **Reopened tickets** have a REOPENED record (the user's words, the round, past owners); work on
 `taro/<id>-<round>`. Only records after it count. A reopened round verifies the delivered work
