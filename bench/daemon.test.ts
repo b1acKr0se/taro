@@ -62,6 +62,12 @@ describe("waitForDaemonReady", () => {
 describe("installWithRetry", () => {
   const notReady = outcome({ code: 1, stderr: "Daemon PID 7 remains running but is not ready for /x" });
 
+  it("leaves the CLI's own 300 s answer timeout to the plugin poll that follows, without retrying", async () => {
+    let calls = 0;
+    await installWithRetry(async () => (calls++, outcome({ code: 1, stderr: "Trusting plugin code: …\nError: Timeout waiting for message (300000ms)" })), noWait);
+    expect(calls).toBe(1);
+  });
+
   it("retries a not-ready failure and succeeds", async () => {
     const answers = [notReady, outcome({})];
     let calls = 0;

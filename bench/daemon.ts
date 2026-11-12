@@ -69,7 +69,7 @@ function freePort(port: number): Promise<boolean> {
 
 /** A random free port in 6810-6899. */
 export async function pickPort(): Promise<number> {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     const port = PORT_RANGE.first + Math.floor(Math.random() * (PORT_RANGE.last - PORT_RANGE.first + 1));
     assertSafePort(port);
     if (await freePort(port)) return port;
@@ -134,7 +134,11 @@ export async function waitForDaemonReady(status: Runner, wait: (milliseconds: nu
   throw new Error(`the daemon was not ready after ${attempts} status checks: ${last}`);
 }
 
-/** Runs the install up to three times, 10 s apart, retrying only a "not ready" failure; any other failure or a timeout fails at once. */
+/**
+ * Runs the install up to three times, 10 s apart, retrying only a "not ready" failure; any other failure or a timeout fails at once.
+ * The CLI's own 300 s wait for the daemon's answer is not a failure: the daemon goes on loading the plugin (4-5 minutes on a
+ * busy host), and the caller polls the plugin until it answers.
+ */
 export async function installWithRetry(install: Runner, wait: (milliseconds: number) => Promise<void>): Promise<void> {
   const tries = 3;
   for (let attempt = 1; ; attempt += 1) {
@@ -142,6 +146,7 @@ export async function installWithRetry(install: Runner, wait: (milliseconds: num
     if (installed.timedOut) throw new Error("paseo plugin install did not return within 10 minutes");
     if (installed.code === 0) return;
     const text = installed.stderr || installed.stdout;
+    if (text.includes("Timeout waiting for message")) return;
     if (!text.includes("not ready") || attempt === tries) throw new Error(`paseo plugin install failed: ${text}`);
     await wait(10_000);
   }
@@ -165,7 +170,7 @@ export async function installPlugin(throwaway: Throwaway): Promise<void> {
   // Paseo loads the plugin before install returns, which took 2.5-3 minutes on a busy host: 180 s cut a run short.
   await installWithRetry(() => run("paseo", ["plugin", "install", throwaway.pluginCopy, ...paseoArgs(throwaway)], { timeoutMs: 600_000 }), sleep);
   // The plugin starts with the daemon's plugin host: ask it something until it answers.
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
     const answered = await rpc(throwaway, "taro.projects.list", {}).then(() => true, () => false);
     if (answered) return;
     await new Promise((resolveWait) => setTimeout(resolveWait, 1000));
