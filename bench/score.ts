@@ -235,6 +235,65 @@ export function scoreQuestions(log: string): QuestionScore {
   return score;
 }
 
+export const DEFAULT_USER_MINUTES_PER_CARD = 30;
+
+export interface CardScore {
+  /** Cards other than the plan and Accept the user answered after the first Approve of the round. */
+  cardsAfterApproval: number;
+  /** Every card answered (the plan each time, each question card once, Accept), at the minutes each takes the user. */
+  userMinutesModelled: number;
+  /** Hidden preferences the decider's answers touched, each counted once, on the side of its first answer. */
+  preferences: { beforeApproval: number; afterApproval: number };
+}
+
+const isApprove = (choice: string): boolean => /^\W*approve\b/i.test(choice.trim());
+
+/**
+ * What the cards cost the user, from the decider's log. The approval is the first plan answer that
+ * approves (a Request changes before it leaves the round open); when the log holds none, the ticket's
+ * first APPROVAL record stands in. With no approval at all every answer counts as before it.
+ * An answer with no usable time counts as before the approval.
+ */
+export function scoreCards(log: string, ticketText: string, userMinutesPerCard: number = DEFAULT_USER_MINUTES_PER_CARD): CardScore {
+  const answers: Extract<DeciderEvent, { type: "answer" }>[] = [];
+  log.split("\n").forEach((line) => {
+    if (line.trim() === "") return;
+    try {
+      const event = JSON.parse(line) as DeciderEvent;
+      if (event.type === "answer") answers.push(event);
+    } catch {
+      // not a record line
+    }
+  });
+  const loggedApproval = answers.find((answer) => answer.kind === "plan" && isApprove(answer.choice))?.at;
+  const notes = /<!-- taro:notes -->\n([\s\S]*?)\n<!-- \/taro:notes -->/.exec(ticketText)?.[1] ?? "";
+  const approvalAt = loggedApproval ?? /^APPROVAL (\S+) — /m.exec(notes)?.[1];
+  const approvedMs = approvalAt === undefined ? Number.NaN : Date.parse(approvalAt);
+  const after = (answer: { at: string }): boolean => Number.isFinite(approvedMs) && Date.parse(answer.at) > approvedMs;
+
+  const afterCards = new Set<string>();
+  const questionCards = new Set<string>();
+  let otherCards = 0;
+  const seenPreferences = new Set<string>();
+  const preferences = { beforeApproval: 0, afterApproval: 0 };
+  answers.forEach((answer) => {
+    const card = answer.id.split("#")[0] ?? answer.id;
+    if (answer.kind === "question") {
+      questionCards.add(card);
+      if (after(answer)) afterCards.add(card);
+    } else {
+      otherCards += 1;
+    }
+    (answer.preference.match(/\bP\d+\b/gi) ?? []).forEach((tag) => {
+      const key = tag.toUpperCase();
+      if (seenPreferences.has(key)) return;
+      seenPreferences.add(key);
+      preferences[after(answer) ? "afterApproval" : "beforeApproval"] += 1;
+    });
+  });
+  return { cardsAfterApproval: afterCards.size, userMinutesModelled: (questionCards.size + otherCards) * userMinutesPerCard, preferences };
+}
+
 /** The permission asks the decider answered as the user: how many, and how many it denied. */
 export function countPermissions(log: string): { asked: number; denied: number } {
   const counts = { asked: 0, denied: 0 };

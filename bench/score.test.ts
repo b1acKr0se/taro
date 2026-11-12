@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { parsePlanted, parsePytest, runTestCommand, peakContextOf, storedAgentRecord, storedSessionIdOf, conformanceOf, countPermissions, countRecords, loggedViolations, parseNodeTest, parseTestOutput, parseUnittest, scoreQuestions, scoreStats } from "./score.ts";
+import { parsePlanted, parsePytest, scoreCards, runTestCommand, peakContextOf, storedAgentRecord, storedSessionIdOf, conformanceOf, countPermissions, countRecords, loggedViolations, parseNodeTest, parseTestOutput, parseUnittest, scoreQuestions, scoreStats } from "./score.ts";
 
 describe("parseNodeTest", () => {
   it("reads passes and the total from the summary", () => {
@@ -261,5 +261,65 @@ describe("runTestCommand", () => {
     await runTestCommand("python3 -m unittest discover -s tests", "/tmp/taro-bench-hidden.X", tools);
     expect(calls).toHaveLength(1);
     expect(removed).toEqual([]);
+  });
+});
+
+describe("scoreCards", () => {
+  const answer = (at: string, kind: string, id: string, choice: string, preference = "none") => JSON.stringify({ type: "answer", at, kind, id, via: "rpc", choice, text: "", preference, briefAnswered: false });
+  const ticketWith = (notes: string) => `---\nid: "AB-001"\n---\n\n<!-- taro:notes -->\n${notes}\n<!-- /taro:notes -->\n`;
+  const ticket = ticketWith("APPROVAL 2026-01-05T10:10Z — the user: \"Approve the plan\"");
+
+  it("counts nothing when the log is empty", () => {
+    expect(scoreCards("", ticket)).toEqual({ cardsAfterApproval: 0, userMinutesModelled: 0, preferences: { beforeApproval: 0, afterApproval: 0 } });
+  });
+
+  it("has no cards after approval when every question came before it", () => {
+    const log = [
+      answer("2026-01-05T10:02:00.000Z", "question", "q1#Format", "YAML", "P1"),
+      answer("2026-01-05T10:03:00.000Z", "question", "q2#Name", "slug", "P2"),
+      answer("2026-01-05T10:10:00.000Z", "plan", "scope-approval", "Approve"),
+      answer("2026-01-05T10:50:00.000Z", "acceptance", "accept", "Accept"),
+    ].join("\n");
+    expect(scoreCards(log, ticket)).toEqual({ cardsAfterApproval: 0, userMinutesModelled: 4 * 30, preferences: { beforeApproval: 2, afterApproval: 0 } });
+  });
+
+  it("counts a question card once however many questions it holds, and ignores the plan and Accept", () => {
+    const log = [
+      answer("2026-01-05T10:10:00.000Z", "plan", "scope-approval", "Approve"),
+      answer("2026-01-05T10:20:00.000Z", "question", "q1#Format", "YAML", "P1"),
+      answer("2026-01-05T10:20:00.000Z", "question", "q1#Name", "slug", "P2"),
+      answer("2026-01-05T10:30:00.000Z", "question", "q2#Order", "newest", "none"),
+      answer("2026-01-05T10:50:00.000Z", "acceptance", "accept", "Accept"),
+    ].join("\n");
+    expect(scoreCards(log, ticket, 10)).toEqual({ cardsAfterApproval: 2, userMinutesModelled: 4 * 10, preferences: { beforeApproval: 0, afterApproval: 2 } });
+  });
+
+  it("counts from the first Approve of the round after a Request changes", () => {
+    const log = [
+      answer("2026-01-05T10:02:00.000Z", "plan", "scope-approval", "Request changes"),
+      answer("2026-01-05T10:05:00.000Z", "question", "q1#Format", "YAML", "P1"),
+      answer("2026-01-05T10:10:00.000Z", "plan", "scope-approval", "Approve"),
+      answer("2026-01-05T10:20:00.000Z", "question", "q2#Name", "slug", "P2"),
+      answer("2026-01-05T10:25:00.000Z", "plan", "scope-approval", "Request changes"),
+      answer("2026-01-05T10:30:00.000Z", "plan", "scope-approval", "Approve"),
+      answer("2026-01-05T10:40:00.000Z", "question", "q3#Order", "newest", "none"),
+    ].join("\n");
+    expect(scoreCards(log, ticket)).toEqual({ cardsAfterApproval: 2, userMinutesModelled: 7 * 30, preferences: { beforeApproval: 1, afterApproval: 1 } });
+  });
+
+  it("counts a preference answered twice once, on the side of its first answer", () => {
+    const log = [
+      answer("2026-01-05T10:05:00.000Z", "question", "q1#Format", "YAML", "P1"),
+      answer("2026-01-05T10:10:00.000Z", "plan", "scope-approval", "Approve"),
+      answer("2026-01-05T10:20:00.000Z", "question", "q2#Format", "YAML again", "P1"),
+      answer("2026-01-05T10:21:00.000Z", "question", "q3#Both", "both", "P2, P2"),
+    ].join("\n");
+    expect(scoreCards(log, ticket).preferences).toEqual({ beforeApproval: 1, afterApproval: 1 });
+  });
+
+  it("takes the ticket's APPROVAL when the log has no Approve, and counts everything before a run that was never approved", () => {
+    const log = [answer("2026-01-05T10:05:00.000Z", "question", "q1#A", "x", "P1"), answer("2026-01-05T10:20:00.000Z", "question", "q2#B", "y", "P2")].join("\n");
+    expect(scoreCards(log, ticket)).toEqual({ cardsAfterApproval: 1, userMinutesModelled: 60, preferences: { beforeApproval: 1, afterApproval: 1 } });
+    expect(scoreCards(log, ticketWith("EXECUTION x"))).toEqual({ cardsAfterApproval: 0, userMinutesModelled: 60, preferences: { beforeApproval: 2, afterApproval: 0 } });
   });
 });

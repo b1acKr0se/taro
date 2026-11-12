@@ -1,6 +1,6 @@
 /**
  * `node bench/run.ts --plugin <checkout> --task <name> --out <dir> [--owner-model <id>]
- * [--subagent-models <ids>] [--max-minutes N] [--max-usd N] [--ui]`: one ticket end to end on a throwaway
+ * [--subagent-models <ids>] [--max-minutes N] [--max-usd N] [--user-minutes-per-card N] [--ui]`: one ticket end to end on a throwaway
  * Paseo daemon with the plugin from a git archive copy of a checkout, a model playing the user, and a score
  * at the end (`<dir>/result.json`). See bench/README.md. Runs under Node type stripping: erasable
  * syntax, `.ts` import extensions, no packages.
@@ -12,7 +12,7 @@ import { playwrightFor, startDecider, type DeciderMode } from "./decider.ts";
 import { BENCH_ROOT, cleanup, ensureDirectory, installPlugin, makePluginCopy, makeThrowaway, paseoArgs, pickPort, rpc, scratchDirectory, seedRepository, startDaemon, waitForThreads, type Throwaway } from "./daemon.ts";
 import { run } from "./process.ts";
 import { briefFor, installOwnerPytest, isPythonTask, ownerEnvArguments } from "./python-task.ts";
-import { conformanceOf, countPermissions, countRecords, loggedViolations, peakContextOfSession, runHidden, scoreQuestions, scoreStats, storedAgentRecord, storedSessionIdOf, type TicketStatsLike } from "./score.ts";
+import { DEFAULT_USER_MINUTES_PER_CARD, conformanceOf, countPermissions, countRecords, loggedViolations, peakContextOfSession, runHidden, scoreCards, scoreQuestions, scoreStats, storedAgentRecord, storedSessionIdOf, type TicketStatsLike } from "./score.ts";
 import type { ResultFile } from "./report.ts";
 
 const PROJECT = "notes-app";
@@ -29,6 +29,7 @@ interface Options {
   subagentModels: string[];
   maxMinutes: number;
   maxUsd: number;
+  userMinutesPerCard: number;
   playwright: string;
   decider: DeciderMode;
 }
@@ -58,6 +59,7 @@ function parseOptions(rawArgv: string[]): Options {
     subagentModels: values.get("subagent-models")?.split(",").map((model) => model.trim()).filter((model) => model !== "") ?? DEFAULT_SUBAGENT_MODELS,
     maxMinutes: Number(values.get("max-minutes") ?? 90),
     maxUsd: Number(values.get("max-usd") ?? 25),
+    userMinutesPerCard: Number(values.get("user-minutes-per-card") ?? DEFAULT_USER_MINUTES_PER_CARD),
     playwright,
     decider: ui ? "ui" : "rpc",
   };
@@ -250,6 +252,8 @@ async function main(): Promise<void> {
       writeFileSync(join(options.out, "hidden-output.txt"), outcome.output);
     }
     const deciderLog = existsSync(join(options.out, "decider.log")) ? readFileSync(join(options.out, "decider.log"), "utf8") : "";
+    const cards = scoreCards(deciderLog, finalText, options.userMinutesPerCard);
+    const wallMinutes = Math.round(((Date.now() - started) / 60000) * 10) / 10;
     const result: ResultFile = {
       task: options.task,
       arm: { checkout: options.plugin, sha },
@@ -261,6 +265,11 @@ async function main(): Promise<void> {
       hidden,
       planted,
       questions: scoreQuestions(deciderLog),
+      cardsAfterApproval: cards.cardsAfterApproval,
+      userMinutesModelled: cards.userMinutesModelled,
+      wallMinutes,
+      wallMinutesWithUser: Math.round((wallMinutes + cards.userMinutesModelled) * 10) / 10,
+      preferences: cards.preferences,
       conformance: conformanceOf(finalText, stats?.nudges ?? 0, stats?.transitions ?? []),
       records: countRecords(finalText),
       cardFailures: loggedViolations(deciderLog),

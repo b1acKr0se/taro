@@ -17,6 +17,15 @@ export interface ResultFile {
   byRole: Record<string, { agents: number; models: string[]; costUsd: number; peakContextTokens: number; turns: number; activeMs: number }>;
   hidden: { passed: number; total: number } | null;
   questions: { asked: number; preferenceHits: number; redundant: number };
+  /** Cards other than the plan and Accept answered after the first Approve; absent in results from before it was recorded. */
+  cardsAfterApproval?: number;
+  /** The user's time the cards would take, at the run's minutes per card. */
+  userMinutesModelled?: number;
+  wallMinutes?: number;
+  /** `wallMinutes` plus `userMinutesModelled`. */
+  wallMinutesWithUser?: number;
+  /** Hidden preferences the decider's answers touched, by the side of the approval of the first answer. */
+  preferences?: { beforeApproval: number; afterApproval: number };
   conformance: { kind: string; detail: string }[];
   records: { RISKS: number; RULING: number; EVIDENCE: number; FINAL: number };
   cardFailures: { kind: string; detail: string }[];
@@ -157,6 +166,11 @@ export function renderSpread(results: readonly ResultFile[]): string {
       ["Runs", groups.map((group, index) => (group.length === finished[index]!.length ? String(group.length) : `${group.length} (${finished[index]!.length} finished)`))],
       ["Cost", finished.map((group) => spread(group.map((result) => result.costUsd), usd))],
       ["Wall minutes", finished.map((group) => spread(group.map((result) => result.wallMs / 60000), (value) => String(Math.round(value))))],
+      ["Wall minutes with the user's time", finished.map((group) => spread(group.flatMap((result) => result.wallMinutesWithUser ?? []), (value) => String(Math.round(value))))],
+      ["Cards after approval", finished.map((group) => spread(group.flatMap((result) => result.cardsAfterApproval ?? []), String))],
+      ["User minutes modelled", finished.map((group) => spread(group.flatMap((result) => result.userMinutesModelled ?? []), (value) => String(Math.round(value))))],
+      ["Preferences before approval", finished.map((group) => spread(group.flatMap((result) => result.preferences?.beforeApproval ?? []), String))],
+      ["Preferences after approval", finished.map((group) => spread(group.flatMap((result) => result.preferences?.afterApproval ?? []), String))],
       ["Hidden passed", scored.map((group) => spread(group.map((result) => result.hidden?.passed ?? 0), String))],
       ["Owner peak context", finished.map((group) => spread(group.flatMap((result) => result.ownerPeakContextTokens ?? []), tokens))],
       ["Cost per hidden test passed", scored.map((group) => spread(group.flatMap((result) => (result.hidden !== null && result.hidden.passed > 0 ? [result.costUsd / result.hidden.passed] : [])), usd))],

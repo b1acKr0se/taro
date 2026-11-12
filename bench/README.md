@@ -8,7 +8,7 @@ out, so two versions of the plugin (an *arm* each) can be compared on the same t
     export PLAYWRIGHT=<a Playwright module directory>   # only for --ui, as tools/shot.cjs takes it
     node bench/run.ts --plugin <checkout> --task <name> --out <dir> \
         [--owner-model claude/claude-opus-5-5] [--subagent-models claude/claude-sonnet-5-5,claude/claude-haiku-5-5] \
-        [--max-minutes 90] [--max-usd 25] [--ui]
+        [--max-minutes 90] [--max-usd 25] [--user-minutes-per-card 30] [--ui]
     node bench/report.ts <result dirs…>                      # per task and arm: min / median / max over the runs, flags arms under 3 finished
     node bench/report.ts --pairs <result dir A> <result dir B>   # one run per arm side by side
     node bench/conformance.ts <tracker dir>                  # the workflow check over a whole tracker, read-only
@@ -90,6 +90,7 @@ host's threads; the harness waits while the host is above 85% of `pids.max`.
   building, EVIDENCE `check:` and `review:`, a FINAL within limits, and the plugin's corrections
   (`DELIVERY-ENDED`, `NO-PLAN`, held-back notes, nudges). Over the live tracker it also reports old tickets
   that predate the templates; compare arms, not the absolute count.
+- `cardsAfterApproval`, `userMinutesModelled`, `wallMinutes`, `wallMinutesWithUser`, `preferences`: cards (not the plan or Accept) answered after the first Approve of the round; every card answered at `--user-minutes-per-card` (default 30) each, added to the wall minutes; the hidden preferences the decider touched, once each, split by the time of the first Approve (`bench/score.ts`, `scoreCards`). `bench/report.ts` prints each as min / median / max.
 - `records`: how many RISKS, RULING, EVIDENCE and FINAL records the ticket holds.
 - `cardFailures`: `card-text` (a leaked `undefined`, raw JSON, a missing option…) and `card-missing` (a card the
   decider could not find or use on screen within two minutes, then answered over RPC).

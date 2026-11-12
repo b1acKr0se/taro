@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { renderReport, renderSpread, type ResultFile } from "./report.ts";
+import { scoreCards } from "./score.ts";
 
 function result(overrides: Partial<ResultFile> = {}): ResultFile {
   return {
@@ -150,5 +151,32 @@ describe("renderSpread", () => {
     const text = renderSpread([costed(1, { wallMs: 30 * 60000, ownerPeakContextTokens: 100_000 }), costed(1, { wallMs: 60 * 60000, ownerPeakContextTokens: 200_000 })]);
     expect(text).toContain("| Wall minutes | 30 / 45 / 60 |");
     expect(text).toContain("| Owner peak context | 100k / 150k / 200k |");
+  });
+});
+
+describe("renderSpread, the user's time", () => {
+  const answer = (at: string, kind: string, id: string, choice: string, preference = "none") => JSON.stringify({ type: "answer", at, kind, id, via: "rpc", choice, text: "", preference, briefAnswered: false });
+  const ticketText = "---\nid: \"AB-001\"\n---\n\n<!-- taro:notes -->\nAPPROVAL 2026-01-05T10:10Z — the user: \"Approve the plan\"\n<!-- /taro:notes -->\n";
+  const fromLog = (lines: string[], wallMinutes: number): ResultFile => {
+    const cards = scoreCards(lines.join("\n"), ticketText);
+    return result({ wallMs: wallMinutes * 60000, wallMinutes, cardsAfterApproval: cards.cardsAfterApproval, userMinutesModelled: cards.userMinutesModelled, wallMinutesWithUser: wallMinutes + cards.userMinutesModelled, preferences: cards.preferences });
+  };
+  const noCards = fromLog([], 20);
+  const beforeOnly = fromLog([answer("2026-01-05T10:02:00.000Z", "question", "q1#A", "x", "P1"), answer("2026-01-05T10:10:00.000Z", "plan", "scope-approval", "Approve")], 30);
+  const afterCards = fromLog([answer("2026-01-05T10:10:00.000Z", "plan", "scope-approval", "Approve"), answer("2026-01-05T10:20:00.000Z", "question", "q1#A", "x", "P1"), answer("2026-01-05T10:30:00.000Z", "question", "q2#B", "y", "P2"), answer("2026-01-05T10:31:00.000Z", "question", "q3#C", "z")], 40);
+
+  it("prints each measure per arm as min / median / max", () => {
+    const text = renderSpread([noCards, beforeOnly, afterCards]);
+    expect(text).toContain("| Cards after approval | 0 / 0 / 3 |");
+    expect(text).toContain("| User minutes modelled | 0 / 60 / 120 |");
+    expect(text).toContain("| Wall minutes with the user's time | 20 / 90 / 160 |");
+    expect(text).toContain("| Preferences before approval | 0 / 0 / 1 |");
+    expect(text).toContain("| Preferences after approval | 0 / 0 / 2 |");
+  });
+
+  it("shows n/a for results from before these were recorded", () => {
+    const text = renderSpread([result()]);
+    expect(text).toContain("| Cards after approval | n/a |");
+    expect(text).toContain("| Preferences before approval | n/a |");
   });
 });
