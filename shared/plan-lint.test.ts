@@ -130,6 +130,18 @@ describe("lintPlan", () => {
   });
 
   describe("interfaces", () => {
+    it("reads `Provide: none` as no interface, so it asks for no examples", () => {
+      const usesOnly = { ...BUTTON, description: (BUTTON.description ?? "").replace("- Provide: `ExportButton` component\n  - e.g. pressed → downloads `report.csv`", "- Provide: none — it only calls others") };
+      expect(lintPlan(ticket({ children: [WRITER, usesOnly] }))).toEqual([]);
+    });
+
+    it("reads `Use: none` as no interface, so it asks for no provider", () => {
+      const standalone = { ...WRITER, description: (WRITER.description ?? "").replace("- Provide:", "- Use: none\n- Provide:") };
+      expect(lintPlan(ticket({ children: [standalone, BUTTON] }))).toEqual([]);
+      const bold = { ...WRITER, description: (WRITER.description ?? "").replace("- Provide:", "- **Use:** `none` — standalone\n- Provide:") };
+      expect(lintPlan(ticket({ children: [bold, BUTTON] }))).toEqual([]);
+    });
+
     it("names an interface a child uses that no child provides, unless it is existing", () => {
       const orphan = { ...BUTTON, description: (BUTTON.description ?? "").replace("- Use: `toCsv` — from SH-12.01", "- Use: `toTsv(rows)` — from SH-12.01") };
       expect(lintPlan(ticket({ children: [WRITER, orphan] }))).toEqual([expect.stringContaining("a provider for `toTsv`, which SH-12.02 uses and no child provides")]);

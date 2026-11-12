@@ -93,6 +93,8 @@ interface Interfaces {
 const PROVIDE = /^\s*(?:[-*+]\s+)?\**provides?\**:?\s*(.*)$/i;
 const USE = /^\s*(?:[-*+]\s+)?\**uses?\**:?\s*(.*)$/i;
 const EXAMPLE = /\be\.g\.?/i;
+/** `Use: none` or `Provide: none — why`: the line says there is nothing, so it names no interface. */
+const NOTHING = /^[`*\s]*none\b/i;
 
 function interfacesOf(lines: readonly string[]): Interfaces {
   const result: Interfaces = { provides: [], uses: [] };
@@ -100,7 +102,9 @@ function interfacesOf(lines: readonly string[]): Interfaces {
   lines.forEach((line) => {
     const provide = PROVIDE.exec(line);
     const use = provide === null ? USE.exec(line) : null;
-    if (provide !== null) {
+    if ((provide !== null || use !== null) && NOTHING.test((provide ?? use)?.[1] ?? "")) {
+      last = null;
+    } else if (provide !== null) {
       last = { name: interfaceName(provide[1] ?? ""), examples: EXAMPLE.test(provide[1] ?? "") ? 1 : 0 };
       result.provides.push(last);
     } else if (use !== null) {
