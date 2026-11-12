@@ -81,7 +81,8 @@ export async function projectSettings(trackerPath: string): Promise<ProjectSetti
     // No settings file: the defaults.
   }
   return {
-    delivery: raw.delivery === "local" ? "local" : "pull-request",
+    // The project schema's value (`shared/project.ts` DeliverySchema): anything else delivers by pull request.
+    delivery: raw.delivery === "local-only" ? "local-only" : "pull-request",
     acceptAlsoMerges: raw.acceptAlsoMerges !== false,
     subagentModels: Array.isArray(raw.subagentModels) ? raw.subagentModels.filter((model): model is string => typeof model === "string") : [],
   };

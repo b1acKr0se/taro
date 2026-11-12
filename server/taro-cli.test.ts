@@ -997,7 +997,7 @@ describe("taro agent", { timeout: CLI_TIMEOUT_MS }, () => {
 describe("taro check and taro deliver", { timeout: CLI_TIMEOUT_MS }, () => {
   it("delivers a local branch: review-head, revision line, Awaiting acceptance; again on the same head writes nothing", () => {
     const world = ownerWorld();
-    writeFileSync(join(scratch, "taro.json"), JSON.stringify({ delivery: "local" }));
+    writeFileSync(join(scratch, "taro.json"), JSON.stringify({ delivery: "local-only" }));
     deliverableTicket();
     const head = world.head();
     const first = world.run(["deliver", "TR-050"]);
@@ -1083,7 +1083,7 @@ describe("taro check and taro deliver", { timeout: CLI_TIMEOUT_MS }, () => {
 
   it("logs checks and offers them; --evidence-from-checks records them as EVIDENCE check lines", () => {
     const world = ownerWorld();
-    writeFileSync(join(scratch, "taro.json"), JSON.stringify({ delivery: "local" }));
+    writeFileSync(join(scratch, "taro.json"), JSON.stringify({ delivery: "local-only" }));
     deliverableTicket();
     const passing = world.run(["check", "--", "sh", "-c", "echo building; echo ' Tests  14 passed (14)'; echo done-ish"]);
     expect(passing.code).toBe(0);
