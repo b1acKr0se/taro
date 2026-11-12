@@ -185,7 +185,7 @@ reviewer before it is Done. Children's questions come to you; bring real decisio
   them before the code, in the same round.
 - **high:** a reviewer over the combined diff; if it found a blocker, a second round re-reviews the
   whole branch after your fixes, whatever their size; otherwise the fixes get a fix check (below).
-  Then escalate with a `review-dispute` decision rather than loop.
+  Then rule on what is still disputed, not loop (a RULING; `review-dispute` only with `surprise:`).
 
 You verify every finding against the code yourself (valid / partially valid / invalid, with
 evidence), fix the valid blockers and should-fix findings yourself, and record a REVIEW note that
@@ -210,8 +210,8 @@ lines; and the full suite's result after the last fix. Ask for a **full re-revie
 diff changes more than half as many lines as the reviewed change (`git diff --shortstat`), or a
 blocker's fix changed the approach. Findings rejected as invalid and Questions are not sent. The
 check is part of its round: new blockers or should-fix it finds are fixed and checked once more;
-still failing after that → `review-dispute`. The REVIEW record says what was re-checked: the range,
-full re-review or fix check, and the reviewer's verdict.
+still failing after that → a RULING (`review-dispute` only with `surprise:`). The REVIEW record
+says what was re-checked: the range, full re-review or fix check, and the reviewer's verdict.
 
 ## Delivery (decisions 26, 34)
 
@@ -257,9 +257,9 @@ full re-review or fix check, and the reviewer's verdict.
   - Record the result as the EVIDENCE `ux:` line (`reference/tickets.md`), naming the alignment and
     placeholder result per changed screen; a reviewer's visual verdict goes on it too. Accept is
     refused without it when there are screenshots.
-- Deliver with none of your questions open, non-blocking ones included: each one answered, or
-  withdrawn when the user answered it in words or it no longer applies (`investigation-done` is the
-  exception: it is the delivery). Accept waits until then.
+- Deliver with none of your questions open: each answered, or withdrawn when the user answered it in
+  words or it no longer applies (not `investigation-done`: it is the delivery). One you went on with by
+  default after approval is a RULING you record; delivery closes it. Accept waits until then.
 - Before FINAL, write an EVIDENCE record (`reference/tickets.md`): checks with results, the review
   outcome, the `ux:` line, and screenshots in `$TARO_EVIDENCE/<ID>/` (desktop and phone for visible changes), each
   named for what it shows and captioned (`reference/formats.md`, Images), or `screenshots: none`
