@@ -219,7 +219,8 @@ export async function agentStart(options: AgentStartOptions, io: CommandIo): Pro
  * Archives the agent, then the worktree workspace `taro agent start --worktree` made for it: nothing
  * else ever archived one, so every parallel child left a workspace and a worktree behind. Only when the
  * ticket's EXECUTION record shows `--worktree` made it for this agent, no other live agent works in it,
- * and its branch is merged into the branch the owner stands on; otherwise it is kept and the reason printed.
+ * its branch is merged into the branch the owner stands on, and it holds no uncommitted or untracked
+ * file; otherwise it is kept and the reason printed.
  */
 export async function agentStop(agentId: string, force: boolean, io: CommandIo, store: TicketStore | null = null): Promise<number> {
   const paseo = paseoCommand(io.env);
@@ -287,6 +288,11 @@ async function archiveChildWorkspace(agentId: string, inspected: CommandResult |
   if (branch === null || ownerBranch === null) return keep(`cannot tell ${branch === null ? `the branch at ${agent.cwd}` : `your branch at ${io.cwd}`}`);
   const merged = await git(io.cwd, ["merge-base", "--is-ancestor", branch, ownerBranch]);
   if (merged.code !== 0) return keep(`${branch} is not merged into ${ownerBranch}`);
+  // Archiving deletes the worktree: uncommitted or untracked work there would go with it.
+  const status = await git(agent.cwd, ["status", "--porcelain"]);
+  if (status.code !== 0) return keep(`git status failed at ${agent.cwd}, so it may hold uncommitted work: ${commandError(status)}`);
+  const dirty = status.stdout.split("\n").filter((line) => line.trim() !== "").map((line) => line.slice(3));
+  if (dirty.length > 0) return keep(`${agent.cwd} has uncommitted changes (${dirty.slice(0, 3).join(", ")}${dirty.length > 3 ? `, ${dirty.length - 3} more` : ""})`);
   const archived = await runCommand(paseo, ["workspace", "archive", workspace.workspaceId as string, "--json"], { timeoutMs: 120_000 }).catch((error: unknown) => ({ code: null, stdout: "", stderr: error instanceof Error ? error.message : String(error) }));
   if (archived.code !== 0) return keep(`paseo workspace archive failed: ${commandError(archived)}`);
   return `Archived its workspace ${workspace.workspaceId as string} (${agent.cwd}): ${branch} is merged into ${ownerBranch}.`;

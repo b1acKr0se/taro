@@ -961,6 +961,21 @@ describe("taro agent", { timeout: CLI_TIMEOUT_MS }, () => {
       expect(archivedWorkspaces()).toEqual([]);
     });
 
+    // Review blocker: paseo workspace archive deletes the worktree, uncommitted work with it.
+    it("keeps a merged child's worktree that holds an uncommitted change or an untracked file", () => {
+      const { world, worktree, stubs, archivedWorkspaces } = childWorld();
+      world.git("merge", "-q", "--no-edit", "taro/tr-050.01");
+      writeFileSync(join(worktree, "child.txt"), "edited, not committed\n");
+      const changed = world.run(["agent", "stop", STUB_AGENT], stubs());
+      expect(changed.code).toBe(0);
+      expect(changed.stdout).toContain(`Kept its workspace: ${worktree} has uncommitted changes (child.txt).`);
+      world.git("-C", worktree, "checkout", "--", "child.txt");
+      writeFileSync(join(worktree, "notes-draft.md"), "draft\n");
+      const untracked = world.run(["agent", "stop", STUB_AGENT], stubs());
+      expect(untracked.stdout).toContain(`Kept its workspace: ${worktree} has uncommitted changes (notes-draft.md).`);
+      expect(archivedWorkspaces()).toEqual([]);
+    });
+
     it("keeps it while another live agent works in it", () => {
       const { world, worktree, stubs, archivedWorkspaces } = childWorld();
       world.git("merge", "-q", "--no-edit", "taro/tr-050.01");
