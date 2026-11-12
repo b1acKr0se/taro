@@ -34,6 +34,7 @@ import {
   deliverCommand,
   type CommandIo,
 } from "./owner-commands.ts";
+import { statsCommand, StatsRefused, StatsUsage } from "./stats-command.ts";
 import { DaemonUnreachable, invokePluginRpc, RpcRefused } from "./plugin-rpc.ts";
 import {
   createTicketStore,
@@ -80,6 +81,7 @@ The buttons, from a script (they call the running daemon, with the button's own 
   taro ticket request-changes|change-spec <ID> --text <text>
   taro decision answer <key> [--label <option>] [--text <words>]
   taro decision dismiss <key>
+  taro stats <ID> | --project <name> [--since <date>] [--json]   a round's time to a result: Planning to first Awaiting acceptance, Needs you before and after approval, plugin corrections
   taro next <ID>      the page for the ticket's current step, as the plugin sends it when the step starts
 The owner's mechanical steps (they need $TARO_PROJECT; threads are checked first, waiting up to --wait seconds above 85%):
   taro agent start implementer|reviewer|researcher <ID> --model <id> [--thinking <id>] --brief-file <path>
@@ -762,6 +764,15 @@ const commands: Record<string, (args: readonly string[], io: CliIo) => Promise<n
   check: checkVerbCommand,
   deliver: deliverVerbCommand,
   daemon: daemonCommand,
+  stats: async (args, io) => {
+    try {
+      return await statsCommand(args, io);
+    } catch (error) {
+      if (error instanceof StatsUsage) throw new UsageError(error.message);
+      if (error instanceof StatsRefused) throw new CommandRefused(error.message);
+      throw error;
+    }
+  },
 };
 
 function errorMessage(error: unknown): string {

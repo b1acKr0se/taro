@@ -343,6 +343,20 @@ export class Stats {
     });
   }
 
+  /** A permission ask the rules did not answer ended after `waitedMs`; counted on the parent too, as agents are. */
+  permissionWaited(project: string, ticket: string, waitedMs: number): Promise<void> {
+    return this.modify((file) => {
+      for (const target of ticketAndParent(ticket)) {
+        const key = keyFor(project, target);
+        const stats = file.tickets[key] ?? TicketStatsSchema.parse({ project, ticket: target });
+        stats.permissionAsks += 1;
+        stats.permissionWaitMs += Math.max(0, waitedMs);
+        file.tickets[key] = stats;
+      }
+      return true;
+    });
+  }
+
   countProject(project: string, field: keyof ProjectStats): Promise<void> {
     return this.modify((file) => {
       const stats = file.projects[project] ?? ProjectStatsSchema.parse({});

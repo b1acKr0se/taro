@@ -93,7 +93,7 @@ import { forgetOwnerStart, markOwnerStarted } from "./server/owner-start";
 import { catchUpText, compactManager, launchManager, restartManager, resumeManager, tellManager, writeManagerInstructions } from "./server/manager";
 import { onboardProject, onboardingProblems } from "./server/onboard";
 import { listPaseoProjects, settingsTemplate } from "./server/paseo-projects";
-import { isTaroAsker, triageAsk } from "./server/permission-triage";
+import { countPermissionWait, isTaroAsker, triageAsk } from "./server/permission-triage";
 import { readImage } from "./server/images";
 import { Notifier } from "./server/notifications";
 import { allowedMergeMethods } from "./server/merge-methods";
@@ -557,10 +557,16 @@ export default function contribute(server: PluginServerContext) {
       return null;
     });
     if (decided !== null) invalidateBoards();
+    // No rule answered it: its ticket goes to Needs you with the card now, and the notification goes out now (TR-263).
+    else {
+      invalidateBoards();
+      checkNotifications();
+    }
   });
   // Whoever answered: the rules' mark on the ask says it was them, otherwise it was the user.
   const removePermissionResolvedHook = server.on("agent.permission_resolved", async ({ agent, requestId, resolution }) => {
     await state.resolvePermissionAsk(agent.id, requestId, resolution, new Date().toISOString()).catch((error: unknown) => reportFailure(`[taro] recording the answer to ${agent.id}'s permission ask:`, error));
+    await countPermissionWait(state, stats, agent.id, requestId).catch((error: unknown) => reportFailure(`[taro] counting ${agent.id}'s permission wait:`, error));
   });
 
   // Every Taro agent knows where its tracker and skill are, and has `taro` on PATH, on create and on resume (decision 38).

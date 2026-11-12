@@ -7,7 +7,8 @@ import { DENY_RULES, ruleReasons } from "../shared/permission-triage";
 import { fetchLiveAgent } from "./agents";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import { withoutNotes } from "./package-files";
-import { allInsideOnDisk, isTaroAsker, triageAsk } from "./permission-triage";
+import type { PermissionAsk } from "../shared/permission-asks";
+import { allInsideOnDisk, countPermissionWait, isTaroAsker, triageAsk } from "./permission-triage";
 import type { Stats } from "./stats";
 import { appendTicketNote } from "./tickets";
 
@@ -159,5 +160,47 @@ describe("permission-rules.md", () => {
   it("gives every deny rule its reason", async () => {
     const reasons = ruleReasons(withoutNotes(await readFile(join(import.meta.dirname, "..", "templates", "permission-rules.md"), "utf8")));
     expect(Object.keys(reasons).sort()).toEqual([...DENY_RULES].sort());
+  });
+});
+
+describe("countPermissionWait (TR-263)", () => {
+  const ask = (patch: Partial<PermissionAsk>): PermissionAsk => ({ agentId: "agent-1", requestId: "permission-1", kind: "tool", name: "Bash", subject: "x", askedAt: "2026-11-01T10:00:00Z", answeredAt: "2026-11-01T10:07:30Z", outcome: "allowed", by: "you", rule: null, words: null, ...patch });
+  const run = async (recorded: PermissionAsk | null, owner: { project: string; ticket: string | null } | null) => {
+    const waits: unknown[][] = [];
+    const state = { permissionAsk: async () => recorded, agent: async () => owner };
+    const stats = { permissionWaited: async (...args: unknown[]) => void waits.push(args) };
+    const counted = await countPermissionWait(state as never, stats as never, "agent-1", "permission-1");
+    return { counted, waits };
+  };
+
+  it("adds the time an ask the user answered stayed open to its ticket", async () => {
+    expect(await run(ask({}), { project: "taro", ticket: "TR-1" })).toEqual({ counted: true, waits: [["taro", "TR-1", 450_000]] });
+  });
+
+  it("counts a cancelled ask too: the owner waited until its turn was stopped", async () => {
+    expect((await run(ask({ outcome: "cancelled", by: null }), { project: "taro", ticket: "TR-1" })).counted).toBe(true);
+  });
+
+  it("does not count an ask a rule answered", async () => {
+    expect(await run(ask({ by: "rules", rule: "scratch-or-worktree" }), { project: "taro", ticket: "TR-1" })).toEqual({ counted: false, waits: [] });
+  });
+
+  it("does not count an ask still open, one never recorded, or an agent with no ticket", async () => {
+    expect((await run(ask({ answeredAt: null, outcome: null, by: null }), { project: "taro", ticket: "TR-1" })).counted).toBe(false);
+    expect((await run(null, { project: "taro", ticket: "TR-1" })).counted).toBe(false);
+    expect((await run(ask({}), { project: "taro", ticket: null })).counted).toBe(false);
+    expect((await run(ask({}), null)).counted).toBe(false);
+  });
+});
+
+describe("an ask no rule answers (TR-263)", () => {
+  it("is left to the user: nothing is answered and nothing is noted", async () => {
+    vi.clearAllMocks();
+    vi.mocked(fetchLiveAgent).mockResolvedValue(liveAgent(owner));
+    const { stats, counted } = setUp();
+    expect(await triageAsk(paseo, stats, asker, bash("npm install left-pad"))).toBeNull();
+    expect(respond).not.toHaveBeenCalled();
+    expect(appendTicketNote).not.toHaveBeenCalled();
+    expect(counted).toEqual([]);
   });
 });
