@@ -5,6 +5,7 @@
  * imports; it runs under `node` type stripping (the benchmark), so `.ts` import extensions and
  * erasable syntax only.
  */
+import { planAnswerRecords } from "./approval-gate.ts";
 import { parseTicket } from "./ticket-format.ts";
 
 export interface ConformanceViolation {
@@ -36,6 +37,9 @@ export const FINAL_HEADINGS: readonly { heading: string; limit: number }[] = [
   { heading: "How it was verified", limit: 3 },
   { heading: "Limitations", limit: 3 },
 ];
+
+/** FINAL's optional closing section (TR-263): the owner's rulings after approval, the costliest five, then "N more in the ticket". */
+export const FINAL_RULINGS = { heading: "Rulings", limit: 5 };
 
 /** Records the plugin writes (or owners write) when it had to correct the workflow. */
 const CORRECTION_RECORDS = ["DELIVERY-ENDED", "NO-PLAN"];
@@ -104,6 +108,9 @@ function finalViolations(finalText: string): ConformanceViolation[] {
     const bullets = lines.filter((line) => BULLET.test(line)).length;
     if (bullets > limit) found.push({ kind: "final-over-limit", detail: `"${heading}" has ${bullets} bullets (limit ${limit})` });
   });
+  const rulings = sections.find((candidate) => candidate.heading.toLowerCase() === FINAL_RULINGS.heading.toLowerCase());
+  const rulingBullets = (rulings?.lines ?? []).filter((line) => BULLET.test(line) && !/^\s*(?:[-*+]|\d+[.)])\s+\d+ more in the ticket/i.test(line)).length;
+  if (rulingBullets > FINAL_RULINGS.limit) found.push({ kind: "final-over-limit", detail: `"${FINAL_RULINGS.heading}" has ${rulingBullets} bullets (limit ${FINAL_RULINGS.limit})` });
   return found;
 }
 
@@ -123,6 +130,26 @@ function statusViolations(options: ConformanceOptions, trivial: boolean): Confor
     }
     rank = next;
   });
+  return found;
+}
+
+/**
+ * The approval gate's breaches (TR-263): building before the plan was approved (In Progress before the
+ * first approval, or the plugin's NO-APPROVAL), a plan approval asked again without a surprise
+ * (APPROVAL-REPEATED), and a blocking question after approval without one (BLOCKING-AFTER-APPROVAL).
+ */
+function approvalGateViolations(notes: string[], approvedAt: string | null, inProgressAt: string | null, exempt: boolean): ConformanceViolation[] {
+  const found: ConformanceViolation[] = [];
+  const count = (name: string) => notes.filter((record) => new RegExp(`^${name}\\b`).test(record)).length;
+  const building = approvedAt === null || inProgressAt === null ? Number.NaN : Date.parse(inProgressAt) - Date.parse(approvedAt);
+  if (!exempt && building < 0) found.push({ kind: "build-before-approval", detail: `In Progress at ${inProgressAt} before the approval at ${approvedAt}` });
+  const plural = (n: number, name: string) => `${n} ${name} record${n === 1 ? "" : "s"}`;
+  const noApproval = count("NO-APPROVAL");
+  if (noApproval > 0) found.push({ kind: "build-before-approval", detail: plural(noApproval, "NO-APPROVAL") });
+  const repeated = count("APPROVAL-REPEATED");
+  if (repeated > 0) found.push({ kind: "approval-repeated", detail: plural(repeated, "APPROVAL-REPEATED") });
+  const blocking = count("BLOCKING-AFTER-APPROVAL");
+  if (blocking > 0) found.push({ kind: "blocking-after-approval", detail: plural(blocking, "BLOCKING-AFTER-APPROVAL") });
   return found;
 }
 
@@ -147,11 +174,13 @@ export function conformanceViolations(ticketText: string, options: ConformanceOp
     found.push(...planViolations(ticket.plan));
   }
 
-  const approved = notes.some((record) => /^APPROVAL\b/.test(record));
-  if (startedBuilding && !approved && !trivial) {
-    const inProgressAt = options.transitions?.find((transition) => transition.to === "In Progress")?.at;
+  // An APPROVAL record or the user's Approve on the scope-approval card (TR-263).
+  const approvals = planAnswerRecords(ticket.notes).filter((record) => record.kind === "approved");
+  const inProgressAt = options.transitions?.find((transition) => transition.to === "In Progress")?.at;
+  if (startedBuilding && approvals.length === 0 && !trivial) {
     found.push({ kind: "no-approval", detail: `In Progress${inProgressAt === undefined ? "" : ` at ${inProgressAt}`} with no APPROVAL` });
   }
+  found.push(...approvalGateViolations(notes, approvals[0]?.at ?? null, inProgressAt ?? null, trivial || ticket.labels.includes("complexity-low")));
 
   if (delivered) {
     const evidence = notes.filter((record) => /^EVIDENCE\b/.test(record)).pop();

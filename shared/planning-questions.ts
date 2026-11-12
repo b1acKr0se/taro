@@ -13,7 +13,7 @@ const BEFORE_BUILD: ReadonlySet<string> = new Set(["Queued", "Planning"]);
  * or low ticket goes straight to In Progress without one, and its later questions keep their own flag.
  */
 export function planningTicket(ticket: { status: string; notes: string | null }): boolean {
-  return BEFORE_BUILD.has(ticket.status) && !roundRecords(ticket.notes).some((record) => /^APPROVAL\b/.test(record));
+  return BEFORE_BUILD.has(ticket.status) && !roundRecords(ticket.notes).some((record) => /^APPROVAL(?![\w-])/.test(record));
 }
 
 /** The decision as the plugin stores it: blocking while planning, marked so the chat still matches its block. */
@@ -21,7 +21,8 @@ export function asPlanningQuestion<D extends { blocking: boolean }>(decision: D,
   return planning && !decision.blocking ? { ...decision, blocking: true, madeBlocking: true } : decision;
 }
 
-/** The block as the plugin stored it, for comparing an agent's block with its stored decision. */
-export function asStored<D extends { blocking: boolean }>(block: D, stored: { madeBlocking?: boolean | undefined }): D {
-  return stored.madeBlocking === true ? { ...block, blocking: true } : block;
+/** The block as the plugin stored it, for comparing an agent's block with its stored decision (made blocking, TR-146, or not, TR-263). */
+export function asStored<D extends { blocking: boolean }>(block: D, stored: { madeBlocking?: boolean | undefined; madeNonBlocking?: boolean | undefined }): D {
+  if (stored.madeBlocking === true) return { ...block, blocking: true };
+  return stored.madeNonBlocking === true ? { ...block, blocking: false } : block;
 }

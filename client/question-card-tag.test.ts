@@ -28,6 +28,7 @@ describe("a question that pauses work", () => {
   });
 
   it("still says what happens without an answer on a question that does not pause work", () => {
-    expect(questionCard).toContain("Going with “{decision.default}” unless you say otherwise.");
+    // The words are `defaultNote` in shared/decision-view.ts, tested there.
+    expect(questionCard).toContain("<Text style={styles.defaultNote}>{defaultNote(decision)}</Text>");
   });
 });

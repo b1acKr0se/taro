@@ -67,6 +67,11 @@ export const ParsedDecisionSchema = z.object({
   reason: z.string().default(""),
   default: z.string().default(""),
   withdrawn: z.boolean().default(false),
+  /**
+   * After the plan's approval (TR-263): the approved criterion or Out of scope line the answer would
+   * change. Only a block with one is shown as asked then; absent when the block has none.
+   */
+  surprise: z.string().optional(),
   /** What failed validation; empty when the block is complete. */
   problems: z.array(z.string()).default([]),
 });
@@ -384,6 +389,7 @@ function completeDecision(fields: Record<string, string>, options: Record<string
     reason: fields.reason ?? "",
     default: fields.default ?? "",
     withdrawn: /^withdrawn$/i.test(fields.status ?? ""),
+    ...((fields.surprise ?? "").trim() === "" ? {} : { surprise: (fields.surprise ?? "").trim() }),
     problems,
   };
 }

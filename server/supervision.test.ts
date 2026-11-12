@@ -16,9 +16,9 @@ import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, huma
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", acceptQuestionRefused: "accept-question-refused", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question", noPlan: "no-plan", acceptingTooEarly: "accepting-too-early", acceptUnfinished: "accept-unfinished", deliveryMissing: "delivery-missing", planWithoutMockups: "plan-without-mockups" },
+  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", acceptQuestionRefused: "accept-question-refused", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question", noPlan: "no-plan", noApproval: "no-approval", approvalRepeated: "approval-repeated", acceptingTooEarly: "accepting-too-early", acceptUnfinished: "accept-unfinished", deliveryMissing: "delivery-missing", planWithoutMockups: "plan-without-mockups" },
   skillDirectory: async () => "/skill",
-  message: async (path: string, values: Record<string, string> = {}) => (path === "delivery-missing" ? `delivery-missing:${values.ticket}:${values.missing}` : path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "accept-question-refused" ? `accept-question-refused:${values.refused}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : path === "plan-without-mockups" ? `plan-without-mockups:${values.ticket}:${values.missing}` : path === "accept-unfinished" ? `accept-unfinished:${values.ticket}:${values.pullRequest}` : path === "accepting-too-early" ? `accepting-too-early:${values.ticket}:${values.status}:${values.missing}` : path === "no-plan" ? `no-plan:${values.ticket}:${values.branch}:${values.commits}:${values.base}` : `${path}:${values.ticket ?? ""}`),
+  message: async (path: string, values: Record<string, string> = {}) => (path === "delivery-missing" ? `delivery-missing:${values.ticket}:${values.missing}` : path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "accept-question-refused" ? `accept-question-refused:${values.refused}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : path === "plan-without-mockups" ? `plan-without-mockups:${values.ticket}:${values.missing}` : path === "accept-unfinished" ? `accept-unfinished:${values.ticket}:${values.pullRequest}` : path === "accepting-too-early" ? `accepting-too-early:${values.ticket}:${values.status}:${values.missing}` : path === "no-plan" ? `no-plan:${values.ticket}:${values.branch}:${values.commits}:${values.base}` : path === "no-approval" ? `no-approval:${values.ticket}:${values.branch}:${values.commits}:${values.base}` : path === "approval-repeated" ? `approval-repeated:${values.ticket}:${values.questions}` : `${path}:${values.ticket ?? ""}`),
 }));
 vi.mock("./projects", () => ({ readProjectConfig: vi.fn(async () => null), projectPaths: async () => ({ tracker: "/tracker" }) }));
 vi.mock("./process", async (original) => ({ ...(await original<typeof import("./process")>()), runCommand: vi.fn(async () => ({ code: 0, stdout: '{"state":"OPEN","mergeable":"CONFLICTING"}', stderr: "" })) }));
@@ -824,6 +824,174 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
     });
   });
 
+  // TR-263: after the round's approval the owner decides; it asks only with a `surprise:`.
+  describe("a question asked after the plan's approval", () => {
+    const PLAN = "## Goal\nG\n## Mockups\n- none — wording only\n## Size\nS";
+    const APPROVED = 'ANSWER 2026-01-05T10:05Z — scope-approval: "Approve the plan for TR-9?" → Approve ("Approve the plan for TR-9") (the user, from the Taro screen)';
+    const withTicket = (notes: string | null, status = "In Progress") => vi.mocked(viewTicket).mockResolvedValue({ status, implementationPlan: PLAN, implementationNotes: notes } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+    const extra = (block: object, lines: string) => ({ ...block, text: (block as { text: string }).text.replace("\nrecommended:", `\n${lines}\nrecommended:`) });
+    const lightly = (block: object) => ({ ...block, text: (block as { text: string }).text.replace("blocking: true", "blocking: false") });
+    const gated = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("approval-repeated:"));
+    const records = () => vi.mocked(appendTicketNote).mock.calls.map(([, , record]) => record);
+    const supervisor = (state: PluginState) => new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
+    const shown = (decisions: StoredDecision[]) => decisions.map((decision) => [decision.id, decision.status, decision.blocking, decision.madeNonBlocking]);
+
+    beforeEach(() => {
+      vi.mocked(sendFromPlugin).mockClear();
+      vi.mocked(appendTicketNote).mockClear();
+      vi.mocked(viewTicket).mockReset();
+      // No delivery on offer: an open question is not taken back as at delivery (TR-146).
+      vi.mocked(endDelivery).mockResolvedValue(false);
+    });
+    afterEach(() => {
+      vi.mocked(viewTicket).mockReset();
+      vi.mocked(endDelivery).mockResolvedValue(true);
+    });
+
+    it("does not show a second scope-approval: the answered one stays, the owner is told to build on, and the ticket and log say so", async () => {
+      const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+      withTicket(null, "Planning");
+      const { state, decisions } = fakeState();
+      const taro = supervisor(state);
+      const first = [human("start"), ask("scope-approval", "Approve the plan for TR-9?")];
+      await run(taro, ...first);
+      decisions[0]!.status = "answered";
+      withTicket(APPROVED);
+      // The answered ask's own turn read again is not a second ask.
+      await run(taro, ...first);
+      expect(gated()).toEqual([]);
+
+      await run(taro, ...first, plugin("go on"), ask("scope-approval", "Approve the plan for TR-9?"));
+      expect(shown(decisions)).toEqual([["scope-approval", "answered", true, undefined]]);
+      expect(gated()).toEqual(["approval-repeated:TR-9:- `scope-approval`: not shown; the plan stays approved"]);
+      expect(records()).toHaveLength(1);
+      expect(records()[0]).toMatch(/^APPROVAL-REPEATED \S+ — `scope-approval` asked again after the plan was approved, with no surprise: not shown/);
+      expect(log.mock.calls.map(([line]) => String(line)).filter((line) => line.includes("after its plan was approved"))).toEqual(["[taro] owner-2 asked `scope-approval` on TR-9 after its plan was approved, with no surprise: refused, not shown"]);
+      log.mockRestore();
+    });
+
+    it("shows a scope-approval asked again with a surprise, before approval, and after the approval was taken back by Request changes", async () => {
+      withTicket(APPROVED);
+      const surprised = fakeState();
+      await run(supervisor(surprised.state), human("start"), extra(ask("scope-approval", "Approve the plan for TR-9?"), "surprise: Out of scope says no import, and the fix needs one"));
+      expect(shown(surprised.decisions)).toEqual([["scope-approval", "open", true, undefined]]);
+      expect(surprised.decisions[0]?.surprise).toBe("Out of scope says no import, and the fix needs one");
+
+      withTicket(`${APPROVED}\n\nANSWER 2026-01-05T11:00Z — scope-approval: "Approve the plan for TR-9?" → Request changes ("no import") (the user, from the Taro screen)`);
+      const changed = fakeState();
+      await run(supervisor(changed.state), human("start"), ask("scope-approval", "Approve the plan for TR-9?"));
+      expect(shown(changed.decisions)).toEqual([["scope-approval", "open", true, undefined]]);
+
+      withTicket(null, "Planning");
+      const first = fakeState();
+      await run(supervisor(first.state), human("start"), ask("scope-approval", "Approve the plan for TR-9?"));
+      expect(shown(first.decisions)).toEqual([["scope-approval", "open", true, undefined]]);
+      expect(gated()).toEqual([]);
+    });
+
+    it("shows it again in a reopened round, which needs its own approval", async () => {
+      withTicket(`${APPROVED}\n\nREOPENED 2026-01-06T09:00Z — user: "check the release"; round 2; past owners: none`);
+      const { state, decisions } = fakeState();
+      await run(supervisor(state), human("start"), ask("scope-approval", "Approve the plan for TR-9?"));
+      expect(shown(decisions)).toEqual([["scope-approval", "open", true, undefined]]);
+    });
+
+    it("refuses a child's scope-approval when its parent is approved, and shows it when the parent is not", async () => {
+      vi.mocked(fetchLiveAgent).mockResolvedValue({ ...owner, labels: { ...owner.labels, "taro.ticket": "TR-9.01" } } as unknown as PaseoAgent);
+      vi.mocked(viewTicket).mockImplementation(async (_tracker, id) => ({ status: "Planning", implementationPlan: PLAN, implementationNotes: id === "TR-9" ? APPROVED : null }) as unknown as Awaited<ReturnType<typeof viewTicket>>);
+      const refused = fakeState();
+      await run(supervisor(refused.state), human("start"), ask("scope-approval", "Approve the plan for TR-9.01?"));
+      expect(refused.decisions).toEqual([]);
+      expect(gated()).toEqual(["approval-repeated:TR-9.01:- `scope-approval`: not shown; the plan stays approved"]);
+
+      vi.mocked(viewTicket).mockImplementation(async () => ({ status: "Planning", implementationPlan: PLAN, implementationNotes: null }) as unknown as Awaited<ReturnType<typeof viewTicket>>);
+      const asked = fakeState();
+      await run(supervisor(asked.state), human("start"), ask("scope-approval", "Approve the plan for TR-9.01?"));
+      expect(shown(asked.decisions)).toEqual([["scope-approval", "open", true, undefined]]);
+      expect(gated()).toHaveLength(1);
+    });
+
+    it("shows a blocking question with a default as not blocking, says so to the owner once, and keeps it so when re-asked with the same id", async () => {
+      withTicket(APPROVED);
+      const { state, decisions } = fakeState();
+      const taro = supervisor(state);
+      const first = [human("start"), extra(ask("naming", "Call it Export or Save as?"), "default: Yes")];
+      await run(taro, ...first);
+      expect(shown(decisions)).toEqual([["naming", "open", false, true]]);
+      expect(gated()).toEqual(['approval-repeated:TR-9:- `naming`: shown not blocking; go on with its default "Yes"']);
+      expect(records()).toHaveLength(1);
+      expect(records()[0]).toMatch(/^BLOCKING-AFTER-APPROVAL \S+ — `naming` asked blocking after approval, with no surprise: shown not blocking, the owner going on with "Yes"$/);
+
+      await run(taro, ...first);
+      await run(taro, ...first, plugin("go on"), extra(ask("naming", "Call it Export or Save as?"), "default: Yes"));
+      expect(shown(decisions)).toEqual([["naming", "open", false, true]]);
+      expect(gated()).toHaveLength(1);
+
+      // Answered, then asked again in a later turn: a new ask, told again.
+      decisions[0]!.status = "answered";
+      await run(taro, ...first, plugin("go on"), extra(ask("naming", "Call it Export or Save as?"), "default: Yes"), plugin("more"), extra(ask("naming", "Call it Export or Save as?"), "default: Yes"));
+      expect(shown(decisions)).toEqual([["naming", "open", false, true]]);
+      expect(gated()).toHaveLength(2);
+    });
+
+    it("holds a blocking question with no default, and shows one with a surprise as blocking", async () => {
+      withTicket(APPROVED);
+      const held = fakeState();
+      await run(supervisor(held.state), human("start"), ask("naming", "Call it Export?"));
+      expect(shown(held.decisions)).toEqual([["naming", "withdrawn", true, undefined]]);
+      expect(held.decisions[0]?.held).toBeUndefined();
+      expect(gated()).toEqual(["approval-repeated:TR-9:- `naming`: not shown, as it has no `default`"]);
+      expect(records()[0]).toMatch(/^BLOCKING-AFTER-APPROVAL \S+ — `naming` asked blocking after approval, with no surprise and no default: not shown$/);
+
+      const surprised = fakeState();
+      await run(supervisor(surprised.state), human("start"), extra(ask("storage", "Store per trade?"), "surprise: criterion 2 promises hourly totals"));
+      expect(shown(surprised.decisions)).toEqual([["storage", "open", true, undefined]]);
+      expect(gated()).toHaveLength(1);
+    });
+
+    it("leaves a non-blocking question and the investigation's delivery question as asked", async () => {
+      withTicket(APPROVED);
+      const { state, decisions } = fakeState();
+      await run(supervisor(state), human("start"), lightly(extra(ask("tone", "tone?"), "default: Yes")));
+      const delivering = fakeState();
+      await run(supervisor(delivering.state), human("start"), ask("investigation-done", "Findings are in: what next?"));
+      expect([...shown(decisions), ...shown(delivering.decisions)]).toEqual([
+        ["tone", "open", false, undefined],
+        ["investigation-done", "open", true, undefined],
+      ]);
+      expect(gated()).toEqual([]);
+    });
+
+    it("before approval changes nothing: blocking stays blocking, and a planning question is still made blocking (TR-146)", async () => {
+      withTicket("MILESTONE 2026-01-05T10:00Z — oriented", "Planning");
+      const { state, decisions } = fakeState();
+      await run(supervisor(state), human("start"), ask("naming", "naming?"));
+      const light = fakeState();
+      await run(supervisor(light.state), human("start"), lightly(ask("tone", "tone?")));
+      expect([...shown(decisions), ...shown(light.decisions)]).toEqual([
+        ["naming", "open", true, undefined],
+        ["tone", "open", true, undefined],
+      ]);
+      expect(light.decisions[0]?.madeBlocking).toBe(true);
+      expect(gated()).toEqual([]);
+    });
+
+    it("does not make a question blocking once the plan is approved on its card, though the ticket still reads Planning", async () => {
+      withTicket(APPROVED, "Planning");
+      const { state, decisions } = fakeState();
+      await run(supervisor(state), human("start"), lightly(extra(ask("tone", "tone?"), "default: Yes")));
+      expect(shown(decisions)).toEqual([["tone", "open", false, undefined]]);
+    });
+
+    it("leaves every question as asked when the ticket cannot be read", async () => {
+      vi.mocked(viewTicket).mockRejectedValue(new Error("tracker locked"));
+      const { state, decisions } = fakeState();
+      await run(supervisor(state), human("start"), ask("scope-approval", "Approve the plan for TR-9?"));
+      expect(shown(decisions)).toEqual([["scope-approval", "open", true, undefined]]);
+      expect(gated()).toEqual([]);
+    });
+  });
+
   // TR-130: an owner asking back while awaiting acceptance went back to work; the delivery ends.
   describe("a question asked while awaiting acceptance", () => {
     const lightly = (id: string) => ({ type: "assistant_message", text: (ask(id, `${id}?`) as { text: string }).text.replace("blocking: true", "blocking: false") });
@@ -1235,8 +1403,8 @@ describe("Supervisor.onTurnEnded with commits and no plan", () => {
     } as unknown as PluginState;
     return new Supervisor(state, { turnEnded: async () => undefined, count: async () => undefined } as unknown as Stats, recovery);
   }
-  const ticket = (status: string, implementationPlan: string | null, labels: string[] = []) =>
-    vi.mocked(viewTicket).mockResolvedValue({ status, implementationPlan, acceptanceCriteria: [], implementationNotes: null, labels } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+  const ticket = (status: string, implementationPlan: string | null, labels: string[] = [], implementationNotes: string | null = null) =>
+    vi.mocked(viewTicket).mockResolvedValue({ status, implementationPlan, acceptanceCriteria: [], implementationNotes, labels } as unknown as Awaited<ReturnType<typeof viewTicket>>);
   const told = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("no-plan:"));
   const records = () => vi.mocked(appendTicketNote).mock.calls.map(([, , record]) => record);
   const end = (taro: Supervisor) => taro.onTurnEnded(withTimeline(reply), hookAgent, completed, null, undefined);
@@ -1310,9 +1478,9 @@ describe("Supervisor.onTurnEnded with commits and no plan", () => {
     expect(told()).toEqual([]);
   });
 
-  it("says nothing with a plan, with no commits, on a closed ticket, or when the ticket or git cannot be read", async () => {
+  it("says nothing with an approved plan, with no commits, on a closed ticket, or when the ticket or git cannot be read", async () => {
     commits = 4;
-    ticket("In Progress", "## Goal\nFix the typo");
+    ticket("In Progress", "## Goal\nFix the typo", [], "APPROVAL 2026-01-05T10:00Z — the user: \"Approve\"");
     await end(supervisor());
     expect(vi.mocked(commitsPast)).not.toHaveBeenCalled();
     ticket("Done", null);
@@ -1326,6 +1494,77 @@ describe("Supervisor.onTurnEnded with commits and no plan", () => {
     await end(supervisor());
     expect(told()).toEqual([]);
     expect(records()).toEqual([]);
+  });
+
+  // TR-263: with a plan, the round's approval of it comes before any commit.
+  describe("and a plan this round has not approved", () => {
+    const PLAN = "## Goal\nExport notes";
+    const answer = (at: string, rest: string) => `ANSWER ${at} — scope-approval: "Approve the plan for TR-9?" → ${rest} (the user, from the Taro screen)`;
+    const stops = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("no-approval:"));
+
+    it("records NO-APPROVAL and tells the owner to stop and ask, once while the plan is unapproved", async () => {
+      commits = 2;
+      ticket("In Progress", PLAN, ["complexity-medium"], "MILESTONE 2026-01-05T10:00Z — plan written");
+      const taro = supervisor();
+      await end(taro);
+      await end(taro);
+      expect(stops()).toEqual(["no-approval:TR-9:taro/tr-9:2 commits:main"]);
+      expect(told()).toEqual([]);
+      expect(records()).toHaveLength(1);
+      expect(records()[0]).toMatch(/^NO-APPROVAL \S+ — 2 commits on taro\/tr-9 past main with the plan not approved this round: the owner was told to stop and ask scope-approval$/);
+    });
+
+    it("counts Request changes as no approval, and Approve or an APPROVAL record as approval", async () => {
+      commits = 1;
+      ticket("In Progress", PLAN, ["complexity-high"], answer("2026-01-05T10:01Z", 'Request changes ("drop tags")'));
+      await end(supervisor());
+      expect(stops()).toHaveLength(1);
+      ticket("In Progress", PLAN, ["complexity-high"], `${answer("2026-01-05T10:01Z", 'Request changes ("drop tags")')}\n\n${answer("2026-01-05T10:05Z", 'Approve ("Approve the plan for TR-9")')}`);
+      await end(supervisor());
+      ticket("In Progress", PLAN, ["complexity-high"], 'APPROVAL 2026-01-05T10:05Z — the user: "go"');
+      await end(supervisor());
+      expect(stops()).toHaveLength(1);
+    });
+
+    it("tells again once approved and then asked to change, and in a reopened round until it is approved anew", async () => {
+      commits = 1;
+      const taro = supervisor();
+      const approved = answer("2026-01-05T10:05Z", 'Approve ("Approve")');
+      ticket("In Progress", PLAN, [], approved);
+      await end(taro);
+      ticket("In Progress", PLAN, [], `${approved}\n\n${answer("2026-01-05T12:00Z", 'Request changes ("rename it")')}`);
+      await end(taro);
+      ticket("In Progress", PLAN, [], `${approved}\n\nREOPENED 2026-01-06T09:00Z — user: "check it"; round 2; past owners: none`);
+      await end(supervisor());
+      expect(stops()).toHaveLength(2);
+    });
+
+    it("never stops a trivial or low owner, nor one with no commits", async () => {
+      commits = 3;
+      for (const label of ["complexity-trivial", "complexity-low"]) {
+        ticket("In Progress", PLAN, [label]);
+        await end(supervisor());
+      }
+      commits = 0;
+      ticket("In Progress", PLAN, ["complexity-medium"]);
+      await end(supervisor());
+      expect(stops()).toEqual([]);
+      expect(records()).toEqual([]);
+    });
+
+    it("counts a child's work approved with its parent's plan, and reads the parent only when the child's round is not approved", async () => {
+      commits = 2;
+      vi.mocked(fetchLiveAgent).mockResolvedValue({ ...owner, labels: { ...owner.labels, "taro.ticket": "TR-9.02" } } as unknown as PaseoAgent);
+      const child = { status: "In Progress", implementationPlan: PLAN, acceptanceCriteria: [], implementationNotes: null, labels: [] };
+      vi.mocked(viewTicket).mockImplementation(async (_tracker, id) => (id === "TR-9" ? { ...child, implementationNotes: answer("2026-01-05T10:05Z", 'Approve ("Approve")') } : child) as unknown as Awaited<ReturnType<typeof viewTicket>>);
+      await end(supervisor());
+      expect(stops()).toEqual([]);
+      expect(vi.mocked(viewTicket).mock.calls.slice(0, 2).map(([, id]) => id)).toEqual(["TR-9.02", "TR-9"]);
+
+      vi.mocked(viewTicket).mockImplementation(async () => child as unknown as Awaited<ReturnType<typeof viewTicket>>);
+      await end(supervisor());
+      expect(stops()).toEqual(["no-approval:TR-9.02:taro/tr-9:2 commits:main"]);
+    });
   });
 });
 

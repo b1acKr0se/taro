@@ -16,7 +16,7 @@ import { answerDecision, compactAgent, listOpenDecisions, loadTicket, pauseTicke
 import { ticketViewApproval } from "../shared/decision-view";
 import { descriptionParts } from "../shared/description";
 import { finalSummaryBody } from "../shared/execution";
-import { FINAL_SECTIONS, finalSections, type FinalSections } from "../shared/final-summary";
+import { FINAL_SECTIONS, finalSections, shownLimit, type FinalSections } from "../shared/final-summary";
 import { ticketMilestones, type Milestone } from "../shared/milestones";
 import type { PauseView } from "../shared/pause";
 import { parsePlan } from "../shared/plan";
@@ -606,7 +606,7 @@ function SectionRow({
   );
 }
 
-/** FINAL in its fixed format (What changed, How it was verified, Limitations), or as Markdown when it has none. */
+/** FINAL in its fixed format (What changed, How it was verified, Limitations, Rulings), or as Markdown when it has none. */
 function ResultBody({ finalSummary, theme, onOpenLink }: { finalSummary: string; theme: PluginTheme; onOpenLink: (url: string) => void }) {
   const sections = useMemo(() => finalSections(finalSummary), [finalSummary]);
   if (sections === null) return <Markdown source={finalSummaryBody(finalSummary)} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={onOpenLink} foldParagraphs />;
@@ -627,7 +627,8 @@ function FinalBody({ sections, theme, onOpenLink }: { sections: FinalSections; t
         if (items.length === 0) return null;
         const open = unfolded.has(template.key);
         // Past the template's limit the rest folds, as the plan's sections do.
-        const { shown, hidden } = foldList(items, template.limit, open);
+        const limit = shownLimit(template.limit, items);
+        const { shown, hidden } = foldList(items, limit, open);
         return (
           <View key={template.key} style={{ gap: SPACE.xs }}>
             <Text accessibilityRole="header" style={heading}>
@@ -641,7 +642,7 @@ function FinalBody({ sections, theme, onOpenLink }: { sections: FinalSections; t
                 </Text>
               </View>
             ))}
-            {items.length <= template.limit ? null : (
+            {items.length <= limit ? null : (
               <Pressable
                 accessibilityRole="button"
                 accessibilityState={{ expanded: open }}

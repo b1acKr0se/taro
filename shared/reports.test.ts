@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decisionMessageSegments, parseDecisionBlocks, parseStatusLine, withImagePaths, withoutDecisionBlocks } from "./reports";
+import { decisionMessageSegments, parseDecisionBlocks, parseDecisionBody, parseStatusLine, withImagePaths, withoutDecisionBlocks } from "./reports";
 
 describe("parseStatusLine", () => {
   it("reads the last line", () => {
@@ -340,5 +340,15 @@ describe("a decision fence written the wrong way (TR-197)", () => {
   it("leaves other fences alone", () => {
     expect(parseDecisionBlocks("```decisions\nid: x\n```")).toEqual([]);
     expect(parseDecisionBlocks("```json\n{}\n```")).toEqual([]);
+  });
+});
+
+describe("a block's surprise (TR-263)", () => {
+  it("reads the approved line the answer would change, trimmed, and leaves it out when absent or blank", () => {
+    const body = (extra: string) => `id: naming\nquestion: Rename?\nblocking: true\n${extra}options:\n  - label: Yes\n    prompt: Yes\nrecommended: Yes\nreason: r\n`;
+    expect(parseDecisionBody(body("surprise: >\n  Out of scope says no import,\n  and the fix needs one\n")).surprise).toBe("Out of scope says no import, and the fix needs one");
+    expect(parseDecisionBody(body("")).surprise).toBeUndefined();
+    expect(parseDecisionBody(body("surprise:   \n"))).not.toHaveProperty("surprise");
+    expect(parseDecisionBody('{"id":"a","question":"q?","surprise":"criterion 3","options":["Yes"],"recommended":"Yes","reason":"r"}').surprise).toBe("criterion 3");
   });
 });

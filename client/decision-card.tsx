@@ -18,7 +18,7 @@ import { useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 
 import { answerDecision, dismissManagerQuestion } from "../shared/contracts";
-import { answerPlaceholder, askedBy, decisionOptionRows, decisionSubmit, type DecisionPick } from "../shared/decision-view";
+import { answerPlaceholder, askedBy, decisionOptionRows, decisionSubmit, defaultNote, type DecisionPick } from "../shared/decision-view";
 import { sendUnlessRefused } from "../shared/refused-commands";
 import type { StoredDecision } from "../shared/state";
 import { Pressable } from "./focus";
@@ -219,7 +219,7 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
         )}
       </View>
       {optionRows.looseReason === "" ? null : <Text style={styles.reason}>Why recommended: {optionRows.looseReason}</Text>}
-      {!decision.blocking && answerable && decision.default !== "" ? <Text style={styles.defaultNote}>Going with “{decision.default}” unless you say otherwise.</Text> : null}
+      {answerable && defaultNote(decision) !== null ? <Text style={styles.defaultNote}>{defaultNote(decision)}</Text> : null}
       {decision.problems.length > 0 ? <Text style={styles.problems}>Incomplete block: {decision.problems.join("; ")}</Text> : null}
       {!answerable ? (
         <Text style={styles.defaultNote}>{readOnlyNote}</Text>

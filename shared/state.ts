@@ -38,6 +38,11 @@ export const StoredDecisionSchema = ParsedDecisionSchema.extend({
    * was planning, or still open when its owner delivered.
    */
   madeBlocking: z.boolean().optional(),
+  /**
+   * Stored not blocking by the plugin whatever its block said (TR-263): asked blocking by an owner
+   * after its plan was approved, with no `surprise:`; the owner goes on with its default.
+   */
+  madeNonBlocking: z.boolean().optional(),
 });
 export type StoredDecision = z.infer<typeof StoredDecisionSchema>;
 
@@ -80,6 +85,8 @@ export const AgentStateSchema = z.object({
   evidenceReminded: z.string().nullable().default(null),
   /** Told its commits have no plan on the ticket (TR-206); cleared once the plan is there, so a later gap is told again. */
   noPlanFlagged: z.boolean().default(false),
+  /** Told once that its commits came before this round's plan approval (TR-263); cleared once approved. */
+  noApprovalFlagged: z.boolean().default(false),
   /** Turns in a row that ended waiting for acceptance with the ticket not yet Awaiting acceptance (TR-252); reminders back off. */
   prematureWaits: z.number().int().default(0),
   /** What the owner was last told its delivery record lacked (TR-254); null once complete, so a later gap is told again. */

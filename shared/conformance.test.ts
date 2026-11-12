@@ -164,6 +164,44 @@ describe("conformanceViolations", () => {
     ]);
   });
 
+  // TR-263: the plan approval is a gate; after it the owner decides and asks only with a surprise.
+  describe("the approval gate", () => {
+    const approve = 'ANSWER 2026-01-05T10:05Z — scope-approval: "Approve the plan for AB-001?" → Approve ("Approve the plan for AB-001") (the user, from the Taro screen)';
+    const cardNotes = NOTES.replace(/APPROVAL.*\n\n/, `${approve}\n\n`);
+
+    it("takes the card's Approve for the approval", () => {
+      expect(kinds(ticket({ notes: cardNotes }))).toEqual([]);
+      expect(kinds(ticket({ notes: cardNotes.replace("→ Approve (", "→ Request changes (") }))).toEqual(["no-approval"]);
+    });
+
+    it("flags a build before the approval: In Progress first, or the plugin's NO-APPROVAL", () => {
+      const transitions = [{ to: "Planning", at: "2026-01-05T10:01Z" }, { to: "In Progress", at: "2026-01-05T10:02Z" }, { to: "Awaiting acceptance", at: "2026-01-05T10:50Z" }];
+      expect(conformanceViolations(ticket({ notes: cardNotes }), { transitions })).toEqual([{ kind: "build-before-approval", detail: "In Progress at 2026-01-05T10:02Z before the approval at 2026-01-05T10:05Z" }]);
+      expect(kinds(ticket({ notes: cardNotes }), { transitions: [{ to: "Planning", at: "2026-01-05T10:01Z" }, { to: "In Progress", at: "2026-01-05T10:06Z" }] })).toEqual([]);
+      expect(kinds(ticket({ notes: cardNotes, labels: '"complexity-low"' }), { transitions })).toEqual([]);
+      const flagged = `${cardNotes}\n\nNO-APPROVAL 2026-01-05T10:04Z — 2 commits on taro/ab-001 past main with the plan not approved this round`;
+      expect(conformanceViolations(ticket({ notes: flagged }))).toEqual([{ kind: "build-before-approval", detail: "1 NO-APPROVAL record" }]);
+    });
+
+    it("flags a second approval and a blocking question after approval, each asked without a surprise", () => {
+      const notes = `${cardNotes}\n\nAPPROVAL-REPEATED 2026-01-05T10:20Z — \`scope-approval\` asked again\n\nBLOCKING-AFTER-APPROVAL 2026-01-05T10:30Z — \`naming\` asked blocking\n\nBLOCKING-AFTER-APPROVAL 2026-01-05T10:31Z — \`tone\` asked blocking`;
+      expect(conformanceViolations(ticket({ notes }))).toEqual([
+        { kind: "approval-repeated", detail: "1 APPROVAL-REPEATED record" },
+        { kind: "blocking-after-approval", detail: "2 BLOCKING-AFTER-APPROVAL records" },
+      ]);
+    });
+
+    it("leaves a second approval asked with a surprise alone: it reaches the user and is answered", () => {
+      expect(kinds(ticket({ notes: `${cardNotes}\n\n${approve.replace("10:05Z", "10:40Z")}` }))).toEqual([]);
+    });
+
+    it("holds FINAL's optional Rulings to five bullets, besides the \"N more in the ticket\" line", () => {
+      const rulings = (n: number, more = "") => FINAL.replace("\n\nRevision:", `\n\n## Rulings\n${Array.from({ length: n }, (_, index) => `- ruling ${index} — why — cost`).join("\n")}${more}\n\nRevision:`);
+      expect(kinds(ticket({ finalSummary: rulings(5, "\n- 4 more in the ticket") }))).toEqual([]);
+      expect(conformanceViolations(ticket({ finalSummary: rulings(6) }))).toEqual([{ kind: "final-over-limit", detail: '"Rulings" has 6 bullets (limit 5)' }]);
+    });
+  });
+
   it("does not ask a ticket still in Planning for approval, evidence or a FINAL", () => {
     expect(conformanceViolations(ticket({ status: "Planning", notes: "OWNER-STARTED x", finalSummary: "" }))).toEqual([]);
   });

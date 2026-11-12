@@ -18,6 +18,7 @@ import { ACCEPT_STALL_LIMIT, acceptHandoffOpen, acceptStallReason } from "../sha
 import { pullRequestUrl } from "../shared/execution";
 import { runCommand } from "./process";
 import { lacksPlan, mayBuildBeforePlan, noPlanRecord } from "../shared/no-plan";
+import { approvalGate, buildGap, gateRecord, noApprovalRecord, parentTicketId, workApproved, type BuildGap } from "../shared/approval-gate";
 import { asPlanningQuestion, asStored, planningTicket } from "../shared/planning-questions";
 import type { DrainTrigger } from "../shared/chat-queue";
 import { receivedMessage } from "../shared/received-message";
@@ -230,6 +231,7 @@ export function freshState(identity: TaroIdentity): AgentState {
     lastTurnEndedAt: null,
     evidenceReminded: null,
     noPlanFlagged: false,
+    noApprovalFlagged: false,
     prematureWaits: 0,
     deliveryReminded: null,
     acceptStalls: 0,
@@ -600,37 +602,49 @@ export class Supervisor {
 
   /**
    * An owner whose branch has commits while its ticket has no plan (TR-206) gets a NO-PLAN record on
-   * the ticket and is told to stop and plan, once per gap. Git runs only when the plan is missing.
+   * the ticket and is told to stop and plan; with a plan the round has not approved (TR-263), a
+   * NO-APPROVAL record and a stop until it is. Once per gap. Git runs only when there is a gap.
    */
   private async flagCommitsWithoutPlan(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity): Promise<boolean> {
     if (identity.ticket === null) return false;
-    let lacking: boolean;
+    let gap: BuildGap | null;
     let found: { commits: number; branch: string; base: string } | null = null;
     try {
-      const detail = await viewTicket((await projectPaths(identity.project)).tracker, identity.ticket);
-      lacking = lacksPlan({ status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length, labels: detail.labels });
-      const base = lacking ? (await readProjectConfig(identity.project))?.baseBranch : undefined;
+      const tracker = (await projectPaths(identity.project)).tracker;
+      const detail = await viewTicket(tracker, identity.ticket);
+      const facts = { status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length, labels: detail.labels, notes: detail.implementationNotes };
+      gap = buildGap(facts);
+      // A child's work is approved with its parent's plan: read the parent only when the child's own round is not.
+      const parent = gap === "no-approval" ? parentTicketId(identity.ticket) : null;
+      if (parent !== null) gap = buildGap({ ...facts, parentNotes: (await viewTicket(tracker, parent)).implementationNotes });
+      const base = gap !== null ? (await readProjectConfig(identity.project))?.baseBranch : undefined;
       const commits = base === undefined ? 0 : await commitsPast(agent.cwd, base);
       if (base !== undefined && commits > 0) found = { commits, branch: await branchName(agent.cwd), base };
     } catch {
       return false;
     }
     const flagged = found;
+    const kind = gap;
     const tell = await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
-      if (!lacking) record.noPlanFlagged = false;
-      if (flagged === null || record.noPlanFlagged) return false;
-      record.noPlanFlagged = true;
+      if (kind !== "no-plan") record.noPlanFlagged = false;
+      if (kind !== "no-approval") record.noApprovalFlagged = false;
+      if (flagged === null || kind === null) return false;
+      if (kind === "no-plan" ? record.noPlanFlagged : record.noApprovalFlagged) return false;
+      if (kind === "no-plan") record.noPlanFlagged = true;
+      else record.noApprovalFlagged = true;
       return true;
     });
-    if (!tell || flagged === null) return false;
-    const record = noPlanRecord(new Date().toISOString(), flagged.commits, flagged.branch, flagged.base);
+    if (!tell || flagged === null || kind === null) return false;
+    const at = new Date().toISOString();
+    const record = kind === "no-plan" ? noPlanRecord(at, flagged.commits, flagged.branch, flagged.base) : noApprovalRecord(at, flagged.commits, flagged.branch, flagged.base);
     await appendTicketNote((await projectPaths(identity.project)).tracker, identity.ticket, record).catch((error: unknown) => {
-      console.warn(`[taro] flagging ${identity.ticket}'s commits without a plan: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(`[taro] flagging ${identity.ticket}'s commits without ${kind === "no-plan" ? "a plan" : "an approved plan"}: ${error instanceof Error ? error.message : String(error)}`);
     });
+    console.log(`[taro] ${agent.id} committed on ${identity.ticket} before ${kind === "no-plan" ? "its plan" : "this round's plan approval"}: ${kind.toUpperCase()} recorded and the owner told to stop`);
     await sendFromPlugin(
       paseo,
       agent.id,
-      await message(TEMPLATES.noPlan, {
+      await message(kind === "no-plan" ? TEMPLATES.noPlan : TEMPLATES.noApproval, {
         ticket: identity.ticket,
         branch: flagged.branch,
         commits: flagged.commits === 1 ? "1 commit" : `${flagged.commits} commits`,
@@ -661,8 +675,10 @@ export class Supervisor {
 
   private async storeDecisions(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, decisions: readonly ParsedDecision[], turn: string | null, now: string, waiting: boolean, earlier: string): Promise<void> {
     const earlierBlocks = turn === null || earlier === "" ? [] : parseDecisionBlocks(earlier);
-    // Read only when a question would go on without the user: everything else keeps its own flag.
-    const planning = identity.role === "owner" && decisions.some((decision) => !decision.withdrawn && !decision.blocking) && (await this.ticketPlanning(identity));
+    // An owner's ticket: still planning (TR-146), or its plan approved this round (TR-263). Unread for anyone else.
+    const facts = identity.role === "owner" && decisions.some((decision) => !decision.withdrawn) ? await this.decisionFacts(identity) : { planning: false, approved: false };
+    // Before approval a question that would go on without the user is made blocking; after it, never.
+    const planning = facts.planning && !facts.approved;
     // A plan approval asked without its mockups is held back (TR-235).
     const mockupGap = identity.role === "owner" && decisions.some((decision) => !decision.withdrawn && decision.id === SCOPE_APPROVAL) ? await this.planMockupsMissing(identity) : [];
     const newlyAsked: string[] = [];
@@ -670,6 +686,8 @@ export class Supervisor {
     const held: { id: string; open: string }[] = [];
     const unmocked: string[] = [];
     const refused: string[] = [];
+    // Blocks the approval gate did not show as asked (TR-263), each with its outcome.
+    const gated: { id: string; outcome: "refuse" | "default" | "hold"; default: string }[] = [];
     const corrections = await this.state.updateDecisions((stored) => {
       const problems: string[] = [];
       // Withdrawals first: an owner may withdraw its open question below the block that asks the next one.
@@ -713,6 +731,21 @@ export class Supervisor {
           // The same block seen again (a repeated hook, a replayed turn) does not reopen an answered decision; asked in a later turn, it does.
           continue;
         }
+        // After the round's approval the owner decides (TR-263): no second plan approval, and a blocking
+        // question goes on with its default, unless the block names the approved line it would change.
+        const gate = identity.role === "owner" ? approvalGate(block, facts.approved) : "ask";
+        if (gate === "refuse") {
+          gated.push({ id: block.id, outcome: gate, default: block.default });
+          continue;
+        }
+        if (gate === "hold") {
+          const withheld = { ...next, status: "withdrawn" as const };
+          if (existing === undefined) stored.push(withheld);
+          else stored[index] = withheld;
+          gated.push({ id: block.id, outcome: gate, default: block.default });
+          continue;
+        }
+        if (gate === "default") Object.assign(next, { blocking: false, madeNonBlocking: true });
         if (mockupGap.length > 0 && block.id === SCOPE_APPROVAL && !asksToAccept(block)) {
           const withheld = { ...next, status: "withdrawn" as const, held: true };
           if (existing === undefined) stored.push(withheld);
@@ -733,6 +766,8 @@ export class Supervisor {
         if (existing === undefined) stored.push(next);
         else stored[index] = next;
         if (existing === undefined || existing.status !== "open") opened.push(next);
+        // Told once: an open question already going on with its default asked again stays quiet.
+        if (gate === "default" && (existing === undefined || existing.status !== "open" || existing.madeNonBlocking !== true)) gated.push({ id: block.id, outcome: gate, default: block.default });
         // Shown for the first time (a held one included): counted, and its format problems reported.
         if (existing === undefined || existing.status === "withdrawn") {
           if (identity.ticket !== null) newlyAsked.push(identity.ticket);
@@ -754,6 +789,7 @@ export class Supervisor {
     if (unmocked.length > 0 && identity.ticket !== null) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.planWithoutMockups, { ticket: identity.ticket, missing: mockupGap.join("; "), skill: await skillDirectory() }));
     }
+    if (gated.length > 0 && identity.ticket !== null) await this.tellGated(paseo, agent, identity.project, identity.ticket, gated);
     if (held.length > 0) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.decisionHeld, { held: held.map((each) => `\`${each.id}\``).join(", "), open: held[0]!.open }));
     }
@@ -774,15 +810,45 @@ export class Supervisor {
     }
   }
 
-  /** Whether the owner's ticket is still being planned (TR-146); unreadable counts as not, keeping the block's own flag. */
-  private async ticketPlanning(identity: TaroIdentity): Promise<boolean> {
-    if (identity.ticket === null) return false;
+  /**
+   * The owner's ticket as its questions see it: still planning (TR-146), and its plan approved this
+   * round, or its parent's for a child (TR-263). Unreadable counts as neither, keeping each block's own flag.
+   */
+  private async decisionFacts(identity: TaroIdentity): Promise<{ planning: boolean; approved: boolean }> {
+    if (identity.ticket === null) return { planning: false, approved: false };
     try {
-      const detail = await viewTicket((await projectPaths(identity.project)).tracker, identity.ticket);
-      return planningTicket({ status: detail.status, notes: detail.implementationNotes });
+      const tracker = (await projectPaths(identity.project)).tracker;
+      const detail = await viewTicket(tracker, identity.ticket);
+      const planning = planningTicket({ status: detail.status, notes: detail.implementationNotes });
+      let approved = workApproved(detail.implementationNotes);
+      const parent = approved ? null : parentTicketId(identity.ticket);
+      if (parent !== null) approved = await viewTicket(tracker, parent).then((parentDetail) => workApproved(detail.implementationNotes, parentDetail.implementationNotes), () => false);
+      return { planning, approved };
     } catch {
-      return false;
+      return { planning: false, approved: false };
     }
+  }
+
+  /** The owner whose blocks the approval gate changed (TR-263): a record each on the ticket, the plugin log, and one message. */
+  private async tellGated(paseo: PaseoApi, agent: PaseoAgent, project: string, ticket: string, gated: readonly { id: string; outcome: "refuse" | "default" | "hold"; default: string }[]): Promise<void> {
+    const tracker = (await projectPaths(project)).tracker;
+    for (const each of gated) {
+      const record = gateRecord(new Date().toISOString(), each.outcome, each);
+      console.log(`[taro] ${agent.id} asked \`${each.id}\` on ${ticket} after its plan was approved, with no surprise: ${each.outcome === "refuse" ? "refused, not shown" : each.outcome === "hold" ? "held, no default" : "shown not blocking with its default"}`);
+      if (record !== null) {
+        await appendTicketNote(tracker, ticket, record).catch((error: unknown) => {
+          console.warn(`[taro] recording ${ticket}'s question asked after approval: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
+    }
+    const questions = gated.map((each) =>
+      each.outcome === "refuse"
+        ? `- \`${each.id}\`: not shown; the plan stays approved`
+        : each.outcome === "hold"
+          ? `- \`${each.id}\`: not shown, as it has no \`default\``
+          : `- \`${each.id}\`: shown not blocking; go on with its default "${each.default.trim()}"`,
+    );
+    await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.approvalRepeated, { ticket, questions: questions.join("\n"), skill: await skillDirectory() }));
   }
 
   /**

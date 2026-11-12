@@ -4,10 +4,11 @@
  * (TR-131), so the board and the chat show the question alone; the owner's next delivery brings the
  * acceptance card back. Pure.
  */
+import { INVESTIGATION_DONE } from "./approval-gate";
 import { acceptedRecord, notMergedRecord } from "./execution";
 
 /** An investigation delivers by asking this (roles/owner.md): its question is the delivery itself. */
-const DELIVERING_QUESTION = "investigation-done";
+const DELIVERING_QUESTION = INVESTIGATION_DONE;
 
 /**
  * A question that asks the user to accept or merge the ticket (TR-200). The delivery's Accept card does

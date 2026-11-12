@@ -96,3 +96,13 @@ describe("kindLabel", () => {
     expect(kindLabel("")).toBe("");
   });
 });
+
+describe("a RULING record (TR-263)", () => {
+  it("is a known record, so a body line under it never joins the record above", () => {
+    const notes = "MILESTONE 2026-10-13T14:02Z — building\nRULING — kept the old flag — less churn — remove it later";
+    expect(ticketMilestones(notes).map((milestone) => [milestone.kind, milestone.text])).toEqual([
+      ["MILESTONE", "building"],
+      ["RULING", "kept the old flag — less churn — remove it later"],
+    ]);
+  });
+});

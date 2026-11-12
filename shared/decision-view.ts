@@ -3,6 +3,7 @@
  * live card while Taro still holds it open, otherwise a short note of what
  * became of it. Pure, so the in-tab renderer stays a thin view.
  */
+import { SCOPE_APPROVAL } from "./approval-gate";
 import { asStored } from "./planning-questions";
 import { decisionMessageSegments, sameQuestion, type OptionImage, type ParsedDecision } from "./reports";
 import type { StoredDecision } from "./state";
@@ -47,10 +48,17 @@ export function decisionBlockView(block: ParsedDecision, lookup: DecisionLookup)
 export const DECISION_TEXT_KIND = "taro-decision-text";
 export const DECISION_BLOCK_KIND = "taro-decision-block";
 
-/** The plugin timeline items a message becomes (Paseo's `PluginTimelineItem`, kept structural here). */
+/**
+ * The plugin timeline items a message becomes (Paseo's `PluginTimelineItem`, kept structural here). A
+ * block's `surprise` stays out: the card does not draw it, and Paseo's JSON data has no optional fields.
+ */
 export type DecisionTimelineItem =
   | { type: "plugin"; id: string; kind: typeof DECISION_TEXT_KIND; version: 1; data: { text: string } }
-  | { type: "plugin"; id: string; kind: typeof DECISION_BLOCK_KIND; version: 1; data: { decision: ParsedDecision } };
+  | { type: "plugin"; id: string; kind: typeof DECISION_BLOCK_KIND; version: 1; data: { decision: Omit<ParsedDecision, "surprise"> } };
+
+function withoutSurprise({ surprise: _surprise, ...decision }: ParsedDecision): Omit<ParsedDecision, "surprise"> {
+  return decision;
+}
 
 /**
  * The transformer's whole decision: a finished assistant message holding a
@@ -66,7 +74,7 @@ export function decisionTimelineItems(text: string, phase: "streaming" | "comple
     items: segments.map((segment, index): DecisionTimelineItem =>
       segment.kind === "text"
         ? { type: "plugin", id: `segment-${index}`, kind: DECISION_TEXT_KIND, version: 1, data: { text: segment.text } }
-        : { type: "plugin", id: `segment-${index}`, kind: DECISION_BLOCK_KIND, version: 1, data: { decision: segment.decision } },
+        : { type: "plugin", id: `segment-${index}`, kind: DECISION_BLOCK_KIND, version: 1, data: { decision: withoutSurprise(segment.decision) } },
     ),
   };
 }
@@ -113,10 +121,22 @@ export function decisionOptionRows(decision: Pick<StoredDecision, "options" | "r
   return { rows, looseReason: recommendedIndex === -1 ? decision.reason : "", hidden: decision.options.length - options.length };
 }
 
+/**
+ * The line under an answerable card that does not pause work: what the owner goes on with. A question
+ * the plugin made not blocking after the plan's approval (TR-263) says the owner already went on with
+ * it. Null when there is no default to name, or the question pauses work.
+ */
+export function defaultNote(decision: Pick<StoredDecision, "blocking" | "default" | "madeNonBlocking">): string | null {
+  const value = decision.default.trim();
+  if (decision.blocking || value === "") return null;
+  if (decision.madeNonBlocking === true) return `Asked after you approved the plan, so the owner went on with “${value}”. Answer to change it.`;
+  return `Going with “${value}” unless you say otherwise.`;
+}
+
 export const ANSWER_PLACEHOLDER = "Answer in your own words…";
 export const CHANGE_PLACEHOLDER = "Describe a change…";
-/** The preset id of an owner's scope approval (`skill/reference/formats.md`). */
-export const SCOPE_APPROVAL = "scope-approval";
+/** The preset id of an owner's scope approval, kept beside the approval gate (TR-263). */
+export { SCOPE_APPROVAL };
 
 function isApproveLabel(label: string): boolean {
   return /^approve/i.test(label.trim());
