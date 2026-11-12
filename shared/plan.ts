@@ -123,6 +123,19 @@ export function splitChoice(item: string): PlanChoice {
   return { choice: item.slice(0, match.index).trim(), why: item.slice(match.index + match[0].length).trim() };
 }
 
+const CHOICE_DEFAULT = /^default:\s*/i;
+
+/**
+ * A high plan's default for a choice (`<decision> — default: <what I chose> — <why>`): what the user
+ * approves unless they flip it, shown on the short card without the why. Empty for any other choice.
+ */
+export function choiceDefault(choice: PlanChoice): string {
+  if (!CHOICE_DEFAULT.test(choice.why)) return "";
+  const rest = choice.why.replace(CHOICE_DEFAULT, "");
+  const separator = CHOICE_SEPARATOR.exec(rest);
+  return (separator === null ? rest : rest.slice(0, separator.index)).trim();
+}
+
 const PART_ID = /^[`*]*([A-Za-z][A-Za-z0-9]*-\d+(?:\.\d+)*)[`*]*:?/;
 const PART_SEPARATOR = / (?:—|–|--|-) /;
 const PART_SIZE = /^(?:size:?\s*)?(XXS|XS|S|M|L|XL|XXL)$/i;

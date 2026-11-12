@@ -19,7 +19,7 @@ import { Text, View } from "react-native";
 
 import { answerDecision, loadTicket, type MockupsView, type TicketDetailView } from "../shared/contracts";
 import { SCOPE_APPROVAL, planCardOptions, planChangeBox, type PlanActionsPlace } from "../shared/decision-view";
-import { parsePlan, splitChoice, type ParsedPlan, type PlanSection } from "../shared/plan";
+import { choiceDefault, parsePlan, splitChoice, type ParsedPlan, type PlanSection } from "../shared/plan";
 import { noPlanChanges, planChanges, planChangesCaption, type PlanChanges } from "../shared/plan-changes";
 import type { StoredDecision } from "../shared/state";
 import { unbreakableIds } from "../shared/unbreakable-ids";
@@ -306,10 +306,12 @@ function PlanSummary({ plan, marks, mockups, theme, compact, brief }: { plan: Pa
               <Text style={[styles.marker, changes.choices[index] === true ? styles.changed : null]}>•</Text>
               <Text style={[styles.text, styles.bulletText, changes.choices[index] === true ? styles.changed : null]} numberOfLines={brief ? BRIEF_LINES.choice : undefined}>
                 <MarkdownInline text={unbreakableIds(choice.choice)} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
-                {brief || choice.why === "" ? null : (
+                {choice.why === "" || (brief && choiceDefault(choice) === "") ? null : (
+                  // inherits colour: inside the choice's Text, muted unless changed
                   <Text style={changes.choices[index] === true ? null : styles.muted}>
-                    {" — "}
-                    <MarkdownInline text={unbreakableIds(choice.why)} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
+                    {brief ? " — default: " : " — "}
+                    {/* The short card shows a high plan choice's default alone, so the user sees what they approve; View plan has the why. */}
+                    <MarkdownInline text={unbreakableIds(brief ? choiceDefault(choice) : choice.why)} theme={theme} fontSize={FONT_SIZE.small} onOpenLink={openLink} />
                   </Text>
                 )}
               </Text>

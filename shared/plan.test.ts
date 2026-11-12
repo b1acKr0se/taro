@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parsePart, parsePlan, splitChoice } from "./plan";
+import { choiceDefault, parsePart, parsePlan, splitChoice } from "./plan";
 
 const FULL = `## Goal
 Approve a plan from a compact card in seconds.
@@ -170,5 +170,18 @@ describe("a high plan", () => {
     const plan = parsePlan(FULL);
     expect(plan?.parts).toEqual([]);
     expect(plan?.sections.some((section) => section.key === "parts" || section.key === "risks")).toBe(false);
+  });
+});
+
+describe("choiceDefault", () => {
+  it("reads a high plan choice's default, without its why", () => {
+    expect(choiceDefault(splitChoice("Export format — default: CSV with a header row — opens in any spreadsheet"))).toBe("CSV with a header row");
+    expect(choiceDefault(splitChoice("Button place — Default: beside Print"))).toBe("beside Print");
+  });
+
+  it("is empty for a choice that names no default", () => {
+    expect(choiceDefault(splitChoice("The plan is written once — the card reads it from the ticket"))).toBe("");
+    expect(choiceDefault(splitChoice("Just a choice"))).toBe("");
+    expect(choiceDefault(splitChoice("Keep it — defaults are fine"))).toBe("");
   });
 });
