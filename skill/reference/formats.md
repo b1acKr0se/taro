@@ -52,9 +52,10 @@ surprise: Out of scope says "no schema change"   # only after approval, below
 - **Blocking** (`blocking: true`) stops you until answered: every owner question before its plan is
   approved (the plugin makes it so), the plan approval, anything destructive, and after approval only
   a surprise. **Non-blocking**: go on at once with `default`.
-- **`surprise:`** (after the round's approval only): the approved criterion or Out of scope line
-  the answer would change. Without it the plugin does not show a plan approval again and shows any
-  other blocking question as not blocking with its `default`; it tells you.
+- **`surprise:`** (after the round's approval only; leave it out before): the approved criterion or
+  Out of scope line the answer would change. Without it the plugin does not show a plan approval
+  again, shows any other blocking question as not blocking with its `default`, and holds one with
+  no `default` unshown; it tells you.
 - The `question` stands alone on the card, in at most about three lines: never "three options" or
   "see above". Labels are a few words that answer it. Never offer an option that only means "type
   something else" (Other, Change…): every card has a text box. A `prompt` ending in `…` asks the

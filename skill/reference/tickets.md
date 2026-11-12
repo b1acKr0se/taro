@@ -158,7 +158,7 @@ rather than exceed it.
 - **ANSWER**: written by the plugin when the user answers a decision.
 - **NO-PLAN**: written by the plugin when an owner's turn ends with commits on its branch and no
   plan on the ticket; the owner is told to stop, write the plan and ask `scope-approval`
-  before building on. A ticket labelled `complexity-trivial` or `complexity-low` is never flagged.
+  before building on. A ticket rated trivial or low (its highest `complexity-` label) is never flagged.
 - **NO-APPROVAL**: the same with a plan the round has not approved (no APPROVAL and no Approve on
   `scope-approval` since the latest REOPENED, nor on a child's parent): stop, ask, wait.
 - **RULING** (owner, after approval): a call made inside the approved goal instead of asking:

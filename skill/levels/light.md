@@ -19,5 +19,6 @@ the one question whose answer changes the code, before you build.
 4. The clean verdict brings `phases/delivery.md`, filled with what the delivery still lacks; follow it.
 
 If the work turns out bigger than its label (a second subsystem, a choice the user would want to
-make, contracts, money, auth or stored data), raise the label, stop building and end the turn: the
+make, contracts, money, auth or stored data), raise the label (`taro ticket edit <ID>
+--remove-label complexity-low --add-label complexity-<new>`), stop building and end the turn: the
 plugin sends that level's page, and above low the plan's approval comes before more code.

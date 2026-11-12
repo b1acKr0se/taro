@@ -12,18 +12,12 @@ Inside the approved goal every call is yours, scope changes included: record eac
 approved criterion or an Out of scope line would change, with `surprise:` naming it
 (`reference/formats.md`); without one the plugin does not show the question as blocking.
 
-When your ticket fixes a defect an earlier ticket shipped, append an **ESCAPE** record to that
-ticket naming the check that should have caught it.
-
 ## Implementers and children
 
 - One implementer per task, **one at a time** in your workspace (a new tab), each with a filled
   **definition of done** (`templates/definition-of-done.md`) in the child ticket or its brief.
   Check it first: every criterion has a concrete check, no placeholders, nothing contradicts,
   everything traces to the approved plan. Tell each subagent to read `reference/shell.md`.
-- Pick each subagent's model by the task's difficulty from the allowed list: mechanical → the
-  cheapest; routine → middle; risky or hard → the strongest (`reference/model-tiers.md`). A model the
-  user named wins. Start them as `reference/paseo.md` says and record them in EXECUTION.
 - **Every child is worked by a subagent of its own**, labelled with the child's id: an implementer,
   or a researcher for an investigation child. Never do a child's work yourself: a child with no
   agent of its own borrows your chat, and its card repeats yours. Start its subagent with the
