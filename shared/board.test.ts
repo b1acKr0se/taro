@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { boardColumn, columnCounts, complexityOf, inboxCount, isInboxTicket, needsYouExtras, questionsForUser, ticketAgents, waitingOnUser, type CardInputs, type JoinedAgent } from "./board";
+import { boardColumn, childrenWorking, columnCounts, complexityOf, inboxCount, isInboxTicket, needsYouExtras, questionsForUser, ticketAgents, waitingOnUser, type CardInputs, type JoinedAgent } from "./board";
 
 const base: CardInputs = { status: "In Progress", ownerElsewhere: false, agent: { status: "idle", pendingPermissions: 0 }, lastStatus: "waiting", openQuestions: 0, stalledAfterNudge: false };
 
@@ -195,6 +195,30 @@ describe("ticketAgents", () => {
     expect(joined.columnAgent?.id).toBe("owner");
     expect(joined.askers.map((entry) => entry.id)).toEqual([]);
     expect(ticketAgents("DEMO-1", null, grouped([parentOwner, childBuilder])).childSubagents).toEqual([]);
+  });
+
+  // Parallel children, each in its own worktree: every one keeps its own card and agent, the parent counts them.
+  it("gives two children working at once a card and agent each, and the parent counts them", () => {
+    const first = agent("first", "implementer", "DEMO-1.01", "running", "DEMO-1.01 · implementer: writer");
+    const second = agent("second", "implementer", "DEMO-1.02", "running", "DEMO-1.02 · implementer: button");
+    const waiting = agent("third", "implementer", "DEMO-1.03", "idle", "DEMO-1.03 · implementer: docs");
+    const byTicket = grouped([parentOwner, first, second, waiting]);
+    const childIds = ["DEMO-1.01", "DEMO-1.02", "DEMO-1.03"];
+    for (const [child, own] of [["DEMO-1.01", "first"], ["DEMO-1.02", "second"]] as const) {
+      const joined = ticketAgents(child, "DEMO-1", byTicket, "In Progress");
+      expect(joined.subagents.map((entry) => entry.id)).toEqual([own]);
+      expect(joined.columnAgent?.id).toBe(own);
+    }
+    const parent = ticketAgents("DEMO-1", null, byTicket, "In Progress", childIds);
+    expect(parent.childSubagents.map((entry) => entry.id)).toEqual(["first", "second", "third"]);
+    expect(childrenWorking(childIds, parent.childSubagents)).toBe(2);
+    // The third child, blocked by a dependency, has not started: no agent, so not counted.
+    expect(childrenWorking(childIds, [first, second])).toBe(2);
+    expect(childrenWorking(childIds, [first, first, waiting])).toBe(1);
+    expect(childrenWorking(childIds, [])).toBe(0);
+    // Labelled with the parent but titled for the child still counts once.
+    const titled = agent("titled", "implementer", "DEMO-1", "running", "DEMO-1.02 · implementer: button");
+    expect(childrenWorking(childIds, [second, titled])).toBe(1);
   });
 
   // TR-096: a researcher of a ticket sat on a permission while its card stayed in Working.

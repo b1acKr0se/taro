@@ -222,6 +222,8 @@ export const CardSchema = z.object({
   investigation: z.boolean(),
   parent: z.string().nullable(),
   children: z.array(z.object({ id: z.string(), title: z.string(), status: z.string() })),
+  /** How many children have a subagent running now; the parent's card says "N children working". */
+  childrenWorking: z.number().default(0),
   acceptanceDone: z.number(),
   acceptanceTotal: z.number(),
   updatedAt: z.string().nullable(),

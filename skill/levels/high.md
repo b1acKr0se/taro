@@ -18,9 +18,9 @@ and after it you work alone to delivery.
   (`taro ticket create "<title>" -p <ID> -d '<definition of done>'`, `templates/definition-of-done.md`)
   with its definition of done, `--dep` between them and its `complexity-` label; `-l risk` and
   a Review Focus when it touches money, auth, contracts or stored data. Children with no dependency
-  may run in parallel, so never share a file.
+  between them, disjoint Owns and example interfaces run at once (`phases/build.md`).
 - A child's decisions, mockups and proof go in the parent's plan. Writing the definitions finds the
-  holes (two children that disagree, a choice nobody made): ask about them before the card.
+  holes (children that disagree, a choice nobody made): ask before the card.
 - **Plan review**: one independent reviewer reads the plan and the child specs for coverage of every
   criterion, interfaces that agree, and Review Focus gaps. Fix its findings, then record
   `REVIEW <time> — plan review by <reviewer>: <findings, each fixed or rejected> — verdict: <clean|findings>`.

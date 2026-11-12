@@ -191,6 +191,22 @@ export function ticketAgents<Agent extends JoinedAgent>(
   return { owner, subagents, childSubagents, columnAgent, askers: columnAgent !== null && columnAgent === placing && asks(placing) ? [placing] : asking };
 }
 
+/**
+ * How many of a parent's children have a subagent running right now (children run at once in their
+ * own worktrees): each child counts once, however many subagents it has. A subagent belongs to the
+ * child it is labelled with, or titled for while labelled with the parent.
+ */
+export function childrenWorking(childIds: readonly string[], subagents: readonly JoinedAgent[]): number {
+  const working = new Set<string>();
+  for (const agent of subagents) {
+    if (agent.status !== "running" && agent.status !== "initializing") continue;
+    const labelled = agent.labels[TARO_LABELS.ticket] ?? "";
+    const child = childIds.includes(labelled) ? labelled : titledTicket(agent.title);
+    if (child !== null && childIds.includes(child)) working.add(child);
+  }
+  return working.size;
+}
+
 /** The ticket id a title starts with ("TR-1.01 · implementer: …"), or null. */
 function titledTicket(title: string | null | undefined): string | null {
   return /^([A-Z][A-Z0-9]*-\d+(?:\.\d+)*)\s/.exec(title ?? "")?.[1] ?? null;

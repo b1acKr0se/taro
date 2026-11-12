@@ -866,6 +866,30 @@ describe("taro agent", { timeout: CLI_TIMEOUT_MS }, () => {
     expect(readTicket("TR-050").notes).not.toContain("taro agent start");
   });
 
+  it("starts two children at once in their own worktrees while the thread check allows, and only the first when it allows one", () => {
+    const world = ownerWorld();
+    deliverableTicket();
+    writeTicket({ id: "TR-050.01", title: "Writer", parent: "TR-050", status: "In Progress" });
+    writeTicket({ id: "TR-050.02", title: "Button", parent: "TR-050", status: "In Progress" });
+    writeFileSync(join(scratch, "brief.md"), "Build the child.");
+    const start = (child: string) => world.run(["agent", "start", "implementer", child, "--model", "claude/claude-opus-5-5", "--brief-file", join(scratch, "brief.md"), "--worktree", "--wait", "0"]);
+    // 84% of 2048: room for one more agent, which then takes the usage past 85%.
+    writeFileSync(join(world.cgroup, "pids.current"), "1720\n");
+    expect(start("TR-050.01").code).toBe(0);
+    writeFileSync(join(world.cgroup, "pids.current"), "1785\n");
+    const second = start("TR-050.02");
+    expect(second.code).toBe(1);
+    expect(second.stderr).toContain("threads are at 87% (1785 of 2048), above 85%");
+    const started = world.invocations("paseo");
+    expect(started).toHaveLength(1);
+    expect(started[0]?.join(" ")).toContain("--new-branch taro/tr-050.01 --base taro/tr-050 --worktree-slug tr-050.01");
+    expect(readTicket("TR-050.02").notes).not.toContain("taro agent start");
+    // Once threads come back the second child starts on its own branch, from the same base.
+    writeFileSync(join(world.cgroup, "pids.current"), "1500\n");
+    expect(start("TR-050.02").code).toBe(0);
+    expect(world.invocations("paseo")[1]?.join(" ")).toContain("--new-branch taro/tr-050.02 --base taro/tr-050 --worktree-slug tr-050.02");
+  });
+
   it("refuses a model outside the project's list and a job that is not a subagent's", () => {
     const world = ownerWorld();
     deliverableTicket();

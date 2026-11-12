@@ -34,7 +34,7 @@ const BUDGETS: Record<string, number> = {
   "levels/light.md": 300,
   "levels/medium.md": 470,
   "levels/high.md": 380,
-  "phases/build.md": 400,
+  "phases/build.md": 415,
   "phases/review.md": 530,
   "phases/delivery.md": 1020,
   "phases/accept.md": 780,

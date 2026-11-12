@@ -352,6 +352,7 @@ export function TicketCard({
             </View>
             <Text style={styles.muted}>
               {childrenDone}/{card.children.length} children done
+              {card.childrenWorking > 0 ? ` · ${card.childrenWorking} ${card.childrenWorking === 1 ? "child" : "children"} working` : ""}
             </Text>
           </Pressable>
           {childrenOpen
