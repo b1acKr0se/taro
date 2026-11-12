@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { questionHoldingAccept } from "../shared/delivery-end";
+import { questionsForUser, waitingOnUser } from "../shared/board";
+import { questionHoldingAccept, questionOpenAtDelivery } from "../shared/delivery-end";
 import { AgentStateSchema, type AgentState, type StoredDecision } from "../shared/state";
 import { fetchLiveAgent, listTaroAgents } from "./agents";
 import type { HookAgent, PaseoAgent, PaseoApi, TimelineItem, TimelinePage, TurnOutcome } from "./host-types";
@@ -23,9 +24,9 @@ import { allAssistantText, autoCompactedThisTurn, closingText, currentTurn, huma
 vi.mock("./agents", () => ({ fetchLiveAgent: vi.fn(), isMidTurn: () => false, listTaroAgents: vi.fn(async () => []) }));
 vi.mock("./send", async (original) => ({ ...(await original<typeof import("./send")>()), sendFromPlugin: vi.fn(async () => undefined), sendCommand: vi.fn(async () => undefined) }));
 vi.mock("./package-files", () => ({
-  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", acceptQuestionRefused: "accept-question-refused", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question", noPlan: "no-plan", noApproval: "no-approval", approvalRepeated: "approval-repeated", acceptingTooEarly: "accepting-too-early", acceptUnfinished: "accept-unfinished", deliveryMissing: "delivery-missing", planWithoutMockups: "plan-without-mockups", planLint: "plan-lint" },
+  TEMPLATES: { reload: "reload", nudge: "nudge", subagentReport: "report", evidenceMissing: "evidence-missing", decisionHeld: "decision-held", acceptQuestionRefused: "accept-question-refused", decisionCorrection: "decision-correction", planningQuestion: "planning-question", deliveryWithOpenQuestion: "delivery-open-question", noPlan: "no-plan", noApproval: "no-approval", approvalRepeated: "approval-repeated", subagentQuestionGated: "subagent-question-gated", acceptingTooEarly: "accepting-too-early", acceptUnfinished: "accept-unfinished", deliveryMissing: "delivery-missing", planWithoutMockups: "plan-without-mockups", planLint: "plan-lint" },
   skillDirectory: async () => "/skill",
-  message: async (path: string, values: Record<string, string> = {}) => (path === "delivery-missing" ? `delivery-missing:${values.ticket}:${values.missing}` : path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "accept-question-refused" ? `accept-question-refused:${values.refused}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : path === "plan-without-mockups" ? `plan-without-mockups:${values.ticket}:${values.missing}` : path === "plan-lint" ? `plan-lint:${values.ticket}:${values.gaps}` : path === "accept-unfinished" ? `accept-unfinished:${values.ticket}:${values.pullRequest}` : path === "accepting-too-early" ? `accepting-too-early:${values.ticket}:${values.status}:${values.missing}` : path === "no-plan" ? `no-plan:${values.ticket}:${values.branch}:${values.commits}:${values.base}` : path === "no-approval" ? `no-approval:${values.ticket}:${values.branch}:${values.commits}:${values.base}` : path === "approval-repeated" ? `approval-repeated:${values.ticket}:${values.questions}` : `${path}:${values.ticket ?? ""}`),
+  message: async (path: string, values: Record<string, string> = {}) => (path === "delivery-missing" ? `delivery-missing:${values.ticket}:${values.missing}` : path === "evidence-missing" ? `evidence-missing:${values.ticket}:${values.missing}` : path === "report" ? `report:${values.role}:${values.report}` : path === "accept-question-refused" ? `accept-question-refused:${values.refused}` : path === "decision-held" ? `decision-held:${values.held}:${values.open}` : path === "planning-question" ? `planning-question:${values.question}` : path === "delivery-open-question" ? `delivery-open-question:${values.ticket}:${values.question}` : path === "plan-without-mockups" ? `plan-without-mockups:${values.ticket}:${values.missing}` : path === "plan-lint" ? `plan-lint:${values.ticket}:${values.gaps}` : path === "accept-unfinished" ? `accept-unfinished:${values.ticket}:${values.pullRequest}` : path === "accepting-too-early" ? `accepting-too-early:${values.ticket}:${values.status}:${values.missing}` : path === "no-plan" ? `no-plan:${values.ticket}:${values.branch}:${values.commits}:${values.base}` : path === "no-approval" ? `no-approval:${values.ticket}:${values.branch}:${values.commits}:${values.base}` : path === "approval-repeated" ? `approval-repeated:${values.ticket}:${values.questions}` : path === "subagent-question-gated" ? `subagent-question-gated:${values.ticket}:${values.questions}` : `${path}:${values.ticket ?? ""}`),
 }));
 vi.mock("./projects", () => ({ readProjectConfig: vi.fn(async () => null), projectPaths: async () => ({ tracker: "/tracker" }) }));
 vi.mock("./process", async (original) => ({ ...(await original<typeof import("./process")>()), runCommand: vi.fn(async () => ({ code: 0, stdout: '{"state":"OPEN","mergeable":"CONFLICTING"}', stderr: "" })) }));
@@ -1011,7 +1012,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       const first = [human("start"), extra(ask("naming", "Call it Export or Save as?"), "default: Yes")];
       await run(taro, ...first);
       expect(shown(decisions)).toEqual([["naming", "open", false, true]]);
-      expect(gated()).toEqual(['approval-repeated:TR-9:- `naming`: shown not blocking; go on with its default "Yes"']);
+      expect(gated()).toEqual(['approval-repeated:TR-9:- `naming`: not waiting on the user; go on with its default "Yes" and decide it']);
       expect(records()).toHaveLength(1);
       expect(records()[0]).toMatch(/^BLOCKING-AFTER-APPROVAL \S+ — `naming` asked blocking after approval, with no surprise: shown not blocking, the owner going on with "Yes"$/);
 
@@ -1033,7 +1034,7 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       await run(supervisor(held.state), human("start"), ask("naming", "Call it Export?"));
       expect(shown(held.decisions)).toEqual([["naming", "withdrawn", true, undefined]]);
       expect(held.decisions[0]?.held).toBeUndefined();
-      expect(gated()).toEqual(["approval-repeated:TR-9:- `naming`: not shown, as it has no `default`"]);
+      expect(gated()).toEqual(["approval-repeated:TR-9:- `naming`: not shown, as it has no `default`; decide it"]);
       expect(records()[0]).toMatch(/^BLOCKING-AFTER-APPROVAL \S+ — `naming` asked blocking after approval, with no surprise and no default: not shown$/);
 
       const surprised = fakeState();
@@ -1105,14 +1106,21 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       expect(heldMessages()).toEqual(["decision-held:`storage`:naming"]);
     });
 
-    it("leaves a non-blocking question as asked and gates investigation-done like any blocking question", async () => {
+    // Review blocker: after approval a non-blocking question is the owner's call too; asked of the user it waited in Needs you and held the delivery.
+    it("gives a non-blocking question its default, not waiting on the user, tells the owner to decide it, and gates investigation-done like any question", async () => {
       withTicket(APPROVED);
       const { state, decisions } = fakeState();
       await run(supervisor(state), human("start"), lightly(extra(ask("tone", "tone?"), "default: Yes")));
+      expect(gated()).toEqual(['approval-repeated:TR-9:- `tone`: not waiting on the user; go on with its default "Yes" and decide it']);
+      expect(records()[0]).toMatch(/^BLOCKING-AFTER-APPROVAL \S+ — `tone` asked after approval, with no surprise: shown not blocking, the owner going on with "Yes"$/);
+      expect(questionsForUser(decisions)).toBe(0);
+      expect(waitingOnUser(decisions)).toEqual([]);
+      expect(questionHoldingAccept(decisions)).toBeNull();
+      expect(questionOpenAtDelivery(decisions, owner.id)).toBeNull();
       const delivering = fakeState();
       await run(supervisor(delivering.state), human("start"), ask("investigation-done", "Findings are in: what next?"));
       expect([...shown(decisions), ...shown(delivering.decisions)]).toEqual([
-        ["tone", "open", false, undefined],
+        ["tone", "open", false, true],
         // An investigation delivers like any ticket now: no default, so held back.
         ["investigation-done", "withdrawn", true, undefined],
       ]);
@@ -1136,7 +1144,68 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       withTicket(APPROVED, "Planning");
       const { state, decisions } = fakeState();
       await run(supervisor(state), human("start"), lightly(extra(ask("tone", "tone?"), "default: Yes")));
-      expect(shown(decisions)).toEqual([["tone", "open", false, undefined]]);
+      expect(shown(decisions)).toEqual([["tone", "open", false, true]]);
+    });
+
+    it("holds a non-blocking question with no default, and shows one with a surprise as asked", async () => {
+      withTicket(APPROVED);
+      const held = fakeState();
+      await run(supervisor(held.state), human("start"), lightly(ask("tone", "tone?")));
+      expect(shown(held.decisions)).toEqual([["tone", "withdrawn", false, undefined]]);
+      expect(records()[0]).toMatch(/^BLOCKING-AFTER-APPROVAL \S+ — `tone` asked after approval, with no surprise and no default: not shown$/);
+      const surprised = fakeState();
+      await run(supervisor(surprised.state), human("start"), lightly(extra(ask("tone", "tone?"), "default: Yes\nsurprise: criterion 2 names the tone")));
+      expect(shown(surprised.decisions)).toEqual([["tone", "open", false, undefined]]);
+    });
+
+    it("gives a review-dispute asked non-blocking after approval its default: the owner decides it, the delivery is not taken back", async () => {
+      withTicket(APPROVED);
+      const { state, decisions } = fakeState();
+      const taro = supervisor(state);
+      const first = [human("start"), lightly(extra(ask("review-dispute", "The reviewer wants a retry loop: apply it?"), "default: Accept as a limitation"))];
+      await run(taro, ...first);
+      expect(shown(decisions)).toEqual([["review-dispute", "open", false, true]]);
+      expect(gated()).toEqual(['approval-repeated:TR-9:- `review-dispute`: not waiting on the user; go on with its default "Accept as a limitation" and decide it']);
+      expect(questionsForUser(decisions)).toBe(0);
+      vi.mocked(endDelivery).mockClear();
+      vi.mocked(endDelivery).mockResolvedValue(true);
+      withTicket(APPROVED, "Awaiting acceptance");
+      await run(taro, ...first, plugin("go on"), reply);
+      expect(endDelivery).not.toHaveBeenCalled();
+      expect(decisions.map((decision) => [decision.id, decision.status, decision.closedWithDefault])).toEqual([["review-dispute", "withdrawn", true]]);
+    });
+
+    // Owner ruling (a): a subagent's question is its owner's to decide after approval, as build.md says.
+    it("gates a subagent's blocking question after approval as the owner's: its default, not waiting on the user, the subagent told its owner decides", async () => {
+      const subagentGated = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("subagent-question-gated:"));
+      vi.mocked(fetchLiveAgent).mockResolvedValue({ ...owner, id: "impl-1", labels: { ...owner.labels, "taro.role": "implementer", "taro.ticket": "TR-9.01" } } as unknown as PaseoAgent);
+      vi.mocked(viewTicket).mockImplementation(async (_tracker, id) => ({ status: "In Progress", implementationPlan: PLAN, implementationNotes: id === "TR-9" ? APPROVED : null }) as unknown as Awaited<ReturnType<typeof viewTicket>>);
+      const { state, decisions } = fakeState();
+      await run(supervisor(state), human("start"), extra(ask("retry", "Retry on timeout?"), "default: Yes"));
+      expect(shown(decisions)).toEqual([["retry", "open", false, true]]);
+      expect(questionsForUser(decisions)).toBe(0);
+      expect(subagentGated()).toEqual(['subagent-question-gated:TR-9.01:- `retry`: not waiting on the user; go on with its default "Yes" and decide it']);
+      expect(gated()).toEqual([]);
+      expect(records()[0]).toMatch(/^BLOCKING-AFTER-APPROVAL \S+ — `retry` by a subagent asked blocking after approval, with no surprise: shown not blocking, the subagent going on with "Yes"$/);
+
+      const held = fakeState();
+      await run(supervisor(held.state), human("start"), ask("retry", "Retry on timeout?"));
+      expect(shown(held.decisions)).toEqual([["retry", "withdrawn", true, undefined]]);
+
+      // With a surprise, or before approval, the user is asked as before; a non-blocking one is the owner's already.
+      const surprised = fakeState();
+      await run(supervisor(surprised.state), human("start"), extra(ask("retry", "Retry on timeout?"), "surprise: Out of scope says no retries"));
+      const light = fakeState();
+      await run(supervisor(light.state), human("start"), lightly(ask("tone", "tone?")));
+      vi.mocked(viewTicket).mockImplementation(async () => ({ status: "In Progress", implementationPlan: PLAN, implementationNotes: null }) as unknown as Awaited<ReturnType<typeof viewTicket>>);
+      const before = fakeState();
+      await run(supervisor(before.state), human("start"), ask("retry", "Retry on timeout?"));
+      expect([...shown(surprised.decisions), ...shown(light.decisions), ...shown(before.decisions)]).toEqual([
+        ["retry", "open", true, undefined],
+        ["tone", "open", false, undefined],
+        ["retry", "open", true, undefined],
+      ]);
+      expect(questionsForUser([...surprised.decisions, ...before.decisions])).toBe(2);
     });
 
     // Review blocker: a question the owner went on with by default is its call; it must not hold the delivery.
@@ -1159,11 +1228,11 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       expect(decisions.map((decision) => [decision.id, decision.status, decision.closedWithDefault])).toEqual([["naming", "withdrawn", true]]);
     });
 
-    it("still takes back a delivery made with an ordinary question open after approval", async () => {
+    it("still takes back a delivery made with a surprise question open after approval", async () => {
       withTicket(APPROVED);
       const { state, decisions } = fakeState();
       const taro = supervisor(state);
-      const first = [human("start"), lightly(extra(ask("tone", "tone?"), "default: Yes"))];
+      const first = [human("start"), lightly(extra(ask("tone", "tone?"), "default: Yes\nsurprise: criterion 2 names the tone"))];
       await run(taro, ...first);
       vi.mocked(endDelivery).mockClear();
       vi.mocked(endDelivery).mockResolvedValue(true);

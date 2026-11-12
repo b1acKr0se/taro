@@ -54,8 +54,8 @@ surprise: Out of scope says "no schema change"   # only after approval, below
   a surprise. **Non-blocking**: go on at once with `default`.
 - **`surprise:`** (after the round's approval only; leave it out before): the approved criterion or
   Out of scope line the answer would change. Without it the plugin does not show a plan approval
-  again, shows any other blocking question as not blocking with its `default`, and holds one
-  without a `default`; it tells you.
+  again; any other question (a subagent's blocking one too) is yours: go on with its `default`,
+  held without one; it tells you.
 - The `question` stands alone on the card, in at most about three lines: never "three options" or
   "see above". Labels are a few words answering it. Never offer an option meaning only "type
   something else" (Other, Change…): every card has a text box. A `prompt` ending in `…` asks the
@@ -71,7 +71,7 @@ surprise: Out of scope says "no schema change"   # only after approval, below
 | --- | --- | --- |
 | `scope-approval` | Approve · Split into children (when proposed) | Approve; the question is `Approve the plan for <ID>?` |
 | `child-breakdown` | Approve · Fewer children | Approve; after approval only when the scope changes, with `surprise:` |
-| `review-dispute` | Apply the fix · Accept as a limitation | after approval: Accept as a limitation, listed in FINAL, non-blocking; blocking only with `surprise:` |
+| `review-dispute` | Apply the fix · Accept as a limitation | a RULING after approval (limitations go in FINAL); asked only with `surprise:` |
 
 Acceptance and the merge are never a decision block: the plugin shows Accept on a delivered ticket,
 and does not show a question asking for one.

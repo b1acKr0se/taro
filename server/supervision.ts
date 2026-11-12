@@ -42,6 +42,14 @@ import { nextStep, STEP_PAGES, stepKey, ticketLevel, type Step } from "../shared
 import { lintPlan } from "../shared/plan-lint";
 import { stepText, stepTicket } from "./next-step";
 
+/** A block the approval gate did not show as asked (TR-263), with what it did. */
+interface GatedBlock {
+  id: string;
+  outcome: "refuse" | "single" | "default" | "hold";
+  default: string;
+  blocking: boolean;
+}
+
 export interface TaroIdentity {
   project: string;
   role: Role;
@@ -733,9 +741,11 @@ export class Supervisor {
   private async storeDecisions(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, decisions: readonly ParsedDecision[], turn: string | null, now: string, waiting: boolean, earlier: string): Promise<void> {
     const earlierBlocks = turn === null || earlier === "" ? [] : parseDecisionBlocks(earlier);
     // An owner's ticket: still planning (TR-146), or its plan approved this round (TR-263). Unread for anyone else.
-    const facts = identity.role === "owner" && decisions.some((decision) => !decision.withdrawn) ? await this.decisionFacts(identity) : { planning: false, approved: false };
+    // A subagent's blocking question is gated too: after approval its owner decides it, not the user.
+    const gatedAsker = (block: ParsedDecision) => identity.role === "owner" || block.blocking;
+    const facts = decisions.some((decision) => !decision.withdrawn && gatedAsker(decision)) ? await this.decisionFacts(identity) : { planning: false, approved: false };
     // Before approval a question that would go on without the user is made blocking; after it, never.
-    const planning = facts.planning && !facts.approved;
+    const planning = identity.role === "owner" && facts.planning && !facts.approved;
     // A plan approval asked without its mockups is held back (TR-235).
     const asksApproval = identity.role === "owner" && decisions.some((decision) => !decision.withdrawn && decision.id === SCOPE_APPROVAL);
     const mockupGap = asksApproval ? await this.planMockupsMissing(identity) : [];
@@ -747,7 +757,7 @@ export class Supervisor {
     const heldPlans: string[] = [];
     const refused: string[] = [];
     // Blocks the approval gate did not show as asked (TR-263), each with its outcome.
-    const gated: { id: string; outcome: "refuse" | "single" | "default" | "hold"; default: string }[] = [];
+    const gated: GatedBlock[] = [];
     const corrections = await this.state.updateDecisions((stored) => {
       const problems: string[] = [];
       // Withdrawals first: an owner may withdraw its open question below the block that asks the next one.
@@ -793,12 +803,15 @@ export class Supervisor {
           // The same block seen again (a repeated hook, a replayed turn) does not reopen an answered decision; asked in a later turn, it does.
           continue;
         }
-        // After the round's approval the owner decides (TR-263): no second plan approval, and a blocking
-        // question goes on with its default, unless the block names the approved line it would change.
-        const gate = identity.role === "owner" ? approvalGate(block, facts.approved) : "ask";
+        // After the round's approval the owner decides (TR-263): no second plan approval, and a question
+        // goes on with its default, unless the block names the approved line it would change.
+        // A question already shown to the user as asked (made blocking while planning, say) stays as it is.
+        const shownAsAsked = existing?.status === "open" && existing.madeNonBlocking !== true;
+        const gate = gatedAsker(block) && !shownAsAsked ? approvalGate(block, facts.approved) : "ask";
+        const gatedAs = (outcome: GatedBlock["outcome"]): GatedBlock => ({ id: block.id, outcome, default: block.default, blocking: block.blocking });
         if (gate === "refuse" || gate === "single") {
           const ask = `${key}:${turn ?? `question ${hashText(block.question)}`}`;
-          if (!this.refusedAsks.has(ask)) gated.push({ id: block.id, outcome: gate, default: block.default });
+          if (!this.refusedAsks.has(ask)) gated.push(gatedAs(gate));
           this.refusedAsks.add(ask);
           if (this.refusedAsks.size > REFUSED_ASKS_KEPT) this.refusedAsks.delete(this.refusedAsks.values().next().value ?? "");
           continue;
@@ -807,7 +820,7 @@ export class Supervisor {
           const withheld = { ...next, status: "withdrawn" as const };
           if (existing === undefined) stored.push(withheld);
           else stored[index] = withheld;
-          gated.push({ id: block.id, outcome: gate, default: block.default });
+          gated.push(gatedAs(gate));
           continue;
         }
         if (gate === "default") Object.assign(next, { blocking: false, madeNonBlocking: true });
@@ -832,7 +845,7 @@ export class Supervisor {
         else stored[index] = next;
         if (existing === undefined || existing.status !== "open") opened.push(next);
         // Told once: an open question already going on with its default asked again stays quiet.
-        if (gate === "default" && (existing === undefined || existing.status !== "open" || existing.madeNonBlocking !== true)) gated.push({ id: block.id, outcome: gate, default: block.default });
+        if (gate === "default" && (existing === undefined || existing.status !== "open" || existing.madeNonBlocking !== true)) gated.push(gatedAs(gate));
         // Shown for the first time (a held one included): counted, and its format problems reported.
         if (existing === undefined || existing.status === "withdrawn") {
           if (identity.ticket !== null) newlyAsked.push(identity.ticket);
@@ -858,7 +871,7 @@ export class Supervisor {
       console.log(`[taro] ${agent.id} asked scope-approval on ${identity.ticket}: held, the plan lint found ${lintGap.length} gap(s)`);
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.planLint, { ticket: identity.ticket, gaps: lintGap.map((gap) => `- ${gap}`).join("\n"), skill: await skillDirectory() }));
     }
-    if (gated.length > 0 && identity.ticket !== null) await this.tellGated(paseo, agent, identity.project, identity.ticket, gated);
+    if (gated.length > 0 && identity.ticket !== null) await this.tellGated(paseo, agent, identity, identity.ticket, gated);
     if (held.length > 0) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.decisionHeld, { held: held.map((each) => `\`${each.id}\``).join(", "), open: held[0]!.open }));
     }
@@ -971,12 +984,16 @@ export class Supervisor {
     }
   }
 
-  /** The owner whose blocks the approval gate changed (TR-263): a record each on the ticket, the plugin log, and one message. */
-  private async tellGated(paseo: PaseoApi, agent: PaseoAgent, project: string, ticket: string, gated: readonly { id: string; outcome: "refuse" | "single" | "default" | "hold"; default: string }[]): Promise<void> {
-    const tracker = (await projectPaths(project)).tracker;
+  /**
+   * The agent whose blocks the approval gate changed (TR-263): a record each on the ticket, the plugin
+   * log, and one message. An owner is told to decide and record a RULING; a subagent that its owner decides.
+   */
+  private async tellGated(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, ticket: string, gated: readonly GatedBlock[]): Promise<void> {
+    const tracker = (await projectPaths(identity.project)).tracker;
+    const asker = identity.role === "owner" ? "owner" : "subagent";
     for (const each of gated) {
-      const record = gateRecord(new Date().toISOString(), each.outcome, each);
-      console.log(`[taro] ${agent.id} asked \`${each.id}\` on ${ticket} after its plan was approved, with no surprise: ${each.outcome === "refuse" ? "refused, not shown" : each.outcome === "single" ? "several questions, not shown" : each.outcome === "hold" ? "held, no default" : "shown not blocking with its default"}`);
+      const record = gateRecord(new Date().toISOString(), each.outcome, each, asker);
+      console.log(`[taro] ${agent.id}${asker === "owner" ? "" : ` (${identity.role})`} asked \`${each.id}\` on ${ticket} after its plan was approved, with no surprise: ${each.outcome === "refuse" ? "refused, not shown" : each.outcome === "single" ? "several questions, not shown" : each.outcome === "hold" ? "held, no default" : "shown not blocking with its default"}`);
       if (record !== null) {
         await appendTicketNote(tracker, ticket, record).catch((error: unknown) => {
           console.warn(`[taro] recording ${ticket}'s question asked after approval: ${error instanceof Error ? error.message : String(error)}`);
@@ -989,10 +1006,11 @@ export class Supervisor {
         : each.outcome === "single"
           ? `- \`${each.id}\`: not shown, as it asks several questions on one card; after approval ask them one at a time`
           : each.outcome === "hold"
-            ? `- \`${each.id}\`: not shown, as it has no \`default\``
-            : `- \`${each.id}\`: shown not blocking; go on with its default "${each.default.trim()}"`,
+            ? `- \`${each.id}\`: not shown, as it has no \`default\`; decide it`
+            : `- \`${each.id}\`: not waiting on the user; go on with its default "${each.default.trim()}" and decide it`,
     );
-    await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.approvalRepeated, { ticket, questions: questions.join("\n"), skill: await skillDirectory() }));
+    const template = asker === "owner" ? TEMPLATES.approvalRepeated : TEMPLATES.subagentQuestionGated;
+    await sendFromPlugin(paseo, agent.id, await message(template, { ticket, questions: questions.join("\n"), skill: await skillDirectory() }));
   }
 
   /**

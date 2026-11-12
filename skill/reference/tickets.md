@@ -163,7 +163,7 @@ rather than exceed it.
   `scope-approval` since the latest REOPENED, nor on a child's parent): stop, ask, wait.
 - **RULING** (owner, after approval): a call made inside the approved goal instead of asking:
   `RULING 2026-01-05T10:00Z — <decision> — <why> — <cost if wrong>`. FINAL's Rulings lists them.
-- **APPROVAL-REPEATED**, **BLOCKING-AFTER-APPROVAL**: written by the plugin when an owner asked
+- **APPROVAL-REPEATED**, **BLOCKING-AFTER-APPROVAL**: written by the plugin when an owner (or its subagent) asked
   after approval without `surprise:` (`reference/formats.md`): what it did with the question.
 - **ESCAPE**: on a delivered ticket, when a later ticket fixes a defect it shipped; written by the
   later ticket's owner. What escaped, the fixing ticket, and the check that should have caught it

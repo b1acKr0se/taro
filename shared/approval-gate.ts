@@ -3,8 +3,9 @@
  * builds nothing (a NO-APPROVAL record and a stop). After it, the owner decides inside the approved
  * goal and records a RULING: the user is asked again only when an approved criterion or an Out of
  * scope line would change, and the decision block says which in its `surprise:` field. Without one,
- * the plan approval is not shown again, and any other blocking question is shown not blocking, with
- * the default the owner goes on with (or not at all when it has none).
+ * the plan approval is not shown again, and any other question, blocking or not, is the owner's to
+ * decide: shown not blocking with the default the owner goes on with (or not at all when it has none).
+ * A subagent's blocking question is gated the same way, as its owner decides it.
  *
  * Pure and free of packages, with `.ts` import extensions, so the workflow conformance check
  * (`shared/conformance.ts`) can run it under plain `node` as the benchmark does.
@@ -106,27 +107,35 @@ export type GateOutcome =
   | "refuse"
   /** Several questions on one card after approval: not shown, the owner asks one at a time. */
   | "single"
-  /** A blocking question: shown not blocking, the owner going on with its default. */
+  /** A question, blocking or not: shown not blocking, the owner going on with its default and deciding it. */
   | "default"
-  /** A blocking question with no default to go on with: not shown. */
+  /** A question with no default to go on with: not shown. */
   | "hold";
 
-/** The gate for one block: only after approval, and never for a block that names its surprise. */
+/**
+ * The gate for one block: only after approval, and never for a block that names its surprise. A
+ * non-blocking question is gated too: asked of the user, it would wait in Needs you and hold the
+ * delivery, though after approval the call is the owner's.
+ */
 export function approvalGate(block: { id: string; blocking: boolean; default: string; surprise?: string | undefined; questions?: readonly unknown[] | undefined }, approved: boolean): GateOutcome {
   if (!approved) return "ask";
   // One card of several questions is for the plan stage; after approval each question comes alone, surprise or not.
   if ((block.questions?.length ?? 0) > 0) return "single";
   if ((block.surprise ?? "").trim() !== "") return "ask";
   if (block.id === SCOPE_APPROVAL) return "refuse";
-  if (!block.blocking) return "ask";
   return block.default.trim() === "" ? "hold" : "default";
 }
 
+/** Who asked a gated block: the owner, or one of its subagents, whose question the owner decides. */
+export type Asker = "owner" | "subagent";
+
 /** The ticket's record of a block the gate did not show as asked; null for one shown as asked. */
-export function gateRecord(at: string, outcome: GateOutcome, block: { id: string; default: string }): string | null {
-  if (outcome === "refuse") return `APPROVAL-REPEATED ${at} — \`${block.id}\` asked again after the plan was approved, with no surprise: not shown; the owner was told to build on`;
-  if (outcome === "single") return `BLOCKING-AFTER-APPROVAL ${at} — \`${block.id}\` asked several questions on one card after approval: not shown; the owner was told to ask one at a time`;
-  if (outcome === "default") return `BLOCKING-AFTER-APPROVAL ${at} — \`${block.id}\` asked blocking after approval, with no surprise: shown not blocking, the owner going on with "${block.default.trim()}"`;
-  if (outcome === "hold") return `BLOCKING-AFTER-APPROVAL ${at} — \`${block.id}\` asked blocking after approval, with no surprise and no default: not shown`;
+export function gateRecord(at: string, outcome: GateOutcome, block: { id: string; default: string; blocking?: boolean | undefined }, asker: Asker = "owner"): string | null {
+  const asked = block.blocking === false ? "asked after approval" : "asked blocking after approval";
+  const by = asker === "owner" ? "" : " by a subagent";
+  if (outcome === "refuse") return `APPROVAL-REPEATED ${at} — \`${block.id}\`${by} asked again after the plan was approved, with no surprise: not shown; the ${asker} was told to build on`;
+  if (outcome === "single") return `BLOCKING-AFTER-APPROVAL ${at} — \`${block.id}\`${by} asked several questions on one card after approval: not shown; the ${asker} was told to ask one at a time`;
+  if (outcome === "default") return `BLOCKING-AFTER-APPROVAL ${at} — \`${block.id}\`${by} ${asked}, with no surprise: shown not blocking, the ${asker} going on with "${block.default.trim()}"`;
+  if (outcome === "hold") return `BLOCKING-AFTER-APPROVAL ${at} — \`${block.id}\`${by} ${asked}, with no surprise and no default: not shown`;
   return null;
 }

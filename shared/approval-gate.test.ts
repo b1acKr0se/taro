@@ -12,6 +12,7 @@ const gap = (notes: string | null, labels: string[] = ["complexity-medium"], pla
   buildGap({ status: "In Progress", plan, criteria: 0, labels, notes, parentNotes });
 
 describe("buildGap", () => {
+
   it("is no-plan without a plan, whatever the approval", () => {
     expect(gap(null, ["complexity-medium"], null)).toBe("no-plan");
     expect(gap(APPROVE, ["complexity-high"], "  ")).toBe("no-plan");
@@ -97,7 +98,10 @@ describe("approvalGate", () => {
     expect(approvalGate(block("scope-approval", false), true)).toBe("refuse");
     expect(approvalGate(block("naming", true, "Export"), true)).toBe("default");
     expect(approvalGate(block("naming", true, "   "), true)).toBe("hold");
-    expect(approvalGate(block("tone", false), true)).toBe("ask");
+    // A non-blocking question is the owner's call too: its default, or held without one.
+    expect(approvalGate(block("tone", false, "Formal"), true)).toBe("default");
+    expect(approvalGate(block("review-dispute", false, "Accept as a limitation"), true)).toBe("default");
+    expect(approvalGate(block("tone", false), true)).toBe("hold");
     // An investigation delivers like any ticket now: an investigation-done asked blocking is gated as any question.
     expect(approvalGate(block("investigation-done", true, "Build"), true)).toBe("default");
   });
@@ -126,7 +130,7 @@ describe("several questions on one card (before approval only)", () => {
 
   it("a single question after approval is unchanged", () => {
     expect(approvalGate({ ...several, questions: [] }, true)).toBe("hold");
-    expect(approvalGate({ ...several, questions: [], blocking: false }, true)).toBe("ask");
+    expect(approvalGate({ ...several, questions: [], blocking: false }, true)).toBe("hold");
   });
 });
 
@@ -139,5 +143,7 @@ describe("records", () => {
     expect(gateRecord("T", "default", { id: "naming", default: " Export " })).toBe('BLOCKING-AFTER-APPROVAL T — `naming` asked blocking after approval, with no surprise: shown not blocking, the owner going on with "Export"');
     expect(gateRecord("T", "hold", { id: "naming", default: "" })).toBe("BLOCKING-AFTER-APPROVAL T — `naming` asked blocking after approval, with no surprise and no default: not shown");
     expect(gateRecord("T", "ask", { id: "naming", default: "" })).toBeNull();
+    expect(gateRecord("T", "default", { id: "tone", default: "Formal", blocking: false })).toBe('BLOCKING-AFTER-APPROVAL T — `tone` asked after approval, with no surprise: shown not blocking, the owner going on with "Formal"');
+    expect(gateRecord("T", "hold", { id: "retry", default: "", blocking: true }, "subagent")).toBe("BLOCKING-AFTER-APPROVAL T — `retry` by a subagent asked blocking after approval, with no surprise and no default: not shown");
   });
 });

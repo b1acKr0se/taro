@@ -64,6 +64,7 @@ export const TEMPLATES = {
   noPlan: "messages/no-plan.md",
   noApproval: "messages/no-approval.md",
   approvalRepeated: "messages/approval-repeated.md",
+  subagentQuestionGated: "messages/subagent-question-gated.md",
   unlabelledAgent: "messages/unlabelled-agent.md",
   acceptingTooEarly: "messages/accepting-too-early.md",
   deliveryMissing: "messages/delivery-missing.md",

@@ -9,7 +9,7 @@ and must fail before the fix.
 Inside the approved goal every call is yours, scope changes included: record each as a RULING
 (`reference/tickets.md`) and list the costliest in FINAL's Rulings. Ask the user only when an
 approved criterion or an Out of scope line would change, with `surprise:` naming it
-(`reference/formats.md`); without one the plugin does not show the question as blocking.
+(`reference/formats.md`); without one the plugin asks the user nothing: go on with its `default`.
 
 ## Implementers and children
 
