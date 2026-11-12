@@ -78,7 +78,7 @@ host's threads; the harness waits while the host is above 85% of `pids.max`.
 
 ## What the numbers mean
 
-- `stop`: `done`, `time`, `cost` (the cap) or `error`. A capped run is not scored for hidden tests.
+- `stop`: `done`, `time`, `cost` (the cap), `blocked` (the owner ended `blocked:` and stayed so ten minutes) or `error`. Only a `done` run is scored for hidden tests.
 - `costUsd`, `byRole`: from the plugin's `stats.json` for the ticket, each agent's cost at its last turn end,
   per role with its models, peak context, turns and active time. A child ticket's agents count on the parent.
 - `decider`: `rpc` (default) or `ui` (`--ui`); results from before it was recorded were all `ui`.

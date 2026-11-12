@@ -11,6 +11,7 @@ import { join, resolve } from "node:path";
 import { playwrightFor, startDecider, type DeciderMode } from "./decider.ts";
 import { BENCH_ROOT, cleanup, ensureDirectory, installPlugin, makePluginCopy, makeThrowaway, paseoArgs, pickPort, rpc, scratchDirectory, seedRepository, startDaemon, waitForThreads, type Throwaway } from "./daemon.ts";
 import { run } from "./process.ts";
+import { ownerBlockedLine } from "./blocked.ts";
 import { briefFor, installOwnerPytest, isPythonTask, ownerEnvArguments } from "./python-task.ts";
 import { DEFAULT_USER_MINUTES_PER_CARD, conformanceOf, countPermissions, countRecords, loggedViolations, peakContextOfSession, runHidden, scoreCards, scoreQuestions, scoreStats, storedAgentRecord, storedSessionIdOf, type TicketStatsLike } from "./score.ts";
 import type { ResultFile } from "./report.ts";
@@ -80,6 +81,14 @@ function ownerPrompt(facts: { ticket: string; skill: string; repository: string;
     "Brief:",
     facts.brief,
   ].join("\n");
+}
+
+function readJsonOrNull(path: string): unknown {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return null;
+  }
 }
 
 function readStats(throwaway: Throwaway, ticket: string): TicketStatsLike | null {
@@ -225,6 +234,12 @@ async function main(): Promise<void> {
       if (cost > options.maxUsd) {
         stop = "cost";
         runLog(`cost $${cost.toFixed(2)} is over the cap $${options.maxUsd}`);
+        break;
+      }
+      const blockedLine = ownerBlockedLine(readJsonOrNull(join(throwaway.home, "plugin-data", "taro", "state", "agents.json")), ownerId, Date.now());
+      if (blockedLine !== null) {
+        stop = "blocked";
+        runLog(`the owner ended blocked: ${blockedLine}`);
         break;
       }
       if (Date.now() > deadline) {

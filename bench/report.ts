@@ -11,7 +11,7 @@ export interface ResultFile {
   task: string;
   arm: { checkout: string; sha: string };
   models: { owner: string; subagents: string[] };
-  stop: "done" | "time" | "cost" | "error";
+  stop: "done" | "time" | "cost" | "blocked" | "error";
   wallMs: number;
   costUsd: number;
   byRole: Record<string, { agents: number; models: string[]; costUsd: number; peakContextTokens: number; turns: number; activeMs: number }>;
@@ -61,7 +61,7 @@ function byKind(violations: { kind: string }[]): string {
 }
 
 function stopNote(result: ResultFile): string {
-  return result.stop === "done" ? "" : ` (stopped: ${result.stop === "cost" ? "cost cap" : result.stop === "time" ? "time cap" : "error"})`;
+  return result.stop === "done" ? "" : ` (stopped: ${result.stop === "cost" ? "cost cap" : result.stop === "time" ? "time cap" : result.stop === "blocked" ? "owner blocked" : "error"})`;
 }
 
 const modelsOf = (result: ResultFile): string => `owner ${result.models.owner}; subagents ${result.models.subagents.join(", ") || "none"}`;

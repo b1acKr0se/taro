@@ -87,6 +87,10 @@ describe("renderReport", () => {
     expect(bugFix).toContain("| Hidden tests passed | 12/13 | — |");
   });
 
+  it("marks a run whose owner ended blocked", () => {
+    expect(renderReport([result({ stop: "blocked", hidden: null })])).toContain("(stopped: owner blocked)");
+  });
+
   it("marks a run stopped at the cost cap, and tests not run", () => {
     const text = renderReport([result({ stop: "cost", costUsd: 25.4, hidden: null })]);
     expect(text).toContain("| Cost, total | $25.40 (stopped: cost cap) |");
