@@ -63,3 +63,22 @@ describe("the benchmark tasks", () => {
     });
   });
 });
+
+describe("the tasks added for TR-263", () => {
+  const added = ["high-design", "high-surprise", "trivial-rename", "low-fix"];
+
+  it("exist, each with a reference beside the seed for the selfcheck", () => {
+    expect(taskNames).toEqual(expect.arrayContaining(added));
+    added.forEach((task) => expect(statSync(join(tasksDirectory, task, "reference")).isDirectory(), task).toBe(true));
+  });
+
+  it.each(added)("%s keeps its reference and hidden tests out of the owner's view", (task) => {
+    ownerView(task).forEach((file) => expect(file, "reference or hidden inside the seed").not.toMatch(/\/repo\/(reference|hidden)\//));
+  });
+
+  it("high-design has at least six hidden preferences and high-surprise says what the user wants when asked", () => {
+    const design = readFileSync(join(tasksDirectory, "high-design", "spec.md"), "utf8");
+    expect(new Set(design.match(/^- P\d+:/gm)).size).toBeGreaterThanOrEqual(6);
+    expect(readFileSync(join(tasksDirectory, "high-surprise", "spec.md"), "utf8")).toContain("The surprise");
+  });
+});

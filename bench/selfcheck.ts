@@ -2,7 +2,8 @@
  * Checks a task against its own reference: the reference (a folder copied over `repo/`, or a patch
  * applied to it) must pass every hidden test, and the unfixed `repo/` must fail the tests the task
  * says (`unfixedFails` in task.json: tests whose id contains `match`, exactly `count` of them, all
- * others passing), or every test when it says nothing. Usage: `node bench/selfcheck.ts <task>`.
+ * others passing), or every test when it says nothing. A task with no reference only has to run its
+ * hidden tests and not pass them all on the seed. Usage: `node bench/selfcheck.ts <task>`.
  * The run follows superlite's bench/harness.py `hidden_score` (MIT, THIRD_PARTY_NOTICES.md).
  * Runs under Node type stripping.
  */
@@ -19,6 +20,8 @@ interface TaskSettings {
   hiddenInto?: string;
   reference?: string;
   unfixedFails?: { match: string; count: number };
+  /** How many hidden tests pass on the unfixed repo (tests of what already works, as a node:test log has no ids to match); 0 when absent. */
+  unfixedPasses?: number;
 }
 
 export interface SelfcheckRun {
@@ -35,8 +38,14 @@ export function failingTests(output: string): string[] {
 }
 
 /** What is wrong with the two runs, as sentences; empty when the task checks out. */
-export function selfcheckProblems(settings: TaskSettings, reference: SelfcheckRun, unfixed: SelfcheckRun): string[] {
+export function selfcheckProblems(settings: TaskSettings, reference: SelfcheckRun | null, unfixed: SelfcheckRun): string[] {
   const problems: string[] = [];
+  if (reference === null) {
+    // No reference to run: the hidden tests must at least run, and not already pass on the seed.
+    if (unfixed.score === null) problems.push("the unfixed run printed no score");
+    else if (unfixed.score.total === 0 || unfixed.score.passed === unfixed.score.total) problems.push(`the unfixed repo passes ${unfixed.score.passed} of ${unfixed.score.total}; the task is already done or has no tests`);
+    return problems;
+  }
   if (reference.score === null) problems.push("the reference run printed no score");
   else if (reference.score.passed !== reference.score.total) problems.push(`the reference passes ${reference.score.passed} of ${reference.score.total}`);
   if (unfixed.score === null) {
@@ -45,7 +54,8 @@ export function selfcheckProblems(settings: TaskSettings, reference: SelfcheckRu
   }
   const expected = settings.unfixedFails;
   if (expected === undefined) {
-    if (unfixed.score.passed !== 0) problems.push(`the unfixed repo passes ${unfixed.score.passed} of ${unfixed.score.total}; none should pass`);
+    const allowed = settings.unfixedPasses ?? 0;
+    if (unfixed.score.passed !== allowed) problems.push(`the unfixed repo passes ${unfixed.score.passed} of ${unfixed.score.total}; ${allowed === 0 ? "none" : allowed} should pass`);
     return problems;
   }
   const matching = unfixed.failing.filter((id) => id.includes(expected.match));
@@ -83,14 +93,16 @@ async function main(name: string | undefined): Promise<number> {
     return 2;
   }
   const settings = JSON.parse(readFileSync(join(taskDirectory, "task.json"), "utf8")) as TaskSettings;
-  const reference = await scoreCopy(taskDirectory, settings, true);
+  // The tasks written for this harness ship no reference: for those the hidden tests must run and not all pass on the seed.
+  const hasReference = existsSync(join(taskDirectory, settings.reference ?? "reference"));
+  const reference = hasReference ? await scoreCopy(taskDirectory, settings, true) : null;
   const unfixed = await scoreCopy(taskDirectory, settings, false);
   const show = (run: SelfcheckRun): string => (run.score === null ? "no score" : `${run.score.passed} of ${run.score.total} pass`);
-  console.log(`${name}: reference applied: ${show(reference)}`);
+  console.log(reference !== null ? `${name}: reference applied: ${show(reference)}` : `${name}: no reference shipped; the reference run is skipped`);
   console.log(`${name}: unfixed repo: ${show(unfixed)}${unfixed.failing.length === 0 ? "" : `; ${unfixed.failing.length} failing`}`);
   const problems = selfcheckProblems(settings, reference, unfixed);
   problems.forEach((problem) => console.log(`PROBLEM: ${problem}`));
-  if (problems.length > 0) console.log(`reference output tail:\n${reference.output.slice(-1500)}\nunfixed output tail:\n${unfixed.output.slice(-1500)}`);
+  if (problems.length > 0) console.log(`reference output tail:\n${reference?.output.slice(-1500) ?? ""}\nunfixed output tail:\n${unfixed.output.slice(-1500)}`);
   console.log(problems.length === 0 ? `${name}: ok` : `${name}: FAILED`);
   return problems.length === 0 ? 0 : 1;
 }

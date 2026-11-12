@@ -23,6 +23,8 @@ run, and the harness installs another copy for the owner and sets the owner's `P
 
     node bench/selfcheck.ts <task>     # the task's reference must pass every hidden test; the unfixed repo/ must fail only what task.json's unfixedFails says
 
+Tasks added for TR-263: `high-design` (due dates, done and an agenda: seven hidden preferences, three natural children), `high-surprise` (`notes merge`: the brief wants every note to keep its number and the two files' numbers clash, found only while coding), `trivial-rename` (an exact rename) and `low-fix` (one small bug), the last two to show the light levels gain no time. They ship a `reference/` (copied over `repo/`) so the selfcheck proves their hidden tests; the older native tasks ship none, and for them the selfcheck only needs the hidden tests to run and not all pass on the seed (`unfixedPasses` in `task.json` says how many pass on the seed when that is not 0).
+
 Tasks (`bench/tasks/<name>/`): `medium-feature` (export notes to Markdown), `bug-fix` (a tag filter that
 matches substrings, plus the neighbours that break the same way), `high-children` (notebooks, search and a
 summary over one shared field), `greenfield-modules` (a multi-module build from scratch in a second language:
