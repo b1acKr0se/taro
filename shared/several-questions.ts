@@ -88,16 +88,34 @@ export function draftAnswers(questions: readonly DecisionQuestion[], drafts: rea
   });
 }
 
+/** Picks as kept: with the shape of the card they were picked on (`draftsShape`). */
+export type KeptDrafts = SeveralDrafts & { shape: string };
+
+type Shaped = Pick<DecisionQuestion, "header" | "question" | "options">;
+
+/**
+ * What a card's picks belong to: its headers, questions and option labels. A decision asked again
+ * keeps its key (`<agent>:<id>`), so the key alone would hand the old picks to new questions.
+ */
+export function draftsShape(questions: readonly Shaped[]): string {
+  return JSON.stringify(questions.map((question) => [question.header, question.question, question.options.map((option) => option.label)]));
+}
+
 /**
  * The picks kept for a decision (TR-207), across the client bundle being evaluated again: restored
  * for an open decision of the same shape, dropped once it is answered or withdrawn.
  */
-export function keptDrafts(store: Map<string, SeveralDrafts>, decision: { key: string; status: string; questions: readonly unknown[] }): SeveralDrafts {
+export function keptDrafts(store: Map<string, KeptDrafts>, decision: { key: string; status: string; questions: readonly Shaped[] }): SeveralDrafts {
   const kept = store.get(decision.key);
   if (decision.status !== "open") {
     store.delete(decision.key);
     return freshDrafts(decision.questions.length);
   }
-  if (kept === undefined || kept.drafts.length !== decision.questions.length) return freshDrafts(decision.questions.length);
+  if (kept === undefined || kept.shape !== draftsShape(decision.questions) || kept.drafts.length !== decision.questions.length) return freshDrafts(decision.questions.length);
   return { drafts: kept.drafts, current: Math.min(Math.max(kept.current, 0), decision.questions.length - 1) };
+}
+
+/** Keeps a decision's picks with the shape of its card. */
+export function keepDrafts(store: Map<string, KeptDrafts>, decision: { key: string; questions: readonly Shaped[] }, drafts: SeveralDrafts): void {
+  store.set(decision.key, { drafts: drafts.drafts, current: drafts.current, shape: draftsShape(decision.questions) });
 }

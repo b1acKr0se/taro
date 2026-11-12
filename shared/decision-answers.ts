@@ -28,12 +28,13 @@ export function answerWords(option: Pick<DecisionOption, "prompt"> | null, text:
  * a question has no answer, as half an answer would leave the agent guessing the rest.
  */
 export function severalAnswers(questions: readonly DecisionQuestion[], answers: readonly QuestionAnswer[]): { message: string; answers: QuestionAnswer[]; record: string } {
-  const unanswered = questions.filter((question) => !answers.some((answer) => answer.header === question.header));
+  const matched = matchAnswers(questions, answers);
+  const unanswered = questions.filter((_, index) => matched[index] === undefined);
   if (unanswered.length > 0) {
     throw new Error(`Answer every question first: ${questions.length - unanswered.length} of ${questions.length} answered (${unanswered.map((question) => question.header).join(", ")} still open).`);
   }
-  const settled = questions.map((question) => {
-    const given = answers.find((answer) => answer.header === question.header) ?? { header: question.header, label: null, text: "" };
+  const settled = questions.map((question, index) => {
+    const given = matched[index] ?? { header: question.header, label: null, text: "" };
     const option = given.label === null ? null : question.options.find((candidate) => candidate.label === given.label) ?? null;
     const words = answerWords(option, given.text);
     if (words === "") throw new Error(`Type an answer or press an option for ${question.header}.`);
@@ -44,4 +45,23 @@ export function severalAnswers(questions: readonly DecisionQuestion[], answers: 
     answers: settled,
     record: settled.map((answer) => `${answer.header}: ${answer.label ?? "Other"} ("${answer.text}")`).join("; "),
   };
+}
+
+/**
+ * Each question's answer: the one at its own position (the card sends them in order), else the
+ * first one left with its header. Each answer is taken once, so two questions sharing a header (a
+ * problem the parser names, but the card still shows) do not both get the first one's.
+ */
+function matchAnswers(questions: readonly DecisionQuestion[], answers: readonly QuestionAnswer[]): (QuestionAnswer | undefined)[] {
+  const taken = new Set<number>();
+  const take = (index: number): QuestionAnswer | undefined => {
+    taken.add(index);
+    return answers[index];
+  };
+  const inPlace = questions.map((question, index) => answers[index]?.header === question.header ? take(index) : undefined);
+  return questions.map((question, index) => {
+    if (inPlace[index] !== undefined) return inPlace[index];
+    const other = answers.findIndex((answer, each) => !taken.has(each) && answer.header === question.header);
+    return other === -1 ? undefined : take(other);
+  });
 }

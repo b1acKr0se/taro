@@ -5,11 +5,12 @@
  */
 import { useEffect, useState } from "react";
 
-import { keptDrafts, type SeveralDrafts } from "../shared/several-questions";
+import { keepDrafts, keptDrafts, type KeptDrafts, type SeveralDrafts } from "../shared/several-questions";
+import type { DecisionQuestion } from "../shared/reports";
 import { keptMap } from "./kept";
 
-/** Versioned: a later shape of SeveralDrafts takes a new slot rather than reading this one. */
-const store = keptMap<string, SeveralDrafts>(globalThis, "severalAnswers.v1");
+/** Versioned: a later shape of KeptDrafts takes a new slot rather than reading this one (v2 added `shape`). */
+const store = keptMap<string, KeptDrafts>(globalThis, "severalAnswers.v2");
 const listeners = new Set<() => void>();
 
 function changed(): void {
@@ -17,7 +18,7 @@ function changed(): void {
 }
 
 /** The decision's kept picks, a setter, and `forget` for when it is sent. */
-export function useSeveralDrafts(decision: { key: string; status: string; questions: readonly unknown[] }): {
+export function useSeveralDrafts(decision: { key: string; status: string; questions: readonly DecisionQuestion[] }): {
   state: SeveralDrafts;
   update: (change: (state: SeveralDrafts) => SeveralDrafts) => void;
   forget: () => void;
@@ -35,8 +36,7 @@ export function useSeveralDrafts(decision: { key: string; status: string; questi
     state,
     update: (change) => {
       // Read again, not the render's copy: two picks in one frame must both stay.
-      const next = change(keptDrafts(store, decision));
-      store.set(decision.key, next);
+      keepDrafts(store, decision, change(keptDrafts(store, decision)));
       changed();
     },
     forget: () => {
