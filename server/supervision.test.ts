@@ -967,6 +967,55 @@ describe("Supervisor.onTurnEnded reads only the current turn", () => {
       expect(gated()).toHaveLength(1);
     });
 
+    it("shows a surprise question blocking, not held, behind one the owner went on with by default", async () => {
+      const heldMessages = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("decision-held:"));
+      withTicket(APPROVED);
+      const { state, decisions } = fakeState();
+      const taro = supervisor(state);
+      const first = [human("start"), extra(ask("naming", "Call it Export or Save as?"), "default: Yes")];
+      await run(taro, ...first);
+      const second = [plugin("go on"), extra(ask("storage", "Store per trade?"), "surprise: criterion 2 promises hourly totals")];
+      await run(taro, ...first, ...second);
+      expect(shown(decisions)).toEqual([
+        ["naming", "open", false, true],
+        ["storage", "open", true, undefined],
+      ]);
+      expect(decisions[1]?.held).toBeUndefined();
+      expect(heldMessages()).toEqual([]);
+    });
+
+    it("goes on with the default of a second question asked behind a defaulted one, rather than holding it", async () => {
+      const heldMessages = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("decision-held:"));
+      withTicket(APPROVED);
+      const first = [human("start"), extra(ask("naming", "Call it Export or Save as?"), "default: Yes")];
+      const third = [plugin("more"), extra(ask("tone", "Formal tone?"), "default: Yes")];
+      const other = fakeState();
+      const otherTaro = supervisor(other.state);
+      await run(otherTaro, ...first);
+      await run(otherTaro, ...first, ...third);
+      expect(shown(other.decisions)).toEqual([
+        ["naming", "open", false, true],
+        ["tone", "open", false, true],
+      ]);
+      expect(other.decisions[1]?.held).toBeUndefined();
+      expect(heldMessages()).toEqual([]);
+    });
+
+    it("still holds the next question behind an open one before approval (TR-124)", async () => {
+      const heldMessages = () => vi.mocked(sendFromPlugin).mock.calls.map(([, , text]) => text).filter((text) => text.startsWith("decision-held:"));
+      withTicket(null, "Planning");
+      const { state, decisions } = fakeState();
+      const taro = supervisor(state);
+      const first = [human("start"), extra(ask("naming", "Call it Export or Save as?"), "default: Yes")];
+      await run(taro, ...first);
+      await run(taro, ...first, plugin("go on"), extra(ask("storage", "Store per trade?"), "default: Yes"));
+      expect(decisions.map((decision) => [decision.id, decision.status, decision.held])).toEqual([
+        ["naming", "open", undefined],
+        ["storage", "withdrawn", true],
+      ]);
+      expect(heldMessages()).toEqual(["decision-held:`storage`:naming"]);
+    });
+
     it("leaves a non-blocking question and the investigation's delivery question as asked", async () => {
       withTicket(APPROVED);
       const { state, decisions } = fakeState();

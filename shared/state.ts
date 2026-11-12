@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { ParsedDecisionSchema, StatusStateSchema } from "./reports";
 import { IdleCompactionSchema } from "./idle-compaction";
+import { wentOnWithDefault } from "./planning-questions";
 import { RoleSchema } from "./project";
 
 export const DecisionAnswerSchema = z.object({
@@ -133,10 +134,11 @@ export function withdrawOpenDecisions(decisions: StoredDecision[], matches: (dec
 /**
  * The open decision that holds back another one an agent asks (TR-124): an owner asks the user one
  * thing at a time, so its next question waits until this one is answered or withdrawn. Re-asking
- * the open decision itself (the same key) is never held.
+ * the open decision itself (the same key) is never held. One the owner went on with by default
+ * (TR-263) holds nothing: the user is not prompted for it, so its answer may never come.
  */
-export function openQuestionHolding<T extends Pick<StoredDecision, "agentId" | "key" | "status">>(decisions: readonly T[], agentId: string, key: string): T | undefined {
-  return decisions.find((decision) => decision.agentId === agentId && decision.status === "open" && decision.key !== key);
+export function openQuestionHolding<T extends Pick<StoredDecision, "agentId" | "key" | "status" | "madeNonBlocking">>(decisions: readonly T[], agentId: string, key: string): T | undefined {
+  return decisions.find((decision) => decision.agentId === agentId && decision.status === "open" && decision.key !== key && !wentOnWithDefault(decision));
 }
 
 /** A question handed to a ticket's new owner (TR-136); `shown`: the user saw some copy of it. */
