@@ -5,7 +5,7 @@
  */
 import { SCOPE_APPROVAL } from "./approval-gate";
 import { asStored } from "./planning-questions";
-import { decisionMessageSegments, sameQuestion, type OptionImage, type ParsedDecision } from "./reports";
+import { decisionMessageSegments, sameQuestion, type OptionImage, type ParsedDecision, type ReadDecision } from "./reports";
 import type { StoredDecision } from "./state";
 
 export type DecisionBlockView =
@@ -54,9 +54,9 @@ export const DECISION_BLOCK_KIND = "taro-decision-block";
  */
 export type DecisionTimelineItem =
   | { type: "plugin"; id: string; kind: typeof DECISION_TEXT_KIND; version: 1; data: { text: string } }
-  | { type: "plugin"; id: string; kind: typeof DECISION_BLOCK_KIND; version: 1; data: { decision: Omit<ParsedDecision, "surprise"> } };
+  | { type: "plugin"; id: string; kind: typeof DECISION_BLOCK_KIND; version: 1; data: { decision: Omit<ReadDecision, "surprise"> } };
 
-function withoutSurprise({ surprise: _surprise, ...decision }: ParsedDecision): Omit<ParsedDecision, "surprise"> {
+function withoutSurprise({ surprise: _surprise, ...decision }: ReadDecision): Omit<ReadDecision, "surprise"> {
   return decision;
 }
 

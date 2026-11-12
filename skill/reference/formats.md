@@ -46,23 +46,24 @@ surprise: Out of scope says "no schema change"   # only after approval, below
 
 - **One open question at a time** (owners): ask the next only after the user answered the last, in
   a later turn; the plugin holds back a second. Re-asking the open one (same `id`) is fine; to ask
-  something else instead, withdraw it in the same message (same `id`, `status: withdrawn`). Only the
-  card's answer or your withdrawal closes it, never words in your tab (the manager's included): when
-  the user answers in words, withdraw it in your reply.
+  something else, withdraw it in the same message (same `id`, `status: withdrawn`). Only the
+  card's answer or your withdrawal closes it, never words in your tab: when
+  the user answers in words, withdraw it.
 - **Blocking** (`blocking: true`) stops you until answered: every owner question before its plan is
   approved (the plugin makes it so), the plan approval, anything destructive, and after approval only
   a surprise. **Non-blocking**: go on at once with `default`.
 - **`surprise:`** (after the round's approval only; leave it out before): the approved criterion or
   Out of scope line the answer would change. Without it the plugin does not show a plan approval
-  again, shows any other blocking question as not blocking with its `default`, and holds one with
-  no `default` unshown; it tells you.
+  again, shows any other blocking question as not blocking with its `default`, and holds one
+  without a `default`; it tells you.
 - The `question` stands alone on the card, in at most about three lines: never "three options" or
-  "see above". Labels are a few words that answer it. Never offer an option that only means "type
+  "see above". Labels are a few words answering it. Never offer an option meaning only "type
   something else" (Other, Change…): every card has a text box. A `prompt` ending in `…` asks the
   user to type more with it.
 - A long value may be a YAML block scalar (`why: |` keeps lines, `why: >` joins them).
 - Options the user should see (mockups, layouts) name images under `images:`, one `file — caption`
   per line (`reference/images.md`).
+- Before approval, 2–4 independent questions share a card: `reference/several-questions.md`.
 
 ### Presets
 

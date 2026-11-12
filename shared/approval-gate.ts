@@ -104,14 +104,19 @@ export type GateOutcome =
   | "ask"
   /** A plan approval asked again: not shown. */
   | "refuse"
+  /** Several questions on one card after approval: not shown, the owner asks one at a time. */
+  | "single"
   /** A blocking question: shown not blocking, the owner going on with its default. */
   | "default"
   /** A blocking question with no default to go on with: not shown. */
   | "hold";
 
 /** The gate for one block: only after approval, and never for a block that names its surprise. */
-export function approvalGate(block: { id: string; blocking: boolean; default: string; surprise?: string | undefined }, approved: boolean): GateOutcome {
-  if (!approved || (block.surprise ?? "").trim() !== "") return "ask";
+export function approvalGate(block: { id: string; blocking: boolean; default: string; surprise?: string | undefined; questions?: readonly unknown[] | undefined }, approved: boolean): GateOutcome {
+  if (!approved) return "ask";
+  // One card of several questions is for the plan stage; after approval each question comes alone, surprise or not.
+  if ((block.questions?.length ?? 0) > 0) return "single";
+  if ((block.surprise ?? "").trim() !== "") return "ask";
   if (block.id === SCOPE_APPROVAL) return "refuse";
   if (!block.blocking || block.id === INVESTIGATION_DONE) return "ask";
   return block.default.trim() === "" ? "hold" : "default";
@@ -120,6 +125,7 @@ export function approvalGate(block: { id: string; blocking: boolean; default: st
 /** The ticket's record of a block the gate did not show as asked; null for one shown as asked. */
 export function gateRecord(at: string, outcome: GateOutcome, block: { id: string; default: string }): string | null {
   if (outcome === "refuse") return `APPROVAL-REPEATED ${at} — \`${block.id}\` asked again after the plan was approved, with no surprise: not shown; the owner was told to build on`;
+  if (outcome === "single") return `BLOCKING-AFTER-APPROVAL ${at} — \`${block.id}\` asked several questions on one card after approval: not shown; the owner was told to ask one at a time`;
   if (outcome === "default") return `BLOCKING-AFTER-APPROVAL ${at} — \`${block.id}\` asked blocking after approval, with no surprise: shown not blocking, the owner going on with "${block.default.trim()}"`;
   if (outcome === "hold") return `BLOCKING-AFTER-APPROVAL ${at} — \`${block.id}\` asked blocking after approval, with no surprise and no default: not shown`;
   return null;

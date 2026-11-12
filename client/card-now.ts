@@ -11,7 +11,7 @@ import { stillDelivering } from "../shared/delivery-end";
 import { PAUSE_HANDOFF_TIMEOUT_MS, type PauseView } from "../shared/pause";
 import type { QueuedSlot, QueuedWait } from "../shared/queued-wait";
 import { isHigh } from "../shared/recovery";
-import type { StatusState } from "../shared/reports";
+import { questionsOf, type StatusState } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import { callAction, cardCalls, readinessText, waitingOnPermissions, type CardCall } from "./card-calls";
 import { formatTokenCount, pullRequestNumberLabel, relativeTime } from "./format";
@@ -139,7 +139,9 @@ function callLines(call: CardCall, others: readonly CardCall[], now: number): Li
   );
   if (call.kind === "decision") {
     const more = call.more > 0 ? `${call.more} more question${call.more === 1 ? "" : "s"}` : null;
-    return { headline: call.decision.question, detail: joined([questionContext(call.decision, now), more, ...also]) };
+    // A card asking several questions (TR-207) says how many; its pills under the line name them.
+    const several = questionsOf(call.decision).length;
+    return { headline: several > 1 ? `${several} questions for you` : call.decision.question, detail: joined([questionContext(call.decision, now), more, ...also]) };
   }
   if (call.kind === "acceptance") {
     const readiness = readinessText(call.ready);
