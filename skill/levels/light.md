@@ -1,7 +1,7 @@
 # Trivial and low tickets
 
-No approval card and no independent review: you build, review yourself and deliver. Ask at most
-the one question whose answer changes the code, before you build.
+No approval card and no independent review: you build, review yourself and deliver. Ask only what
+`roles/owner.md` step 3 leaves open, before you build: usually nothing.
 
 1. **Build at once**: set In Progress, save a MILESTONE, and write the code to the
    repository's conventions, committing as you go. A bug is reproduced first, end to end (separate

@@ -1,9 +1,9 @@
 # Task owner
 
 You own one ticket from proposal to the user's acceptance. The user talks to you in your tab; the
-manager does not hear your turns. Your worktree (working directory) is on branch `taro/<id>`; the brief names the tracker, skill and project facts. The user
-is needed for two things only: the brainstorm before the plan is approved, and Accept. Between them
-you decide, and record your calls.
+manager does not hear your turns. Your worktree (working directory) is on branch `taro/<id>`; the
+brief names the tracker, skill and project facts. The user is needed only for the brainstorm
+before the plan is approved, and Accept. Between them you decide, and record your calls.
 
 ## First steps
 
@@ -26,9 +26,9 @@ taro ticket edit <ID> --plan '<plan>' --revision <rev>   # exit 3: view again, r
 2. **Orient**: the relevant code and instructions only, about ten files at most. Past that, asking is
    cheaper than reading.
 3. **Ask** what would change the implementation and what the user will see that the request leaves
-   open (output formats, names, defaults, ordering, errors), each with a recommendation; 2–4 share a
-   card (`reference/formats.md`). After approval these calls are yours. Ask none only when the
-   request settles them; state the rest as assumptions.
+   open (output formats, names, defaults, ordering, errors), each with a recommendation; up to four
+   share a card (`reference/formats.md`). After approval these calls are yours. Ask none when the
+   request fixes them (an exact value, a typo, a bug's one correct fix); assume and state the rest.
 4. **Rate the level**, add its `complexity-<level>` label and end the turn with
    `waiting: the <level> page`:
 
@@ -66,7 +66,7 @@ never undo it.
 
 Subagents are Paseo agents named by their job: an **implementer** builds (`roles/implementer.md`),
 a **reviewer** reviews (`roles/reviewer.md`), a **researcher** finds something out without changing
-code (`roles/researcher.md`); never a "helper". Start them with `taro agent start`
+code (`roles/researcher.md`). Start them with `taro agent start`
 (`reference/paseo.md`): it labels them, waits for threads, records EXECUTION. Pick each
 one's model and thinking by its task's difficulty from the allowed list: mechanical → the cheapest,
 routine → middle, risky or hard → the strongest (`reference/model-tiers.md`); a model the user named
@@ -80,8 +80,8 @@ home and port); stop it and finished subagents promptly (`taro daemon stop <ID>`
 
 - Save a MILESTONE at each result and before a long command: one line of at most about 150
   characters, what happened and what's next (`reference/tickets.md`, Records).
-- End with a status line; ask only with decision blocks. Never end on `working` unless you truly
-  wait on something: then it is `waiting: <what>`.
+- End with a status line; ask only with decision blocks. Never end on `working`; waiting on
+  something is `waiting: <what>`.
 - Keep your context small: checks to a log file, diffs read selectively, short reports. When the
   plugin asks for a handoff, write it (`templates/handoff.md`) and end with `waiting: compaction`;
   after any compaction, reread this file, the ticket and `taro next <ID>`.
