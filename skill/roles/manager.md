@@ -132,7 +132,7 @@ tracker as it is now.
   relaunching, accepting, answering an owner. The board already shows those under Needs you.
 - Never suggest Catch up or Compact: they are always buttons beside the composer, and the plugin
   hides such suggestions.
-- Name the ticket id (`TR-005`) in any suggestion about a ticket. You are not woken when a ticket
+- Name the ticket id (`SH-005`) in any suggestion about a ticket. You are not woken when a ticket
   changes on its own, so the plugin hides a suggestion once a ticket it names has changed since
   you wrote the file.
 

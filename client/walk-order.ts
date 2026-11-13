@@ -2,7 +2,7 @@
 import type { StoredDecision } from "../shared/state";
 
 /** Impact order for presets; free-form decisions come after them, oldest first (spec §10.5). */
-const PRESET_ORDER = ["merge", "scope-approval", "child-breakdown", "review-dispute", "investigation-done", "complexity"];
+const PRESET_ORDER = ["merge", "scope-approval", "child-breakdown", "review-dispute", "investigation-done"];
 
 export function walkOrder(decisions: readonly StoredDecision[]): StoredDecision[] {
   const rank = (decision: StoredDecision) => {

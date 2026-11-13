@@ -1,0 +1,104 @@
+diff --git a/src/minisheet/cli.py b/src/minisheet/cli.py
+index c770bb4..4d97e73 100644
+--- a/src/minisheet/cli.py
++++ b/src/minisheet/cli.py
+@@ -34,7 +34,7 @@ def _get_text(v) -> str:
+ 
+ 
+ def _grid(wb: Workbook, a: Ref, b: Ref) -> list:
+-    L = len(str(a.row + 1))
++    L = len(str(b.row + 1))
+     cols = range(a.col, b.col + 1)
+     texts = {}
+     widths = {}
+diff --git a/src/minisheet/csvio.py b/src/minisheet/csvio.py
+index 5eb01a5..c2bedb8 100644
+--- a/src/minisheet/csvio.py
++++ b/src/minisheet/csvio.py
+@@ -38,7 +38,7 @@ def load_csv(path, formulas: bool = True) -> Workbook:
+ 
+ 
+ def _field(s: str) -> str:
+-    if any(ch in s for ch in ',"\n'):
++    if any(ch in s for ch in ',"\n\r'):
+         return '"' + s.replace('"', '""') + '"'
+     return s
+ 
+diff --git a/src/minisheet/functions.py b/src/minisheet/functions.py
+index 306ace2..efd7c52 100644
+--- a/src/minisheet/functions.py
++++ b/src/minisheet/functions.py
+@@ -149,7 +149,7 @@ def _round(*args):
+     n = to_number(args[1])
+     if isinstance(n, ErrorValue):
+         return n
+-    n = math.floor(n)
++    n = math.trunc(n)
+     if n > 400:
+         return x
+     if n < -400:
+diff --git a/src/minisheet/workbook.py b/src/minisheet/workbook.py
+index 1ff3ad8..e619814 100644
+--- a/src/minisheet/workbook.py
++++ b/src/minisheet/workbook.py
+@@ -143,6 +143,7 @@ class Workbook:
+                 s.discard(key)
+                 if not s:
+                     del self._dependents[d]
++        self._range_users.pop(key, None)
+ 
+     def _register(self, key, cell) -> None:
+         for d in cell.cells:
+diff --git a/src/sitegen/feed.py b/src/sitegen/feed.py
+index 89687f5..6b12839 100644
+--- a/src/sitegen/feed.py
++++ b/src/sitegen/feed.py
+@@ -11,7 +11,7 @@ def _x(s: str) -> str:
+ 
+ 
+ def _parse_date(s) -> _date:
+-    if not isinstance(s, str) or not _DATE_RE.match(s):
++    if not isinstance(s, str) or not _DATE_RE.fullmatch(s):
+         raise ValueError(f"invalid date: {s!r}")
+     try:
+         return _date(int(s[:4]), int(s[5:7]), int(s[8:10]))
+diff --git a/src/sitegen/links.py b/src/sitegen/links.py
+index 213797b..da6038c 100644
+--- a/src/sitegen/links.py
++++ b/src/sitegen/links.py
+@@ -47,7 +47,7 @@ def find_broken_links(pages: dict[str, str]) -> list[tuple[str, str]]:
+             hm = _HREF.search(tag.group(0))
+             if not hm:
+                 continue
+-            href = _val(hm)
++            href = _val(hm).strip()
+             if href == "" or href.startswith("//") or _SCHEME.match(href):
+                 continue
+             rest, _, frag = href.partition("#")
+diff --git a/src/sitegen/search.py b/src/sitegen/search.py
+index f1f4818..55de7e1 100644
+--- a/src/sitegen/search.py
++++ b/src/sitegen/search.py
+@@ -37,7 +37,7 @@ def build_index(docs: list[dict]) -> dict:
+ 
+ 
+ def search(index: dict, query: str, limit: int = 10) -> list[str]:
+-    terms = tokenize(query)
++    terms = list(dict.fromkeys(tokenize(query)))
+     if not terms or limit <= 0:
+         return []
+     postings = index.get("terms", {})
+diff --git a/src/sitegen/site.py b/src/sitegen/site.py
+index b6018f2..f5d18b9 100644
+--- a/src/sitegen/site.py
++++ b/src/sitegen/site.py
+@@ -159,7 +159,8 @@ def build(src, out) -> BuildReport:
+             for ts in seen
+         ]
+ 
+-    posts.sort(key=lambda p: (p["date"], p["slug"]), reverse=True)
++    posts.sort(key=lambda p: p["slug"])
++    posts.sort(key=lambda p: p["date"], reverse=True)
+     tag_list = [tag_map[k] for k in sorted(tag_map)]
+ 
+     # generated outputs

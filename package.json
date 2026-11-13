@@ -21,7 +21,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests --exclude 'bench/tasks/**' --exclude '**/node_modules/**'"
   },
   "devDependencies": {
     "@babel/parser": "^7.29.9",

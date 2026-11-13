@@ -1,11 +1,20 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseTicket, serializeTicket, type Ticket } from "../shared/ticket-format";
+import { currentStep, nextStepAnswer } from "./next-step";
+import { main } from "./taro-cli.ts";
+
+// `taro next` asks the daemon, whose handler reads the project's tracker and settings: here, the scratch tracker.
+const project = vi.hoisted(() => ({ tracker: "" }));
+vi.mock("./projects", () => ({
+  projectPaths: async () => ({ tracker: project.tracker }),
+  readProjectConfig: async () => ({ baseBranch: "main", delivery: "pull-request", acceptAlsoMerges: true }),
+}));
 
 const BIN = resolve(import.meta.dirname, "..", "bin", "taro");
 
@@ -598,7 +607,7 @@ describe("the command lines in skill/reference/tickets.md", { timeout: CLI_TIMEO
       expect(result.status, line).toBe(0);
     }
     expect(readdirSync(join(tracker, "tickets")).filter((name) => name.startsWith("TR-010.")).sort()).toEqual(["TR-010.01.md", "TR-010.md"]);
-    expect(readTicket("TR-012")).toMatchObject({ status: "Awaiting acceptance", plan: "<plan>", finalSummary: "<FINAL>" });
+    expect(readTicket("TR-012")).toMatchObject({ status: "Planning", plan: "<plan>", finalSummary: "<FINAL>" });
     expect(readTicket("TR-012").criteria[0]?.checked).toBe(true);
   });
 });
@@ -614,3 +623,517 @@ describe("Accept guard (TR-237)", () => {
     expect(readTicket(id).status).toBe("Awaiting acceptance");
   });
 }, CLI_TIMEOUT_MS);
+
+describe("taro next", { timeout: CLI_TIMEOUT_MS }, () => {
+  const TOKEN = "A".repeat(43);
+  let home = "";
+  const previousHome = process.env.PASEO_HOME;
+  let requests: { method: string; input: { project: string; ticket: string } }[] = [];
+
+  /** Plays the daemon, answering `taro.ticket.next-step` with the plugin's own handler over the scratch tracker. */
+  function stubDaemon(): void {
+    requests = [];
+    class FakeWebSocket {
+      onopen: (() => void) | null = null;
+      onmessage: ((event: { data: unknown }) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+      constructor() {
+        queueMicrotask(() => this.onopen?.());
+      }
+      send(data: string) {
+        const sent = JSON.parse(data) as Record<string, any>;
+        if (sent.type === "hello") {
+          queueMicrotask(() => this.say({ type: "status", payload: { status: "server_info", protocolVersion: 1 } }));
+          return;
+        }
+        const { requestId, method, input } = sent.message;
+        requests.push({ method, input });
+        void nextStepAnswer(input.project, input.ticket).then((output) => this.say({ type: "plugin.rpc.invoke.response", payload: { requestId, output } }));
+      }
+      say(message: unknown) {
+        this.onmessage?.({ data: JSON.stringify({ type: "session", message }) });
+      }
+      close() {}
+    }
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+  }
+
+  async function next(args: string[], env: Record<string, string> = { TARO_PROJECT: "notes-app" }) {
+    let stdout = "";
+    let stderr = "";
+    const code = await main(["next", ...args], { stdout: (text) => void (stdout += text), stderr: (text) => void (stderr += text), env: { PASEO_HOME: home, ...env } });
+    return { code, stdout, stderr };
+  }
+
+  beforeEach(() => {
+    project.tracker = tracker;
+    home = join(scratch, "paseo");
+    mkdirSync(home);
+    writeFileSync(join(home, "paseo.pid"), JSON.stringify({ pid: 1, listen: "127.0.0.1:9" }));
+    writeFileSync(join(home, "local-credential"), `${TOKEN}\n`);
+    process.env.PASEO_HOME = home;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (previousHome === undefined) delete process.env.PASEO_HOME;
+    else process.env.PASEO_HOME = previousHome;
+  });
+
+  it("prints the build page for a plan approved while no turn end saw it, as the plugin would send it", async () => {
+    stubDaemon();
+    writeTicket({ id: "TR-020", status: "In Progress", labels: ["complexity-medium"], plan: "## Goal\nExport notes", notes: 'APPROVAL 2026-10-01T10:30Z — user: "Approve the plan for TR-020"' });
+    const result = await next(["TR-020"]);
+    expect(result).toMatchObject({ code: 0, stderr: "" });
+    expect(requests).toEqual([{ method: "taro.ticket.next-step", input: { project: "notes-app", ticket: "TR-020" } }]);
+    expect(result.stdout).toContain("TR-020's plan is approved: build it.");
+    expect(result.stdout).toContain("# Build");
+    expect(result.stdout).toBe(`${(await currentStep("notes-app", "TR-020"))?.text}\n`);
+  });
+
+  it("prints a high ticket's children in build order, and the delivery gaps once the review is clean", async () => {
+    stubDaemon();
+    writeTicket({ id: "TR-030", status: "In Progress", labels: ["complexity-high"], plan: "## Goal\nx", notes: 'APPROVAL 2026-10-01T10:30Z — user: "Approve"' });
+    writeTicket({ id: "TR-030.01", title: "CSV writer", parent: "TR-030", dependsOn: ["TR-030.02"] });
+    writeTicket({ id: "TR-030.02", title: "Export button", parent: "TR-030" });
+    expect((await next(["TR-030"])).stdout).toContain("1. TR-030.02 — Export button (Queued)\n2. TR-030.01 — CSV writer (Queued)");
+
+    writeTicket({ id: "TR-031", status: "Reviewing", labels: ["complexity-medium"], plan: "## Goal\nx", notes: 'APPROVAL 2026-10-01T10:30Z — user: "Approve"\n\nREVIEW 2026-10-01T12:00Z — reviewer r1: no findings — verdict: clean' });
+    const delivery = (await next(["TR-031"])).stdout;
+    expect(delivery).toContain("TR-031's review is clean: deliver it.");
+    expect(delivery).toContain("- the ticket records no review-head\n- the ticket records no PR URL");
+    expect(delivery).toContain("# Delivery");
+  });
+
+  it("says when there is no step, as for a ticket not rated yet", async () => {
+    stubDaemon();
+    writeTicket({ id: "TR-040", status: "Planning" });
+    expect((await next(["TR-040"])).stdout).toBe("TR-040 has no step to send now: it is not rated yet (add its complexity- label), closed, or waiting for the user's Accept.\n");
+  });
+
+  it("needs a ticket id and a project, and says when the daemon is not reachable", async () => {
+    stubDaemon();
+    expect((await next([])).code).toBe(2);
+    expect((await next(["TR-020"], {})).stderr).toContain("No project");
+    rmSync(join(home, "paseo.pid"));
+    const down = await next(["TR-020"]);
+    expect(down.code).toBe(4);
+    expect(down.stderr).toContain("Cannot reach the Paseo daemon");
+  });
+});
+
+// ---------------------------------------------------------------- the owner's mechanical steps (TR-263)
+
+const OWNER = "0f1e2d3c-4b5a-4968-8776-655443322110";
+const STUB_AGENT = "11111111-2222-4333-8444-555555555555";
+
+/**
+ * A scratch world for the owner's commands: a git repository on `taro/tr-050` with one commit, the
+ * project's `taro.json` beside the tracker, the plugin data folder, and stub `paseo` and `gh` first on
+ * PATH that log their arguments and answer as `STUB_GH` says.
+ */
+function ownerWorld() {
+  const repo = join(scratch, "notes-app");
+  const bin = join(scratch, "bin");
+  const data = join(scratch, "data");
+  const cgroup = join(scratch, "cgroup");
+  const calls = join(scratch, "calls.log");
+  for (const directory of [repo, bin, cgroup, join(data, "evidence", "notes-app")]) mkdirSync(directory, { recursive: true });
+  const git = (...args: string[]) => {
+    const result = spawnSync("git", ["-C", repo, "-c", "user.name=Alex", "-c", "user.email=alex@example.com", ...args], { encoding: "utf8" });
+    if (result.status !== 0) throw new Error(result.stderr);
+    return result.stdout.trim();
+  };
+  git("init", "-q", "-b", "main");
+  writeFileSync(join(repo, "notes.txt"), "one\n");
+  git("add", "notes.txt");
+  git("commit", "-q", "-m", "first");
+  git("checkout", "-q", "-b", "taro/tr-050");
+  writeFileSync(join(repo, "notes.txt"), "two\n");
+  git("commit", "-q", "-am", "second");
+  const stub = (name: string, body: string) => {
+    writeFileSync(join(bin, name), `#!/bin/sh\n{ echo "=== ${name}"; for a in "$@"; do echo "$a"; done; } >> "${calls}"\n${body}\n`);
+    chmodSync(join(bin, name), 0o755);
+  };
+  stub(
+    "paseo",
+    [
+      'case "$1" in',
+      `  run) echo '{"agentId":"${STUB_AGENT}","status":"running","cwd":"/tmp/wt"}';;`,
+      "  archive) echo archived;;",
+      '  inspect) echo "$STUB_INSPECT";;',
+      '  ls) echo "${STUB_LS:-[]}";;',
+      '  workspace) case "$2" in ls) echo "${STUB_WORKSPACES:-[]}";; archive) echo "{}";; esac;;',
+      "esac",
+    ].join("\n"),
+  );
+  stub(
+    "gh",
+    [
+      'case "$STUB_GH" in',
+      `  ok) echo "{\\"url\\":\\"https://github.com/example/notes-app/pull/9\\",\\"headRefOid\\":\\"$STUB_GH_HEAD\\",\\"state\\":\\"OPEN\\"}";;`,
+      '  none) echo \'no pull requests found for branch "taro/tr-050"\' >&2; exit 1;;',
+      "  *) echo 'HTTP 502: Bad Gateway (https://api.github.com/graphql)' >&2; exit 1;;",
+      "esac",
+    ].join("\n"),
+  );
+  writeFileSync(join(cgroup, "pids.max"), "2048\n");
+  writeFileSync(join(cgroup, "pids.current"), "1000\n");
+  writeFileSync(join(scratch, "taro.json"), JSON.stringify({ project: "notes-app", delivery: "pull-request", acceptAlsoMerges: true, subagentModels: ["claude/claude-haiku-5-5", "claude/claude-opus-5-5"] }));
+  const env = (extra: Record<string, string> = {}) => ({
+    PATH: `${bin}:${process.env.PATH ?? ""}`,
+    TARO_PROJECT: "notes-app",
+    TARO_TRACKER: tracker,
+    TARO_SKILL: "/home/user/skill",
+    TARO_EVIDENCE: join(data, "evidence", "notes-app"),
+    TARO_CGROUP_DIRECTORY: cgroup,
+    PASEO_AGENT_ID: OWNER,
+    ...extra,
+  });
+  const run = (args: string[], extra: Record<string, string> = {}): Result => {
+    const clean = { ...process.env };
+    for (const key of ["TARO_TRACKER", "TARO_PROJECT", "TARO_EVIDENCE", "PASEO_AGENT_ID", "PASEO_HOME", "PASEO_CLI"]) delete clean[key];
+    const result = spawnSync(BIN, args, { cwd: repo, encoding: "utf8", env: { ...clean, ...env(extra) }, timeout: 60_000 });
+    return { code: result.status ?? -1, stdout: result.stdout, stderr: result.stderr };
+  };
+  const callLog = () => (existsSync(calls) ? readFileSync(calls, "utf8") : "");
+  const invocations = (name: string) =>
+    callLog()
+      .split("=== ")
+      .filter((block) => block.startsWith(`${name}\n`))
+      .map((block) => block.split("\n").slice(1, -1));
+  return { repo, data, cgroup, git, run, callLog, invocations, head: () => git("rev-parse", "HEAD") };
+}
+
+const EXECUTION_LINE = `EXECUTION 2026-11-01T10:00Z — owner ${OWNER} (claude/claude-sonnet-5-5), workspace wks_abc, branch taro/tr-050, host devbox`;
+const COMPLETE_EVIDENCE = "EVIDENCE 2026-11-01T11:00Z — verified\ncheck: npm test — 12 passed\nreview: clean (independent reviewer)\nscreenshots: none — no visible change";
+const FINAL_TEXT = "## What changed\n- Notes keep their order.\n\nRevision: <full SHA> on <branch> · PR: <URL>";
+
+function deliverableTicket(overrides: Partial<Ticket> = {}): void {
+  writeTicket({ id: "TR-050", title: "Keep note order", status: "In Progress", notes: `${EXECUTION_LINE}\n\n${COMPLETE_EVIDENCE}`, finalSummary: FINAL_TEXT, ...overrides });
+}
+
+describe("taro agent", { timeout: CLI_TIMEOUT_MS }, () => {
+  it("starts a subagent with the Taro labels, env and title, and records it in EXECUTION", () => {
+    const world = ownerWorld();
+    deliverableTicket();
+    writeFileSync(join(scratch, "brief.md"), "--- You are the implementer.\nBuild it.\n");
+    const result = world.run(["agent", "start", "implementer", "tr-050", "--model", "claude/claude-haiku-5-5", "--thinking", "low", "--brief-file", join(scratch, "brief.md"), "--task", "building the order fix"]);
+    expect(result.stderr).toBe("");
+    expect(result.code).toBe(0);
+    const [args] = world.invocations("paseo");
+    expect(args).toEqual([
+      "run",
+      "--no-wait",
+      "--provider",
+      "claude/claude-haiku-5-5",
+      "--thinking",
+      "low",
+      "--mode",
+      "bypassPermissions",
+      "--title",
+      "TR-050 · implementer: building the order fix",
+      "--label",
+      "taro.project=notes-app",
+      "--label",
+      "taro.role=implementer",
+      "--label",
+      "taro.ticket=TR-050",
+      "--env",
+      `TARO_TRACKER=${tracker}`,
+      "--env",
+      "TARO_PROJECT=notes-app",
+      "--env",
+      "TARO_SKILL=/home/user/skill",
+      "--json",
+      "--",
+      "--- You are the implementer.",
+      "Build it.",
+    ]);
+    expect(readTicket("TR-050").notes).toMatch(new RegExp(`\\nEXECUTION \\S+Z — implementer ${STUB_AGENT} started with taro agent start: claude/claude-haiku-5-5, thinking low; building the order fix$`));
+  });
+
+  it("branches its own worktree from the current branch with --worktree", () => {
+    const world = ownerWorld();
+    deliverableTicket();
+    writeTicket({ id: "TR-050.01", title: "Child", parent: "TR-050", status: "In Progress" });
+    writeFileSync(join(scratch, "brief.md"), "Build the child.");
+    expect(world.run(["agent", "start", "implementer", "TR-050.01", "--model", "claude/claude-opus-5-5", "--brief-file", join(scratch, "brief.md"), "--worktree"]).code).toBe(0);
+    const [args] = world.invocations("paseo");
+    expect(args?.join(" ")).toContain("--new-workspace worktree --worktree-mode branch-off --new-branch taro/tr-050.01 --base taro/tr-050 --worktree-slug tr-050.01");
+    expect(readTicket("TR-050.01").notes).toContain("; own worktree /tmp/wt");
+  });
+
+  it("refuses at 86% of the threads once the wait is over, starting nothing", () => {
+    const world = ownerWorld();
+    deliverableTicket();
+    writeFileSync(join(scratch, "brief.md"), "Build it.");
+    writeFileSync(join(world.cgroup, "pids.current"), "1762\n");
+    const result = world.run(["agent", "start", "reviewer", "TR-050", "--model", "claude/claude-opus-5-5", "--brief-file", join(scratch, "brief.md"), "--wait", "0"]);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("threads are at 86% (1762 of 2048), above 85%");
+    expect(world.invocations("paseo")).toEqual([]);
+    expect(readTicket("TR-050").notes).not.toContain("taro agent start");
+  });
+
+  it("starts two children at once in their own worktrees while the thread check allows, and only the first when it allows one", () => {
+    const world = ownerWorld();
+    deliverableTicket();
+    writeTicket({ id: "TR-050.01", title: "Writer", parent: "TR-050", status: "In Progress" });
+    writeTicket({ id: "TR-050.02", title: "Button", parent: "TR-050", status: "In Progress" });
+    writeFileSync(join(scratch, "brief.md"), "Build the child.");
+    const start = (child: string) => world.run(["agent", "start", "implementer", child, "--model", "claude/claude-opus-5-5", "--brief-file", join(scratch, "brief.md"), "--worktree", "--wait", "0"]);
+    // 84% of 2048: room for one more agent, which then takes the usage past 85%.
+    writeFileSync(join(world.cgroup, "pids.current"), "1720\n");
+    expect(start("TR-050.01").code).toBe(0);
+    writeFileSync(join(world.cgroup, "pids.current"), "1785\n");
+    const second = start("TR-050.02");
+    expect(second.code).toBe(1);
+    expect(second.stderr).toContain("threads are at 87% (1785 of 2048), above 85%");
+    const started = world.invocations("paseo");
+    expect(started).toHaveLength(1);
+    expect(started[0]?.join(" ")).toContain("--new-branch taro/tr-050.01 --base taro/tr-050 --worktree-slug tr-050.01");
+    expect(readTicket("TR-050.02").notes).not.toContain("taro agent start");
+    // Once threads come back the second child starts on its own branch, from the same base.
+    writeFileSync(join(world.cgroup, "pids.current"), "1500\n");
+    expect(start("TR-050.02").code).toBe(0);
+    expect(world.invocations("paseo")[1]?.join(" ")).toContain("--new-branch taro/tr-050.02 --base taro/tr-050 --worktree-slug tr-050.02");
+  });
+
+  it("refuses a model outside the project's list and a job that is not a subagent's", () => {
+    const world = ownerWorld();
+    deliverableTicket();
+    writeFileSync(join(scratch, "brief.md"), "Build it.");
+    const model = world.run(["agent", "start", "implementer", "TR-050", "--model", "claude/claude-sonnet-5-5", "--brief-file", join(scratch, "brief.md")]);
+    expect(model.code).toBe(1);
+    expect(model.stderr).toContain("not one of the project's subagent models: claude/claude-haiku-5-5, claude/claude-opus-5-5");
+    expect(world.run(["agent", "start", "helper", "TR-050", "--model", "claude/claude-opus-5-5", "--brief-file", join(scratch, "brief.md")]).code).toBe(2);
+    expect(world.invocations("paseo")).toEqual([]);
+  });
+
+  it("archives an agent with stop, keeping a workspace it cannot read", () => {
+    const world = ownerWorld();
+    const result = world.run(["agent", "stop", STUB_AGENT]);
+    expect(result.code).toBe(0);
+    expect(world.invocations("paseo")).toEqual([
+      ["inspect", STUB_AGENT, "--json"],
+      ["archive", STUB_AGENT],
+    ]);
+    expect(result.stdout).toContain("Kept its workspace: paseo inspect did not show the agent's working directory.");
+  });
+
+  // Review should-fix: every --worktree child left its Paseo workspace and worktree behind.
+  describe("a child's own worktree", () => {
+    function childWorld(record: "worktree" | "shared" = "worktree") {
+      const world = ownerWorld();
+      deliverableTicket();
+      const worktree = join(scratch, "wt-050-01");
+      world.git("worktree", "add", "-q", "-b", "taro/tr-050.01", worktree, "taro/tr-050");
+      writeFileSync(join(worktree, "child.txt"), "child\n");
+      world.git("-C", worktree, "add", "child.txt");
+      world.git("-C", worktree, "commit", "-q", "-m", "child work");
+      const where = record === "worktree" ? `; own worktree ${worktree}` : "";
+      writeTicket({ id: "TR-050.01", title: "Child", parent: "TR-050", status: "In Progress", notes: `EXECUTION 2026-11-12T10:00Z — implementer ${STUB_AGENT} started with taro agent start: claude/claude-opus-5-5${where}` });
+      const stubs = (live: object[] = []) => ({
+        STUB_INSPECT: JSON.stringify({ Id: STUB_AGENT, Name: "TR-050.01 · implementer", Cwd: worktree }),
+        STUB_WORKSPACES: JSON.stringify([{ workspaceId: "wks_child", cwd: worktree, isolation: "worktree", name: "taro/tr-050.01" }]),
+        STUB_LS: JSON.stringify(live),
+      });
+      const archivedWorkspaces = () => world.invocations("paseo").filter((args) => args[0] === "workspace" && args[1] === "archive");
+      return { world, worktree, stubs, archivedWorkspaces };
+    }
+
+    it("archives the workspace once its branch is merged into the owner's and no other agent works in it", () => {
+      const { world, worktree, stubs, archivedWorkspaces } = childWorld();
+      world.git("merge", "-q", "--no-edit", "taro/tr-050.01");
+      const result = world.run(["agent", "stop", STUB_AGENT], stubs());
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain(`Archived its workspace wks_child (${worktree}): taro/tr-050.01 is merged into taro/tr-050.`);
+      expect(archivedWorkspaces()).toEqual([["workspace", "archive", "wks_child", "--json"]]);
+    });
+
+    it("keeps it while its branch is not merged into the owner's branch", () => {
+      const { world, stubs, archivedWorkspaces } = childWorld();
+      const result = world.run(["agent", "stop", STUB_AGENT], stubs());
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("Kept its workspace: taro/tr-050.01 is not merged into taro/tr-050.");
+      expect(archivedWorkspaces()).toEqual([]);
+    });
+
+    // Review blocker: paseo workspace archive deletes the worktree, uncommitted work with it.
+    it("keeps a merged child's worktree that holds an uncommitted change or an untracked file", () => {
+      const { world, worktree, stubs, archivedWorkspaces } = childWorld();
+      world.git("merge", "-q", "--no-edit", "taro/tr-050.01");
+      writeFileSync(join(worktree, "child.txt"), "edited, not committed\n");
+      const changed = world.run(["agent", "stop", STUB_AGENT], stubs());
+      expect(changed.code).toBe(0);
+      expect(changed.stdout).toContain(`Kept its workspace: ${worktree} has uncommitted changes (child.txt).`);
+      world.git("-C", worktree, "checkout", "--", "child.txt");
+      writeFileSync(join(worktree, "notes-draft.md"), "draft\n");
+      const untracked = world.run(["agent", "stop", STUB_AGENT], stubs());
+      expect(untracked.stdout).toContain(`Kept its workspace: ${worktree} has uncommitted changes (notes-draft.md).`);
+      expect(archivedWorkspaces()).toEqual([]);
+    });
+
+    it("keeps it while another live agent works in it", () => {
+      const { world, worktree, stubs, archivedWorkspaces } = childWorld();
+      world.git("merge", "-q", "--no-edit", "taro/tr-050.01");
+      const result = world.run(["agent", "stop", STUB_AGENT], stubs([{ id: "reviewer-9", cwd: join(worktree, "src") }]));
+      expect(result.stdout).toContain("Kept its workspace: reviewer-9 still works in it.");
+      expect(archivedWorkspaces()).toEqual([]);
+    });
+
+    it("keeps a workspace taro agent start --worktree did not make for this agent", () => {
+      const { world, stubs, archivedWorkspaces } = childWorld("shared");
+      world.git("merge", "-q", "--no-edit", "taro/tr-050.01");
+      const result = world.run(["agent", "stop", STUB_AGENT], stubs());
+      expect(result.stdout).toContain("Kept its workspace: not made by taro agent start --worktree for this agent (no such EXECUTION record on TR-050.01).");
+      expect(archivedWorkspaces()).toEqual([]);
+    });
+  });
+});
+
+describe("taro check and taro deliver", { timeout: CLI_TIMEOUT_MS }, () => {
+  it("delivers a local branch: review-head, revision line, Awaiting acceptance; again on the same head writes nothing", () => {
+    const world = ownerWorld();
+    writeFileSync(join(scratch, "taro.json"), JSON.stringify({ delivery: "local-only" }));
+    deliverableTicket();
+    const head = world.head();
+    const first = world.run(["deliver", "TR-050"]);
+    expect(first.stderr).toBe("");
+    expect(first.code).toBe(0);
+    const delivered = readTicket("TR-050");
+    expect(delivered.status).toBe("Awaiting acceptance");
+    expect(delivered.notes).toMatch(new RegExp(`EXECUTION \\S+Z — delivered with taro deliver: review-head: ${head}$`));
+    expect(delivered.finalSummary).toBe(`## What changed\n- Notes keep their order.\n\nRevision: ${head} on taro/tr-050 · PR: none (local-only)`);
+    expect(world.invocations("gh")).toEqual([]);
+    const again = world.run(["deliver", "TR-050"]);
+    expect(again.code).toBe(0);
+    expect(again.stdout).toContain("already delivered");
+    expect(readTicket("TR-050")).toEqual(delivered);
+  });
+
+  it("delivers a pull request with the PR and head gh reads", () => {
+    const world = ownerWorld();
+    deliverableTicket();
+    const head = world.head();
+    const result = world.run(["deliver", "TR-050"], { STUB_GH: "ok", STUB_GH_HEAD: head });
+    expect(result.stderr).toBe("");
+    expect(result.code).toBe(0);
+    expect(world.invocations("gh")).toEqual([["pr", "view", "taro/tr-050", "--json", "url,headRefOid,state"]]);
+    const ticket = readTicket("TR-050");
+    expect(ticket.notes).toContain(`delivered with taro deliver: pr: https://github.com/example/notes-app/pull/9; review-head: ${head}`);
+    expect(ticket.finalSummary).toContain(`Revision: ${head} on taro/tr-050 · PR: https://github.com/example/notes-app/pull/9`);
+    expect(ticket.status).toBe("Awaiting acceptance");
+  });
+
+  it("refuses with the missing list when there is no PR, or the pushed head is older, writing nothing", () => {
+    const world = ownerWorld();
+    deliverableTicket();
+    const before = readFileSync(fileOf("TR-050"), "utf8");
+    const none = world.run(["deliver", "TR-050"], { STUB_GH: "none" });
+    expect(none.code).toBe(1);
+    expect(none.stderr).toContain("TR-050 is not delivered; nothing was written. Accept would refuse it without:\n- a pull request for taro/tr-050: push it and open one");
+    expect(none.stderr).toContain("- the ticket records no PR URL");
+    const behind = world.run(["deliver", "TR-050"], { STUB_GH: "ok", STUB_GH_HEAD: "d".repeat(40) });
+    expect(behind.code).toBe(1);
+    expect(behind.stderr).toContain("- the pushed head: https://github.com/example/notes-app/pull/9 is at dddddddddd");
+    expect(readFileSync(fileOf("TR-050"), "utf8")).toBe(before);
+  });
+
+  it("refuses on a gh failure, writing nothing", () => {
+    const world = ownerWorld();
+    deliverableTicket();
+    const before = readFileSync(fileOf("TR-050"), "utf8");
+    const result = world.run(["deliver", "TR-050"], { STUB_GH: "fail" });
+    expect(result.code).toBe(1);
+    expect(result.stderr).toBe("Cannot read taro/tr-050's pull request with gh (nothing was written): HTTP 502: Bad Gateway (https://api.github.com/graphql)\n");
+    expect(readFileSync(fileOf("TR-050"), "utf8")).toBe(before);
+  });
+
+  it("refuses missing evidence and uncommitted changes with the list", () => {
+    const world = ownerWorld();
+    deliverableTicket({ notes: EXECUTION_LINE });
+    writeFileSync(join(world.repo, "notes.txt"), "three\n");
+    const result = world.run(["deliver", "TR-050"], { STUB_GH: "ok", STUB_GH_HEAD: world.head() });
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("- a clean taro/tr-050: ");
+    expect(result.stderr).toContain("- an EVIDENCE record\n");
+    expect(readTicket("TR-050").status).toBe("In Progress");
+  });
+
+  it("delivers an investigation without git or gh", () => {
+    const world = ownerWorld();
+    deliverableTicket({ labels: ["investigation"], notes: `${EXECUTION_LINE}\n\nEVIDENCE 2026-11-01T11:00Z — read\ncheck: reading the code — three gaps`, finalSummary: "## Findings\n- Three gaps." });
+    const result = world.run(["deliver", "TR-050"], { STUB_GH: "fail" });
+    expect(result.stderr).toBe("");
+    expect(result.code).toBe(0);
+    expect(world.invocations("gh")).toEqual([]);
+    expect(readTicket("TR-050")).toMatchObject({ status: "Awaiting acceptance", finalSummary: "## Findings\n- Three gaps." });
+  });
+
+  it("is the owner's: refused outside an agent session and to another agent", () => {
+    const world = ownerWorld();
+    deliverableTicket();
+    expect(world.run(["deliver", "TR-050"], { PASEO_AGENT_ID: "" }).stderr).toContain("taro deliver is the ticket owner's");
+    expect(world.run(["deliver", "TR-050"], { PASEO_AGENT_ID: STUB_AGENT }).stderr).toContain(`no EXECUTION record of TR-050 or its parent names ${STUB_AGENT} as owner`);
+    expect(readTicket("TR-050").status).toBe("In Progress");
+  });
+
+  it("logs checks and offers them; --evidence-from-checks records them as EVIDENCE check lines", () => {
+    const world = ownerWorld();
+    writeFileSync(join(scratch, "taro.json"), JSON.stringify({ delivery: "local-only" }));
+    deliverableTicket();
+    const passing = world.run(["check", "--", "sh", "-c", "echo building; echo ' Tests  14 passed (14)'; echo done-ish"]);
+    expect(passing.code).toBe(0);
+    expect(passing.stdout).toContain("Tests  14 passed");
+    expect(passing.stderr).toContain("[taro] logged for TR-050 at ");
+    const failing = world.run(["check", "--", "sh -c 'echo \"1 failed\" >&2; exit 3'"]);
+    expect(failing.code).toBe(3);
+    const log = readFileSync(join(world.data, "state", "check-logs", "notes-app", "TR-050.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    expect(log.map((entry) => [entry.command, entry.exitCode, entry.summary, entry.head])).toEqual([
+      ["sh -c echo building; echo ' Tests  14 passed (14)'; echo done-ish", 0, "Tests 14 passed (14)", world.head()],
+      [`sh -c 'echo "1 failed" >&2; exit 3'`, 3, "1 failed", world.head()],
+    ]);
+    const offered = world.run(["deliver", "TR-050"]);
+    expect(offered.code).toBe(0);
+    expect(offered.stdout).toContain("pass --evidence-from-checks to record them as EVIDENCE check: lines:\n  check: sh -c echo building; echo ' Tests  14 passed (14)'; echo done-ish — exit 0; Tests 14 passed (14)");
+    expect(readTicket("TR-050").notes).not.toContain("check lines from the check log");
+    const confirmed = world.run(["deliver", "TR-050", "--evidence-from-checks"]);
+    expect(confirmed.code).toBe(0);
+    const notes = readTicket("TR-050").notes;
+    expect(notes).toContain("check lines from the check log (taro check)");
+    expect(notes).toContain(`check: sh -c 'echo "1 failed" >&2; exit 3' — exit 3; 1 failed`);
+    expect(notes).toContain("check: npm test — 12 passed\nreview: clean (independent reviewer)\nscreenshots: none — no visible change");
+  });
+
+  it("checks the ticket the branch names, or --ticket, and needs one", () => {
+    const world = ownerWorld();
+    world.git("checkout", "-q", "main");
+    expect(world.run(["check", "--", "true"]).code).toBe(2);
+    expect(world.run(["check", "--ticket", "TR-051", "--", "true"]).code).toBe(0);
+    expect(existsSync(join(world.data, "state", "check-logs", "notes-app", "TR-051.jsonl"))).toBe(true);
+  });
+});
+
+describe("taro daemon", { timeout: CLI_TIMEOUT_MS }, () => {
+  it("never touches the real daemon's port or home", () => {
+    const world = ownerWorld();
+    const port = world.run(["daemon", "start", "TR-050", "--port", "6767"]);
+    expect(port.code).toBe(1);
+    expect(port.stderr).toContain("Port 6767 is the real Paseo daemon's");
+    const home = world.run(["daemon", "start", "TR-050", "--home", join(homedir(), ".paseo")]);
+    expect(home.code).toBe(1);
+    expect(home.stderr).toContain("real Paseo daemon's home");
+    const configured = world.run(["daemon", "start", "TR-050", "--home", "/tmp/paseo-real"], { PASEO_HOME: "/tmp/paseo-real" });
+    expect(configured.stderr).toContain("real Paseo daemon's home (/tmp/paseo-real)");
+    expect(world.invocations("paseo")).toEqual([]);
+  });
+
+  it("lists none, and stops none, for a ticket that recorded none", () => {
+    const world = ownerWorld();
+    expect(world.run(["daemon", "list", "TR-050"]).stdout).toBe("TR-050 has no recorded test daemon.\n");
+    expect(world.run(["daemon", "stop", "TR-050"]).stdout).toBe("TR-050 has no recorded test daemon.\n");
+  });
+});

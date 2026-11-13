@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deliveryEndedRecord, deliveryOnOffer, deliveryTakenBackRecord, asksToAccept, questionEndingDelivery, questionHoldingAccept, questionOpenAtDelivery, stillDelivering } from "./delivery-end";
+import { deliveryEndedRecord, deliveryOnOffer, deliveryTakenBackRecord, asksToAccept, questionEndingDelivery, questionHoldingAccept, questionOpenAtDelivery, questionsDefaultedAtDelivery, stillDelivering } from "./delivery-end";
 
 const asked = (id: string, blocking: boolean) => ({ id, blocking });
 
@@ -67,10 +67,18 @@ describe("questionOpenAtDelivery (TR-146)", () => {
     expect(questionOpenAtDelivery(decisions, "owner-1")).toEqual(stored("layout", "owner-1", "open"));
   });
 
-  it("is null with nothing open, only withdrawn or held-back ones, or only investigation-done", () => {
+  it("is null with nothing open, only withdrawn or held-back ones, or only an old investigation-done", () => {
     expect(questionOpenAtDelivery([], "owner-1")).toBeNull();
     expect(questionOpenAtDelivery([stored("tone", "owner-1", "withdrawn"), stored("naming", "owner-1", "answered")], "owner-1")).toBeNull();
     expect(questionOpenAtDelivery([stored("investigation-done", "owner-1", "open")], "owner-1")).toBeNull();
+  });
+
+  // TR-263: one the owner went on with by default after approval closes at delivery instead.
+  it("skips a question the owner went on with by default, and picks an ordinary one after it", () => {
+    const defaulted = { ...stored("naming", "owner-1", "open"), madeNonBlocking: true };
+    expect(questionOpenAtDelivery([defaulted], "owner-1")).toBeNull();
+    expect(questionOpenAtDelivery([defaulted, stored("tone", "owner-1", "open")], "owner-1")).toEqual(stored("tone", "owner-1", "open"));
+    expect(questionsDefaultedAtDelivery([defaulted, stored("tone", "owner-1", "open"), { ...defaulted, agentId: "owner-2" }, { ...defaulted, status: "answered" }], "owner-1")).toEqual([defaulted]);
   });
 });
 
@@ -89,6 +97,11 @@ describe("questionHoldingAccept (TR-146)", () => {
     expect(questionHoldingAccept([stored("schema", "implementer", "open"), stored("tone", "owner", "answered"), stored("investigation-done", "owner", "open")])).toBeNull();
     expect(questionHoldingAccept([stored("schema", "implementer", "open"), stored("count-style", "owner", "open")])).toEqual(stored("count-style", "owner", "open"));
     expect(questionHoldingAccept([])).toBeNull();
+  });
+
+  it("is not a question the owner went on with by default after approval (TR-263)", () => {
+    expect(questionHoldingAccept([{ ...stored("naming", "owner", "open"), madeNonBlocking: true }])).toBeNull();
+    expect(questionHoldingAccept([{ ...stored("naming", "owner", "open"), madeNonBlocking: true }, stored("tone", "owner", "open")])).toEqual(stored("tone", "owner", "open"));
   });
 });
 
@@ -117,5 +130,11 @@ describe("asksToAccept", () => {
     expect(asksToAccept({ id: "merge-conflict-style", question: "Which side wins in the conflict?" })).toBe(false);
     expect(asksToAccept({ id: "review-dispute", question: "Apply the fix or accept it as a limitation?" })).toBe(false);
     expect(asksToAccept({ id: "unmerged", question: "Keep unmerged branches?" })).toBe(false);
+  });
+
+  it("reads each question of a card asking several (TR-207)", () => {
+    const card = (...questions: string[]) => ({ id: "wrap-up", question: `${questions.length} questions: A, B`, questions: questions.map((question) => ({ question })) });
+    expect(asksToAccept(card("Which changelog wording?", "Merge PR #88 now?"))).toBe(true);
+    expect(asksToAccept(card("Which changelog wording?", "Keep unmerged branches?"))).toBe(false);
   });
 });

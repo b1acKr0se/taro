@@ -4,7 +4,7 @@
  */
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import type { PermissionAsk } from "../shared/permission-asks";
-import { parseDecisionBlocks, parseStatusLine } from "../shared/reports";
+import { parseDecisionBlocks, parseStatusLine, questionsOf, type DecisionQuestion } from "../shared/reports";
 import type { StoredDecision } from "../shared/state";
 import type { PlanLine } from "./plan-lines";
 
@@ -19,6 +19,15 @@ export interface FinishedView {
   /** The option the user picked, or a tool question's answers, shown under the line above the words (TR-172); absent without. */
   answer?: string | null;
   /** What the user typed with it; null without. */
+  words: string | null;
+  /** On a card asking several questions (TR-207), a line per question in its order; absent otherwise. */
+  answers?: AnsweredLine[];
+}
+
+/** One question's answer on a finished card: its header, the option picked (null for Other) and the user's own words. */
+export interface AnsweredLine {
+  header: string;
+  answer: string | null;
   words: string | null;
 }
 
@@ -151,6 +160,8 @@ export function sameAcceptanceRecord(left: DeliveryRecord | undefined, right: De
 /** A question's card: what was asked and how it ended. */
 export interface QuestionCardView extends FinishedView {
   subject: string;
+  /** Named before the subject: "Question", or none on a card asking several, whose subject says "2 questions: …". */
+  lead: string | null;
   /** The block's id, to tell a plan (`scope-approval`) from a question. */
   id: string;
 }
@@ -160,10 +171,12 @@ const RECORD_KEPT_MS = 14 * 24 * 60 * 60 * 1000;
 
 /**
  * How a stored decision ended; null while it is open. Every answer reads "Answered", with what was
- * answered under it (TR-172): the picked option's label, the words typed with it or alone (TR-159), or both.
+ * answered under it (TR-172): the picked option's label, the words typed with it or alone (TR-159), or both;
+ * on a card asking several, that for each question.
  */
 export function storedDecisionView(decision: StoredDecision, clock: (iso: string) => string | null): FinishedView | null {
   if (decision.status === "withdrawn") {
+    if (decision.closedWithDefault === true) return { outcome: `Closed at delivery: the owner went on with “${decision.default.trim()}”`, tone: "neutral", time: null, words: null };
     return { outcome: decision.withdrawnWithAgent === true ? "Withdrawn: its agent went away" : "Withdrawn", tone: "neutral", time: null, words: null };
   }
   if (decision.status === "dismissed") return { outcome: "Dismissed", tone: "neutral", time: decision.dismissedAt === undefined ? null : clock(decision.dismissedAt), words: null };
@@ -172,6 +185,18 @@ export function storedDecisionView(decision: StoredDecision, clock: (iso: string
   const label = answer?.label ?? null;
   const typed = answer?.text.trim() ?? "";
   const time = answer === null ? null : clock(answer.at);
+  const several = answer?.answers ?? [];
+  if (several.length > 0) {
+    // The message sent is every line at once, not the user's words: each question says its own.
+    const questions = questionsOf(decision);
+    const answers = several.map((each, index): AnsweredLine => {
+      const words = each.text.trim();
+      if (each.label === null) return { header: each.header, answer: null, words: words === "" ? null : words };
+      const prompt = questions[index]?.options.find((option) => option.label === each.label)?.prompt ?? "";
+      return { header: each.header, answer: each.label, words: typedBeside(words, each.label, prompt) };
+    });
+    return { outcome: "Answered", tone: "positive", time, answer: null, words: null, answers };
+  }
   if (label === null) return { outcome: "Answered", tone: "positive", time, answer: null, words: typed === "" ? null : typed };
   return { outcome: "Answered", tone: "positive", time, answer: label, words: typedBeside(typed, label, decision.options.find((option) => option.label === label)?.prompt ?? "") };
 }
@@ -184,6 +209,11 @@ function typedBeside(typed: string, label: string, prompt: string): string | nul
   const lead = prompt.trim().replace(/…$/, "").trim();
   if (typed === "" || typed === label.trim() || typed === prompt.trim() || typed === lead) return null;
   return lead !== "" && typed.startsWith(`${lead}: `) ? typed.slice(lead.length + 2).trim() || null : typed;
+}
+
+/** The word before a finished question's subject: none on a card asking several, which would read "Question: 2 questions: …". */
+export function questionLead(block: { questions?: DecisionQuestion[] | undefined }): string | null {
+  return questionsOf(block).length > 0 ? null : "Question";
 }
 
 /** A finished block's subject in Paseo's own tab: a plan names its ticket as the chat's card does, or has none; a question is its question. */
@@ -220,7 +250,7 @@ export function questionCards(
     const here = (asked[index] ?? []).flatMap((block): QuestionCardView[] => {
       if (block.id === SCOPE_APPROVAL || seen.has(block.id)) return [];
       seen.add(block.id);
-      const base = { subject: block.question, id: block.id };
+      const base = { subject: block.question, lead: questionLead(block), id: block.id };
       if (asked.slice(index + 1).some((later) => later.some((each) => each.id === block.id))) {
         return [{ ...base, outcome: "Asked again below", tone: "neutral", time: laterTime(index, block.id, (each) => !each.withdrawn), words: null }];
       }

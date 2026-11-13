@@ -255,6 +255,48 @@ describe("Actions.answerDecision", () => {
     });
   });
 
+  // TR-207: a card asking several questions is sent as one message and recorded whole.
+  describe("a card asking several questions", () => {
+    const live = paseoWhere(async () => ({ agent: { id: "owner", status: "idle", archivedAt: null } }));
+    const option = (label: string, prompt: string) => ({ label, prompt, consequence: "", images: [] });
+    const several = (): StoredDecision =>
+      ({
+        ...stored("owner"),
+        key: "owner:export",
+        id: "export",
+        question: "2 questions: Tags · Folders",
+        options: [],
+        questions: [
+          { header: "Tags", question: "Tags as?", why: "", options: [option("YAML", "Use YAML")], recommended: "YAML", reason: "" },
+          { header: "Folders", question: "Layout?", why: "", options: [option("Flat", "One folder")], recommended: "Flat", reason: "" },
+        ],
+      }) as StoredDecision;
+
+    beforeEach(() => vi.mocked(appendTicketNote).mockClear());
+
+    it("sends one message, records each answer and the ANSWER record for two answers", async () => {
+      vi.mocked(sendUserAnswer).mockClear();
+      const decisions = [several()];
+      await actionsOver(decisions).answerDecision(live, "owner:export", null, "", "tab", [
+        { header: "Tags", label: "YAML", text: "" },
+        { header: "Folders", label: null, text: "one folder per notebook, flat inside" },
+      ]);
+      expect(sendUserAnswer).toHaveBeenCalledTimes(1);
+      expect(decisions[0]?.answer).toMatchObject({ text: 'Tags: Use YAML\nFolders: "one folder per notebook, flat inside"', label: null, answers: [{ header: "Tags", label: "YAML" }, { header: "Folders", label: null }] });
+      expect(vi.mocked(appendTicketNote).mock.calls[0]?.[2]).toMatch(
+        /^ANSWER \S+ — export: "2 questions: Tags · Folders" → Tags: YAML \("Use YAML"\); Folders: Other \("one folder per notebook, flat inside"\) \(the user, from the agent's tab\)$/,
+      );
+    });
+
+    it("refuses fewer answers than questions and sends nothing", async () => {
+      vi.mocked(sendUserAnswer).mockClear();
+      const decisions = [several()];
+      await expect(actionsOver(decisions).answerDecision(live, "owner:export", null, "", "screen", [{ header: "Tags", label: "YAML", text: "" }])).rejects.toThrow(/1 of 2 answered/);
+      expect(sendUserAnswer).not.toHaveBeenCalled();
+      expect(decisions[0]?.status).toBe("open");
+    });
+  });
+
   it("records where the user answered in the ANSWER note", async () => {
     const live = paseoWhere(async () => ({ agent: { id: "owner", status: "idle", archivedAt: null } }));
     for (const [from, words] of [
@@ -335,6 +377,30 @@ describe("Actions.dismissDecision", () => {
     await actionsOver(decisions).dismissDecision(live, "manager:scope-approval");
     expect(decisions[0]?.status).toBe("dismissed");
     expect(sendFromPlugin).not.toHaveBeenCalled();
+  });
+
+  it("closes a card asking several questions whole, as one question", async () => {
+    vi.mocked(sendFromPlugin).mockClear();
+    vi.mocked(appendTicketNote).mockClear();
+    vi.mocked(sendUserAnswer).mockClear();
+    const option = (label: string, prompt: string) => ({ label, prompt, consequence: "", images: [] });
+    const several = {
+      ...stored("owner"),
+      key: "owner:export",
+      id: "export",
+      question: "2 questions: Tags · Folders",
+      options: [],
+      questions: [
+        { header: "Tags", question: "Tags as?", why: "", options: [option("YAML", "Use YAML")], recommended: "YAML", reason: "" },
+        { header: "Folders", question: "Layout?", why: "", options: [option("Flat", "One folder")], recommended: "Flat", reason: "" },
+      ],
+    } as StoredDecision;
+    const decisions = [several];
+    await actionsOver(decisions).dismissDecision(live, "owner:export");
+    expect(decisions[0]?.status).toBe("dismissed");
+    expect(sendFromPlugin).toHaveBeenCalledTimes(1);
+    expect(sendUserAnswer).not.toHaveBeenCalled();
+    expect(vi.mocked(appendTicketNote).mock.calls[0]?.[2]).toMatch(/^DISMISSED \S+ — export: "2 questions: Tags · Folders" \(the user\)$/);
   });
 
   it("refuses a question that is no longer open", async () => {

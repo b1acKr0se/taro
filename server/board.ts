@@ -7,7 +7,7 @@ import { hostname } from "node:os";
 
 import { latestActivity, type Activity } from "../shared/activity";
 import { ticketFileAlerts } from "../shared/alerts";
-import { boardColumn, complexityOf, FIRST_PAGE, hasStarted, newestOwner, PAGED_COLUMNS, pageColumns, questionsForUser, ticketAgents } from "../shared/board";
+import { boardColumn, childrenWorking, complexityOf, FIRST_PAGE, hasStarted, newestOwner, PAGED_COLUMNS, pageColumns, questionsForUser, ticketAgents, waitingOnUser } from "../shared/board";
 import { offersCompact } from "../shared/compact";
 import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
 import { acceptedRecord, deliveryMissing, executionMachine, notMergedRecord, pullRequestMerged, pullRequestUrl, type AcceptedRecord, type NotMergedRecord } from "../shared/execution";
@@ -257,14 +257,15 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         parked: pausing.pause?.state === "paused",
         queuedToResume: pausing.pause?.state === "queued-to-resume",
       });
-      return { id: ticket.id, updatedAt: ticket.updatedAt, column, ticket, owner, liveSubagents, askers, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere, pausing };
+      const working = childrenWorking((childrenOf.get(ticket.id) ?? []).map((child) => child.id), liveSubagents);
+      return { id: ticket.id, updatedAt: ticket.updatedAt, column, ticket, owner, liveSubagents, working, askers, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere, pausing };
     }),
   );
   const page = pageColumns(placed, paging.limits, paging.include);
   const queue = page.kept.some((entry) => entry.column === "queued") ? await queueRecount(project, paths.tracker, tickets, agents, headroom) : null;
 
   const cards: Card[] = await Promise.all(
-    page.kept.map(async ({ ticket, column, owner, liveSubagents, askers, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere, pausing }) => {
+    page.kept.map(async ({ ticket, column, owner, liveSubagents, working, askers, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere, pausing }) => {
       const subagents = liveSubagents.flatMap((agent) => {
         const role = roleFromLabel(agent.labels[TARO_LABELS.role]);
         return role !== null && isSubagentRole(role) ? [{ ...agentBrief(agent), role }] : [];
@@ -303,6 +304,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         investigation,
         parent: ticket.parentTaskId,
         children: childrenOf.get(ticket.id) ?? [],
+        childrenWorking: working,
         acceptanceDone: ticket.acceptanceCriteriaCompleted,
         acceptanceTotal: ticket.acceptanceCriteriaCount,
         updatedAt: ticket.updatedAt,
@@ -344,7 +346,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
     project,
     cards,
     managerDecisions: openDecisions.filter((decision) => decision.ticket === null),
-    ticketQuestions: openDecisions.filter((decision) => decision.ticket !== null).length,
+    ticketQuestions: waitingOnUser(openDecisions.filter((decision) => decision.ticket !== null)).length,
     managerPermission: firstAsk(managerAskers(agents)),
     suggestions: await readSuggestions(project, tickets),
     headroom,

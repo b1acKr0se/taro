@@ -44,4 +44,9 @@ describe("asStored", () => {
     expect(asStored({ blocking: false }, {})).toEqual({ blocking: false });
     expect(asStored({ blocking: false }, { madeBlocking: undefined })).toEqual({ blocking: false });
   });
+
+  it("reads it as not blocking when its stored decision was made so after approval (TR-263)", () => {
+    expect(asStored({ blocking: true }, { madeNonBlocking: true })).toEqual({ blocking: false });
+    expect(asStored({ blocking: true }, { madeNonBlocking: undefined })).toEqual({ blocking: true });
+  });
 });

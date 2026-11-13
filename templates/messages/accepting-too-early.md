@@ -2,4 +2,4 @@
 You ended your turn waiting for the user to accept {{ticket}}, but the ticket is in {{status}}, so no Accept card shows and nothing reaches the user. Still to do:
 {{missing}}
 
-Do these as {{skill}}/roles/owner.md says (Delivery), then end your turn with a status line.
+Do these as {{skill}}/phases/delivery.md says, then end your turn with a status line.

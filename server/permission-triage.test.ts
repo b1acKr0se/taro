@@ -7,7 +7,8 @@ import { DENY_RULES, ruleReasons } from "../shared/permission-triage";
 import { fetchLiveAgent } from "./agents";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import { withoutNotes } from "./package-files";
-import { allInsideOnDisk, isTaroAsker, triageAsk } from "./permission-triage";
+import type { PermissionAsk } from "../shared/permission-asks";
+import { allInsideOnDisk, countPermissionWait, isTaroAsker, onPermissionRequested, triageAsk } from "./permission-triage";
 import type { Stats } from "./stats";
 import { appendTicketNote } from "./tickets";
 
@@ -159,5 +160,92 @@ describe("permission-rules.md", () => {
   it("gives every deny rule its reason", async () => {
     const reasons = ruleReasons(withoutNotes(await readFile(join(import.meta.dirname, "..", "templates", "permission-rules.md"), "utf8")));
     expect(Object.keys(reasons).sort()).toEqual([...DENY_RULES].sort());
+  });
+});
+
+describe("countPermissionWait (TR-263)", () => {
+  const ask = (patch: Partial<PermissionAsk>): PermissionAsk => ({ agentId: "agent-1", requestId: "permission-1", kind: "tool", name: "Bash", subject: "x", askedAt: "2026-11-01T10:00:00Z", answeredAt: "2026-11-01T10:07:30Z", outcome: "allowed", by: "you", rule: null, words: null, ...patch });
+  const run = async (recorded: PermissionAsk | null, owner: { project: string; ticket: string | null } | null) => {
+    const waits: unknown[][] = [];
+    const state = { permissionAsk: async () => recorded, agent: async () => owner };
+    const stats = { permissionWaited: async (...args: unknown[]) => void waits.push(args) };
+    const counted = await countPermissionWait(state as never, stats as never, "agent-1", "permission-1");
+    return { counted, waits };
+  };
+
+  it("adds the time an ask the user answered stayed open to its ticket", async () => {
+    expect(await run(ask({}), { project: "taro", ticket: "TR-1" })).toEqual({ counted: true, waits: [["taro", "TR-1", "2026-11-01T10:00:00Z", "2026-11-01T10:07:30Z"]] });
+  });
+
+  it("counts a cancelled ask too: the owner waited until its turn was stopped", async () => {
+    expect((await run(ask({ outcome: "cancelled", by: null }), { project: "taro", ticket: "TR-1" })).counted).toBe(true);
+  });
+
+  it("finds the ticket from the agent's labels when it asks in its first turn, before the plugin has a record of it", async () => {
+    const waits: unknown[][] = [];
+    const counted = await countPermissionWait({ permissionAsk: async () => ask({}), agent: async () => null } as never, { permissionWaited: async (...args: unknown[]) => void waits.push(args) } as never, "agent-1", "permission-1", async () => ({ project: "taro", ticket: "TR-2" }));
+    expect([counted, waits]).toEqual([true, [["taro", "TR-2", "2026-11-01T10:00:00Z", "2026-11-01T10:07:30Z"]]]);
+  });
+
+  it("does not count an ask a rule answered", async () => {
+    expect(await run(ask({ by: "rules", rule: "scratch-or-worktree" }), { project: "taro", ticket: "TR-1" })).toEqual({ counted: false, waits: [] });
+  });
+
+  it("does not count an ask still open, one never recorded, or an agent with no ticket", async () => {
+    expect((await run(ask({ answeredAt: null, outcome: null, by: null }), { project: "taro", ticket: "TR-1" })).counted).toBe(false);
+    expect((await run(null, { project: "taro", ticket: "TR-1" })).counted).toBe(false);
+    expect((await run(ask({}), { project: "taro", ticket: null })).counted).toBe(false);
+    expect((await run(ask({}), null)).counted).toBe(false);
+  });
+});
+
+describe("an ask no rule answers (TR-263)", () => {
+  it("is left to the user: nothing is answered and nothing is noted", async () => {
+    vi.clearAllMocks();
+    vi.mocked(fetchLiveAgent).mockResolvedValue(liveAgent(owner));
+    const { stats, counted } = setUp();
+    expect(await triageAsk(paseo, stats, asker, bash("npm install left-pad"))).toBeNull();
+    expect(respond).not.toHaveBeenCalled();
+    expect(appendTicketNote).not.toHaveBeenCalled();
+    expect(counted).toEqual([]);
+  });
+});
+
+describe("onPermissionRequested (TR-263)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(fetchLiveAgent).mockResolvedValue(liveAgent(owner));
+  });
+
+  function context() {
+    const calls: string[] = [];
+    const recorded: string[] = [];
+    const state = {
+      agent: async () => ({ project: "taro", ticket: "TR-1" }),
+      recordPermissionAsk: async (ask: PermissionAsk) => void recorded.push(ask.requestId),
+      markPermissionAskByRules: async (_agentId: string, requestId: string, rule: string) => void calls.push(`mark ${requestId} ${rule}`),
+      clearPermissionAskRules: async () => undefined,
+    };
+    return {
+      calls,
+      recorded,
+      value: { state, stats: setUp().stats, invalidateBoards: () => void calls.push("boards"), checkNotifications: () => void calls.push("notifications"), reportFailure: (text: string) => void calls.push(`failure ${text}`) },
+    };
+  }
+
+  it("sends an ask no rule answers to Needs you at once: boards invalidated and the notification check run once, nothing answered", async () => {
+    const { calls, recorded, value } = context();
+    expect(await onPermissionRequested(paseo, asker, bash("npm install left-pad"), value as never)).toBeNull();
+    expect(recorded).toEqual(["permission-1"]);
+    expect(calls).toEqual(["boards", "notifications"]);
+    expect(respond).not.toHaveBeenCalled();
+  });
+
+  it("runs no notification check for an ask a rule answered", async () => {
+    const { calls, recorded, value } = context();
+    expect(await onPermissionRequested(paseo, asker, bash("rm -rf -- /tmp/notes-app.Ab12Cd"), value as never)).toBe("allow");
+    expect(recorded).toEqual(["permission-1"]);
+    expect(calls).toEqual(["mark permission-1 scratch-or-worktree", "boards"]);
+    expect(respond).toHaveBeenCalledTimes(1);
   });
 });

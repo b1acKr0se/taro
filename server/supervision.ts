@@ -7,7 +7,7 @@
  */
 import { join } from "node:path";
 
-import { asksToAccept, deliveryEndedRecord, deliveryTakenBackRecord, questionEndingDelivery, questionOpenAtDelivery } from "../shared/delivery-end";
+import { asksToAccept, deliveryEndedRecord, deliveryOnOffer, deliveryTakenBackRecord, questionEndingDelivery, questionOpenAtDelivery, questionsDefaultedAtDelivery } from "../shared/delivery-end";
 import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compaction";
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
@@ -18,11 +18,12 @@ import { ACCEPT_STALL_LIMIT, acceptHandoffOpen, acceptStallReason } from "../sha
 import { pullRequestUrl } from "../shared/execution";
 import { runCommand } from "./process";
 import { lacksPlan, mayBuildBeforePlan, noPlanRecord } from "../shared/no-plan";
+import { approvalGate, buildGap, gateRecord, noApprovalRecord, parentTicketId, workApproved, type BuildGap } from "../shared/approval-gate";
 import { asPlanningQuestion, asStored, planningTicket } from "../shared/planning-questions";
 import type { DrainTrigger } from "../shared/chat-queue";
 import { receivedMessage } from "../shared/received-message";
 import { isCrash } from "../shared/recovery";
-import { hashText, parseDecisionBlocks, parseStatusLine, sameQuestion, seenAgain, withImagePaths, type ParsedDecision } from "../shared/reports";
+import { hashText, parseDecisionBlocks, parseStatusLine, questionsOf, sameQuestion, seenAgain, withImagePaths, type ParsedDecision } from "../shared/reports";
 import { openQuestionHolding, withdrawOpenDecisions, type AgentState, type HeldReport, type StoredDecision } from "../shared/state";
 import { watchTrimmedTurn } from "./agent-trim";
 import { fetchLiveAgent, isMidTurn, listTaroAgents } from "./agents";
@@ -37,6 +38,18 @@ import type { ChatQueue } from "./chat-queue";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import { usageReading, type Stats } from "./stats";
+import { nextStep, STEP_PAGES, stepKey, ticketLevel, type Step } from "../shared/next-step";
+import { lintPlan } from "../shared/plan-lint";
+import { isInvestigation } from "../shared/ticket-level";
+import { stepText, stepTicket } from "./next-step";
+
+/** A block the approval gate did not show as asked (TR-263), with what it did. */
+interface GatedBlock {
+  id: string;
+  outcome: "refuse" | "single" | "default" | "hold";
+  default: string;
+  blocking: boolean;
+}
 
 export interface TaroIdentity {
   project: string;
@@ -230,10 +243,19 @@ export function freshState(identity: TaroIdentity): AgentState {
     lastTurnEndedAt: null,
     evidenceReminded: null,
     noPlanFlagged: false,
+    noApprovalFlagged: false,
     prematureWaits: 0,
     deliveryReminded: null,
     acceptStalls: 0,
+    stepsSent: [],
+    stepUnread: false,
+    stepPages: "tracked",
   };
+}
+
+/** A record kept from before step pages, on its first turn end since: an owner with turns behind it is already in its step. */
+function settleStepPages(record: AgentState): void {
+  if (record.stepPages === "untracked") record.stepPages = record.lastTurnEndedAt === null ? "tracked" : "baseline";
 }
 
 /** The live owner of a ticket now: the creator if it is an owner, else by label, else the parent ticket's owner. */
@@ -254,7 +276,16 @@ export async function currentOwner(paseo: PaseoApi, project: string, ticket: str
   return null;
 }
 
+/** How many refused asks a Supervisor remembers, to stay quiet when the same turn is read again. */
+const REFUSED_ASKS_KEPT = 200;
+
 export class Supervisor {
+  /**
+   * Plan approvals refused after approval (TR-263), by agent, block and turn: nothing is stored for
+   * them, so the reconcile after a start, reading the turn the hook also read, would refuse it again.
+   */
+  private readonly refusedAsks = new Set<string>();
+
   constructor(
     private readonly state: PluginState,
     private readonly stats: Stats,
@@ -310,12 +341,11 @@ export class Supervisor {
     if (userWords.length > 0) await this.closeAnsweredInTab(live.id, userWords, decisions, now);
     if (decisions.length > 0) await this.storeDecisions(paseo, live, identity, decisions, turnIdentity(turn), now, status?.state === "waiting", earlierText(timeline, turn));
 
-    const openBlocking = (await this.state.allDecisions()).some(
-      (decision) => decision.agentId === live.id && decision.status === "open" && decision.blocking,
-    );
+    const openBlocking = await this.waitsOnBlockingQuestion(live.id);
     const stage = await this.state.updateAgent(live.id, () => freshState(identity), (record) => {
       record.ticket = identity.ticket;
       record.title = identity.title;
+      settleStepPages(record);
       // Left as it was when the turn could not be read, so the reconcile after a restart reads it again.
       if (read !== null) record.lastTurnEndedAt = now;
       record.idleCompaction = idleCompactionAfterTurn(record.idleCompaction, record.compaction);
@@ -371,6 +401,7 @@ export class Supervisor {
 
     if (outcome.kind === "completed" && (await this.flagCommitsWithoutPlan(paseo, live, identity))) return;
     if (outcome.kind === "completed" && read !== null && (await this.finishAcceptHandoff(paseo, live, identity, openBlocking))) return;
+    if (outcome.kind === "completed" && (await this.sendStep(paseo, live, identity))) return;
     // A turn that could not be read is not taken for one without a status line.
     if (outcome.kind === "completed" && read !== null) {
       const stalled = (status === null || status.state === "working") && !openBlocking;
@@ -403,7 +434,8 @@ export class Supervisor {
   /**
    * After a reload or restart (decision 37): re-read each idle Taro agent's
    * latest turn the plugin did not see end, rebuild its status line, and deliver
-   * subagent reports that finished while the plugin was down. No nudges here.
+   * subagent reports that finished while the plugin was down, and send an idle owner a step page
+   * lost while it was down. No nudges here.
    */
   async reconcile(paseo: PaseoApi, projects: readonly string[]): Promise<number> {
     let repaired = 0;
@@ -417,28 +449,64 @@ export class Supervisor {
         if (isMidTurn(agent) || agent.status === "closed") continue;
         const identity = identityFromLabels(agent.labels, agent.title ?? null);
         if (identity === null) continue;
-        const known = await this.state.agent(agent.id);
-        // Seen by the hook already (its clock and Paseo's differ by moments, hence the minute's slack).
-        const seenAt = known?.lastTurnEndedAt === null || known?.lastTurnEndedAt === undefined ? Number.NaN : Date.parse(known.lastTurnEndedAt);
-        if (!Number.isNaN(seenAt) && seenAt >= Date.parse(agent.updatedAt) - 60_000) continue;
-        const items = await latestTurnItems(paseo, agent.id);
-        if (items === null) continue;
-        const turn = currentTurn(items);
-        const closing = closingText(turn);
-        const status = parseStatusLine(closing);
-        await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
-          record.lastTurnEndedAt = agent.updatedAt;
-          if (status !== null) record.lastStatus = { ...status, at: agent.updatedAt };
-        });
-        const decisions = parseDecisionBlocks(allAssistantText(turn));
-        if (decisions.length > 0) await this.storeDecisions(paseo, agent, identity, decisions, turnIdentity(turn), agent.updatedAt, status?.state === "waiting", earlierText(items, turn));
-        if (isSubagentRole(identity.role)) {
-          await this.deliverReport(paseo, agent, identity, closing, hashText(closing), agent.labels["paseo.parent-agent-id"] ?? null);
-        }
-        repaired += 1;
+        const missed = await this.repairTurn(paseo, agent, identity);
+        if (missed) repaired += 1;
+        // Only a step page lost: to a turn end the hook never saw, or to a ticket it could not read. An
+        // owner whose turn end was seen had its page then, or is past needing one.
+        if (identity.role === "owner" && (missed || (await this.state.agent(agent.id))?.stepUnread === true)) await this.sendIdleStep(paseo, agent, identity);
       }
     }
     return repaired;
+  }
+
+  /** The idle agent's latest turn, when the plugin did not see it end: its status line, decisions and report. Whether it was repaired. */
+  private async repairTurn(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity): Promise<boolean> {
+    const known = await this.state.agent(agent.id);
+    // Seen by the hook already (its clock and Paseo's differ by moments, hence the minute's slack).
+    const seenAt = known?.lastTurnEndedAt === null || known?.lastTurnEndedAt === undefined ? Number.NaN : Date.parse(known.lastTurnEndedAt);
+    if (!Number.isNaN(seenAt) && seenAt >= Date.parse(agent.updatedAt) - 60_000) return false;
+    const items = await latestTurnItems(paseo, agent.id);
+    if (items === null) return false;
+    const turn = currentTurn(items);
+    const closing = closingText(turn);
+    const status = parseStatusLine(closing);
+    await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
+      settleStepPages(record);
+      record.lastTurnEndedAt = agent.updatedAt;
+      if (status !== null) record.lastStatus = { ...status, at: agent.updatedAt };
+    });
+    const decisions = parseDecisionBlocks(allAssistantText(turn));
+    if (decisions.length > 0) await this.storeDecisions(paseo, agent, identity, decisions, turnIdentity(turn), agent.updatedAt, status?.state === "waiting", earlierText(items, turn));
+    if (isSubagentRole(identity.role)) {
+      await this.deliverReport(paseo, agent, identity, closing, hashText(closing), agent.labels["paseo.parent-agent-id"] ?? null);
+    }
+    return true;
+  }
+
+  /**
+   * Step pages a turn end could not send because the ticket could not be read (a locked tracker, a
+   * slow disk): read again once a minute for each idle owner left with one. Returns how many went.
+   */
+  async retryUnreadSteps(paseo: PaseoApi, projects: readonly string[]): Promise<number> {
+    let sent = 0;
+    for (const project of projects) {
+      for (const agent of await listTaroAgents(paseo, { [TARO_LABELS.project]: project })) {
+        if (isMidTurn(agent) || agent.status === "closed") continue;
+        const identity = identityFromLabels(agent.labels, agent.title ?? null);
+        if (identity === null || identity.role !== "owner") continue;
+        if ((await this.state.agent(agent.id))?.stepUnread !== true) continue;
+        if (await this.sendIdleStep(paseo, agent, identity)) sent += 1;
+      }
+    }
+    return sent;
+  }
+
+  /** The step page for an owner the plugin found idle outside a turn end: not mid-compaction, not Stalled (the page would wake it), and not ahead of the user's queued message. */
+  private async sendIdleStep(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity): Promise<boolean> {
+    const known = await this.state.agent(agent.id);
+    if (known !== null && (known.compaction !== "none" || known.stalled)) return false;
+    if (await this.userMessagesQueued(agent.id)) return false;
+    return this.sendStep(paseo, agent, identity);
   }
 
   /** An archived agent never reads an answer, whoever archived it: the plugin, the user, the CLI. */
@@ -600,37 +668,49 @@ export class Supervisor {
 
   /**
    * An owner whose branch has commits while its ticket has no plan (TR-206) gets a NO-PLAN record on
-   * the ticket and is told to stop and plan, once per gap. Git runs only when the plan is missing.
+   * the ticket and is told to stop and plan; with a plan the round has not approved (TR-263), a
+   * NO-APPROVAL record and a stop until it is. Once per gap. Git runs only when there is a gap.
    */
   private async flagCommitsWithoutPlan(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity): Promise<boolean> {
     if (identity.ticket === null) return false;
-    let lacking: boolean;
+    let gap: BuildGap | null;
     let found: { commits: number; branch: string; base: string } | null = null;
     try {
-      const detail = await viewTicket((await projectPaths(identity.project)).tracker, identity.ticket);
-      lacking = lacksPlan({ status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length, labels: detail.labels });
-      const base = lacking ? (await readProjectConfig(identity.project))?.baseBranch : undefined;
+      const tracker = (await projectPaths(identity.project)).tracker;
+      const detail = await viewTicket(tracker, identity.ticket);
+      const facts = { status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length, labels: detail.labels, notes: detail.implementationNotes };
+      gap = buildGap(facts);
+      // A child's work is approved with its parent's plan: read the parent only when the child's own round is not.
+      const parent = gap === "no-approval" ? parentTicketId(identity.ticket) : null;
+      if (parent !== null) gap = buildGap({ ...facts, parentNotes: (await viewTicket(tracker, parent)).implementationNotes });
+      const base = gap !== null ? (await readProjectConfig(identity.project))?.baseBranch : undefined;
       const commits = base === undefined ? 0 : await commitsPast(agent.cwd, base);
       if (base !== undefined && commits > 0) found = { commits, branch: await branchName(agent.cwd), base };
     } catch {
       return false;
     }
     const flagged = found;
+    const kind = gap;
     const tell = await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
-      if (!lacking) record.noPlanFlagged = false;
-      if (flagged === null || record.noPlanFlagged) return false;
-      record.noPlanFlagged = true;
+      if (kind !== "no-plan") record.noPlanFlagged = false;
+      if (kind !== "no-approval") record.noApprovalFlagged = false;
+      if (flagged === null || kind === null) return false;
+      if (kind === "no-plan" ? record.noPlanFlagged : record.noApprovalFlagged) return false;
+      if (kind === "no-plan") record.noPlanFlagged = true;
+      else record.noApprovalFlagged = true;
       return true;
     });
-    if (!tell || flagged === null) return false;
-    const record = noPlanRecord(new Date().toISOString(), flagged.commits, flagged.branch, flagged.base);
+    if (!tell || flagged === null || kind === null) return false;
+    const at = new Date().toISOString();
+    const record = kind === "no-plan" ? noPlanRecord(at, flagged.commits, flagged.branch, flagged.base) : noApprovalRecord(at, flagged.commits, flagged.branch, flagged.base);
     await appendTicketNote((await projectPaths(identity.project)).tracker, identity.ticket, record).catch((error: unknown) => {
-      console.warn(`[taro] flagging ${identity.ticket}'s commits without a plan: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(`[taro] flagging ${identity.ticket}'s commits without ${kind === "no-plan" ? "a plan" : "an approved plan"}: ${error instanceof Error ? error.message : String(error)}`);
     });
+    console.log(`[taro] ${agent.id} committed on ${identity.ticket} before ${kind === "no-plan" ? "its plan" : "this round's plan approval"}: ${kind.toUpperCase()} recorded and the owner told to stop`);
     await sendFromPlugin(
       paseo,
       agent.id,
-      await message(TEMPLATES.noPlan, {
+      await message(kind === "no-plan" ? TEMPLATES.noPlan : TEMPLATES.noApproval, {
         ticket: identity.ticket,
         branch: flagged.branch,
         commits: flagged.commits === 1 ? "1 commit" : `${flagged.commits} commits`,
@@ -661,15 +741,24 @@ export class Supervisor {
 
   private async storeDecisions(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, decisions: readonly ParsedDecision[], turn: string | null, now: string, waiting: boolean, earlier: string): Promise<void> {
     const earlierBlocks = turn === null || earlier === "" ? [] : parseDecisionBlocks(earlier);
-    // Read only when a question would go on without the user: everything else keeps its own flag.
-    const planning = identity.role === "owner" && decisions.some((decision) => !decision.withdrawn && !decision.blocking) && (await this.ticketPlanning(identity));
+    // An owner's ticket: still planning (TR-146), or its plan approved this round (TR-263). Unread for anyone else.
+    // A subagent's blocking question is gated too: after approval its owner decides it, not the user.
+    const gatedAsker = (block: ParsedDecision) => identity.role === "owner" || block.blocking;
+    const facts = decisions.some((decision) => !decision.withdrawn && gatedAsker(decision)) ? await this.decisionFacts(identity) : { planning: false, approved: false };
+    // Before approval a question that would go on without the user is made blocking; after it, never.
+    const planning = identity.role === "owner" && facts.planning && !facts.approved;
     // A plan approval asked without its mockups is held back (TR-235).
-    const mockupGap = identity.role === "owner" && decisions.some((decision) => !decision.withdrawn && decision.id === SCOPE_APPROVAL) ? await this.planMockupsMissing(identity) : [];
+    const asksApproval = identity.role === "owner" && decisions.some((decision) => !decision.withdrawn && decision.id === SCOPE_APPROVAL);
+    const mockupGap = asksApproval ? await this.planMockupsMissing(identity) : [];
+    // A high plan's approval also waits for its children's specs and a plan review (TR-263).
+    const lintGap = asksApproval ? await this.planLintGaps(identity) : [];
     const newlyAsked: string[] = [];
     const opened: StoredDecision[] = [];
     const held: { id: string; open: string }[] = [];
-    const unmocked: string[] = [];
+    const heldPlans: string[] = [];
     const refused: string[] = [];
+    // Blocks the approval gate did not show as asked (TR-263), each with its outcome.
+    const gated: GatedBlock[] = [];
     const corrections = await this.state.updateDecisions((stored) => {
       const problems: string[] = [];
       // Withdrawals first: an owner may withdraw its open question below the block that asks the next one.
@@ -694,9 +783,11 @@ export class Supervisor {
           }
           continue;
         }
+        const evidence = identity.ticket === null ? null : ticketEvidenceDirectory(identity.project, identity.ticket);
         const next: StoredDecision = {
           ...decision,
-          options: withImagePaths(decision.options, identity.ticket === null ? null : ticketEvidenceDirectory(identity.project, identity.ticket)),
+          options: withImagePaths(decision.options, evidence),
+          questions: questionsOf(decision).map((question) => ({ ...question, options: withImagePaths(question.options, evidence) })),
           key,
           project: identity.project,
           ticket: identity.ticket,
@@ -713,11 +804,32 @@ export class Supervisor {
           // The same block seen again (a repeated hook, a replayed turn) does not reopen an answered decision; asked in a later turn, it does.
           continue;
         }
-        if (mockupGap.length > 0 && block.id === SCOPE_APPROVAL && !asksToAccept(block)) {
+        // After the round's approval the owner decides (TR-263): no second plan approval, and a question
+        // goes on with its default, unless the block names the approved line it would change.
+        // A question already shown to the user as asked (made blocking while planning, say) stays as it is.
+        const shownAsAsked = existing?.status === "open" && existing.madeNonBlocking !== true;
+        const gate = gatedAsker(block) && !shownAsAsked ? approvalGate(block, facts.approved) : "ask";
+        const gatedAs = (outcome: GatedBlock["outcome"]): GatedBlock => ({ id: block.id, outcome, default: block.default, blocking: block.blocking });
+        if (gate === "refuse" || gate === "single") {
+          const ask = `${key}:${turn ?? `question ${hashText(block.question)}`}`;
+          if (!this.refusedAsks.has(ask)) gated.push(gatedAs(gate));
+          this.refusedAsks.add(ask);
+          if (this.refusedAsks.size > REFUSED_ASKS_KEPT) this.refusedAsks.delete(this.refusedAsks.values().next().value ?? "");
+          continue;
+        }
+        if (gate === "hold") {
+          const withheld = { ...next, status: "withdrawn" as const };
+          if (existing === undefined) stored.push(withheld);
+          else stored[index] = withheld;
+          gated.push(gatedAs(gate));
+          continue;
+        }
+        if (gate === "default") Object.assign(next, { blocking: false, madeNonBlocking: true });
+        if ((mockupGap.length > 0 || lintGap.length > 0) && block.id === SCOPE_APPROVAL && !asksToAccept(block)) {
           const withheld = { ...next, status: "withdrawn" as const, held: true };
           if (existing === undefined) stored.push(withheld);
           else stored[index] = withheld;
-          unmocked.push(block.id);
+          heldPlans.push(block.id);
           continue;
         }
         // An owner asks one question at a time (TR-124): the next one, in this turn or a later one, waits
@@ -733,6 +845,8 @@ export class Supervisor {
         if (existing === undefined) stored.push(next);
         else stored[index] = next;
         if (existing === undefined || existing.status !== "open") opened.push(next);
+        // Told once: an open question already going on with its default asked again stays quiet.
+        if (gate === "default" && (existing === undefined || existing.status !== "open" || existing.madeNonBlocking !== true)) gated.push(gatedAs(gate));
         // Shown for the first time (a held one included): counted, and its format problems reported.
         if (existing === undefined || existing.status === "withdrawn") {
           if (identity.ticket !== null) newlyAsked.push(identity.ticket);
@@ -751,9 +865,14 @@ export class Supervisor {
     if (refused.length > 0) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.acceptQuestionRefused, { refused: refused.map((id) => `\`${id}\``).join(", ") }));
     }
-    if (unmocked.length > 0 && identity.ticket !== null) {
+    if (heldPlans.length > 0 && identity.ticket !== null && mockupGap.length > 0) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.planWithoutMockups, { ticket: identity.ticket, missing: mockupGap.join("; "), skill: await skillDirectory() }));
     }
+    if (heldPlans.length > 0 && identity.ticket !== null && lintGap.length > 0) {
+      console.log(`[taro] ${agent.id} asked scope-approval on ${identity.ticket}: held, the plan lint found ${lintGap.length} gap(s)`);
+      await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.planLint, { ticket: identity.ticket, gaps: lintGap.map((gap) => `- ${gap}`).join("\n"), skill: await skillDirectory() }));
+    }
+    if (gated.length > 0 && identity.ticket !== null) await this.tellGated(paseo, agent, identity, identity.ticket, gated);
     if (held.length > 0) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.decisionHeld, { held: held.map((each) => `\`${each.id}\``).join(", "), open: held[0]!.open }));
     }
@@ -761,6 +880,56 @@ export class Supervisor {
     if (madeBlocking.length > 0 && !waiting) {
       await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.planningQuestion, { question: `\`${madeBlocking[0]!.id}\`` }));
     }
+  }
+
+  /**
+   * The page for the step the owner's ticket has reached (its level, the build, the review, the
+   * delivery), sent once per round of the ticket. Awaiting acceptance has its own reminders and the
+   * Accept hand-off its own message, so neither is sent from here. Nor while the owner waits on a
+   * blocking question: the page would end that wait, as a nudge would, so it goes at the turn end after
+   * the answer. A ticket that cannot be read is marked, and read again by the minute's sweep. An owner
+   * already at work when step pages began has its current step recorded as sent, not sent.
+   */
+  private async sendStep(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity): Promise<boolean> {
+    const ticket = identity.ticket;
+    if (ticket === null) return false;
+    if (await this.waitsOnBlockingQuestion(agent.id)) return false;
+    let step: Step | null;
+    try {
+      const facts = await stepTicket(identity.project, ticket);
+      step = facts.status === "Awaiting acceptance" ? null : nextStep(facts);
+    } catch (error) {
+      console.warn(`[taro] reading ${ticket}'s step: ${error instanceof Error ? error.message : String(error)}; read again at the next minute's sweep`);
+      await this.state.updateAgent(agent.id, () => freshState(identity), (record) => {
+        record.stepUnread = true;
+      });
+      return false;
+    }
+    const key = step === null || step.page === STEP_PAGES.accept ? null : stepKey(ticket, step);
+    const known = await this.state.agent(agent.id);
+    if (key === null && known !== null && known.stepUnread !== true && known.stepPages === "tracked") return false;
+    const outcome = await this.state.updateAgent(agent.id, () => freshState(identity), (record): "sent" | "recorded" | "none" => {
+      record.stepUnread = false;
+      settleStepPages(record);
+      const baseline = record.stepPages === "baseline";
+      record.stepPages = "tracked";
+      if (key === null || record.stepsSent.includes(key)) return "none";
+      record.stepsSent = [...record.stepsSent, key];
+      return baseline ? "recorded" : "sent";
+    });
+    if (step === null || outcome === "none") return false;
+    if (outcome === "recorded") {
+      console.log(`[taro] ${agent.id} was already at ${step.page} on ${ticket} when step pages began: recorded, not sent`);
+      return false;
+    }
+    console.log(`[taro] ${agent.id} reached ${step.page} on ${ticket} (round ${step.facts.round ?? "1"}): page sent`);
+    await sendFromPlugin(paseo, agent.id, await stepText(step));
+    return true;
+  }
+
+  /** Whether the agent has a blocking question open: it waits on the user, and the plugin does not talk over the wait. */
+  private async waitsOnBlockingQuestion(agentId: string): Promise<boolean> {
+    return (await this.state.allDecisions()).some((decision) => decision.agentId === agentId && decision.status === "open" && decision.blocking);
   }
 
   /** What the owner's plan lacks of its mockups (TR-235); unreadable counts as nothing missing, as a ticket the plugin cannot read blocks nothing else here. */
@@ -774,15 +943,75 @@ export class Supervisor {
     }
   }
 
-  /** Whether the owner's ticket is still being planned (TR-146); unreadable counts as not, keeping the block's own flag. */
-  private async ticketPlanning(identity: TaroIdentity): Promise<boolean> {
-    if (identity.ticket === null) return false;
+  /**
+   * What a high plan lacks before its approval (`shared/plan-lint.ts`): its children's specs and a
+   * plan review. Unreadable counts as nothing missing, as for the mockups.
+   */
+  private async planLintGaps(identity: TaroIdentity): Promise<string[]> {
+    if (identity.ticket === null) return [];
     try {
-      const detail = await viewTicket((await projectPaths(identity.project)).tracker, identity.ticket);
-      return planningTicket({ status: detail.status, notes: detail.implementationNotes });
-    } catch {
-      return false;
+      const tracker = (await projectPaths(identity.project)).tracker;
+      const detail = await viewTicket(tracker, identity.ticket);
+      if (ticketLevel(detail.labels) !== "high" || isInvestigation(detail.labels)) return [];
+      const children = await Promise.all(
+        detail.subtasks.map(async (subtask) => {
+          const child = await viewTicket(tracker, subtask.id);
+          return { id: child.id, description: child.description, labels: child.labels, dependencies: child.dependencies };
+        }),
+      );
+      return lintPlan({ labels: detail.labels, plan: detail.implementationPlan, notes: detail.implementationNotes, planUpdatedAt: detail.planUpdatedAt ?? null, children });
+    } catch (error) {
+      console.warn(`[taro] linting ${identity.ticket}'s plan: ${error instanceof Error ? error.message : String(error)}; not held`);
+      return [];
     }
+  }
+
+  /**
+   * The owner's ticket as its questions see it: still planning (TR-146), and its plan approved this
+   * round, or its parent's for a child (TR-263). Unreadable counts as neither, keeping each block's own flag.
+   */
+  private async decisionFacts(identity: TaroIdentity): Promise<{ planning: boolean; approved: boolean }> {
+    if (identity.ticket === null) return { planning: false, approved: false };
+    try {
+      const tracker = (await projectPaths(identity.project)).tracker;
+      const detail = await viewTicket(tracker, identity.ticket);
+      const planning = planningTicket({ status: detail.status, notes: detail.implementationNotes });
+      let approved = workApproved(detail.implementationNotes);
+      const parent = approved ? null : parentTicketId(identity.ticket);
+      if (parent !== null) approved = await viewTicket(tracker, parent).then((parentDetail) => workApproved(detail.implementationNotes, parentDetail.implementationNotes), () => false);
+      return { planning, approved };
+    } catch {
+      return { planning: false, approved: false };
+    }
+  }
+
+  /**
+   * The agent whose blocks the approval gate changed (TR-263): a record each on the ticket, the plugin
+   * log, and one message. An owner is told to decide and record a RULING; a subagent that its owner decides.
+   */
+  private async tellGated(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity, ticket: string, gated: readonly GatedBlock[]): Promise<void> {
+    const tracker = (await projectPaths(identity.project)).tracker;
+    const asker = identity.role === "owner" ? "owner" : "subagent";
+    for (const each of gated) {
+      const record = gateRecord(new Date().toISOString(), each.outcome, each, asker);
+      console.log(`[taro] ${agent.id}${asker === "owner" ? "" : ` (${identity.role})`} asked \`${each.id}\` on ${ticket} after its plan was approved, with no surprise: ${each.outcome === "refuse" ? "refused, not shown" : each.outcome === "single" ? "several questions, not shown" : each.outcome === "hold" ? "held, no default" : "shown not blocking with its default"}`);
+      if (record !== null) {
+        await appendTicketNote(tracker, ticket, record).catch((error: unknown) => {
+          console.warn(`[taro] recording ${ticket}'s question asked after approval: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
+    }
+    const questions = gated.map((each) =>
+      each.outcome === "refuse"
+        ? `- \`${each.id}\`: not shown; the plan stays approved`
+        : each.outcome === "single"
+          ? `- \`${each.id}\`: not shown, as it asks several questions on one card; after approval ask them one at a time`
+          : each.outcome === "hold"
+            ? `- \`${each.id}\`: not shown, as it has no \`default\`; decide it`
+            : `- \`${each.id}\`: not waiting on the user; go on with its default "${each.default.trim()}" and decide it`,
+    );
+    const template = asker === "owner" ? TEMPLATES.approvalRepeated : TEMPLATES.subagentQuestionGated;
+    await sendFromPlugin(paseo, agent.id, await message(template, { ticket, questions: questions.join("\n"), skill: await skillDirectory() }));
   }
 
   /**
@@ -791,8 +1020,12 @@ export class Supervisor {
    */
   private async takeBackDeliveryWithOpenQuestion(paseo: PaseoApi, agent: PaseoAgent, identity: TaroIdentity): Promise<boolean> {
     if (identity.ticket === null) return false;
-    const open = questionOpenAtDelivery(await this.state.allDecisions(), agent.id);
-    if (open === null) return false;
+    const decisions = await this.state.allDecisions();
+    const open = questionOpenAtDelivery(decisions, agent.id);
+    if (open === null) {
+      await this.closeDefaultedAtDelivery(identity, identity.ticket, questionsDefaultedAtDelivery(decisions, agent.id));
+      return false;
+    }
     try {
       // Written only while the delivery is on offer, checked under the tracker's lock.
       const tracker = (await projectPaths(identity.project)).tracker;
@@ -808,6 +1041,29 @@ export class Supervisor {
     });
     await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.deliveryWithOpenQuestion, { ticket: identity.ticket, question: `\`${open.id}\`` }));
     return true;
+  }
+
+  /**
+   * The owner's questions it went on with by default after approval (TR-263), still open as it delivers:
+   * the owner decided them (each a RULING), so they close with the delivery rather than hold it.
+   */
+  private async closeDefaultedAtDelivery(identity: TaroIdentity, ticket: string, defaulted: readonly StoredDecision[]): Promise<void> {
+    if (defaulted.length === 0) return;
+    try {
+      const detail = await viewTicket((await projectPaths(identity.project)).tracker, ticket);
+      if (!deliveryOnOffer({ status: detail.status, notes: detail.implementationNotes })) return;
+    } catch (error) {
+      console.warn(`[taro] reading ${ticket} to close its defaulted questions: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    const keys = new Set(defaulted.map((decision) => decision.key));
+    await this.state.updateDecisions((stored) => {
+      for (const decision of stored) {
+        if (decision.status !== "open" || !keys.has(decision.key)) continue;
+        Object.assign(decision, { status: "withdrawn", closedWithDefault: true });
+      }
+    });
+    console.log(`[taro] ${ticket} delivered: closed ${defaulted.map((decision) => `\`${decision.id}\``).join(", ")} as gone on with the default`);
   }
 
   /**

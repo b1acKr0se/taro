@@ -122,7 +122,13 @@ describe("viewTicket", () => {
       implementationNotes: "EXECUTION 2026-10-14T15:50:00Z — owner o",
       finalSummary: "Shipped.",
       subtasks: [{ id: "NA-001.01", title: "CSV", status: "Done" }],
+      planUpdatedAt: null,
     });
+  });
+
+  it("reads when the plan text last changed, kept in the frontmatter", async () => {
+    write(ticket({ id: "NA-003", plan: "## Goal\nG", extra: { plan_updated: "2026-11-12T10:05:30Z" } }));
+    expect((await viewTicket(tracker, "NA-003")).planUpdatedAt).toBe("2026-11-12T10:05:30Z");
   });
 
   it("reads empty sections as null", async () => {

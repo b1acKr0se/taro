@@ -83,6 +83,7 @@ function card(parts: Partial<Card>): Card {
     pause: null,
     pausable: false,
     queuedWait: null,
+    childrenWorking: 0,
     ...parts,
   };
 }
@@ -105,6 +106,13 @@ describe("cardCalls", () => {
   it("leaves out answered and withdrawn decisions", () => {
     const calls = cardCalls(card({ decisions: [decision({ status: "answered" }), decision({ status: "withdrawn" })] }));
     expect(calls).toEqual([]);
+  });
+
+  // TR-263 RULING: the owner went on with it by default; it is answered in the ticket chat, not called for on the card.
+  it("leaves out a question the owner went on with by default after approval, and does not hold Accept with it", () => {
+    const defaulted = decision({ default: "Yes", madeNonBlocking: true });
+    expect(cardCalls(card({ decisions: [defaulted] }))).toEqual([]);
+    expect(offersAcceptance(card({ status: "Awaiting acceptance", decisions: [defaulted] }))).toBe(true);
   });
 
   it("offers acceptance only while an owner can hear it", () => {

@@ -19,14 +19,15 @@
  * about three lines as three, with "more" to unfold it; chat leaves it off.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
-import { useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { Platform, Text, View } from "react-native";
 
 import { focusRingStyle } from "./focus-ring";
 import { ImageThumbnail } from "./image-view";
-import { inlineTokens, type FileLookup } from "./file-links";
+import { inlineTokens, type FileLookup, type InlineToken } from "./file-links";
 import { blockImages, parseMarkdownCached, type Block, type ImageReference } from "./markdown-parse";
 import { MONOSPACE } from "./ui";
+import { drawnPieces } from "./whole-ids";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 
@@ -110,6 +111,27 @@ interface InlineContext {
   fold: boolean;
   /** The text's line height, to tell how many lines a paragraph takes. */
   lineHeight: number;
+  /** Ticket ids in prose stay whole on a line (`./whole-ids`). */
+  wholeIds: boolean;
+}
+
+/** `white-space: nowrap`, which react-native-web passes to CSS; not in React Native's types. */
+const NOWRAP = { whiteSpace: "nowrap" } as object;
+
+/** A prose token's text, with each ticket id kept whole when the context asks. */
+function proseText(token: InlineToken, context: InlineContext): ReactNode {
+  const pieces = context.wholeIds ? drawnPieces(token, Platform.OS === "web") : null;
+  if (pieces === null) return token.text;
+  return pieces.map((piece, index) =>
+    piece.nowrap ? (
+      // inherits colour: an id run sits inside the paragraph's Text
+      <Text key={index} style={NOWRAP}>
+        {piece.text}
+      </Text>
+    ) : (
+      piece.text
+    ),
+  );
 }
 
 /**
@@ -165,7 +187,7 @@ function renderInline(text: string, styles: MarkdownStyles, context: InlineConte
   return inlineTokens(text, lookup).map((token, index) => {
     switch (token.kind) {
       case "text":
-        return token.text;
+        return <Fragment key={index}>{proseText(token, context)}</Fragment>;
       case "code":
         return (
           <Text key={index} style={styles.inlineCode}>
@@ -176,7 +198,7 @@ function renderInline(text: string, styles: MarkdownStyles, context: InlineConte
         return (
           // inherits colour: renderInline's pieces sit inside the paragraph's Text (raw strings need one)
           <Text key={index} style={styles.bold}>
-            {token.text}
+            {proseText(token, context)}
           </Text>
         );
       case "file":
@@ -287,6 +309,7 @@ export function Markdown({
   files = noFiles,
   onOpenFile = null,
   foldParagraphs = false,
+  wholeIds = false,
 }: {
   source: string;
   theme: PluginTheme;
@@ -297,19 +320,34 @@ export function Markdown({
   onOpenFile?: ((path: string) => void) | null;
   /** Fold paragraphs and list items past about three lines behind "more" (the Ticket tab). */
   foldParagraphs?: boolean;
+  /** Keep ticket ids in prose whole on a line (a plan's narrow column). */
+  wholeIds?: boolean;
 }) {
   const styles = useMarkdownStyles(theme, fontSize);
   const blocks = useMemo(() => parseMarkdownCached(source), [source]);
   const images = useMemo(() => blockImages(blocks), [blocks]);
   // Blocks a little further apart than lines, so paragraphs and lists read as separate thoughts.
-  return <View style={{ gap: SPACE.sm + 2 }}>{renderBlocks(blocks, styles, { theme, lookup: files, onOpenLink, onOpenFile, images, fold: foldParagraphs, lineHeight: lineHeightFor(fontSize) })}</View>;
+  return <View style={{ gap: SPACE.sm + 2 }}>{renderBlocks(blocks, styles, { theme, lookup: files, onOpenLink, onOpenFile, images, fold: foldParagraphs, lineHeight: lineHeightFor(fontSize), wholeIds })}</View>;
 }
 
 /**
  * One line of Markdown's inline marks (bold, code, links) as text runs, to sit inside a `Text` that
  * gives it its style: a plan's bullet (TR-061) is a line, not a block.
  */
-export function MarkdownInline({ text, theme, fontSize = FONT_SIZE.body, onOpenLink }: { text: string; theme: PluginTheme; fontSize?: number; onOpenLink: (url: string) => void }) {
+export function MarkdownInline({
+  text,
+  theme,
+  fontSize = FONT_SIZE.body,
+  onOpenLink,
+  wholeIds = false,
+}: {
+  text: string;
+  theme: PluginTheme;
+  fontSize?: number;
+  onOpenLink: (url: string) => void;
+  /** Keep ticket ids in prose whole on a line (a plan's narrow column). */
+  wholeIds?: boolean;
+}) {
   const styles = useMarkdownStyles(theme, fontSize);
-  return <>{renderInline(text, styles, { theme, lookup: noFiles, onOpenLink, onOpenFile: null, images: [], fold: false, lineHeight: lineHeightFor(fontSize) })}</>;
+  return <>{renderInline(text, styles, { theme, lookup: noFiles, onOpenLink, onOpenFile: null, images: [], fold: false, lineHeight: lineHeightFor(fontSize), wholeIds })}</>;
 }

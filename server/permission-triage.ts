@@ -9,11 +9,13 @@ import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, relative } from "node:path";
 
+import { askFromRequest, type AskRequest } from "../shared/permission-asks";
 import { isBypassMode, permissionRecord, ruleReasons, triagePermission, type ShellAsk } from "../shared/permission-triage";
 import { fetchLiveAgent } from "./agents";
 import type { PaseoApi } from "./host-types";
 import { TEMPLATES, message, readTemplate, skillDirectory, withoutNotes } from "./package-files";
 import { projectPaths } from "./projects";
+import type { PluginState } from "./state";
 import type { Stats } from "./stats";
 import { identityFromLabels } from "./supervision";
 import { appendTicketNote } from "./tickets";
@@ -36,6 +38,61 @@ export async function isTaroAsker(paseo: PaseoApi, known: (agentId: string) => P
   if ((await known(agentId)) !== null) return true;
   const agent = await fetchLiveAgent(paseo, agentId);
   return agent !== null && identityFromLabels(agent.labels, agent.title ?? null) !== null;
+}
+
+/**
+ * A Taro agent's ask the user (or a stop) ended: the time it stayed open is added to its ticket's stats
+ * (TR-263). An ask the rules answered waited on nobody, and one never recorded is not counted.
+ */
+export async function countPermissionWait(
+  state: Pick<PluginState, "agent" | "permissionAsk">,
+  stats: Pick<Stats, "permissionWaited">,
+  agentId: string,
+  requestId: string,
+  /** The agent's labels, for one asking in its first turn, before the plugin has a record of it. */
+  liveIdentity: (agentId: string) => Promise<{ project: string; ticket: string | null } | null> = async () => null,
+): Promise<boolean> {
+  const ask = await state.permissionAsk(agentId, requestId);
+  if (ask === null || ask.answeredAt === null || ask.by === "rules") return false;
+  const waitedMs = Date.parse(ask.answeredAt) - Date.parse(ask.askedAt);
+  if (Number.isNaN(waitedMs)) return false;
+  const owner = (await state.agent(agentId)) ?? (await liveIdentity(agentId));
+  if (owner === null || owner.ticket === null) return false;
+  await stats.permissionWaited(owner.project, owner.ticket, ask.askedAt, ask.answeredAt);
+  return true;
+}
+
+/** What a permission ask's arrival needs from the plugin around it. */
+export interface PermissionRequestedContext {
+  state: Pick<PluginState, "agent" | "recordPermissionAsk" | "markPermissionAskByRules" | "clearPermissionAskRules">;
+  stats: Stats;
+  invalidateBoards(): void;
+  checkNotifications(): void;
+  reportFailure(context: string, error: unknown): void;
+}
+
+/**
+ * A permission ask arrived (TR-143, TR-149, TR-263): a Taro agent's ask is recorded first, so the
+ * rules can mark one as theirs before they answer it; then the rules answer it if they decide it.
+ * One they leave waits for the user: its ticket goes to Needs you with the card now, and the
+ * notification check runs now rather than at the next sweep. Nothing is answered for the user.
+ */
+export async function onPermissionRequested(paseo: PaseoApi, asker: PermissionAsker, request: PermissionRequest & AskRequest, context: PermissionRequestedContext): Promise<"allow" | "deny" | null> {
+  const { state } = context;
+  await isTaroAsker(paseo, (agentId) => state.agent(agentId), asker.id)
+    .then((taro) => (taro ? state.recordPermissionAsk(askFromRequest(asker.id, request, new Date().toISOString())) : undefined))
+    .catch((error: unknown) => context.reportFailure(`[taro] recording ${asker.id}'s permission ask:`, error));
+  const rulesMark: RulesMark = {
+    mark: (requestId, rule) => state.markPermissionAskByRules(asker.id, requestId, rule),
+    clear: (requestId) => state.clearPermissionAskRules(asker.id, requestId),
+  };
+  const decided = await triageAsk(paseo, context.stats, asker, request, rulesMark).catch((error: unknown) => {
+    context.reportFailure(`[taro] triaging ${asker.id}'s permission ask:`, error);
+    return null;
+  });
+  context.invalidateBoards();
+  if (decided === null) context.checkNotifications();
+  return decided;
 }
 
 /** Marks the recorded ask as answered by the rules, and takes the mark back (TR-149). */

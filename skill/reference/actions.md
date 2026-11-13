@@ -1,4 +1,4 @@
-# The user's buttons, from a command line (TR-258)
+# The user's buttons, from a command line
 
 Every action a button offers has a `taro` command that calls the running daemon: the same handler
 and the same checks as the button, so a refusal reads as the button's would. For scripts and the
@@ -13,6 +13,18 @@ user's own terminal.
 - `--project <name>` or `$TARO_PROJECT`; the daemon is found through `--home` or `$PASEO_HOME`
   (default `~/.paseo`). `--note -` and `--text -` read standard input. `--json` prints the daemon's answer.
 - Exit codes: 0 done, 1 the action refused (its reason on stderr), 2 usage, 4 the daemon is not reachable.
-- **Accept, reopen, request-changes, change-spec, close-round and the decision verbs are the user's**
-  (TR-237): they refuse inside an agent session (`$PASEO_AGENT_ID` set; exit 1, like any refusal). Never work around that; an
+- **Accept, reopen, request-changes, change-spec, close-round and the decision verbs are the user's**:
+  they refuse inside an agent session (`$PASEO_AGENT_ID` set; exit 1, like any refusal). Never work around that; an
   agent asks the user. Pause, resume and relaunch-owner run anywhere.
+
+## The owner's mechanical steps
+
+    taro agent start <job> <ID> --model <id> [--thinking <id>] --brief-file <file> [--task "<task>"] [--worktree]
+    taro agent stop <agentId>
+    taro check [--ticket <ID>] -- <command>
+    taro deliver <ID> [--evidence-from-checks]
+    taro daemon start|stop|list <ID>
+
+- Starting an agent or a daemon waits while threads are above 85% (`--wait <seconds>`, then refuses).
+- `taro check` logs the exit code and summary line for the ticket its branch names; `taro deliver`
+  is the owner's (`phases/delivery.md`). A test daemon never uses port 6767 or `~/.paseo`.

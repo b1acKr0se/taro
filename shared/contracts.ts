@@ -222,6 +222,8 @@ export const CardSchema = z.object({
   investigation: z.boolean(),
   parent: z.string().nullable(),
   children: z.array(z.object({ id: z.string(), title: z.string(), status: z.string() })),
+  /** How many children have a subagent running now; the parent's card says "N children working". */
+  childrenWorking: z.number().default(0),
   acceptanceDone: z.number(),
   acceptanceTotal: z.number(),
   updatedAt: z.string().nullable(),
@@ -364,8 +366,14 @@ export const findAgentTicket = defineRpc({
 
 export const answerDecision = defineRpc({
   name: "taro.decision.answer",
-  /** `from` names where the user answered, for the ANSWER record. */
-  input: z.object({ key: z.string(), label: z.string().nullable(), text: z.string(), from: z.enum(["screen", "tab"]).default("screen") }),
+  /** `from` names where the user answered, for the ANSWER record; `answers`, one per question of a card asking several (TR-207). */
+  input: z.object({
+    key: z.string(),
+    label: z.string().nullable(),
+    text: z.string(),
+    from: z.enum(["screen", "tab"]).default("screen"),
+    answers: z.array(z.object({ header: z.string(), label: z.string().nullable(), text: z.string() })).optional(),
+  }),
   output: Empty,
 });
 
@@ -439,6 +447,12 @@ export const relaunchOwner = defineRpc({
   name: "taro.owner.relaunch",
   input: z.object({ project: ProjectNameSchema, ticket: z.string() }),
   output: z.object({ agentId: z.string() }),
+});
+/** The owner's next step (`taro next <ID>`): the page the plugin sends at the step's start, filled with the ticket's facts. */
+export const ticketNextStep = defineRpc({
+  name: "taro.ticket.next-step",
+  input: z.object({ project: ProjectNameSchema, ticket: z.string() }),
+  output: z.object({ message: z.string(), page: z.string().nullable() }),
 });
 /** Pause and Resume (TR-088): `message` is what the user is told; `agentId` the fresh owner Resume started, if any. */
 export const pauseTicket = defineRpc({ name: "taro.ticket.pause", input: z.object({ project: ProjectNameSchema, ticket: z.string() }), output: z.object({ message: z.string() }) });
