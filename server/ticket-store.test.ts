@@ -132,6 +132,22 @@ describe("ticket store", () => {
   });
 
   describe("edit", () => {
+    it("stamps plan_updated when the plan text changes, and keeps it through other edits", async () => {
+      await writeTicketFile({ id: "TR-001" });
+      let clock = new Date("2026-11-12T10:05:30.000Z");
+      const tickets = store({ now: () => clock });
+      await tickets.edit("TR-001", { appendNotes: ["MILESTONE no plan yet"] });
+      expect((await tickets.view("TR-001")).ticket.extra).toEqual({});
+      await tickets.edit("TR-001", { plan: "## Goal\nG" });
+      expect((await tickets.view("TR-001")).ticket.extra).toEqual({ plan_updated: "2026-11-12T10:05:30Z" });
+      clock = new Date("2026-11-12T10:20:00.000Z");
+      await tickets.edit("TR-001", { plan: "## Goal\nG", appendNotes: ["REVIEW 2026-11-12T10:20Z — plan review by r1 — verdict: clean"] });
+      expect((await tickets.view("TR-001")).ticket.extra).toEqual({ plan_updated: "2026-11-12T10:05:30Z" });
+      await tickets.editIf("TR-001", () => true, { plan: "## Goal\nG2" });
+      expect((await tickets.view("TR-001")).ticket.extra).toEqual({ plan_updated: "2026-11-12T10:20:00Z" });
+      expect(await readFile(ticketPath("TR-001"), "utf8")).toContain('plan_updated: "2026-11-12T10:20:00Z"');
+    });
+
     it("applies every kind of change in one write", async () => {
       await writeTicketFile({ id: "TR-002" });
       await writeTicketFile({

@@ -238,7 +238,7 @@ describe("finalSections", () => {
 
   it("accepts bold and colon headings, wrapped bullets and plain lines", () => {
     const sections = finalSections("**What changed**\n- one\n  wrapped\nplain line\n\nHow it was verified:\n- tests\n\n**Limitations:**\n- none known\n\n## Other\nkept");
-    expect(sections).toEqual({ changed: ["one wrapped", "plain line"], verified: ["tests"], limitations: ["none known"], rest: "## Other\nkept" });
+    expect(sections).toEqual({ changed: ["one wrapped", "plain line"], verified: ["tests"], limitations: ["none known"], rulings: [], rest: "## Other\nkept" });
   });
 
   it("keeps a revision line inside a section with the rest", () => {
@@ -246,12 +246,13 @@ describe("finalSections", () => {
       changed: ["a"],
       verified: [],
       limitations: [],
+      rulings: [],
       rest: "Revision: abc1234 · PR: none\nPR: https://example.com/pull/1",
     });
   });
 
   it("leaves a code block with the rest", () => {
-    expect(finalSections("## What changed\n- a\n```\n- not a bullet\n```")).toEqual({ changed: ["a"], verified: [], limitations: [], rest: "```\n- not a bullet\n```" });
+    expect(finalSections("## What changed\n- a\n```\n- not a bullet\n```")).toEqual({ changed: ["a"], verified: [], limitations: [], rulings: [], rest: "```\n- not a bullet\n```" });
   });
 });
 

@@ -5,8 +5,10 @@
  */
 import { z } from "zod";
 
+import { wentOnWithDefault } from "./planning-questions";
 import { isSubagentRole, roleFromLabel, TARO_LABELS } from "./project";
 import type { StatusState } from "./reports";
+import { ticketLevel } from "./ticket-level";
 
 /**
  * Where a card is placed. Parked tickets (TR-166) are placed apart from Queued, so Queued means
@@ -67,10 +69,16 @@ export interface CardInputs {
 /**
  * The open questions on a ticket that wait on the user: every one its owner asks, blocking or not, as
  * the answer is the user's even while the owner goes on with its default (TR-186); a subagent's only
- * when blocking, as its owner answers the rest.
+ * when blocking, as its owner answers the rest. Not one the owner went on with by default after approval
+ * (TR-263): the owner decided it, and it stays answerable in the ticket chat.
  */
-export function questionsForUser(decisions: readonly { blocking: boolean; agentRole: string }[]): number {
-  return decisions.filter((decision) => decision.blocking || decision.agentRole === "owner").length;
+export function questionsForUser(decisions: readonly { blocking: boolean; agentRole: string; madeNonBlocking?: boolean | undefined }[]): number {
+  return waitingOnUser(decisions).filter((decision) => decision.blocking || decision.agentRole === "owner").length;
+}
+
+/** The open questions Needs you, the Inbox and its count list: all but those the owner went on with by default after approval (TR-263). */
+export function waitingOnUser<D extends { madeNonBlocking?: boolean | undefined }>(decisions: readonly D[]): D[] {
+  return decisions.filter((decision) => !wentOnWithDefault(decision));
 }
 
 const UNDER_WAY = new Set(["Planning", "In Progress", "Reviewing"]);
@@ -183,6 +191,22 @@ export function ticketAgents<Agent extends JoinedAgent>(
   return { owner, subagents, childSubagents, columnAgent, askers: columnAgent !== null && columnAgent === placing && asks(placing) ? [placing] : asking };
 }
 
+/**
+ * How many of a parent's children have a subagent running right now (children run at once in their
+ * own worktrees): each child counts once, however many subagents it has. A subagent belongs to the
+ * child it is labelled with, or titled for while labelled with the parent.
+ */
+export function childrenWorking(childIds: readonly string[], subagents: readonly JoinedAgent[]): number {
+  const working = new Set<string>();
+  for (const agent of subagents) {
+    if (agent.status !== "running" && agent.status !== "initializing") continue;
+    const labelled = agent.labels[TARO_LABELS.ticket] ?? "";
+    const child = childIds.includes(labelled) ? labelled : titledTicket(agent.title);
+    if (child !== null && childIds.includes(child)) working.add(child);
+  }
+  return working.size;
+}
+
 /** The ticket id a title starts with ("TR-1.01 · implementer: …"), or null. */
 function titledTicket(title: string | null | undefined): string | null {
   return /^([A-Z][A-Z0-9]*-\d+(?:\.\d+)*)\s/.exec(title ?? "")?.[1] ?? null;
@@ -210,8 +234,10 @@ function byNewest<Agent extends JoinedAgent>(agents: readonly Agent[]): Agent[] 
   return [...agents].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
-/** The complexity label the owner set (`complexity-low` → `low`), or null. */
+/** The complexity label the owner set (`complexity-low` → `low`), the highest of several, or null. */
 export function complexityOf(labels: readonly string[]): string | null {
+  const level = ticketLevel(labels);
+  if (level !== null) return level;
   const label = labels.find((candidate) => candidate.startsWith("complexity-"));
   return label === undefined ? null : label.slice("complexity-".length);
 }
@@ -233,8 +259,8 @@ export function needsYouExtras(board: { managerDecisions: readonly unknown[]; ma
 }
 
 /** A ticket the Inbox lists as itself: one waiting on you with no question, which is drawn as that question instead, or a stalled one. */
-export function isInboxTicket(card: { column: ColumnId; decisions: readonly unknown[] }): boolean {
-  return (card.column === "needs-you" && card.decisions.length === 0) || card.column === "stalled";
+export function isInboxTicket(card: { column: ColumnId; decisions: readonly { madeNonBlocking?: boolean | undefined }[] }): boolean {
+  return (card.column === "needs-you" && waitingOnUser(card.decisions).length === 0) || card.column === "stalled";
 }
 
 /**
@@ -246,7 +272,7 @@ export function isInboxTicket(card: { column: ColumnId; decisions: readonly unkn
  */
 export function inboxCount(
   board: {
-    cards: readonly { column: ColumnId; decisions: readonly unknown[] }[];
+    cards: readonly { column: ColumnId; decisions: readonly { madeNonBlocking?: boolean | undefined }[] }[];
     managerDecisions: readonly unknown[];
     ticketQuestions?: number;
     managerPermission?: unknown;

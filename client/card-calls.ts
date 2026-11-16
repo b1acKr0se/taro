@@ -3,6 +3,7 @@
  * itself with its options, what a permission asks to do, the delivery's summary. The card draws the
  * first; answering in full happens where its context is, in the owner's chat. Pure.
  */
+import { waitingOnUser } from "../shared/board";
 import type { Card } from "../shared/contracts";
 import { questionHoldingAccept, stillDelivering } from "../shared/delivery-end";
 import { evidenceSummary } from "../shared/evidence";
@@ -26,7 +27,8 @@ export type CardCall =
 
 export function cardCalls(card: Card): CardCall[] {
   const calls: CardCall[] = [];
-  const open = walkOrder(card.decisions.filter((decision) => decision.status === "open"));
+  // One the owner went on with by default after approval (TR-263) is answered in the ticket chat, not called for here.
+  const open = walkOrder(waitingOnUser(card.decisions).filter((decision) => decision.status === "open"));
   const first = open[0];
   if (first !== undefined) calls.push({ kind: "decision", decision: first, more: open.length - 1 });
   if (offersAcceptance(card)) {

@@ -9,8 +9,9 @@ never start other agents, never push, merge or open a PR.
   documentation. Say which parts you verified and which you inferred.
 - Run long commands with output to a log file and read the result; do not end your turn while a
   command you started is still running.
-- Before starting a daemon or many processes, read `cat /sys/fs/cgroup/pids.current
-  /sys/fs/cgroup/pids.max` and wait while usage is above 85%; stop what you started when done. If
+- Test daemons: `taro daemon start <ID>`, then `taro daemon stop <ID>`. Before many other
+  processes, wait while `cat /sys/fs/cgroup/pids.current /sys/fs/cgroup/pids.max` reads above 85%;
+  stop what you started when done. If
   the plugin tells you that you crashed and were restarted, check the worktree and rerun what died.
 - Write shell commands that need no approval, as nobody may be watching:
   `$TARO_SKILL/reference/shell.md`. Try `taro ticket` commands only on a scratch tracker
@@ -21,5 +22,5 @@ never start other agents, never push, merge or open a PR.
 - Last line: `done: <the answer in one line>`; or `blocked: <what stops you, what you tried>`.
 - A choice the brief does not settle → a decision block (the owner answers it, not the user), then
   `waiting: <the question>`.
-- Images you make (screenshots, mockups) follow `$TARO_SKILL/reference/formats.md`, Images: in
+- Images you make (screenshots, mockups) follow `$TARO_SKILL/reference/images.md`: in
   `$TARO_EVIDENCE/<ID>/`, named for what they show, each with a caption in your report.

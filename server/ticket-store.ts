@@ -115,6 +115,9 @@ export interface TicketStore {
   cacheEntries(): ReadonlyMap<string, CacheEntry>;
 }
 
+/** The frontmatter key holding when the plan text last changed; a ticket written before it was kept has none. */
+export const PLAN_UPDATED = "plan_updated";
+
 export class RevisionConflict extends Error {
   readonly id: string;
   readonly expected: string;
@@ -517,6 +520,12 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
     for (const record of changes.appendNotes ?? []) ticket.notes = withNote(ticket.notes, record);
   }
 
+  /** Stamps the edit, and the plan's own change time when its text changed: a plan review counts only when newer (TR-263). */
+  function stampEdit(ticket: Ticket, planBefore: string): void {
+    ticket.updated = timestampOf(now());
+    if (ticket.plan !== planBefore) ticket.extra[PLAN_UPDATED] = ticket.updated;
+  }
+
   async function withResolvedDependencies(changes: TicketChanges): Promise<TicketChanges> {
     if (changes.addDependencies === undefined) return changes;
     return { ...changes, addDependencies: resolveDependencies(changes.addDependencies, await ticketNames()) };
@@ -659,8 +668,9 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
       if (editOptions.revision !== undefined && editOptions.revision !== revision) {
         throw new RevisionConflict(id, editOptions.revision, revision);
       }
+      const plan = ticket.plan;
       applyChanges(ticket, await withResolvedDependencies(changes));
-      ticket.updated = timestampOf(now());
+      stampEdit(ticket, plan);
       await writeTicket(ticket);
       return ticket;
     });
@@ -672,8 +682,9 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
     return locked(async () => {
       const { ticket } = await readTicket(id);
       if (!when(ticket)) return null;
+      const plan = ticket.plan;
       applyChanges(ticket, await withResolvedDependencies(changes));
-      ticket.updated = timestampOf(now());
+      stampEdit(ticket, plan);
       await writeTicket(ticket);
       return ticket;
     });

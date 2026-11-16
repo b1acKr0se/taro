@@ -26,6 +26,8 @@ export const RECORD_KINDS: ReadonlySet<string> = new Set([
   "MILESTONE",
   "EXECUTION",
   "APPROVAL",
+  // An owner's call after the plan's approval (TR-263): `RULING <time> — <decision> — <why> — <cost if wrong>`.
+  "RULING",
   "REVIEW",
   "FINAL",
   "ACCEPTANCE",

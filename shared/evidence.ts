@@ -4,7 +4,7 @@
  * the parsing tolerates the label's case, a bullet in front, and three separators. Only the newest
  * record of the round in progress counts (TR-229: a reopened ticket presents again); whether it is enough is judged here, whether a file exists is told by the caller.
  */
-import { roundRecords } from "./execution";
+import { roundRecords } from "./execution.ts";
 
 export interface ParsedEvidence {
   checks: { command: string; result: string }[];

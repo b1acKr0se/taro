@@ -1,0 +1,2 @@
+# Adapted from superlite (MIT), bench/tasks/combo-planted/hidden/requirements.txt: pinned to the host Chromium (bench/tasks/PORTED.md)
+playwright==1.62.0

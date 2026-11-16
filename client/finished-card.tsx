@@ -9,7 +9,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { Text, View } from "react-native";
 
-import type { FinishedTone } from "./finished-cards";
+import type { AnsweredLine, FinishedTone } from "./finished-cards";
 import { Pressable } from "./focus";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { SPACE } from "./spacing";
@@ -34,6 +34,7 @@ export function FinishedCard({
   time = null,
   answer = null,
   words = null,
+  answers = [],
   action = null,
 }: {
   theme: PluginTheme;
@@ -52,6 +53,8 @@ export function FinishedCard({
   answer?: string | null;
   /** What the user typed with the answer, quoted under the line with its line breaks. */
   words?: string | null;
+  /** A card asking several questions: a line per question, `<header>: ` then its option in bold or its words quoted. */
+  answers?: readonly AnsweredLine[];
   /** A link at the line's end (View plan). */
   action?: { label: string; onPress: () => void } | null;
 }) {
@@ -60,6 +63,7 @@ export function FinishedCard({
   const hasSubject = subject !== null && subject !== "";
   const hasAnswer = answer !== null && answer !== "";
   const hasWords = words !== null && words !== "";
+  const hasLines = answers.length > 0;
   const label = [outcome, time, lead, subject].filter((part) => part !== null && part !== "").join(", ");
   const link =
     action === null ? null : (
@@ -88,8 +92,15 @@ export function FinishedCard({
         {compact ? null : link}
       </View>
       {compact && link !== null ? <View style={{ flexDirection: "row", marginLeft: MARK_SIZE + SPACE.sm }}>{link}</View> : null}
-      {!hasAnswer && !hasWords ? null : (
+      {!hasAnswer && !hasWords && !hasLines ? null : (
         <View style={{ marginLeft: MARK_SIZE + SPACE.sm, paddingLeft: SPACE.md - 2, borderLeftWidth: 2, borderLeftColor: colors.border }}>
+          {answers.map((line, index) => (
+            <Text key={`${index}:${line.header}`} numberOfLines={WORDS_LINES} style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.small, lineHeight: LINE_HEIGHT }}>
+              {`${line.header}: `}
+              {line.answer === null ? null : <Text style={{ color: colors.foreground, fontWeight: "600" }}>{line.answer}</Text>}
+              {line.words === null ? null : `${line.answer === null ? "" : " "}“${line.words}”`}
+            </Text>
+          ))}
           {hasAnswer ? (
             <Text numberOfLines={WORDS_LINES} style={{ color: colors.foreground, fontSize: FONT_SIZE.small, lineHeight: LINE_HEIGHT, fontWeight: "600" }}>
               {answer}

@@ -11,6 +11,7 @@ import {
   decisionOptionRows,
   decisionSubmit,
   decisionTimelineItems,
+  defaultNote,
   isChangeOption,
   optionAsksForWords,
   optionChips,
@@ -394,5 +395,30 @@ describe("planChangeBox", () => {
   it("sends an option that asks for words with them", () => {
     expect(planChangeBox("Rename…", "")).toEqual({ sendLabel: "Send", placeholder: "Say how for “Rename”…", enabled: false, label: "Rename…", text: "" });
     expect(planChangeBox("Rename…", "call it notes")).toMatchObject({ enabled: true, label: "Rename…", text: "call it notes" });
+  });
+});
+
+describe("defaultNote", () => {
+  const asked = parseDecisionBody("id: naming\nquestion: Call it Export?\nblocking: false\noptions:\n  - label: Export\n    prompt: Export\nrecommended: Export\nreason: shorter\ndefault: Export");
+
+  it("says what the owner goes on with on a question that does not pause work", () => {
+    expect(defaultNote(stored(asked))).toBe("Going with “Export” unless you say otherwise.");
+  });
+
+  it("says the owner already went on with the default on a question made not blocking after the plan's approval (TR-263)", () => {
+    expect(defaultNote(stored({ ...asked, blocking: true }, { blocking: false, madeNonBlocking: true }))).toBe("Asked after you approved the plan, so the owner went on with “Export”. Answer to change it.");
+  });
+
+  it("says nothing on a blocking question or one with no default", () => {
+    expect(defaultNote(stored({ ...asked, blocking: true }))).toBeNull();
+    expect(defaultNote(stored({ ...asked, default: "  " }))).toBeNull();
+  });
+});
+
+describe("a block's surprise in the timeline (TR-263)", () => {
+  it("stays out of the timeline item, whose data is JSON", () => {
+    const text = ["```decision", "id: naming", "question: Rename?", "surprise: criterion 2 names the old command", "options:", "  - label: Yes", "    prompt: Yes", "recommended: Yes", "```"].join("\n");
+    const item = decisionTimelineItems(text, "complete")?.items.find((each) => each.kind === "taro-decision-block");
+    expect(item?.data).not.toHaveProperty("decision.surprise");
   });
 });

@@ -338,8 +338,26 @@ export class Stats {
   }
 
   count(project: string, ticket: string, field: "nudges" | "decisions" | "recoveries" | "idleCompactions" | "permissionDenials"): Promise<void> {
+    const at = new Date().toISOString();
     return this.update(project, ticket, (stats) => {
       stats[field] += 1;
+      if (field === "nudges") stats.nudgedAt.push(at);
+    });
+  }
+
+  /** A permission ask the rules did not answer was open from `start` to `end`; counted on the parent too, as agents are. */
+  permissionWaited(project: string, ticket: string, start: string, end: string): Promise<void> {
+    const waitedMs = Math.max(0, Date.parse(end) - Date.parse(start)) || 0;
+    return this.modify((file) => {
+      for (const target of ticketAndParent(ticket)) {
+        const key = keyFor(project, target);
+        const stats = file.tickets[key] ?? TicketStatsSchema.parse({ project, ticket: target });
+        stats.permissionAsks += 1;
+        stats.permissionWaitMs += waitedMs;
+        stats.permissionWaits.push({ start, end: waitedMs === 0 ? start : end });
+        file.tickets[key] = stats;
+      }
+      return true;
     });
   }
 

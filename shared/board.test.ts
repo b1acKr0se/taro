@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { boardColumn, columnCounts, complexityOf, inboxCount, isInboxTicket, needsYouExtras, questionsForUser, ticketAgents, type CardInputs, type JoinedAgent } from "./board";
+import { boardColumn, childrenWorking, columnCounts, complexityOf, inboxCount, isInboxTicket, needsYouExtras, questionsForUser, ticketAgents, waitingOnUser, type CardInputs, type JoinedAgent } from "./board";
 
 const base: CardInputs = { status: "In Progress", ownerElsewhere: false, agent: { status: "idle", pendingPermissions: 0 }, lastStatus: "waiting", openQuestions: 0, stalledAfterNudge: false };
 
@@ -90,6 +90,11 @@ describe("complexityOf", () => {
   it("reads the label", () => {
     expect(complexityOf(["investigation", "complexity-medium"])).toBe("medium");
     expect(complexityOf([])).toBeNull();
+  });
+
+  it("shows the highest when a raised ticket kept its old label", () => {
+    expect(complexityOf(["complexity-low", "complexity-medium"])).toBe("medium");
+    expect(complexityOf(["complexity-high", "complexity-trivial"])).toBe("high");
   });
 });
 
@@ -190,6 +195,30 @@ describe("ticketAgents", () => {
     expect(joined.columnAgent?.id).toBe("owner");
     expect(joined.askers.map((entry) => entry.id)).toEqual([]);
     expect(ticketAgents("DEMO-1", null, grouped([parentOwner, childBuilder])).childSubagents).toEqual([]);
+  });
+
+  // Parallel children, each in its own worktree: every one keeps its own card and agent, the parent counts them.
+  it("gives two children working at once a card and agent each, and the parent counts them", () => {
+    const first = agent("first", "implementer", "DEMO-1.01", "running", "DEMO-1.01 · implementer: writer");
+    const second = agent("second", "implementer", "DEMO-1.02", "running", "DEMO-1.02 · implementer: button");
+    const waiting = agent("third", "implementer", "DEMO-1.03", "idle", "DEMO-1.03 · implementer: docs");
+    const byTicket = grouped([parentOwner, first, second, waiting]);
+    const childIds = ["DEMO-1.01", "DEMO-1.02", "DEMO-1.03"];
+    for (const [child, own] of [["DEMO-1.01", "first"], ["DEMO-1.02", "second"]] as const) {
+      const joined = ticketAgents(child, "DEMO-1", byTicket, "In Progress");
+      expect(joined.subagents.map((entry) => entry.id)).toEqual([own]);
+      expect(joined.columnAgent?.id).toBe(own);
+    }
+    const parent = ticketAgents("DEMO-1", null, byTicket, "In Progress", childIds);
+    expect(parent.childSubagents.map((entry) => entry.id)).toEqual(["first", "second", "third"]);
+    expect(childrenWorking(childIds, parent.childSubagents)).toBe(2);
+    // The third child, blocked by a dependency, has not started: no agent, so not counted.
+    expect(childrenWorking(childIds, [first, second])).toBe(2);
+    expect(childrenWorking(childIds, [first, first, waiting])).toBe(1);
+    expect(childrenWorking(childIds, [])).toBe(0);
+    // Labelled with the parent but titled for the child still counts once.
+    const titled = agent("titled", "implementer", "DEMO-1", "running", "DEMO-1.02 · implementer: button");
+    expect(childrenWorking(childIds, [second, titled])).toBe(1);
   });
 
   // TR-096: a researcher of a ticket sat on a permission while its card stayed in Working.
@@ -293,9 +322,9 @@ describe("needsYouExtras and inboxCount (TR-064)", () => {
 
 describe("inboxCount counts each card the Inbox lists (TR-123)", () => {
   const quiet = { managerDecisions: [], alerts: [] };
-  const question = { id: "scope-approval" };
+  const question: { id: string; madeNonBlocking?: boolean } = { id: "scope-approval" };
   // An owner's questions arrive as ticketQuestions; their tickets' cards carry them as decisions.
-  const owner = (column: "needs-you" | "working" | "queued" | "stalled", decisions: readonly unknown[]) => ({ column, decisions });
+  const owner = (column: "needs-you" | "working" | "queued" | "stalled", decisions: readonly { madeNonBlocking?: boolean }[]) => ({ column, decisions });
 
   // TR-186: a question asked after approval is non-blocking, and its idle owner's card sat in Working.
   it("puts a ticket with an open non-blocking question under Needs you, its owner idle or going on with the default", () => {
@@ -312,6 +341,20 @@ describe("inboxCount counts each card the Inbox lists (TR-123)", () => {
     // An implementer or researcher asking its owner is not a question for the user.
     expect(questionsForUser([{ blocking: false, agentRole: "implementer" }, { blocking: false, agentRole: "researcher" }, { blocking: false, agentRole: "reviewer" }])).toBe(0);
     expect(questionsForUser([{ blocking: true, agentRole: "implementer" }])).toBe(1);
+  });
+
+  // TR-263 RULING: a question the owner went on with by default after approval is the owner's call, answerable in the ticket chat.
+  it("does not wait on the user for an owner's question it went on with by default after approval", () => {
+    const defaulted = { blocking: false, agentRole: "owner", madeNonBlocking: true };
+    expect(questionsForUser([defaulted])).toBe(0);
+    expect(questionsForUser([defaulted, { blocking: false, agentRole: "owner" }])).toBe(1);
+    expect(waitingOnUser([defaulted, { blocking: true, agentRole: "owner", madeNonBlocking: false }])).toEqual([{ blocking: true, agentRole: "owner", madeNonBlocking: false }]);
+  });
+
+  it("lists a waiting ticket as itself when its only question was gone on with by default (TR-263)", () => {
+    expect(isInboxTicket(owner("needs-you", [{ madeNonBlocking: true }]))).toBe(true);
+    expect(inboxCount({ ...quiet, cards: [owner("needs-you", [{ madeNonBlocking: true }])], ticketQuestions: 0 }, false)).toBe(1);
+    expect(inboxCount({ ...quiet, cards: [owner("working", [{ madeNonBlocking: true }])], ticketQuestions: 0 }, false)).toBe(0);
   });
 
   it("counts an owner's non-blocking question once, its ticket drawn as that question in Needs you", () => {

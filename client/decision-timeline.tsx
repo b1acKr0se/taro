@@ -8,6 +8,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { openExternalUrl, useRpc, type PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { useToast } from "@getpaseo/plugin/client/react-native";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Text, View } from "react-native";
 import { z } from "zod";
 
@@ -16,9 +17,10 @@ import { decisionBlockView, SCOPE_APPROVAL, untrackedDecision } from "../shared/
 import { ParsedDecisionSchema, type ParsedDecision } from "../shared/reports";
 import { DecisionCard } from "./decision-card";
 import { FinishedCard } from "./finished-card";
-import { blockCardSubject, storedDecisionView, type FinishedView } from "./finished-cards";
+import { blockCardSubject, questionLead, storedDecisionView, type FinishedView } from "./finished-cards";
 import { errorText, formatClock } from "./format";
 import { Markdown } from "./markdown";
+import { forgetSeveralDrafts } from "./several-drafts";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 
 export const DecisionTextSchema = z.object({ text: z.string() });
@@ -44,6 +46,12 @@ export function DecisionBlockItem({ agentId, item, theme, layout }: PluginTimeli
     lookup.data !== undefined ? { state: "done", decision: lookup.data.decision, agentLive: lookup.data.agentLive } : lookup.isError ? { state: "error" } : { state: "loading" },
   );
 
+  const settledKey = view.kind === "answered" || view.kind === "withdrawn" ? (lookup.data?.decision?.key ?? null) : null;
+  // A settled card's picks not sent are of no more use (TR-207).
+  useEffect(() => {
+    if (settledKey !== null) forgetSeveralDrafts(settledKey);
+  }, [settledKey]);
+
   switch (view.kind) {
     case "open":
       return <DecisionCard decision={view.decision} theme={theme} compact={layout.compact} answeredFrom="tab" onAnswered={() => void lookup.refetch()} />;
@@ -60,12 +68,13 @@ export function DecisionBlockItem({ agentId, item, theme, layout }: PluginTimeli
       return (
         <FinishedCard
           theme={theme}
-          lead={plan ? null : "Question"}
+          lead={plan ? null : questionLead(block)}
           subject={blockCardSubject(block, stored?.ticket ?? null)}
           outcome={outcome.outcome}
           tone={outcome.tone}
           time={outcome.time}
           answer={outcome.answer ?? null}
+          answers={outcome.answers ?? []}
           words={outcome.words}
         />
       );

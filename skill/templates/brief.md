@@ -1,4 +1,4 @@
-<!-- The ticket description the manager files (decision 21): the user's words, then at most 5 bullets of notes, one or two lines each (cut, never exceed; leave out a bullet with nothing to say). Keep the user's words; never widen the ask. -->
+<!-- The ticket description the manager files: the user's words, then at most 5 bullets of notes, one or two lines each (cut, never exceed; leave out a bullet with nothing to say). Keep the user's words; never widen the ask. -->
 <!-- The ticket's title is not part of the brief: it names what the ticket does in a few words. "Brainstorm first", kind, model and priority go in the notes below, never in the title. -->
 ## User's intent
 

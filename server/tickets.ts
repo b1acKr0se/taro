@@ -8,7 +8,7 @@ import { startsPlanning } from "../shared/owner-start";
 import { dispatchPending } from "../shared/pause";
 import { closeRoundRefusal, reopenedRecordText, reopenRefusal, reopenRound, roundClosedRecordText } from "../shared/reopen";
 import type { TicketPriority, TicketProblem } from "../shared/ticket-format";
-import { createTicketStore, type TicketStore } from "./ticket-store";
+import { createTicketStore, PLAN_UPDATED, type TicketStore } from "./ticket-store";
 
 export interface TicketSummary {
   id: string;
@@ -31,6 +31,8 @@ export interface TicketDetail extends TicketSummary {
   implementationNotes: string | null;
   finalSummary: string | null;
   subtasks: { id: string; title: string; status: string }[];
+  /** When the plan text last changed; null when the ticket predates that record. */
+  planUpdatedAt?: string | null;
 }
 
 export type { TicketProblem };
@@ -93,6 +95,7 @@ export async function viewTicket(trackerPath: string, ticketId: string): Promise
     implementationNotes: textOrNull(ticket.notes),
     finalSummary: textOrNull(ticket.finalSummary),
     subtasks: subtasks.map((child) => ({ id: child.id, title: child.title, status: child.status })),
+    planUpdatedAt: typeof ticket.extra[PLAN_UPDATED] === "string" ? ticket.extra[PLAN_UPDATED] : null,
   };
 }
 

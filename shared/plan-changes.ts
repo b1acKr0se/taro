@@ -7,50 +7,14 @@
  */
 import { z } from "zod";
 
+import type { PlanAnswerKind } from "./approval-gate";
 import type { ParsedPlan, PlanSection } from "./plan";
-import { roundNotes } from "./reopen";
 
 /** How the user last answered a plan: Approve (or an APPROVAL record), Request changes, or another option. */
 export const PlanAnswerKindSchema = z.enum(["approved", "changes requested", "answered"]);
-export type PlanAnswerKind = z.infer<typeof PlanAnswerKindSchema>;
-
-/** The newest record of the user answering a plan. */
-export interface PlanAnswerRecord {
-  /** The record's line as written, to find the tracker commit that added it. */
-  line: string;
-  at: string;
-  kind: PlanAnswerKind;
-}
-
-const ANSWER = /^ANSWER (\S+) — scope-approval: ".*" → (.*)$/;
-const APPROVAL = /^APPROVAL (\S+) — /;
-
-/** `Approve ("Approve")` is approval; typed words, bare or with Request changes, never are (TR-140). */
-function answerKind(answer: string): PlanAnswerKind {
-  if (answer.startsWith('"')) return "changes requested";
-  const label = answer.split(' ("')[0]?.trim() ?? "";
-  if (label === "Approve") return "approved";
-  if (label === "" || label === "Request changes") return "changes requested";
-  return "answered";
-}
-
-/** The notes' plan answers and APPROVAL records, in the notes' order. */
-export function planAnswerRecords(notes: string | null): PlanAnswerRecord[] {
-  if (notes === null) return [];
-  return notes.split("\n").flatMap((raw): PlanAnswerRecord[] => {
-    const line = raw.trim();
-    const answer = ANSWER.exec(line);
-    if (answer !== null && answer[1] !== undefined && answer[2] !== undefined) return [{ line, at: answer[1], kind: answerKind(answer[2]) }];
-    const approval = APPROVAL.exec(line);
-    return approval !== null && approval[1] !== undefined ? [{ line, at: approval[1], kind: "approved" }] : [];
-  });
-}
-
-/** The newest plan answer or APPROVAL record of the round in progress (TR-229); null when the user has not answered its plan yet. */
-export function lastPlanAnswer(notes: string | null): PlanAnswerRecord | null {
-  const records = planAnswerRecords(roundNotes(notes));
-  return records[records.length - 1] ?? null;
-}
+export type { PlanAnswerKind, PlanAnswerRecord } from "./approval-gate";
+// The parser moved to approval-gate.ts (TR-263), which the conformance check runs under plain node.
+export { lastPlanAnswer, planAnswerRecords } from "./approval-gate";
 
 export interface SectionChanges {
   /** The section's lines that are not bullets changed. */

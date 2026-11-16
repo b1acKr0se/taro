@@ -2,7 +2,7 @@
  * How Accept merges a pull request (TR-110): the setting's names, the `gh pr merge` flag for each,
  * and which methods the GitHub repository allows, as `gh repo view` reports them.
  */
-import type { MergeMethod } from "./project";
+import type { MergeMethod } from "./project.ts";
 
 export const MERGE_METHODS: readonly MergeMethod[] = ["merge", "rebase", "squash"];
 

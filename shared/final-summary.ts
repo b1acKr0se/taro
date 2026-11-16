@@ -1,24 +1,29 @@
 /**
  * A FINAL summary in the template's short format (`skill/templates/final.md`, TR-061): What
- * changed, How it was verified and Limitations as bullets, each heading a Markdown heading, a bold
+ * changed, How it was verified and Limitations as bullets, and Rulings when the owner made any after
+ * the plan's approval (TR-263), each heading a Markdown heading, a bold
  * line or a line ending in a colon. Pure. A FINAL without What changed is an older free-form one and
  * stays Markdown.
  */
 import { finalSummaryBody } from "./execution";
 
-export type FinalSectionKey = "changed" | "verified" | "limitations";
+export type FinalSectionKey = "changed" | "verified" | "limitations" | "rulings";
 
 /** The template's sections in order, with their bullet limits. */
 export const FINAL_SECTIONS: readonly { key: FinalSectionKey; heading: string; limit: number }[] = [
   { key: "changed", heading: "What changed", limit: 5 },
   { key: "verified", heading: "How it was verified", limit: 3 },
   { key: "limitations", heading: "Limitations", limit: 3 },
+  // Optional: the owner's calls after approval, the five costliest when there were more (RULING records).
+  { key: "rulings", heading: "Rulings", limit: 5 },
 ];
 
 export interface FinalSections {
   changed: string[];
   verified: string[];
   limitations: string[];
+  /** Each `<decision> — <why> — <cost if wrong>`, the last perhaps "3 more in the ticket"; empty when the FINAL has none. */
+  rulings: string[];
   /** Everything else (the revision line, prose, other sections) as Markdown; empty when none. */
   rest: string;
 }
@@ -37,7 +42,7 @@ function sectionKey(heading: string): FinalSectionKey | null {
 /** The FINAL's sections, or null when it has no What changed section. */
 export function finalSections(finalSummary: string | null): FinalSections | null {
   if (finalSummary === null) return null;
-  const sections: Record<FinalSectionKey, string[]> = { changed: [], verified: [], limitations: [] };
+  const sections: Record<FinalSectionKey, string[]> = { changed: [], verified: [], limitations: [], rulings: [] };
   const rest: string[] = [];
   let current: FinalSectionKey | null = null;
   let found = false;
@@ -73,4 +78,13 @@ export function finalSections(finalSummary: string | null): FinalSections | null
     });
   if (!found) return null;
   return { ...sections, rest: rest.join("\n").trim() };
+}
+
+/** The line that ends a cut Rulings section: "3 more in the ticket". */
+const MORE_IN_TICKET = /^\d+ more in the ticket\.?$/i;
+
+/** How many of a section's items show before the rest folds: its limit, and a closing "N more in the ticket" line with it. */
+export function shownLimit(limit: number, items: readonly string[]): number {
+  const last = items[items.length - 1];
+  return items.length === limit + 1 && last !== undefined && MORE_IN_TICKET.test(last.trim()) ? limit + 1 : limit;
 }

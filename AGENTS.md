@@ -85,7 +85,11 @@ EVIDENCE, FINAL) are the record of what was built, why and how it was verified.
 - An owner's child agent without `taro.project` (found by `paseo.parent-agent-id`, `server/unlabelled-agents.ts`, TR-259) cannot be labelled
   afterwards: each minute's sweep messages the owner, notes the ticket once and keeps a board alert until the agent is archived.
 - Agent-facing text lives in `skill/` (what agents read) and `templates/` (what the plugin writes or
-  sends), never in code.
+  sends), never in code. An owner reads `roles/owner.md` and its level's page (`skill/levels/`); each
+  phase's page (`skill/phases/`) is sent by the plugin once when the phase starts (`shared/next-step.ts`
+  picks it from the ticket, `server/next-step.ts` fills it) and printed again by `taro next <ID>`. A rule
+  the plugin enforces is one line there, its message says the rest. Every page has a word budget in
+  `skill/word-budget.test.ts`, and the text names no ticket numbers (history lives in the tracker).
 - Comments explain why, briefly. Full identifiers, no abbreviations.
 
 ## Paseo plugin API essentials

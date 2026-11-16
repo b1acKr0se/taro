@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { ParsedDecisionSchema, StatusStateSchema } from "./reports";
 import { IdleCompactionSchema } from "./idle-compaction";
+import { wentOnWithDefault } from "./planning-questions";
 import { RoleSchema } from "./project";
 
 export const DecisionAnswerSchema = z.object({
@@ -10,6 +11,8 @@ export const DecisionAnswerSchema = z.object({
   /** The option pressed, or null for typed words. */
   label: z.string().nullable(),
   at: z.string(),
+  /** On a card asking several questions (TR-207), each question's answer in order; `text` is then the message sent. */
+  answers: z.array(z.object({ header: z.string(), label: z.string().nullable(), text: z.string() })).optional(),
 });
 
 export const StoredDecisionSchema = ParsedDecisionSchema.extend({
@@ -38,6 +41,13 @@ export const StoredDecisionSchema = ParsedDecisionSchema.extend({
    * was planning, or still open when its owner delivered.
    */
   madeBlocking: z.boolean().optional(),
+  /**
+   * Stored not blocking by the plugin whatever its block said (TR-263): asked blocking by an owner
+   * after its plan was approved, with no `surprise:`; the owner goes on with its default.
+   */
+  madeNonBlocking: z.boolean().optional(),
+  /** Closed by the plugin as its owner delivered (TR-263): a question made not blocking, gone on with its default. Status "withdrawn". */
+  closedWithDefault: z.boolean().optional(),
 });
 export type StoredDecision = z.infer<typeof StoredDecisionSchema>;
 
@@ -80,12 +90,24 @@ export const AgentStateSchema = z.object({
   evidenceReminded: z.string().nullable().default(null),
   /** Told its commits have no plan on the ticket (TR-206); cleared once the plan is there, so a later gap is told again. */
   noPlanFlagged: z.boolean().default(false),
+  /** Told once that its commits came before this round's plan approval (TR-263); cleared once approved. */
+  noApprovalFlagged: z.boolean().default(false),
   /** Turns in a row that ended waiting for acceptance with the ticket not yet Awaiting acceptance (TR-252); reminders back off. */
   prematureWaits: z.number().int().default(0),
   /** What the owner was last told its delivery record lacked (TR-254); null once complete, so a later gap is told again. */
   deliveryReminded: z.string().nullable().default(null),
   /** Turns in a row an Accept hand-off owner ended with the ticket still waiting on its merge (TR-256). */
   acceptStalls: z.number().int().default(0),
+  /** The step pages sent to this owner, by ticket, round and page (`shared/next-step.ts` stepKey): each is sent once. */
+  stepsSent: z.array(z.string()).default([]),
+  /** The ticket could not be read when a step page was due: the minute's sweep reads it again, so the page is not lost. */
+  stepUnread: z.boolean().default(false),
+  /**
+   * Whether this owner's steps were followed from its start: `untracked` on a record kept from before the
+   * plugin sent step pages; `baseline` once such an owner is found to have taken turns, as it is already
+   * in its step (that page is recorded as sent, not sent); `tracked` otherwise.
+   */
+  stepPages: z.enum(["untracked", "baseline", "tracked"]).default("untracked"),
 });
 export type AgentState = z.infer<typeof AgentStateSchema>;
 
@@ -124,10 +146,11 @@ export function withdrawOpenDecisions(decisions: StoredDecision[], matches: (dec
 /**
  * The open decision that holds back another one an agent asks (TR-124): an owner asks the user one
  * thing at a time, so its next question waits until this one is answered or withdrawn. Re-asking
- * the open decision itself (the same key) is never held.
+ * the open decision itself (the same key) is never held. One the owner went on with by default
+ * (TR-263) holds nothing: the user is not prompted for it, so its answer may never come.
  */
-export function openQuestionHolding<T extends Pick<StoredDecision, "agentId" | "key" | "status">>(decisions: readonly T[], agentId: string, key: string): T | undefined {
-  return decisions.find((decision) => decision.agentId === agentId && decision.status === "open" && decision.key !== key);
+export function openQuestionHolding<T extends Pick<StoredDecision, "agentId" | "key" | "status" | "madeNonBlocking">>(decisions: readonly T[], agentId: string, key: string): T | undefined {
+  return decisions.find((decision) => decision.agentId === agentId && decision.status === "open" && decision.key !== key && !wentOnWithDefault(decision));
 }
 
 /** A question handed to a ticket's new owner (TR-136); `shown`: the user saw some copy of it. */

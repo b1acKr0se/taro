@@ -1,0 +1,1 @@
+PYTHONPATH="$PYTEST_PATH:$PWD/src:$PWD" python3 -m pytest hidden_tests -v -p no:cacheprovider

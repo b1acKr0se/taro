@@ -1,0 +1,216 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index 992b144..5bedc71 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -13,7 +13,7 @@ requires = ["hatchling"]
+ build-backend = "hatchling.build"
+ 
+ [tool.hatch.build.targets.wheel]
+-packages = ["src/sitegen", "src/minisheet"]
++packages = ["src/sitegen", "src/minisheet", "src/sheetsite"]
+ 
+ [tool.pytest.ini_options]
+ pythonpath = ["src"]
+diff --git a/src/minisheet/csvio.py b/src/minisheet/csvio.py
+index c2bedb8..d02f6cf 100644
+--- a/src/minisheet/csvio.py
++++ b/src/minisheet/csvio.py
+@@ -3,8 +3,9 @@ from __future__ import annotations
+ 
+ import csv
+ import io
++import re
+ 
+-from .refs import MAX_COL, MAX_ROW, Ref, to_a1
++from .refs import MAX_COL, MAX_ROW, Ref, parse_ref, to_a1
+ from .values import ErrorValue, to_text
+ from .workbook import Workbook
+ 
+@@ -43,7 +44,62 @@ def _field(s: str) -> str:
+     return s
+ 
+ 
+-def to_csv_text(wb: Workbook, values: bool = True) -> str:
++MAX_WIDTH = 255
++_WIDTH_ITEM = re.compile(
++    r"\s*([A-Za-z]{1,2})\s*(?:-\s*([A-Za-z]{1,2})\s*)?=\s*([0-9]+)\s*", re.ASCII)
++
++
++def _col_of(letters: str) -> int:
++    return parse_ref(letters + "1").col
++
++
++def parse_widths(spec: str) -> dict[int, int]:
++    """Parse "A=12,C-E=8" into {col index: width}. Raises ValueError naming the bad item."""
++    if not isinstance(spec, str):
++        raise ValueError(f"widths spec must be a string, got {type(spec).__name__}")
++    if spec.strip() == "":
++        return {}
++    out: dict[int, int] = {}
++    for item in spec.split(","):
++        label = item.strip()
++        m = _WIDTH_ITEM.fullmatch(item)
++        if m is None:
++            raise ValueError(f"bad width item: {label!r}" if label else "empty width item")
++        first = _col_of(m.group(1))
++        last = first if m.group(2) is None else _col_of(m.group(2))
++        if first > last:
++            raise ValueError(f"column range out of order in width item: {label}")
++        width = int(m.group(3))
++        if not 1 <= width <= MAX_WIDTH:
++            raise ValueError(f"width must be 1..{MAX_WIDTH} in width item: {label}")
++        for col in range(first, last + 1):
++            if col in out:
++                raise ValueError(f"column set twice, in width item: {label}")
++            out[col] = width
++    return out
++
++
++def _is_int(x) -> bool:
++    return isinstance(x, int) and not isinstance(x, bool)
++
++
++def _check_widths(widths) -> dict[int, int]:
++    if widths is None:
++        return {}
++    if isinstance(widths, str):
++        return parse_widths(widths)
++    if not isinstance(widths, dict):
++        raise ValueError(f"widths must be a dict, a str or None, got {type(widths).__name__}")
++    for col, w in widths.items():
++        if not _is_int(col) or not 0 <= col <= MAX_COL:
++            raise ValueError(f"bad width column: {col!r}")
++        if not _is_int(w) or not 1 <= w <= MAX_WIDTH:
++            raise ValueError(f"bad width for column {col}: {w!r}")
++    return widths
++
++
++def to_csv_text(wb: Workbook, values: bool = True, widths=None) -> str:
++    widths = _check_widths(widths)
+     keys = []
+     for name in wb.cells():
+         ref = _parse(name)
+@@ -67,6 +123,8 @@ def to_csv_text(wb: Workbook, values: bool = True) -> str:
+                 text = str(v) if isinstance(v, ErrorValue) else to_text(v)
+             else:
+                 text = wb.raw(name)
++            if c in widths:
++                text = text.ljust(widths[c])
+             fields.append(_field(text))
+         lines.append(",".join(fields) + "\n")
+     return "".join(lines)
+@@ -77,7 +135,7 @@ def _parse(name):
+     return parse_ref(name)
+ 
+ 
+-def save_csv(wb: Workbook, path, values: bool = True) -> None:
+-    text = to_csv_text(wb, values)
++def save_csv(wb: Workbook, path, values: bool = True, widths=None) -> None:
++    text = to_csv_text(wb, values, widths)
+     with open(path, "w", encoding="utf-8", newline="") as f:
+         f.write(text)
+diff --git a/src/sheetsite/__init__.py b/src/sheetsite/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/src/sheetsite/__main__.py b/src/sheetsite/__main__.py
+new file mode 100644
+index 0000000..dd8a8c9
+--- /dev/null
++++ b/src/sheetsite/__main__.py
+@@ -0,0 +1,5 @@
++import sys
++
++from .cli import main
++
++sys.exit(main())
+diff --git a/src/sheetsite/bridge.py b/src/sheetsite/bridge.py
+new file mode 100644
+index 0000000..6551f34
+--- /dev/null
++++ b/src/sheetsite/bridge.py
+@@ -0,0 +1,33 @@
++"""Column widths for minisheet's CSV export, taken from sitegen front matter."""
++from __future__ import annotations
++
++from minisheet.csvio import parse_widths, to_csv_text
++from minisheet.workbook import Workbook
++from sitegen import frontmatter
++
++KEY = "csv_widths"
++
++
++def widths_from_meta(meta: dict) -> dict[int, int]:
++    if KEY not in meta:
++        return {}
++    value = meta[KEY]
++    if isinstance(value, str):
++        spec = value
++    elif isinstance(value, list) and all(isinstance(i, str) for i in value):
++        spec = ",".join(value)
++    else:
++        raise ValueError(f"{KEY}: must be a string or a list of strings")
++    try:
++        return parse_widths(spec)
++    except ValueError as e:
++        raise ValueError(f"{KEY}: {e}") from e
++
++
++def widths_from_markdown(text: str) -> dict[int, int]:
++    meta, _ = frontmatter.parse(text)
++    return widths_from_meta(meta)
++
++
++def export_csv(wb: Workbook, markdown_text: str, values: bool = True) -> str:
++    return to_csv_text(wb, values, widths=widths_from_markdown(markdown_text))
+diff --git a/src/sheetsite/cli.py b/src/sheetsite/cli.py
+new file mode 100644
+index 0000000..d7c6c71
+--- /dev/null
++++ b/src/sheetsite/cli.py
+@@ -0,0 +1,46 @@
++"""Command line: python -m sheetsite export POST_MD CSV_IN CSV_OUT [--raw]."""
++from __future__ import annotations
++
++import sys
++
++from minisheet.csvio import load_csv, save_csv
++
++from .bridge import widths_from_markdown
++
++USAGE = "usage: python -m sheetsite export POST_MD CSV_IN CSV_OUT [--raw]"
++
++
++def main(argv=None, stdout=None, stderr=None) -> int:
++    argv = list(sys.argv[1:] if argv is None else argv)
++    stdout = sys.stdout if stdout is None else stdout
++    stderr = sys.stderr if stderr is None else stderr
++
++    def usage() -> int:
++        stderr.write(USAGE + "\n")
++        return 2
++
++    if not argv or argv[0] != "export":
++        return usage()
++    raw = False
++    paths = []
++    for a in argv[1:]:
++        if a == "--raw":
++            raw = True
++        elif a.startswith("-"):
++            return usage()
++        else:
++            paths.append(a)
++    if len(paths) != 3:
++        return usage()
++    post, src, dst = paths
++    try:
++        with open(post, "rb") as f:
++            text = f.read().decode("utf-8")
++        widths = widths_from_markdown(text)
++        wb = load_csv(src)
++        save_csv(wb, dst, values=not raw, widths=widths)
++    except (OSError, ValueError) as e:
++        stderr.write(f"error: {e}\n")
++        return 1
++    stdout.write(f"exported: {len(widths)} sized columns\n")
++    return 0
