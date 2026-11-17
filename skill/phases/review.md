@@ -45,7 +45,5 @@ that → a RULING (`review-dispute` only with `surprise:`).
 
 Record a **REVIEW** that answers every finding (fixed, or rejected with the reason), says what was
 re-checked (the range, fix check or full re-review) and the verdict, and ends with `verdict: clean`
-once nothing is left to fix (else `verdict: findings`). Add the line `blockers-open: N` (0 when none):
-the project's auto-accept switch reads it, and a REVIEW without it keeps the ticket on the user's Accept.
-A self-review (trivial, low) carries it too. The clean verdict brings
+once nothing is left to fix (else `verdict: findings`). The clean verdict brings
 `phases/delivery.md`, filled with what the delivery still lacks.

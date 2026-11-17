@@ -12,7 +12,6 @@ import { idleCompactionAfterTurn, idleCompactionDue } from "../shared/idle-compa
 import { isSubagentRole, roleFromLabel, TARO_LABELS, type Role } from "../shared/project";
 import { CHAT_MESSAGE_PREFIX } from "../shared/pending-sends";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
-import { accepterText } from "../shared/auto-accept";
 import { deliveryMissing } from "../shared/execution";
 import { remindsAtCount, waitsPrematurely } from "../shared/premature-wait";
 import { ACCEPT_STALL_LIMIT, acceptHandoffOpen, acceptStallReason } from "../shared/accept-stall";
@@ -638,10 +637,8 @@ export class Supervisor {
     const tracker = (await projectPaths(identity.project)).tracker;
     let pullRequest = "";
     let open = false;
-    let accepter = "by the user";
     try {
       const detail = await viewTicket(tracker, identity.ticket);
-      accepter = accepterText(detail.implementationNotes);
       open = detail.status === "Awaiting acceptance" && acceptHandoffOpen(detail.implementationNotes);
       const url = open ? pullRequestUrl(detail.implementationNotes, detail.finalSummary) : null;
       if (url === null) pullRequest = "No pull request is recorded for this ticket (a local-branch delivery).";
@@ -665,7 +662,7 @@ export class Supervisor {
       // The card is back with the user: no nudge or stall reminder on top of it.
       return true;
     }
-    await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.acceptUnfinished, { ticket: identity.ticket, pullRequest, accepter, skill: await skillDirectory() }));
+    await sendFromPlugin(paseo, agent.id, await message(TEMPLATES.acceptUnfinished, { ticket: identity.ticket, pullRequest, skill: await skillDirectory() }));
     return true;
   }
 

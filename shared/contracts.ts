@@ -150,33 +150,6 @@ export const writeProjectSettings = defineRpc({
   output: z.object({ config: ProjectConfigSchema }),
 });
 
-/**
- * The auto-accept switch and its hold list (TR-257), read and written by the manager's button and the settings page alike.
- * Each field left out stays as it was. Turning it on takes the tickets waiting with complete records at once
- * (so the caller offers to hold them first); the hold list is the whole list, and each newly held ticket gets a note.
- */
-export const setAutoAccept = defineRpc({
-  name: "taro.project.auto-accept.set",
-  input: z.object({ project: ProjectNameSchema, enabled: z.boolean().optional(), hold: z.array(z.string()).optional() }),
-  output: z.object({ config: ProjectConfigSchema }),
-});
-
-const WaitingTicket = z.object({ id: z.string(), title: z.string() });
-
-/** Tickets awaiting acceptance with a complete record that auto-accept would take now (held ones not counted). */
-export const listWaitingForAccept = defineRpc({
-  name: "taro.project.auto-accept.waiting",
-  input: ProjectInput,
-  output: z.object({ tickets: z.array(WaitingTicket) }),
-});
-
-/** A bulk Accept of those tickets, with the switch off or on: the same as pressing Accept on each. */
-export const acceptWaiting = defineRpc({
-  name: "taro.project.auto-accept.accept-waiting",
-  input: ProjectInput,
-  output: z.object({ accepted: z.array(z.string()), failed: z.array(z.object({ id: z.string(), reason: z.string() })) }),
-});
-
 export const readStandingOrders = defineRpc({
   name: "taro.project.orders.read",
   input: ProjectInput,
@@ -283,7 +256,7 @@ export const CardSchema = z.object({
   /** The judged evidence, set only while the ticket is Awaiting acceptance. */
   evidence: EvidenceViewSchema.nullable().default(null),
   /** Set from the ACCEPTED record while the ticket is still Awaiting acceptance: the ticket is merging (TR-031, the plugin merges since TR-141). */
-  accepted: z.object({ at: z.string(), merging: z.string().nullable(), automatic: z.boolean().optional() }).nullable().default(null),
+  accepted: z.object({ at: z.string(), merging: z.string().nullable() }).nullable().default(null),
   /**
    * Set from a NOT-MERGED record while the ticket is Awaiting acceptance: why the owner did not merge after Accept (TR-109);
    * `merged` when a pull request merged and the local base branch could not follow it (NOT-SYNCED, TR-110).
@@ -391,6 +364,9 @@ export const findAgentTicket = defineRpc({
   output: z.object({ project: z.string().nullable(), ticket: z.string().nullable(), role: z.string().nullable() }),
 });
 
+/** The agent a `taro` command runs in (`$PASEO_AGENT_ID`), so the daemon can refuse the ticket's own workers; a button sends none. */
+const CallerSchema = z.string().optional();
+
 export const answerDecision = defineRpc({
   name: "taro.decision.answer",
   /** `from` names where the user answered, for the ANSWER record; `answers`, one per question of a card asking several (TR-207). */
@@ -399,6 +375,7 @@ export const answerDecision = defineRpc({
     label: z.string().nullable(),
     text: z.string(),
     from: z.enum(["screen", "tab"]).default("screen"),
+    caller: CallerSchema,
     answers: z.array(z.object({ header: z.string(), label: z.string().nullable(), text: z.string() })).optional(),
   }),
   output: Empty,
@@ -488,7 +465,7 @@ export const resumeTicket = defineRpc({
   input: z.object({ project: ProjectNameSchema, ticket: z.string() }),
   output: z.object({ message: z.string(), agentId: z.string().nullable() }),
 });
-export const acceptTicket = defineRpc({ name: "taro.ticket.accept", input: z.object({ project: ProjectNameSchema, ticket: z.string() }), output: Empty });
+export const acceptTicket = defineRpc({ name: "taro.ticket.accept", input: z.object({ project: ProjectNameSchema, ticket: z.string(), caller: CallerSchema }), output: Empty });
 export const resolveTrackerSync = defineRpc({
   name: "taro.tracker.resolve-sync",
   input: z.object({ project: ProjectNameSchema, resolution: SyncResolutionSchema }),
@@ -505,31 +482,31 @@ export const dismissQueueAlert = defineRpc({
 });
 export const requestChanges = defineRpc({
   name: "taro.ticket.request-changes",
-  input: z.object({ project: ProjectNameSchema, ticket: z.string(), text: z.string().min(1) }),
+  input: z.object({ project: ProjectNameSchema, ticket: z.string(), text: z.string().min(1), caller: CallerSchema }),
   output: Empty,
 });
 /** Change spec… on a Queued ticket with no owner (TR-129): the user's words go to the manager, tagged with the ticket. */
 export const changeQueuedSpec = defineRpc({
   name: "taro.ticket.change-spec",
-  input: z.object({ project: ProjectNameSchema, ticket: z.string(), text: z.string().min(1) }),
+  input: z.object({ project: ProjectNameSchema, ticket: z.string(), text: z.string().min(1), caller: CallerSchema }),
   output: Empty,
 });
 /** Reopen on a Done ticket (TR-229): back to Queued with the user's note, for a fresh owner; `message` is what the user is told. */
 export const reopenTicket = defineRpc({
   name: "taro.ticket.reopen",
-  input: z.object({ project: ProjectNameSchema, ticket: z.string(), note: z.string().min(1) }),
+  input: z.object({ project: ProjectNameSchema, ticket: z.string(), note: z.string().min(1), caller: CallerSchema }),
   output: z.object({ message: z.string() }),
 });
 /** Close round on a reopened ticket (TR-229): its agents stopped and the ticket Done, nothing merged; `message` is what the user is told. */
 export const closeRound = defineRpc({
   name: "taro.ticket.close-round",
-  input: z.object({ project: ProjectNameSchema, ticket: z.string() }),
+  input: z.object({ project: ProjectNameSchema, ticket: z.string(), caller: CallerSchema }),
   output: z.object({ message: z.string() }),
 });
 /** Dismisses an open question (TR-234, TR-239): closed without an answer; an owner is told, the manager is not. */
 export const dismissManagerQuestion = defineRpc({
   name: "taro.decision.dismiss",
-  input: z.object({ project: ProjectNameSchema, key: z.string() }),
+  input: z.object({ project: ProjectNameSchema, key: z.string(), caller: CallerSchema }),
   output: Empty,
 });
 export const dismissSuggestion = defineRpc({
