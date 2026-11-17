@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { boardColumn } from "./board";
-import { acceptanceMerge, acceptedRecord, acceptedRecordText, deliveryMissing, executionMachine, executionWorkspace, finalSummaryBody, localMergeInstruction, noteRecords, notMergedRecord, pullRequestMergeInstruction, pullRequestMerged, pullRequestUrl, reviewHead } from "./execution";
+import { acceptanceMerge, acceptedRecord, acceptedRecordText, deliveryMissing, executionMachine, executionWorkspace, finalSummaryBody, localMergeInstruction, noteRecords, notMergedRecord, pluginAcceptPending, pullRequestMergeInstruction, pullRequestMerged, pullRequestUrl, reviewHead } from "./execution";
 
 const managerRecord = "EXECUTION 2026-10-13T11:22Z — owner agent d86f, workspace wks_67ddffd9312aa95a, machine devbox, worktree /w/tr-001";
 // As a Haiku owner wrote it on the throwaway daemon: the relaunch could not find its workspace (TR-001).
@@ -186,6 +186,13 @@ describe("acceptedRecord", () => {
   it("reads back what the plugin writes, with and without a merge", () => {
     expect(acceptedRecord(`${evidence}\n${acceptedRecordText("2026-01-05T11:00:00.000Z", "into main")}`)).toEqual({ at: "2026-01-05T11:00:00.000Z", merging: "into main" });
     expect(acceptedRecord(`${evidence}\n${acceptedRecordText("2026-01-05T11:00:00.000Z", null)}`)).toEqual({ at: "2026-01-05T11:00:00.000Z", merging: null });
+  });
+
+  it("says when auto-accept accepted it, and the plugin still resumes its steps (TR-257)", () => {
+    const text = acceptedRecordText("2026-01-05T11:00:00.000Z", "the pull request", true, true);
+    expect(text).toBe("ACCEPTED 2026-01-05T11:00:00.000Z — auto-accept was on; merging: the pull request; by: the plugin");
+    expect(acceptedRecord(`${evidence}\n${text}`)).toEqual({ at: "2026-01-05T11:00:00.000Z", merging: "the pull request", automatic: true });
+    expect(pluginAcceptPending(`${evidence}\n${text}`)).toBe(true);
   });
 
   it("keeps the newest acceptance through the owner's later milestones", () => {

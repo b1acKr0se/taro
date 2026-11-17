@@ -13,7 +13,7 @@ import type { PluginScreenProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useQueryClient } from "@tanstack/react-query";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 
 import { catchUp, compactManager, reorderProjects, restartManager, resumeManager, tellManager, type Card, type ProjectSummary } from "../shared/contracts";
@@ -36,7 +36,9 @@ import { KeptPane, useRecent, useVisited } from "./kept-pane";
 import { useLatestCallback } from "./latest-callback";
 import { OwnerPane } from "./owner-pane";
 import { PlanNavigation } from "./plan-navigation";
+import { AutoAcceptButton, AutoAcceptOffer, useAutoAccept, type AutoAcceptControl } from "./auto-accept";
 import { PaneHeader } from "./pane-header";
+import { TipBounds } from "./tip-anchor";
 import { projectLayout } from "./pane-layout";
 import { CreationProgress, NewProject, resetNewProject, returnToNewProject, useCreation } from "./new-project";
 import { afterCreation, resetCreation } from "./project-creation";
@@ -483,6 +485,12 @@ function ProjectView({
   // Stable callbacks, so a tab switch does not redraw the memoised manager and ticket panes beneath it.
   const settings = useLatestCallback(onSettings);
   const changed = useLatestCallback(refreshBoard);
+  const autoAccept = useAutoAccept(summary.config, changed);
+  const tabRowBounds = useRef<View>(null);
+  // The offer is drawn in the manager's pane: bring it forward when the button asks while another tab or a ticket shows.
+  useEffect(() => {
+    if (autoAccept.offer !== null) openManager();
+  }, [autoAccept.offer]);
   const ticketBackLatest = useLatestCallback(onTicketBack);
   const leavePlan = useLatestCallback(onLeavePlan);
   const openAgentLatest = useLatestCallback((agentId: string) => onOpenAgent?.(agentId));
@@ -503,6 +511,7 @@ function ProjectView({
       onOpenAgent={openAgent}
       onShowBoard={showBoard}
       onChanged={changed}
+      autoAccept={autoAccept}
     />
   );
   const ownerPane =
@@ -540,7 +549,8 @@ function ProjectView({
         {ownerPane === null ? null : <KeptPane shown>{ownerPane}</KeptPane>}
         {/* The tabs stay mounted under an open ticket, so its Back shows them at once (TR-069). */}
         <KeptPane shown={ownerPane === null}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm, paddingHorizontal: paneGutter(true), paddingVertical: SPACE.sm }}>
+          <TipBounds.Provider value={tabRowBounds}>
+          <View ref={tabRowBounds} style={{ zIndex: 5, flexDirection: "row", alignItems: "center", gap: SPACE.sm, paddingHorizontal: paneGutter(true), paddingVertical: SPACE.sm }}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Segmented
                 theme={theme}
@@ -557,11 +567,11 @@ function ProjectView({
                 onChange={onPhoneTab}
               />
             </View>
-            {phoneTab === "manager" && summary.manager !== null && onOpenAgent !== null ? (
-              <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(summary.manager?.id ?? "")} />
-            ) : null}
+            {/* Open in Paseo is left off this row: with the switch beside Settings the four tabs no longer fit, and Paseo's own workspace list opens the manager. */}
+            <AutoAcceptButton theme={theme} control={autoAccept} />
             <IconButton icon="Settings" label="Project settings" theme={theme} onPress={onSettings} />
           </View>
+          </TipBounds.Provider>
           <View style={{ flex: 1 }}>
             {kept("manager") ? <KeptPane shown={phoneTab === "manager"}>{managerPane}</KeptPane> : null}
             {kept("inbox") ? (
@@ -661,8 +671,11 @@ function ManagerPane({
   onOpenAgent,
   onShowBoard,
   onChanged,
+  autoAccept,
 }: {
   summary: ProjectSummary;
+  /** The project's auto-accept switch (TR-257): its button in the top bar, and the offer under it. */
+  autoAccept: AutoAcceptControl;
   /** The manager's open decisions, drawn in its chat where it asked them (TR-026). */
   decisions: readonly StoredDecision[];
   /** The question the chat lands on, until it has (TR-234). */
@@ -694,12 +707,18 @@ function ManagerPane({
   const project = summary.config.project;
   const manager = summary.manager;
   // On a phone the switch row above already shows the Manager tab and holds the settings button (TR-031).
+  const headerBounds = useRef<View>(null);
   const header = compact ? null : (
+    <TipBounds.Provider value={headerBounds}>
+    <View ref={headerBounds} style={{ zIndex: 5 }}>
     <PaneHeader theme={theme} title={`${project} · Manager`}>
+      <AutoAcceptButton theme={theme} control={autoAccept} />
       {manager !== null && onOpenAgent !== null ? <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(manager.id)} /> : null}
       <IconButton icon="Settings" label="Project settings" theme={theme} onPress={onSettings} />
       {onShowBoard === null ? null : <IconButton icon="PanelRightOpen" label="Show the board" showLabel theme={theme} onPress={onShowBoard} />}
     </PaneHeader>
+    </View>
+    </TipBounds.Provider>
   );
   if (manager === null) {
     return (
@@ -735,6 +754,7 @@ function ManagerPane({
   return (
     <View style={{ flex: 1 }}>
       {header}
+      <AutoAcceptOffer theme={theme} control={autoAccept} />
       {notice === null ? null : (
         <View
           style={{

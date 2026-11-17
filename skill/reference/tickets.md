@@ -103,7 +103,7 @@ rather than exceed it.
 - **REVIEW**: reviewer (or self-review), the range, every finding answered (fixed, or rejected with
   the reason); after fixes, what the fix check re-checked: its range, fix check or full re-review, and
   its verdict. It ends with `verdict: clean` when nothing is left to fix, else `verdict: findings`;
-  the round's newest clean one brings the delivery page (`phases/review.md`).
+  the round's newest clean one brings the delivery page (`phases/review.md`). It carries `blockers-open: N`.
 - **EVIDENCE**: what the user sees before Accept; the newest record counts. One fact per line,
   label in any case, separator ` — ` (` -- ` and ` - ` also work):
   `check: <command> — <result>` (one or more), `review: <outcome>`,

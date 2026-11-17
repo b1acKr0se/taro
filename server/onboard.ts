@@ -111,6 +111,9 @@ export function onboardProject(paseo: PaseoApi, input: OnboardInput): Promise<{ 
       schemaVersion: 1,
       project,
       paseoProjectId,
+      // Onboarding again keeps the switch as the user left it; a new project starts with it off (TR-257).
+      autoAccept: existing?.autoAccept ?? false,
+      autoAcceptHold: existing?.autoAcceptHold ?? [],
       managerAgentId: existing?.managerAgentId ?? "",
       managerWorkspaceId: existing?.managerWorkspaceId ?? "",
     });

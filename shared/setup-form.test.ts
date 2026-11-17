@@ -20,6 +20,8 @@ const config: ProjectConfig = {
   schemaVersion: 1,
   project: "sample-app",
   paseoProjectId: "p1",
+  autoAccept: false,
+  autoAcceptHold: [],
   managerAgentId: "",
   managerWorkspaceId: "",
   repoPath: "/home/you/code/sample-app",
@@ -44,8 +46,15 @@ function validNew(overrides: Partial<SetupDraft> = {}): SetupDraft {
 
 describe("draftFrom and settingsFrom", () => {
   it("round-trips an existing project's settings unchanged", () => {
-    const { schemaVersion, project, paseoProjectId, managerAgentId, managerWorkspaceId, ...settings } = config;
+    const { schemaVersion, project, paseoProjectId, managerAgentId, managerWorkspaceId, autoAccept, autoAcceptHold, ...settings } = config;
     expect(settingsFrom(draftFrom(config), "claude/opus")).toEqual(settings);
+  });
+
+  // TR-257: the switch has its own write, so a form opened before a flip cannot undo it.
+  it("leaves the auto-accept switch and its hold list out of the form's settings", () => {
+    const flipped = { ...config, autoAccept: true, autoAcceptHold: ["SA-1"] };
+    expect(Object.keys(settingsFrom(draftFrom(flipped), "claude/opus"))).not.toContain("autoAccept");
+    expect(Object.keys(settingsFrom(draftFrom(flipped), "claude/opus"))).not.toContain("autoAcceptHold");
   });
 
   it("gives a new project the defaults and the default model", () => {

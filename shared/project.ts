@@ -96,6 +96,14 @@ export const ProjectConfigSchema = ProjectSettingsSchema.extend({
   project: ProjectNameSchema,
   /** The real repository's Paseo project, where task owners' worktrees go. */
   paseoProjectId: z.string().min(1),
+  /**
+   * The auto-accept switch (TR-257): while on, the plugin accepts each ticket that reaches Awaiting acceptance with a
+   * complete record. Kept out of the settings the form writes, so a form opened before a flip cannot undo it, and never
+   * copied to a new project.
+   */
+  autoAccept: z.boolean().default(false),
+  /** Ticket ids auto-accept never takes: the user presses Accept on them. */
+  autoAcceptHold: z.array(z.string()).default([]),
   managerAgentId: z.string().default(""),
   managerWorkspaceId: z.string().default(""),
 });

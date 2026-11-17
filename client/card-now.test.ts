@@ -345,6 +345,12 @@ describe("cardNowLine", () => {
     expect(cardNowLine({ ...accepted, accepted: { at: "2026-01-01T11:58:00Z", merging: null } }, NOW)?.headline).toBe("Accepted · closing the ticket");
   });
 
+  // TR-257: the card says the switch accepted it, so the user is not left thinking they pressed Accept.
+  it("says an auto-accepted delivery was auto-accepted", () => {
+    const accepted = card({ status: "Awaiting acceptance", accepted: { at: "2026-01-01T11:58:00Z", merging: "the pull request", automatic: true }, lastStatus: status });
+    expect(cardNowLine(accepted, NOW)).toEqual({ kind: "accepted", headline: "Auto-accepted · merging the pull request", detail: "2m ago" });
+  });
+
   it("leads with why an accepted delivery did not merge, keeping the delivery and Accept (TR-109)", () => {
     const notMerged = { at: "2026-01-01T11:58Z", reason: "the main checkout is on release-2, not main", merged: false };
     expect(cardNowLine(card({ status: "Awaiting acceptance", column: "needs-you", delivered: "Drafts work offline.", notMerged }), NOW)).toMatchObject({
