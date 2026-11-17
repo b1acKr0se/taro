@@ -156,16 +156,11 @@ export interface AcceptedRecord {
   at: string;
   /** "into main", "the pull request", or null when the owner only closes the ticket. */
   merging: string | null;
-  /** The project's auto-accept switch was on (TR-257): the plugin accepted, not the user's press. */
-  automatic?: boolean | undefined;
 }
 
-/**
- * `byPlugin`: the plugin runs Accept's steps itself (TR-141), so a restart picks them up again.
- * `automatic`: the switch accepted it (TR-257), which the record says in place of "the user accepted".
- */
-export function acceptedRecordText(at: string, merging: string | null, byPlugin = false, automatic = false): string {
-  return `ACCEPTED ${at} — ${automatic ? "auto-accept was on" : "the user accepted"}; merging: ${merging ?? "none"}${byPlugin ? "; by: the plugin" : ""}`;
+/** `byPlugin`: the plugin runs Accept's steps itself (TR-141), so a restart picks them up again. */
+export function acceptedRecordText(at: string, merging: string | null, byPlugin = false): string {
+  return `ACCEPTED ${at} — the user accepted; merging: ${merging ?? "none"}${byPlugin ? "; by: the plugin" : ""}`;
 }
 
 /**
@@ -183,7 +178,7 @@ export function acceptedRecord(notes: string | null): AcceptedRecord | null {
     const match = /^ACCEPTED\s+(\S+)[^\n]*?merging:\s*([^;\n]+)/.exec(record);
     if (match !== null) {
       const merging = (match[2] ?? "").trim();
-      return { at: match[1] ?? "", merging: merging === "none" || merging === "" ? null : merging, ...(/^ACCEPTED\s+\S+\s+—\s+auto-accept was on\b/.test(record) ? { automatic: true } : {}) };
+      return { at: match[1] ?? "", merging: merging === "none" || merging === "" ? null : merging };
     }
   }
   return null;

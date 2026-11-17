@@ -45,7 +45,7 @@ export function cardNowLine(card: Card, now: number): NowLine | null {
   if (card.accepted !== null) {
     return {
       kind: "accepted",
-      headline: `${card.accepted.automatic ? "Auto-accepted" : "Accepted"} · ${card.accepted.merging === null ? "closing the ticket" : `merging ${card.accepted.merging}`}`,
+      headline: card.accepted.merging === null ? "Accepted · closing the ticket" : `Accepted · merging ${card.accepted.merging}`,
       detail: ago(card.accepted.at, now),
     };
   }

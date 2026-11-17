@@ -1,10 +1,8 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 
+import { refuseDecisionWorker, refuseTicketWorker } from "./server/worker-guard";
 import {
   acceptTicket,
-  acceptWaiting,
-  listWaitingForAccept,
-  setAutoAccept,
   answerDecision,
   getDecision,
   loadStats,
@@ -100,7 +98,6 @@ import { readImage } from "./server/images";
 import { Notifier } from "./server/notifications";
 import { allowedMergeMethods } from "./server/merge-methods";
 import { checkPrerequisites } from "./server/prerequisites";
-import { parseHoldList } from "./shared/auto-accept";
 import { listProjectConfigs, projectPaths, readProjectConfig, requireProjectConfig, taroHome, updateProjectConfig } from "./server/projects";
 import { sentImagesOf } from "./server/sent-images";
 import { agentCommands, projectFiles, recentCommands, rememberRecentCommand, ticketsForPicks } from "./server/composer-picks";
@@ -369,7 +366,8 @@ export default function contribute(server: PluginServerContext) {
     const identity = agent === null ? null : identityFromLabels(agent.labels, agent.title ?? null);
     return { project: identity?.project ?? null, ticket: identity?.ticket ?? null, role: identity?.role ?? null };
   });
-  server.handle(answerDecision, async ({ key, label, text, from, answers }, { paseo }) => {
+  server.handle(answerDecision, async ({ key, label, text, from, answers, caller }, { paseo }) => {
+    await refuseDecisionWorker(paseo, caller, await state.decision(key), "decision answer");
     await actions.answerDecision(keep(paseo), key, label, text, from, answers);
     invalidateBoards();
     return {};
@@ -421,12 +419,14 @@ export default function contribute(server: PluginServerContext) {
     invalidateBoards();
     return result;
   });
-  server.handle(reopenTicket, async ({ project, ticket, note }, { paseo }) => {
+  server.handle(reopenTicket, async ({ project, ticket, note, caller }, { paseo }) => {
+    await refuseTicketWorker(paseo, caller, project, ticket, "ticket reopen");
     const text = await actions.reopenTicket(keep(paseo), project, ticket, note);
     invalidateBoards();
     return { message: text };
   });
-  server.handle(closeRound, async ({ project, ticket }, { paseo }) => {
+  server.handle(closeRound, async ({ project, ticket, caller }, { paseo }) => {
+    await refuseTicketWorker(paseo, caller, project, ticket, "ticket close-round");
     const text = await actions.closeRound(keep(paseo), project, ticket);
     invalidateBoards();
     return { message: text };
@@ -445,32 +445,23 @@ export default function contribute(server: PluginServerContext) {
     invalidateBoards();
     return {};
   });
-  server.handle(acceptTicket, async ({ project, ticket }, { paseo }) => {
+  server.handle(acceptTicket, async ({ project, ticket, caller }, { paseo }) => {
+    await refuseTicketWorker(paseo, caller, project, ticket, "ticket accept");
     await actions.accept(keep(paseo), project, ticket);
     return {};
   });
-  server.handle(setAutoAccept, async ({ project, enabled, hold }, { paseo }) => {
-    const parsed = hold === undefined ? null : parseHoldList(hold.join("\n"));
-    if (parsed !== null && parsed.invalid.length > 0) throw new Error(`${parsed.invalid.join(", ")} ${parsed.invalid.length === 1 ? "is" : "are"} not ticket ids (like TR-12).`);
-    const config = await actions.setAutoAccept(keep(paseo), project, { enabled, hold: parsed?.ids });
-    invalidateBoards();
-    return { config };
-  });
-  server.handle(listWaitingForAccept, async ({ project }, { paseo }) => ({ tickets: await actions.waitingForAccept(keep(paseo), project) }));
-  server.handle(acceptWaiting, async ({ project }, { paseo }) => {
-    const result = await actions.acceptWaiting(keep(paseo), project);
-    invalidateBoards();
-    return result;
-  });
-  server.handle(requestChanges, async ({ project, ticket, text }, { paseo }) => {
+  server.handle(requestChanges, async ({ project, ticket, text, caller }, { paseo }) => {
+    await refuseTicketWorker(paseo, caller, project, ticket, "ticket request-changes");
     await actions.requestChanges(keep(paseo), project, ticket, text);
     return {};
   });
-  server.handle(changeQueuedSpec, async ({ project, ticket, text }, { paseo }) => {
+  server.handle(changeQueuedSpec, async ({ project, ticket, text, caller }, { paseo }) => {
+    await refuseTicketWorker(paseo, caller, project, ticket, "ticket change-spec");
     await actions.changeQueuedSpec(keep(paseo), project, ticket, text);
     return {};
   });
-  server.handle(dismissManagerQuestionRpc, async ({ key }, { paseo }) => {
+  server.handle(dismissManagerQuestionRpc, async ({ key, caller }, { paseo }) => {
+    await refuseDecisionWorker(paseo, caller, await state.decision(key), "decision dismiss");
     await actions.dismissDecision(keep(paseo), key);
     invalidateBoards();
     return {};

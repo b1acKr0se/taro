@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   acceptTicket,
-  acceptWaiting,
   answerDecision,
   changeQueuedSpec,
   closeRound,
@@ -17,7 +16,6 @@ import {
   reopenTicket,
   requestChanges,
   resumeTicket,
-  setAutoAccept,
 } from "../shared/contracts";
 import { main } from "./taro-cli.ts";
 
@@ -104,11 +102,6 @@ describe("every button has a command that calls the same RPC with an input its c
     [["decision", "answer", "q1", "--label", "Approve"], answerDecision, { key: "q1", label: "Approve", text: "" }],
     [["decision", "answer", "q1", "--text", "per trade"], answerDecision, { key: "q1", label: null, text: "per trade" }],
     [["decision", "dismiss", "q1"], dismissManagerQuestion, { project: "notes-app", key: "q1" }],
-    [["project", "auto-accept-on"], setAutoAccept, { project: "notes-app", enabled: true }],
-    [["project", "auto-accept-off"], setAutoAccept, { project: "notes-app", enabled: false }],
-    [["project", "hold", "tr-7, TR-9"], setAutoAccept, { project: "notes-app", hold: ["TR-7", "TR-9"] }],
-    [["project", "hold", ""], setAutoAccept, { project: "notes-app", hold: [] }],
-    [["project", "accept-waiting"], acceptWaiting, { project: "notes-app" }],
   ];
   for (const [args, contract, expected] of cases) {
     it(args.join(" "), async () => {
@@ -122,20 +115,6 @@ describe("every button has a command that calls the same RPC with an input its c
       expect(requests[0]?.hello).toMatchObject({ clientType: "cli", auth: { kind: "localCredential", token: TOKEN } });
     });
   }
-});
-
-describe("taro project (the auto-accept switch)", () => {
-  it("is the user's: it refuses inside an agent session and calls nothing", async () => {
-    const requests = stubDaemon(() => ({ output: {} }));
-    const result = await run(["project", "auto-accept-on"], { PASEO_AGENT_ID: "agent-1" });
-    expect(result.code).toBe(1);
-    expect(requests).toHaveLength(0);
-  });
-
-  it("names no verb it does not have", async () => {
-    stubDaemon(() => ({ output: {} }));
-    expect((await run(["project", "auto-accept"])).code).toBe(2);
-  });
 });
 
 describe("taro ticket accept", () => {
@@ -183,42 +162,31 @@ describe("words", () => {
   });
 });
 
-describe("inside an agent session (TR-237)", () => {
+describe("inside an agent session", () => {
   const AGENT = { PASEO_AGENT_ID: "3f2a9c1d-0000-4000-8000-000000000001" };
 
-  it("refuses the user's actions without calling the daemon, exit 1", async () => {
+  it("sends the agent's id as the caller on the user's actions only, leaving the refusal to the daemon", async () => {
     const requests = stubDaemon(() => ({ output: {} }));
-    for (const args of [
-      ["ticket", "accept", "TR-7"],
-      ["ticket", "reopen", "TR-7", "--note", "x"],
-      ["ticket", "request-changes", "TR-7", "--text", "x"],
-      ["ticket", "change-spec", "TR-7", "--text", "x"],
-      ["ticket", "close-round", "TR-7"],
-      ["decision", "answer", "q1", "--label", "Approve"],
-      ["decision", "dismiss", "q1"],
-    ]) {
-      const result = await run(args, AGENT);
-      expect(result.code, args.join(" ")).toBe(1);
-      expect(result.stderr).toContain("outside an agent session");
-    }
-    expect(requests).toEqual([]);
+    await run(["ticket", "accept", "TR-7"], AGENT);
+    await run(["decision", "dismiss", "q1"], AGENT);
+    await run(["decision", "answer", "q1", "--label", "Approve"], AGENT);
+    await run(["ticket", "pause", "TR-7"], AGENT);
+    await run(["ticket", "accept", "TR-7"]);
+    expect(requests.map((request) => (request.input as { caller?: string }).caller)).toEqual([AGENT.PASEO_AGENT_ID, AGENT.PASEO_AGENT_ID, AGENT.PASEO_AGENT_ID, undefined, undefined]);
   });
 
-  it("leaves pause, resume and relaunch-owner open, and runs the same verbs outside a session", async () => {
-    const requests = stubDaemon(() => ({ output: {} }));
-    for (const verb of ["pause", "resume", "relaunch-owner"]) expect((await run(["ticket", verb, "TR-7"], AGENT)).code).toBe(0);
-    expect((await run(["ticket", "accept", "TR-7"])).code).toBe(0);
-    expect(requests.map((request) => request.method)).toEqual(["taro.ticket.pause", "taro.ticket.resume", "taro.owner.relaunch", "taro.ticket.accept"]);
+  it("shows the daemon's refusal of a ticket's own worker, exit 1", async () => {
+    stubDaemon(() => ({ error: "ticket accept is the user's: it refuses inside the ticket's own owner and subagents" }));
+    const result = await run(["ticket", "accept", "TR-7"], AGENT);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("ticket's own owner");
   });
 });
 
 describe("bin/taro", () => {
-  it("lists the new verbs in --help and runs the guard under plain node type stripping", () => {
+  it("lists the new verbs in --help under plain node type stripping", () => {
     const bin = resolve(import.meta.dirname, "..", "bin", "taro");
     expect(spawnSync(bin, ["--help"], { encoding: "utf8" }).stdout).toContain("taro ticket accept");
-    const guarded = spawnSync(bin, ["ticket", "accept", "TR-7", "--project", "p"], { encoding: "utf8", env: { ...process.env, PASEO_AGENT_ID: "a1", PASEO_HOME: home } });
-    expect(guarded.status).toBe(1);
-    expect(guarded.stderr).toContain("outside an agent session");
     // No lock file in this home, so nothing is dialled (the lock file the other tests write names the real daemon's port).
     const down = spawnSync(bin, ["ticket", "pause", "TR-7", "--project", "p"], { encoding: "utf8", env: { ...process.env, PASEO_HOME: join(home, "no-daemon") } });
     expect(down.status).toBe(4);
