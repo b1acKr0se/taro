@@ -9,8 +9,8 @@ import type { DecisionOption, DecisionQuestion } from "./reports";
 export type QuestionAnswer = { header: string; label: string | null; text: string };
 
 /**
- * The words an answer sends: the option's prompt alone, the typed words alone (Other), or both when
- * the option asks for words (its prompt ends with "…", TR-028). Text that already starts with the
+ * The words an answer sends: the option's prompt alone, the typed words alone (Other), or both for an
+ * older card whose option prompt ends with "…" (TR-028; new cards ask for words only under Other). Text that already starts with the
  * prompt (the card prefills it; older cards send the prompt alone) is not repeated. Empty when
  * there is nothing to send.
  */

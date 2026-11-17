@@ -374,14 +374,9 @@ describe("answeredInPlan", () => {
 
 describe("planChangeBox", () => {
   it("sends the typed change alone from Request changes…, once there are words", () => {
-    expect(planChangeBox(null, "")).toEqual({ sendLabel: "Send changes", placeholder: "Describe a change…", enabled: false, label: null, text: "" });
-    expect(planChangeBox(null, "  \n ").enabled).toBe(false);
-    expect(planChangeBox(null, "  drop the second chart\n")).toEqual({ sendLabel: "Send changes", placeholder: CHANGE_PLACEHOLDER, enabled: true, label: null, text: "drop the second chart" });
-  });
-
-  it("sends an option that asks for words with them", () => {
-    expect(planChangeBox("Rename…", "")).toEqual({ sendLabel: "Send", placeholder: "Say how for “Rename”…", enabled: false, label: "Rename…", text: "" });
-    expect(planChangeBox("Rename…", "call it notes")).toMatchObject({ enabled: true, label: "Rename…", text: "call it notes" });
+    expect(planChangeBox("")).toEqual({ sendLabel: "Send changes", placeholder: "Describe a change…", enabled: false, text: "" });
+    expect(planChangeBox("  \n ").enabled).toBe(false);
+    expect(planChangeBox("  drop the second chart\n")).toEqual({ sendLabel: "Send changes", placeholder: CHANGE_PLACEHOLDER, enabled: true, text: "drop the second chart" });
   });
 });
 

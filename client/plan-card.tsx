@@ -354,7 +354,7 @@ function PlanSummary({ plan, marks, mockups, theme, compact, brief }: { plan: Pa
 
 /**
  * The plan's buttons, asking as the acceptance card does (TR-112): Approve and Request changes…, View
- * plan when given, and the other real options. Request changes…, or an option that asks for words,
+ * plan when given, and the other real options. Request changes…
  * swaps the row for the change box with Send changes and Cancel.
  */
 export function PlanActions({
@@ -388,11 +388,11 @@ export function PlanActions({
   const ownPresses = useActions(decisionCall(decision));
   const presses = sharedPresses ?? ownPresses;
   const [typed, setTyped] = useState("");
-  // The option the box is open for: null for Request changes…, undefined while the buttons show.
-  const [writing, setWritingState] = useState<string | null | undefined>(undefined);
-  const setWriting = (value: string | null | undefined) => {
+  // Whether the change box (opened by Request changes…) shows instead of the buttons.
+  const [writing, setWritingState] = useState(false);
+  const setWriting = (value: boolean) => {
     setWritingState(value);
-    onWriting?.(value !== undefined);
+    onWriting?.(value);
   };
   // The box and the buttons under it are revealed together, so Send changes stays above the keyboard.
   const foot = useRef<View>(null);
@@ -418,14 +418,14 @@ export function PlanActions({
       after: "hold",
       onSuccess: () => {
         setTyped("");
-        setWriting(undefined);
+        setWriting(false);
         onAnswered();
       },
     });
   }
 
-  if (writing !== undefined) {
-    const box = planChangeBox(writing, typed);
+  if (writing) {
+    const box = planChangeBox(typed);
     return (
       <View ref={foot} collapsable={false}>
         <ChangeBox
@@ -439,8 +439,8 @@ export function PlanActions({
           canSend={box.enabled}
           busy={busy}
           sendState={presses.stateOf("change")}
-          onSend={() => send("change", box.label, box.text)}
-          onCancel={() => setWriting(undefined)}
+          onSend={() => send("change", null, box.text)}
+          onCancel={() => setWriting(false)}
           // The cards are surface1 themselves; the Ticket view's Plan sits on the pane.
           background={place === "ticket plan" ? undefined : colors.surface0}
         />
@@ -462,7 +462,7 @@ export function PlanActions({
         />
       </View>
       <View style={styles.slot}>
-        <IconButton icon={icon("MessageSquare")} label="Request changes…" showLabel theme={theme} disabled={busy} onPress={() => setWriting(null)} />
+        <IconButton icon={icon("MessageSquare")} label="Request changes…" showLabel theme={theme} disabled={busy} onPress={() => setWriting(true)} />
       </View>
       {viewPlan === null ? null : (
         <View style={styles.slot}>

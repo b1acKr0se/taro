@@ -2,7 +2,7 @@
  * A card asking several questions (TR-207) on a board or Inbox card: a pill per header (answered
  * ones `✓ <header>: <answer>`, the shown one outlined), then the shown question and its option
  * chips. A chip answers its question and moves to the next one still open; once all are answered
- * the chips give way to Send. A chip that asks for words, or Answer, opens the full card at that
+ * the chips give way to Send. Answer opens the full card at that
  * question. The picks are the chat card's own (`./several-drafts`).
  */
 import type { PluginTheme } from "@getpaseo/plugin";
