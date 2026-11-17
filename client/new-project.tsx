@@ -1,6 +1,6 @@
 /**
  * New project (TR-056): pick one of Paseo's projects, review the few values a user might change,
- * create. "All settings" and "Add manually" open the full form (`project-setup.tsx`). While the
+ * create. "All settings" and "Start a new project" open the full form (`project-setup.tsx`). While the
  * tracker and manager are set up the screen shows `CreationProgress`. The list's order, the
  * suggestions and the defaults are in shared/project-candidates.ts.
  */
@@ -272,9 +272,9 @@ function ProjectPicker({
 
   const manualLink = (
     <View style={{ flexDirection: "row", justifyContent: "center", flexWrap: "wrap", gap: SPACE.xs }}>
-      <Text style={muted}>Not listed?</Text>
+      <Text style={muted}>Starting from scratch?</Text>
       <Pressable accessibilityRole="link" onPress={onManual}>
-        <Text style={[muted, { color: colors.accent }]}>Add manually</Text>
+        <Text style={[muted, { color: colors.accent }]}>Start a new project from a path</Text>
       </Pressable>
     </View>
   );
@@ -305,9 +305,9 @@ function ProjectPicker({
           <Icon name="FolderGit2" size={22} color={colors.foregroundMuted} />
           <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.subtitle, fontWeight: "600" }}>Paseo has no projects yet</Text>
           <Text style={muted}>
-            Projects you open in Paseo show up here, ready to pick. Until then, add a repository by its path on this machine.
+            Projects you open in Paseo show up here, ready to pick. Until then, start a new project from a path on this machine: Taro creates the folder and git repository if they are not there.
           </Text>
-          <IconButton theme={theme} tone="accent" icon="Plus" label="Add manually" showLabel onPress={onManual} />
+          <IconButton theme={theme} tone="accent" icon="Plus" label="Start a new project" showLabel onPress={onManual} />
         </View>
       ) : (
         <>

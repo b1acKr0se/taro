@@ -97,7 +97,7 @@ export function setupProblems(draft: SetupDraft, isNew: boolean): SetupProblems 
       if (!parsed.success) problems.project = parsed.error.issues[0]?.message ?? "Not a valid name.";
     }
     const repoPath = draft.repoPath.trim();
-    if (repoPath === "") problems.repoPath = "Enter the path of a local git checkout.";
+    if (repoPath === "") problems.repoPath = "Enter the path of the project's folder.";
     else if (!repoPath.startsWith("/")) problems.repoPath = "Use an absolute path, starting with /.";
     const prefix = draft.ticketPrefix.trim().toUpperCase();
     if (prefix === "") problems.ticketPrefix = "Choose a ticket prefix.";

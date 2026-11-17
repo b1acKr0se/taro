@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -199,10 +200,24 @@ describe("onboardingProblems", () => {
     expect(await onboardingProblems({ project: "empty", settings: settings(empty, { baseBranch: "main" }) })).toEqual({ baseBranch: "The repository has no branch named main." });
   });
 
+  it("accepts a missing path and a folder that is not a repository, and refuses a file or a path inside another repository", async () => {
+    const shop = await repository("shop");
+    await mkdir(join(root, "plain", "inner"), { recursive: true });
+    await writeFile(join(root, "plain", "notes.txt"), "hi", "utf8");
+    await writeFile(join(root, "a-file"), "x", "utf8");
+    expect(await onboardingProblems({ project: "fresh", settings: settings(join(root, "brand", "new")) })).toEqual({});
+    expect(await onboardingProblems({ project: "plain", settings: settings(join(root, "plain")) })).toEqual({});
+    expect(await onboardingProblems({ project: "x", settings: settings(join(root, "a-file")) })).toEqual({ repoPath: `${join(root, "a-file")} is a file, not a folder.` });
+    expect(await onboardingProblems({ project: "x", settings: settings(join(shop, "sub", "new")) })).toMatchObject({ repoPath: expect.stringContaining("would sit inside the git repository") });
+    expect(await onboardingProblems({ project: "x", settings: settings(join(root, "brand", "new")) })).toEqual({});
+    expect(await onboardingProblems({ project: "x", settings: settings(join(root, "brand", "new"), { baseBranch: "my branch" }) })).toEqual({ baseBranch: "my branch is not a name git accepts for a branch." });
+    expect(existsSync(join(root, "brand"))).toBe(false);
+  });
+
   it("puts each problem on its field", async () => {
     const shop = await repository("shop");
     expect(await onboardingProblems({ project: "shop", settings: settings(shop, { baseBranch: "release" }) })).toEqual({ baseBranch: "The repository has no branch named release." });
-    expect(await onboardingProblems({ project: "Shop!", settings: settings(join(root, "nowhere")) })).toMatchObject({ project: expect.any(String), repoPath: expect.stringContaining("not inside a git repository") });
+    expect(await onboardingProblems({ project: "Shop!", settings: settings(join(root, "nowhere")) })).toEqual({ project: expect.any(String) });
     expect(await onboardingProblems({ project: "shop", settings: settings("relative/path") })).toMatchObject({ repoPath: expect.stringContaining("absolute") });
   });
 

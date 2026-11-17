@@ -280,7 +280,7 @@ export function ProjectSetup({
               <FixedValue theme={theme} text={existing.project} />
             )}
           </Field>
-          <Field theme={theme} wide={wide} label="Repository" hint={existing === null ? "The absolute path of a local git checkout." : null} error={problem("repoPath")}>
+          <Field theme={theme} wide={wide} label="Repository" hint={existing === null ? "The absolute path of a folder. Taro creates it and its git repository if they are not there." : null} error={problem("repoPath")}>
             {existing === null ? (
               <TextField
                 theme={theme}
