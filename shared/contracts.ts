@@ -150,6 +150,33 @@ export const writeProjectSettings = defineRpc({
   output: z.object({ config: ProjectConfigSchema }),
 });
 
+/**
+ * The auto-accept switch and its hold list (TR-257), read and written by the manager's button and the settings page alike.
+ * Each field left out stays as it was. Turning it on takes the tickets waiting with complete records at once
+ * (so the caller offers to hold them first); the hold list is the whole list, and each newly held ticket gets a note.
+ */
+export const setAutoAccept = defineRpc({
+  name: "taro.project.auto-accept.set",
+  input: z.object({ project: ProjectNameSchema, enabled: z.boolean().optional(), hold: z.array(z.string()).optional() }),
+  output: z.object({ config: ProjectConfigSchema }),
+});
+
+const WaitingTicket = z.object({ id: z.string(), title: z.string() });
+
+/** Tickets awaiting acceptance with a complete record that auto-accept would take now (held ones not counted). */
+export const listWaitingForAccept = defineRpc({
+  name: "taro.project.auto-accept.waiting",
+  input: ProjectInput,
+  output: z.object({ tickets: z.array(WaitingTicket) }),
+});
+
+/** A bulk Accept of those tickets, with the switch off or on: the same as pressing Accept on each. */
+export const acceptWaiting = defineRpc({
+  name: "taro.project.auto-accept.accept-waiting",
+  input: ProjectInput,
+  output: z.object({ accepted: z.array(z.string()), failed: z.array(z.object({ id: z.string(), reason: z.string() })) }),
+});
+
 export const readStandingOrders = defineRpc({
   name: "taro.project.orders.read",
   input: ProjectInput,
@@ -256,7 +283,7 @@ export const CardSchema = z.object({
   /** The judged evidence, set only while the ticket is Awaiting acceptance. */
   evidence: EvidenceViewSchema.nullable().default(null),
   /** Set from the ACCEPTED record while the ticket is still Awaiting acceptance: the ticket is merging (TR-031, the plugin merges since TR-141). */
-  accepted: z.object({ at: z.string(), merging: z.string().nullable() }).nullable().default(null),
+  accepted: z.object({ at: z.string(), merging: z.string().nullable(), automatic: z.boolean().optional() }).nullable().default(null),
   /**
    * Set from a NOT-MERGED record while the ticket is Awaiting acceptance: why the owner did not merge after Accept (TR-109);
    * `merged` when a pull request merged and the local base branch could not follow it (NOT-SYNCED, TR-110).

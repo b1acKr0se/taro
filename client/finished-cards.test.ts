@@ -77,6 +77,12 @@ describe("deliveryRecords", () => {
     ]);
   });
 
+  it("reads an auto-accepted ticket's ACCEPTED record as auto-accepted (TR-257)", () => {
+    expect(deliveryRecords("ACCEPTED 2026-01-05T11:00:00.000Z — auto-accept was on; merging: the pull request; by: the plugin")).toEqual([
+      { at: "2026-01-05T11:00:00.000Z", kind: "auto-accepted", words: null },
+    ]);
+  });
+
   it("is empty without notes or records", () => {
     expect(deliveryRecords(null)).toEqual([]);
     expect(deliveryRecords("")).toEqual([]);
@@ -133,6 +139,7 @@ describe("deliveryCardView", () => {
   it("says each record", () => {
     expect(deliveryCardView(record("2026-01-05T10:30:00Z", "changes requested", "Rename it"), clock)).toEqual({ outcome: "Changes requested", tone: "warning", time: "10:30", words: "Rename it" });
     expect(deliveryCardView(record("2026-01-05T10:30:00Z", "accepted"), clock)).toMatchObject({ outcome: "Accepted", tone: "positive" });
+    expect(deliveryCardView(record("2026-01-05T10:30:00Z", "auto-accepted"), clock)).toEqual({ outcome: "Auto-accepted", tone: "positive", time: "10:30", words: "Auto-accept was on." });
     expect(deliveryCardView(record("2026-01-05T10:30:00Z", "ended"), clock)).toMatchObject({ outcome: "Delivery ended: the owner asked a question", tone: "neutral" });
   });
 });

@@ -3,6 +3,7 @@
  * agents, delivery, limits, standing orders. The same page edits an existing project.
  * Drawn as section cards with descriptions (TR-019); the form's logic is in shared/setup-form.ts.
  */
+import { AutoAcceptSettings } from "./auto-accept";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
 import { useToast } from "@getpaseo/plugin/client/react-native";
@@ -398,6 +399,8 @@ export function ProjectSetup({
             </Field>
           ) : null}
         </FormSection>
+
+        {existing === null ? null : <AutoAcceptSettings theme={theme} wide={wide} config={existing} />}
 
         <FormSection theme={theme} icon="Bell" title="Notifications" description="When a ticket enters Needs you: ready to accept, a question, a permission, blocked or stalled.">
           <Field theme={theme} wide={wide} label="Tell me">

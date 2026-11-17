@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { carriedSlot } from "../shared/chat-queue";
 import { answerWords, severalAnswers, type QuestionAnswer } from "../shared/decision-answers";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
+import { autoAcceptBlock, autoAcceptHoldRecord, autoAcceptRecord } from "../shared/auto-accept";
 import { questionHoldingAccept } from "../shared/delivery-end";
 import { doneTicketOf, planRelease } from "../shared/done-release";
 import { acceptanceText, handoffText, ownerIsWarm, type AcceptOutcome, type Handover } from "../shared/accept-merge";
@@ -72,13 +73,13 @@ import { acceptLocalBranch, acceptPullRequest } from "./accept-merge";
 import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
 import { stopAgent } from "./cli";
 import { taroEnvironment } from "./environment";
-import { requireCompleteEvidence } from "./evidence";
+import { requireCompleteEvidence, ticketEvidence } from "./evidence";
 import { readHeadroom } from "./headroom";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import { restartManager, tellManager } from "./manager";
 import { bypassModeId } from "./models";
 import { TEMPLATES, message, skillDirectory } from "./package-files";
-import { listProjectConfigs, projectPaths, requireProjectConfig } from "./projects";
+import { listProjectConfigs, projectPaths, readProjectConfig, requireProjectConfig, updateProjectConfig } from "./projects";
 import { runCommand } from "./process";
 import { serialized } from "./serialize";
 import { sendFromPlugin, sendUserAnswer, sendWithoutInterrupting } from "./send";
@@ -131,6 +132,8 @@ export class Actions {
    */
   private readonly ticketCalls = new Map<string, "accept" | "changes">();
   private readonly answering = new Set<string>();
+  /** Tickets (`project\nticket\nreview head`) auto-accept failed on: not tried again until the head moves or the plugin restarts. */
+  private readonly autoAcceptFailed = new Set<string>();
   /** Projects whose stored ladder was merged in since the start. */
   private readonly ladderLoaded = new Set<string>();
 
@@ -279,20 +282,22 @@ export class Actions {
    * not woken to reread its whole context for a few commands. It records ACCEPTED (the card says it
    * merges) and runs the steps after answering; a surprise goes to an owner (`handOffAccept`).
    */
-  async accept(paseo: PaseoApi, project: string, ticket: string): Promise<void> {
+  async accept(paseo: PaseoApi, project: string, ticket: string, by: "user" | "auto-accept" = "user"): Promise<void> {
     const key = acceptKey(project, ticket);
     if (this.accepting.has(key) || this.ticketCalls.get(key) === "accept") throw new Error(`${ticket} is already being accepted.`);
     if (this.ticketCalls.get(key) === "changes") throw new Error(`${ticket}'s changes are being sent to its owner: Accept is off until they are.`);
     this.ticketCalls.set(key, "accept");
     try {
-      await this.acceptChecked(paseo, project, ticket);
+      await this.acceptChecked(paseo, project, ticket, by);
     } finally {
       this.ticketCalls.delete(key);
     }
   }
 
-  private async acceptChecked(paseo: PaseoApi, project: string, ticket: string): Promise<void> {
+  private async acceptChecked(paseo: PaseoApi, project: string, ticket: string, by: "user" | "auto-accept"): Promise<void> {
     const config = await requireProjectConfig(project);
+    // The switch may have been turned off, or the ticket held, since the sweep chose it (TR-257).
+    if (by === "auto-accept" && (!config.autoAccept || config.autoAcceptHold.includes(ticket))) throw new Error(`Auto-accept is not on for ${ticket}.`);
     await this.requireOwner(paseo, project, ticket);
     const paths = await projectPaths(project);
     const detail = await viewTicket(paths.tracker, ticket);
@@ -307,8 +312,101 @@ export class Actions {
       await this.handOffAccept(paseo, project, ticket, plan.missing, plan.instruction);
       return;
     }
-    await appendTicketNote(paths.tracker, ticket, acceptedRecordText(new Date().toISOString(), plan.merging, true));
+    const at = new Date().toISOString();
+    if (by === "auto-accept") await appendTicketNote(paths.tracker, ticket, autoAcceptRecord(at));
+    await appendTicketNote(paths.tracker, ticket, acceptedRecordText(at, plan.merging, true, by === "auto-accept"));
     this.startAccept(paseo, project, ticket);
+  }
+
+  /**
+   * Tickets awaiting acceptance with a complete record that auto-accept would take (TR-257), apart from
+   * the hold list: the owner is alive and idle, the evidence, FINAL and delivery record are in, and no
+   * question or REVIEW blocker is open. Whatever the switch says, so the bulk Accept uses it too.
+   */
+  async waitingForAccept(paseo: PaseoApi, project: string): Promise<{ id: string; title: string }[]> {
+    const config = await requireProjectConfig(project);
+    const paths = await projectPaths(project);
+    const decisions = (await this.state.allDecisions()).filter((decision) => decision.project === project);
+    const waiting: { id: string; title: string }[] = [];
+    for (const summary of await listTickets(paths.tracker)) {
+      if (summary.status !== "Awaiting acceptance" || config.autoAcceptHold.includes(summary.id)) continue;
+      const detail = await viewTicket(paths.tracker, summary.id).catch(() => null);
+      if (detail === null) continue;
+      const owner = (await this.owners(paseo, project, summary.id)).filter((agent) => agent.status !== "closed").sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+      const evidence = await ticketEvidence(project, summary.id, detail.implementationNotes, detail.labels);
+      const blocked = autoAcceptBlock({
+        status: detail.status,
+        labels: detail.labels,
+        notes: detail.implementationNotes,
+        finalSummary: detail.finalSummary,
+        config,
+        evidenceMissing: evidence.complete ? [] : evidence.missing,
+        ownerStatus: owner?.status ?? null,
+        decisionOpen: questionHoldingAccept(decisions.filter((decision) => decision.ticket === summary.id)) !== null,
+      });
+      if (blocked === null) waiting.push({ id: summary.id, title: summary.title });
+    }
+    return waiting;
+  }
+
+  /** The bulk Accept (TR-257): each waiting ticket as if the user pressed Accept on it, one merge at a time, whatever the switch says. */
+  async acceptWaiting(paseo: PaseoApi, project: string): Promise<{ accepted: string[]; failed: { id: string; reason: string }[] }> {
+    return this.acceptEach(paseo, project, await this.waitingForAccept(paseo, project), "user");
+  }
+
+  private async acceptEach(paseo: PaseoApi, project: string, tickets: readonly { id: string }[], by: "user" | "auto-accept") {
+    const accepted: string[] = [];
+    const failed: { id: string; reason: string }[] = [];
+    for (const { id } of tickets) {
+      try {
+        await this.accept(paseo, project, id, by);
+        accepted.push(id);
+        // Merges into the main checkout never overlap.
+        await this.acceptRunning(project, id);
+      } catch (error) {
+        failed.push({ id, reason: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    return { accepted, failed };
+  }
+
+  /** Runs after a tracker change, an owner's turn end, the minute check and the switch turning on; with the switch off it does nothing. */
+  sweepAutoAccept(paseo: PaseoApi, project: string): Promise<void> {
+    return serialized(`auto-accept:${project}`, async () => {
+      if (isStopping() || (await readProjectConfig(project).catch(() => null))?.autoAccept !== true) return;
+      const paths = await projectPaths(project);
+      const waiting = await this.waitingForAccept(paseo, project);
+      const fresh: { id: string }[] = [];
+      for (const { id } of waiting) {
+        const head = reviewHead((await viewTicket(paths.tracker, id).catch(() => null))?.implementationNotes ?? null);
+        if (!this.autoAcceptFailed.has(`${project}\n${id}\n${head}`)) fresh.push({ id });
+      }
+      const { failed } = await this.acceptEach(paseo, project, fresh, "auto-accept");
+      for (const { id, reason } of failed) {
+        const head = reviewHead((await viewTicket(paths.tracker, id).catch(() => null))?.implementationNotes ?? null);
+        this.autoAcceptFailed.add(`${project}\n${id}\n${head}`);
+        console.error(`[taro] ${project}: auto-accept of ${id} stopped: ${reason}`);
+      }
+    });
+  }
+
+  /** The switch and the hold list (TR-257): one write for the manager's button and the settings page; a newly held ticket gets its note. */
+  async setAutoAccept(paseo: PaseoApi, project: string, change: { enabled?: boolean | undefined; hold?: readonly string[] | undefined }): Promise<ProjectConfig> {
+    const before = await requireProjectConfig(project);
+    const paths = await projectPaths(project);
+    const added = (change.hold ?? []).filter((id) => !before.autoAcceptHold.includes(id));
+    if (added.length > 0) {
+      const known = new Set((await listTickets(paths.tracker)).map((ticket) => ticket.id));
+      const unknown = added.filter((id) => !known.has(id));
+      if (unknown.length > 0) throw new Error(`${unknown.join(", ")} ${unknown.length === 1 ? "is" : "are"} not ${unknown.length === 1 ? "a ticket" : "tickets"} of ${project}.`);
+    }
+    const config = await updateProjectConfig(project, {
+      ...(change.enabled === undefined ? {} : { autoAccept: change.enabled }),
+      ...(change.hold === undefined ? {} : { autoAcceptHold: [...change.hold] }),
+    });
+    for (const id of added) await appendTicketNote(paths.tracker, id, autoAcceptHoldRecord(new Date().toISOString())).catch(() => undefined);
+    if (config.autoAccept) void this.sweepAutoAccept(paseo, project).catch((error: unknown) => reportFailure(`[taro] auto-accept sweep for ${project} failed:`, error));
+    return config;
   }
 
   /** Runs Accept's steps in the background; the card follows the records. Only one per ticket at a time. */
@@ -864,7 +962,12 @@ export class Actions {
         reportFailure(`[taro] waking ${project}'s manager for a new ticket:`, error);
       });
     }
+    this.sweepInBackground(paseo, project);
     if (failure !== null) throw failure;
+  }
+
+  private sweepInBackground(paseo: PaseoApi, project: string): void {
+    void this.sweepAutoAccept(paseo, project).catch((error: unknown) => reportFailure(`[taro] auto-accept sweep for ${project} failed:`, error));
   }
 
   /** A wake-up held for threads: stored as unseen until it goes out; returns what to call then. */
@@ -906,6 +1009,8 @@ export class Actions {
       // A failed pause check must not hold up the Done release below; the minute check tries again.
       await serialized(`tracker-changed:${project}`, () => this.advancePauses(paseo, project)).catch((error: unknown) => reportFailure(`[taro] pause check for ${project} failed:`, error));
     }
+    // An owner that delivered is idle now: the ticket may be complete for auto-accept (TR-257).
+    if (agent.labels[TARO_LABELS.role] === "owner") this.sweepInBackground(paseo, project);
     if (!this.lastStatuses.has(project)) return;
     if (doneTicketOf(agent.labels[TARO_LABELS.ticket], this.doneIn(project)) !== null) await this.releaseDoneTickets(paseo, project, []);
   }
@@ -1227,6 +1332,7 @@ export class Actions {
       reportFailure(`[taro] closed-owner check for ${project} failed:`, error);
       return false;
     });
+    this.sweepInBackground(paseo, project);
     return (await this.checkQueueAfterPauses(paseo, project, now)) || paused || relaunched;
   }
 

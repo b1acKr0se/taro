@@ -84,7 +84,7 @@ export const OLD_PLAN_MISSING = "This plan is not in the tracker’s history: it
 /** One record of a delivered ticket's acceptance, from its notes. */
 export interface DeliveryRecord {
   at: string;
-  kind: "changes requested" | "accepted" | "ended";
+  kind: "changes requested" | "accepted" | "auto-accepted" | "ended";
   /** The user's words with their changes; null for the others. */
   words: string | null;
 }
@@ -99,7 +99,7 @@ export function deliveryRecords(notes: string | null): DeliveryRecord[] {
     .flatMap((line, index): DeliveryRecord[] => {
       const match = DELIVERY_RECORD.exec(line.trim());
       if (match === null || match[1] === undefined || match[2] === undefined || match[3] === undefined || Number.isNaN(Date.parse(match[2]))) return [];
-      if (match[1] === "ACCEPTED") return [{ at: match[2], kind: "accepted", words: null }];
+      if (match[1] === "ACCEPTED") return [{ at: match[2], kind: match[3].startsWith("auto-accept was on") ? "auto-accepted" : "accepted", words: null }];
       if (match[1] === "DELIVERY-ENDED") return [{ at: match[2], kind: "ended", words: null }];
       // The user's words may run over several lines: up to the blank line that ends the note.
       const rest = lines.slice(index + 1);
@@ -144,6 +144,8 @@ export function deliveryCardView(record: DeliveryRecord, clock: (iso: string) =>
   switch (record.kind) {
     case "accepted":
       return { outcome: "Accepted", tone: "positive", time, words: null };
+    case "auto-accepted":
+      return { outcome: "Auto-accepted", tone: "positive", time, words: "Auto-accept was on." };
     case "ended":
       return { outcome: "Delivery ended: the owner asked a question", tone: "neutral", time, words: null };
     default:

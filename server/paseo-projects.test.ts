@@ -43,6 +43,8 @@ function config(project: string, repoPath: string, overrides: Partial<ProjectCon
     schemaVersion: 1,
     project,
     paseoProjectId: `prj_taro_${project}`,
+    autoAccept: false,
+    autoAcceptHold: [],
     managerAgentId: "",
     managerWorkspaceId: "",
     repoPath,
@@ -173,6 +175,16 @@ describe("settingsTemplate", () => {
     await writeConfig(older, new Date("2026-10-01T00:00:00Z"));
     await writeConfig(newer, new Date("2026-10-10T00:00:00Z"));
     expect(await settingsTemplate([older, newer])).toMatchObject({ project: "newer", owner: { model: "claude/new", thinking: "max" }, delivery: "local-only", maxParallelOwners: 5 });
+  });
+
+  // TR-257: a new project starts with auto-accept off, whatever the project it copies had.
+  it("never carries the auto-accept switch or its hold list to a new project", async () => {
+    const on = config("on", "/a", { autoAccept: true, autoAcceptHold: ["AB-1"] });
+    await writeConfig(on, new Date("2026-10-10T00:00:00Z"));
+    const template = await settingsTemplate([on]);
+    expect(template).not.toBeNull();
+    expect(Object.keys(template ?? {})).not.toContain("autoAccept");
+    expect(Object.keys(template ?? {})).not.toContain("autoAcceptHold");
   });
 
   it("is null before the first project", async () => {

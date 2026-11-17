@@ -2,6 +2,9 @@ import type { PluginServerContext } from "@getpaseo/plugin/server";
 
 import {
   acceptTicket,
+  acceptWaiting,
+  listWaitingForAccept,
+  setAutoAccept,
   answerDecision,
   getDecision,
   loadStats,
@@ -97,6 +100,7 @@ import { readImage } from "./server/images";
 import { Notifier } from "./server/notifications";
 import { allowedMergeMethods } from "./server/merge-methods";
 import { checkPrerequisites } from "./server/prerequisites";
+import { parseHoldList } from "./shared/auto-accept";
 import { listProjectConfigs, projectPaths, readProjectConfig, requireProjectConfig, taroHome, updateProjectConfig } from "./server/projects";
 import { sentImagesOf } from "./server/sent-images";
 import { agentCommands, projectFiles, recentCommands, rememberRecentCommand, ticketsForPicks } from "./server/composer-picks";
@@ -444,6 +448,19 @@ export default function contribute(server: PluginServerContext) {
   server.handle(acceptTicket, async ({ project, ticket }, { paseo }) => {
     await actions.accept(keep(paseo), project, ticket);
     return {};
+  });
+  server.handle(setAutoAccept, async ({ project, enabled, hold }, { paseo }) => {
+    const parsed = hold === undefined ? null : parseHoldList(hold.join("\n"));
+    if (parsed !== null && parsed.invalid.length > 0) throw new Error(`${parsed.invalid.join(", ")} ${parsed.invalid.length === 1 ? "is" : "are"} not ticket ids (like TR-12).`);
+    const config = await actions.setAutoAccept(keep(paseo), project, { enabled, hold: parsed?.ids });
+    invalidateBoards();
+    return { config };
+  });
+  server.handle(listWaitingForAccept, async ({ project }, { paseo }) => ({ tickets: await actions.waitingForAccept(keep(paseo), project) }));
+  server.handle(acceptWaiting, async ({ project }, { paseo }) => {
+    const result = await actions.acceptWaiting(keep(paseo), project);
+    invalidateBoards();
+    return result;
   });
   server.handle(requestChanges, async ({ project, ticket, text }, { paseo }) => {
     await actions.requestChanges(keep(paseo), project, ticket, text);
