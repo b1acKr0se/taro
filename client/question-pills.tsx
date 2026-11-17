@@ -107,12 +107,6 @@ export function QuestionPills({
 
   function press(chip: OptionChip): void {
     const typed = drafts[current]?.typed ?? "";
-    if (chip.asksForWords) {
-      // Picked here, its words typed in the full card at this question.
-      kept.update((state) => ({ ...state, drafts: state.drafts.map((each, index) => (index === current ? { label: chip.label, typed } : each)) }));
-      onOpen();
-      return;
-    }
     kept.update((state) => {
       const next = state.drafts.map((each, index) => (index === state.current ? { label: chip.label, typed } : each));
       return { drafts: next, current: nextUnanswered(answeredFlags(questions, next), state.current) ?? state.current };
@@ -172,7 +166,7 @@ export function QuestionPills({
                 <Pressable
                   key={`${index}:${chip.label}`}
                   accessibilityRole="button"
-                  accessibilityLabel={`${chip.asksForWords ? "Open to answer" : "Pick"}: ${chip.label}${chip.recommended ? " (recommended)" : ""}`}
+                  accessibilityLabel={`Pick: ${chip.label}${chip.recommended ? " (recommended)" : ""}`}
                   accessibilityState={{ selected: picked, disabled: presses.busy }}
                   disabled={presses.busy}
                   style={[styles.chip, chip.recommended ? styles.recommended : null, picked ? styles.picked : null, presses.busy ? { opacity: 0.5 } : null]}

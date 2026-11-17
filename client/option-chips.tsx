@@ -86,10 +86,6 @@ function SingleChips({
   if (chips.length === 0) return null;
 
   function press(chip: OptionChip): void {
-    if (chip.asksForWords) {
-      onOpen();
-      return;
-    }
     presses.press(optionPress(chip.label), () => answer({ key: decision.key, label: chip.label, text: "", from: "screen" }), {
       after: "hold",
       onSuccess: () => {
@@ -108,7 +104,7 @@ function SingleChips({
           <Pressable
             key={`${index}:${chip.label}`}
             accessibilityRole="button"
-            accessibilityLabel={`${chip.asksForWords ? "Open to answer" : "Answer"}: ${chip.label}${chip.recommended ? " (recommended)" : ""}`}
+            accessibilityLabel={`Answer: ${chip.label}${chip.recommended ? " (recommended)" : ""}`}
             accessibilityState={{ busy, disabled: off }}
             disabled={off}
             style={[styles.chip, chip.recommended ? styles.recommended : null, off && !busy ? { opacity: 0.5 } : null]}

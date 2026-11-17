@@ -478,7 +478,7 @@ export function PlanActions({
             theme={theme}
             disabled={busy}
             state={presses.stateOf(optionPress(other.label))}
-            onPress={() => (other.asksForWords ? setWriting(other.label) : send(optionPress(other.label), other.label, ""))}
+            onPress={() => send(optionPress(other.label), other.label, "")}
           />
         </View>
       ))}

@@ -13,7 +13,6 @@ import {
   decisionTimelineItems,
   defaultNote,
   isChangeOption,
-  optionAsksForWords,
   optionChips,
   planCardOptions,
   planChangeBox,
@@ -208,20 +207,18 @@ describe("decisionSubmit", () => {
     expect(decisionSubmit(rows, 0, " typed under Other ")).toMatchObject({ enabled: true, label: "Keep", text: "", fieldEnabled: false });
   });
 
-  it("opens the box on an option whose label or prompt ends with …, and waits for words", () => {
-    expect(decisionSubmit(rows, 1, "")).toMatchObject({ enabled: false, label: "Rename…", placeholder: "Say how for “Rename”…", fieldEnabled: true });
-    expect(decisionSubmit(rows, 1, "call it fees")).toMatchObject({ enabled: true, label: "Rename…", text: "call it fees" });
-    expect(decisionSubmit(rows, 2, " ")).toMatchObject({ enabled: false, fieldEnabled: true });
+  it("sends an option ending with … alone, as any other", () => {
+    expect(decisionSubmit(rows, 1, "")).toMatchObject({ enabled: true, label: "Rename…", text: "", fieldEnabled: false });
+    expect(decisionSubmit(rows, 2, " ")).toMatchObject({ enabled: true, fieldEnabled: false });
   });
 
   it("treats a pick past the end as no pick", () => {
     expect(decisionSubmit(rows, 7, "words")).toMatchObject({ enabled: false, label: null, fieldEnabled: false });
   });
 
-  it("says the box asks for a change when told to, except under an option asking for words", () => {
+  it("says the box asks for a change when told to", () => {
     expect(decisionSubmit(rows, null, "", CHANGE_PLACEHOLDER).placeholder).toBe("Describe a change…");
     expect(decisionSubmit(rows, "other", "", CHANGE_PLACEHOLDER).placeholder).toBe("Describe a change…");
-    expect(decisionSubmit(rows, 1, "", CHANGE_PLACEHOLDER).placeholder).toBe("Say how for “Rename”…");
   });
 });
 
@@ -260,7 +257,7 @@ describe("planCardOptions", () => {
     expect(planCardOptions({ options: [option("Split into children"), option("Approve the plan"), option("Change…")], recommended: "Split into children" })).toEqual({
       approve: "Approve the plan",
       approveLabel: "Approve the plan",
-      others: [{ label: "Split into children", asksForWords: false }],
+      others: [{ label: "Split into children" }],
     });
   });
 
@@ -281,7 +278,7 @@ describe("planCardOptions", () => {
     expect(planCardOptions({ options: [option("Go ahead"), option("Rename", "Rename it…")], recommended: "Go ahead" })).toEqual({
       approve: "Go ahead",
       approveLabel: "Go ahead",
-      others: [{ label: "Rename", asksForWords: true }],
+      others: [{ label: "Rename" }],
     });
   });
 
@@ -307,9 +304,9 @@ describe("optionChips", () => {
   it("keeps the agent's order and labels, marking only the recommended one", () => {
     const chips = optionChips({ options: [option("Approve"), option("Rename…"), option("Split into children")], recommended: "Approve", reason: "clear" });
     expect(chips).toEqual([
-      { label: "Approve", recommended: true, asksForWords: false },
-      { label: "Rename…", recommended: false, asksForWords: true },
-      { label: "Split into children", recommended: false, asksForWords: false },
+      { label: "Approve", recommended: true },
+      { label: "Rename…", recommended: false },
+      { label: "Split into children", recommended: false },
     ]);
   });
 
@@ -325,16 +322,6 @@ describe("optionChips", () => {
   it("keeps every option of a long list", () => {
     const options = Array.from({ length: 9 }, (_, index) => option(`Option ${index + 1}`));
     expect(optionChips({ options, recommended: "Option 9", reason: "" }).map((chip) => chip.recommended)).toEqual([false, false, false, false, false, false, false, false, true]);
-  });
-});
-
-describe("optionAsksForWords", () => {
-  it("reads the ellipsis on the label or the prompt, ignoring trailing space", () => {
-    expect(optionAsksForWords({ label: "Change…", prompt: "Change" })).toBe(true);
-    expect(optionAsksForWords({ label: "Other", prompt: "Say how… " })).toBe(true);
-    expect(optionAsksForWords({ label: "Keep", prompt: "Keep it" })).toBe(false);
-    // Three dots are not the ellipsis the format names.
-    expect(optionAsksForWords({ label: "Wait...", prompt: "Wait" })).toBe(false);
   });
 });
 
