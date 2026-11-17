@@ -98,3 +98,20 @@ export function autoAcceptRecord(at: string): string {
   return `AUTO-ACCEPT ${at} — auto-accept was on`;
 }
 
+
+/** Whether the newest ACCEPTED record is the switch's (it says "auto-accept was on" in place of "the user accepted"). */
+export function acceptedAutomatically(notes: string | null): boolean {
+  const records = roundRecords(notes).filter((record) => /^ACCEPTED\b/.test(record));
+  const newest = records[records.length - 1];
+  return newest !== undefined && /^ACCEPTED\s+\S+\s+—\s+auto-accept was on\b/.test(newest);
+}
+
+/** The ACCEPTANCE record of an auto-accepted ticket: the plugin's merge text, with the switch where the user's quoted words would be. */
+export function autoAcceptedAcceptance(acceptance: string, ticket: string): string {
+  return acceptance.replace(`user: "I accept ${ticket}."`, "auto-accept was on:");
+}
+
+/** Who accepted, for the message that hands an unfinished merge to an owner. */
+export function accepterText(notes: string | null): string {
+  return acceptedAutomatically(notes) ? "by auto-accept, which was on: the user pressed nothing" : "by the user";
+}

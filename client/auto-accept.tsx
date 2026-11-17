@@ -143,7 +143,7 @@ export function AutoAcceptOffer({ theme, control }: { theme: PluginTheme; contro
         {tickets.length === 1 ? "1 ticket is waiting" : `${tickets.length} tickets are waiting`} with a complete record ({ticketList(tickets)}). Accept {tickets.length === 1 ? "it" : "them"} now, or keep {tickets.length === 1 ? "it" : "them"} for your own Accept?
       </Text>
       <IconButton icon="CheckCheck" label={`Accept ${tickets.length} now`} showLabel tone="accent" theme={theme} disabled={control.busy} state={control.state} onPress={control.acceptNow} />
-      <IconButton icon="Hand" label="Keep them for me" showLabel theme={theme} disabled={control.busy} onPress={control.keepThem} />
+      <IconButton icon="Hand" label={tickets.length === 1 ? "Keep it for me" : "Keep them for me"} showLabel theme={theme} disabled={control.busy} onPress={control.keepThem} />
       <IconButton icon="X" label="Cancel" showLabel theme={theme} disabled={control.busy} onPress={control.dismiss} />
     </View>
   );

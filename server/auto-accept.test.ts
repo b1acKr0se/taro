@@ -12,7 +12,7 @@ import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import type { Stats } from "./stats";
 import type { Supervisor } from "./supervision";
-import { appendTicketNote, listTickets, viewTicket } from "./tickets";
+import { appendTicketNote, closeTicket, listTickets, viewTicket } from "./tickets";
 import type { TrackerWatch } from "./tracker-watch";
 
 vi.mock("./agents", async (original) => ({ ...(await original<typeof import("./agents")>()), listTaroAgents: vi.fn() }));
@@ -125,6 +125,54 @@ describe("the auto-accept sweep", () => {
     expect(first).toBeGreaterThan(0);
     await sweep();
     expect(vi.mocked(appendTicketNote).mock.calls.length).toBe(first);
+  });
+});
+
+describe("a ticket that changed while the batch ran", () => {
+  // DM-1's merge is what runs first; by the time the batch reaches DM-2 its owner is working again.
+  function changeSecondDuringFirst(): void {
+    vi.mocked(acceptLocalBranch).mockImplementationOnce(async () => {
+      vi.mocked(viewTicket).mockImplementation(async (_tracker, id) => ({ title: id, status: id === "DM-2" ? "In Progress" : "Awaiting acceptance", implementationNotes: notes[id] ?? "", finalSummary: "Final.", labels: ["complexity-low"] }) as never);
+      return { kind: "done", acceptance: "ACCEPTANCE x" } as never;
+    });
+  }
+
+  it("is not accepted by the sweep any more", async () => {
+    changeSecondDuringFirst();
+    await sweep();
+    expect(vi.mocked(acceptLocalBranch)).toHaveBeenCalledTimes(1);
+    expect(written().filter((text) => text.startsWith("ACCEPTED"))).toHaveLength(1);
+  });
+
+  it("is not accepted by the bulk Accept either", async () => {
+    changeSecondDuringFirst();
+    const result = await actions.acceptWaiting(paseo, "demo");
+    expect(result.accepted).toEqual(["DM-1"]);
+    expect(result.failed).toEqual([{ id: "DM-2", reason: expect.stringContaining("changed since it was listed") }]);
+    expect(written().filter((text) => text.startsWith("ACCEPTED"))).toHaveLength(1);
+  });
+});
+
+describe("what an auto-accept records and costs", () => {
+  it("closes the ticket with the switch, not the user's quoted words, in its ACCEPTANCE", async () => {
+    vi.mocked(appendTicketNote).mockImplementation(async (_tracker, id, record) => void (notes[id] = `${notes[id]}\n\n${record}`));
+    vi.mocked(acceptLocalBranch).mockResolvedValue({ kind: "done", acceptance: 'ACCEPTANCE t — user: "I accept DM-1." Accepted c; merge: merged a → c' } as never);
+    await sweep();
+    const closing = vi.mocked(closeTicket).mock.calls.filter((call) => call[1] === "DM-1").map((call) => call[2]);
+    expect(closing).toEqual(['ACCEPTANCE t — auto-accept was on: Accepted c; merge: merged a → c']);
+  });
+
+  it("keeps the user's words in the ACCEPTANCE of a bulk Accept", async () => {
+    vi.mocked(appendTicketNote).mockImplementation(async (_tracker, id, record) => void (notes[id] = `${notes[id]}\n\n${record}`));
+    vi.mocked(acceptLocalBranch).mockResolvedValue({ kind: "done", acceptance: 'ACCEPTANCE t — user: "I accept DM-1." Accepted c; merge: merged a → c' } as never);
+    await actions.acceptWaiting(paseo, "demo");
+    expect(vi.mocked(closeTicket).mock.calls.every((call) => call[2].includes('user: "I accept DM-1."'))).toBe(true);
+  });
+
+  it("runs one sweep and one rescan however many times it is asked for", async () => {
+    await Promise.all([1, 2, 3, 4, 5].map(() => actions.sweepAutoAccept(paseo, "demo")));
+    // Each sweep lists the tracker once; five asks while one runs make one more, not five.
+    expect(vi.mocked(listTickets).mock.calls.length).toBeLessThanOrEqual(2);
   });
 });
 

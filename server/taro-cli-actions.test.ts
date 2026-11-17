@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   acceptTicket,
+  acceptWaiting,
   answerDecision,
   changeQueuedSpec,
   closeRound,
@@ -16,6 +17,7 @@ import {
   reopenTicket,
   requestChanges,
   resumeTicket,
+  setAutoAccept,
 } from "../shared/contracts";
 import { main } from "./taro-cli.ts";
 
@@ -102,6 +104,11 @@ describe("every button has a command that calls the same RPC with an input its c
     [["decision", "answer", "q1", "--label", "Approve"], answerDecision, { key: "q1", label: "Approve", text: "" }],
     [["decision", "answer", "q1", "--text", "per trade"], answerDecision, { key: "q1", label: null, text: "per trade" }],
     [["decision", "dismiss", "q1"], dismissManagerQuestion, { project: "notes-app", key: "q1" }],
+    [["project", "auto-accept-on"], setAutoAccept, { project: "notes-app", enabled: true }],
+    [["project", "auto-accept-off"], setAutoAccept, { project: "notes-app", enabled: false }],
+    [["project", "hold", "tr-7, TR-9"], setAutoAccept, { project: "notes-app", hold: ["TR-7", "TR-9"] }],
+    [["project", "hold", ""], setAutoAccept, { project: "notes-app", hold: [] }],
+    [["project", "accept-waiting"], acceptWaiting, { project: "notes-app" }],
   ];
   for (const [args, contract, expected] of cases) {
     it(args.join(" "), async () => {
@@ -115,6 +122,20 @@ describe("every button has a command that calls the same RPC with an input its c
       expect(requests[0]?.hello).toMatchObject({ clientType: "cli", auth: { kind: "localCredential", token: TOKEN } });
     });
   }
+});
+
+describe("taro project (the auto-accept switch)", () => {
+  it("is the user's: it refuses inside an agent session and calls nothing", async () => {
+    const requests = stubDaemon(() => ({ output: {} }));
+    const result = await run(["project", "auto-accept-on"], { PASEO_AGENT_ID: "agent-1" });
+    expect(result.code).toBe(1);
+    expect(requests).toHaveLength(0);
+  });
+
+  it("names no verb it does not have", async () => {
+    stubDaemon(() => ({ output: {} }));
+    expect((await run(["project", "auto-accept"])).code).toBe(2);
+  });
 });
 
 describe("taro ticket accept", () => {

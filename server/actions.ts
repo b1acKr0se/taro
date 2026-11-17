@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import { carriedSlot } from "../shared/chat-queue";
 import { answerWords, severalAnswers, type QuestionAnswer } from "../shared/decision-answers";
 import { SCOPE_APPROVAL } from "../shared/decision-view";
-import { autoAcceptBlock, autoAcceptHoldRecord, autoAcceptRecord } from "../shared/auto-accept";
+import { acceptedAutomatically, autoAcceptBlock, autoAcceptedAcceptance, autoAcceptHoldRecord, autoAcceptRecord } from "../shared/auto-accept";
 import { questionHoldingAccept } from "../shared/delivery-end";
 import { doneTicketOf, planRelease } from "../shared/done-release";
 import { acceptanceText, handoffText, ownerIsWarm, type AcceptOutcome, type Handover } from "../shared/accept-merge";
@@ -67,7 +67,7 @@ import { refusedMessage } from "../shared/refused-commands";
 import { reopenRound, roundBranch } from "../shared/reopen";
 import { specChangeRefusal } from "../shared/spec-change";
 import { questionsOf } from "../shared/reports";
-import { carriedQuestionLines, dismissDecision, questionsToCarry } from "../shared/state";
+import { carriedQuestionLines, dismissDecision, questionsToCarry, type StoredDecision } from "../shared/state";
 import { TARO_LABELS, TICKET_STATUSES, type ProjectConfig } from "../shared/project";
 import { acceptLocalBranch, acceptPullRequest } from "./accept-merge";
 import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
@@ -134,6 +134,7 @@ export class Actions {
   private readonly answering = new Set<string>();
   /** Tickets (`project\nticket\nreview head`) auto-accept failed on: not tried again until the head moves or the plugin restarts. */
   private readonly autoAcceptFailed = new Set<string>();
+  private readonly sweeps = new Map<string, { again: boolean; done: Promise<void> }>();
   /** Projects whose stored ladder was merged in since the start. */
   private readonly ladderLoaded = new Set<string>();
 
@@ -282,25 +283,31 @@ export class Actions {
    * not woken to reread its whole context for a few commands. It records ACCEPTED (the card says it
    * merges) and runs the steps after answering; a surprise goes to an owner (`handOffAccept`).
    */
-  async accept(paseo: PaseoApi, project: string, ticket: string, by: "user" | "auto-accept" = "user"): Promise<void> {
+  async accept(paseo: PaseoApi, project: string, ticket: string, by: "user" | "auto-accept" = "user", recheck = by === "auto-accept"): Promise<void> {
     const key = acceptKey(project, ticket);
     if (this.accepting.has(key) || this.ticketCalls.get(key) === "accept") throw new Error(`${ticket} is already being accepted.`);
     if (this.ticketCalls.get(key) === "changes") throw new Error(`${ticket}'s changes are being sent to its owner: Accept is off until they are.`);
     this.ticketCalls.set(key, "accept");
     try {
-      await this.acceptChecked(paseo, project, ticket, by);
+      await this.acceptChecked(paseo, project, ticket, by, recheck);
     } finally {
       this.ticketCalls.delete(key);
     }
   }
 
-  private async acceptChecked(paseo: PaseoApi, project: string, ticket: string, by: "user" | "auto-accept"): Promise<void> {
+  private async acceptChecked(paseo: PaseoApi, project: string, ticket: string, by: "user" | "auto-accept", recheck: boolean): Promise<void> {
     const config = await requireProjectConfig(project);
     // The switch may have been turned off, or the ticket held, since the sweep chose it (TR-257).
     if (by === "auto-accept" && (!config.autoAccept || config.autoAcceptHold.includes(ticket))) throw new Error(`Auto-accept is not on for ${ticket}.`);
     await this.requireOwner(paseo, project, ticket);
     const paths = await projectPaths(project);
     const detail = await viewTicket(paths.tracker, ticket);
+    // A batch chose this ticket some merges ago: the user may have asked for changes, pressed Accept or reopened it since.
+    if (recheck) {
+      const decisions = (await this.state.allDecisions()).filter((decision) => decision.project === project);
+      const blocked = await this.autoAcceptBlockOf(paseo, project, config, detail, decisions);
+      if (blocked !== null) throw new Error(`${ticket} changed since it was listed: ${blocked}.`);
+    }
     // Nothing happens while the evidence is incomplete.
     await requireCompleteEvidence(project, ticket, detail.implementationNotes, detail.labels);
     // Nor while the owner waits on a question (TR-146): its answer may change what merges.
@@ -332,34 +339,39 @@ export class Actions {
       if (summary.status !== "Awaiting acceptance" || config.autoAcceptHold.includes(summary.id)) continue;
       const detail = await viewTicket(paths.tracker, summary.id).catch(() => null);
       if (detail === null) continue;
-      const owner = (await this.owners(paseo, project, summary.id)).filter((agent) => agent.status !== "closed").sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
-      const evidence = await ticketEvidence(project, summary.id, detail.implementationNotes, detail.labels);
-      const blocked = autoAcceptBlock({
-        status: detail.status,
-        labels: detail.labels,
-        notes: detail.implementationNotes,
-        finalSummary: detail.finalSummary,
-        config,
-        evidenceMissing: evidence.complete ? [] : evidence.missing,
-        ownerStatus: owner?.status ?? null,
-        decisionOpen: questionHoldingAccept(decisions.filter((decision) => decision.ticket === summary.id)) !== null,
-      });
+      const blocked = await this.autoAcceptBlockOf(paseo, project, config, detail, decisions);
       if (blocked === null) waiting.push({ id: summary.id, title: summary.title });
     }
     return waiting;
   }
 
-  /** The bulk Accept (TR-257): each waiting ticket as if the user pressed Accept on it, one merge at a time, whatever the switch says. */
-  async acceptWaiting(paseo: PaseoApi, project: string): Promise<{ accepted: string[]; failed: { id: string; reason: string }[] }> {
-    return this.acceptEach(paseo, project, await this.waitingForAccept(paseo, project), "user");
+  /** Why auto-accept may not take the ticket as it stands now, or null: the rule over the facts read fresh. */
+  private async autoAcceptBlockOf(paseo: PaseoApi, project: string, config: ProjectConfig, detail: TicketDetail, decisions: readonly StoredDecision[]): Promise<string | null> {
+    const owner = (await this.owners(paseo, project, detail.id)).filter((agent) => agent.status !== "closed").sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    const evidence = await ticketEvidence(project, detail.id, detail.implementationNotes, detail.labels);
+    return autoAcceptBlock({
+      status: detail.status,
+      labels: detail.labels,
+      notes: detail.implementationNotes,
+      finalSummary: detail.finalSummary,
+      config,
+      evidenceMissing: evidence.complete ? [] : evidence.missing,
+      ownerStatus: owner?.status ?? null,
+      decisionOpen: questionHoldingAccept(decisions.filter((decision) => decision.ticket === detail.id)) !== null,
+    });
   }
 
-  private async acceptEach(paseo: PaseoApi, project: string, tickets: readonly { id: string }[], by: "user" | "auto-accept") {
+  /** The bulk Accept (TR-257): each waiting ticket as if the user pressed Accept on it, one merge at a time, whatever the switch says. */
+  async acceptWaiting(paseo: PaseoApi, project: string): Promise<{ accepted: string[]; failed: { id: string; reason: string }[] }> {
+    return this.acceptEach(paseo, project, await this.waitingForAccept(paseo, project), "user", true);
+  }
+
+  private async acceptEach(paseo: PaseoApi, project: string, tickets: readonly { id: string }[], by: "user" | "auto-accept", recheck: boolean) {
     const accepted: string[] = [];
     const failed: { id: string; reason: string }[] = [];
     for (const { id } of tickets) {
       try {
-        await this.accept(paseo, project, id, by);
+        await this.accept(paseo, project, id, by, recheck);
         accepted.push(id);
         // Merges into the main checkout never overlap.
         await this.acceptRunning(project, id);
@@ -372,6 +384,28 @@ export class Actions {
 
   /** Runs after a tracker change, an owner's turn end, the minute check and the switch turning on; with the switch off it does nothing. */
   sweepAutoAccept(paseo: PaseoApi, project: string): Promise<void> {
+    // One sweep runs and at most one waits: a run asked for while one is going rescans once it ends, not once per ask.
+    const running = this.sweeps.get(project);
+    if (running !== undefined) {
+      running.again = true;
+      return running.done;
+    }
+    const sweep = { again: false, done: Promise.resolve() };
+    sweep.done = (async () => {
+      try {
+        do {
+          sweep.again = false;
+          await this.sweepOnce(paseo, project);
+        } while (sweep.again && !isStopping());
+      } finally {
+        this.sweeps.delete(project);
+      }
+    })();
+    this.sweeps.set(project, sweep);
+    return sweep.done;
+  }
+
+  private sweepOnce(paseo: PaseoApi, project: string): Promise<void> {
     return serialized(`auto-accept:${project}`, async () => {
       if (isStopping() || (await readProjectConfig(project).catch(() => null))?.autoAccept !== true) return;
       const paths = await projectPaths(project);
@@ -381,7 +415,7 @@ export class Actions {
         const head = reviewHead((await viewTicket(paths.tracker, id).catch(() => null))?.implementationNotes ?? null);
         if (!this.autoAcceptFailed.has(`${project}\n${id}\n${head}`)) fresh.push({ id });
       }
-      const { failed } = await this.acceptEach(paseo, project, fresh, "auto-accept");
+      const { failed } = await this.acceptEach(paseo, project, fresh, "auto-accept", true);
       for (const { id, reason } of failed) {
         const head = reviewHead((await viewTicket(paths.tracker, id).catch(() => null))?.implementationNotes ?? null);
         this.autoAcceptFailed.add(`${project}\n${id}\n${head}`);
@@ -453,7 +487,7 @@ export class Actions {
       console.log(`[taro] ${project}: Accept on ${ticket} cut off by the stop; it resumes at start`);
       return;
     }
-    if (outcome.kind === "done") await closeTicket(paths.tracker, ticket, outcome.acceptance);
+    if (outcome.kind === "done") await closeTicket(paths.tracker, ticket, acceptedAutomatically(detail.implementationNotes) ? autoAcceptedAcceptance(outcome.acceptance, ticket) : outcome.acceptance);
     else if (outcome.kind === "not-merged") await appendTicketNote(paths.tracker, ticket, `NOT-MERGED ${at()} — ${outcome.reason}`);
     else await this.handOffAccept(paseo, project, ticket, outcome.found, plan.instruction);
     console.log(`[taro] ${project}: Accept on ${ticket} ended ${outcome.kind}`);

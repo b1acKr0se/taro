@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { autoAcceptBlock, autoAcceptHoldRecord, autoAcceptRecord, holdListText, parseHoldList, type AutoAcceptTicket } from "./auto-accept";
+import { acceptedAutomatically, accepterText, autoAcceptBlock, autoAcceptedAcceptance, autoAcceptHoldRecord, autoAcceptRecord, holdListText, parseHoldList, type AutoAcceptTicket } from "./auto-accept";
 
 const HEAD = "a".repeat(40);
 const delivered = `EXECUTION 2026-11-01T10:00Z — owner x, review-head: ${HEAD}, pr: https://github.com/o/r/pull/1\n\nEVIDENCE 2026-11-01T09:00Z — checks\ncheck: npm test — green`;
@@ -114,5 +114,23 @@ describe("records", () => {
   it("say the switch was on, with the time", () => {
     expect(autoAcceptRecord("2026-11-01T10:00Z")).toBe("AUTO-ACCEPT 2026-11-01T10:00Z — auto-accept was on");
     expect(autoAcceptHoldRecord("2026-11-01T10:00Z")).toMatch(/^AUTO-ACCEPT-HOLD 2026-11-01T10:00Z — held by the user/);
+  });
+});
+
+describe("who accepted", () => {
+  const acceptance = 'ACCEPTANCE t — user: "I accept TR-1." Accepted abc; merge: merged a → b';
+  it("tells an automatic ACCEPTED record from the user's", () => {
+    expect(acceptedAutomatically("ACCEPTED 2026-11-01T10:00Z — auto-accept was on; merging: into main")).toBe(true);
+    expect(acceptedAutomatically("ACCEPTED 2026-11-01T10:00Z — the user accepted; merging: into main")).toBe(false);
+    expect(acceptedAutomatically(null)).toBe(false);
+    expect(acceptedAutomatically("ACCEPTED 2026-11-01T10:00Z — auto-accept was on; merging: x\n\nACCEPTED 2026-11-02T10:00Z — the user accepted; merging: x")).toBe(false);
+  });
+  it("puts the switch in the ACCEPTANCE record where the user's quoted words were", () => {
+    expect(autoAcceptedAcceptance(acceptance, "TR-1")).toBe("ACCEPTANCE t — auto-accept was on: Accepted abc; merge: merged a → b");
+    expect(autoAcceptedAcceptance(acceptance, "TR-2")).toBe(acceptance);
+  });
+  it("names the accepter for the owner a merge is handed to", () => {
+    expect(accepterText("ACCEPTED 2026-11-01T10:00Z — auto-accept was on; merging: x")).toContain("auto-accept");
+    expect(accepterText("ACCEPTED 2026-11-01T10:00Z — the user accepted; merging: x")).toBe("by the user");
   });
 });

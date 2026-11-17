@@ -567,9 +567,7 @@ function ProjectView({
                 onChange={onPhoneTab}
               />
             </View>
-            {phoneTab === "manager" && summary.manager !== null && onOpenAgent !== null ? (
-              <IconButton icon="ExternalLink" label="Open in Paseo" theme={theme} onPress={() => onOpenAgent(summary.manager?.id ?? "")} />
-            ) : null}
+            {/* Open in Paseo is left off this row: with the switch beside Settings the four tabs no longer fit, and Paseo's own workspace list opens the manager. */}
             <AutoAcceptButton theme={theme} control={autoAccept} />
             <IconButton icon="Settings" label="Project settings" theme={theme} onPress={onSettings} />
           </View>
