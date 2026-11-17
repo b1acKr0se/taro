@@ -98,7 +98,8 @@ export function useAutoAccept(config: Pick<ProjectConfig, "project" | "autoAccep
 /** Icon only: filled green when on, flat when off; its tooltip (hover, or held on a phone) says which project and what a press does. */
 export function AutoAcceptButton({ theme, control }: { theme: PluginTheme; control: AutoAcceptControl }) {
   return (
-    <TipAnchor theme={theme} text={autoAcceptTip(control.project, control.on)}>
+    // Keyed on the offer: the tooltip would stay over the offer this press opens, so it starts over (and is off) while the offer shows.
+    <TipAnchor key={control.offer === null ? "idle" : "offer"} theme={theme} text={autoAcceptTip(control.project, control.on)}>
       {(tip) => (
         <IconButton
           icon="CheckCheck"
@@ -107,7 +108,7 @@ export function AutoAcceptButton({ theme, control }: { theme: PluginTheme; contr
           theme={theme}
           disabled={control.busy}
           state={control.state}
-          tip={tip}
+          {...(control.offer === null ? { tip } : {})}
           onPress={control.toggle}
         />
       )}
