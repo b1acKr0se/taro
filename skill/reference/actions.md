@@ -14,8 +14,8 @@ user's own terminal.
   (default `~/.paseo`). `--note -` and `--text -` read standard input. `--json` prints the daemon's answer.
 - Exit codes: 0 done, 1 the action refused (its reason on stderr), 2 usage, 4 the daemon is not reachable.
 - **Accept, reopen, request-changes, change-spec, close-round and the decision verbs are the user's**:
-  they refuse inside the ticket's own owner and subagents (exit 1), so no worker approves its own work;
-  ask the user. Any other session may run them. Pause, resume and relaunch-owner run anywhere.
+  they refuse the ticket's own owner and subagents (exit 1);
+  ask the user. Never work around that (`env -u PASEO_AGENT_ID`, a raw RPC). Any other session may run them. Pause, resume and relaunch-owner run anywhere.
 
 ## The owner's mechanical steps
 

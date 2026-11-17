@@ -165,14 +165,29 @@ describe("words", () => {
 describe("inside an agent session", () => {
   const AGENT = { PASEO_AGENT_ID: "3f2a9c1d-0000-4000-8000-000000000001" };
 
-  it("sends the agent's id as the caller on the user's actions only, leaving the refusal to the daemon", async () => {
+  it("sends the agent's id as the caller on every user-only action, and on no other", async () => {
     const requests = stubDaemon(() => ({ output: {} }));
-    await run(["ticket", "accept", "TR-7"], AGENT);
-    await run(["decision", "dismiss", "q1"], AGENT);
-    await run(["decision", "answer", "q1", "--label", "Approve"], AGENT);
-    await run(["ticket", "pause", "TR-7"], AGENT);
+    const userOnly = [
+      ["ticket", "accept", "TR-7"],
+      ["ticket", "reopen", "TR-7", "--note", "x"],
+      ["ticket", "request-changes", "TR-7", "--text", "x"],
+      ["ticket", "change-spec", "TR-7", "--text", "x"],
+      ["ticket", "close-round", "TR-7"],
+      ["decision", "answer", "q1", "--label", "Approve"],
+      ["decision", "dismiss", "q1"],
+    ];
+    for (const args of userOnly) await run(args, AGENT);
+    for (const verb of ["pause", "resume", "relaunch-owner"]) await run(["ticket", verb, "TR-7"], AGENT);
     await run(["ticket", "accept", "TR-7"]);
-    expect(requests.map((request) => (request.input as { caller?: string }).caller)).toEqual([AGENT.PASEO_AGENT_ID, AGENT.PASEO_AGENT_ID, AGENT.PASEO_AGENT_ID, undefined, undefined]);
+    expect(requests.map((request) => (request.input as { caller?: string }).caller)).toEqual([...userOnly.map(() => AGENT.PASEO_AGENT_ID), undefined, undefined, undefined, undefined]);
+  });
+
+  it("is accepted by every user-only contract, and by each button's input without it", () => {
+    const base = { project: "p", ticket: "TR-7", key: "q1", label: null, text: "x", note: "x" };
+    for (const contract of [acceptTicket, reopenTicket, requestChanges, changeQueuedSpec, closeRound, answerDecision, dismissManagerQuestion]) {
+      expect(contract.input.parse({ ...base, caller: "a1" })).toMatchObject({ caller: "a1" });
+      expect(contract.input.parse(base)).not.toHaveProperty("caller", expect.anything());
+    }
   });
 
   it("shows the daemon's refusal of a ticket's own worker, exit 1", async () => {
