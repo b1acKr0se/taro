@@ -23,8 +23,8 @@ describe("stepping through several questions (TR-207)", () => {
   it("enables Submit only when every question is answered", () => {
     const some = [{ label: "YAML", typed: "" }, null, { label: "Copy", typed: "" }];
     expect(allAnswered(answeredFlags(QUESTIONS, some))).toBe(false);
-    // An option asking for words, or Other, answers only with words.
-    expect(allAnswered(answeredFlags(QUESTIONS, [some[0] ?? null, { label: "Rename…", typed: " " }, some[2] ?? null]))).toBe(false);
+    // Other answers only with words; any option, "…" or not, answers as it is.
+    expect(allAnswered(answeredFlags(QUESTIONS, [some[0] ?? null, { label: "Rename…", typed: " " }, some[2] ?? null]))).toBe(true);
     expect(allAnswered(answeredFlags(QUESTIONS, [some[0] ?? null, { label: null, typed: "" }, some[2] ?? null]))).toBe(false);
     expect(allAnswered(answeredFlags(QUESTIONS, [some[0] ?? null, { label: "Rename…", typed: "by notebook" }, some[2] ?? null]))).toBe(true);
     expect(allAnswered(answeredFlags(QUESTIONS, [some[0] ?? null, { label: null, typed: "flat" }, some[2] ?? null]))).toBe(true);
@@ -44,11 +44,11 @@ describe("stepping through several questions (TR-207)", () => {
     expect(recapLine(QUESTIONS, drafts, 2)).toBe("Answered: YAML · “one per notebook”");
   });
 
-  it("sends words only with Other or an option asking for them", () => {
+  it("sends words only with Other ", () => {
     const drafts = [{ label: "YAML", typed: "left over" }, { label: "Rename…", typed: " by notebook " }, { label: null, typed: "none" }];
     expect(draftAnswers(QUESTIONS, drafts)).toEqual([
       { header: "Tags", label: "YAML", text: "" },
-      { header: "Folders", label: "Rename…", text: "by notebook" },
+      { header: "Folders", label: "Rename…", text: "" },
       { header: "Images", label: null, text: "none" },
     ]);
   });

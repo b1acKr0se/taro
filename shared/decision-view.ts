@@ -160,7 +160,7 @@ export function answerPlaceholder(decision: Pick<StoredDecision, "id" | "options
  */
 export function planCardOptions(
   decision: Pick<StoredDecision, "options" | "recommended">,
-): { approve: string; approveLabel: string; others: { label: string; asksForWords: boolean }[] } | null {
+): { approve: string; approveLabel: string; others: { label: string }[] } | null {
   const options = shownOptions(decision.options);
   const approves = options.filter((option) => isApproveLabel(option.label));
   const recommended = options.find((option) => option.label === decision.recommended);
@@ -169,22 +169,17 @@ export function planCardOptions(
   return {
     approve: approve.label,
     approveLabel: approve.label.trim().toLowerCase() === "approve" ? "Approve" : approve.label.trim(),
-    others: options.filter((option) => option !== approve).map((option) => ({ label: option.label, asksForWords: optionAsksForWords(option) })),
+    others: options.filter((option) => option !== approve).map((option) => ({ label: option.label })),
   };
 }
 
 /** Where a scope approval's buttons are drawn: the compact card, the card with the plan unfolded in place, or the Ticket tab's Plan. */
 export type PlanActionsPlace = "card" | "unfolded card" | "ticket plan";
 
-/**
- * The plan's change box (TR-112), opened as on the acceptance card: by Request changes… (`option`
- * null), sending the typed words alone, or by an option that asks for words, sending both. Send
- * waits for words.
- */
-export function planChangeBox(option: string | null, typed: string): { sendLabel: string; placeholder: string; enabled: boolean; label: string | null; text: string } {
+/** The plan's change box (TR-112), opened by Request changes… as on the acceptance card: it sends the typed words alone, and Send changes waits for words. */
+export function planChangeBox(typed: string): { sendLabel: string; placeholder: string; enabled: boolean; text: string } {
   const text = typed.trim();
-  if (option === null) return { sendLabel: "Send changes", placeholder: CHANGE_PLACEHOLDER, enabled: text !== "", label: null, text };
-  return { sendLabel: "Send", placeholder: `Say how for “${option.trim().replace(/…$/, "")}”…`, enabled: text !== "", label: option, text };
+  return { sendLabel: "Send changes", placeholder: CHANGE_PLACEHOLDER, enabled: text !== "", text };
 }
 
 /** What is picked on a decision card: one of its option rows, the Other row under them, or nothing. */
@@ -197,32 +192,23 @@ export type DecisionPick = number | "other" | null;
 export type DecisionSubmit = { enabled: boolean; label: string | null; text: string; placeholder: string; fieldEnabled: boolean };
 
 /**
- * The card's Submit (TR-030, TR-083): a regular option is sent alone, with no note; Other sends the
- * typed words; an option ending with "…" asks for words and sends both (the server joins them,
- * TR-028). Words typed under Other and then left greyed by another pick are not sent with it.
+ * The card's Submit (TR-030, TR-083): a regular option is sent alone, with no note; only Other needs
+ * and sends typed words (an "…" on a label asks for nothing). Words typed under Other and then left greyed by another pick are not sent with it.
  */
 export function decisionSubmit(rows: DecisionOptionRow[], picked: DecisionPick, typed: string, freePlaceholder: string = ANSWER_PLACEHOLDER): DecisionSubmit {
   const words = typed.trim();
   if (picked === "other") return { enabled: words !== "", label: null, text: words, placeholder: freePlaceholder, fieldEnabled: true };
   const row = picked === null ? null : rows[picked] ?? null;
   if (row === null) return { enabled: false, label: null, text: "", placeholder: freePlaceholder, fieldEnabled: false };
-  if (optionAsksForWords(row)) {
-    return { enabled: words !== "", label: row.label, text: words, placeholder: `Say how for “${row.label.trim().replace(/…$/, "")}”…`, fieldEnabled: true };
-  }
   return { enabled: true, label: row.label, text: "", placeholder: freePlaceholder, fieldEnabled: false };
 }
 
-/** An option ending with "…" (its label or prompt) asks the user for words. */
-export function optionAsksForWords(option: { label: string; prompt: string }): boolean {
-  return option.label.trim().endsWith("…") || option.prompt.trim().endsWith("…");
-}
-
-/** One option as a board card's chip (TR-045): pressing it answers at once, unless it asks for words. */
-export type OptionChip = { label: string; recommended: boolean; asksForWords: boolean };
+/** One option as a board card's chip (TR-045): pressing it answers at once. */
+export type OptionChip = { label: string; recommended: boolean };
 
 /** The card's chips in the agent's order without change options, the recommended one marked; labels keep the agent's words. */
 export function optionChips(decision: Pick<StoredDecision, "options" | "recommended" | "reason">): OptionChip[] {
-  return decisionOptionRows(decision).rows.map((row) => ({ label: row.label, recommended: row.recommended, asksForWords: optionAsksForWords(row) }));
+  return decisionOptionRows(decision).rows.map((row) => ({ label: row.label, recommended: row.recommended }));
 }
 
 /**

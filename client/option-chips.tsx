@@ -1,8 +1,7 @@
 /**
  * A question's options on a board or Inbox card (TR-045), in the agent's words and order, the
  * recommended one marked; options that only stand for typing ("Change…", "Other") are left out
- * (TR-061). Pressing one answers at once; one that asks for words ("Rename…") opens the full card
- * instead, where the reasoning is and the words can be typed. A card asking several questions is
+ * (TR-061). Pressing one answers at once, whatever its label ends with. A card asking several questions is
  * `./question-pills`, which draws its own Answer or Send.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
@@ -34,24 +33,22 @@ export function OptionChips({
 }: {
   decision: StoredDecision;
   theme: PluginTheme;
-  /** Opens the full card, for an option that asks for words. */
+  /** Opens the full card (several questions: the Answer button). */
   onOpen: () => void;
   onAnswered: () => void;
 }) {
   // Several questions on one card (TR-207): pills and a chip row per question, not one answer per chip.
   if (questionsOf(decision).length > 1) return <QuestionPills decision={decision} theme={theme} onOpen={onOpen} onAnswered={onAnswered} />;
-  return <SingleChips decision={decision} theme={theme} onOpen={onOpen} onAnswered={onAnswered} />;
+  return <SingleChips decision={decision} theme={theme} onAnswered={onAnswered} />;
 }
 
 function SingleChips({
   decision,
   theme,
-  onOpen,
   onAnswered,
 }: {
   decision: StoredDecision;
   theme: PluginTheme;
-  onOpen: () => void;
   onAnswered: () => void;
 }) {
   const answer = useRpc(answerDecision);
@@ -86,10 +83,6 @@ function SingleChips({
   if (chips.length === 0) return null;
 
   function press(chip: OptionChip): void {
-    if (chip.asksForWords) {
-      onOpen();
-      return;
-    }
     presses.press(optionPress(chip.label), () => answer({ key: decision.key, label: chip.label, text: "", from: "screen" }), {
       after: "hold",
       onSuccess: () => {
@@ -108,7 +101,7 @@ function SingleChips({
           <Pressable
             key={`${index}:${chip.label}`}
             accessibilityRole="button"
-            accessibilityLabel={`${chip.asksForWords ? "Open to answer" : "Answer"}: ${chip.label}${chip.recommended ? " (recommended)" : ""}`}
+            accessibilityLabel={`Answer: ${chip.label}${chip.recommended ? " (recommended)" : ""}`}
             accessibilityState={{ busy, disabled: off }}
             disabled={off}
             style={[styles.chip, chip.recommended ? styles.recommended : null, off && !busy ? { opacity: 0.5 } : null]}

@@ -4,7 +4,6 @@
  * answers so far read as. Pure, so the cards stay thin views and Hermes never sees it untested.
  */
 import type { QuestionAnswer } from "./decision-answers";
-import { optionAsksForWords } from "./decision-view";
 import type { DecisionQuestion } from "./reports";
 
 /** One question's pick: the option pressed, or null for Other, and the words typed in its box. */
@@ -20,13 +19,11 @@ export function freshDrafts(count: number): SeveralDrafts {
   return { drafts: Array.from({ length: count }, () => null), current: 0 };
 }
 
-/** Whether a pick answers its question: an option (with words when it asks for them), or Other with words. */
+/** Whether a pick answers its question: an option, or Other with words. */
 export function draftAnswered(question: Pick<DecisionQuestion, "options">, draft: QuestionDraft | null): boolean {
   if (draft === null) return false;
   if (draft.label === null) return draft.typed.trim() !== "";
-  const option = question.options.find((candidate) => candidate.label === draft.label);
-  if (option === undefined) return false;
-  return !optionAsksForWords(option) || draft.typed.trim() !== "";
+  return question.options.some((candidate) => candidate.label === draft.label);
 }
 
 export function answeredFlags(questions: readonly Pick<DecisionQuestion, "options">[], drafts: readonly (QuestionDraft | null)[]): boolean[] {
@@ -78,12 +75,11 @@ export function recapLine(questions: readonly Pick<DecisionQuestion, "options">[
   return answered.length === 0 ? null : `Answered: ${answered.join(" · ")}`;
 }
 
-/** What Submit sends: each question's pick, with its words only where they count (Other, or an option asking for them). */
+/** What Submit sends: each question's pick, with words only for Other. */
 export function draftAnswers(questions: readonly DecisionQuestion[], drafts: readonly (QuestionDraft | null)[]): QuestionAnswer[] {
   return questions.map((question, index) => {
     const draft = drafts[index] ?? { label: null, typed: "" };
-    const option = draft.label === null ? undefined : question.options.find((candidate) => candidate.label === draft.label);
-    const words = draft.label === null || (option !== undefined && optionAsksForWords(option)) ? draft.typed.trim() : "";
+    const words = draft.label === null ? draft.typed.trim() : "";
     return { header: question.header, label: draft.label, text: words };
   });
 }

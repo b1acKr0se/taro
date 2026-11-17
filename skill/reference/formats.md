@@ -58,8 +58,8 @@ surprise: Out of scope says "no schema change"   # only after approval, below
   held without one; it tells you.
 - The `question` stands alone on the card, in at most about three lines: never "three options" or
   "see above". Labels are a few words answering it. Never offer an option meaning only "type
-  something else" (Other, Change…): every card has a text box. A `prompt` ending in `…` asks the
-  user to type more with it.
+  something else" (Other, Change…): every card has a text box. Only Other takes words:
+  no `…` on labels.
 - A long value may be a YAML block scalar (`why: |` keeps lines, `why: >` joins them).
 - Options the user should see (mockups, layouts) name images under `images:`, one `file — caption`
   per line (`reference/images.md`).
