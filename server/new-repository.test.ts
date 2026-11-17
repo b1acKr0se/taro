@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createRepository, ensureFirstCommit, planRepository } from "./new-repository";
+import { createRepository, ensureFirstCommit, isValidBranchName, planRepository } from "./new-repository";
 
 let root = "";
 const savedEnvironment = { global: process.env.GIT_CONFIG_GLOBAL, system: process.env.GIT_CONFIG_SYSTEM, name: process.env.GIT_AUTHOR_NAME };
@@ -76,5 +76,22 @@ describe("a project's repository that does not exist yet", () => {
     await writeFile(join(root, "f"), "", "utf8");
     await expect(planRepository(join(root, "f"))).rejects.toThrow("is a file");
     await expect(planRepository("relative")).rejects.toThrow("absolute");
+  });
+
+  it("makes the first commit even when a template hook would fail it", async () => {
+    const templates = join(root, "templates");
+    await mkdir(join(templates, "hooks"), { recursive: true });
+    await writeFile(join(templates, "hooks", "pre-commit"), "#!/bin/sh\necho no config >&2\nexit 1\n", "utf8");
+    await chmod(join(templates, "hooks", "pre-commit"), 0o755);
+    await writeFile(join(root, "gitconfig"), `[init]\n\ttemplateDir = ${templates}\n`, "utf8");
+    process.env.GIT_CONFIG_GLOBAL = join(root, "gitconfig");
+    const created = await createRepository(await planRepository(join(root, "hooked")), "main");
+    await ensureFirstCommit(created, "main");
+    expect(git(created, "rev-list", "--count", "HEAD")).toBe("1");
+  });
+
+  it("tells a name git accepts for a branch from one it does not", async () => {
+    for (const good of ["main", "develop", "feature/x"]) expect(await isValidBranchName(good)).toBe(true);
+    for (const bad of ["my branch", "a..b", "-x", "x.lock", "a~b"]) expect(await isValidBranchName(bad)).toBe(false);
   });
 });

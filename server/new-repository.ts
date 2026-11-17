@@ -5,6 +5,7 @@
  * files are never staged or committed.
  */
 import { access, constants, mkdir, realpath, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, isAbsolute } from "node:path";
 
 import { runChecked, runCommand } from "./process";
@@ -45,6 +46,12 @@ export async function createRepository(plan: RepositoryPlan, baseBranch: string)
   return realpath(plan.path);
 }
 
+/** Whether git accepts the name for a branch; a new repository's `git init -b` fails on one it does not. */
+export async function isValidBranchName(name: string): Promise<boolean> {
+  // The full ref, not `--branch`, which reads "@" as the current branch and so accepts it.
+  return !name.startsWith("-") && (await gitOutput(tmpdir(), ["check-ref-format", `refs/heads/${name}`])) !== null;
+}
+
 /** One empty commit on the base branch when the repository has none; Taro's own identity only when git has none. */
 export async function ensureFirstCommit(root: string, baseBranch: string): Promise<void> {
   if ((await gitOutput(root, ["rev-parse", "--verify", "--quiet", "HEAD"])) !== null) return;
@@ -52,5 +59,5 @@ export async function ensureFirstCommit(root: string, baseBranch: string): Promi
   const identity: string[] = [];
   if (((await gitOutput(root, ["config", "user.name"])) ?? "") === "") identity.push("-c", "user.name=Taro");
   if (((await gitOutput(root, ["config", "user.email"])) ?? "") === "") identity.push("-c", "user.email=taro@localhost");
-  await runChecked("git", ["-C", root, ...identity, "commit", "-q", "--allow-empty", "-m", "chore: start the project"]);
+  await runChecked("git", ["-C", root, ...identity, "-c", "commit.gpgsign=false", "commit", "-q", "--no-verify", "--allow-empty", "-m", "chore: start the project"]);
 }

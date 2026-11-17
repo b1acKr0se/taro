@@ -11,7 +11,7 @@ import { writeTextIfMissing } from "./files";
 import type { PaseoApi } from "./host-types";
 import { launchManager } from "./manager";
 import { TEMPLATES, readTemplate } from "./package-files";
-import { createRepository, ensureFirstCommit, planRepository, type RepositoryPlan } from "./new-repository";
+import { createRepository, ensureFirstCommit, isValidBranchName, planRepository, type RepositoryPlan } from "./new-repository";
 import { runChecked } from "./process";
 import { listProjectConfigs, projectPaths, readProjectConfig, writeProjectConfig } from "./projects";
 import { serialized } from "./serialize";
@@ -69,6 +69,7 @@ export async function onboardingProblems(input: { project: string; settings: Pro
     if (other.project !== input.project && commonDirectory !== null && otherCommon === commonDirectory) problems.repoPath = `This repository is already the Taro project ${other.project}.`;
   }
   const branch = input.settings.baseBranch.trim();
+  if (plan.kind === "create" && branch !== "" && !(await isValidBranchName(branch))) problems.baseBranch = `${branch} is not a name git accepts for a branch.`;
   if (plan.kind === "existing" && branch !== "" && !(await branchExists(plan.root, branch))) problems.baseBranch = `The repository has no branch named ${branch}.`;
   return problems;
 }

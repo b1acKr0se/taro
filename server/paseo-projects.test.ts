@@ -210,6 +210,7 @@ describe("onboardingProblems", () => {
     expect(await onboardingProblems({ project: "x", settings: settings(join(root, "a-file")) })).toEqual({ repoPath: `${join(root, "a-file")} is a file, not a folder.` });
     expect(await onboardingProblems({ project: "x", settings: settings(join(shop, "sub", "new")) })).toMatchObject({ repoPath: expect.stringContaining("would sit inside the git repository") });
     expect(await onboardingProblems({ project: "x", settings: settings(join(root, "brand", "new")) })).toEqual({});
+    expect(await onboardingProblems({ project: "x", settings: settings(join(root, "brand", "new"), { baseBranch: "my branch" }) })).toEqual({ baseBranch: "my branch is not a name git accepts for a branch." });
     expect(existsSync(join(root, "brand"))).toBe(false);
   });
 
