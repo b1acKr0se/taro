@@ -145,7 +145,7 @@ export function deliveryCardView(record: DeliveryRecord, clock: (iso: string) =>
     case "accepted":
       return { outcome: "Accepted", tone: "positive", time, words: null };
     case "auto-accepted":
-      return { outcome: "Auto-accepted", tone: "positive", time, words: "Auto-accept was on." };
+      return { outcome: "Auto-accepted (auto-accept was on)", tone: "positive", time, words: null };
     case "ended":
       return { outcome: "Delivery ended: the owner asked a question", tone: "neutral", time, words: null };
     default:
