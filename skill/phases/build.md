@@ -25,8 +25,9 @@ approved criterion or an Out of scope line would change, with `surprise:` naming
   only as many as the thread check allows. A child whose tests run another child's code waits for it. Merge each into your
   branch once verified, in Parts order, rerunning the checks; `taro agent stop` then archives its worktree. A child touching
   contracts, money, auth or stored data gets its own independent reviewer before it is Done.
-- **Verify every report**: it must hold real command output; rerun the checks yourself; review the
-  commit range (`git diff --stat` first, then the risky files). A report without evidence goes back.
+- **Verify every report**: it must hold real command output; read its checks' logged results at its head
+  (`taro check` skips a command that passed there; `--again` reruns) and rerun only to test a doubt; review the commit range (`git diff --stat` first, then the risky
+  files). A report without evidence goes back.
 - A subagent's question is yours: decide it as a RULING; only a surprise goes to the user.
 
 ## When it is built

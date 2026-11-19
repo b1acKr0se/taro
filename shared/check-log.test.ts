@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { checkEvidenceLine, checkLogLine, checksAtHead, parseCheckLog, summaryLine, ticketFromBranch, type CheckEntry } from "./check-log";
+import { checkEvidenceLine, checkLogLine, checksAtHead, parseCheckLog, reusableCheck, strayChanges, strayWarning, summaryLine, ticketFromBranch, type CheckEntry } from "./check-log";
 
 const HEAD = "a".repeat(40);
 const OTHER = "b".repeat(40);
 
 function entry(overrides: Partial<CheckEntry> = {}): CheckEntry {
-  return { at: "2026-11-12T07:00:00.000Z", command: "npm test", exitCode: 0, summary: "Tests 12 passed", head: HEAD, dirty: false, ...overrides };
+  return { at: "2026-11-12T07:00:00.000Z", command: "npm test", exitCode: 0, summary: "Tests 12 passed", head: HEAD, dirty: false, untracked: false, prefix: "", ...overrides };
 }
 
 describe("summaryLine", () => {
@@ -60,5 +60,45 @@ describe("the check log", () => {
     expect(offered.map((each) => `${each.command}: ${each.summary}`)).toEqual(["npm run typecheck: ok", "npm test: second"]);
     expect(others).toBe(2);
     expect(checksAtHead(entries, null).offered).toHaveLength(4);
+  });
+});
+
+describe("reusableCheck", () => {
+  it("answers with the newest clean pass of that command at that commit", () => {
+    const pass = entry({ at: "2026-11-12T07:00:00.000Z" });
+    expect(reusableCheck([pass], "npm test", HEAD)).toBe(pass);
+  });
+
+  it("never reuses a failed newest run, another commit, a dirty run, another command or no head", () => {
+    expect(reusableCheck([entry(), entry({ exitCode: 1 })], "npm test", HEAD)).toBeNull();
+    expect(reusableCheck([entry({ exitCode: null })], "npm test", HEAD)).toBeNull();
+    expect(reusableCheck([entry()], "npm test", OTHER)).toBeNull();
+    expect(reusableCheck([entry({ dirty: true })], "npm test", HEAD)).toBeNull();
+    expect(reusableCheck([entry()], "npm run typecheck", HEAD)).toBeNull();
+    expect(reusableCheck([entry({ head: null })], "npm test", null)).toBeNull();
+  });
+
+  it("never reuses a run made beside untracked files or from another directory", () => {
+    expect(reusableCheck([entry({ untracked: true })], "npm test", HEAD)).toBeNull();
+    expect(reusableCheck([entry({ prefix: "web/" })], "npm test", HEAD, "api/")).toBeNull();
+    expect(reusableCheck([entry({ prefix: "web/" })], "npm test", HEAD, "web/")).not.toBeNull();
+  });
+
+  it("reuses a pass that came after an earlier failure", () => {
+    const pass = entry({ at: "2026-11-12T08:00:00.000Z" });
+    expect(reusableCheck([entry({ exitCode: 1 }), pass], "npm test", HEAD)).toBe(pass);
+  });
+});
+
+describe("strayChanges and strayWarning", () => {
+  it("splits tracked changes from untracked files", () => {
+    expect(strayChanges(" M frontend/tsconfig.tsbuildinfo\n?? notes.txt\nA  src/a.ts\n")).toEqual({ tracked: ["frontend/tsconfig.tsbuildinfo", "src/a.ts"], untracked: ["notes.txt"] });
+    expect(strayChanges("")).toEqual({ tracked: [], untracked: [] });
+  });
+
+  it("warns by name, shortens a long list and stays silent on a clean tree", () => {
+    expect(strayWarning({ tracked: [], untracked: [] })).toBeNull();
+    expect(strayWarning({ tracked: ["a", "b", "c", "d", "e"], untracked: [] })).toContain("a, b, c, 2 more");
+    expect(strayWarning({ tracked: [], untracked: ["x.log"] })).toContain("x.log");
   });
 });

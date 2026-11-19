@@ -6,8 +6,8 @@ others' commits or open a PR.
 
 - Work only in this worktree, on the branch the brief names. Read the repository's instructions.
 - Bug: reproduce first; the reproduction becomes the regression test and must fail before the fix.
-- Write the tests the brief requires; run the checks it lists; commit following the repository's
-  conventions.
+- Write the tests the brief requires; run the checks it lists as `taro check -- <command>` on a
+  clean tree (commit first), so others read the result instead of rerunning; commit following the repository's conventions.
 - Run long checks with output to a log file and read the result; do not end your turn while a
   command you started is still running — wait for it.
 - Test daemons: `taro daemon start <ID>`, then `taro daemon stop <ID>`. Before many other

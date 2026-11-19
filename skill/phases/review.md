@@ -35,7 +35,7 @@ still holds the context), so archive a reviewer only after its fix check; only w
 start a fresh one with the user's words, criteria, reviewed range and the valid findings. Send the
 fix range (`<reviewed head>..HEAD`); each behaviour fix with its test and that test's failing output
 from before the fix (at the reviewed head, or with the fix reverted); each text-only fix with its
-changed lines; and the full suite's result after the last fix. Ask for a **full re-review** instead
+changed lines; and the full suite's result after the last fix (`taro check`; the reviewer reads it and does not rerun it). Ask for a **full re-review** instead
 when the fix diff changes more than half as many lines as the reviewed change (`git diff
 --shortstat`), or a blocker's fix changed the approach. Invalid findings and Questions are not sent.
 New blockers or should-fix findings it raises are fixed and checked once more; still failing after

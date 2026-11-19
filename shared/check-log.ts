@@ -14,6 +14,10 @@ export interface CheckEntry {
   head: string | null;
   /** Tracked files differed from that commit, so the run checked something else. */
   dirty: boolean;
+  /** Untracked files sat in the tree, so the run may have passed on a file the commit lacks. */
+  untracked?: boolean;
+  /** Where it ran, relative to the repository root ("" at the root; "api/" in a monorepo's package). */
+  prefix?: string;
 }
 
 const SUMMARY_LIMIT = 200;
@@ -69,6 +73,8 @@ export function parseCheckLog(text: string | null): CheckEntry[] {
           summary: typeof value.summary === "string" ? value.summary : "",
           head: typeof value.head === "string" ? value.head : null,
           dirty: value.dirty === true,
+          untracked: value.untracked === true,
+          prefix: typeof value.prefix === "string" ? value.prefix : "",
         },
       ];
     } catch {
@@ -106,4 +112,35 @@ export function checksAtHead(entries: readonly CheckEntry[], head: string | null
     newest.set(entry.command, entry);
   }
   return { offered: [...newest.values()], others };
+}
+
+/**
+ * The earlier run `taro check` may answer instead of running `command` again: the newest run of that command at `head`
+ * from the same directory with nothing uncommitted or untracked beside it, when it passed. A failed newest run is never reused (it may have been the flaky one), and
+ * with no head (outside git) nothing is known about what ran.
+ */
+export function reusableCheck(entries: readonly CheckEntry[], command: string, head: string | null, prefix = ""): CheckEntry | null {
+  if (head === null) return null;
+  const newest = entries.filter((entry) => entry.command === command && entry.head === head && (entry.prefix ?? "") === prefix && !entry.dirty && entry.untracked !== true).pop();
+  return newest !== undefined && newest.exitCode === 0 ? newest : null;
+}
+
+/** The paths in `git status --porcelain` output, tracked changes and untracked files apart. */
+export function strayChanges(porcelain: string): { tracked: string[]; untracked: string[] } {
+  const tracked: string[] = [];
+  const untracked: string[] = [];
+  for (const line of porcelain.split("\n")) {
+    if (line.trim() === "") continue;
+    (line.startsWith("??") ? untracked : tracked).push(line.slice(3));
+  }
+  return { tracked, untracked };
+}
+
+/** The warning printed before a check runs beside uncommitted work; null when the tree is clean. */
+export function strayWarning(stray: { tracked: readonly string[]; untracked: readonly string[] }): string | null {
+  const list = (paths: readonly string[]): string => `${paths.slice(0, 3).join(", ")}${paths.length > 3 ? `, ${paths.length - 3} more` : ""}`;
+  const parts: string[] = [];
+  if (stray.tracked.length > 0) parts.push(`changed tracked files (${list(stray.tracked)}) make this run not offered as evidence: commit or restore them first, or the run is wasted`);
+  if (stray.untracked.length > 0) parts.push(`untracked files (${list(stray.untracked)}) may change the result`);
+  return parts.length === 0 ? null : parts.join("; ");
 }

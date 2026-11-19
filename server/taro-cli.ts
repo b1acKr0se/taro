@@ -87,7 +87,7 @@ The owner's mechanical steps (they need $TARO_PROJECT; threads are checked first
   taro agent start implementer|reviewer|researcher <ID> --model <id> [--thinking <id>] --brief-file <path>
                    [--task <doing what>] [--worktree] [--mode <id>] [--wait <seconds>] [--json]
   taro agent stop <agent id> [--force]   also archives a --worktree child's workspace once its branch is merged into yours
-  taro check [--ticket <ID>] [--timeout <minutes>] -- <command>...   runs it and logs exit code and summary line
+  taro check [--ticket <ID>] [--timeout <minutes>] [--again] -- <command>...   runs it and logs exit code and summary line; a pass at this commit is not rerun
   taro deliver <ID> [--evidence-from-checks]   records review-head, PR and FINAL's revision line, then Awaiting acceptance
   taro daemon start <ID> [--plugin <path>] [--home /tmp/paseo-…] [--port <n>] [--wait <seconds>] [--json]
   taro daemon stop <ID> [--home <path>]    taro daemon list <ID>
@@ -697,6 +697,7 @@ async function agentCommand(args: readonly string[], io: CliIo): Promise<number>
 const CHECK_OPTIONS: OptionTable = {
   "--ticket": { key: "ticket", value: true },
   "--timeout": { key: "timeout", value: true },
+  "--again": { key: "again", value: false },
 };
 
 /** A check may run long (a full test suite under load); two hours is past any the projects have. */
@@ -709,7 +710,7 @@ async function checkVerbCommand(args: readonly string[], io: CliIo): Promise<num
   const parsed = parseArguments(own, CHECK_OPTIONS);
   const words = [...parsed.positionals, ...(separator === -1 ? [] : args.slice(separator + 1))];
   const timeout = nonNegativeNumber(parsed, "timeout", "--timeout", DEFAULT_CHECK_TIMEOUT_MINUTES);
-  return checkCommand(words, { ticket: single(parsed, "ticket"), timeoutMinutes: timeout === 0 ? DEFAULT_CHECK_TIMEOUT_MINUTES : timeout }, commandIo(io));
+  return checkCommand(words, { ticket: single(parsed, "ticket"), timeoutMinutes: timeout === 0 ? DEFAULT_CHECK_TIMEOUT_MINUTES : timeout, again: has(parsed, "again") }, commandIo(io));
 }
 
 const DELIVER_OPTIONS: OptionTable = {
