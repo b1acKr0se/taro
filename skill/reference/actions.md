@@ -21,10 +21,10 @@ user's own terminal.
 
     taro agent start <job> <ID> --model <id> [--thinking <id>] --brief-file <file> [--task "<task>"] [--worktree]
     taro agent stop <agentId>
-    taro check [--ticket <ID>] -- <command>
+    taro check [--ticket <ID>] [--again] -- <command>
     taro deliver <ID> [--evidence-from-checks]
     taro daemon start|stop|list <ID>
 
 - Starting an agent or a daemon waits while threads are above 85% (`--wait <seconds>`, then refuses).
-- `taro check` logs the exit code and summary line for the ticket its branch names; `taro deliver`
+- `taro check` logs the exit code and summary line for the ticket its branch names, warns of stray files and skips a pass at this clean commit (`--again` runs it); `taro deliver`
   is the owner's (`phases/delivery.md`). A test daemon never uses port 6767 or `~/.paseo`.

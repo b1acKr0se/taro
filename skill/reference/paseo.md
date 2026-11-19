@@ -48,4 +48,4 @@ Models: pick from the project's allowed list (the command refuses others). Paral
 
 The plugin delivers each subagent's final message to you when its turn ends; you do not need to poll.
 To look anyway: `paseo inspect <agentId> --json`, `paseo logs <agentId>`. To steer a subagent:
-`paseo send <agentId> "<message>"`. To end one: `taro agent stop <agentId>`.
+`paseo send --no-wait <agentId> "<message>"` (without `--no-wait` it waits for the whole turn and can hang a chained command). To end one: `taro agent stop <agentId>`.

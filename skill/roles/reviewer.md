@@ -62,8 +62,8 @@ When the owner sends back fixes for your findings (a fix range, each fixed findi
 
 - **Each fix:** it removes the finding's failure scenario; its test exercises that scenario and the
   owner's output shows it failing before the fix. A behaviour fix without one is a blocker.
-- **Full suite:** rerun it yourself at the new head; a red or unrun suite is a blocker.
-- **What the fix touched:** read the fix diff, then the callers and users of every function, type,
+- **Full suite:** read the owner's result at the new head (a `taro check` log line, or the output sent); rerun it only to test a doubt you name. A red or unrun suite is a blocker.
+- **What the fix touched:** read only the fix diff, then the callers and users of every function, type,
   file or text it changed (`git grep` for each), and the screenshots of any screen it changed.
   Regressions there are findings like any other.
 - **Full re-review** of the whole branch, as for the first round, when the owner asks for one, or

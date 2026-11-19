@@ -107,3 +107,34 @@ export function checksAtHead(entries: readonly CheckEntry[], head: string | null
   }
   return { offered: [...newest.values()], others };
 }
+
+/**
+ * The earlier run `taro check` may answer instead of running `command` again: the newest run of that command at `head`
+ * with no uncommitted change, when it passed. A failed newest run is never reused (it may have been the flaky one), and
+ * with no head (outside git) nothing is known about what ran.
+ */
+export function reusableCheck(entries: readonly CheckEntry[], command: string, head: string | null): CheckEntry | null {
+  if (head === null) return null;
+  const newest = entries.filter((entry) => entry.command === command && entry.head === head && !entry.dirty).pop();
+  return newest !== undefined && newest.exitCode === 0 ? newest : null;
+}
+
+/** The paths in `git status --porcelain` output, tracked changes and untracked files apart. */
+export function strayChanges(porcelain: string): { tracked: string[]; untracked: string[] } {
+  const tracked: string[] = [];
+  const untracked: string[] = [];
+  for (const line of porcelain.split("\n")) {
+    if (line.trim() === "") continue;
+    (line.startsWith("??") ? untracked : tracked).push(line.slice(3));
+  }
+  return { tracked, untracked };
+}
+
+/** The warning printed before a check runs beside uncommitted work; null when the tree is clean. */
+export function strayWarning(stray: { tracked: readonly string[]; untracked: readonly string[] }): string | null {
+  const list = (paths: readonly string[]): string => `${paths.slice(0, 3).join(", ")}${paths.length > 3 ? `, ${paths.length - 3} more` : ""}`;
+  const parts: string[] = [];
+  if (stray.tracked.length > 0) parts.push(`changed tracked files (${list(stray.tracked)}) make this run not offered as evidence: commit or restore them first, or the run is wasted`);
+  if (stray.untracked.length > 0) parts.push(`untracked files (${list(stray.untracked)}) may change the result`);
+  return parts.length === 0 ? null : parts.join("; ");
+}

@@ -9,7 +9,7 @@ import { appendFile, mkdir, readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { checkEvidenceLine, checkLogLine, checksAtHead, parseCheckLog, summaryLine, ticketFromBranch, type CheckEntry } from "../shared/check-log.ts";
+import { checkEvidenceLine, checkLogLine, checksAtHead, parseCheckLog, reusableCheck, strayChanges, strayWarning, summaryLine, ticketFromBranch, type CheckEntry } from "../shared/check-log.ts";
 import { isInvestigation, planDelivery, type DeliveryFacts } from "../shared/delivery-record.ts";
 import { executionBranch, executionOwners } from "../shared/execution.ts";
 import { commandError, runCommand, type CommandResult } from "./process.ts";
@@ -95,6 +95,12 @@ function git(cwd: string, args: readonly string[]): Promise<CommandResult> {
 async function gitText(cwd: string, args: readonly string[]): Promise<string | null> {
   const result = await git(cwd, args);
   return result.code === 0 ? result.stdout.trim() : null;
+}
+
+/** `git status --porcelain` untrimmed (its first column may be a space); "" outside git. */
+async function gitStatus(cwd: string): Promise<string> {
+  const result = await git(cwd, ["status", "--porcelain"]);
+  return result.code === 0 ? result.stdout : "";
 }
 
 async function currentBranch(cwd: string): Promise<string | null> {
@@ -309,17 +315,27 @@ export async function readCheckLog(path: string): Promise<CheckEntry[]> {
   return parseCheckLog(await readFile(path, "utf8").catch(() => null));
 }
 
-export async function checkCommand(words: readonly string[], options: { ticket: string | undefined; timeoutMinutes: number }, io: CommandIo): Promise<number> {
+export async function checkCommand(words: readonly string[], options: { ticket: string | undefined; timeoutMinutes: number; again?: boolean }, io: CommandIo): Promise<number> {
   if (words.length === 0) throw new CommandMisused("Give the check to run after --: taro check -- npm test.");
   const project = requireProject(io.env);
   const branch = await currentBranch(io.cwd);
   const ticket = options.ticket?.toUpperCase() ?? (branch === null ? null : ticketFromBranch(branch));
   if (ticket === null) throw new CommandMisused(`Cannot tell the ticket from ${branch === null ? "a checkout on no branch" : `branch ${branch}`}: pass --ticket <ID>.`);
   const head = await gitText(io.cwd, ["rev-parse", "HEAD"]);
-  const dirty = head !== null && ((await gitText(io.cwd, ["status", "--porcelain", "--untracked-files=no"])) ?? "") !== "";
+  const stray = strayChanges(await gitStatus(io.cwd));
+  const dirty = head !== null && stray.tracked.length > 0;
   // One word with spaces is a shell line (`taro check -- "npm run a && npm test"`); several are the argv.
   const [program, args] = words.length === 1 && /\s/.test(words[0] ?? "") ? ["sh", ["-c", words[0] as string]] : [words[0] as string, words.slice(1)];
   const command = words.join(" ");
+  const path = checkLogPath(taroDataDirectory(io.env), project, ticket);
+  // A pass at this very commit with nothing uncommitted is already the answer; a failed or flaky run is never reused.
+  const earlier = options.again === true || stray.tracked.length > 0 || stray.untracked.length > 0 ? null : reusableCheck(await readCheckLog(path), command, head);
+  if (earlier !== null) {
+    io.stderr(`[taro] not rerun: it passed at ${(head as string).slice(0, 10)} (${earlier.at}); add --again to run it anyway: ${checkEvidenceLine(earlier)}\n`);
+    return 0;
+  }
+  const warning = strayWarning(stray);
+  if (warning !== null) io.stderr(`[taro] warning: ${warning}\n`);
   const at = new Date().toISOString();
   let result: CommandResult;
   let exitCode: number | null;
@@ -334,7 +350,6 @@ export async function checkCommand(words: readonly string[], options: { ticket: 
   io.stdout(result.stdout);
   io.stderr(result.stderr);
   const entry: CheckEntry = { at, command, exitCode, summary: summaryLine(result.stdout, result.stderr), head, dirty };
-  const path = checkLogPath(taroDataDirectory(io.env), project, ticket);
   await mkdir(join(path, ".."), { recursive: true });
   await appendFile(path, checkLogLine(entry));
   io.stderr(`[taro] logged for ${ticket}${head === null ? "" : ` at ${head.slice(0, 10)}${dirty ? " (uncommitted changes: not offered as evidence)" : ""}`}: ${checkEvidenceLine(entry)}\n`);
