@@ -70,6 +70,8 @@ and any later reply while you await acceptance with `waiting: acceptance of <ID>
 ## After delivery
 
 - **An investigation** delivers as any ticket, FINAL with recommended next steps. Awaiting acceptance, "build it" in chat: set In Progress, drop the `investigation` label, plan children, ask scope-approval.
+  "File follow-up" on an `investigation-done` question is a new top-level ticket, never a child (nobody runs one): `taro ticket create`
+  with no `-p`, a brief as `templates/brief.md` (Kind line with owner model, Related naming this ticket). Name its id in FINAL; the manager starts it.
 
 - **Request changes:** the user's words arrive as a message, and the plugin has already moved the
   ticket back to In Progress (if
