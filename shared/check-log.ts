@@ -14,6 +14,10 @@ export interface CheckEntry {
   head: string | null;
   /** Tracked files differed from that commit, so the run checked something else. */
   dirty: boolean;
+  /** Untracked files sat in the tree, so the run may have passed on a file the commit lacks. */
+  untracked?: boolean;
+  /** Where it ran, relative to the repository root ("" at the root; "api/" in a monorepo's package). */
+  prefix?: string;
 }
 
 const SUMMARY_LIMIT = 200;
@@ -69,6 +73,8 @@ export function parseCheckLog(text: string | null): CheckEntry[] {
           summary: typeof value.summary === "string" ? value.summary : "",
           head: typeof value.head === "string" ? value.head : null,
           dirty: value.dirty === true,
+          untracked: value.untracked === true,
+          prefix: typeof value.prefix === "string" ? value.prefix : "",
         },
       ];
     } catch {
@@ -110,12 +116,12 @@ export function checksAtHead(entries: readonly CheckEntry[], head: string | null
 
 /**
  * The earlier run `taro check` may answer instead of running `command` again: the newest run of that command at `head`
- * with no uncommitted change, when it passed. A failed newest run is never reused (it may have been the flaky one), and
+ * from the same directory with nothing uncommitted or untracked beside it, when it passed. A failed newest run is never reused (it may have been the flaky one), and
  * with no head (outside git) nothing is known about what ran.
  */
-export function reusableCheck(entries: readonly CheckEntry[], command: string, head: string | null): CheckEntry | null {
+export function reusableCheck(entries: readonly CheckEntry[], command: string, head: string | null, prefix = ""): CheckEntry | null {
   if (head === null) return null;
-  const newest = entries.filter((entry) => entry.command === command && entry.head === head && !entry.dirty).pop();
+  const newest = entries.filter((entry) => entry.command === command && entry.head === head && (entry.prefix ?? "") === prefix && !entry.dirty && entry.untracked !== true).pop();
   return newest !== undefined && newest.exitCode === 0 ? newest : null;
 }
 

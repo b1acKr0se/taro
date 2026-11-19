@@ -62,6 +62,23 @@ describe("taro check reuse", () => {
     expect((await run("true")).ran).toBe(true);
   });
 
+  it("never answers from a run made beside an untracked file, nor from another directory", async () => {
+    writeFileSync(join(repository, "extra.txt"), "x\n");
+    expect((await run("true")).ran).toBe(true);
+    rmSync(join(repository, "extra.txt"));
+    expect((await run("true")).ran).toBe(true);
+    expect((await run("true")).ran).toBe(false);
+    mkdirSync(join(repository, "web"));
+    writeFileSync(join(repository, "web", "w.txt"), "w\n");
+    git("add", ".");
+    git("commit", "-q", "-m", "web");
+    expect((await run("true")).ran).toBe(true);
+    const original = repository;
+    repository = join(original, "web");
+    expect((await run("true")).ran).toBe(true);
+    repository = original;
+  });
+
   it("warns about a changed tracked file before running and never reuses a failure", async () => {
     writeFileSync(join(repository, "a.txt"), "changed\n");
     const dirty = await run("true");

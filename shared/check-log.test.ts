@@ -6,7 +6,7 @@ const HEAD = "a".repeat(40);
 const OTHER = "b".repeat(40);
 
 function entry(overrides: Partial<CheckEntry> = {}): CheckEntry {
-  return { at: "2026-11-12T07:00:00.000Z", command: "npm test", exitCode: 0, summary: "Tests 12 passed", head: HEAD, dirty: false, ...overrides };
+  return { at: "2026-11-12T07:00:00.000Z", command: "npm test", exitCode: 0, summary: "Tests 12 passed", head: HEAD, dirty: false, untracked: false, prefix: "", ...overrides };
 }
 
 describe("summaryLine", () => {
@@ -76,6 +76,12 @@ describe("reusableCheck", () => {
     expect(reusableCheck([entry({ dirty: true })], "npm test", HEAD)).toBeNull();
     expect(reusableCheck([entry()], "npm run typecheck", HEAD)).toBeNull();
     expect(reusableCheck([entry({ head: null })], "npm test", null)).toBeNull();
+  });
+
+  it("never reuses a run made beside untracked files or from another directory", () => {
+    expect(reusableCheck([entry({ untracked: true })], "npm test", HEAD)).toBeNull();
+    expect(reusableCheck([entry({ prefix: "web/" })], "npm test", HEAD, "api/")).toBeNull();
+    expect(reusableCheck([entry({ prefix: "web/" })], "npm test", HEAD, "web/")).not.toBeNull();
   });
 
   it("reuses a pass that came after an earlier failure", () => {

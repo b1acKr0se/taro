@@ -324,12 +324,13 @@ export async function checkCommand(words: readonly string[], options: { ticket: 
   const head = await gitText(io.cwd, ["rev-parse", "HEAD"]);
   const stray = strayChanges(await gitStatus(io.cwd));
   const dirty = head !== null && stray.tracked.length > 0;
+  const prefix = (await gitText(io.cwd, ["rev-parse", "--show-prefix"])) ?? "";
   // One word with spaces is a shell line (`taro check -- "npm run a && npm test"`); several are the argv.
   const [program, args] = words.length === 1 && /\s/.test(words[0] ?? "") ? ["sh", ["-c", words[0] as string]] : [words[0] as string, words.slice(1)];
   const command = words.join(" ");
   const path = checkLogPath(taroDataDirectory(io.env), project, ticket);
   // A pass at this very commit with nothing uncommitted is already the answer; a failed or flaky run is never reused.
-  const earlier = options.again === true || stray.tracked.length > 0 || stray.untracked.length > 0 ? null : reusableCheck(await readCheckLog(path), command, head);
+  const earlier = options.again === true || stray.tracked.length > 0 || stray.untracked.length > 0 ? null : reusableCheck(await readCheckLog(path), command, head, prefix);
   if (earlier !== null) {
     io.stderr(`[taro] not rerun: it passed at ${(head as string).slice(0, 10)} (${earlier.at}); add --again to run it anyway: ${checkEvidenceLine(earlier)}\n`);
     return 0;
@@ -349,7 +350,7 @@ export async function checkCommand(words: readonly string[], options: { ticket: 
   }
   io.stdout(result.stdout);
   io.stderr(result.stderr);
-  const entry: CheckEntry = { at, command, exitCode, summary: summaryLine(result.stdout, result.stderr), head, dirty };
+  const entry: CheckEntry = { at, command, exitCode, summary: summaryLine(result.stdout, result.stderr), head, dirty, untracked: stray.untracked.length > 0, prefix };
   await mkdir(join(path, ".."), { recursive: true });
   await appendFile(path, checkLogLine(entry));
   io.stderr(`[taro] logged for ${ticket}${head === null ? "" : ` at ${head.slice(0, 10)}${dirty ? " (uncommitted changes: not offered as evidence)" : ""}`}: ${checkEvidenceLine(entry)}\n`);
