@@ -38,7 +38,10 @@ let actions: Actions;
 let relaunched: string[];
 let failing: Set<string>;
 
+let decisions: Record<string, unknown>[] = [];
+
 beforeEach(() => {
+  decisions = [];
   live = [];
   notes = {};
   relaunched = [];
@@ -49,7 +52,7 @@ beforeEach(() => {
   vi.mocked(fetchLiveAgent).mockImplementation(async () => null);
   vi.mocked(projectArchivedAgents).mockImplementation(async () => []);
   vi.mocked(viewTicket).mockImplementation(async (_tracker, id) => ({ dependencies: [], implementationNotes: notes[id] ?? null }) as unknown as Awaited<ReturnType<typeof viewTicket>>);
-  const state = { forgetAgent: async () => undefined, queueLadder: async () => null, saveQueueLadder: async () => undefined } as unknown as PluginState;
+  const state = { allDecisions: async () => [...decisions], forgetAgent: async () => undefined, queueLadder: async () => null, saveQueueLadder: async () => undefined } as unknown as PluginState;
   actions = new Actions(state, {} as Supervisor, {} as TrackerWatch, {} as Stats, {} as Recovery);
   vi.spyOn(actions, "relaunchOwner").mockImplementation(async (_paseo, _project, id) => {
     if (failing.has(id)) throw new Error("provider not ready");
@@ -99,6 +102,18 @@ describe("closed owners are replaced", () => {
     expect(relaunched).toEqual(["DM-2"]);
     const written = vi.mocked(appendTicketNote).mock.calls.map((call) => `${call[1]} ${call[2]}`);
     expect(written.some((line) => /^DM-1 OWNER-RELAUNCH-FAILED .*provider not ready/.test(line))).toBe(true);
+  });
+
+  it("leaves a ticket whose owner left a question open, or withdrawn with it, and relaunches the other", async () => {
+    live = [agent("a", "DM-1", "closed"), agent("b", "DM-2", "closed"), agent("c", "DM-3", "closed")];
+    const question = { project: "demo", agentRole: "owner", askedAt: "2026-01-05T10:00:00Z", key: "x", id: "scope" };
+    decisions = [
+      { ...question, ticket: "dm-1", status: "open" },
+      { ...question, ticket: "DM-2", status: "withdrawn", withdrawnWithAgent: true },
+    ];
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Planning"), ticket("DM-2", "Planning"), ticket("DM-3", "Planning")] as never);
+    await actions.checkQueues(paseo);
+    expect(relaunched).toEqual(["DM-3"]);
   });
 
   it("leaves an owner that closed a day ago", async () => {
