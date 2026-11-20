@@ -30,15 +30,24 @@ describe("ticketsWithClosedOwner", () => {
     expect(ticketsWithClosedOwner([ticket("TR-1", "In Progress", parked)], [owner("TR-1", "closed")], NOW)).toEqual([]);
   });
 
-  it("stops after two relaunches within the hour but counts older ones out", () => {
+  it("stops after three relaunches within a day but counts older ones out", () => {
     const record = (at: string) => ownerRelaunchedText(at, "a", "b");
     const owners = [owner("TR-1", "closed")];
     const two = [record("2026-01-05T11:30:00Z"), record("2026-01-05T11:50:00Z")].join("\n\n");
-    expect(ticketsWithClosedOwner([ticket("TR-1", "In Progress", two)], owners, NOW)).toEqual([]);
-    const mixed = [record("2026-01-05T11:30:00Z"), ownerRelaunchFailedText("2026-01-05T11:50:00Z", "boom")].join("\n\n");
+    expect(ticketsWithClosedOwner([ticket("TR-1", "In Progress", two)], owners, NOW)).toEqual(["TR-1"]);
+    const three = [record("2026-01-05T01:30:00Z"), record("2026-01-05T06:50:00Z"), record("2026-01-05T11:50:00Z")].join("\n\n");
+    expect(ticketsWithClosedOwner([ticket("TR-1", "In Progress", three)], owners, NOW)).toEqual([]);
+    const mixed = [record("2026-01-05T01:30:00Z"), record("2026-01-05T11:30:00Z"), ownerRelaunchFailedText("2026-01-05T11:50:00Z", "boom")].join("\n\n");
     expect(ticketsWithClosedOwner([ticket("TR-1", "In Progress", mixed)], owners, NOW)).toEqual([]);
-    const old = [record("2026-01-05T09:00:00Z"), record(new Date(NOW - AUTO_RELAUNCH_WINDOW_MS + 60_000).toISOString())].join("\n\n");
+    const old = [record("2026-01-03T09:00:00Z"), record("2026-01-04T09:00:00Z"), record(new Date(NOW - AUTO_RELAUNCH_WINDOW_MS + 60_000).toISOString())].join("\n\n");
     expect(ticketsWithClosedOwner([ticket("TR-1", "In Progress", old)], owners, NOW)).toEqual(["TR-1"]);
+  });
+
+  it("leaves a ticket whose owner waits on the user's answer, matching ids in any case", () => {
+    const tickets = [ticket("TR-1", "Planning"), ticket("TR-2", "Planning")];
+    const owners = [owner("TR-1", "closed"), owner("TR-2", "closed")];
+    expect(ticketsWithClosedOwner(tickets, owners, NOW, new Set(["TR-1"]))).toEqual(["TR-2"]);
+    expect(ticketsWithClosedOwner(tickets, owners, NOW, new Set())).toEqual(["TR-1", "TR-2"]);
   });
 
   it("leaves an owner closed more than six hours ago, and uses the newest of several", async () => {

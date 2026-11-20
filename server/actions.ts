@@ -1241,7 +1241,14 @@ export class Actions {
     const tickets = await listTickets(paths.tracker);
     const candidates = await this.pauseCandidates(project, tickets);
     const owners = (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner");
-    const due = ticketsWithClosedOwner(candidates.map(({ ticket, notes }) => ({ id: ticket.id, status: ticket.status, parentTaskId: ticket.parentTaskId, notes })), owners, now);
+    const stored = await this.state.allDecisions();
+    // An owner's open question, or one withdrawn when its owner went away, is the user's to answer.
+    const waitingOnUser = new Set(
+      tickets
+        .filter((ticket) => stored.some((decision) => decision.project === project && decision.agentRole === "owner" && decision.status === "open" && decision.ticket?.toUpperCase() === ticket.id.toUpperCase()) || questionsToCarry(stored, project, ticket.id).length > 0)
+        .map((ticket) => ticket.id.toUpperCase()),
+    );
+    const due = ticketsWithClosedOwner(candidates.map(({ ticket, notes }) => ({ id: ticket.id, status: ticket.status, parentTaskId: ticket.parentTaskId, notes })), owners, now, waitingOnUser);
     let started = false;
     for (const id of due) {
       const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners, true);

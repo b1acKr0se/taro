@@ -14,8 +14,8 @@ import { TARO_LABELS } from "./project";
 const WORKED_STATUSES: ReadonlySet<string> = new Set(["Planning", "In Progress", "Reviewing"]);
 
 /** At most this many automatic relaunches of one ticket within the window; past it the user decides. */
-export const MAX_AUTO_RELAUNCHES = 2;
-export const AUTO_RELAUNCH_WINDOW_MS = 60 * 60_000;
+export const MAX_AUTO_RELAUNCHES = 3;
+export const AUTO_RELAUNCH_WINDOW_MS = 24 * 60 * 60_000;
 
 /** An owner closed longer ago than this was likely closed on purpose, so it is left to the user. */
 export const RECENTLY_CLOSED_MS = 6 * 60 * 60_000;
@@ -42,13 +42,19 @@ export function recentAutoRelaunches(notes: string | null, now: number): number 
   }).length;
 }
 
-/** Tickets (in the given order) that need a fresh owner because their owner is closed and none is live. */
-export function ticketsWithClosedOwner(tickets: readonly ClosedOwnerTicket[], owners: readonly ClosedOwnerAgent[], now: number): string[] {
+/**
+ * Tickets (in the given order) that need a fresh owner because their owner is closed and none is live.
+ * `waitingOnUser` holds ids (upper case) whose owner left a question to the user unanswered: Paseo frees
+ * an idle owner's runtime about an hour after its last turn, and a fresh owner would only ask it again,
+ * so the answer is delivered to the ticket's owner as a message instead.
+ */
+export function ticketsWithClosedOwner(tickets: readonly ClosedOwnerTicket[], owners: readonly ClosedOwnerAgent[], now: number, waitingOnUser: ReadonlySet<string> = new Set()): string[] {
   const ownersOf = (id: string) => owners.filter((owner) => owner.labels[TARO_LABELS.role] === "owner" && dependsOn([owner.labels[TARO_LABELS.ticket] ?? ""], id));
   return tickets
     .filter((ticket) => {
       if (ticket.parentTaskId !== null || !WORKED_STATUSES.has(ticket.status)) return false;
       if (pausedHold(ticket.notes) !== null || queuedToResume(ticket.notes)) return false;
+      if (waitingOnUser.has(ticket.id.toUpperCase())) return false;
       const mine = ownersOf(ticket.id);
       if (mine.length === 0 || mine.some((owner) => owner.status !== "closed")) return false;
       const closedAt = Math.max(...mine.map((owner) => Date.parse(owner.updatedAt)));
