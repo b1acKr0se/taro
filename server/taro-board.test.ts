@@ -405,6 +405,11 @@ describe("taro board from the command", { timeout: CLI_TIMEOUT_MS }, () => {
       await until(() => stdout.includes("Second title"));
       writeLive([{ id: "owner-1", role: "owner", ticket: "NA-001" }], [], new Date().toISOString(), new Date());
       await until(() => stdout.includes("agent owner-1"));
+      // The plugin renews the list's time every minute: nothing changed, so nothing is printed again.
+      const printed = stdout.split("agent owner-1").length - 1;
+      writeLive([{ id: "owner-1", role: "owner", ticket: "NA-001" }], [], new Date(Date.now() + 60_000).toISOString(), new Date(Date.now() + 1000));
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      expect(stdout.split("agent owner-1").length - 1).toBe(printed);
       const exited = new Promise<number | null>((resolve) => child.once("exit", (code) => resolve(code)));
       child.kill("SIGINT");
       expect(await exited).toBe(0);

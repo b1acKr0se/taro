@@ -64,6 +64,8 @@ interface Snapshot {
   board: Board;
   text: string;
   problems: string[];
+  /** What `--watch` compares: the board without Paseo's "as of" time, which the plugin's heartbeat renews every minute. */
+  key: string;
 }
 
 async function snapshot(options: BoardOptions, io: BoardIo): Promise<Snapshot> {
@@ -89,7 +91,7 @@ async function snapshot(options: BoardOptions, io: BoardIo): Promise<Snapshot> {
     now,
   });
   if (options.json && paseoNote !== null) problems.push(paseoNote);
-  return { board, text, problems };
+  return { board, text, problems, key: JSON.stringify({ board: { ...board, paseo: board.paseo === null ? null : { ...board.paseo, asOf: null } }, paseoNote }) };
 }
 
 /** What `--watch` compares: every ticket file's and state file's size and change time. */
@@ -111,8 +113,10 @@ function print(shot: Snapshot, options: BoardOptions, io: BoardIo): void {
 }
 
 export async function boardCommand(options: BoardOptions, io: BoardIo): Promise<number> {
-  print(await snapshot(options, io), options, io);
+  const first = await snapshot(options, io);
+  print(first, options, io);
   if (!options.watch) return 0;
+  let shown = first.key;
   const signal = options.signal;
   // A function, so the check reads the signal afresh after each wait.
   const stopped = (): boolean => signal?.aborted === true;
@@ -129,7 +133,11 @@ export async function boardCommand(options: BoardOptions, io: BoardIo): Promise<
     const current = await signature(options, io);
     if (current === last) continue;
     last = current;
-    print(await snapshot(options, io), options, io);
+    // A file renewed with nothing new in it (the plugin's heartbeat) is not a change worth printing.
+    const shot = await snapshot(options, io);
+    if (shot.key === shown) continue;
+    shown = shot.key;
+    print(shot, options, io);
   }
   return 0;
 }
