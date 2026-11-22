@@ -83,6 +83,33 @@ function writeState(name: string, value: unknown, mtime = new Date(NOW - 60_000)
   utimesSync(statePath(name), mtime, mtime);
 }
 
+interface LiveAgent {
+  id: string;
+  role: string;
+  ticket: string | null;
+  title?: string | null;
+  state?: string | null;
+  text?: string | null;
+  at?: string | null;
+}
+
+/** The plugin's live list (`live.json`): the project's live agents and the keys of their open cards. */
+function writeLive(agents: LiveAgent[], cardKeys: string[], writtenAt = new Date(NOW - 120_000).toISOString(), mtime = new Date(NOW - 60_000)): void {
+  writeState(
+    "live.json",
+    {
+      version: 1,
+      projects: {
+        "notes-app": { project: "notes-app", writtenAt, agents: agents.map((entry) => ({ title: null, state: null, text: null, at: null, ...entry })), cardKeys },
+        "other-app": { project: "other-app", writtenAt, agents: [{ id: "other-1", role: "owner", ticket: "OA-001", title: null, state: null, text: null, at: null }], cardKeys: ["agent-9:elsewhere"] },
+      },
+    },
+    mtime,
+  );
+}
+
+const LIVE_AS_OF = new Date(NOW - 120_000).toISOString();
+
 function decision(overrides: Record<string, unknown>): Record<string, unknown> {
   return {
     key: `agent-1:${String(overrides.id ?? "scope-approval")}`,
@@ -153,7 +180,7 @@ describe("taro board", () => {
   it("json output has the documented shape", async () => {
     writeTicket({ id: "NA-001", title: "Login", status: "In Progress", cards: card("colour", 1), agents: agent("impl", 30) });
     writeState("decisions.json", { decisions: [decision({})] });
-    writeState("agents.json", { agents: {} });
+    writeLive([], ["agent-1:scope-approval"]);
     const value = JSON.parse((await board(["--json"])).stdout);
     expect(Object.keys(value).sort()).toEqual(["paseo", "tickets"]);
     expect(value.tickets).toEqual([
@@ -166,7 +193,7 @@ describe("taro board", () => {
       },
     ]);
     expect(value.paseo).toEqual({
-      asOf: new Date(NOW - 60_000).toISOString(),
+      asOf: LIVE_AS_OF,
       cards: [expect.objectContaining({ key: "agent-1:scope-approval", ticket: "NA-001", id: "scope-approval", question: "Approve the plan?", answerCommand: "taro decision answer agent-1:scope-approval --label <option> [--text <words>]" })],
       agents: [],
     });
@@ -184,9 +211,10 @@ describe("taro board", () => {
         "not a decision",
       ],
     });
+    writeLive([], ["agent-1:scope-approval", "agent-1:answered", "agent-9:elsewhere", "agent-1:held", "manager:manager-q"]);
     const { stdout, stderr, code } = await board();
     expect(code).toBe(0);
-    expect(stdout).toContain(`    card scope-approval (via paseo, as of ${new Date(NOW - 60_000).toISOString()}): Approve the plan?`);
+    expect(stdout).toContain(`    card scope-approval (via paseo, as of ${LIVE_AS_OF}): Approve the plan?`);
     expect(stdout).toContain("      answer: taro decision answer agent-1:scope-approval --label <option> [--text <words>]");
     expect(stdout).not.toContain("answered");
     expect(stdout).not.toContain("elsewhere");
@@ -198,16 +226,16 @@ describe("taro board", () => {
 
   it("lists paseo subagents", async () => {
     writeTicket({ id: "NA-001", title: "Login", status: "In Progress" });
-    writeState("agents.json", {
-      agents: {
-        "owner-1": { project: "notes-app", role: "owner", ticket: "NA-001", title: "NA-001 · Owner", lastStatus: { state: "working", text: "building", at: at(40) } },
-        "impl-1": { project: "notes-app", role: "implementer", ticket: "NA-001", title: "NA-001 implementer", lastStatus: null },
-        "other-1": { project: "other-app", role: "owner", ticket: "OA-001" },
-        broken: 7,
-      },
-    });
+    writeLive(
+      [
+        { id: "owner-1", role: "owner", ticket: "NA-001", title: "NA-001 · Owner", state: "working", text: "building", at: at(40) },
+        { id: "impl-1", role: "implementer", ticket: "NA-001", title: "NA-001 implementer" },
+        7 as unknown as LiveAgent,
+      ],
+      [],
+    );
     const { stdout } = await board();
-    const asOf = new Date(NOW - 60_000).toISOString();
+    const asOf = LIVE_AS_OF;
     expect(stdout).toContain(`    agent owner-1 (owner, via paseo, as of ${asOf}): working — building`);
     expect(stdout).toContain(`    agent impl-1 (implementer, via paseo, as of ${asOf})`);
     // Paseo's agents are as the plugin last knew them: never marked stale, however old.
@@ -219,8 +247,9 @@ describe("taro board", () => {
     writeTicket({ id: "NA-001", title: "Login", status: "Queued" });
     const missing = await board();
     expect(missing.code).toBe(0);
-    expect(missing.stdout).toContain("No Paseo state");
+    expect(missing.stdout).toContain("Paseo has not written a live list yet");
     expect(missing.stdout).toContain("NA-001 Login");
+    writeLive([], []);
     writeState("decisions.json", "{not json");
     const unreadable = await board();
     expect(unreadable.code).toBe(0);
@@ -233,12 +262,64 @@ describe("taro board", () => {
   it("tracker card wins a clash", async () => {
     writeTicket({ id: "NA-001", title: "Login", status: "Planning", cards: card("scope-approval", 1) });
     writeState("decisions.json", { decisions: [decision({}), decision({ id: "other", key: "agent-1:other" })] });
+    writeLive([], ["agent-1:scope-approval", "agent-1:other"]);
     const value = JSON.parse((await board(["--json"])).stdout);
     expect(value.tickets[0].cards.map((entry: { key: string }) => entry.key)).toEqual(["tracker:notes-app/NA-001:scope-approval"]);
     expect(value.paseo.cards.map((entry: { key: string }) => entry.key)).toEqual(["agent-1:other"]);
     // Only an open tracker card hides Paseo's.
     writeTicket({ id: "NA-001", title: "Login", status: "Planning", cards: card("scope-approval", 1, { status: "withdrawn" }) });
     expect(JSON.parse((await board(["--json"])).stdout).paseo.cards).toHaveLength(2);
+  });
+
+  it("board lists only live agents", async () => {
+    writeTicket({ id: "NA-001", title: "Login", status: "In Progress" });
+    // The supervision record keeps archived agents: an old manager and a reviewer that finished.
+    writeState("agents.json", {
+      agents: {
+        "manager-old": { project: "notes-app", role: "manager", ticket: null, title: "Manager", lastStatus: { state: "done", text: "handed over", at: at(50) } },
+        "reviewer-done": { project: "notes-app", role: "reviewer", ticket: "NA-001", title: "NA-001 reviewer", lastStatus: { state: "done", text: "findings", at: at(3) } },
+        "owner-1": { project: "notes-app", role: "owner", ticket: "NA-001", title: "NA-001 · Owner", lastStatus: { state: "working", text: "building", at: at(1) } },
+      },
+    });
+    // A reviewer just started has no supervision record yet; the live list has it.
+    writeLive(
+      [
+        { id: "owner-1", role: "owner", ticket: "NA-001", state: "working", text: "building", at: at(1) },
+        { id: "reviewer-new", role: "reviewer", ticket: "NA-001" },
+      ],
+      [],
+    );
+    const { stdout } = await board();
+    expect(stdout).toContain(`    agent owner-1 (owner, via paseo, as of ${LIVE_AS_OF}): working — building`);
+    expect(stdout).toContain(`    agent reviewer-new (reviewer, via paseo, as of ${LIVE_AS_OF})`);
+    expect(stdout).not.toContain("manager-old");
+    expect(stdout).not.toContain("reviewer-done");
+    expect(JSON.parse((await board(["--json"])).stdout).paseo.agents.map((entry: { id: string }) => entry.id)).toEqual(["owner-1", "reviewer-new"]);
+  });
+
+  it("board hides cards of archived agents", async () => {
+    writeTicket({ id: "NA-001", title: "Login", status: "Planning" });
+    writeState("decisions.json", {
+      decisions: [decision({}), decision({ id: "old-question", key: "owner-old:old-question", agentId: "owner-old", question: "Asked by an archived owner?" })],
+    });
+    writeLive([{ id: "agent-1", role: "owner", ticket: "NA-001" }], ["agent-1:scope-approval"]);
+    const { stdout } = await board();
+    expect(stdout).toContain("card scope-approval (via paseo");
+    expect(stdout).not.toContain("old-question");
+    expect(stdout).not.toContain("archived owner");
+  });
+
+  it("missing live list", async () => {
+    writeTicket({ id: "NA-001", title: "Login", status: "In Progress" });
+    writeState("decisions.json", { decisions: [decision({})] });
+    writeState("agents.json", { agents: { "owner-1": { project: "notes-app", role: "owner", ticket: "NA-001", lastStatus: null } } });
+    const { stdout, code } = await board();
+    expect(code).toBe(0);
+    expect(stdout.match(/Paseo has not written a live list yet/g)).toHaveLength(1);
+    expect(stdout).not.toContain("via paseo");
+    expect(stdout).not.toContain("owner-1");
+    expect(stdout).toContain("NA-001 Login");
+    expect(JSON.parse((await board(["--json"])).stdout).paseo).toBeNull();
   });
 
   it("marks stale", async () => {
@@ -294,7 +375,7 @@ describe("taro board from the command", { timeout: CLI_TIMEOUT_MS }, () => {
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("NA-001 Plain board");
-    expect(result.stdout).toContain("No Paseo state");
+    expect(result.stdout).toContain("Paseo has not written a live list yet");
   });
 
   it("watch reprints on change", async () => {
@@ -313,7 +394,7 @@ describe("taro board from the command", { timeout: CLI_TIMEOUT_MS }, () => {
       await until(() => stdout.includes("First title"));
       writeTicket({ id: "NA-001", title: "Second title", status: "Queued" });
       await until(() => stdout.includes("Second title"));
-      writeState("agents.json", { agents: { "owner-1": { project: "notes-app", role: "owner", ticket: "NA-001" } } }, new Date());
+      writeLive([{ id: "owner-1", role: "owner", ticket: "NA-001" }], [], new Date().toISOString(), new Date());
       await until(() => stdout.includes("agent owner-1"));
       const exited = new Promise<number | null>((resolve) => child.once("exit", (code) => resolve(code)));
       child.kill("SIGINT");

@@ -33,6 +33,7 @@ import type { TrackerAgent, TrackerCard } from "../shared/tracker-cards";
 import { currentSuggestions, parseSuggestions, suggestionKey, withoutFixedActions } from "../shared/suggestions";
 import { isMidTurn, projectAgents, projectArchivedAgents } from "./agents";
 import { statePath } from "./data-dir";
+import { liveListEntry, recordLiveList } from "./live-list";
 import { judgeTicketEvidence, ticketEvidence, ticketMockups } from "./evidence";
 import { readHeadroom } from "./headroom";
 import { readJsonIfPresent, readTextIfPresent, writeJsonAtomically } from "./files";
@@ -224,6 +225,11 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
   const openDecisions = decisionsOfLiveAgents(
     decisions.filter((decision) => decision.project === project),
     new Set(agents.map((agent) => agent.id)),
+  );
+
+  // For `taro board` outside Paseo: who is live now, and whose open cards are still asked.
+  await recordLiveList(liveListEntry(project, agents, agentStates, openDecisions.map((decision) => decision.key), new Date(Date.now()).toISOString())).catch((error: unknown) =>
+    console.warn(`[taro] could not write ${project}'s live list: ${error instanceof Error ? error.message : String(error)}`),
   );
 
   const childrenOf = new Map<string, { id: string; title: string; status: string }[]>();

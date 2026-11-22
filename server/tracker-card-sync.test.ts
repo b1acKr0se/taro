@@ -25,6 +25,8 @@ import type { TrackerWatch } from "./tracker-watch";
 
 let tracker = "";
 
+// The board writes the live list into the plugin state folder: never the real home's from a test.
+vi.mock("./live-list", () => ({ liveListEntry: () => ({}), recordLiveList: async () => false }));
 vi.mock("./agents", async (original) => ({
   ...(await original<typeof import("./agents")>()),
   fetchLiveAgent: vi.fn(async () => null),

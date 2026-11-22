@@ -1,8 +1,10 @@
 /**
  * The board as `taro board` prints it, for a session in Paseo or outside it: tickets by status, each with
  * its open cards and recorded agents from the ticket file, and, read-only, what the Paseo plugin last
- * stored (owners' open questions, agents). Paseo's state is read by hand (no zod) and only as a snapshot:
- * whether an agent still lives is known to the daemon alone, so its entries say when the file was written.
+ * listed as live (its live agents, and their open questions from `decisions.json`). Paseo's state is read by
+ * hand (no zod) and only as a snapshot: whether an agent still lives is known to the daemon alone, so the
+ * plugin writes its live list (`live.json`, `server/live-list.ts`) and its entries say when that last changed.
+ * The supervision record (`agents.json`) is never read here: it keeps archived agents.
  *
  * Pure and import-free beyond its siblings, for the `taro` command under plain Node type stripping:
  * erasable TypeScript only, `.ts` import extensions.
@@ -55,8 +57,25 @@ export interface PaseoAgent {
   at: string | null;
 }
 
+/** The live list's format, written by `server/live-list.ts` and read here. */
+export const LIVE_LIST_VERSION = 1;
+
+export interface LiveListEntry {
+  project: string;
+  /** When the entry last changed. */
+  writtenAt: string;
+  agents: PaseoAgent[];
+  /** Keys of the open cards live agents asked. */
+  cardKeys: string[];
+}
+
+export interface LiveList {
+  version: number;
+  projects: Record<string, LiveListEntry>;
+}
+
 export interface PaseoView {
-  /** When the newest state file read was written. */
+  /** When the plugin's live list last changed. */
   asOf: string;
   cards: PaseoCard[];
   agents: PaseoAgent[];
@@ -121,23 +140,30 @@ export function paseoCardsOf(value: unknown, project: string): PaseoCard[] {
   });
 }
 
-/** The project's agents in Paseo's `agents.json` (`{agents: {<id>: {...}}}`), as the plugin last knew them. */
-export function paseoAgentsOf(value: unknown, project: string): PaseoAgent[] {
-  const agents = isRecord(value) && isRecord(value.agents) ? value.agents : {};
-  return Object.entries(agents).flatMap(([id, agent]): PaseoAgent[] => {
-    if (!isRecord(agent) || agent.project !== project) return [];
-    const status = isRecord(agent.lastStatus) ? agent.lastStatus : null;
-    return [{ id, role: text(agent.role) ?? "agent", ticket: text(agent.ticket), title: text(agent.title), state: text(status?.state), text: text(status?.text), at: text(status?.at) }];
+/** The project's entry in the live list, or null when the list has none for it; malformed agents and keys are skipped. */
+export function liveEntryOf(value: unknown, project: string): { writtenAt: string | null; agents: PaseoAgent[]; cardKeys: Set<string> } | null {
+  const projects = isRecord(value) && value.version === LIVE_LIST_VERSION && isRecord(value.projects) ? value.projects : {};
+  const entry = projects[project];
+  if (!isRecord(entry)) return null;
+  const agents = (Array.isArray(entry.agents) ? entry.agents : []).flatMap((agent): PaseoAgent[] => {
+    const id = isRecord(agent) ? text(agent.id) : null;
+    if (!isRecord(agent) || id === null) return [];
+    return [{ id, role: text(agent.role) ?? "agent", ticket: text(agent.ticket), title: text(agent.title), state: text(agent.state), text: text(agent.text), at: text(agent.at) }];
   });
+  const cardKeys = new Set((Array.isArray(entry.cardKeys) ? entry.cardKeys : []).flatMap((key) => (typeof key === "string" ? [key] : [])));
+  return { writtenAt: text(entry.writtenAt), agents, cardKeys };
 }
 
 export interface BoardInput {
   project: string | null;
   tickets: Array<{ id: string; title: string; status: TicketStatus; cards: TrackerCard[]; agents: TrackerAgent[] }>;
   decisions: StateFile;
-  agents: StateFile;
+  /** The plugin's live list, `live.json`. */
+  live: StateFile;
   now: number;
 }
+
+const NO_LIVE_LIST = "Paseo has not written a live list yet (the plugin's live.json): no Paseo agents or cards shown.";
 
 /** The board, and one line about Paseo's state when it is absent or could not be read. */
 export function buildBoard(input: BoardInput): { board: Board; paseoNote: string | null } {
@@ -150,28 +176,29 @@ export function buildBoard(input: BoardInput): { board: Board; paseoNote: string
       .map((card) => ({ ...card, key: trackerCardKey(input.project, ticket.id, card.id), answerCommand: trackerAnswerCommand(ticket.id, card), stale: olderThan(card.askedAt, input.now) })),
     agents: ticket.agents.map((agent) => ({ ...agent, stale: agent.state === "running" && olderThan(agent.startedAt, input.now) })),
   }));
-  const unreadable = [input.decisions, input.agents].flatMap((file) => (file.kind === "unreadable" ? [file.reason] : []));
-  const read = [input.decisions, input.agents].filter((file): file is Extract<StateFile, { kind: "read" }> => file.kind === "read");
+  const unreadable = [input.live, input.decisions].flatMap((file) => (file.kind === "unreadable" ? [file.reason] : []));
+  const live = input.live;
+  // Without the live list nothing of Paseo's is shown: the other files keep what archived agents left.
+  const entry = live.kind === "read" && input.project !== null ? liveEntryOf(live.value, input.project) : null;
   let paseoNote: string | null = null;
-  if (unreadable.length > 0) paseoNote = `Paseo state could not be read (${unreadable.join("; ")}): ${read.length === 0 ? "showing the tracker only" : "showing what could"}.`;
-  else if (read.length === 0) paseoNote = "No Paseo state (the plugin's decisions.json and agents.json): showing the tracker only.";
+  if (unreadable.length > 0) paseoNote = `Paseo state could not be read (${unreadable.join("; ")}): ${live.kind === "read" ? "showing what could" : "showing the tracker only"}.`;
+  else if (live.kind === "absent") paseoNote = NO_LIVE_LIST;
   else if (input.project === null) paseoNote = "Paseo state is kept per project, and none was named: pass --project <name> to see it.";
-  if (read.length === 0 || input.project === null) return { board: { tickets, paseo: null }, paseoNote };
+  else if (entry === null) paseoNote = `Paseo has not written a live list for ${input.project} yet: no Paseo agents or cards shown.`;
+  if (live.kind !== "read" || entry === null || input.project === null) return { board: { tickets, paseo: null }, paseoNote };
   // A Paseo card with the ticket and id of an open tracker card is hidden: the tracker's is the one answered.
   const trackerOpen = new Set(tickets.flatMap((ticket) => ticket.cards.map((card) => `${ticket.id}\n${card.id}`)));
   const project = input.project;
-  const cards = input.decisions.kind === "read" ? paseoCardsOf(input.decisions.value, project).filter((card) => card.ticket === null || !trackerOpen.has(`${card.ticket}\n${card.id}`)) : [];
-  const agents = input.agents.kind === "read" ? paseoAgentsOf(input.agents.value, project) : [];
-  const asOf = read.map((file) => file.writtenAt).sort().at(-1) as string;
-  return { board: { tickets, paseo: { asOf, cards, agents } }, paseoNote };
+  const cards =
+    input.decisions.kind === "read"
+      ? paseoCardsOf(input.decisions.value, project).filter((card) => entry.cardKeys.has(card.key) && (card.ticket === null || !trackerOpen.has(`${card.ticket}\n${card.id}`)))
+      : [];
+  return { board: { tickets, paseo: { asOf: entry.writtenAt ?? live.writtenAt, cards, agents: entry.agents } }, paseoNote };
 }
 
 export interface BoardTextOptions {
   project: string | null;
   trackerPath: string;
-  /** When each Paseo state file was written, for its entries' marks. */
-  decisionsAsOf: string | null;
-  agentsAsOf: string | null;
   paseoNote: string | null;
   now: number;
 }
@@ -184,18 +211,18 @@ function stale(flag: boolean): string {
 export function boardText(board: Board, options: BoardTextOptions): string {
   const lines = [`Board of ${options.project ?? "the tracker"} at ${options.trackerPath}, ${new Date(options.now).toISOString()}`];
   if (options.paseoNote !== null) lines.push(options.paseoNote);
-  const viaPaseo = (asOf: string | null): string => `via paseo, as of ${asOf ?? "unknown"}`;
+  const viaPaseo = `via paseo, as of ${board.paseo?.asOf ?? "unknown"}`;
   const paseoCards = board.paseo?.cards ?? [];
   const paseoAgents = board.paseo?.agents ?? [];
   const cardLines = (indent: string, cards: readonly BoardCard[], fromPaseo: readonly PaseoCard[]): string[] => [
     ...cards.flatMap((card) => [`${indent}card ${card.id}${stale(card.stale)}: ${card.question}`, `${indent}  answer: ${card.answerCommand}`]),
-    ...fromPaseo.flatMap((card) => [`${indent}card ${card.id} (${viaPaseo(options.decisionsAsOf)}): ${card.question}`, `${indent}  answer: ${card.answerCommand}`]),
+    ...fromPaseo.flatMap((card) => [`${indent}card ${card.id} (${viaPaseo}): ${card.question}`, `${indent}  answer: ${card.answerCommand}`]),
   ];
   const agentLines = (indent: string, agents: readonly BoardAgent[], fromPaseo: readonly PaseoAgent[]): string[] => [
     ...agents.map((agent) => `${indent}agent ${agent.name} (${agent.job}, ${agent.state}, ${agent.host})${stale(agent.stale)}${agent.task === "" ? "" : `: ${agent.task}`}`),
     ...fromPaseo.map((agent) => {
       const status = [agent.state ?? "", agent.text ?? ""].filter((part) => part !== "").join(" — ");
-      return `${indent}agent ${agent.id} (${agent.role}, ${viaPaseo(options.agentsAsOf)})${status === "" ? "" : `: ${status}`}`;
+      return `${indent}agent ${agent.id} (${agent.role}, ${viaPaseo})${status === "" ? "" : `: ${status}`}`;
     }),
   ];
   if (board.tickets.length === 0) lines.push("", "No tickets.");

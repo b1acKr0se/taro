@@ -110,7 +110,8 @@ Cards and agents kept in the ticket file, for any session (in Paseo or not; noth
   taro agent record <ID> implementer|reviewer|researcher|other --name <name> [--task <doing what>] [--host <name>]
   taro agent finish <ID> <name> --state done|failed
   taro board [--project <name>] [--json] [--watch]   tickets by status with open cards (and the command answering each) and
-                   agents, and what Paseo's plugin last stored (via paseo, as of <file time>); an open card or running agent
+                   agents, and Paseo's live agents and their open cards as its plugin last listed them in live.json
+                   (via paseo, as of <when that list changed>); an open card or running agent
                    older than a day reads [stale]; --watch reprints on a change until Ctrl-C; --json prints
                    {tickets:[{id,title,status,cards:[],agents:[]}], paseo:{asOf,cards:[],agents:[]}|null}
 Accept, reopen, request-changes, change-spec, close-round and the decision verbs are the user's: they refuse inside the ticket's own owner and subagents.

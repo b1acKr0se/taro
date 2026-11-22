@@ -1,6 +1,7 @@
 /**
  * `taro board`: the one board from any terminal, with no daemon (`shared/board-text.ts` draws it). Reads the
- * tracker's ticket files and, when present, the Paseo plugin's state files, never writing either. `--watch`
+ * tracker's ticket files and, when present, the Paseo plugin's live list (`live.json`) and `decisions.json`,
+ * never writing any of them. `--watch`
  * reprints whenever one of those files changes, until SIGINT.
  *
  * Runs under plain `node` type stripping (the `taro` command): erasable TypeScript only, `.ts` import
@@ -78,14 +79,12 @@ async function snapshot(options: BoardOptions, io: BoardIo): Promise<Snapshot> {
     }),
   );
   const directory = paseoStateDirectory(io.env);
-  const [decisions, agents] = await Promise.all([readState(join(directory, "decisions.json")), readState(join(directory, "agents.json"))]);
+  const [decisions, live] = await Promise.all([readState(join(directory, "decisions.json")), readState(join(directory, "live.json"))]);
   const now = Date.now();
-  const { board, paseoNote } = buildBoard({ project: options.project, tickets, decisions, agents, now });
+  const { board, paseoNote } = buildBoard({ project: options.project, tickets, decisions, live, now });
   const text = boardText(board, {
     project: options.project,
     trackerPath: options.trackerPath,
-    decisionsAsOf: decisions.kind === "read" ? decisions.writtenAt : null,
-    agentsAsOf: agents.kind === "read" ? agents.writtenAt : null,
     paseoNote,
     now,
   });
@@ -97,7 +96,7 @@ async function snapshot(options: BoardOptions, io: BoardIo): Promise<Snapshot> {
 async function signature(options: BoardOptions, io: BoardIo): Promise<string> {
   const directory = join(options.trackerPath, "tickets");
   const names = (await readdir(directory).catch(() => [] as string[])).filter((name) => name.endsWith(".md")).sort();
-  const files = [...names.map((name) => join(directory, name)), join(paseoStateDirectory(io.env), "decisions.json"), join(paseoStateDirectory(io.env), "agents.json")];
+  const files = [...names.map((name) => join(directory, name)), join(paseoStateDirectory(io.env), "decisions.json"), join(paseoStateDirectory(io.env), "live.json")];
   const stamps = await Promise.all(files.map(async (file) => {
     const info = await stat(file).catch(() => null);
     return info === null ? `${file}:-` : `${file}:${info.size}:${info.mtimeMs}`;
