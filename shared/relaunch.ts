@@ -12,7 +12,11 @@ export interface RelaunchFacts {
   paused: boolean;
   /** The owner is in a turn right now. */
   ownerRunning: boolean;
+  /** Labelled `external-host`: a session outside Paseo works it. */
+  externalHost?: boolean;
 }
+
+import { externalHostRefusal } from "./external-host";
 
 /** A status no owner works in any more, or has not started in yet. */
 const NO_OWNER_STATUSES = new Set(["Queued", "Done", "Cancelled"]);
@@ -22,6 +26,7 @@ export function relaunchRefusal(ticket: string, facts: RelaunchFacts): string | 
   if (facts.parent !== null) return `${ticket} is part of ${facts.parent}; ${facts.parent}'s owner runs it.`;
   if (facts.status === "Done" || facts.status === "Cancelled") return `${ticket} is ${facts.status}.`;
   if (NO_OWNER_STATUSES.has(facts.status)) return `${ticket} has not started; its owner starts when a slot is free.`;
+  if (facts.externalHost === true) return externalHostRefusal(ticket);
   if (facts.paused) return `${ticket} is paused. Resume it instead.`;
   if (facts.ownerRunning) return `${ticket}'s owner is running; nudge or interrupt it instead.`;
   return null;

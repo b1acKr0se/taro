@@ -8,3 +8,8 @@ export const EXTERNAL_HOST_LABEL = "external-host";
 export function isExternalHostTicket(ticket: { labels?: readonly string[] | undefined }): boolean {
   return ticket.labels?.includes(EXTERNAL_HOST_LABEL) === true;
 }
+
+/** Why a labelled ticket gets no Paseo owner (Resume, Relaunch), and how to hand it back. */
+export function externalHostRefusal(id: string): string {
+  return `${id} is worked outside Paseo (${EXTERNAL_HOST_LABEL}): to hand it back, write a HANDOFF note, remove the label, then resume it.`;
+}

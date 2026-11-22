@@ -10,6 +10,7 @@ import { ticketFileAlerts } from "../shared/alerts";
 import { boardColumn, childrenWorking, complexityOf, FIRST_PAGE, hasStarted, newestOwner, PAGED_COLUMNS, pageColumns, questionsForUser, ticketAgents, waitingOnUser } from "../shared/board";
 import { offersCompact } from "../shared/compact";
 import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
+import { isExternalHostTicket } from "../shared/external-host";
 import { acceptedRecord, deliveryMissing, executionMachine, notMergedRecord, pullRequestMerged, pullRequestUrl, type AcceptedRecord, type NotMergedRecord } from "../shared/execution";
 import type { Board, BoardPaging, Card, EvidenceView, TicketDetailView } from "../shared/contracts";
 import { latestMilestone, type Milestone } from "../shared/milestones";
@@ -264,6 +265,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         accepted: accepted !== null || held !== null,
         parked: pausing.pause?.state === "paused",
         queuedToResume: pausing.pause?.state === "queued-to-resume",
+        externalHost: isExternalHostTicket(ticket),
       });
       const working = childrenWorking((childrenOf.get(ticket.id) ?? []).map((child) => child.id), liveSubagents);
       return { id: ticket.id, updatedAt: ticket.updatedAt, column, ticket, owner, liveSubagents, working, askers, ownLine, ownerState, ticketDecisions, trackerDecisions, facts, accepted, elsewhere, pausing };
@@ -502,7 +504,7 @@ export async function loadTicketDetail(paseo: PaseoApi, project: string, ticketI
     specChangeable: offersSpecChange({ status: detail.status, parent: detail.parentTaskId, ownerRunning: owner !== null, paused: pausing.pause !== null }),
     closable: closeRoundRefusal(detail.id, { status: detail.status, parent: detail.parentTaskId, round: reopenRound(detail.implementationNotes) }) === null,
     reopenable: reopenRefusal(detail.id, { status: detail.status, parent: detail.parentTaskId, note: "reopen" }) === null,
-    relaunchable: offersRelaunch({ status: detail.status, parent: detail.parentTaskId, paused: pausing.pause !== null, ownerRunning: owner !== null && isMidTurn(owner) }),
+    relaunchable: offersRelaunch({ status: detail.status, parent: detail.parentTaskId, paused: pausing.pause !== null, ownerRunning: owner !== null && isMidTurn(owner), externalHost: isExternalHostTicket(detail) }),
     previousPlan: detail.implementationPlan === null ? null : await previousPlan(tracker, detail.id, detail.implementationNotes),
     ownerRunning: owner !== null && isMidTurn(owner),
   };

@@ -13,7 +13,7 @@ import { answerWords, severalAnswers, type QuestionAnswer } from "../shared/deci
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { questionHoldingAccept } from "../shared/delivery-end";
 import { doneTicketOf, planRelease } from "../shared/done-release";
-import { EXTERNAL_HOST_LABEL, isExternalHostTicket } from "../shared/external-host";
+import { EXTERNAL_HOST_LABEL, externalHostRefusal, isExternalHostTicket } from "../shared/external-host";
 import { acceptanceText, handoffText, ownerIsWarm, type AcceptOutcome, type Handover } from "../shared/accept-merge";
 import { acceptanceMerge, acceptedRecord, acceptedRecordText, deliveryMissing, executionBranch, executionWorkspace, localMergeInstruction, pluginAcceptPending, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
 import { ownerRelaunchedText, ownerRelaunchFailedText, ticketsWithClosedOwner } from "../shared/closed-owner";
@@ -531,6 +531,9 @@ export class Actions {
   private async startReplacementOwner(paseo: PaseoApi, project: string, ticket: string, then: string): Promise<string> {
     const config = await requireProjectConfig(project);
     const paths = await projectPaths(project);
+    // A session outside Paseo works a labelled ticket: a Paseo owner beside it would work it twice.
+    const labelled = await viewTicket(paths.tracker, ticket);
+    if (isExternalHostTicket(labelled)) throw new Error(externalHostRefusal(labelled.id));
     const previous = (await this.owners(paseo, project, ticket)).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
     // A detail view left open past Accept must not start an owner for a finished ticket (TR-219).
     const status = (await viewTicket(paths.tracker, ticket)).status;
@@ -699,7 +702,7 @@ export class Actions {
     const refusal = resumeRefusal({ id: detail.id, status: detail.status, parentTaskId: detail.parentTaskId, notes }, merging, owner !== null);
     if (refusal !== null) throw new Error(refusal);
     // Handed back only once the label is gone: a fresh owner on a ticket worked outside Paseo would work it twice.
-    if (isExternalHostTicket(detail)) throw new Error(`${detail.id} is worked outside Paseo (${EXTERNAL_HOST_LABEL}): to hand it back, write a HANDOFF note, remove the label, then resume it.`);
+    if (isExternalHostTicket(detail)) throw new Error(externalHostRefusal(detail.id));
     const at = new Date().toISOString().slice(0, 16) + "Z";
     // Parked before it started (TR-166): no handoff to resume from, so it rejoins the queue and the manager starts it.
     if (pausedHold(notes)?.notStarted === true) {

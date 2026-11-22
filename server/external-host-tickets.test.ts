@@ -211,6 +211,16 @@ describe("Paseo's automation skips a labelled ticket", () => {
     expect(relaunched).toEqual(["DM-2"]);
   });
 
+  it("relaunch refuses a labelled ticket", async () => {
+    tickets = [ticket("DM-1", "In Progress", LABELLED)];
+    owners = [owner("DM-1", "closed")];
+    vi.mocked(actions.relaunchOwner).mockRestore();
+    await expect(actions.relaunchOwner(paseo, "demo", "DM-1")).rejects.toThrow(
+      "DM-1 is worked outside Paseo (external-host): to hand it back, write a HANDOFF note, remove the label, then resume it.",
+    );
+    expect(sendFromPlugin).not.toHaveBeenCalled();
+  });
+
   it("done wake skips", async () => {
     tickets = [ticket("DM-1", "In Progress", LABELLED), ticket("DM-2", "In Progress")];
     await actions.primeStatuses();
