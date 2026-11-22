@@ -9,7 +9,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -35,6 +35,8 @@ import {
   type CommandIo,
 } from "./owner-commands.ts";
 import { statsCommand, StatsRefused, StatsUsage } from "./stats-command.ts";
+import { cardsOf, type TrackerCard } from "../shared/tracker-cards.ts";
+import { answerCard, askCard, currentCard, finishAgent, recordAgent, waitForCard, withdrawCard } from "./tracker-cards.ts";
 import { DaemonUnreachable, invokePluginRpc, RpcRefused } from "./plugin-rpc.ts";
 import {
   createTicketStore,
@@ -61,6 +63,10 @@ const EXIT_FAILURE = 1;
 const EXIT_USAGE = 2;
 const EXIT_CONFLICT = 3;
 const EXIT_UNREACHABLE = 4;
+/** `taro card show --wait`: the card was still open when the wait ran out. */
+const EXIT_WAIT_TIMED_OUT = 5;
+/** `taro card show --wait`: the card was withdrawn, not answered. */
+const EXIT_WITHDRAWN = 6;
 
 const USAGE = `Usage:
   taro ticket list [-s <status>] [-l <label>] [-p <parent>] [--plain|--json]
@@ -91,10 +97,23 @@ The owner's mechanical steps (they need $TARO_PROJECT; threads are checked first
   taro deliver <ID> [--evidence-from-checks]   records review-head, PR and FINAL's revision line, then Awaiting acceptance
   taro daemon start <ID> [--plugin <path>] [--home /tmp/paseo-…] [--port <n>] [--wait <seconds>] [--json]
   taro daemon stop <ID> [--home <path>]    taro daemon list <ID>
+Cards and agents kept in the ticket file, for any session (in Paseo or not; nothing here starts an agent or needs the daemon):
+  taro card ask <ID> [--host <name>] --file <json|->   {id, question, why, options:[{label, prompt, consequence}], recommended, reason};
+                   an open card with the same id is replaced; the host defaults to external
+  taro card answer <ID> <cardId> [--label <option>] [--text <words>]   also adds the ANSWER note
+  taro card withdraw <ID> <cardId>
+  taro card show <ID> [<cardId>] [--json] [--wait <seconds>]   with --wait: exit 0 answered, 6 withdrawn, 5 still open
+  taro agent record <ID> implementer|reviewer|researcher|other --name <name> [--task <doing what>] [--host <name>]
+  taro agent finish <ID> <name> --state done|failed
 Accept, reopen, request-changes, change-spec, close-round and the decision verbs are the user's: they refuse inside the ticket's own owner and subagents.
-Every ticket command takes --tracker <path> (or $TARO_TRACKER). -l, --dep and --remove-dep accept comma-separated lists.`;
+Every command that reads a tracker finds it by --tracker <path>, else --project <name>, else $TARO_TRACKER, else $TARO_PROJECT
+(a project's tracker is $PASEO_HOME/plugin-data/taro/home/projects/<name>/tracker, ~/.paseo when PASEO_HOME is unset).
+-l, --dep and --remove-dep accept comma-separated lists.`;
 
 class UsageError extends Error {}
+
+/** No tracker found by any lookup: a usage error (exit 2) naming what was tried. */
+export class TrackerNotFound extends UsageError {}
 
 interface OptionSpec {
   key: string;
@@ -111,6 +130,7 @@ interface Parsed {
 
 const COMMON_OPTIONS: OptionTable = {
   "--tracker": { key: "tracker", value: true },
+  "--project": { key: "project", value: true },
   "--plain": { key: "plain", value: false },
   "--json": { key: "json", value: false },
 };
@@ -580,16 +600,8 @@ async function ticketCommand(args: readonly string[], io: CliIo): Promise<number
     throw new UsageError(verbName === undefined ? "Missing ticket verb." : `Unknown ticket verb "${verbName}".`);
   }
   const parsed = parseArguments(args.slice(1), verb.options);
-  const trackerPath = single(parsed, "tracker") ?? io.env.TARO_TRACKER;
-  if (trackerPath === undefined || trackerPath === "") {
-    throw new UsageError("No tracker: pass --tracker <path> or set TARO_TRACKER.");
-  }
-  const directory = await stat(trackerPath).catch(() => null);
-  if (directory === null || !directory.isDirectory()) {
-    io.stderr(`Tracker ${trackerPath} is not a directory.\n`);
-    return EXIT_FAILURE;
-  }
-  return verb.run({ store: createTicketStore(trackerPath), trackerPath, io, parsed });
+  const { store, trackerPath } = await openTracker(trackerArguments(parsed), io.env);
+  return verb.run({ store, trackerPath, io, parsed });
 }
 
 async function decisionCommand(args: readonly string[], io: CliIo): Promise<number> {
@@ -634,13 +646,76 @@ function nonNegativeNumber(parsed: Parsed, key: string, flag: string, fallback: 
   return Number(value);
 }
 
-/** The tracker as the ticket verbs find it: --tracker or $TARO_TRACKER, a directory. */
-async function openTracker(parsed: Parsed, io: CliIo): Promise<{ store: TicketStore; trackerPath: string }> {
-  const trackerPath = single(parsed, "tracker") ?? io.env.TARO_TRACKER;
-  if (trackerPath === undefined || trackerPath === "") throw new UsageError("No tracker: pass --tracker <path> or set TARO_TRACKER.");
-  const directory = await stat(trackerPath).catch(() => null);
-  if (directory === null || !directory.isDirectory()) throw new CommandRefused(`Tracker ${trackerPath} is not a directory.`);
-  return { store: createTicketStore(trackerPath), trackerPath };
+export interface TrackerArguments {
+  tracker?: string | undefined;
+  project?: string | undefined;
+}
+
+export interface OpenedTracker {
+  store: TicketStore;
+  trackerPath: string;
+  /** The project given (--project, $TARO_PROJECT), else the one a tracker path of the plugin's layout names, else null. */
+  project: string | null;
+}
+
+function given(value: string | undefined): string | undefined {
+  return value === undefined || value === "" ? undefined : value;
+}
+
+/** The plugin's home for projects, by the rule of `server/data-dir.ts`: `$PASEO_HOME`, `~/.paseo` when unset. */
+export function projectTrackerPath(project: string, env: CliIo["env"]): string {
+  return join(given(env.PASEO_HOME) ?? join(homedir(), ".paseo"), "plugin-data", "taro", "home", "projects", project, "tracker");
+}
+
+/** The project a tracker kept where the plugin keeps them names (`…/projects/<name>/tracker`), else null. */
+export function projectOfTrackerPath(trackerPath: string): string | null {
+  const match = /(?:^|[/\\])projects[/\\]([^/\\]+)[/\\]tracker[/\\]?$/.exec(resolve(trackerPath));
+  return match === null ? null : (match[1] as string);
+}
+
+function trackerArguments(parsed: Parsed): TrackerArguments {
+  return { tracker: single(parsed, "tracker"), project: single(parsed, "project") };
+}
+
+async function isDirectory(path: string): Promise<boolean> {
+  return (await stat(path).catch(() => null))?.isDirectory() === true;
+}
+
+/**
+ * The one tracker lookup of every `taro` command that reads a tracker: --tracker, else --project, else
+ * $TARO_TRACKER, else $TARO_PROJECT, a project's being its tracker under the plugin's home. The first one
+ * given decides: a tracker path that is no directory refuses (exit 1); a project with no tracker, or nothing
+ * given at all, is a usage error (exit 2) naming what was tried.
+ */
+export async function openTracker(args: TrackerArguments, env: CliIo["env"]): Promise<OpenedTracker> {
+  const project = given(args.project) ?? given(env.TARO_PROJECT) ?? null;
+  const sources: Array<{ name: string; tracker?: string | undefined; project?: string | undefined }> = [
+    { name: "--tracker", tracker: given(args.tracker) },
+    { name: "--project", project: given(args.project) },
+    { name: "$TARO_TRACKER", tracker: given(env.TARO_TRACKER) },
+    { name: "$TARO_PROJECT", project: given(env.TARO_PROJECT) },
+  ];
+  const chosen = sources.find((source) => source.tracker !== undefined || source.project !== undefined);
+  if (chosen === undefined) {
+    throw new TrackerNotFound(`No tracker: tried --tracker, --project, $TARO_TRACKER and $TARO_PROJECT, and none was given. Pass --tracker <path> or --project <name>.`);
+  }
+  if (chosen.tracker !== undefined) {
+    if (!(await isDirectory(chosen.tracker))) throw new CommandRefused(`Tracker ${chosen.tracker} is not a directory.`);
+    return { store: createTicketStore(chosen.tracker), trackerPath: chosen.tracker, project: project ?? projectOfTrackerPath(chosen.tracker) };
+  }
+  const trackerPath = projectTrackerPath(chosen.project as string, env);
+  if (!(await isDirectory(trackerPath))) {
+    throw new TrackerNotFound(`No tracker: ${chosen.name} ${chosen.project} has none at ${trackerPath}. Pass --tracker <path>, or a project the plugin has (with $PASEO_HOME if it is not ~/.paseo).`);
+  }
+  return { store: createTicketStore(trackerPath), trackerPath, project: chosen.project as string };
+}
+
+/** The project `taro check` and `taro deliver` keep their check log under; refused (exit 2) when there is none. */
+function requiredProject(opened: OpenedTracker | null, command: string): string {
+  if (opened?.project === null || opened === null) {
+    throw new UsageError(`No project: taro ${command} keeps its check log per project; pass --project <name> or set TARO_PROJECT.`);
+  }
+  return opened.project;
 }
 
 const AGENT_OPTIONS: OptionTable = {
@@ -652,6 +727,9 @@ const AGENT_OPTIONS: OptionTable = {
   "--worktree": { key: "worktree", value: false },
   "--wait": { key: "wait", value: true },
   "--force": { key: "force", value: false },
+  "--name": { key: "name", value: true },
+  "--host": { key: "host", value: true },
+  "--state": { key: "state", value: true },
 };
 
 /** Up to ten minutes for threads to come back before starting an agent or a daemon. */
@@ -666,7 +744,7 @@ async function agentCommand(args: readonly string[], io: CliIo): Promise<number>
     const briefFile = single(parsed, "briefFile");
     if (model === undefined || model === "") throw new UsageError("agent start needs --model <id>.");
     if (briefFile === undefined || briefFile === "") throw new UsageError("agent start needs --brief-file <path>.");
-    const { store, trackerPath } = await openTracker(parsed, io);
+    const { store, trackerPath } = await openTracker(trackerArguments(parsed), io.env);
     return agentStart(
       {
         role: parsed.positionals[0] as string,
@@ -688,10 +766,30 @@ async function agentCommand(args: readonly string[], io: CliIo): Promise<number>
   if (verbName === "stop") {
     expectPositionals(parsed, 1, "one agent id");
     // The tracker shows whether `--worktree` made the agent's workspace; without one the workspace is kept.
-    const tracker = await openTracker(parsed, io).catch(() => null);
+    const tracker = await openTracker(trackerArguments(parsed), io.env).catch(() => null);
     return agentStop(parsed.positionals[0] as string, has(parsed, "force"), commandIo(io), tracker?.store ?? null);
   }
-  throw new UsageError(verbName === undefined ? "Missing agent verb (start, stop)." : `Unknown agent verb "${verbName}".`);
+  if (verbName === "record") {
+    expectPositionals(parsed, 2, "a ticket id and a job (implementer, reviewer, researcher or other)");
+    const name = single(parsed, "name");
+    if (name === undefined || name.trim() === "") throw new UsageError("agent record needs --name <name>, unique on the ticket.");
+    const { store } = await openTracker(trackerArguments(parsed), io.env);
+    const ticket = parsed.positionals[0] as string;
+    const { agent } = await recordAgent(store, ticket, { name, job: parsed.positionals[1] as string, task: single(parsed, "task"), host: single(parsed, "host") });
+    io.stdout(has(parsed, "json") ? json({ agent }) : `Recorded ${agent.job} ${agent.name} on ${ticket}; finish it with: taro agent finish ${ticket} ${agent.name} --state done|failed\n`);
+    return EXIT_OK;
+  }
+  if (verbName === "finish") {
+    expectPositionals(parsed, 2, "a ticket id and an agent's name");
+    const state = single(parsed, "state");
+    if (state === undefined || state === "") throw new UsageError("agent finish needs --state done|failed.");
+    const { store } = await openTracker(trackerArguments(parsed), io.env);
+    const ticket = parsed.positionals[0] as string;
+    const { agent } = await finishAgent(store, ticket, { name: parsed.positionals[1] as string, state });
+    io.stdout(has(parsed, "json") ? json({ agent }) : `${agent.name} on ${ticket} is ${agent.state}.\n`);
+    return EXIT_OK;
+  }
+  throw new UsageError(verbName === undefined ? "Missing agent verb (start, stop, record, finish)." : `Unknown agent verb "${verbName}".`);
 }
 
 const CHECK_OPTIONS: OptionTable = {
@@ -710,7 +808,12 @@ async function checkVerbCommand(args: readonly string[], io: CliIo): Promise<num
   const parsed = parseArguments(own, CHECK_OPTIONS);
   const words = [...parsed.positionals, ...(separator === -1 ? [] : args.slice(separator + 1))];
   const timeout = nonNegativeNumber(parsed, "timeout", "--timeout", DEFAULT_CHECK_TIMEOUT_MINUTES);
-  return checkCommand(words, { ticket: single(parsed, "ticket"), timeoutMinutes: timeout === 0 ? DEFAULT_CHECK_TIMEOUT_MINUTES : timeout, again: has(parsed, "again") }, commandIo(io));
+  // A check needs no tracker, only a project: given, or named by the tracker's path.
+  const named = given(single(parsed, "project")) ?? given(io.env.TARO_PROJECT);
+  const opened = named !== undefined ? null : await openTracker(trackerArguments(parsed), io.env).catch(() => null);
+  const project = named ?? requiredProject(opened, "check");
+  const projectIo = { ...commandIo(io), env: { ...io.env, TARO_PROJECT: project } };
+  return checkCommand(words, { ticket: single(parsed, "ticket"), timeoutMinutes: timeout === 0 ? DEFAULT_CHECK_TIMEOUT_MINUTES : timeout, again: has(parsed, "again") }, projectIo);
 }
 
 const DELIVER_OPTIONS: OptionTable = {
@@ -720,8 +823,126 @@ const DELIVER_OPTIONS: OptionTable = {
 async function deliverVerbCommand(args: readonly string[], io: CliIo): Promise<number> {
   const parsed = parseArguments(args, DELIVER_OPTIONS);
   expectPositionals(parsed, 1, "one ticket id");
-  const { store, trackerPath } = await openTracker(parsed, io);
-  return deliverCommand({ ticket: parsed.positionals[0] as string, evidenceFromChecks: has(parsed, "evidenceFromChecks"), store, trackerPath }, commandIo(io));
+  const opened = await openTracker(trackerArguments(parsed), io.env);
+  const project = requiredProject(opened, "deliver");
+  const projectIo = { ...commandIo(io), env: { ...io.env, TARO_PROJECT: project } };
+  return deliverCommand({ ticket: parsed.positionals[0] as string, evidenceFromChecks: has(parsed, "evidenceFromChecks"), store: opened.store, trackerPath: opened.trackerPath }, projectIo);
+}
+
+// ---------------------------------------------------------------- cards kept in the ticket file (TR-280)
+
+const CARD_OPTIONS: OptionTable = {
+  "--host": { key: "host", value: true },
+  "--file": { key: "file", value: true },
+  "--label": { key: "label", value: true },
+  "--text": { key: "text", value: true },
+  "--wait": { key: "wait", value: true },
+};
+
+/** Who answered a tracker card from this command, in the words of a Paseo answer's note. */
+const COMMAND_LINE_ANSWERER = "the user, from the command line";
+
+function answerCommandOf(ticket: string, card: TrackerCard): string {
+  return `taro card answer ${ticket} ${card.id} ${card.options.length === 0 ? "--text <words>" : "--label <option> [--text <words>]"}`;
+}
+
+function plainCard(ticket: string, card: TrackerCard): string {
+  const lines = [`${card.id} [${card.status}] ${card.question}`, `  asked ${card.askedAt} from ${card.host}`];
+  if (card.why !== "") lines.push(`  why: ${card.why}`);
+  for (const option of card.options) {
+    const details = [option.prompt === option.label ? "" : option.prompt, option.consequence].filter((part) => part !== "").join(" — ");
+    lines.push(`  - ${option.label}${option.label === card.recommended ? " (recommended)" : ""}${details === "" ? "" : `: ${details}`}`);
+  }
+  if (card.reason !== "") lines.push(`  reason: ${card.reason}`);
+  const answer = card.answer;
+  if (answer !== null) {
+    const given = [answer.label ?? "", answer.text === "" ? "" : `"${answer.text}"`].filter((part) => part !== "").join(" — ");
+    lines.push(`  answer: ${given} (${answer.by}, ${answer.at})`);
+  }
+  if (card.status === "open") lines.push(`  answer with: ${answerCommandOf(ticket, card)}`);
+  return `${lines.join("\n")}\n`;
+}
+
+async function cardInput(parsed: Parsed, io: CliIo): Promise<unknown> {
+  const file = single(parsed, "file");
+  if (file === undefined || file === "") throw new UsageError("card ask needs --file <path> (or --file - for standard input) holding the card's JSON.");
+  let text: string;
+  if (file === "-") {
+    if (io.readStdin === undefined) throw new UsageError("--file - needs standard input.");
+    text = await io.readStdin();
+  } else {
+    text = await readFile(file, "utf8");
+  }
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new CommandRefused(`The card in ${file === "-" ? "standard input" : file} is not JSON: ${error instanceof Error ? error.message : String(error)}.`);
+  }
+}
+
+async function cardCommand(args: readonly string[], io: CliIo): Promise<number> {
+  const verbName = args[0];
+  const parsed = parseArguments(args.slice(1), CARD_OPTIONS);
+  if (verbName === "ask") {
+    expectPositionals(parsed, 1, "one ticket id");
+    const card = await cardInput(parsed, io);
+    const { store } = await openTracker(trackerArguments(parsed), io.env);
+    const ticket = parsed.positionals[0] as string;
+    const asked = await askCard(store, ticket, { card, host: given(single(parsed, "host")) });
+    io.stdout(has(parsed, "json") ? json({ card: asked.card }) : `Asked ${asked.card.id} on ${ticket}; answer with: ${answerCommandOf(ticket, asked.card)}\n`);
+    return EXIT_OK;
+  }
+  if (verbName === "answer") {
+    expectPositionals(parsed, 2, "a ticket id and a card id");
+    const label = single(parsed, "label") ?? null;
+    const text = (await wordsOf(parsed, "text", io)) ?? "";
+    if (label === null && text.trim() === "") throw new UsageError("Give --label <option>, --text <words>, or both.");
+    const { store } = await openTracker(trackerArguments(parsed), io.env);
+    const [ticket, cardId] = parsed.positionals as [string, string];
+    const { card } = await answerCard(store, ticket, cardId, { label, text, by: COMMAND_LINE_ANSWERER });
+    io.stdout(has(parsed, "json") ? json({ card }) : `Answered ${card.id} on ${ticket}.\n`);
+    return EXIT_OK;
+  }
+  if (verbName === "withdraw") {
+    expectPositionals(parsed, 2, "a ticket id and a card id");
+    const { store } = await openTracker(trackerArguments(parsed), io.env);
+    const [ticket, cardId] = parsed.positionals as [string, string];
+    const { card } = await withdrawCard(store, ticket, cardId);
+    io.stdout(has(parsed, "json") ? json({ card }) : `Withdrew ${card.id} on ${ticket}.\n`);
+    return EXIT_OK;
+  }
+  if (verbName === "show") {
+    if (parsed.positionals.length !== 1 && parsed.positionals.length !== 2) throw new UsageError("Expected a ticket id and, optionally, a card id.");
+    const [ticket, cardId] = parsed.positionals as [string, string | undefined];
+    const wait = single(parsed, "wait");
+    if (wait !== undefined && cardId === undefined) throw new UsageError("--wait needs the card id to wait on.");
+    if (wait !== undefined && !/^\d+$/.test(wait)) throw new UsageError(`--wait needs a whole number of seconds, not "${wait}".`);
+    const { store } = await openTracker(trackerArguments(parsed), io.env);
+    if (cardId === undefined) {
+      const read = cardsOf((await store.read(ticket)).cards);
+      if (has(parsed, "json")) io.stdout(json({ cards: read.items, problems: read.problems }));
+      else io.stdout(read.items.length === 0 ? `${ticket} has no cards.\n` : read.items.map((card) => plainCard(ticket, card)).join("\n"));
+      for (const problem of read.problems) io.stderr(`cards line ${problem.line}: ${problem.message}\n`);
+      return EXIT_OK;
+    }
+    let card: TrackerCard;
+    let timedOut = false;
+    if (wait === undefined) {
+      const found = await currentCard(store, ticket, cardId);
+      if (found === null) throw new CommandRefused(`${ticket} has no card "${cardId}".`);
+      card = found;
+    } else {
+      ({ card, timedOut } = await waitForCard(store, ticket, cardId, Number(wait)));
+    }
+    io.stdout(has(parsed, "json") ? json({ card }) : plainCard(ticket, card));
+    if (wait === undefined) return EXIT_OK;
+    if (timedOut) {
+      io.stderr(`${card.id} on ${ticket} is still open after ${wait} s.\n`);
+      return EXIT_WAIT_TIMED_OUT;
+    }
+    return card.status === "withdrawn" ? EXIT_WITHDRAWN : EXIT_OK;
+  }
+  throw new UsageError(verbName === undefined ? "Missing card verb (ask, answer, withdraw, show)." : `Unknown card verb "${verbName}".`);
 }
 
 const DAEMON_OPTIONS: OptionTable = {
@@ -763,6 +984,7 @@ const commands: Record<string, (args: readonly string[], io: CliIo) => Promise<n
   decision: decisionCommand,
   next: nextCommand,
   agent: agentCommand,
+  card: cardCommand,
   check: checkVerbCommand,
   deliver: deliverVerbCommand,
   daemon: daemonCommand,

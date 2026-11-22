@@ -18,6 +18,7 @@ import { QueuedWaitSchema } from "./queued-wait";
 import { PaseoProjectCandidateSchema, SettingsTemplateSchema } from "./project-candidates";
 import { ProjectConfigSchema, ProjectNameSchema, ProjectSettingsSchema, ROLES, SUBAGENT_ROLES } from "./project";
 import { CrashReportSchema, DeviceSchema, LaunchIdSchema, TrailReportSchema } from "./crash-trail";
+import { AGENT_JOBS, AGENT_STATES, CARD_STATUSES, type TrackerAgent, type TrackerCard } from "./tracker-cards";
 import { BoardAlertSchema, HeadroomSchema } from "./recovery";
 import { LastStatusSchema, StoredDecisionSchema } from "./state";
 
@@ -306,6 +307,36 @@ export type BoardPaging = z.infer<typeof BoardPagingSchema>;
 
 export const loadBoard = defineRpc({ name: "taro.board.load", input: ProjectInput.extend(BoardPagingSchema.shape), output: BoardSchema });
 
+/** A card kept in the ticket file (`shared/tracker-cards.ts`), asked by a session outside Paseo or in it. */
+export const TrackerCardSchema = z.object({
+  id: z.string(),
+  host: z.string(),
+  question: z.string(),
+  why: z.string(),
+  options: z.array(z.object({ label: z.string(), prompt: z.string(), consequence: z.string() })),
+  recommended: z.string().nullable(),
+  reason: z.string(),
+  askedAt: z.string(),
+  status: z.enum(CARD_STATUSES),
+  answer: z.object({ label: z.string().nullable(), text: z.string(), at: z.string(), by: z.string() }).nullable(),
+});
+
+/** An agent a session recorded in the ticket file (`taro agent record`); nothing of Paseo's runs it. */
+export const TrackerAgentSchema = z.object({
+  name: z.string(),
+  host: z.string(),
+  job: z.enum(AGENT_JOBS),
+  task: z.string(),
+  state: z.enum(AGENT_STATES),
+  startedAt: z.string(),
+  finishedAt: z.string().nullable(),
+});
+
+// The contract and the ticket file's own types stay one shape.
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+const trackerShapesAgree: [Same<z.infer<typeof TrackerCardSchema>, TrackerCard>, Same<z.infer<typeof TrackerAgentSchema>, TrackerAgent>] = [true, true];
+void trackerShapesAgree;
+
 export const TicketDetailSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -316,6 +347,9 @@ export const TicketDetailSchema = z.object({
   plan: z.string().nullable(),
   notes: z.string().nullable(),
   finalSummary: z.string().nullable(),
+  /** Cards and agents kept in the ticket file; absent from a daemon that does not read them. */
+  trackerCards: z.array(TrackerCardSchema).optional(),
+  trackerAgents: z.array(TrackerAgentSchema).optional(),
   dependencies: z.array(z.string()),
   /** Each child with its own EVIDENCE record, judged, or null when it has none (TR-187). */
   children: z.array(z.object({ id: z.string(), title: z.string(), status: z.string().nullable(), evidence: EvidenceViewSchema.nullable().default(null) })),

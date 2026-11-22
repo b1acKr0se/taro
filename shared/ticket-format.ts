@@ -43,6 +43,13 @@ export interface Ticket {
   criteria: Criterion[];
   notes: string;
   finalSummary: string;
+  /**
+   * The cards asked outside Paseo, one JSON object a line (`shared/tracker-cards.ts` reads them), kept as written so a
+   * malformed line survives every write. Absent until the first card: an older reader rejects an unknown section.
+   */
+  cards?: string;
+  /** The agents recorded outside Paseo, one JSON object a line, as `cards`. */
+  agents?: string;
   /** Unknown frontmatter keys, in their original order, written back after the known ones. */
   extra: Record<string, unknown>;
 }
@@ -85,13 +92,15 @@ const MARKER_LIKE = /^\\*<!-- \/?taro:[a-z-]+ -->[ \t]*$/;
 const MARKER = /^<!-- (\/?)taro:([a-z-]+) -->[ \t]*$/;
 const CRITERION = /^- \[([ x])\] #(\d+) (.*)$/;
 
-type SectionName = "description" | "plan" | "criteria" | "notes" | "final-summary";
+type SectionName = "description" | "plan" | "criteria" | "notes" | "final-summary" | "cards" | "agents";
 const SECTION_HEADINGS: Record<SectionName, string> = {
   description: "Description",
   plan: "Plan",
   criteria: "Acceptance criteria",
   notes: "Notes",
   "final-summary": "Final summary",
+  cards: "Cards",
+  agents: "Agents",
 };
 
 interface OpenSection {
@@ -372,6 +381,9 @@ export function parseTicket(text: string, fileName: string): ParseResult {
     finalSummary: sectionText("final-summary"),
     extra,
   };
+  // Only a file that has the section carries the field, so a ticket without one is written back without it.
+  if (sections.cards !== undefined) ticket.cards = sectionText("cards");
+  if (sections.agents !== undefined) ticket.agents = sectionText("agents");
   return { ok: true, ticket, revision: revisionOf(text) };
 }
 
@@ -413,5 +425,7 @@ export function serializeTicket(ticket: Ticket): string {
   }
   section("notes", sectionBody(ticket.notes));
   section("final-summary", sectionBody(ticket.finalSummary));
+  if (ticket.cards !== undefined) section("cards", sectionBody(ticket.cards));
+  if (ticket.agents !== undefined) section("agents", sectionBody(ticket.agents));
   return `${out.join("\n")}\n`;
 }
