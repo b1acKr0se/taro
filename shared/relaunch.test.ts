@@ -19,4 +19,9 @@ describe("Relaunch owner on the detail view (TR-219)", () => {
     expect(offersRelaunch({ ...WORKED, paused: true })).toBe(false);
     expect(offersRelaunch({ ...WORKED, ownerRunning: true })).toBe(false);
   });
+
+  it("is not offered for a ticket worked outside Paseo", () => {
+    expect(offersRelaunch({ ...WORKED, externalHost: true })).toBe(false);
+    expect(relaunchRefusal("TR-3", { ...WORKED, externalHost: true })).toMatch(/^TR-3 is worked outside Paseo \(external-host\)/);
+  });
 });

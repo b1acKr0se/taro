@@ -64,6 +64,8 @@ export interface CardInputs {
   parked?: boolean;
   /** Resumed with no free slot (TR-088): queued again, never Stalled. */
   queuedToResume?: boolean;
+  /** Labelled `external-host`: a session outside Paseo works it, so no Paseo owner means nothing is wrong. */
+  externalHost?: boolean;
 }
 
 /**
@@ -101,6 +103,8 @@ export function boardColumn(card: CardInputs): ColumnId {
   if (running) return "working";
   if (card.parked === true) return "parked";
   if (card.queuedToResume === true) return "queued";
+  // Worked outside Paseo: placed like a teammate's ticket, though its tracker cards still wait on the user.
+  if (card.externalHost === true && idle) return card.openQuestions > 0 ? "needs-you" : recordedColumn(card.status, accepted);
   if (card.crashedOut === true) return "stalled";
 
   if (card.openQuestions > 0) return "needs-you";

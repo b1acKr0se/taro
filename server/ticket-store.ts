@@ -64,6 +64,9 @@ export interface TicketChanges {
   appendNotes?: string[];
   checkCriteria?: number[];
   uncheckCriteria?: number[];
+  /** The whole cards or agents section, replaced (`server/tracker-cards.ts` works it out under the lock). */
+  cards?: string;
+  agents?: string;
 }
 
 export interface TicketView {
@@ -500,6 +503,8 @@ export function createTicketStore(trackerPath: string, options: StoreOptions = {
     if (changes.description !== undefined) ticket.description = changes.description;
     if (changes.plan !== undefined) ticket.plan = changes.plan;
     if (changes.finalSummary !== undefined) ticket.finalSummary = changes.finalSummary;
+    if (changes.cards !== undefined) ticket.cards = changes.cards;
+    if (changes.agents !== undefined) ticket.agents = changes.agents;
     if (changes.addLabels !== undefined) ticket.labels = unique([...ticket.labels, ...changes.addLabels]);
     if (changes.removeLabels !== undefined) {
       const removed = new Set(changes.removeLabels);

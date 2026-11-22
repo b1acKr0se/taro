@@ -1,4 +1,8 @@
 // TR-016: the board draws owners and decisions from live agents only, and a ticket's archived agents beside them.
+import { mkdtempSync, readFileSync, rmSync, statSync, utimesSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { StoredDecision } from "../shared/state";
@@ -50,8 +54,13 @@ const state = (decisions: StoredDecision[]) => ({ allDecisions: async () => deci
 const notes = "EXECUTION 2026-10-13T14:00Z — owner o\n\nMILESTONE 2026-10-13T14:30Z — tests green";
 
 let now = Date.parse("2026-10-13T15:00:00Z");
+let paseoHome: string;
+const previousPaseoHome = process.env.PASEO_HOME;
 
 beforeEach(() => {
+  // The board writes the live list into the plugin's state folder: never the real home's.
+  paseoHome = mkdtempSync(join(tmpdir(), "taro-board-home-"));
+  process.env.PASEO_HOME = paseoHome;
   invalidateBoards();
   vi.spyOn(Date, "now").mockImplementation(() => now);
   vi.mocked(readProjectConfig).mockReset().mockResolvedValue(null);
@@ -72,9 +81,53 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  if (previousPaseoHome === undefined) delete process.env.PASEO_HOME;
+  else process.env.PASEO_HOME = previousPaseoHome;
+  rmSync(paseoHome, { recursive: true, force: true });
 });
 
 describe("loadBoard", () => {
+  it("writes the live list once", async () => {
+    const livePath = join(paseoHome, "plugin-data", "taro", "state", "live.json");
+    const states = {
+      allDecisions: async () => [stored("owner-old", "TR-1"), stored("owner-live", "TR-1")],
+      allAgents: async () => ({ "owner-live": { lastStatus: { state: "working", text: "building", at: "2026-10-13T14:58:00Z" } }, "owner-old": { lastStatus: { state: "done", text: "old", at: "2026-10-13T13:00:00Z" } } }),
+    } as unknown as PluginState;
+    await loadBoard({} as PaseoApi, states, "taro");
+    const written = JSON.parse(readFileSync(livePath, "utf8"));
+    const entry = written.projects.taro;
+    expect(entry.project).toBe("taro");
+    expect(entry.writtenAt).toBe("2026-10-13T15:00:00.000Z");
+    // Live agents only: the archived owner, reviewer and manager are left out.
+    expect(entry.agents.map((agent: { id: string }) => agent.id)).toEqual(["legacy-live", "owner-live", "researcher-live", "reviewer-live"]);
+    expect(entry.agents.find((agent: { id: string }) => agent.id === "owner-live")).toEqual({ id: "owner-live", role: "owner", ticket: "TR-1", title: "TR-1 · owner", state: "working", text: "building", at: "2026-10-13T14:58:00Z" });
+    // Open cards of live agents only.
+    expect(entry.cardKeys).toEqual(["owner-live:scope-approval"]);
+
+    // Unchanged and written less than a minute ago: the file is not written again.
+    const past = new Date("2026-01-01T00:00:00Z");
+    utimesSync(livePath, past, past);
+    now += 30_000;
+    invalidateBoards();
+    await loadBoard({} as PaseoApi, states, "taro");
+    expect(statSync(livePath).mtime.toISOString()).toBe(past.toISOString());
+    expect(JSON.parse(readFileSync(livePath, "utf8")).projects.taro.writtenAt).toBe("2026-10-13T15:00:00.000Z");
+
+    // Unchanged for a minute: a heartbeat rewrites it, so a list a stopped daemon left behind shows its age.
+    now += 60_000;
+    invalidateBoards();
+    await loadBoard({} as PaseoApi, states, "taro");
+    expect(JSON.parse(readFileSync(livePath, "utf8")).projects.taro.writtenAt).toBe("2026-10-13T15:01:30.000Z");
+
+    // An agent archived: written again, with the new time.
+    vi.mocked(projectAgents).mockResolvedValue([agent("owner-live", "owner", "TR-1", "2026-10-13T14:50:00Z")]);
+    invalidateBoards();
+    await loadBoard({} as PaseoApi, states, "taro");
+    const rewritten = JSON.parse(readFileSync(livePath, "utf8")).projects.taro;
+    expect(rewritten.agents.map((agent: { id: string }) => agent.id)).toEqual(["owner-live"]);
+    expect(rewritten.writtenAt).toBe("2026-10-13T15:01:30.000Z");
+  });
+
   it("takes the owner, subagents (by job, the legacy helper label as implementer) and decisions from live agents and lists archived ones apart", async () => {
     const board = await loadBoard({} as PaseoApi, state([stored("owner-old", "TR-1"), stored("owner-live", "TR-1")]), "taro");
     const [working, done] = board.cards;

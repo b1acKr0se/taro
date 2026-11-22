@@ -340,6 +340,54 @@ describe("ticket format", () => {
     expect(summary.criteriaChecked).toBe(1);
   });
 
+  describe("cards and agents sections", () => {
+    const CARD = '{"id":"colour","host":"external","question":"Which colour?","why":"","options":[],"recommended":null,"reason":"","askedAt":"2026-11-22T16:00:00.000Z","status":"open","answer":null}';
+    const AGENT = '{"name":"impl-1","host":"external","job":"implementer","task":"build it","state":"running","startedAt":"2026-11-22T16:00:00.000Z","finishedAt":null}';
+
+    it("cards and agents round trip", () => {
+      const value = ticket({ notes: "MILESTONE one", cards: `${CARD}\nnot json at all`, agents: AGENT });
+      expectRoundTrip(value);
+      const file = serializeTicket(value);
+      expect(file).toContain(`<!-- taro:cards -->\n${CARD}\nnot json at all\n<!-- /taro:cards -->`);
+      expect(file).toContain(`<!-- taro:agents -->\n${AGENT}\n<!-- /taro:agents -->`);
+      expectRoundTrip(ticket({ cards: "", agents: "" }));
+    });
+
+    it("sections absent until first record", () => {
+      const file = serializeTicket(ticket());
+      expect(file).toBe(WRITER_FILE);
+      expect(file).not.toContain("taro:cards");
+      expect(file).not.toContain("taro:agents");
+      const back = parsed(file).ticket;
+      expect(back.cards).toBeUndefined();
+      expect(back.agents).toBeUndefined();
+      expect(serializeTicket({ ...back, status: "Done" })).not.toMatch(/taro:(cards|agents)/);
+    });
+
+    it("a status edit keeps the cards and agents", () => {
+      const file = serializeTicket(ticket({ cards: CARD, agents: AGENT }));
+      const back = parsed(file).ticket;
+      const edited = serializeTicket({ ...back, status: "Reviewing" });
+      expect(edited).toBe(file.replace('status: "In Progress"', 'status: "Reviewing"'));
+    });
+
+    it("a Paseo write keeps them", () => {
+      // The plugin's own writes (a note, the plan, a label) go through parse and serialize too.
+      const file = serializeTicket(ticket({ cards: CARD, agents: AGENT }));
+      const back = parsed(file).ticket;
+      const written = parsed(serializeTicket({ ...back, notes: withNote(back.notes, "ANSWER x"), plan: "new plan", labels: [...back.labels, "web"] })).ticket;
+      expect(written.cards).toBe(CARD);
+      expect(written.agents).toBe(AGENT);
+    });
+
+    it("marker-like text is escaped", () => {
+      const raw = "<!-- /taro:cards -->\n<!-- taro:notes -->";
+      const value = ticket({ cards: raw, agents: "<!-- /taro:agents -->" });
+      expectRoundTrip(value);
+      expect(serializeTicket(value)).toContain("\\<!-- /taro:cards -->");
+    });
+  });
+
   it("refuses a criterion that spans lines", () => {
     expect(() => serializeTicket(ticket({ criteria: [{ index: 1, text: "a\nb", checked: false }] }))).toThrow(/more than one line/);
   });

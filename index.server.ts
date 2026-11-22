@@ -66,6 +66,7 @@ import {
 } from "./shared/contracts";
 import { inboxCount } from "./shared/board";
 import { ProjectSettingsSchema } from "./shared/project";
+import { isTrackerAgentId } from "./shared/state";
 import { Actions } from "./server/actions";
 import { createUnlabelledAgents } from "./server/unlabelled-agents";
 import type { BoardAlert } from "./shared/recovery";
@@ -75,7 +76,7 @@ import { createCrashTrail } from "./server/crash-trail";
 import { backfillCosts, recordArchivedUsage } from "./server/cost-recording";
 import { decisionsOfAgent } from "./server/agent-decisions";
 import { fetchLiveAgent, isAgentLive } from "./server/agents";
-import { dismissSuggestion, invalidateBoards, liveOpenDecisions, loadBoard, loadTicketDetail, loadTicketPastPlan } from "./server/board";
+import { dismissSuggestion, findDecision, invalidateBoards, liveOpenDecisions, loadBoard, loadTicketDetail, loadTicketPastPlan } from "./server/board";
 import type { PaseoApi } from "./server/host-types";
 import { Recovery } from "./server/recovery";
 import { PluginState } from "./server/state";
@@ -367,15 +368,15 @@ export default function contribute(server: PluginServerContext) {
     return { project: identity?.project ?? null, ticket: identity?.ticket ?? null, role: identity?.role ?? null };
   });
   server.handle(answerDecision, async ({ key, label, text, from, answers, caller }, { paseo }) => {
-    await refuseDecisionWorker(paseo, caller, await state.decision(key), "decision answer");
+    await refuseDecisionWorker(paseo, caller, await findDecision(state, key), "decision answer");
     await actions.answerDecision(keep(paseo), key, label, text, from, answers);
     invalidateBoards();
     return {};
   });
   server.handle(getDecision, async ({ agentId, id }, { paseo }) => {
-    const decision = await state.decision(`${agentId}:${id}`);
-    // Only an open decision's card depends on the agent still being there.
-    return { decision, agentLive: decision?.status === "open" ? await isAgentLive(keep(paseo), agentId) : true };
+    const decision = await findDecision(state, `${agentId}:${id}`);
+    // Only an open decision's card depends on the agent still being there; a tracker card has none.
+    return { decision, agentLive: decision?.status === "open" && !isTrackerAgentId(agentId) ? await isAgentLive(keep(paseo), agentId) : true };
   });
   server.handle(listOpenDecisions, async ({ project }, { paseo }) => ({ decisions: await liveOpenDecisions(keep(paseo), state, project) }));
   server.handle(answeredPermissionAsks, async ({ agentId }) => ({ asks: await state.answeredPermissionAsks(agentId) }));
@@ -461,7 +462,7 @@ export default function contribute(server: PluginServerContext) {
     return {};
   });
   server.handle(dismissManagerQuestionRpc, async ({ key, caller }, { paseo }) => {
-    await refuseDecisionWorker(paseo, caller, await state.decision(key), "decision dismiss");
+    await refuseDecisionWorker(paseo, caller, await findDecision(state, key), "decision dismiss");
     await actions.dismissDecision(keep(paseo), key);
     invalidateBoards();
     return {};

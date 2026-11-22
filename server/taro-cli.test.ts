@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseTicket, serializeTicket, type Ticket } from "../shared/ticket-format";
 import { currentStep, nextStepAnswer } from "./next-step";
-import { main } from "./taro-cli.ts";
+import { main, openTracker } from "./taro-cli.ts";
 
 // `taro next` asks the daemon, whose handler reads the project's tracker and settings: here, the scratch tracker.
 const project = vi.hoisted(() => ({ tracker: "" }));
@@ -42,10 +42,12 @@ interface Result {
   stderr: string;
 }
 
-/** Runs the real `bin/taro` (plain node, no vitest transform) with TARO_TRACKER unset unless given. */
+/** Runs the real `bin/taro` (plain node, no vitest transform) with TARO_TRACKER and TARO_PROJECT unset unless given. */
 function taro(args: string[], env: Record<string, string> = {}, command = BIN): Result {
   const clean = { ...process.env };
   delete clean.TARO_TRACKER;
+  // A Taro agent running these tests has its own project, whose tracker the lookup would find under the real home.
+  delete clean.TARO_PROJECT;
   const result = spawnSync(command, args, { encoding: "utf8", env: { ...clean, ...env }, timeout: 60_000 });
   return { code: result.status ?? -1, stdout: result.stdout, stderr: result.stderr };
 }
@@ -279,7 +281,9 @@ describe("taro ticket create", { timeout: CLI_TIMEOUT_MS }, () => {
     ok(["create", "Dep"]);
     ok(["create", "Dep two"]);
     ok(["create", "Dep three"]);
-    ok(["create", "One", "-l", "a,b", "-l", "c", "--dep", "TR-001,TR-002", "--dep", "TR-003", "--priority", "low", "-s", "Planning", "-d", "text"]);
+    // As a Paseo agent creates it: outside Paseo the label external-host is added too (server/external-host-tickets.test.ts).
+    const created = ticketCommand(["create", "One", "-l", "a,b", "-l", "c", "--dep", "TR-001,TR-002", "--dep", "TR-003", "--priority", "low", "-s", "Planning", "-d", "text"], { PASEO_AGENT_ID: "agent-test" });
+    expect(created.code).toBe(0);
     expect(readTicket("TR-004")).toMatchObject({
       labels: ["a", "b", "c"],
       dependsOn: ["TR-001", "TR-002", "TR-003"],
@@ -504,6 +508,85 @@ describe("usage errors", { timeout: CLI_TIMEOUT_MS }, () => {
     expect(result.code).toBe(2);
     expect(result.stderr).toContain("No tracker");
     expect(result.stderr).toContain("Usage:");
+  });
+});
+
+describe("the tracker lookup", { timeout: CLI_TIMEOUT_MS }, () => {
+  /** A project's tracker where the plugin keeps it: `<paseo home>/plugin-data/taro/home/projects/<name>/tracker`. */
+  function projectTracker(paseoHome: string, name: string): string {
+    const path = join(paseoHome, "plugin-data", "taro", "home", "projects", name, "tracker");
+    mkdirSync(join(path, "tickets"), { recursive: true });
+    writeFileSync(join(path, "tickets", "NA-001.md"), serializeTicket({ ...readTicketShape("NA-001"), title: `In ${name}` }));
+    return path;
+  }
+
+  function readTicketShape(id: string): Ticket {
+    return { id, title: id, status: "Queued", priority: null, labels: [], parent: null, dependsOn: [], created: "2026-10-01T10:00:00Z", updated: "2026-10-01T10:00:00Z", description: "", plan: "", criteria: [], notes: "", finalSummary: "", extra: {} };
+  }
+
+  it("finds tracker by project", () => {
+    const home = join(scratch, "paseo");
+    projectTracker(home, "notes-app");
+    const byFlag = taro(["ticket", "list", "--plain", "--project", "notes-app"], { PASEO_HOME: home });
+    expect(byFlag.stderr).toBe("");
+    expect(byFlag.stdout).toContain("NA-001 [Queued] In notes-app");
+    const byEnv = taro(["ticket", "list", "--plain"], { PASEO_HOME: home, TARO_PROJECT: "notes-app" });
+    expect(byEnv.stdout).toContain("NA-001 [Queued] In notes-app");
+    // --tracker still wins over the project.
+    writeTicket({ id: "TR-009", title: "In the given tracker" });
+    expect(taro(["ticket", "list", "--plain", "--project", "notes-app", "--tracker", tracker], { PASEO_HOME: home }).stdout).toContain("TR-009");
+  });
+
+  it("a flag beats the environment", () => {
+    const home = join(scratch, "paseo");
+    projectTracker(home, "notes-app");
+    writeTicket({ id: "TR-009", title: "In the environment's tracker" });
+    const result = taro(["ticket", "list", "--plain", "--project", "notes-app"], { PASEO_HOME: home, TARO_TRACKER: tracker });
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("NA-001 [Queued] In notes-app");
+    expect(result.stdout).not.toContain("TR-009");
+  });
+
+  it("honours PASEO_HOME", () => {
+    const fakeHome = join(scratch, "user");
+    projectTracker(join(fakeHome, ".paseo"), "notes-app");
+    projectTracker(join(scratch, "elsewhere"), "notes-app");
+    writeFileSync(join(scratch, "elsewhere", "plugin-data", "taro", "home", "projects", "notes-app", "tracker", "tickets", "NA-002.md"), serializeTicket({ ...readTicketShape("NA-002"), title: "Only elsewhere" }));
+    // Unset, it is ~/.paseo, as server/data-dir.ts has it.
+    const fromUserHome = taro(["ticket", "list", "--plain", "--project", "notes-app"], { HOME: fakeHome, PASEO_HOME: "" });
+    expect(fromUserHome.stdout).toContain("NA-001");
+    expect(fromUserHome.stdout).not.toContain("NA-002");
+    expect(taro(["ticket", "list", "--plain", "--project", "notes-app"], { HOME: fakeHome, PASEO_HOME: join(scratch, "elsewhere") }).stdout).toContain("NA-002 [Queued] Only elsewhere");
+  });
+
+  it("no tracker exits 2", () => {
+    const home = join(scratch, "paseo");
+    const none = taro(["ticket", "list"], { PASEO_HOME: home });
+    expect(none.code).toBe(2);
+    expect(none.stderr).toContain("No tracker");
+    expect(none.stderr).toContain("--tracker");
+    expect(none.stderr).toContain("$TARO_TRACKER");
+    expect(none.stderr).toContain("--project");
+    const missingProject = taro(["card", "show", "NA-001"], { PASEO_HOME: home, TARO_PROJECT: "ghost" });
+    expect(missingProject.code).toBe(2);
+    expect(missingProject.stderr).toContain(join(home, "plugin-data", "taro", "home", "projects", "ghost", "tracker"));
+    expect(taro(["agent", "record", "NA-001", "other", "--name", "x"], { PASEO_HOME: home }).code).toBe(2);
+  });
+
+  it("project from path", async () => {
+    const home = join(scratch, "paseo");
+    const path = projectTracker(home, "notes-app");
+    expect((await openTracker({ tracker: path }, {})).project).toBe("notes-app");
+    expect(await openTracker({ tracker }, {})).toMatchObject({ trackerPath: tracker, project: null });
+    expect((await openTracker({ tracker }, { TARO_PROJECT: "given" })).project).toBe("given");
+    expect(await openTracker({ project: "notes-app" }, { PASEO_HOME: home })).toMatchObject({ trackerPath: path, project: "notes-app" });
+    await expect(openTracker({}, { PASEO_HOME: home })).rejects.toThrow(/No tracker/);
+    // check and deliver need a project: none given and none in the tracker's path asks for --project.
+    for (const args of [["check", "--tracker", tracker, "--ticket", "TR-001", "--", "true"], ["deliver", "TR-001", "--tracker", tracker]]) {
+      const result = taro(args, { PASEO_HOME: home });
+      expect(result.code, args.join(" ")).toBe(2);
+      expect(result.stderr, args.join(" ")).toContain("--project");
+    }
   });
 });
 

@@ -409,3 +409,24 @@ describe("inboxCount counts each card the Inbox lists (TR-123)", () => {
     expect(isInboxTicket(owner("working", []))).toBe(false);
   });
 });
+
+describe("a ticket worked outside Paseo", () => {
+  it("labelled ticket under way is working", () => {
+    for (const status of ["Planning", "In Progress", "Reviewing"]) {
+      expect(boardColumn({ ...base, status, externalHost: true, agent: null })).toBe("working");
+      expect(boardColumn({ ...base, status, externalHost: true, agent: { status: "closed", pendingPermissions: 0 }, crashedOut: true, stalledAfterNudge: true })).toBe("working");
+    }
+    expect(boardColumn({ ...base, externalHost: true, agent: null, status: "Awaiting acceptance" })).toBe("needs-you");
+    expect(boardColumn({ ...base, externalHost: true, agent: null, openQuestions: 1 })).toBe("needs-you");
+    expect(boardColumn({ ...base, externalHost: true, agent: null, status: "Queued" })).toBe("queued");
+    // Unlabelled, the same ticket is stalled.
+    expect(boardColumn({ ...base, agent: null })).toBe("stalled");
+  });
+
+  it("labelled ticket is not an inbox stall", () => {
+    const column = boardColumn({ ...base, externalHost: true, agent: null });
+    expect(inboxCount({ cards: [{ column, decisions: [] }], managerDecisions: [], alerts: [] }, false)).toBe(0);
+    const unlabelled = boardColumn({ ...base, agent: null });
+    expect(inboxCount({ cards: [{ column: unlabelled, decisions: [] }], managerDecisions: [], alerts: [] }, false)).toBe(1);
+  });
+});

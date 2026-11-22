@@ -13,6 +13,8 @@ import { childRecords, listTickets, viewTicket } from "./tickets";
 const config = vi.hoisted(() => ({ value: null as { delivery: string; repoPath: string } | null }));
 const template = vi.hoisted(() => ({ present: false }));
 const described = vi.hoisted(() => ({ value: null as { body: string; commitMessages: string[] } | null }));
+// The board writes the live list into the plugin state folder: never the real home's from a test.
+vi.mock("./live-list", () => ({ liveListEntry: () => ({}), recordLiveList: async () => false }));
 vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: "/tracker" }), readProjectConfig: async () => config.value }));
 vi.mock("./repository-template", () => ({ hasRepositoryTemplate: async () => template.present }));
 vi.mock("./pull-request-states", () => ({ createPullRequestStates: () => ({ current: () => "open", description: () => described.value }) }));

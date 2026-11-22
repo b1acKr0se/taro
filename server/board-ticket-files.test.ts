@@ -11,6 +11,8 @@ import type { PaseoApi } from "./host-types";
 import type { PluginState } from "./state";
 
 const paths = vi.hoisted(() => ({ tracker: "" }));
+// The board writes the live list into the plugin state folder: never the real home's from a test.
+vi.mock("./live-list", () => ({ liveListEntry: () => ({}), recordLiveList: async () => false }));
 vi.mock("./agents", () => ({ projectAgents: async () => [], projectArchivedAgents: async () => [] }));
 vi.mock("./projects", () => ({ projectPaths: async () => ({ tracker: paths.tracker, suggestions: "/nonexistent/taro-suggestions.md" }), readProjectConfig: async () => null }));
 vi.mock("./headroom", () => ({ readHeadroom: async () => null }));

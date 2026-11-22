@@ -28,3 +28,13 @@ user's own terminal.
 - Starting an agent or a daemon waits while threads are above 85% (`--wait <seconds>`, then refuses).
 - `taro check` logs the exit code and summary line for the ticket its branch names, warns of stray files and skips a pass at this clean commit (`--again` runs it); `taro deliver`
   is the owner's (`phases/delivery.md`). A test daemon never uses port 6767 or `~/.paseo`.
+
+## Cards and the board, from any session
+
+No daemon is needed (`hosts/outside-paseo.md`):
+
+    taro card ask <ID> --file <json|->
+    taro card answer <ID> <cardId> [--label <option>] [--text <words>]
+    taro card withdraw <ID> <cardId>
+    taro card show <ID> [<cardId>] [--wait <seconds>]
+    taro board [--watch]

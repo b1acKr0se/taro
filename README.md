@@ -89,6 +89,13 @@ Taro then appears in Paseo's sidebar.
    the project is set to) or **Request changes…** with what to change, which sends the ticket back
    to its owner.
 
+## Use outside Paseo
+
+A session in Claude Code, Codex or another harness can use Taro's tickets, cards and checks through the
+`taro` command, with no Paseo daemon: `taro board` shows everything, `taro card ask` asks you something.
+A ticket made there is labelled `external-host`, which Paseo's manager leaves alone. How to set it up and
+which commands need the daemon: `skill/hosts/outside-paseo.md`.
+
 ## Unattended work and cost
 
 Agents keep working while you are away; Taro watches them so work does not sit still and tokens are

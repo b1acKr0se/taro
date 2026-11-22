@@ -43,8 +43,8 @@ every role runs commands with nobody there to approve them, cleanup included.
    time; after that, reread your role and the ticket before continuing. Every record's time is
    the output of `date -u +%Y-%m-%dT%H:%MZ` run as you write it: never typed, estimated or
    converted by hand (`taro ticket` refuses a time later than the host clock).
-4. **Agents are Paseo agents**, started with the `paseo` CLI (`reference/paseo.md`), never your
-   provider's built-in subagents.
+4. **Paseo agents are for work run under Paseo** (`reference/paseo.md`), never your provider's
+   built-in subagents; elsewhere, the harness's own means (`hosts/outside-paseo.md`).
 5. **Use absolute paths** in everything you write for another agent.
 6. **Never** push to the base branch, merge without the user's acceptance, deploy, or delete work
    that has not landed.

@@ -4,7 +4,9 @@ import { z } from "zod";
 import { ParsedDecisionSchema, StatusStateSchema } from "./reports";
 import { IdleCompactionSchema } from "./idle-compaction";
 import { wentOnWithDefault } from "./planning-questions";
-import { RoleSchema } from "./project";
+import { STALE_AFTER_MS } from "./board-text";
+import { DecisionRoleSchema, EXTERNAL_ROLE, RoleSchema } from "./project";
+import type { TrackerAgent, TrackerCard } from "./tracker-cards";
 
 export const DecisionAnswerSchema = z.object({
   text: z.string(),
@@ -16,12 +18,13 @@ export const DecisionAnswerSchema = z.object({
 });
 
 export const StoredDecisionSchema = ParsedDecisionSchema.extend({
-  /** `<agentId>:<decision id>`: unique, and a later block with the same id replaces it. */
+  /** `<agentId>:<decision id>`: unique, and a later block with the same id replaces it. A tracker card's is `tracker:<project>/<ticket>:<card id>`. */
   key: z.string(),
   project: z.string(),
   ticket: z.string().nullable(),
   agentId: z.string(),
-  agentRole: RoleSchema,
+  /** `external` only on a tracker card's decision, which no Paseo agent asked. */
+  agentRole: DecisionRoleSchema,
   agentTitle: z.string().nullable(),
   askedAt: z.string(),
   /** The turn that asked it (`turnIdentity`): the same block in another turn is asked again (TR-108). Null before it was recorded. */
@@ -111,9 +114,88 @@ export const AgentStateSchema = z.object({
 });
 export type AgentState = z.infer<typeof AgentStateSchema>;
 
-/** Open decisions whose agent Paseo still has unarchived: answering any other would message no one. */
+/**
+ * Open decisions whose agent Paseo still has unarchived: answering any other would message no one. A tracker card
+ * has no agent to message: its answer is written to the ticket, so it always passes.
+ */
 export function decisionsOfLiveAgents<T extends Pick<StoredDecision, "agentId" | "status">>(decisions: readonly T[], liveAgentIds: ReadonlySet<string>): T[] {
-  return decisions.filter((decision) => decision.status === "open" && liveAgentIds.has(decision.agentId));
+  return decisions.filter((decision) => decision.status === "open" && (liveAgentIds.has(decision.agentId) || isTrackerAgentId(decision.agentId)));
+}
+
+// ---------------------------------------------------------------- cards kept in the ticket file
+
+const TRACKER_PREFIX = "tracker:";
+/** `tracker:<project>/<ticket>:<card id>`: a project name, a ticket id and a card id hold no `/` or `:`. */
+const TRACKER_KEY = /^tracker:([a-z0-9][a-z0-9-]*)\/([A-Za-z][A-Za-z0-9]*-\d+(?:\.\d+)*):([A-Za-z0-9][A-Za-z0-9._-]*)$/;
+
+/** The asker of a ticket's tracker cards, standing where a Paseo agent's id does: `tracker:<project>/<ticket>`. */
+export function trackerAgentId(project: string, ticket: string): string {
+  return `${TRACKER_PREFIX}${project}/${ticket}`;
+}
+
+export function isTrackerAgentId(agentId: string): boolean {
+  return agentId.startsWith(TRACKER_PREFIX);
+}
+
+/** The card a tracker key names, or null for a Paseo decision's key. */
+export function parseTrackerKey(key: string): { project: string; ticket: string; cardId: string } | null {
+  const match = TRACKER_KEY.exec(key);
+  return match === null ? null : { project: match[1] ?? "", ticket: match[2] ?? "", cardId: match[3] ?? "" };
+}
+
+/** A tracker card as a decision the board, the Inbox and the answer path take; derived on every read, never stored. */
+export function trackerDecision(project: string, ticket: string, card: TrackerCard): StoredDecision {
+  const agentId = trackerAgentId(project, ticket);
+  return {
+    id: card.id,
+    question: card.question,
+    why: card.why,
+    // The session that asked waits on the user (`taro card show --wait`).
+    blocking: true,
+    options: card.options.map((option) => ({ label: option.label, prompt: option.prompt === "" ? option.label : option.prompt, consequence: option.consequence, images: [] })),
+    recommended: card.recommended ?? "",
+    reason: card.reason,
+    default: "",
+    withdrawn: false,
+    questions: [],
+    problems: [],
+    key: `${agentId}:${card.id}`,
+    project,
+    ticket,
+    agentId,
+    agentRole: EXTERNAL_ROLE,
+    agentTitle: `${ticket} · ${card.host}`,
+    askedAt: card.askedAt,
+    turn: null,
+    status: card.status,
+    answer: card.answer === null ? null : { text: card.answer.text, label: card.answer.label, at: card.answer.at },
+  };
+}
+
+/**
+ * Paseo's open decisions with the open tracker cards: a Paseo question with the project, ticket and id of an open
+ * tracker card is hidden, as the tracker's is the one answered in both apps.
+ */
+export function withTrackerCards<T extends Pick<StoredDecision, "id" | "project" | "ticket" | "status">>(decisions: readonly T[], trackerDecisions: readonly T[]): T[] {
+  const open = trackerDecisions.filter((decision) => decision.status === "open");
+  const clashes = (decision: T) =>
+    open.some((card) => card.project === decision.project && card.id === decision.id && card.ticket !== null && card.ticket.toUpperCase() === decision.ticket?.toUpperCase());
+  return [...decisions.filter((decision) => !clashes(decision)), ...open];
+}
+
+function olderThanADay(time: string, now: number): boolean {
+  const at = Date.parse(time);
+  return Number.isFinite(at) && now - at > STALE_AFTER_MS;
+}
+
+/** An open tracker card asked over a day ago: its session may be gone. A Paseo question never is: the plugin knows its agent. */
+export function isStaleTrackerDecision(decision: Pick<StoredDecision, "agentId" | "status" | "askedAt">, now: number): boolean {
+  return isTrackerAgentId(decision.agentId) && decision.status === "open" && olderThanADay(decision.askedAt, now);
+}
+
+/** A recorded agent still running a day after it started: nothing of Paseo's knows whether it lives. */
+export function isStaleRecordedAgent(agent: Pick<TrackerAgent, "state" | "startedAt">, now: number): boolean {
+  return agent.state === "running" && olderThanADay(agent.startedAt, now);
 }
 
 /**

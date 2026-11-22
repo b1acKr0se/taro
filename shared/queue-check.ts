@@ -7,6 +7,7 @@
  * lifted by a later RELEASE record; a held ticket is never woken for. Pure.
  */
 import { roundRecords } from "./execution";
+import { isExternalHostTicket } from "./external-host";
 import { dependsOn, ticketsCountingTowardsCap, type CapOwner, type CapTicket } from "./owner-cap";
 import { TARO_LABELS } from "./project";
 import { hasHeadroom, type BoardAlert } from "./recovery";
@@ -64,8 +65,9 @@ export function unmetDependencies(dependencies: readonly string[], tickets: read
 }
 
 /** The top-level Queued tickets, oldest first as the tracker lists them. */
-export function queuedTickets<T extends CapTicket>(tickets: readonly T[]): T[] {
-  return tickets.filter((ticket) => ticket.status === "Queued" && ticket.parentTaskId === null);
+/** Top-level Queued tickets Paseo's manager may start: one worked outside Paseo (`external-host`) is never in its queue. */
+export function queuedTickets<T extends CapTicket & { labels?: readonly string[] }>(tickets: readonly T[]): T[] {
+  return tickets.filter((ticket) => ticket.status === "Queued" && ticket.parentTaskId === null && !isExternalHostTicket(ticket));
 }
 
 export function recount(input: {
