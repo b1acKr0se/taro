@@ -281,7 +281,9 @@ describe("taro ticket create", { timeout: CLI_TIMEOUT_MS }, () => {
     ok(["create", "Dep"]);
     ok(["create", "Dep two"]);
     ok(["create", "Dep three"]);
-    ok(["create", "One", "-l", "a,b", "-l", "c", "--dep", "TR-001,TR-002", "--dep", "TR-003", "--priority", "low", "-s", "Planning", "-d", "text"]);
+    // As a Paseo agent creates it: outside Paseo the label external-host is added too (server/external-host-tickets.test.ts).
+    const created = ticketCommand(["create", "One", "-l", "a,b", "-l", "c", "--dep", "TR-001,TR-002", "--dep", "TR-003", "--priority", "low", "-s", "Planning", "-d", "text"], { PASEO_AGENT_ID: "agent-test" });
+    expect(created.code).toBe(0);
     expect(readTicket("TR-004")).toMatchObject({
       labels: ["a", "b", "c"],
       dependsOn: ["TR-001", "TR-002", "TR-003"],

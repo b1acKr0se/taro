@@ -13,6 +13,7 @@ import { answerWords, severalAnswers, type QuestionAnswer } from "../shared/deci
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { questionHoldingAccept } from "../shared/delivery-end";
 import { doneTicketOf, planRelease } from "../shared/done-release";
+import { EXTERNAL_HOST_LABEL, isExternalHostTicket } from "../shared/external-host";
 import { acceptanceText, handoffText, ownerIsWarm, type AcceptOutcome, type Handover } from "../shared/accept-merge";
 import { acceptanceMerge, acceptedRecord, acceptedRecordText, deliveryMissing, executionBranch, executionWorkspace, localMergeInstruction, pluginAcceptPending, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
 import { ownerRelaunchedText, ownerRelaunchFailedText, ticketsWithClosedOwner } from "../shared/closed-owner";
@@ -301,9 +302,10 @@ export class Actions {
 
   private async acceptChecked(paseo: PaseoApi, project: string, ticket: string): Promise<void> {
     const config = await requireProjectConfig(project);
-    await this.requireOwner(paseo, project, ticket);
     const paths = await projectPaths(project);
     const detail = await viewTicket(paths.tracker, ticket);
+    // A ticket worked outside Paseo has no Paseo owner: the user's Accept merges it all the same.
+    if (!isExternalHostTicket(detail)) await this.requireOwner(paseo, project, ticket);
     // Nothing happens while the evidence is incomplete.
     await requireCompleteEvidence(project, ticket, detail.implementationNotes, detail.labels);
     // Nor while the owner waits on a question (TR-146): its answer may change what merges.
@@ -375,6 +377,12 @@ export class Actions {
    * otherwise a fresh owner starts in the same worktree and reads the ticket, not the old chat.
    */
   private async handOffAccept(paseo: PaseoApi, project: string, ticket: string, found: string, mergeInstruction: string): Promise<void> {
+    const paths = await projectPaths(project);
+    // Worked outside Paseo: no Paseo owner is handed the surprise; the record says what stopped the merge, for whoever works it.
+    if (isExternalHostTicket(await viewTicket(paths.tracker, ticket))) {
+      await appendTicketNote(paths.tracker, ticket, `NOT-MERGED ${new Date().toISOString()} — ${found}; the ticket is worked outside Paseo (${EXTERNAL_HOST_LABEL}), so no Paseo owner was handed it`);
+      return;
+    }
     const owner = await this.requireOwner(paseo, project, ticket);
     const lastTurnEndedAt = (await this.state.agent(owner.id))?.lastTurnEndedAt ?? owner.updatedAt;
     const now = Date.now();
@@ -389,7 +397,6 @@ export class Actions {
       const fresh = await this.relaunchOwner(paseo, project, ticket, await message(TEMPLATES.acceptFreshOwner, { ticket, found, mergeInstruction }));
       handover = { kind: "fresh", owner: owner.id, fresh, idleMs };
     }
-    const paths = await projectPaths(project);
     await appendTicketNote(paths.tracker, ticket, handoffText(new Date().toISOString(), found, handover)).catch(() => undefined);
   }
 
@@ -419,9 +426,12 @@ export class Actions {
   }
 
   private async sendChanges(paseo: PaseoApi, project: string, ticket: string, text: string): Promise<void> {
-    const owner = await this.requireOwner(paseo, project, ticket);
-    await sendWithoutInterrupting(paseo, owner.id, await message(TEMPLATES.requestChanges, { ticket, text: text.trim() }));
     const paths = await projectPaths(project);
+    // Worked outside Paseo: the record is what its session reads; there is no Paseo owner to message.
+    if (!isExternalHostTicket(await viewTicket(paths.tracker, ticket))) {
+      const owner = await this.requireOwner(paseo, project, ticket);
+      await sendWithoutInterrupting(paseo, owner.id, await message(TEMPLATES.requestChanges, { ticket, text: text.trim() }));
+    }
     // Sending ends the delivery (TR-131): back to In Progress at once, so the card and its Accept row leave the chat.
     // A failed write keeps the card: the user is told the words went but the ticket did not move, rather than shown a delivery that ended only on screen.
     await recordChangesRequested(paths.tracker, ticket, `CHANGES-REQUESTED ${new Date().toISOString()} — the user: "${text.trim()}"`).catch((error: unknown) => {
@@ -439,6 +449,11 @@ export class Actions {
     const paused = pauseView(detail.implementationNotes, ownerRunning) !== null;
     const refusal = specChangeRefusal(ticket, { status: detail.status, parent: detail.parentTaskId, ownerRunning, paused });
     if (refusal !== null) throw new Error(refusal);
+    // Worked outside Paseo: the manager does not dispatch it, so the change is recorded for the session that works it.
+    if (isExternalHostTicket(detail)) {
+      await appendTicketNote(paths.tracker, ticket, `CHANGES-REQUESTED ${new Date().toISOString()} — the user: "${words}"`);
+      return;
+    }
     await tellManager(paseo, project, await message(TEMPLATES.specChange, { ticket, title: detail.title, text: words }));
     await appendTicketNote(paths.tracker, ticket, `SCOPE-CHANGE ${new Date().toISOString()} — sent to the manager before an owner started; the user: "${words}"`).catch(() => undefined);
   }
@@ -458,7 +473,10 @@ export class Actions {
       if (isMidTurn(owner)) throw new Error(`${ticket}'s owner is still finishing its last turn; reopen it in a minute.`);
       await paseo.agents.ref(owner.id).archive();
     };
+    const outside = isExternalHostTicket(await viewTicket(paths.tracker, ticket));
     const reopened = await reopenTicketRecord(paths.tracker, ticket, words, new Date().toISOString(), lastOwner);
+    // Worked outside Paseo: the REOPENED record is the whole of it; the manager never dispatches such a ticket.
+    if (outside) return `${ticket} is reopened and back in Queued; it is worked outside Paseo (${EXTERNAL_HOST_LABEL}), so no owner starts.`;
     const text = await message(TEMPLATES.ticketReopened, {
       ticket,
       title: reopened.title,
@@ -680,6 +698,8 @@ export class Actions {
     const owner = await this.liveOwner(paseo, project, detail.id);
     const refusal = resumeRefusal({ id: detail.id, status: detail.status, parentTaskId: detail.parentTaskId, notes }, merging, owner !== null);
     if (refusal !== null) throw new Error(refusal);
+    // Handed back only once the label is gone: a fresh owner on a ticket worked outside Paseo would work it twice.
+    if (isExternalHostTicket(detail)) throw new Error(`${detail.id} is worked outside Paseo (${EXTERNAL_HOST_LABEL}): to hand it back, write a HANDOFF note, remove the label, then resume it.`);
     const at = new Date().toISOString().slice(0, 16) + "Z";
     // Parked before it started (TR-166): no handoff to resume from, so it rejoins the queue and the manager starts it.
     if (pausedHold(notes)?.notStarted === true) {
@@ -762,7 +782,7 @@ export class Actions {
     }
     const queued = [];
     for (const candidate of await this.pauseCandidates(project, tickets)) {
-      if (queuedToResume(candidate.notes) && (await this.liveOwner(paseo, project, candidate.ticket.id)) === null) queued.push(candidate.ticket);
+      if (queuedToResume(candidate.notes) && !isExternalHostTicket(candidate.ticket) && (await this.liveOwner(paseo, project, candidate.ticket.id)) === null) queued.push(candidate.ticket);
     }
     for (const ticket of queued) {
       const count = await this.recountQueue(paseo, project, tickets, config.maxParallelOwners, true);
@@ -1036,7 +1056,9 @@ export class Actions {
     }
     const dependentsCleared = cleared ? dependents.length : 0;
     // A child's Done is its owner's business; the manager hears of it only for its dependents.
-    const announcesDone = cleared && tickets.find((candidate) => candidate.id === change.ticket)?.parentTaskId === null;
+    // Nor of one worked outside Paseo: the manager has no after-Done duties for it.
+    const changed = tickets.find((candidate) => candidate.id === change.ticket);
+    const announcesDone = cleared && changed?.parentTaskId === null && !isExternalHostTicket(changed);
     const config = await requireProjectConfig(project);
     // Only the cap comparison needs the owners, and listing them is a round trip to the daemon.
     const count = dependentsCleared > 0 || (change.freesSlot && queued.length > 0) ? await this.recountQueue(paseo, project, tickets, config.maxParallelOwners) : null;
@@ -1247,7 +1269,8 @@ export class Actions {
     const config = await requireProjectConfig(project);
     const paths = await projectPaths(project);
     const tickets = await listTickets(paths.tracker);
-    const candidates = await this.pauseCandidates(project, tickets);
+    // A ticket worked outside Paseo keeps its closed owner closed: that session works it now.
+    const candidates = (await this.pauseCandidates(project, tickets)).filter(({ ticket }) => !isExternalHostTicket(ticket));
     const owners = (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner");
     const stored = await this.state.allDecisions();
     // An owner's open question, or one withdrawn when its owner went away, is the user's to answer.

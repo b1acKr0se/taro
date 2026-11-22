@@ -37,6 +37,7 @@ import {
 import { statsCommand, StatsRefused, StatsUsage } from "./stats-command.ts";
 import { boardCommand } from "./taro-board.ts";
 import { cardsOf, type TrackerCard } from "../shared/tracker-cards.ts";
+import { EXTERNAL_HOST_LABEL } from "../shared/external-host.ts";
 import { answerCard, askCard, currentCard, finishAgent, recordAgent, waitForCard, withdrawCard } from "./tracker-cards.ts";
 import { DaemonUnreachable, invokePluginRpc, RpcRefused } from "./plugin-rpc.ts";
 import {
@@ -74,7 +75,9 @@ const USAGE = `Usage:
   taro ticket view <ID> [--plain|--json]
   taro ticket search <query> [-s <status>] [--plain|--json]
   taro ticket create <title> [-d <text>] [-l <label>]... [-p <parent>] [--dep <ID>]...
-                     [--priority high|medium|low] [-s <status>]
+                     [--priority high|medium|low] [-s <status>] [--paseo]
+                     without $PASEO_AGENT_ID it adds the label external-host, which Paseo's manager and
+                     automation leave alone; --paseo leaves it off, for a ticket Paseo should work
   taro ticket edit <ID> [-s <status>] [-t <title>] [-d <text>] [--plan <text>] [--final-summary <text>]
                    [--add-label <l>]... [--remove-label <l>]... [--dep <ID>]... [--remove-dep <ID>]...
                    [--priority <p>]
@@ -306,6 +309,7 @@ const CREATE_OPTIONS: OptionTable = {
   "--priority": { key: "priority", value: true },
   "-s": { key: "status", value: true },
   "--status": { key: "status", value: true },
+  "--paseo": { key: "paseo", value: false },
 };
 
 const EDIT_OPTIONS: OptionTable = {
@@ -370,10 +374,13 @@ async function createVerb({ store, io, parsed }: VerbContext): Promise<number> {
   expectPositionals(parsed, 1, "one title");
   const priority = single(parsed, "priority");
   const status = single(parsed, "status");
+  // Made outside Paseo (no Paseo agent runs this), it is worked there: Paseo's automation must leave it alone.
+  const outside = (io.env.PASEO_AGENT_ID ?? "") === "" && !has(parsed, "paseo");
+  const labels = commaList(parsed, "label") ?? [];
   const ticket = await store.create({
     title: parsed.positionals[0] as string,
     ...(single(parsed, "description") === undefined ? {} : { description: single(parsed, "description") as string }),
-    labels: commaList(parsed, "label") ?? [],
+    labels: outside && !labels.includes(EXTERNAL_HOST_LABEL) ? [...labels, EXTERNAL_HOST_LABEL] : labels,
     parent: single(parsed, "parent") ?? null,
     dependsOn: commaList(parsed, "dep") ?? [],
     priority: priority === undefined ? null : priorityOf(priority),
