@@ -297,6 +297,15 @@ describe("taro board", () => {
     expect(JSON.parse((await board(["--json"])).stdout).paseo.agents.map((entry: { id: string }) => entry.id)).toEqual(["owner-1", "reviewer-new"]);
   });
 
+  it("warns when the live list is old", async () => {
+    writeTicket({ id: "NA-001", title: "Login", status: "In Progress" });
+    writeLive([{ id: "owner-1", role: "owner", ticket: "NA-001" }], [], new Date(NOW - 6 * 60_000).toISOString());
+    const { stdout } = await board();
+    expect(stdout).toContain("the Paseo daemon may be stopped");
+    writeLive([{ id: "owner-1", role: "owner", ticket: "NA-001" }], []);
+    expect((await board()).stdout).not.toContain("may be stopped");
+  });
+
   it("board hides cards of archived agents", async () => {
     writeTicket({ id: "NA-001", title: "Login", status: "Planning" });
     writeState("decisions.json", {

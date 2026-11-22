@@ -104,14 +104,20 @@ describe("loadBoard", () => {
     // Open cards of live agents only.
     expect(entry.cardKeys).toEqual(["owner-live:scope-approval"]);
 
-    // Unchanged: the file is not written again, whatever the clock says.
+    // Unchanged and written less than a minute ago: the file is not written again.
     const past = new Date("2026-01-01T00:00:00Z");
     utimesSync(livePath, past, past);
-    now += 60_000;
+    now += 30_000;
     invalidateBoards();
     await loadBoard({} as PaseoApi, states, "taro");
     expect(statSync(livePath).mtime.toISOString()).toBe(past.toISOString());
     expect(JSON.parse(readFileSync(livePath, "utf8")).projects.taro.writtenAt).toBe("2026-10-13T15:00:00.000Z");
+
+    // Unchanged for a minute: a heartbeat rewrites it, so a list a stopped daemon left behind shows its age.
+    now += 60_000;
+    invalidateBoards();
+    await loadBoard({} as PaseoApi, states, "taro");
+    expect(JSON.parse(readFileSync(livePath, "utf8")).projects.taro.writtenAt).toBe("2026-10-13T15:01:30.000Z");
 
     // An agent archived: written again, with the new time.
     vi.mocked(projectAgents).mockResolvedValue([agent("owner-live", "owner", "TR-1", "2026-10-13T14:50:00Z")]);
@@ -119,7 +125,7 @@ describe("loadBoard", () => {
     await loadBoard({} as PaseoApi, states, "taro");
     const rewritten = JSON.parse(readFileSync(livePath, "utf8")).projects.taro;
     expect(rewritten.agents.map((agent: { id: string }) => agent.id)).toEqual(["owner-live"]);
-    expect(rewritten.writtenAt).toBe("2026-10-13T15:01:00.000Z");
+    expect(rewritten.writtenAt).toBe("2026-10-13T15:01:30.000Z");
   });
 
   it("takes the owner, subagents (by job, the legacy helper label as implementer) and decisions from live agents and lists archived ones apart", async () => {

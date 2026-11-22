@@ -59,6 +59,8 @@ export interface PaseoAgent {
 
 /** The live list's format, written by `server/live-list.ts` and read here. */
 export const LIVE_LIST_VERSION = 1;
+/** The plugin confirms the list about every minute (a heartbeat); one older than this was left by a daemon that stopped. */
+export const LIVE_LIST_STALE_MS = 5 * 60 * 1000;
 
 export interface LiveListEntry {
   project: string;
@@ -185,6 +187,7 @@ export function buildBoard(input: BoardInput): { board: Board; paseoNote: string
   else if (live.kind === "absent") paseoNote = NO_LIVE_LIST;
   else if (input.project === null) paseoNote = "Paseo state is kept per project, and none was named: pass --project <name> to see it.";
   else if (entry === null) paseoNote = `Paseo has not written a live list for ${input.project} yet: no Paseo agents or cards shown.`;
+  else if (entry.writtenAt !== null && input.now - Date.parse(entry.writtenAt) > LIVE_LIST_STALE_MS) paseoNote = `Paseo's live list was last confirmed at ${entry.writtenAt}: the Paseo daemon may be stopped, so the agents and cards below may be gone.`;
   if (live.kind !== "read" || entry === null || input.project === null) return { board: { tickets, paseo: null }, paseoNote };
   // A Paseo card with the ticket and id of an open tracker card is hidden: the tracker's is the one answered.
   const trackerOpen = new Set(tickets.flatMap((ticket) => ticket.cards.map((card) => `${ticket.id}\n${card.id}`)));
