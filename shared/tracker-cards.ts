@@ -69,6 +69,7 @@ export interface Read<T> {
   problems: LineProblem[];
 }
 
+/** A card's id and an agent's name: one shell word, so a printed command needs no quoting. */
 const CARD_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -106,7 +107,7 @@ export function cardProblem(value: unknown): string | null {
 /** Why the value is not an agent, or null when it is one. */
 export function agentProblem(value: unknown): string | null {
   if (!isRecord(value)) return "an agent must be a JSON object";
-  if (!isString(value.name) || value.name.trim() === "") return 'an agent needs a non-empty "name"';
+  if (!isString(value.name) || !CARD_ID.test(value.name)) return 'an agent needs a "name" of letters, digits, ".", "_" or "-"';
   for (const key of ["host", "task", "startedAt"]) {
     if (!isString(value[key])) return `agent ${value.name}: "${key}" must be a string`;
   }
@@ -293,7 +294,7 @@ export interface RecordAgentInput {
 
 /** The section with a running agent recorded; a name already on the ticket refuses. */
 export function recordAgentIn(section: string | undefined, ticketId: string, input: RecordAgentInput, startedAt: string): { section: string; agent: TrackerAgent } {
-  const agent = { name: input.name.trim(), host: input.host ?? DEFAULT_HOST, job: input.job, task: input.task ?? "", state: "running", startedAt, finishedAt: null };
+  const agent = { name: input.name, host: input.host ?? DEFAULT_HOST, job: input.job, task: input.task ?? "", state: "running", startedAt, finishedAt: null };
   const problem = agentProblem(agent);
   if (problem !== null) throw new Error(`The agent is not valid: ${problem}.`);
   const { parsed } = readLines<TrackerAgent>(section, agentProblem, 1);

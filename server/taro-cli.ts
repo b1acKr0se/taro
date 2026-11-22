@@ -777,7 +777,7 @@ async function agentCommand(args: readonly string[], io: CliIo): Promise<number>
   if (verbName === "record") {
     expectPositionals(parsed, 2, "a ticket id and a job (implementer, reviewer, researcher or other)");
     const name = single(parsed, "name");
-    if (name === undefined || name.trim() === "") throw new UsageError("agent record needs --name <name>, unique on the ticket.");
+    if (name === undefined || name === "") throw new UsageError("agent record needs --name <name>, unique on the ticket.");
     const { store } = await openTracker(trackerArguments(parsed), io.env);
     const ticket = parsed.positionals[0] as string;
     const { agent } = await recordAgent(store, ticket, { name, job: parsed.positionals[1] as string, task: single(parsed, "task"), host: single(parsed, "host") });

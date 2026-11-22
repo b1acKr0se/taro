@@ -262,6 +262,26 @@ describe("taro agent record and finish", () => {
     expect((await taro(["agent", "finish", "TR-001", "review-1", "--state", "maybe"])).code).toBe(1);
   });
 
+  it("agent name with spaces refused", async () => {
+    for (const name of ["review one", "a\tb", "-dash-first"]) {
+      const result = await taro(["agent", "record", "TR-001", "reviewer", "--name", name]);
+      expect(result.code, name).toBe(1);
+      expect(result.stderr, name).toContain('letters, digits, ".", "_" or "-"');
+    }
+    expect(readTicket().agents).toBeUndefined();
+  });
+
+  it("finish matches the recorded name", async () => {
+    // A name is stored exactly as given or refused: never trimmed into one finish cannot find.
+    expect((await taro(["agent", "record", "TR-001", "reviewer", "--name", " impl "])).code).toBe(1);
+    expect(readTicket().agents).toBeUndefined();
+    const recorded = await taro(["agent", "record", "TR-001", "reviewer", "--name", "rev_2.a-b"]);
+    expect(recorded.code).toBe(0);
+    expect(recorded.stdout).toContain("taro agent finish TR-001 rev_2.a-b --state done|failed");
+    expect((await taro(["agent", "finish", "TR-001", "rev_2.a-b", "--state", "done"])).code).toBe(0);
+    expect(readAgents(readFileSync(fileOf("TR-001"), "utf8")).items[0]).toMatchObject({ name: "rev_2.a-b", state: "done" });
+  });
+
   it("duplicate name refuses", async () => {
     expect((await taro(["agent", "record", "TR-001", "implementer", "--name", "impl"])).code).toBe(0);
     const again = await taro(["agent", "record", "TR-001", "reviewer", "--name", "impl"]);

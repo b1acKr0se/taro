@@ -535,6 +535,16 @@ describe("the tracker lookup", { timeout: CLI_TIMEOUT_MS }, () => {
     expect(taro(["ticket", "list", "--plain", "--project", "notes-app", "--tracker", tracker], { PASEO_HOME: home }).stdout).toContain("TR-009");
   });
 
+  it("a flag beats the environment", () => {
+    const home = join(scratch, "paseo");
+    projectTracker(home, "notes-app");
+    writeTicket({ id: "TR-009", title: "In the environment's tracker" });
+    const result = taro(["ticket", "list", "--plain", "--project", "notes-app"], { PASEO_HOME: home, TARO_TRACKER: tracker });
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("NA-001 [Queued] In notes-app");
+    expect(result.stdout).not.toContain("TR-009");
+  });
+
   it("honours PASEO_HOME", () => {
     const fakeHome = join(scratch, "user");
     projectTracker(join(fakeHome, ".paseo"), "notes-app");
