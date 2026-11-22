@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { AgentBrief, Card } from "../shared/contracts";
 import type { SubagentRole } from "../shared/project";
-import { askedElsewhere, defaultPaneAgent, openingPaneAgent, paneAgentDetail, paneOpening, paneAgentState, paneStatus, paneAgents, roleIcon, taskOfTitle, waitingOn } from "./pane-agents";
+import { trackerDecision } from "../shared/state";
+import { askedElsewhere, defaultPaneAgent, outsideAskCaption, openingPaneAgent, paneAgentDetail, paneOpening, paneAgentState, paneStatus, paneAgents, roleIcon, taskOfTitle, waitingOn } from "./pane-agents";
 
 function brief(id: string, title: string | null = null): AgentBrief {
   return {
@@ -271,5 +272,19 @@ describe("paneStatus (TR-201)", () => {
 
   it("is archived for an agent no longer live, whatever its chat last said", () => {
     expect(paneStatus({ ...shown, live: false }, { agentId: "agent-a", status: "running" })).toBe("archived");
+  });
+});
+
+describe("a card asked outside Paseo, drawn above a Paseo agent's chat", () => {
+  const NOW = Date.parse("2026-11-22T12:00:00Z");
+  const asked = (askedAt: string) =>
+    trackerDecision("notes", "TR-1", { id: "csv", host: "laptop-cc", question: "Comma?", why: "", options: [], recommended: null, reason: "", askedAt, status: "open", answer: null });
+
+  it("names its host and age", () => {
+    expect(outsideAskCaption(asked("2026-11-22T11:00:00Z"), NOW)).toEqual({ text: "laptop-cc · asked 1h 00m ago", stale: false });
+  });
+
+  it("says stale once it is over a day old", () => {
+    expect(outsideAskCaption(asked("2026-11-20T04:00:00Z"), NOW)).toEqual({ text: "laptop-cc · asked 2d 8h ago · stale", stale: true });
   });
 });

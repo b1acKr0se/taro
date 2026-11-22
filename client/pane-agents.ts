@@ -5,7 +5,7 @@
  */
 import type { AgentBrief, Card } from "../shared/contracts";
 import type { SubagentRole } from "../shared/project";
-import { isStaleRecordedAgent } from "../shared/state";
+import { isStaleRecordedAgent, isStaleTrackerDecision, type StoredDecision } from "../shared/state";
 import type { TrackerAgent } from "../shared/tracker-cards";
 import { formatDuration } from "./format";
 
@@ -246,4 +246,17 @@ export function recordedAgentRows(agents: readonly TrackerAgent[], now: number):
       stale,
     };
   });
+}
+
+/**
+ * The line under a card asked outside Paseo where it is drawn small, above a Paseo agent's chat: the host that asked
+ * and when, then `stale` past a day, as its session may be gone. The ticket is the pane's own, so it is left out.
+ */
+export function outsideAskCaption(decision: Pick<StoredDecision, "agentId" | "agentTitle" | "ticket" | "status" | "askedAt">, now: number): { text: string; stale: boolean } {
+  const title = decision.agentTitle ?? "";
+  const prefix = decision.ticket === null ? "" : `${decision.ticket} · `;
+  const host = title.startsWith(prefix) ? title.slice(prefix.length) : title;
+  const stale = isStaleTrackerDecision(decision, now);
+  const age = formatDuration(now - Date.parse(decision.askedAt));
+  return { text: [host === "" ? null : host, age === "—" ? null : `asked ${age} ago`, stale ? "stale" : null].filter((part) => part !== null).join(" · "), stale };
 }

@@ -29,7 +29,7 @@ import { AcceptanceCard, AcceptNow } from "./acceptance-card";
 import { acceptanceReady, offersAcceptance } from "./card-calls";
 import { rowButtonStyle } from "./control-colors";
 import { Pressable } from "./focus";
-import { askedElsewhere, openingPaneAgent, paneAgents, paneAgentJob, paneOpening, paneStatus, recordedAgentRows, roleIcon, type PaneOpening } from "./pane-agents";
+import { askedElsewhere, openingPaneAgent, outsideAskCaption, paneAgents, paneAgentJob, paneOpening, paneStatus, recordedAgentRows, roleIcon, type PaneOpening } from "./pane-agents";
 import { SectionHeading } from "./badges";
 import { DecisionCard } from "./decision-card";
 import { OptionChips } from "./option-chips";
@@ -102,6 +102,7 @@ function OutsidePaseo({
             <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.small }} numberOfLines={2}>
               {decision.question}
             </Text>
+            <AskCaption theme={theme} caption={outsideAskCaption(decision, now)} />
             {decision.options.length === 0 ? (
               <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption }}>Answer it in the Inbox.</Text>
             ) : (
@@ -111,6 +112,15 @@ function OutsidePaseo({
         ),
       )}
     </View>
+  );
+}
+
+/** Who asked a card outside Paseo and when, in the warning colour once it is stale. */
+function AskCaption({ theme, caption }: { theme: PluginTheme; caption: { text: string; stale: boolean } }) {
+  return (
+    <Text style={{ color: caption.stale ? theme.colors.statusWarning : theme.colors.foregroundMuted, fontSize: FONT_SIZE.caption }} numberOfLines={1}>
+      {caption.text}
+    </Text>
   );
 }
 
