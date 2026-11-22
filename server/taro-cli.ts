@@ -35,6 +35,7 @@ import {
   type CommandIo,
 } from "./owner-commands.ts";
 import { statsCommand, StatsRefused, StatsUsage } from "./stats-command.ts";
+import { boardCommand } from "./taro-board.ts";
 import { cardsOf, type TrackerCard } from "../shared/tracker-cards.ts";
 import { answerCard, askCard, currentCard, finishAgent, recordAgent, waitForCard, withdrawCard } from "./tracker-cards.ts";
 import { DaemonUnreachable, invokePluginRpc, RpcRefused } from "./plugin-rpc.ts";
@@ -105,6 +106,10 @@ Cards and agents kept in the ticket file, for any session (in Paseo or not; noth
   taro card show <ID> [<cardId>] [--json] [--wait <seconds>]   with --wait: exit 0 answered, 6 withdrawn, 5 still open
   taro agent record <ID> implementer|reviewer|researcher|other --name <name> [--task <doing what>] [--host <name>]
   taro agent finish <ID> <name> --state done|failed
+  taro board [--project <name>] [--json] [--watch]   tickets by status with open cards (and the command answering each) and
+                   agents, and what Paseo's plugin last stored (via paseo, as of <file time>); an open card or running agent
+                   older than a day reads [stale]; --watch reprints on a change until Ctrl-C; --json prints
+                   {tickets:[{id,title,status,cards:[],agents:[]}], paseo:{asOf,cards:[],agents:[]}|null}
 Accept, reopen, request-changes, change-spec, close-round and the decision verbs are the user's: they refuse inside the ticket's own owner and subagents.
 Every command that reads a tracker finds it by --tracker <path>, else --project <name>, else $TARO_TRACKER, else $TARO_PROJECT
 (a project's tracker is $PASEO_HOME/plugin-data/taro/home/projects/<name>/tracker, ~/.paseo when PASEO_HOME is unset).
@@ -945,6 +950,28 @@ async function cardCommand(args: readonly string[], io: CliIo): Promise<number> 
   throw new UsageError(verbName === undefined ? "Missing card verb (ask, answer, withdraw, show)." : `Unknown card verb "${verbName}".`);
 }
 
+const BOARD_OPTIONS: OptionTable = {
+  "--watch": { key: "watch", value: false },
+};
+
+async function boardVerbCommand(args: readonly string[], io: CliIo): Promise<number> {
+  const parsed = parseArguments(args, BOARD_OPTIONS);
+  expectPositionals(parsed, 0, "no arguments besides options");
+  const opened = await openTracker(trackerArguments(parsed), io.env);
+  const watch = has(parsed, "watch");
+  const stop = new AbortController();
+  const onInterrupt = () => stop.abort();
+  if (watch) process.once("SIGINT", onInterrupt);
+  try {
+    return await boardCommand(
+      { store: opened.store, trackerPath: opened.trackerPath, project: opened.project, json: has(parsed, "json"), watch, clear: watch && process.stdout.isTTY === true, signal: stop.signal },
+      io,
+    );
+  } finally {
+    process.off("SIGINT", onInterrupt);
+  }
+}
+
 const DAEMON_OPTIONS: OptionTable = {
   "--home": { key: "home", value: true },
   "--port": { key: "port", value: true },
@@ -985,6 +1012,7 @@ const commands: Record<string, (args: readonly string[], io: CliIo) => Promise<n
   next: nextCommand,
   agent: agentCommand,
   card: cardCommand,
+  board: boardVerbCommand,
   check: checkVerbCommand,
   deliver: deliverVerbCommand,
   daemon: daemonCommand,
