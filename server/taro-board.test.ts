@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { serializeTicket, type Ticket } from "../shared/ticket-format";
 import { main } from "./taro-cli.ts";
+import { boardCommand } from "./taro-board.ts";
+import { createTicketStore } from "./ticket-store.ts";
 
 const BIN = resolve(import.meta.dirname, "..", "bin", "taro");
 const ROOT = resolve(import.meta.dirname, "..");
@@ -305,6 +307,23 @@ describe("taro board", () => {
     writeLive([{ id: "owner-1", role: "owner", ticket: "NA-001" }], []);
     expect((await board()).stdout).not.toContain("may be stopped");
   });
+
+  it("watch warns when the live list goes stale with no file changed", async () => {
+    writeTicket({ id: "NA-001", title: "Login", status: "In Progress" });
+    // Confirmed 4 minutes 57 seconds ago: old enough in about three seconds, with nothing written meanwhile.
+    writeLive([{ id: "owner-1", role: "owner", ticket: "NA-001" }], [], new Date(Date.now() - 297_000).toISOString(), new Date(Date.now() - 297_000));
+    const controller = new AbortController();
+    let stdout = "";
+    const running = boardCommand(
+      { store: createTicketStore(tracker), trackerPath: tracker, project: "notes-app", json: false, watch: true, refreshMs: 1000, signal: controller.signal },
+      { stdout: (text) => void (stdout += text), stderr: () => undefined, env: { PATH: process.env.PATH ?? "", HOME: scratch, PASEO_HOME: paseoHome } },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 6_000));
+    controller.abort();
+    await running;
+    expect(stdout.split("agent owner-1").length - 1).toBe(2);
+    expect(stdout.split("may be stopped").length - 1).toBe(1);
+  }, 15_000);
 
   it("board hides cards of archived agents", async () => {
     writeTicket({ id: "NA-001", title: "Login", status: "Planning" });

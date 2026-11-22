@@ -17,6 +17,8 @@ import type { TicketStore } from "./ticket-store.ts";
 
 /** How often `--watch` looks for a changed file. */
 const WATCH_POLL_MS = 1000;
+/** `--watch` also looks again this often with no file changed: a list can go stale, a card a day old, by the clock alone. */
+const WATCH_REFRESH_MS = 60_000;
 
 export interface BoardIo {
   stdout(text: string): void;
@@ -32,6 +34,8 @@ export interface BoardOptions {
   watch: boolean;
   /** Clears the terminal before each reprint (a terminal, not a pipe). */
   clear?: boolean;
+  /** How often `--watch` looks again with no file changed (tests shorten it). */
+  refreshMs?: number;
   /** Ends `--watch`; the command line aborts it on SIGINT. */
   signal?: AbortSignal;
 }
@@ -121,6 +125,7 @@ export async function boardCommand(options: BoardOptions, io: BoardIo): Promise<
   // A function, so the check reads the signal afresh after each wait.
   const stopped = (): boolean => signal?.aborted === true;
   let last = await signature(options, io);
+  let lastLooked = Date.now();
   while (!stopped()) {
     await new Promise<void>((resolve) => {
       const timer = setTimeout(resolve, WATCH_POLL_MS);
@@ -131,8 +136,10 @@ export async function boardCommand(options: BoardOptions, io: BoardIo): Promise<
     });
     if (stopped()) break;
     const current = await signature(options, io);
-    if (current === last) continue;
+    // No file changed: look again only when the refresh is due, and print only if what is drawn differs.
+    if (current === last && Date.now() - lastLooked < (options.refreshMs ?? WATCH_REFRESH_MS)) continue;
     last = current;
+    lastLooked = Date.now();
     // A file renewed with nothing new in it (the plugin's heartbeat) is not a change worth printing.
     const shot = await snapshot(options, io);
     if (shot.key === shown) continue;
