@@ -123,6 +123,8 @@ describe("viewTicket", () => {
       finalSummary: "Shipped.",
       subtasks: [{ id: "NA-001.01", title: "CSV", status: "Done" }],
       planUpdatedAt: null,
+      trackerCards: [],
+      trackerAgents: [],
     });
   });
 

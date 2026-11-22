@@ -27,7 +27,8 @@ import { closeRoundRefusal, reopenRefusal, reopenRound, roundFinalSummary } from
 import { offersSpecChange } from "../shared/spec-change";
 import { isSubagentRole, roleFromLabel, TARO_LABELS } from "../shared/project";
 import { boardAlerts, type BoardAlert } from "../shared/recovery";
-import { decisionsOfLiveAgents, type StoredDecision } from "../shared/state";
+import { decisionsOfLiveAgents, parseTrackerKey, trackerDecision, withTrackerCards, type StoredDecision } from "../shared/state";
+import type { TrackerAgent, TrackerCard } from "../shared/tracker-cards";
 import { currentSuggestions, parseSuggestions, suggestionKey, withoutFixedActions } from "../shared/suggestions";
 import { isMidTurn, projectAgents, projectArchivedAgents } from "./agents";
 import { statePath } from "./data-dir";
@@ -35,7 +36,7 @@ import { judgeTicketEvidence, ticketEvidence, ticketMockups } from "./evidence";
 import { readHeadroom } from "./headroom";
 import { readJsonIfPresent, readTextIfPresent, writeJsonAtomically } from "./files";
 import type { PaseoAgent, PaseoApi } from "./host-types";
-import { projectPaths, readProjectConfig } from "./projects";
+import { listProjectConfigs, projectPaths, readProjectConfig } from "./projects";
 import { serialized } from "./serialize";
 import { pastPlan, previousPlan } from "./plan-history";
 import type { PluginState } from "./state";
@@ -58,6 +59,8 @@ async function recordedFacts(
   notMerged: NotMergedRecord | null;
   finalSummary: string | null;
   notes: string | null;
+  trackerCards: TrackerCard[];
+  trackerAgents: TrackerAgent[];
 }> {
   try {
     const detail = await viewTicket(trackerPath, ticketId);
@@ -72,9 +75,12 @@ async function recordedFacts(
       notMerged: notMergedRecord(detail.implementationNotes),
       finalSummary: detail.finalSummary ?? null,
       notes: detail.implementationNotes,
+      // From the same read: a ticket file holds its cards and agents.
+      trackerCards: detail.trackerCards ?? [],
+      trackerAgents: detail.trackerAgents ?? [],
     };
   } catch {
-    return { hostElsewhere: null, pullRequest: null, pullRequestMerged: false, latestMilestone: null, evidenceRecord: null, accepted: null, notMerged: null, finalSummary: null, notes: null };
+    return { hostElsewhere: null, pullRequest: null, pullRequestMerged: false, latestMilestone: null, evidenceRecord: null, accepted: null, notMerged: null, finalSummary: null, notes: null, trackerCards: [], trackerAgents: [] };
   }
 }
 
@@ -234,11 +240,13 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
       const ownLine = ticket.parentTaskId === null || hasStarted(ticket.status);
       const ownerState = owner === null ? null : agentStates[owner.id] ?? null;
       const finished = ticket.status === "Done" || ticket.status === "Cancelled";
-      const ticketDecisions = finished ? [] : openDecisions.filter((decision) => decision.ticket === ticket.id);
       const needsHost = owner === null && UNDER_WAY.has(ticket.status);
       // Reading a ticket reads its whole file: only under-way cards show what it holds, and only once per change.
       // A Ready or Queued ticket is read too, as it may be parked (TR-088, TR-166).
       const facts = UNDER_WAY.has(ticket.status) || ticket.status === "Ready" || ticket.status === "Queued" ? await cachedRecordedFacts(paths.tracker, ticket.id, ticket.updatedAt) : null;
+      // Cards asked outside Paseo come from that same read; an open one hides a Paseo question with its id.
+      const trackerDecisions = finished ? [] : trackerDecisionsOf(project, ticket.id, facts?.trackerCards ?? []);
+      const ticketDecisions = finished ? [] : withTrackerCards(openDecisions.filter((decision) => decision.ticket === ticket.id), trackerDecisions);
       // The record is cached with the other facts; whether its screenshot files exist is read each time.
       const accepted = ticket.status === "Awaiting acceptance" ? facts?.accepted ?? null : null;
       const elsewhere = needsHost ? facts?.hostElsewhere ?? null : null;
@@ -258,7 +266,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         queuedToResume: pausing.pause?.state === "queued-to-resume",
       });
       const working = childrenWorking((childrenOf.get(ticket.id) ?? []).map((child) => child.id), liveSubagents);
-      return { id: ticket.id, updatedAt: ticket.updatedAt, column, ticket, owner, liveSubagents, working, askers, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere, pausing };
+      return { id: ticket.id, updatedAt: ticket.updatedAt, column, ticket, owner, liveSubagents, working, askers, ownLine, ownerState, ticketDecisions, trackerDecisions, facts, accepted, elsewhere, pausing };
     }),
   );
   const page = pageColumns(placed, paging.limits, paging.include);
@@ -346,7 +354,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
     project,
     cards,
     managerDecisions: openDecisions.filter((decision) => decision.ticket === null),
-    ticketQuestions: waitingOnUser(openDecisions.filter((decision) => decision.ticket !== null)).length,
+    ticketQuestions: waitingOnUser(withTrackerCards(openDecisions.filter((decision) => decision.ticket !== null), placed.flatMap((entry) => entry.trackerDecisions))).length,
     managerPermission: firstAsk(managerAskers(agents)),
     suggestions: await readSuggestions(project, tickets),
     headroom,
@@ -393,12 +401,55 @@ function ticketPause(
   };
 }
 
-/** Open decisions across one project (or all), from live agents only, for the Inbox and the ticket panel. */
+function trackerDecisionsOf(project: string, ticket: string, cards: readonly TrackerCard[]): StoredDecision[] {
+  return cards.filter((card) => card.status === "open").map((card) => trackerDecision(project, ticket, card));
+}
+
+/**
+ * One project's open tracker cards, from the reads the board makes (cached while the ticket is unchanged), so the
+ * Inbox adds none of its own. A project whose tracker cannot be read shows none rather than hide the rest.
+ */
+async function projectTrackerDecisions(project: string): Promise<StoredDecision[]> {
+  try {
+    const tracker = (await projectPaths(project)).tracker;
+    const open = (await listTickets(tracker)).filter((ticket) => ticket.status !== "Done" && ticket.status !== "Cancelled");
+    const read = await Promise.all(open.map(async (ticket) => trackerDecisionsOf(project, ticket.id, (await cachedRecordedFacts(tracker, ticket.id, ticket.updatedAt)).trackerCards)));
+    return read.flat();
+  } catch (error) {
+    console.warn(`[taro] could not read ${project}'s tracker cards: ${error instanceof Error ? error.message : String(error)}`);
+    return [];
+  }
+}
+
+/** Every project's name, for the Inbox's tracker cards; none when the configs cannot be listed. */
+async function allProjects(): Promise<string[]> {
+  try {
+    return (await listProjectConfigs()).map((config) => config.project);
+  } catch {
+    return [];
+  }
+}
+
+/** Open decisions across one project (or all), from live agents only, with open tracker cards, for the Inbox and the ticket panel. */
 export async function liveOpenDecisions(paseo: PaseoApi, state: PluginState, project: string | null): Promise<StoredDecision[]> {
   const open = (await state.allDecisions()).filter((decision) => decision.status === "open" && (project === null || decision.project === project));
   const projects = [...new Set(open.map((decision) => decision.project))];
   const live = new Set((await Promise.all(projects.map((name) => projectAgents(paseo, name)))).flat().map((agent) => agent.id));
-  return decisionsOfLiveAgents(open, live);
+  const trackerProjects = project === null ? [...new Set([...(await allProjects()), ...projects])] : [project];
+  const tracker = (await Promise.all(trackerProjects.map(projectTrackerDecisions))).flat();
+  return withTrackerCards(decisionsOfLiveAgents(open, live), tracker);
+}
+
+/**
+ * A decision by its key, any status: a tracker card's from its ticket file (read afresh, as its card is about to be
+ * answered or drawn), any other from the plugin's state. Null when there is none.
+ */
+export async function findDecision(state: PluginState, key: string): Promise<StoredDecision | null> {
+  const tracker = parseTrackerKey(key);
+  if (tracker === null) return state.decision(key);
+  const detail = await viewTicket((await projectPaths(tracker.project)).tracker, tracker.ticket).catch(() => null);
+  const card = detail?.trackerCards.find((each) => each.id === tracker.cardId);
+  return detail === null || card === undefined ? null : trackerDecision(tracker.project, detail.id, card);
 }
 
 /** A finished plan card's plan (TR-157), from the ticket's tracker history. */
@@ -435,6 +486,8 @@ export async function loadTicketDetail(paseo: PaseoApi, project: string, ticketI
     plan: detail.implementationPlan,
     notes: detail.implementationNotes,
     finalSummary: detail.finalSummary,
+    trackerCards: detail.trackerCards,
+    trackerAgents: detail.trackerAgents,
     dependencies: detail.dependencies,
     children: await Promise.all(detail.subtasks.map(async (child) => ({ id: child.id, title: child.title, status: child.status, evidence: await childEvidence(project, tracker, child.id) }))),
     evidence: hasRecord || detail.status === "Awaiting acceptance" ? await ticketEvidence(project, detail.id, detail.implementationNotes, detail.labels, detail.status) : null,

@@ -66,7 +66,7 @@ import { refusedMessage } from "../shared/refused-commands";
 import { reopenRound, roundBranch } from "../shared/reopen";
 import { specChangeRefusal } from "../shared/spec-change";
 import { questionsOf } from "../shared/reports";
-import { carriedQuestionLines, dismissDecision, questionsToCarry } from "../shared/state";
+import { carriedQuestionLines, dismissDecision, parseTrackerKey, questionsToCarry } from "../shared/state";
 import { TARO_LABELS, TICKET_STATUSES, type ProjectConfig } from "../shared/project";
 import { acceptLocalBranch, acceptPullRequest } from "./accept-merge";
 import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
@@ -87,7 +87,7 @@ import type { ChatQueue } from "./chat-queue";
 import type { Recovery } from "./recovery";
 import type { PluginState } from "./state";
 import { identityFromLabels, lastHumanMessageAt, managerHandoffPath, type Supervisor } from "./supervision";
-import { appendTicketNote, closeRound as closeRoundRecord, closeTicket, listTickets, recordChangesRequested, reopenTicket as reopenTicketRecord, viewTicket, type TicketDetail, type TicketSummary } from "./tickets";
+import { answerTrackerCard, appendTicketNote, closeRound as closeRoundRecord, closeTicket, listTickets, recordChangesRequested, reopenTicket as reopenTicketRecord, viewTicket, withdrawTrackerCard, type TicketDetail, type TicketSummary } from "./tickets";
 import { usageReading, type Stats } from "./stats";
 import { isStopping, reportFailure } from "./stopping";
 import type { TrackerWatch } from "./tracker-watch";
@@ -148,7 +148,9 @@ export class Actions {
     if (this.answering.has(key)) throw new Error("That decision is already being answered.");
     this.answering.add(key);
     try {
-      await this.answerOpenDecision(paseo, key, label, text, from, answers ?? []);
+      const tracker = parseTrackerKey(key);
+      if (tracker !== null) await answerTracker(tracker, label, text, from, answers ?? []);
+      else await this.answerOpenDecision(paseo, key, label, text, from, answers ?? []);
     } finally {
       this.answering.delete(key);
     }
@@ -203,6 +205,12 @@ export class Actions {
     if (this.answering.has(key)) throw new Error("That decision is already being answered.");
     this.answering.add(key);
     try {
+      // A card asked outside Paseo is withdrawn in its ticket file; no agent is told, as none of Paseo's asked it.
+      const tracker = parseTrackerKey(key);
+      if (tracker !== null) {
+        await withdrawTrackerCard((await projectPaths(tracker.project)).tracker, tracker.ticket, tracker.cardId);
+        return;
+      }
       const decision = await this.state.decision(key);
       if (decision === null || decision.status !== "open") throw new Error("That decision is no longer open.");
       const at = new Date().toISOString();
@@ -1418,6 +1426,23 @@ function withoutEmptyParagraphs(text: string): string {
 /** What of the ladder is kept on disk, to tell whether it changed. */
 function ladderSnapshot(watch: QueueWatch): string {
   return JSON.stringify([watch.restarts, [...watch.dismissed].sort()]);
+}
+
+/**
+ * A card asked outside Paseo, answered from Paseo: one locked write of the ticket file (the card and its ANSWER note),
+ * the same `taro card answer` makes, so the first answer from either app wins. No agent is looked up or messaged:
+ * the session that asked reads the ticket (`taro card show --wait`).
+ */
+async function answerTracker(
+  tracker: { project: string; ticket: string; cardId: string },
+  label: string | null,
+  text: string,
+  from: "screen" | "tab",
+  answers: readonly QuestionAnswer[],
+): Promise<void> {
+  if (answers.length > 0) throw new Error("A card asked outside Paseo takes one answer: an option, words, or both.");
+  const by = `the user, from ${from === "tab" ? "the agent's tab" : "the Taro screen"}`;
+  await answerTrackerCard((await projectPaths(tracker.project)).tracker, tracker.ticket, tracker.cardId, { label, text, by });
 }
 
 function acceptKey(project: string, ticket: string): string {

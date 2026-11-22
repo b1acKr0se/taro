@@ -22,7 +22,7 @@ import { ANSWER_PLACEHOLDER, answerPlaceholder, askedBy, decisionOptionRows, dec
 import { questionsOf } from "../shared/reports";
 import { sendUnlessRefused } from "../shared/refused-commands";
 import { allAnswered, answeredFlags, draftAnswers, freshDrafts, recapLine, type QuestionDraft } from "../shared/several-questions";
-import type { StoredDecision } from "../shared/state";
+import { isStaleTrackerDecision, type StoredDecision } from "../shared/state";
 import { Pressable } from "./focus";
 import { useRevealFocused } from "./keyboard";
 import { SPACE } from "./spacing";
@@ -56,6 +56,11 @@ interface DecisionCardProps {
   readOnlyNote?: string | null;
 }
 
+/** Who asked, and `stale` on a card asked outside Paseo over a day ago: its session may be gone. */
+export function askerLine(decision: StoredDecision, now: number): string {
+  return isStaleTrackerDecision(decision, now) ? `${askedBy(decision)} · stale` : askedBy(decision);
+}
+
 /** A scope approval with a template plan is the compact plan card (TR-061); any other decision, or one that cannot be answered, the options card. */
 export function DecisionCard(props: DecisionCardProps) {
   // Several questions are never a plan: scope-approval stays a single question (TR-207).
@@ -66,7 +71,7 @@ export function DecisionCard(props: DecisionCardProps) {
       decision={props.decision}
       theme={props.theme}
       compact={props.compact}
-      head={props.showAgent === true ? askedBy(props.decision) : null}
+      head={props.showAgent === true ? askerLine(props.decision, Date.now()) : null}
       answeredFrom={props.answeredFrom ?? "screen"}
       onAnswered={props.onAnswered}
     >
@@ -97,10 +102,12 @@ function OptionsCard({ decision, theme, compact, onAnswered, showAgent = false, 
   // A card that cannot be answered does not ask for the user.
   const waiting = decision.blocking && answerable;
   const styles = useCardStyles(theme, compact, waiting);
+  // A stale tracker card says so wherever it is drawn, as its session may be gone.
+  const stale = isStaleTrackerDecision(decision, Date.now());
 
   return (
     <View style={styles.card}>
-      {showAgent ? <Text style={styles.who}>{askedBy(decision)}</Text> : null}
+      {showAgent || stale ? <Text style={styles.who}>{showAgent ? askerLine(decision, Date.now()) : "stale"}</Text> : null}
       <Text style={styles.question}>{decision.question}</Text>
       {decision.why === "" ? null : (
         <Pressable onPress={() => setWhyOpen((open) => !open)} disabled={decision.why.length < WHY_FOLD_CHARACTERS}>
@@ -235,7 +242,7 @@ function SeveralCard({ decision, theme, compact, onAnswered, showAgent = false, 
 
   return (
     <View style={styles.card}>
-      {showAgent ? <Text style={styles.who}>{askedBy(decision)}</Text> : null}
+      {showAgent ? <Text style={styles.who}>{askerLine(decision, Date.now())}</Text> : null}
       <View style={styles.tabs} accessibilityRole="tablist">
         {questions.map((each, index) => {
           const isCurrent = index === current;

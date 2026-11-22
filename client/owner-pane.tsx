@@ -7,7 +7,8 @@
  * round above its chat box (TR-229), as the Ticket tab's row has.
  * With the board hidden the ticket sits in its own panel beside, so the pane is the chat alone.
  * Opened by View plan (TR-061) it shows the Ticket tab, its Plan on top, and Back returns to where
- * View plan was pressed.
+ * View plan was pressed. Cards asked and agents recorded outside Paseo (in the ticket file) have no chat: they are
+ * listed apart, above the chat or in place of it when no Paseo agent works the ticket.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -20,14 +21,18 @@ import { closeRound, loadTicket, tellAgent, type Card } from "../shared/contract
 import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { withoutDecisionBlocks } from "../shared/reports";
 import { offersSpecChange } from "../shared/spec-change";
-import type { StoredDecision } from "../shared/state";
+import { isTrackerAgentId, type StoredDecision } from "../shared/state";
+import type { TrackerAgent } from "../shared/tracker-cards";
 import { AgentChat } from "./agent-chat";
 import type { DeliveryRecord } from "./finished-cards";
 import { AcceptanceCard, AcceptNow } from "./acceptance-card";
 import { acceptanceReady, offersAcceptance } from "./card-calls";
 import { rowButtonStyle } from "./control-colors";
 import { Pressable } from "./focus";
-import { askedElsewhere, openingPaneAgent, paneAgents, paneAgentJob, paneOpening, paneStatus, roleIcon, type PaneOpening } from "./pane-agents";
+import { askedElsewhere, openingPaneAgent, paneAgents, paneAgentJob, paneOpening, paneStatus, recordedAgentRows, roleIcon, type PaneOpening } from "./pane-agents";
+import { SectionHeading } from "./badges";
+import { DecisionCard } from "./decision-card";
+import { OptionChips } from "./option-chips";
 import { KeyboardScrollView } from "./keyboard";
 import { PaneHeader } from "./pane-header";
 import { useTicketRecords } from "./plan-card";
@@ -48,6 +53,66 @@ const ARCHIVED_NOTE = "Finished — this agent is archived; its conversation is 
 const NO_RECORDS: readonly DeliveryRecord[] = [];
 
 const NO_DECISIONS: readonly StoredDecision[] = [];
+
+const NO_AGENTS: readonly TrackerAgent[] = [];
+
+/**
+ * What a session outside Paseo keeps in the ticket file: its open cards and the agents it recorded. `full` draws each
+ * card whole, with its reply box (no Paseo agent works the ticket, so nothing else is in the pane); otherwise each is
+ * its question and options, above the Paseo agent's chat.
+ */
+function OutsidePaseo({
+  theme,
+  compact,
+  asks,
+  agents,
+  now,
+  full,
+  onAnswered,
+}: {
+  theme: PluginTheme;
+  compact: boolean;
+  asks: readonly StoredDecision[];
+  agents: readonly TrackerAgent[];
+  now: number;
+  full: boolean;
+  onAnswered: () => void;
+}) {
+  const { colors } = theme;
+  const rows = recordedAgentRows(agents, now);
+  return (
+    <View style={{ gap: SPACE.sm }}>
+      <SectionHeading theme={theme} icon="Globe" text="Outside Paseo" />
+      {rows.map((row) => (
+        <View key={row.name} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.sm }}>
+          <Icon name={row.icon} size={14} color={row.running ? colors.statusSuccess : colors.foregroundMuted} />
+          <Text style={{ flexShrink: 1, color: colors.foreground, fontSize: FONT_SIZE.small }} numberOfLines={1}>
+            {row.label}
+          </Text>
+          <Text style={{ flexShrink: 0, color: row.stale ? colors.statusWarning : colors.foregroundMuted, fontSize: FONT_SIZE.caption }} numberOfLines={1}>
+            {row.detail}
+          </Text>
+        </View>
+      ))}
+      {asks.map((decision) =>
+        full ? (
+          <DecisionCard key={decision.key} decision={decision} theme={theme} compact={compact} showAgent answeredFrom="screen" onAnswered={onAnswered} />
+        ) : (
+          <View key={decision.key} style={{ gap: SPACE.xs }}>
+            <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.small }} numberOfLines={2}>
+              {decision.question}
+            </Text>
+            {decision.options.length === 0 ? (
+              <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption }}>Answer it in the Inbox.</Text>
+            ) : (
+              <OptionChips decision={decision} theme={theme} onOpen={() => undefined} onAnswered={onAnswered} />
+            )}
+          </View>
+        ),
+      )}
+    </View>
+  );
+}
 
 export function OwnerPane({
   card,
@@ -136,6 +201,8 @@ export function OwnerPane({
   // A Queued ticket nobody owns yet takes a change of spec through the manager (TR-129).
   const specChangeable = offersSpecChange({ status: card.status, parent: card.parent, ownerRunning: card.owner !== null || card.ownerElsewhere !== null, paused: card.pause !== null });
   const shownAsks = useMemo(() => card.decisions.filter((decision) => decision.agentId === shown?.id), [card.decisions, shown?.id]);
+  // Asked outside Paseo: no agent's chat holds these, so the pane lists them itself.
+  const trackerAsks = useMemo(() => card.decisions.filter((decision) => isTrackerAgentId(decision.agentId)), [card.decisions]);
   // A permission or question another of the ticket's agents asked is answered in that agent's chat.
   const elsewhere = askedElsewhere(card, shown?.id ?? null, agents);
   // Close round (TR-229) is the ticket's detail flag: read, with the Ticket tab's cache, only for a top-level ticket being worked.
@@ -143,7 +210,10 @@ export function OwnerPane({
   const toast = useToast();
   const closePresses = useActions();
   const mayClose = card.parent === null && card.status !== "Done" && card.status !== "Cancelled" && card.status !== "Awaiting acceptance";
-  const detail = useQuery({ queryKey: ["taro", "ticket", project, card.id], queryFn: () => load({ project, ticket: card.id }), enabled: mayClose, ...polled(6_000) });
+  // Read for every ticket: it also holds the agents recorded outside Paseo, which the board does not carry.
+  const detail = useQuery({ queryKey: ["taro", "ticket", project, card.id], queryFn: () => load({ project, ticket: card.id }), ...polled(6_000) });
+  const recorded = detail.data?.trackerAgents ?? NO_AGENTS;
+  const outside = trackerAsks.length > 0 || recorded.length > 0;
   const closable = mayClose && detail.data?.closable === true && shown !== null && shown.live && shown.id === card.owner?.id;
   const close = useRpc(closeRound);
   const [closeTipOpen, setCloseTipOpen] = useState(false);
@@ -202,7 +272,7 @@ export function OwnerPane({
         {onShowBoard === null ? null : <IconButton icon="PanelRightOpen" label="Show the board" theme={theme} onPress={onShowBoard} />}
       </PaneHeader>
       {/* Nothing to show here (a phone, one agent) takes no height at all. */}
-      {!(ticketBeside || compact) || (tab === "chat" && (agents.length > 1 || (shown !== null && card.owner === null && card.ownerElsewhere !== null))) ? (
+      {!(ticketBeside || compact) || (tab === "chat" && (agents.length > 1 || (shown !== null && outside) || (shown !== null && card.owner === null && card.ownerElsewhere !== null))) ? (
       <View style={{ paddingHorizontal: inset, paddingVertical: compact ? SPACE.xs : SPACE.sm, gap: SPACE.sm }}>
         {ticketBeside || compact ? null : tabSwitch(false)}
         {/* Archived agents here do not mean the work stopped: the current owner may run elsewhere. */}
@@ -212,6 +282,7 @@ export function OwnerPane({
         {tab === "chat" && agents.length > 1 ? (
           <AgentChips theme={theme} slim={compact} agents={agents} selectedId={shown?.id ?? null} now={now} onSelect={(agentId) => setChosen({ card: openKey, agent: agentId })} />
         ) : null}
+        {tab === "chat" && shown !== null && outside ? <OutsidePaseo theme={theme} compact={compact} asks={trackerAsks} agents={recorded} now={now} full={false} onAnswered={onChanged} /> : null}
       </View>
       ) : null}
       <View style={{ flex: 1 }}>
@@ -222,7 +293,14 @@ export function OwnerPane({
         ) : null}
         {!tabsVisited.has(`${card.id}:chat`) ? null : (
           <KeptPane key={`chat:${card.id}`} shown={tab === "chat"}>
-            {shown === null && specChangeable ? (
+            {shown === null && outside ? (
+              <KeyboardScrollView contentContainerStyle={{ padding: SPACE.lg, gap: SPACE.md }}>
+                <OutsidePaseo theme={theme} compact={compact} asks={trackerAsks} agents={recorded} now={now} full onAnswered={onChanged} />
+                <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small }}>
+                  {card.ownerElsewhere !== null ? `Its owner runs on ${card.ownerElsewhere}.` : "No Paseo agent is working this ticket."}
+                </Text>
+              </KeyboardScrollView>
+            ) : shown === null && specChangeable ? (
               <KeyboardScrollView contentContainerStyle={{ padding: SPACE.lg, gap: SPACE.md }}>
                 <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.body, lineHeight: lineHeightFor(FONT_SIZE.body) }}>
                   {card.id} is queued: no owner has started yet. To change what it should do, tell the manager, and it updates the ticket before an owner starts.

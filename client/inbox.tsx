@@ -19,9 +19,9 @@ import { SectionHeading } from "./badges";
 import { useBoard, useRefreshBoard } from "./board-data";
 import { walkOrder } from "./walk-order";
 import { decisionsOfProjects } from "./inbox-scope";
-import { askedBy, SCOPE_APPROVAL } from "../shared/decision-view";
+import { SCOPE_APPROVAL } from "../shared/decision-view";
 import { gridCardWidth, gridColumns, gridRows } from "./card-grid";
-import { DecisionCard } from "./decision-card";
+import { askerLine, DecisionCard } from "./decision-card";
 import { KeyboardScrollView } from "./keyboard";
 import { keptObject } from "./kept";
 import { PlanDecision } from "./plan-card";
@@ -123,7 +123,7 @@ export function Inbox({
               decision={decision}
               theme={theme}
               compact={compact}
-              head={askedBy(decision)}
+              head={askerLine(decision, Date.now())}
               brief={gridColumns(listWidth, GRID_GAP) > 1}
               fill
               // A plan card opens its ticket's chat, at the plan's message, as on the board (TR-126).
@@ -132,7 +132,7 @@ export function Inbox({
             >
               <QuestionCard
                 decision={decision}
-                asker={askedBy(decision)}
+                asker={askerLine(decision, Date.now())}
                 theme={theme}
                 compact={compact}
                 fill

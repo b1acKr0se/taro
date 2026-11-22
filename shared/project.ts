@@ -20,6 +20,14 @@ export type SubagentRole = (typeof SUBAGENT_ROLES)[number];
 /** Reads a stored or labelled role; agents started before TR-017 say `helper`, which was an implementer. */
 export const RoleSchema = z.preprocess((value) => (value === "helper" ? "implementer" : value), z.enum(ROLES));
 
+/**
+ * Who asked a card kept in the ticket file (asked outside Paseo, `shared/tracker-cards.ts`): a decision's asker
+ * only, never an agent's role, so it is not one of `ROLES` and `roleFromLabel` refuses it.
+ */
+export const EXTERNAL_ROLE = "external";
+export const DecisionRoleSchema = z.union([RoleSchema, z.literal(EXTERNAL_ROLE)]);
+export type DecisionRole = z.infer<typeof DecisionRoleSchema>;
+
 /** The role a `taro.role` label value names, or null for an agent that is not Taro's. */
 export function roleFromLabel(value: string | undefined): Role | null {
   const role = RoleSchema.safeParse(value);

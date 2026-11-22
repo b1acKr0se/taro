@@ -5,6 +5,8 @@
  */
 import type { AgentBrief, Card } from "../shared/contracts";
 import type { SubagentRole } from "../shared/project";
+import { isStaleRecordedAgent } from "../shared/state";
+import type { TrackerAgent } from "../shared/tracker-cards";
 import { formatDuration } from "./format";
 
 export type PaneAgentRole = "owner" | SubagentRole;
@@ -210,4 +212,38 @@ export function waitingOn(card: Pick<Card, "subagents">, now: number): { text: s
     running: Number.isFinite(started) ? formatDuration(Math.max(0, now - started)) : null,
     more: running.length - 1,
   };
+}
+
+/** A recorded agent's job as the pane names it: `other` is just an agent. */
+export function recordedAgentJob(job: TrackerAgent["job"]): string {
+  return job === "other" ? "agent" : job;
+}
+
+/** One agent a session outside Paseo recorded on the ticket (`taro agent record`), as its pane lists it. */
+export interface RecordedAgentRow {
+  name: string;
+  /** "Reviewer checking the schema": the job, then its task. */
+  label: string;
+  /** Its state, the host that recorded it, and `stale` when it has run over a day. */
+  detail: string;
+  icon: string;
+  running: boolean;
+  stale: boolean;
+}
+
+/** The ticket's recorded agents, in their recorded order; nothing of Paseo's runs them, so only the record speaks. */
+export function recordedAgentRows(agents: readonly TrackerAgent[], now: number): RecordedAgentRow[] {
+  return agents.map((agent) => {
+    const job = recordedAgentJob(agent.job);
+    const task = agent.task.trim();
+    const stale = isStaleRecordedAgent(agent, now);
+    return {
+      name: agent.name,
+      label: task === "" ? `${capitalised(job)} ${agent.name}` : `${capitalised(job)} ${task.charAt(0).toLowerCase()}${task.slice(1)}`,
+      detail: [agent.state, agent.host, stale ? "stale" : null].filter((part) => part !== null && part !== "").join(" · "),
+      icon: agent.job === "implementer" ? "Wrench" : agent.job === "reviewer" ? "ShieldCheck" : agent.job === "researcher" ? "Search" : "Bot",
+      running: agent.state === "running",
+      stale,
+    };
+  });
 }

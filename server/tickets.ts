@@ -8,7 +8,9 @@ import { startsPlanning } from "../shared/owner-start";
 import { dispatchPending } from "../shared/pause";
 import { closeRoundRefusal, reopenedRecordText, reopenRefusal, reopenRound, roundClosedRecordText } from "../shared/reopen";
 import type { TicketPriority, TicketProblem } from "../shared/ticket-format";
+import { agentsOf, cardsOf, type AnswerInput, type TrackerAgent, type TrackerCard } from "../shared/tracker-cards";
 import { createTicketStore, PLAN_UPDATED, type TicketStore } from "./ticket-store";
+import { answerCard, withdrawCard } from "./tracker-cards";
 
 export interface TicketSummary {
   id: string;
@@ -33,6 +35,9 @@ export interface TicketDetail extends TicketSummary {
   subtasks: { id: string; title: string; status: string }[];
   /** When the plan text last changed; null when the ticket predates that record. */
   planUpdatedAt?: string | null;
+  /** The cards and agents kept in the ticket file (asked or recorded outside Paseo), from the same parse; malformed lines left out. */
+  trackerCards: TrackerCard[];
+  trackerAgents: TrackerAgent[];
 }
 
 export type { TicketProblem };
@@ -96,7 +101,22 @@ export async function viewTicket(trackerPath: string, ticketId: string): Promise
     finalSummary: textOrNull(ticket.finalSummary),
     subtasks: subtasks.map((child) => ({ id: child.id, title: child.title, status: child.status })),
     planUpdatedAt: typeof ticket.extra[PLAN_UPDATED] === "string" ? ticket.extra[PLAN_UPDATED] : null,
+    trackerCards: cardsOf(ticket.cards).items,
+    trackerAgents: agentsOf(ticket.agents).items,
   };
+}
+
+/**
+ * Answers a tracker card from Paseo (a button, `taro decision answer`): the one locked write `taro card answer`
+ * makes too, with its ANSWER note, so the first answer from either app wins and the second is refused.
+ */
+export async function answerTrackerCard(trackerPath: string, ticketId: string, cardId: string, answer: AnswerInput): Promise<TrackerCard> {
+  return (await answerCard(storeFor(trackerPath), ticketId, cardId, answer)).card;
+}
+
+/** Dismissing a tracker card withdraws it, as `taro card withdraw` does. */
+export async function withdrawTrackerCard(trackerPath: string, ticketId: string, cardId: string): Promise<TrackerCard> {
+  return (await withdrawCard(storeFor(trackerPath), ticketId, cardId)).card;
 }
 
 /** What a parent's detail shows of a child (TR-187), read from the child's file alone: a tracker of 200 tickets is not listed once per child. */
