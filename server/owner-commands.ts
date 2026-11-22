@@ -12,6 +12,7 @@ import { join, resolve } from "node:path";
 import { checkEvidenceLine, checkLogLine, checksAtHead, parseCheckLog, reusableCheck, strayChanges, strayWarning, summaryLine, ticketFromBranch, type CheckEntry } from "../shared/check-log.ts";
 import { isInvestigation, planDelivery, type DeliveryFacts } from "../shared/delivery-record.ts";
 import { executionBranch, executionOwners } from "../shared/execution.ts";
+import { EXTERNAL_HOST_LABEL, isExternalHostTicket } from "../shared/external-host.ts";
 import { commandError, runCommand, type CommandResult } from "./process.ts";
 import { daemonRecordPath, startTestDaemon, stopTestDaemons, stoppedDaemonLine, readDaemonRecords } from "./test-daemons.ts";
 import { waitForThreads } from "./thread-check.ts";
@@ -426,11 +427,15 @@ async function evidenceFiles(env: CommandIo["env"], project: string, ticket: str
 export async function deliverCommand(options: { ticket: string; evidenceFromChecks: boolean; store: TicketStore; trackerPath: string }, io: CommandIo): Promise<number> {
   const project = requireProject(io.env);
   const agent = io.env.PASEO_AGENT_ID ?? "";
-  if (agent === "") throw new CommandRefused("taro deliver is the ticket owner's: run it from the owner's session.");
   const view = await options.store.view(options.ticket.toUpperCase());
   const ticket = view.ticket;
+  // Outside Paseo, a ticket worked there (external-host) has no Paseo owner: the session delivering it is the one at work.
+  const outside = agent === "" && isExternalHostTicket(ticket);
+  if (agent === "" && !outside) {
+    throw new CommandRefused(`taro deliver is the ticket owner's: run it from the owner's session (outside Paseo, only a ticket labelled ${EXTERNAL_HOST_LABEL}).`);
+  }
   if (ticket.status === "Done" || ticket.status === "Cancelled") throw new CommandRefused(`${ticket.id} is ${ticket.status}: there is nothing to deliver.`);
-  if (!(await isOwner(options.store, ticket.id, agent))) {
+  if (!outside && !(await isOwner(options.store, ticket.id, agent))) {
     throw new CommandRefused(`taro deliver is the owner's, and no EXECUTION record of ${ticket.id} or its parent names ${agent} as owner.`);
   }
   const settings = await projectSettings(options.trackerPath);
