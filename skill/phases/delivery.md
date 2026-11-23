@@ -72,14 +72,14 @@ and any later reply while you await acceptance with `waiting: acceptance of <ID>
 - **An investigation** delivers as any ticket, FINAL with recommended next steps. Awaiting acceptance, "build it" in chat: set In Progress, drop the `investigation` label, plan children, ask scope-approval.
 
 - **Request changes:** the user's words arrive as a message, and the plugin has already moved the
-  ticket back to In Progress (if
-  the ticket still reads Awaiting acceptance, the plugin's write failed: move it yourself). Size the
-  fix like a new task; read the new screenshots against those words; return to Awaiting acceptance
-  with a new review head. Words that only ask a question: answer them, and when nothing needs to
-  change, deliver again as it was. Either way the turn that delivers again ends with `done: …`.
+  ticket back to In Progress (if the ticket still reads Awaiting acceptance, the plugin's write
+  failed: move it yourself). A small change follows `reference/follow-up.md`; any other is sized like a new
+  task. Return to Awaiting acceptance with a new review head. Words that only ask a question:
+  answer them, and when nothing needs to change, deliver again as it was. Either way the turn that
+  delivers again ends with `done: …`.
 - **The user chats instead** (not from Request changes): the ticket and its card stay. Words that
   only ask: answer and end with `waiting: acceptance of <ID>`. Words that need a change: move to In
-  Progress first, then deliver again. A blocking question back to the user ends the delivery (the
+  Progress first (a small one: `reference/follow-up.md`), then deliver again. A blocking question back to the user ends the delivery (the
   plugin moves the ticket to In Progress and records DELIVERY-ENDED); once answered, deliver again.
 - **Only the user's press of Accept accepts.** Never ask them to accept or merge, in a decision or in
   words: the card is the only Accept. Words in chat ("I merged it", "looks good") are never one:
