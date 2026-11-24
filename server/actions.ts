@@ -16,7 +16,7 @@ import { doneTicketOf, planRelease } from "../shared/done-release";
 import { EXTERNAL_HOST_LABEL, externalHostRefusal, isExternalHostTicket } from "../shared/external-host";
 import { acceptanceText, handoffText, ownerIsWarm, type AcceptOutcome, type Handover } from "../shared/accept-merge";
 import { acceptanceMerge, acceptedRecord, acceptedRecordText, deliveryMissing, executionBranch, executionWorkspace, localMergeInstruction, pluginAcceptPending, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
-import { ownerRelaunchedText, ownerRelaunchFailedText, ticketsWithClosedOwner } from "../shared/closed-owner";
+import { ownerRelaunchedText, ownerRelaunchFailedText, ownerRested, ticketsWithClosedOwner } from "../shared/closed-owner";
 import { dependsOn, holdsSlot, shouldWakeManager, statusChanges, withRecordedStatuses, type StatusChange } from "../shared/owner-cap";
 import {
   handoffSincePauseRequest,
@@ -277,8 +277,9 @@ export class Actions {
     return listTaroAgents(paseo, { [TARO_LABELS.project]: project, [TARO_LABELS.role]: "owner", [TARO_LABELS.ticket]: ticket });
   }
 
+  /** The ticket's newest owner; one Paseo freed after an idle hour counts, as a message loads it again. */
   private async requireOwner(paseo: PaseoApi, project: string, ticket: string) {
-    const owner = (await this.owners(paseo, project, ticket)).filter((agent) => agent.status !== "closed").sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    const owner = (await this.owners(paseo, project, ticket)).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
     if (owner === undefined) throw new Error(`${ticket} has no live owner. Relaunch it from its card.`);
     return owner;
   }
@@ -1264,7 +1265,7 @@ export class Actions {
   }
 
   /**
-   * TR-217: a daemon update or restart closes owners of tickets still being worked. Each gets a fresh
+   * TR-217: a daemon restart or crash cuts owners of tickets still being worked off mid-turn (one Paseo freed after an idle hour is left to wake on a message). Each gets a fresh
    * owner from its latest HANDOFF while a slot and thread headroom allow, oldest ticket first, with a
    * note on the ticket. Returns whether any started.
    */
@@ -1274,7 +1275,11 @@ export class Actions {
     const tickets = await listTickets(paths.tracker);
     // A ticket worked outside Paseo keeps its closed owner closed: that session works it now.
     const candidates = (await this.pauseCandidates(project, tickets)).filter(({ ticket }) => !isExternalHostTicket(ticket));
-    const owners = (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner");
+    const owners = await Promise.all(
+      (await projectAgents(paseo, project))
+        .filter((agent) => agent.labels[TARO_LABELS.role] === "owner")
+        .map(async (agent) => Object.assign(agent, { rested: agent.status === "closed" && ownerRested((await this.state.agent(agent.id))?.lastTurnEndedAt ?? null, agent.updatedAt) })),
+    );
     const stored = await this.state.allDecisions();
     // An owner's open question, or one withdrawn when its owner went away, is the user's to answer.
     const waitingOnUser = new Set(

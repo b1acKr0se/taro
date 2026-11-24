@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { AUTO_RELAUNCH_WINDOW_MS, RECENTLY_CLOSED_MS, ownerRelaunchedText, ownerRelaunchFailedText, ticketsWithClosedOwner } from "./closed-owner";
+import { AUTO_RELAUNCH_WINDOW_MS, RECENTLY_CLOSED_MS, ownerRelaunchedText, ownerRelaunchFailedText, ownerRested, ticketsWithClosedOwner } from "./closed-owner";
 import { TARO_LABELS } from "./project";
 
 const NOW = Date.parse("2026-01-05T12:00:00Z");
@@ -56,5 +56,24 @@ describe("ticketsWithClosedOwner", () => {
     expect(ticketsWithClosedOwner(tickets, [owner("TR-1", "closed", long)], NOW)).toEqual([]);
     expect(ticketsWithClosedOwner(tickets, [owner("TR-1", "closed", long), owner("TR-1", "closed", "2026-01-05T11:59:00Z")], NOW)).toEqual(["TR-1"]);
     expect(ticketsWithClosedOwner(tickets, [owner("TR-1", "closed", "not a time")], NOW)).toEqual([]);
+  });
+
+  it("leaves a rested owner, one that finished its turn before closing, and uses the newest owner's state", () => {
+    const tickets = [ticket("TR-1", "In Progress")];
+    expect(ticketsWithClosedOwner(tickets, [{ ...owner("TR-1", "closed", "2026-01-05T11:00:00Z"), rested: true }], NOW)).toEqual([]);
+    expect(ticketsWithClosedOwner(tickets, [{ ...owner("TR-1", "closed", "2026-01-05T11:00:00Z"), rested: false }], NOW)).toEqual(["TR-1"]);
+    const older = { ...owner("TR-1", "closed", "2026-01-05T09:00:00Z"), rested: false };
+    expect(ticketsWithClosedOwner(tickets, [older, { ...owner("TR-1", "closed", "2026-01-05T11:00:00Z"), rested: true }], NOW)).toEqual([]);
+  });
+});
+
+describe("ownerRested", () => {
+  it("is true when the turn ended at or after the last activity, within a minute of slack, and false when unknown or earlier", () => {
+    const active = "2026-01-05T11:00:00Z";
+    expect(ownerRested("2026-01-05T11:00:00Z", active)).toBe(true);
+    expect(ownerRested("2026-01-05T10:59:30Z", active)).toBe(true);
+    expect(ownerRested("2026-01-05T10:50:00Z", active)).toBe(false);
+    expect(ownerRested(null, active)).toBe(false);
+    expect(ownerRested("not a time", active)).toBe(false);
   });
 });

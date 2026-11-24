@@ -11,6 +11,8 @@ describe("boardColumn", () => {
       expect(boardColumn({ ...base, status, agent: { status: "closed", pendingPermissions: 0 }, parked: true })).toBe("parked");
     }
     expect(boardColumn({ ...base, agent: null })).toBe("stalled");
+    // Freed by Paseo's idle cleanup after its turn: it wakes on a message, so it is not stalled.
+    expect(boardColumn({ ...base, agent: null, restingOwner: true })).toBe("working");
     // A fresh owner started from the park is placed by its own state.
     expect(boardColumn({ ...base, agent: { status: "running", pendingPermissions: 0 }, parked: true })).toBe("working");
     // Its last owner's EXECUTION names another machine: the park, in the tracker, still holds.

@@ -66,6 +66,8 @@ export interface CardInputs {
   queuedToResume?: boolean;
   /** Labelled `external-host`: a session outside Paseo works it, so no Paseo owner means nothing is wrong. */
   externalHost?: boolean;
+  /** Its only owner was freed by Paseo's idle cleanup after finishing its turn: it wakes on a message, so nothing is stalled. */
+  restingOwner?: boolean;
 }
 
 /**
@@ -112,7 +114,7 @@ export function boardColumn(card: CardInputs): ColumnId {
   if (card.lastStatus === "blocked") return "needs-you";
 
   if (UNDER_WAY.has(card.status) || accepted) {
-    if (agent === null || agent.status === "error" || agent.status === "closed") return "stalled";
+    if ((agent === null && card.restingOwner !== true) || agent?.status === "error" || (agent?.status === "closed" && card.restingOwner !== true)) return "stalled";
     if (card.lastStatus === "failed" || card.stalledAfterNudge) return "stalled";
     return "working";
   }

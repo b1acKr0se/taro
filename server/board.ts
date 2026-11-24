@@ -8,6 +8,7 @@ import { hostname } from "node:os";
 import { latestActivity, type Activity } from "../shared/activity";
 import { ticketFileAlerts } from "../shared/alerts";
 import { boardColumn, childrenWorking, complexityOf, FIRST_PAGE, hasStarted, newestOwner, PAGED_COLUMNS, pageColumns, questionsForUser, ticketAgents, waitingOnUser } from "../shared/board";
+import { ownerRested } from "../shared/closed-owner";
 import { offersCompact } from "../shared/compact";
 import { parseEvidence, type ParsedEvidence } from "../shared/evidence";
 import { isExternalHostTicket } from "../shared/external-host";
@@ -272,6 +273,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         parked: pausing.pause?.state === "paused",
         queuedToResume: pausing.pause?.state === "queued-to-resume",
         externalHost: isExternalHostTicket(ticket),
+        restingOwner: owner === null && (byTicket.get(ticket.id) ?? []).some((agent) => agent.labels[TARO_LABELS.role] === "owner" && agent.status === "closed" && ownerRested(agentStates[agent.id]?.lastTurnEndedAt ?? null, agent.updatedAt)),
       });
       const working = childrenWorking((childrenOf.get(ticket.id) ?? []).map((child) => child.id), liveSubagents);
       return { id: ticket.id, updatedAt: ticket.updatedAt, column, ticket, owner, liveSubagents, working, askers, ownLine, ownerState, ticketDecisions, trackerDecisions, facts, accepted, elsewhere, pausing };
