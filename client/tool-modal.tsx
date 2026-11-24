@@ -4,10 +4,13 @@
  * that ticks a running call runs only then.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
+import { useRpc } from "@getpaseo/plugin/client";
 import { Icon, Modal } from "@getpaseo/plugin/client/react-native";
+import { useQuery } from "@tanstack/react-query";
 import { createContext, useContext } from "react";
 import { Text, View } from "react-native";
 
+import { readToolTimes } from "../shared/contracts";
 import { SPACE } from "./spacing";
 import { cutResult, errorWords, toolState, toolText, toolTiming } from "./tool-detail";
 import type { ToolRow } from "./tool-runs";
@@ -24,24 +27,28 @@ import { useNow } from "./use-now";
 export const OpenToolContext = createContext<(rowKey: string) => void>(() => {});
 export const useOpenTool = () => useContext(OpenToolContext);
 
-export function ToolModal({ tool, open, onOpenChange, theme }: { tool: ToolRow; open: boolean; onOpenChange: (open: boolean) => void; theme: PluginTheme }) {
+export function ToolModal({ tool, agentId, open, onOpenChange, theme }: { tool: ToolRow; agentId: string; open: boolean; onOpenChange: (open: boolean) => void; theme: PluginTheme }) {
   return (
     <Modal title={tool.label} open={open} onOpenChange={onOpenChange}>
-      <Modal.Content contentContainerStyle={{ padding: SPACE.lg, gap: SPACE.md }}>{open ? <ToolModalBody tool={tool} theme={theme} /> : null}</Modal.Content>
+      <Modal.Content contentContainerStyle={{ padding: SPACE.lg, gap: SPACE.md }}>{open ? <ToolModalBody tool={tool} agentId={agentId} theme={theme} /> : null}</Modal.Content>
     </Modal>
   );
 }
 
-function ToolModalBody({ tool, theme }: { tool: ToolRow; theme: PluginTheme }) {
+function ToolModalBody({ tool, agentId, theme }: { tool: ToolRow; agentId: string; theme: PluginTheme }) {
   const { colors } = theme;
   // Once a second while the call runs; a finished call's text never changes.
   const now = useNow(1000);
+  // What the plugin saw of this call, read again when the call's state changes (the daemon records within seconds of it).
+  const readTimes = useRpc(readToolTimes);
+  const recorded = useQuery({ queryKey: ["taro", "tool-times", agentId, tool.status], queryFn: () => readTimes({ agentId }), staleTime: 0, retry: false });
+  const recordedCall = tool.callId === undefined ? undefined : recorded.data?.calls[tool.callId];
   const parts = toolText(tool.detail);
   const state = toolState(tool.status, tool.stopped);
   const failed = state.kind === "failed";
   const running = state.kind === "running";
   // A stopped call has no time of its own to show.
-  const timing = state.kind === "stopped" ? { text: "", ticking: false } : toolTiming({ status: tool.status, changedAt: tool.at, now, ...(watchedStart(tool.callId) === undefined ? {} : { watchedStartedAt: watchedStart(tool.callId) as number }), ...(parts.durationMs === undefined ? {} : { ownMs: parts.durationMs }) });
+  const timing = state.kind === "stopped" ? { text: "", ticking: false } : toolTiming({ status: tool.status, changedAt: tool.at, now, ...(watchedStart(tool.callId) === undefined ? {} : { watchedStartedAt: watchedStart(tool.callId) as number }), ...(parts.durationMs === undefined ? {} : { ownMs: parts.durationMs }), ...(recordedCall === undefined ? {} : { recorded: recordedCall }) });
   const error = failed ? errorWords(tool.error) : "";
   const result = cutResult(parts.result);
   const heading = { color: colors.foregroundMuted, fontSize: FONT_SIZE.micro, fontWeight: "700" as const, letterSpacing: 0.8 };

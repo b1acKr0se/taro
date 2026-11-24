@@ -87,6 +87,13 @@ describe("toolTiming", () => {
   it("prefers the call's own duration", () => {
     expect(toolTiming({ status: "completed", changedAt: at, now: base, ownMs: 300, watchedStartedAt: base - 5_000 }).text).toMatch(/^took under 1s · finished/);
   });
+  it("uses the plugin's record: its start and end, else a bound, never over the call's own or watched time", () => {
+    const text = (recorded: { startedAt?: number; endedAt?: number; underMs?: number }, extra = {}) => toolTiming({ status: "completed", changedAt: at, now: base, recorded, ...extra }).text;
+    expect(text({ startedAt: base - 20_000, endedAt: base })).toMatch(/^took 20s · finished/);
+    expect(text({ endedAt: base, underMs: 3_200 })).toMatch(/^took under 4s · finished/);
+    expect(text({ endedAt: base })).toMatch(/^finished \d\d:\d\d:\d\d$/);
+    expect(text({ startedAt: base - 20_000, endedAt: base }, { watchedStartedAt: base - 5_000 })).toMatch(/^took 5s/);
+  });
   it("gives only the finish time for a call it never saw run, and never a duration", () => {
     const timing = toolTiming({ status: "failed", changedAt: at, now: base });
     expect(timing.text).toMatch(/^finished \d\d:\d\d:\d\d$/);

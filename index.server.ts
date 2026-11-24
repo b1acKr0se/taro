@@ -47,6 +47,7 @@ import {
   listProjectFiles,
   listTicketsForPicks,
   readRecentCommands,
+  readToolTimes,
   rememberRecentCommand as rememberRecentCommandRpc,
   onboardProject as onboardProjectRpc,
   pollNotifications,
@@ -85,6 +86,7 @@ import { withSavedContext } from "./shared/past-context";
 import { summarize, waitingTickets } from "./shared/stats";
 import { idleCompactAfterMs } from "./shared/idle-compaction";
 import { Supervisor, identityFromLabels } from "./server/supervision";
+import { forgetCallTimes, readCallTimes, resumeToolTimes, toolTimePollers } from "./server/tool-times";
 import { nextStepAnswer } from "./server/next-step";
 import { sessionEnvironment } from "./server/environment";
 import { readTextIfPresent, writeTextAtomically } from "./server/files";
@@ -122,6 +124,8 @@ export default function contribute(server: PluginServerContext) {
   // Each Needs-you check also records which cards wait on the user, for Stats' Waiting on you (TR-100).
   const crashTrail = createCrashTrail();
   const notifier = new Notifier({ onBoard: (project, board) => stats.waitingSeen(project, waitingTickets(board.cards)) });
+  const toolTimes = toolTimePollers();
+  const toolTimeFailure = (agentId: string) => (error: unknown) => reportFailure(`[taro] recording ${agentId}'s tool call times:`, error);
   // The server half is given Paseo only inside handlers and hooks; keep the first one for timers.
   let kept: PaseoApi | null = null;
   const keep = (paseo: PaseoApi): PaseoApi => {
@@ -134,6 +138,10 @@ export default function contribute(server: PluginServerContext) {
           if (repaired > 0) console.log(`[taro] reconciled ${repaired} agents after start`);
         })
         .catch((error: unknown) => reportFailure("[taro] reconcile after start failed:", error));
+      // A turn running at a reload has no turn start to begin its tool call times (TR-284).
+      void listProjectConfigs()
+        .then((configs) => resumeToolTimes(paseo, configs.map((config) => config.project), toolTimes, (error) => reportFailure("[taro] resuming tool call times:", error)))
+        .catch((error: unknown) => reportFailure("[taro] resuming tool call times failed:", error));
       // Changes made while the plugin was down (TR-043: the merge at an accept reloads it as the ticket
       // goes Done), and Done tickets whose agents were left open (an owner mid-turn at a reload).
       void actions.catchUpAfterStart(paseo).catch((error: unknown) => reportFailure("[taro] catching up after start failed:", error));
@@ -493,6 +501,7 @@ export default function contribute(server: PluginServerContext) {
   server.handle(listAgentCommands, async ({ agentId }, { paseo }) => agentCommands(paseo, agentId));
   server.handle(listProjectFiles, async ({ project, agentId }, { paseo }) => projectFiles(paseo, project, agentId));
   server.handle(listTicketsForPicks, async ({ project }) => ({ tickets: await ticketsForPicks(project) }));
+  server.handle(readToolTimes, async ({ agentId }) => ({ calls: await readCallTimes(agentId) }));
   server.handle(readRecentCommands, async ({ project }) => ({ names: await recentCommands(project) }));
   server.handle(rememberRecentCommandRpc, async ({ project, name }) => ({ names: await rememberRecentCommand(project, name) }));
 
@@ -500,7 +509,12 @@ export default function contribute(server: PluginServerContext) {
     tickets: (await stats.all(project)).map((ticket) => summarize(ticket)),
     managerIdleCompactions: (await stats.projectCounts(project)).idleCompactions,
   }));
+  // Each Taro agent's running turn is read every few seconds for when its tool calls begin and end (TR-284).
   const removeTurnStartHook = server.on("agent.turn_started", async ({ agent }, { paseo }) => {
+    toolTimes.turnStarted(agent.id);
+    const live = await fetchLiveAgent(paseo, agent.id).catch(() => null);
+    if (live === null || identityFromLabels(live.labels, live.title ?? null) === null) toolTimes.cancel(agent.id);
+    if (live !== null && identityFromLabels(live.labels, live.title ?? null) !== null) toolTimes.start(paseo, agent.id, toolTimeFailure(agent.id));
     await stats.turnStarted(agent.id).catch((error: unknown) => reportFailure(`[taro] recording ${agent.id}'s turn start:`, error));
     // Kept per owner so a closed one that was mid-turn is told from one Paseo freed after an idle hour; an owner with no record yet gets its first at its turn end.
     const known = await state.agent(agent.id).catch(() => null);
@@ -529,6 +543,7 @@ export default function contribute(server: PluginServerContext) {
     // Every agent's turn start is taken here, first: queued before `keep` can queue the drop of stale
     // starts, and before supervision prompts the agent into a new turn whose start must survive.
     const taking = stats.takeTurnDuration(agent.id).catch(() => undefined);
+    await toolTimes.finish(paseo, agent.id, toolTimeFailure(agent.id));
     keep(paseo);
     const activeMs = await taking;
     await supervisor.onTurnEnded(paseo, agent, outcome, turnId, activeMs).catch((error: unknown) => {
@@ -546,6 +561,8 @@ export default function contribute(server: PluginServerContext) {
   const removeArchiveHook = server.on("agent.archived", async ({ agent }, { paseo }) => {
     await recordArchivedUsage(paseo, stats, agent.id).catch((error: unknown) => reportFailure(`[taro] recording ${agent.id}'s cost at archive:`, error));
     await removeReloadFile(agent.id).catch((error: unknown) => reportFailure(`[taro] removing ${agent.id}'s reload file:`, error));
+    toolTimes.cancel(agent.id);
+    await forgetCallTimes(agent.id).catch((error: unknown) => reportFailure(`[taro] removing ${agent.id}'s tool call times:`, error));
     await chatQueue.forget(agent.id).catch((error: unknown) => reportFailure(`[taro] removing ${agent.id}'s chat queue:`, error));
     forgetOwnerStart(agent.id);
     await actions.onOwnerArchived(paseo, agent.id).catch((error: unknown) => reportFailure(`[taro] waking the manager for ${agent.id}'s freed slot:`, error));
@@ -606,6 +623,7 @@ export default function contribute(server: PluginServerContext) {
     removeTurnHook();
     removeTurnStartHook();
     removeArchiveHook();
+    toolTimes.stopAll();
     removeSessionHook();
     removeCreateHook();
     removePermissionHook();

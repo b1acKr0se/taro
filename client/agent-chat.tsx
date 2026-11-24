@@ -865,7 +865,7 @@ export function AgentChat({
           </KeyboardRevealProvider>
           {keyboardScroll.room > 0 ? <View style={{ height: keyboardScroll.room }} /> : null}
         </ScrollView>
-        {openTool === undefined ? null : <ToolModal tool={openTool} open onOpenChange={(open) => (open ? undefined : setOpenToolKey(null))} theme={theme} />}
+        {openTool === undefined ? null : <ToolModal tool={openTool} agentId={agent.id} open onOpenChange={(open) => (open ? undefined : setOpenToolKey(null))} theme={theme} />}
         {follow.away ? <JumpToEnd theme={theme} onPress={follow.jumpToEnd} /> : null}
       </View>
       <BottomSafeArea style={styles.composerFrame} onLayout={measurePickAnchor}>

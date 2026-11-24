@@ -11,6 +11,7 @@ import { ChatMessageIdSchema } from "./pending-sends";
 import { ColumnIdSchema } from "./board";
 import { MilestoneSchema } from "./milestones";
 import { PauseViewSchema } from "./pause";
+import { CallTimeSchema } from "./tool-times";
 import { PermissionAskSchema } from "./permission-asks";
 import { PlanAnswerKindSchema } from "./plan-changes";
 import { PULL_REQUEST_STATES } from "./pull-request-state";
@@ -674,4 +675,11 @@ export const rememberRecentCommand = defineRpc({
   name: "taro.composer.remember",
   input: z.object({ project: ProjectNameSchema, name: z.string().min(1) }),
   output: z.object({ names: z.array(z.string()) }),
+});
+
+/** When the plugin saw each of an agent's tool calls begin and end, by call id (`shared/tool-times.ts`). */
+export const readToolTimes = defineRpc({
+  name: "taro.tools.times",
+  input: z.object({ agentId: z.string().min(1) }),
+  output: z.object({ calls: z.record(z.string(), CallTimeSchema) }),
 });
