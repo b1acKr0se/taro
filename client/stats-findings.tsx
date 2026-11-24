@@ -72,8 +72,8 @@ export function StatsFindings({
     [colors],
   );
 
-  const section = findingsSection({ data: query.data, error: query.error });
-  if (section.kind === "hidden" || (section.kind === "empty" && hideWhenEmpty)) return null;
+  const section = findingsSection({ data: query.data, error: query.error }, { hideWhenEmpty });
+  if (section.kind === "hidden") return null;
 
   // A desktop pane too narrow for the columns folds its rows as a phone does.
   const folded = findingsFolded(width, compact);

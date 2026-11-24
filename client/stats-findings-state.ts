@@ -20,12 +20,13 @@ export interface FindingsQueryState {
 
 export type FindingsSection = { kind: "hidden" } | { kind: "empty" } | { kind: "rows"; all: FindingsRowData; models: FindingsRowData[] };
 
-export function findingsSection(query: FindingsQueryState): FindingsSection {
+/** `hideWhenEmpty`: nothing rather than the empty state, so a project with no recorded ticket keeps its one note alone. */
+export function findingsSection(query: FindingsQueryState, options: { hideWhenEmpty?: boolean } = {}): FindingsSection {
   // A refetch that fails keeps the rows already shown; with none, the section stays out of the way.
   if (query.data === undefined) return { kind: "hidden" };
   // A row whose model a mismatched daemon left out would draw a blank name.
   const models = query.data.models.filter((row) => row.model !== "" && row.tickets > 0);
-  if (models.length === 0) return { kind: "empty" };
+  if (models.length === 0) return options.hideWhenEmpty === true ? { kind: "hidden" } : { kind: "empty" };
   return { kind: "rows", all: { ...query.data.all, model: "All models" }, models };
 }
 

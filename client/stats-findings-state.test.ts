@@ -22,6 +22,13 @@ describe("findingsSection", () => {
     expect(findingsSection({ data: { models: [{ ...sonnet, model: "" }], all }, error: null })).toEqual({ kind: "empty" });
   });
 
+  it("hides the empty state when asked, and still shows rows", () => {
+    const empty = { models: [], all: { ...all, tickets: 0, high: 0, medium: 0, low: 0, escapes: 0 } };
+    expect(findingsSection({ data: empty, error: null }, { hideWhenEmpty: true })).toEqual({ kind: "hidden" });
+    expect(findingsSection({ data: empty, error: null }, { hideWhenEmpty: false })).toEqual({ kind: "empty" });
+    expect(findingsSection({ data: { models: [sonnet], all }, error: null }, { hideWhenEmpty: true })).toEqual({ kind: "rows", all, models: [sonnet] });
+  });
+
   it("hides the section when the load fails", () => {
     expect(findingsSection({ data: undefined, error: new Error("connection lost") })).toEqual({ kind: "hidden" });
   });
