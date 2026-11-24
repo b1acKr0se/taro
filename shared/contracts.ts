@@ -582,6 +582,29 @@ export const loadStats = defineRpc({
   output: z.object({ tickets: z.array(StatsSummarySchema), managerIdleCompactions: z.number() }),
 });
 
+/** One author model's review findings (`shared/review-findings.ts`); every field defaults, so a newer field never breaks an older client. */
+export const FindingsRowSchema = z.object({
+  model: z.string().default(""),
+  tickets: z.number().default(0),
+  high: z.number().default(0),
+  medium: z.number().default(0),
+  low: z.number().default(0),
+  escapes: z.number().default(0),
+});
+export type FindingsRowView = z.infer<typeof FindingsRowSchema>;
+
+/** Review findings by the model that wrote the reviewed code, from every ticket's REVIEW and ESCAPE records. */
+export const loadReviewFindings = defineRpc({
+  name: "taro.stats.findings",
+  input: z.object({ project: ProjectNameSchema }),
+  /** `all`: the All models row; `reviews`: REVIEW records with at least one findings line. */
+  output: z.object({
+    models: z.array(FindingsRowSchema).default([]),
+    all: FindingsRowSchema.default({ model: "All models", tickets: 0, high: 0, medium: 0, low: 0, escapes: 0 }),
+    reviews: z.number().default(0),
+  }),
+});
+
 /** An image Taro shows (evidence, a sent image, one an agent read), base64; null when it may not be served. */
 export const readImageRpc = defineRpc({
   name: "taro.image.read",

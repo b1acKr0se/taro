@@ -2,7 +2,7 @@
 import { useRpc } from "@getpaseo/plugin/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { listModels, listProjects, loadStats } from "../shared/contracts";
+import { listModels, listProjects, loadReviewFindings, loadStats } from "../shared/contracts";
 import { polled } from "./polling";
 
 export const PROJECTS_KEY = ["taro", "projects"] as const;
@@ -23,6 +23,12 @@ export function useRefreshProjects(): () => void {
 export function useStats(project: string) {
   const load = useRpc(loadStats);
   return useQuery({ queryKey: ["taro", "stats", project] as const, queryFn: () => load({ project }), ...polled(15_000) });
+}
+
+/** A project's review findings by author model (the Stats tab): it reads every ticket, and reviews come rarely, so once a minute. */
+export function useReviewFindings(project: string) {
+  const load = useRpc(loadReviewFindings);
+  return useQuery({ queryKey: ["taro", "stats", "findings", project] as const, queryFn: () => load({ project }), ...polled(60_000) });
 }
 
 /** The models agents can run on, and the one a new project's agents get unless the user chooses: an Opus, else the first. */
