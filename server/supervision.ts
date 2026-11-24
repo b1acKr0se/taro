@@ -241,6 +241,7 @@ export function freshState(identity: TaroIdentity): AgentState {
     compaction: "none",
     idleCompaction: "none",
     lastTurnEndedAt: null,
+    lastTurnStartedAt: null,
     evidenceReminded: null,
     noPlanFlagged: false,
     noApprovalFlagged: false,
@@ -270,8 +271,9 @@ export async function currentOwner(paseo: PaseoApi, project: string, ticket: str
   if (parentTicket !== undefined) candidates.push(parentTicket);
   for (const candidate of candidates) {
     const owners = await listTaroAgents(paseo, { [TARO_LABELS.project]: project, [TARO_LABELS.role]: "owner", [TARO_LABELS.ticket]: candidate });
-    const live = owners.filter((owner) => owner.status !== "closed").sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-    if (live[0] !== undefined) return live[0];
+    // A closed owner is the fallback: Paseo frees an idle one after an hour and a report sent to it wakes it.
+    const newest = [...owners].sort((left, right) => Number(left.status === "closed") - Number(right.status === "closed") || right.updatedAt.localeCompare(left.updatedAt));
+    if (newest[0] !== undefined) return newest[0];
   }
   return null;
 }

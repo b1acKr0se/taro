@@ -89,6 +89,8 @@ export const AgentStateSchema = z.object({
   compaction: CompactionStageSchema.default("none"),
   idleCompaction: IdleCompactionSchema.default("none"),
   lastTurnEndedAt: z.string().nullable().default(null),
+  /** When the plugin saw the owner's latest turn start: a start after the last end means the turn was open when it closed. */
+  lastTurnStartedAt: z.string().nullable().default(null),
   /** The missing-evidence set the owner was last told about, so each distinct set is sent once. */
   evidenceReminded: z.string().nullable().default(null),
   /** Told its commits have no plan on the ticket (TR-206); cleared once the plan is there, so a later gap is told again. */

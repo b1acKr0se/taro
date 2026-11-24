@@ -129,6 +129,8 @@ describe("cardCalls", () => {
       expect(offersAcceptance(delivering)).toBe(false);
     }
     for (const status of ["idle", "error"]) expect(offersAcceptance(card({ status: "Awaiting acceptance", column: "needs-you", owner: { ...owner, status } }))).toBe(true);
+    // An owner Paseo freed after an idle hour is still the card's owner: its message loads it again.
+    expect(offersAcceptance(card({ status: "Awaiting acceptance", column: "needs-you", owner: { ...owner, status: "closed" } }))).toBe(true);
     // A permission asked mid-turn is the card's call; the delivery still waits for the turn.
     const permission = { title: "Allow Bash?", detail: "npm install", id: "p1", agentId: null, role: null, workspaceId: null, count: 1 };
     const asking = card({ status: "Awaiting acceptance", column: "needs-you", owner: { ...owner, status: "running", pendingPermissions: 1 }, permission });

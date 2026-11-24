@@ -114,6 +114,16 @@ describe("accept run by the plugin", () => {
     expect(vi.mocked(acceptLocalBranch)).toHaveBeenCalledTimes(1);
   });
 
+  it("merges an Awaiting acceptance ticket whose owner Paseo freed after an idle hour, with no owner started", async () => {
+    ownerStatus = "closed";
+    config({});
+    ticket(`EXECUTION 2026-01-01T00:00Z — branch taro/dm-1, review-head: ${head}`);
+    outcome({ kind: "done", acceptance: "ACCEPTANCE x" });
+    await accept();
+    expect(vi.mocked(closeTicket)).toHaveBeenCalledWith("/tracker", "DM-1", "ACCEPTANCE x");
+    expect(created).toEqual([]);
+  });
+
   it("fast-forwards a local branch and sets Done without messaging the owner", async () => {
     config({});
     ticket(`EXECUTION 2026-01-01T00:00Z — branch taro/dm-1, review-head: ${head}`);
@@ -347,6 +357,20 @@ describe("requestChanges (TR-131)", () => {
     expect(vi.mocked(sendWithoutInterrupting).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(recordChangesRequested).mock.invocationCallOrder[0] ?? 0);
     expect(vi.mocked(recordChangesRequested)).toHaveBeenCalledWith("/tracker", "DM-1", expect.stringMatching(/^CHANGES-REQUESTED \S+ — the user: "Rename the button"$/));
     expect(written()).toEqual([]);
+  });
+
+  it("sends the changes to an owner Paseo freed after an idle hour, which wakes on the message", async () => {
+    ownerStatus = "closed";
+    await actions.requestChanges({} as PaseoApi, "demo", "DM-1", "Rename the button");
+    expect(vi.mocked(sendWithoutInterrupting).mock.calls[0]?.[1]).toBe("owner-1");
+    expect(vi.mocked(recordChangesRequested)).toHaveBeenCalledOnce();
+  });
+
+  it("sends the changes to the live owner when a newer closed one exists", async () => {
+    const closedNewer = { ...owner(), id: "closed-1", status: "closed" as const, updatedAt: new Date(now).toISOString() };
+    vi.mocked(listTaroAgents).mockImplementation(async () => [closedNewer, owner()]);
+    await actions.requestChanges({} as PaseoApi, "demo", "DM-1", "Rename the button");
+    expect(vi.mocked(sendWithoutInterrupting).mock.calls[0]?.[1]).toBe("owner-1");
   });
 
   it("ends nothing when the owner could not be told", async () => {

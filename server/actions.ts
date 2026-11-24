@@ -71,6 +71,7 @@ import { carriedQuestionLines, dismissDecision, parseTrackerKey, questionsToCarr
 import { TARO_LABELS, TICKET_STATUSES, type ProjectConfig } from "../shared/project";
 import { acceptLocalBranch, acceptPullRequest } from "./accept-merge";
 import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
+import { markRestedOwners } from "./rested-owners";
 import { stopAgent } from "./cli";
 import { taroEnvironment } from "./environment";
 import { requireCompleteEvidence } from "./evidence";
@@ -277,8 +278,9 @@ export class Actions {
     return listTaroAgents(paseo, { [TARO_LABELS.project]: project, [TARO_LABELS.role]: "owner", [TARO_LABELS.ticket]: ticket });
   }
 
+  /** The ticket's newest live owner, else its newest closed one: one Paseo freed after an idle hour counts, as a message loads it again. */
   private async requireOwner(paseo: PaseoApi, project: string, ticket: string) {
-    const owner = (await this.owners(paseo, project, ticket)).filter((agent) => agent.status !== "closed").sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    const owner = (await this.owners(paseo, project, ticket)).sort((left, right) => Number(left.status === "closed") - Number(right.status === "closed") || right.updatedAt.localeCompare(left.updatedAt))[0];
     if (owner === undefined) throw new Error(`${ticket} has no live owner. Relaunch it from its card.`);
     return owner;
   }
@@ -1117,7 +1119,7 @@ export class Actions {
     }
     // With nothing queued only a resume needs the count (TR-088); a wake-up does not.
     const counted = withOwners || queued.length > 0;
-    const owners = !counted ? [] : (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner" && agent.id !== excluding);
+    const owners = !counted ? [] : await markRestedOwners((await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner" && agent.id !== excluding), this.state);
     const headroom = !counted ? null : await readHeadroom();
     return recount({ owners, tickets, queued, cap, threads: headroom === null ? null : { current: headroom.current, max: headroom.max } });
   }
@@ -1264,7 +1266,7 @@ export class Actions {
   }
 
   /**
-   * TR-217: a daemon update or restart closes owners of tickets still being worked. Each gets a fresh
+   * TR-217: a daemon restart or crash cuts owners of tickets still being worked off mid-turn (one Paseo freed after an idle hour is left to wake on a message). Each gets a fresh
    * owner from its latest HANDOFF while a slot and thread headroom allow, oldest ticket first, with a
    * note on the ticket. Returns whether any started.
    */
@@ -1274,7 +1276,7 @@ export class Actions {
     const tickets = await listTickets(paths.tracker);
     // A ticket worked outside Paseo keeps its closed owner closed: that session works it now.
     const candidates = (await this.pauseCandidates(project, tickets)).filter(({ ticket }) => !isExternalHostTicket(ticket));
-    const owners = (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner");
+    const owners = await markRestedOwners((await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner"), this.state);
     const stored = await this.state.allDecisions();
     // An owner's open question, or one withdrawn when its owner went away, is the user's to answer.
     const waitingOnUser = new Set(

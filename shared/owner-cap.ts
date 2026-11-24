@@ -17,6 +17,8 @@ export interface CapTicket {
 
 export interface CapOwner {
   status: string;
+  /** Closed by Paseo's idle cleanup after its turn ended (`ownerRested`). */
+  rested?: boolean;
   labels: Readonly<Record<string, string>>;
 }
 
@@ -33,7 +35,8 @@ export function ticketsCountingTowardsCap(owners: readonly CapOwner[], tickets: 
   const byId = new Map(tickets.map((ticket) => [ticket.id, ticket]));
   const counting = new Set<string>();
   for (const owner of owners) {
-    if (owner.status === "closed" || owner.labels[TARO_LABELS.role] !== "owner") continue;
+    // A rested owner (Paseo freed it after an idle hour) still holds its ticket's slot: it wakes on a message.
+    if ((owner.status === "closed" && owner.rested !== true) || owner.labels[TARO_LABELS.role] !== "owner") continue;
     const id = owner.labels[TARO_LABELS.ticket];
     if (id === undefined || id === "") continue;
     const ticket = byId.get(id);

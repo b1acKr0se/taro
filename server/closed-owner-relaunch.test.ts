@@ -39,9 +39,11 @@ let relaunched: string[];
 let failing: Set<string>;
 
 let decisions: Record<string, unknown>[] = [];
+let turnEnds: Record<string, string>;
 
 beforeEach(() => {
   decisions = [];
+  turnEnds = {};
   live = [];
   notes = {};
   relaunched = [];
@@ -52,7 +54,7 @@ beforeEach(() => {
   vi.mocked(fetchLiveAgent).mockImplementation(async () => null);
   vi.mocked(projectArchivedAgents).mockImplementation(async () => []);
   vi.mocked(viewTicket).mockImplementation(async (_tracker, id) => ({ dependencies: [], implementationNotes: notes[id] ?? null }) as unknown as Awaited<ReturnType<typeof viewTicket>>);
-  const state = { allDecisions: async () => [...decisions], forgetAgent: async () => undefined, queueLadder: async () => null, saveQueueLadder: async () => undefined } as unknown as PluginState;
+  const state = { agent: async (id: string) => (turnEnds[id] === undefined ? null : { lastTurnEndedAt: turnEnds[id] }), allDecisions: async () => [...decisions], forgetAgent: async () => undefined, queueLadder: async () => null, saveQueueLadder: async () => undefined } as unknown as PluginState;
   actions = new Actions(state, {} as Supervisor, {} as TrackerWatch, {} as Stats, {} as Recovery);
   vi.spyOn(actions, "relaunchOwner").mockImplementation(async (_paseo, _project, id) => {
     if (failing.has(id)) throw new Error("provider not ready");
@@ -114,6 +116,35 @@ describe("closed owners are replaced", () => {
     vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "Planning"), ticket("DM-2", "Planning"), ticket("DM-3", "Planning")] as never);
     await actions.checkQueues(paseo);
     expect(relaunched).toEqual(["DM-3"]);
+  });
+
+  it("leaves an owner Paseo freed after an idle hour, whose turn ended, and relaunches one cut off mid-turn", async () => {
+    const at = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
+    live = [agent("rested", "DM-1", "closed", at), agent("cut", "DM-2", "closed", at)];
+    turnEnds = { rested: at, cut: new Date(Date.parse(at) - 10 * 60_000).toISOString() };
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "In Progress"), ticket("DM-2", "In Progress")] as never);
+    await actions.checkQueues(paseo);
+    expect(relaunched).toEqual(["DM-2"]);
+    expect(vi.mocked(appendTicketNote).mock.calls.map((call) => call[2]).join("\n")).toMatch(/cut off mid-turn/);
+  });
+
+  it("relaunches a closed owner the plugin has no record of, and a rested one holds its ticket's slot against a second relaunch", async () => {
+    const at = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
+    live = [agent("rested", "DM-1", "closed", at), agent("none", "DM-2", "closed", at), agent("none-2", "DM-3", "closed", at)];
+    turnEnds = { rested: at };
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "In Progress"), ticket("DM-2", "In Progress"), ticket("DM-3", "In Progress")] as never);
+    await actions.checkQueues(paseo);
+    // Cap 2: the rested owner holds one slot, so only one of the two with no record starts.
+    expect(relaunched).toEqual(["DM-2"]);
+  });
+
+  it("does not relaunch a rested owner again on later checks, the TR-281 loop", async () => {
+    const at = new Date(Date.now() - 90 * 60_000).toISOString();
+    live = [agent("rested", "DM-1", "closed", at)];
+    turnEnds = { rested: at };
+    vi.mocked(listTickets).mockResolvedValue([ticket("DM-1", "In Progress")] as never);
+    for (let minute = 0; minute < 3; minute++) await actions.checkQueues(paseo);
+    expect(relaunched).toEqual([]);
   });
 
   it("leaves an owner that closed a day ago", async () => {

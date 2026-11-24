@@ -1,9 +1,10 @@
 /**
- * Owners the daemon closed (TR-217). A Paseo update or restart closes agent processes; a ticket
+ * Owners the daemon closed (TR-217). A Paseo restart or crash closes agent processes mid-turn; a ticket
  * still being worked then shows "No owner is running". The minute check starts a fresh owner from
- * the latest HANDOFF for each such ticket, within the cap. Parked tickets are the user's, an
- * Awaiting acceptance ticket needs no owner to accept, and a ticket whose fresh owners keep
- * closing is left for the user. Pure.
+ * the latest HANDOFF for each such ticket, within the cap. Paseo also frees any agent idle for an hour:
+ * it lists as closed too, but it finished its turn and a message wakes it, so it is left alone (a fresh
+ * owner each hour was the relaunch loop). Parked tickets are the user's, an Awaiting acceptance ticket
+ * needs no owner to accept, and a ticket whose fresh owners keep closing is left for the user. Pure.
  */
 import { noteRecords } from "./execution";
 import { dependsOn } from "./owner-cap";
@@ -32,6 +33,23 @@ export interface ClosedOwnerAgent {
   /** When Paseo last touched the agent; for a closed one, about when it closed. */
   updatedAt: string;
   labels: Readonly<Record<string, string>>;
+  /** Whether it finished its last turn before closing (`ownerRested`); left out counts as cut off. */
+  rested?: boolean;
+}
+
+/**
+ * An owner closed after its turn ended was freed by Paseo's idle cleanup, not cut off. Idle cleanup never
+ * moves the agent's last activity, so the latest end must come at or after it (a minute of slack for the
+ * clocks); and, when a turn start is recorded, not before that start. A start can be missing (the plugin
+ * was down as the turn began), so the activity check always applies.
+ */
+export function ownerRested(turns: { lastTurnEndedAt: string | null; lastTurnStartedAt?: string | null } | null, updatedAt: string): boolean {
+  if (turns === null || turns.lastTurnEndedAt === null) return false;
+  const ended = Date.parse(turns.lastTurnEndedAt);
+  const active = Date.parse(updatedAt);
+  if (!Number.isFinite(ended) || !Number.isFinite(active) || ended < active - 60_000) return false;
+  const started = turns.lastTurnStartedAt === null || turns.lastTurnStartedAt === undefined ? Number.NaN : Date.parse(turns.lastTurnStartedAt);
+  return !Number.isFinite(started) || ended >= started;
 }
 
 /** The ticket's OWNER-RELAUNCHED and OWNER-RELAUNCH-FAILED records within the window. */
@@ -57,6 +75,9 @@ export function ticketsWithClosedOwner(tickets: readonly ClosedOwnerTicket[], ow
       if (waitingOnUser.has(ticket.id.toUpperCase())) return false;
       const mine = ownersOf(ticket.id);
       if (mine.length === 0 || mine.some((owner) => owner.status !== "closed")) return false;
+      // The newest owner decides: an older one cut off is long replaced.
+      const newestOwner = [...mine].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+      if (newestOwner?.rested === true) return false;
       const closedAt = Math.max(...mine.map((owner) => Date.parse(owner.updatedAt)));
       if (!(now - closedAt < RECENTLY_CLOSED_MS)) return false;
       return recentAutoRelaunches(ticket.notes, now) < MAX_AUTO_RELAUNCHES;
@@ -65,7 +86,7 @@ export function ticketsWithClosedOwner(tickets: readonly ClosedOwnerTicket[], ow
 }
 
 export function ownerRelaunchedText(at: string, previous: string, agentId: string): string {
-  return `OWNER-RELAUNCHED ${at} — Paseo closed the owner ${previous} (a daemon update or restart); the plugin started a fresh owner ${agentId} from the latest HANDOFF`;
+  return `OWNER-RELAUNCHED ${at} — Paseo closed the owner ${previous} (cut off mid-turn, as by a daemon restart or crash); the plugin started a fresh owner ${agentId} from the latest HANDOFF`;
 }
 
 export function ownerRelaunchFailedText(at: string, reason: string): string {
