@@ -49,6 +49,13 @@ const CORRECTION_RECORDS = ["DELIVERY-ENDED", "NO-PLAN"];
 const STATUS_ORDER = ["Queued", "Planning", "In Progress", "Awaiting acceptance", "Done"];
 const PAST_PLANNING = new Set(["In Progress", "Awaiting acceptance", "Done"]);
 const BULLET = /^\s*(?:[-*+]|\d+[.)])\s+/;
+// The line that closes a cut FINAL section ("3 more in the ticket", `templates/final.md`): not one of its bullets.
+const MORE_IN_TICKET = /^\s*(?:[-*+]|\d+[.)])\s+\d+ more in the ticket/i;
+
+/** A FINAL section's bullets against its limit: the revision line and a closing "N more in the ticket" do not count. */
+function countedBullets(lines: readonly string[]): number {
+  return lines.filter((line) => BULLET.test(line) && !MORE_IN_TICKET.test(line) && !/^\s*Revision:/i.test(line)).length;
+}
 
 /** The notes' records: a block opens at a line that starts with a capitalised word of three letters or more. */
 function records(notes: string): string[] {
@@ -105,13 +112,11 @@ function finalViolations(finalText: string): ConformanceViolation[] {
       found.push({ kind: "final-section-missing", detail: `the FINAL has no "${heading}" section` });
       return;
     }
-    // The revision line closes the last section but is not a bullet of it.
-    const lines = section.lines.filter((line) => !/^\s*Revision:/i.test(line));
-    const bullets = lines.filter((line) => BULLET.test(line)).length;
+    const bullets = countedBullets(section.lines);
     if (bullets > limit) found.push({ kind: "final-over-limit", detail: `"${heading}" has ${bullets} bullets (limit ${limit})` });
   });
   const rulings = sections.find((candidate) => candidate.heading.toLowerCase() === FINAL_RULINGS.heading.toLowerCase());
-  const rulingBullets = (rulings?.lines ?? []).filter((line) => BULLET.test(line) && !/^\s*(?:[-*+]|\d+[.)])\s+\d+ more in the ticket/i.test(line)).length;
+  const rulingBullets = countedBullets(rulings?.lines ?? []);
   if (rulingBullets > FINAL_RULINGS.limit) found.push({ kind: "final-over-limit", detail: `"${FINAL_RULINGS.heading}" has ${rulingBullets} bullets (limit ${FINAL_RULINGS.limit})` });
   return found;
 }
