@@ -82,6 +82,8 @@ describe("ownerRested", () => {
     // A nudge started a new turn 20 seconds after the last end; the daemon restarted during it.
     expect(ownerRested({ lastTurnEndedAt: "2026-01-05T10:59:40Z", lastTurnStartedAt: "2026-01-05T11:00:00Z" }, active)).toBe(false);
     expect(ownerRested({ lastTurnEndedAt: "2026-01-05T10:59:40Z", lastTurnStartedAt: "2026-01-05T10:59:00Z" }, active)).toBe(true);
+    // The plugin was down as a turn began, so no start was recorded, and the daemon restarted mid-turn: activity came after the last end.
+    expect(ownerRested({ lastTurnEndedAt: "2026-01-05T10:05:00Z", lastTurnStartedAt: "2026-01-05T10:00:00Z" }, "2026-01-05T10:30:00Z")).toBe(false);
     // The turn's end could not be read, so the end is stale.
     expect(ownerRested({ lastTurnEndedAt: "2026-01-05T09:00:00Z", lastTurnStartedAt: "2026-01-05T10:59:00Z" }, "2026-01-05T09:00:00Z")).toBe(false);
   });

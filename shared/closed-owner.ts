@@ -38,18 +38,18 @@ export interface ClosedOwnerAgent {
 }
 
 /**
- * An owner closed after its turn ended was freed by Paseo's idle cleanup, not cut off. With a turn start
- * recorded, its latest end must come at or after it; without one (a record from before starts were kept),
- * the end must come at or after the agent's last activity, with a minute of slack for the clocks.
+ * An owner closed after its turn ended was freed by Paseo's idle cleanup, not cut off. Idle cleanup never
+ * moves the agent's last activity, so the latest end must come at or after it (a minute of slack for the
+ * clocks); and, when a turn start is recorded, not before that start. A start can be missing (the plugin
+ * was down as the turn began), so the activity check always applies.
  */
 export function ownerRested(turns: { lastTurnEndedAt: string | null; lastTurnStartedAt?: string | null } | null, updatedAt: string): boolean {
   if (turns === null || turns.lastTurnEndedAt === null) return false;
   const ended = Date.parse(turns.lastTurnEndedAt);
-  if (!Number.isFinite(ended)) return false;
-  const started = turns.lastTurnStartedAt === null || turns.lastTurnStartedAt === undefined ? Number.NaN : Date.parse(turns.lastTurnStartedAt);
-  if (Number.isFinite(started)) return ended >= started;
   const active = Date.parse(updatedAt);
-  return Number.isFinite(active) && ended >= active - 60_000;
+  if (!Number.isFinite(ended) || !Number.isFinite(active) || ended < active - 60_000) return false;
+  const started = turns.lastTurnStartedAt === null || turns.lastTurnStartedAt === undefined ? Number.NaN : Date.parse(turns.lastTurnStartedAt);
+  return !Number.isFinite(started) || ended >= started;
 }
 
 /** The ticket's OWNER-RELAUNCHED and OWNER-RELAUNCH-FAILED records within the window. */

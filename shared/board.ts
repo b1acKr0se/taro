@@ -229,7 +229,7 @@ export function hasStarted(status: string): boolean {
   return UNDER_WAY.has(status) || status === "Awaiting acceptance" || status === "Blocked" || status === "Done" || status === "Cancelled";
 }
 
-/** The live owner the board shows, else the newest one resting after an idle hour; the ticket view acts on the same one (TR-095). */
+/** The live owner the board shows, else the newest one resting after an idle hour; the ticket view, which does not mark rested owners, acts on the live one (TR-095). */
 export function newestOwner<Agent extends JoinedAgent>(agents: readonly Agent[]): Agent | null {
   const owners = agents.filter((agent) => agent.labels[TARO_LABELS.role] === "owner");
   return newest(owners.filter((agent) => agent.status !== "closed")) ?? newest(owners.filter((agent) => agent.rested === true));
