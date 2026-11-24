@@ -17,12 +17,12 @@ prove it holds the criteria, so the ticket gets no `--acceptance-criteria`.
   user would still reject the result is not met. A mechanism goes in Choices I made only when the
   user must check it.
 - **Mockups**: a plan that adds or changes UI shows the user what would change before they approve.
-  You make them (a subagent may, for a big one): run the changed screen on a throwaway daemon (`taro daemon start <ID>`) with
-  the change roughed in (a temporary edit, never committed), capture it on phone and desktop in the
-  theme it touches, and save each as `$TARO_EVIDENCE/<ID>/mockup-<what>-<device>.png`
-  (`reference/images.md`). The Mockups section has a `file — what changes` line per image, for
-  someone who has not seen the screen; with no UI change it says `- none — <why>`. Draw a sketch only
-  when the screen cannot be run. The plugin holds the approval card while the section is incomplete.
+  Make one side-by-side image of the changed component only (before and after, or the
+  options), drawn by an Opus subagent when allowed: it suggests better styles. Do not run a daemon
+  for it. Save it as `$TARO_EVIDENCE/<ID>/mockup-<what>-<device>.png` (`reference/images.md`). The
+  Mockups section has a `file — what changes` line per image, for someone who has not seen the
+  screen; with no UI change it says `- none — <why>`. The plugin holds the approval card while the
+  section is incomplete.
 
 ## The approval
 

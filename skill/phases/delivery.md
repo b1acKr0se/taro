@@ -26,12 +26,12 @@ page lists what the ticket still lacks for Accept; each item below says how to s
 
 Any visible change, at every level:
 
-- Capture with **realistic content**: text of real length and shape, with the markup real text
-  carries (Markdown and HTML, not "Lorem"), long names, many items, the empty state; plus **at least
-  one stress case per screen touched** (the longest, the most, the emptiest). Names stay neutral.
-- **Both themes:** a change that adds or restyles something drawn (an element, a style, a colour,
-  an icon) shows each screen it touches at least once in dark and once in light; text in the
-  platform's default colour vanishes in one of them. Wording alone needs one theme.
+- Capture only the surfaces the diff touches, cropped to the changed part, with **realistic
+  content** (real length and markup, neutral names): one shot per distinct visual change, in one
+  theme and viewport. Add a second theme or viewport only where the change differs there, and a
+  stress case (longest, most, emptiest) only where the change could break; no sweep of every screen.
+- **Themes:** drawn changes (an element, style, colour, icon) show one shot in dark and one in
+  light; wording alone needs one theme.
 - **Coverage map:** list each screen section or state the diff renders, changes, moves or re-wraps
   (only those; when unsure, include it) and the screenshot that shows it, as EVIDENCE `coverage:`
   lines. Capture each with data that exercises it: a parent with children for a children section, a
