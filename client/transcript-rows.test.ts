@@ -129,9 +129,9 @@ describe("transcriptRows tool calls (TR-150)", () => {
       "/home/user/notes-app",
     );
     expect(rows).toEqual([
-      { key: "1", kind: "tool", text: "Shell T=$(date -u +%Y-%m-%dT%H:%MZ); taro ticket edit NA-12 -s Done", label: "Shell", summary: "T=$(date -u +%Y-%m-%dT%H:%MZ); taro ticket edit NA-12 -s Done", icon: "SquareTerminal", tally: { kind: "command" }, alone: false, status: "completed" },
-      { key: "2", kind: "tool", text: "Read client/notes.ts", label: "Read", summary: "client/notes.ts", icon: "Eye", tally: { kind: "read", filePath: "/home/user/notes-app/client/notes.ts" }, alone: false, status: "failed" },
-      { key: "3", kind: "tool", text: "Plan", label: "Plan", icon: "Brain", tally: { kind: "other" }, alone: true, status: "completed" },
+      { key: "1", kind: "tool", text: "Shell T=$(date -u +%Y-%m-%dT%H:%MZ); taro ticket edit NA-12 -s Done", label: "Shell", summary: "T=$(date -u +%Y-%m-%dT%H:%MZ); taro ticket edit NA-12 -s Done", icon: "SquareTerminal", tally: { kind: "command" }, alone: false, status: "completed", callId: "c1", detail: { type: "shell", command: "T=$(date -u +%Y-%m-%dT%H:%MZ); taro ticket edit NA-12 -s Done" }, error: null },
+      { key: "2", kind: "tool", text: "Read client/notes.ts", label: "Read", summary: "client/notes.ts", icon: "Eye", tally: { kind: "read", filePath: "/home/user/notes-app/client/notes.ts" }, alone: false, status: "failed", callId: "c2", detail: { type: "read", filePath: "/home/user/notes-app/client/notes.ts" }, error: null },
+      { key: "3", kind: "tool", text: "Plan", label: "Plan", icon: "Brain", tally: { kind: "other" }, alone: true, status: "completed", callId: "c3", detail: { type: "plan", text: "Plan" }, error: null },
     ]);
   });
 });
@@ -160,6 +160,12 @@ describe("endStoppedTools (TR-190)", () => {
 
   it("draws every call still running as finished once the agent stopped working", () => {
     expect(statuses(endStoppedTools(rowsOf(replayed), false))).toEqual(["user", "completed", "agent", "user", "completed"]);
+  });
+
+  it("marks the calls it finishes as stopped, so no time of theirs is shown as real (TR-282)", () => {
+    const rows = endStoppedTools(rowsOf(replayed), true);
+    expect(rows.map((row) => (row.kind === "tool" ? row.stopped === true : null))).toEqual([null, true, null, null, false]);
+    expect(endStoppedTools(rowsOf([toolCall(1, "Bash", { type: "shell", command: "ls" })]), false).map((row) => (row.kind === "tool" ? row.stopped : null))).toEqual([undefined]);
   });
 
   it("keeps the current turn's running call while the agent works, and finishes an earlier turn's", () => {

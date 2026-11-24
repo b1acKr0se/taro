@@ -5,7 +5,7 @@
 // {"offline": true|false} (drops or restores the network), {"run": "shell command"} (on the host, awaited),
 // {"spawn": "shell command"} (on the host, not awaited), {"reload": true}, {"waitText": "text", "timeout": ms},
 // {"tap": [x, y]} (a press at that point, such as the phone layout's menu at [24, 36]), {"scroll": [x, y, dy]} (the wheel over that point; dy < 0 scrolls up), {"dropFile": {"name": "notes.txt", "text": "…", "x": 540, "y": 400}} (a text file dropped at that point).
-// WIDTH/HEIGHT set the viewport; PHONE=1 draws a phone (390×844, touch).
+// COLOR_SCHEME=dark draws the dark theme. WIDTH/HEIGHT set the viewport; PHONE=1 draws a phone (390×844, touch).
 const { execSync, spawn } = require("node:child_process");
 const [, , playwrightPath, url, stepsPath] = process.argv;
 const { chromium } = require(playwrightPath);
@@ -14,6 +14,7 @@ const steps = JSON.parse(require("node:fs").readFileSync(stepsPath, "utf8"));
   const browser = await chromium.launch();
   const phone = process.env.PHONE === "1";
   const context = await browser.newContext({
+    colorScheme: process.env.COLOR_SCHEME === "dark" ? "dark" : "light",
     viewport: phone ? { width: 390, height: 844 } : { width: Number(process.env.WIDTH || 1440), height: Number(process.env.HEIGHT || 900) },
     ...(phone ? { isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : {}),
   });

@@ -10,7 +10,8 @@ import { describe, expect, it } from "vitest";
 
 const chat = readFileSync(join(__dirname, "agent-chat.tsx"), "utf8");
 const between = (start: string) => chat.slice(chat.indexOf(start), chat.indexOf("\nfunction ", chat.indexOf(start) + 1));
-const toolLine = chat.slice(chat.indexOf("function ToolLine("), chat.indexOf("\nfunction ", chat.indexOf("function ToolLine(") + 1));
+const toolLine = chat.slice(chat.indexOf("function ToolLineBody("), chat.indexOf("\nfunction ", chat.indexOf("function ToolLineBody(") + 1));
+const pressable = chat.slice(chat.indexOf("function ToolLine("), chat.indexOf("function ToolLineBody("));
 
 describe("a tool call's line", () => {
   it("draws the label and the detail as separate texts, never one text spaced apart", () => {
@@ -30,6 +31,14 @@ describe("a tool call's line", () => {
     expect(toolLine).toMatch(/color=\{tool\.status === "failed" \? theme\.colors\.statusDanger : theme\.colors\.foregroundMuted\}/);
     const group = between("function TranscriptGroupView(");
     expect(group).toMatch(/<Icon name=\{open \? "ChevronDown" : "Wrench"\} size=\{13\} color=\{open \? theme\.colors\.foreground : theme\.colors\.foregroundMuted\} \/>/);
+  });
+
+  it("opens the call in a modal when pressed, in a lone call and in an opened run (TR-282)", () => {
+    expect(pressable).toMatch(/<Pressable[^>]*onPress=\{\(\) => open\(tool\.key\)\}/);
+    // The chat draws the modal, so it survives a lone call's line becoming a run's as the call finishes.
+    expect(pressable).not.toContain("<ToolModal");
+    expect(chat).toMatch(/<ToolModal tool=\{openTool\}/);
+    expect(between("function TranscriptGroupView(")).toMatch(/<ToolLine key=\{tool\.key\}/);
   });
 
   it("shimmers a run of calls' head while one still runs, with no spinner", () => {

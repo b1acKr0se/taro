@@ -46,6 +46,8 @@ import { BottomSafeArea } from "./safe-area";
 import type { Asker } from "./permission-heading";
 import { matchSentImages } from "./sent-images";
 import { cardFits, cardOnScreen, deliveryRowKey, offsetShowingCard, placeDecisions, unplacedAction } from "./inline-decisions";
+import { OpenToolContext, ToolModal, useOpenTool } from "./tool-modal";
+import { noteRunningCalls } from "./tool-watch";
 import { groupRows, toolRunSummary, type Group, type ToolRow } from "./tool-runs";
 import { ATTACHMENTS_ONLY, compactionState, endStoppedTools, transcriptRows, whileWriting, withoutOpenTurn } from "./transcript-rows";
 import { TurnFooterView } from "./turn-footer";
@@ -206,6 +208,13 @@ export function AgentChat({
   const writingReply = replyIsBeingWritten(status, sends.turnOpen);
   const rows = useMemo(() => whileWriting(endStoppedTools(withoutOpenTurn(transcriptRows(timeline.entries, cwd), sends.turnOpen), working), writingReply), [timeline.entries, cwd, working, sends.turnOpen, writingReply]);
   const groups = useMemo(() => groupRows(rows), [rows]);
+  // The call open in its modal, by its row's key (TR-282); the modal closes if the row is gone.
+  const [openToolKey, setOpenToolKey] = useState<string | null>(null);
+  const openTool = rows.find((row): row is ToolRow => row.kind === "tool" && row.key === openToolKey);
+  // A call watched running shows how long it took in its modal (TR-282).
+  useEffect(() => {
+    noteRunningCalls(rows.flatMap((row) => (row.kind === "tool" && row.status === "running" && row.callId !== undefined ? [{ callId: row.callId, at: row.at }] : [])));
+  }, [rows]);
   // The newest entry's position, not the count: the timeline is a tail and stops growing in length.
   const sentImages = useSentImages(agent.id, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0);
   const rowImages = useMemo(() => matchSentImages(rows, sentImages), [rows, sentImages]);
@@ -781,6 +790,7 @@ export function AgentChat({
           {/* Out of the flow, so the content's gap does not count it. It, the error and the first line come before the rows: `keepVisibleFrom` counts them. */}
           <View ref={contentAnchor} collapsable={false} pointerEvents="none" style={styles.contentAnchor} />
           <KeyboardRevealProvider value={keyboardScroll.claim}>
+            <OpenToolContext.Provider value={setOpenToolKey}>
             {timeline.error === null ? null : <Text style={styles.error}>{timeline.error}</Text>}
             {groups.length === 0 && pending.length === 0 ? (
               <Text style={styles.hint}>{timeline.loading ? "Loading the conversation…" : "Nothing said yet."}</Text>
@@ -851,9 +861,11 @@ export function AgentChat({
             ))}
             {/* An agent held up by a permission request waits for the user, not at work. */}
             {pending.length > 0 ? null : <WorkingStatus theme={theme} shown={loaderShown} turnStartedAt={working ? agent.turnStartedAt : null} />}
+            </OpenToolContext.Provider>
           </KeyboardRevealProvider>
           {keyboardScroll.room > 0 ? <View style={{ height: keyboardScroll.room }} /> : null}
         </ScrollView>
+        {openTool === undefined ? null : <ToolModal tool={openTool} open onOpenChange={(open) => (open ? undefined : setOpenToolKey(null))} theme={theme} />}
         {follow.away ? <JumpToEnd theme={theme} onPress={follow.jumpToEnd} /> : null}
       </View>
       <BottomSafeArea style={styles.composerFrame} onLayout={measurePickAnchor}>
@@ -1157,6 +1169,15 @@ function SendMarkLine({
 
 /** One tool call as Paseo lists it: its icon, its label and, quieter, the command or path, on one line. */
 function ToolLine({ tool, theme, styles }: { tool: ToolRow; theme: PluginTheme; styles: ChatStyles }) {
+  const open = useOpenTool();
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={`${tool.text}, show the call`} onPress={() => open(tool.key)}>
+      <ToolLineBody tool={tool} theme={theme} styles={styles} />
+    </Pressable>
+  );
+}
+
+function ToolLineBody({ tool, theme, styles }: { tool: ToolRow; theme: PluginTheme; styles: ChatStyles }) {
   const running = tool.status === "running";
   // The label's width at rest, kept while the band recolours its letters: spans round differently from
   // one string, and the command beside it would move with the label's width (TR-246).
