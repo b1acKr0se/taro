@@ -40,7 +40,18 @@ const DOT = 6;
 const HEADER_LINE = labelLineHeightFor(FONT_SIZE.micro);
 const CELL_LINE = labelLineHeightFor(FONT_SIZE.small);
 
-export function StatsFindings({ project, theme, compact }: { project: string; theme: PluginTheme; compact: boolean }) {
+export function StatsFindings({
+  project,
+  theme,
+  compact,
+  hideWhenEmpty = false,
+}: {
+  project: string;
+  theme: PluginTheme;
+  compact: boolean;
+  /** Draws nothing rather than the empty state: a project with no recorded ticket keeps its one note alone. */
+  hideWhenEmpty?: boolean;
+}) {
   const query = useReviewFindings(project);
   const [width, setWidth] = useState(0);
   const { colors } = theme;
@@ -62,7 +73,7 @@ export function StatsFindings({ project, theme, compact }: { project: string; th
   );
 
   const section = findingsSection({ data: query.data, error: query.error });
-  if (section.kind === "hidden") return null;
+  if (section.kind === "hidden" || (section.kind === "empty" && hideWhenEmpty)) return null;
 
   // A desktop pane too narrow for the columns folds its rows as a phone does.
   const folded = findingsFolded(width, compact);

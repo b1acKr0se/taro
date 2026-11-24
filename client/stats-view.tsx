@@ -220,8 +220,8 @@ export function StatsView({
   if (tickets.length === 0 && totals.idleCompactions === 0)
     return (
       <ScrollView style={styles.root}>
-        {/* Review findings come from the tickets' notes, so they can show before any ticket's time does. */}
-        <StatsFindings project={project} theme={theme} compact={compact} />
+        {/* Review findings come from the tickets' notes, so they can show before any ticket's time does; only rows, not a second "nothing yet". */}
+        <StatsFindings project={project} theme={theme} compact={compact} hideWhenEmpty />
         <Text style={styles.note}>No ticket has been recorded yet. Stats start when a ticket first moves.</Text>
       </ScrollView>
     );
