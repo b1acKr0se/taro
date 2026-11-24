@@ -12,6 +12,9 @@ describe("parseEscape", () => {
   it("has no time for a record without one", () => {
     expect(parseEscape("A-1", "ESCAPE should have caught it")).toMatchObject({ time: null, instant: null, text: "should have caught it" });
   });
+  it("a record named ESCAPE-NOTE is not listed", () => {
+    expect(parseEscape("A-1", "ESCAPE-NOTE 2026-10-20T11:04Z — see ESCAPE records")).toBeNull();
+  });
   it("is not an escape when another record starts", () => {
     expect(parseEscape("A-1", "CORRECTION ESCAPE 2026-01-01 — x")).toBeNull();
   });

@@ -29,7 +29,7 @@ function instantOf(time: string): number | null {
 
 /** One record as an escape, or null when it is not an ESCAPE record (the word must start the record). */
 export function parseEscape(ticket: string, record: string): Escape | null {
-  const match = /^ESCAPE\b[\s:]*([\s\S]*)$/.exec(record);
+  const match = /^ESCAPE(?=[\s:]|$)[\s:]*([\s\S]*)$/.exec(record);
   if (match === null) return null;
   let rest = match[1] as string;
   const timeMatch = TIME.exec(rest);
