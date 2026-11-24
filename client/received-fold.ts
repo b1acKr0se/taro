@@ -4,12 +4,21 @@ export const RECEIVED_FOLD_LINES = 8;
 /** Lines the user's own long message shows before it folds, as Paseo's long-message fold does. */
 export const USER_FOLD_LINES = 6;
 
-/** About how many characters a bubble line holds, for text with no line breaks. */
-const CHARACTERS_PER_LINE = 40;
+/** Characters per line that even a wide bubble cannot beat by much: text shorter than the fold's lines at this width is never measured. */
+const SURELY_SHORT_CHARACTERS_PER_LINE = 20;
 
-/** Whether a message is long enough to fold: more lines than the fold shows, by break or by wrapping. */
-export function needsFold(text: string, foldLines: number = RECEIVED_FOLD_LINES): boolean {
-  return text.split("\n").reduce((lines, line) => lines + Math.max(1, Math.ceil(line.length / CHARACTERS_PER_LINE)), 0) > foldLines;
+/**
+ * Whether a message is worth measuring for a fold: it has as many line breaks as the fold shows, or more characters than
+ * the fold's lines could hold at a narrow phone's width. How wide the bubble really is decides the rest, by measuring it
+ * (`overflowsFold`), because a wide pane fits twice the characters a phone does and a guess folds text nothing hides.
+ */
+export function mayNeedFold(text: string, foldLines: number = RECEIVED_FOLD_LINES): boolean {
+  return text.length > foldLines * SURELY_SHORT_CHARACTERS_PER_LINE || text.split("\n").length > foldLines;
+}
+
+/** Whether a body measured at `naturalHeight` is taller than the fold shows, with a pixel of slack for rounding. */
+export function overflowsFold(naturalHeight: number, lineHeight: number, foldLines: number = RECEIVED_FOLD_LINES): boolean {
+  return naturalHeight > foldHeight(lineHeight, foldLines) + 1;
 }
 
 /** The height a folded message shows: the fold's lines at the text's line height. Rendered blocks cannot take a line count, so the bubble clips instead. */

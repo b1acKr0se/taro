@@ -68,7 +68,7 @@ function CodeBlock({ text, styles, theme }: { text: string; styles: MarkdownStyl
         {text}
       </Text>
       <View style={{ position: "absolute", top: 0, right: 0, zIndex: 1, opacity: reveal.shown ? 1 : 0 }} pointerEvents={reveal.shown ? "auto" : "none"}>
-        <CopyButton text={text} label="Copy code" theme={theme} />
+        <CopyButton text={text} label="Copy code" theme={theme} focusable={reveal.shown} />
       </View>
     </View>
   );

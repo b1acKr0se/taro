@@ -65,8 +65,8 @@ import { Shimmer, WorkingStatus } from "./loading";
 import { fadeColour, SHIMMER_LIGHT, shimmerCopyText } from "./shimmer";
 import { useLatestCallback } from "./latest-callback";
 import { BREAK_LONG_WORDS } from "./long-word-wrap";
-import { foldHeight, needsFold, USER_FOLD_LINES } from "./received-fold";
-import { bodyLineHeight, FoldedBody, MessageWithActions, SentByLine, ThinkingLine } from "./message-parts";
+import { RECEIVED_FOLD_LINES, USER_FOLD_LINES } from "./received-fold";
+import { FoldableBody, MessageWithActions, SentByLine, ThinkingLine } from "./message-parts";
 import { bubbleImageRoom, USER_BUBBLE_SHARE } from "./thumbnail-size";
 import { sameGroup, sameItems } from "./transcript-memo";
 import type { SentImage } from "./sent-images";
@@ -1063,8 +1063,8 @@ function UserMessage({
   // The bubble is as wide as what it holds, so its images are sized to the room the chat gives it (TR-098), measured on a row as wide as the chat (always: the images arrive after the row's first layout); until then they wait, rather than push the bubble off the pane.
   const [chatWidth, setChatWidth] = useState<number | null>(null);
   const room = chatWidth === null ? null : bubbleImageRoom(chatWidth, USER_BUBBLE_PADDING, USER_BUBBLE_BORDER);
-  const folds = needsFold(text, USER_FOLD_LINES);
-  const lineHeight = bodyLineHeight();
+  // A message not in the timeline yet has no row key to keep its fold in, so it keeps its own.
+  const [pendingOpen, setPendingOpen] = useState(false);
   const words = (
     <Text selectable style={[styles.userText, BREAK_LONG_WORDS]}>
       {text}
@@ -1075,18 +1075,9 @@ function UserMessage({
       <View style={styles.userColumn}>
         <MessageWithActions {...(at === undefined ? {} : { at })} actions={!pending && text !== ATTACHMENTS_ONLY} text={text} copyLabel="Copy message" always={compact} theme={theme}>
           <View style={styles.user}>
-            {folds && !open ? (
-              <FoldedBody height={foldHeight(lineHeight, USER_FOLD_LINES)} colour={theme.colors.surface2} lineHeight={lineHeight}>
-                {words}
-              </FoldedBody>
-            ) : (
-              words
-            )}
-            {folds ? (
-              <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={onToggle} style={styles.foldButton}>
-                <Text style={styles.foldText}>{open ? "Show less" : "Show more"}</Text>
-              </Pressable>
-            ) : null}
+            <FoldableBody text={text} lines={USER_FOLD_LINES} open={pending ? pendingOpen : open} onToggle={pending ? () => setPendingOpen((previous) => !previous) : onToggle} colour={theme.colors.surface2} buttonStyle={styles.foldButton} labelStyle={styles.foldText}>
+              {words}
+            </FoldableBody>
             {images === undefined || room === null ? null : (
               <View style={styles.userImages}>
                 {images.map((image, index) => (
@@ -1112,9 +1103,6 @@ function UserMessage({
 
 /** A message another agent sent: the user's bubble with "Sent by <sender>" above it, folded with a fade when long (TR-220, TR-286). */
 function ReceivedMessage({ sender, text, at, open, onToggle, compact, theme, onOpenLink, styles }: { sender: string; text: string; at: string | undefined; open: boolean; onToggle: () => void; compact: boolean; theme: PluginTheme; onOpenLink: (url: string) => void; styles: ChatStyles }) {
-  const folds = needsFold(text);
-  const lineHeight = bodyLineHeight();
-  const body = <Markdown source={text} theme={theme} onOpenLink={onOpenLink} />;
   return (
     <View style={styles.userRow}>
       <View style={styles.userColumn}>
@@ -1122,18 +1110,9 @@ function ReceivedMessage({ sender, text, at, open, onToggle, compact, theme, onO
           <SentByLine sender={sender} theme={theme} />
           <MessageWithActions {...(at === undefined ? {} : { at })} actions text={text} copyLabel="Copy message" always={compact} theme={theme}>
             <View style={[styles.user, styles.receivedBubble]}>
-              {folds && !open ? (
-                <FoldedBody height={foldHeight(lineHeight)} colour={theme.colors.surface2} lineHeight={lineHeight}>
-                  {body}
-                </FoldedBody>
-              ) : (
-                body
-              )}
-              {folds ? (
-                <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={onToggle} style={styles.foldButton}>
-                  <Text style={styles.foldText}>{open ? "Show less" : "Show more"}</Text>
-                </Pressable>
-              ) : null}
+              <FoldableBody text={text} lines={RECEIVED_FOLD_LINES} open={open} onToggle={onToggle} colour={theme.colors.surface2} buttonStyle={styles.foldButton} labelStyle={styles.foldText}>
+                <Markdown source={text} theme={theme} onOpenLink={onOpenLink} />
+              </FoldableBody>
             </View>
           </MessageWithActions>
         </View>

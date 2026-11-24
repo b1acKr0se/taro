@@ -26,7 +26,8 @@ export function useHoverReveal(always: boolean): { shown: boolean; handlers: Pic
   };
 }
 
-export function CopyButton({ text, label, theme }: { text: string; label: string; theme: PluginTheme }) {
+/** `focusable` is false while the button is hidden, so Tab does not stop on an invisible control. */
+export function CopyButton({ text, label, theme, focusable = true }: { text: string; label: string; theme: PluginTheme; focusable?: boolean }) {
   const [copied, setCopied] = useState(false);
   const [over, setOver] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -52,6 +53,7 @@ export function CopyButton({ text, label, theme }: { text: string; label: string
       onHoverOut={() => setOver(false)}
       accessibilityRole="button"
       accessibilityLabel={copied ? "Copied" : label}
+      focusable={focusable}
       style={{ padding: SPACE.xs }}
     >
       <Icon name={copied ? "Check" : "Copy"} size={ICON_SIZE} color={over ? theme.colors.foreground : theme.colors.foregroundMuted} />

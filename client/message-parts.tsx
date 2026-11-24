@@ -7,14 +7,14 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 
 import { CopyButton, useHoverReveal } from "./copy-button";
 import { Pressable } from "./focus";
 import { Markdown } from "./markdown";
 import { fadeColour } from "./shimmer";
-import { fadeOpacities } from "./received-fold";
+import { fadeOpacities, foldHeight, mayNeedFold, overflowsFold } from "./received-fold";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { formatMessageTimestamp, thinkingLabel } from "./turn-time";
@@ -31,7 +31,7 @@ export function MessageWithActions({ at, actions, text, copyLabel, always, theme
       {/* Always laid out, so the chat does not jump when the pointer arrives. */}
       {actions ? <View style={{ flexDirection: "row", alignItems: "center", gap: SPACE.xs, opacity: reveal.shown ? 1 : 0 }} pointerEvents={reveal.shown ? "auto" : "none"}>
         {time === "" ? null : <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT_SIZE.small }}>{time}</Text>}
-        <CopyButton text={text} label={copyLabel} theme={theme} />
+        <CopyButton text={text} label={copyLabel} theme={theme} focusable={reveal.shown} />
       </View> : null}
     </View>
   );
@@ -50,13 +50,29 @@ export function FoldFade({ colour, lineHeight }: { colour: string; lineHeight: n
   );
 }
 
-/** A folded body: its first lines clipped to `height`, with the fade over their end. */
-export function FoldedBody({ height, colour, lineHeight, children }: { height: number; colour: string; lineHeight: number; children: ReactNode }) {
+/**
+ * A message body that folds behind Show more when it is taller than `lines` (TR-286). It is measured as drawn, since a wide
+ * pane fits twice the words a phone does: a body that fits shows no fade and no button. While a long text is not
+ * measured yet it is drawn folded, so it does not grow a frame later (Paseo's `MessagePreview` paints folded first too).
+ */
+export function FoldableBody({ text, lines, open, onToggle, colour, buttonStyle, labelStyle, children }: { text: string; lines: number; open: boolean; onToggle: () => void; colour: string; buttonStyle: object; labelStyle: object; children: ReactNode }) {
+  const [natural, setNatural] = useState<number | null>(null);
+  const lineHeight = bodyLineHeight();
+  const candidate = mayNeedFold(text, lines);
+  const overflowing = candidate && (natural === null || overflowsFold(natural, lineHeight, lines));
+  const folded = overflowing && !open;
   return (
-    <View style={{ maxHeight: height, overflow: "hidden" }}>
-      {children}
-      <FoldFade colour={colour} lineHeight={lineHeight} />
-    </View>
+    <>
+      <View style={folded ? { maxHeight: foldHeight(lineHeight, lines), overflow: "hidden" } : undefined}>
+        <View onLayout={candidate ? (event) => setNatural(event.nativeEvent.layout.height) : undefined}>{children}</View>
+        {folded ? <FoldFade colour={colour} lineHeight={lineHeight} /> : null}
+      </View>
+      {overflowing ? (
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={onToggle} style={buttonStyle}>
+          <Text style={labelStyle}>{open ? "Show less" : "Show more"}</Text>
+        </Pressable>
+      ) : null}
+    </>
   );
 }
 
