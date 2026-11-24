@@ -1,8 +1,7 @@
 # Model tiers
 
 Paseo gives no tier for a model: `paseo provider models <provider>` lists only a name and a one-line
-description (add `--json`). Judge the tier yourself with this guide, whatever the provider. Models
-of different providers are comparable by tier.
+description (add `--json`). Judge the tier yourself with this guide; tiers compare across providers.
 
 | Tier | Meaning | Examples |
 | --- | --- | --- |
@@ -10,9 +9,14 @@ of different providers are comparable by tier.
 | middle | everyday work, routine implementation | Sonnet, GPT Sol, GPT terra, Gemini Pro, Grok |
 | cheapest | quick, mechanical work | Haiku, GPT luna, Gemini Flash |
 
-A newer or older version keeps its family's tier. For a model not listed, go by the description the
+A version keeps its family's tier. For a model not listed, go by the description the
 provider gives ("fast and affordable", "frontier", "everyday"); if it still does not place the model,
 treat it as not cheaper than anything.
+
+## Which tier
+
+Top: new styles, mockups, risky code. Middle: routine building and review. Cheapest: mechanical
+work. A model the user named wins.
 
 ## Stepping down to a cheaper model
 

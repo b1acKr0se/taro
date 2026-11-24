@@ -46,6 +46,7 @@ const BUDGETS: Record<string, number> = {
   "reference/paseo.md": 460,
   "reference/model-tiers.md": 280,
   "reference/actions.md": 330,
+  "reference/follow-up.md": 330,
   "hosts/outside-paseo.md": 750,
   "templates/plan.md": 430,
   "templates/final.md": 200,

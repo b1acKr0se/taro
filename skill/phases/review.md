@@ -7,10 +7,8 @@ reviewers post their findings, and you your fix summary, as PR comments.
 ## The round
 
 - **medium:** one independent reviewer (`roles/reviewer.md`), started like an implementer with
-  `taro.role=reviewer` and the strongest model for risky code. Give it the user's words, the
-  criteria and the range to review. For a visible change, capture the screenshots first
-  (`phases/delivery.md`) and give it their absolute paths: it looks at them before the code, in the
-  same round.
+  `taro.role=reviewer` and the strongest model for risky code. Give it the user's words, criteria and range. For a visible change, give it the delivery screenshots' absolute paths
+  (`phases/delivery.md`): it looks at those before the code, in the same round, with no new ones.
 - **high:** a reviewer over the combined diff. If it found a blocker, a second round re-reviews the
   whole branch after your fixes, whatever their size; otherwise the fixes get a fix check.
 
@@ -30,7 +28,8 @@ change an approved criterion or Out of scope line.
 ## Fix check
 
 Once you fixed a round's valid blockers or should-fix findings, a reviewer checks the fixes before
-delivery: fixes alone can break what was reviewed. Send it to the same reviewer (`paseo send`: it
+delivery: fixes alone can break what was reviewed. **Skip it** when the round found no blocker, each fix is text-only or has a
+failing-before test, and the suite passed after the last fix; say so in REVIEW. Send it to the same reviewer (`paseo send`: it
 still holds the context), so archive a reviewer only after its fix check; only when it is gone,
 start a fresh one with the user's words, criteria, reviewed range and the valid findings. Send the
 fix range (`<reviewed head>..HEAD`); each behaviour fix with its test and that test's failing output

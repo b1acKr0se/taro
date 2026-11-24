@@ -146,7 +146,8 @@ export async function installWithRetry(install: Runner, wait: (milliseconds: num
     if (installed.timedOut) throw new Error("paseo plugin install did not return within 10 minutes");
     if (installed.code === 0) return;
     const text = installed.stderr || installed.stdout;
-    if (text.includes("Timeout waiting for message")) return;
+    // Paseo 0.16 words the same timeout "No response to <request> after 300000ms".
+    if (text.includes("Timeout waiting for message") || /No response to \S+ after \d+ms/.test(text)) return;
     if (!text.includes("not ready") || attempt === tries) throw new Error(`paseo plugin install failed: ${text}`);
     await wait(10_000);
   }

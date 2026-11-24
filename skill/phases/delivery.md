@@ -26,12 +26,12 @@ page lists what the ticket still lacks for Accept; each item below says how to s
 
 Any visible change, at every level:
 
-- Capture with **realistic content**: text of real length and shape, with the markup real text
-  carries (Markdown and HTML, not "Lorem"), long names, many items, the empty state; plus **at least
-  one stress case per screen touched** (the longest, the most, the emptiest). Names stay neutral.
-- **Both themes:** a change that adds or restyles something drawn (an element, a style, a colour,
-  an icon) shows each screen it touches at least once in dark and once in light; text in the
-  platform's default colour vanishes in one of them. Wording alone needs one theme.
+- Capture only the surfaces the diff touches, cropped to the changed part, with **realistic
+  content** (real length and markup, neutral names): one shot per distinct visual change, in one
+  theme and viewport. Add a second theme or viewport only where the change differs there, and a
+  stress case (longest, most, emptiest) only where the change could break; no sweep of every screen.
+- **Themes:** drawn changes (an element, style, colour, icon) show one shot in dark and one in
+  light; wording alone needs one theme.
 - **Coverage map:** list each screen section or state the diff renders, changes, moves or re-wraps
   (only those; when unsure, include it) and the screenshot that shows it, as EVIDENCE `coverage:`
   lines. Capture each with data that exercises it: a parent with children for a children section, a
@@ -52,8 +52,7 @@ Any visible change, at every level:
    it no longer applies. One you went on with by default after approval is a RULING; delivery closes
    it. The plugin takes a delivery with an open question back to In Progress.
 2. **EVIDENCE** (`reference/tickets.md`): the checks with results, the review outcome, the `ux:`
-   line and coverage map, the screenshots in `$TARO_EVIDENCE/<ID>/` (desktop and phone for visible
-   changes), or `screenshots: none` with a reason. An investigation needs at least one `check:` line.
+   line and coverage map, the screenshots in `$TARO_EVIDENCE/<ID>/` (the ones the coverage map names), or `screenshots: none` with a reason. An investigation needs at least one `check:` line.
    Run the final checks as `taro check -- <command>` on a clean tree (a pass at this commit is not rerun): `taro deliver` offers their results as
    `check:` lines, recorded when you pass `--evidence-from-checks`.
 3. **FINAL** (`--final-summary`, `templates/final.md`: What changed ≤5 bullets, How it was verified
@@ -72,14 +71,14 @@ and any later reply while you await acceptance with `waiting: acceptance of <ID>
 - **An investigation** delivers as any ticket, FINAL with recommended next steps. Awaiting acceptance, "build it" in chat: set In Progress, drop the `investigation` label, plan children, ask scope-approval.
 
 - **Request changes:** the user's words arrive as a message, and the plugin has already moved the
-  ticket back to In Progress (if
-  the ticket still reads Awaiting acceptance, the plugin's write failed: move it yourself). Size the
-  fix like a new task; read the new screenshots against those words; return to Awaiting acceptance
-  with a new review head. Words that only ask a question: answer them, and when nothing needs to
-  change, deliver again as it was. Either way the turn that delivers again ends with `done: …`.
+  ticket back to In Progress (if the ticket still reads Awaiting acceptance, the plugin's write
+  failed: move it yourself). A small change follows `reference/follow-up.md`; any other is sized like a new
+  task. Return to Awaiting acceptance with a new review head. Words that only ask a question:
+  answer them, and when nothing needs to change, deliver again as it was. Either way the turn that
+  delivers again ends with `done: …`.
 - **The user chats instead** (not from Request changes): the ticket and its card stay. Words that
   only ask: answer and end with `waiting: acceptance of <ID>`. Words that need a change: move to In
-  Progress first, then deliver again. A blocking question back to the user ends the delivery (the
+  Progress first (a small one: `reference/follow-up.md`), then deliver again. A blocking question back to the user ends the delivery (the
   plugin moves the ticket to In Progress and records DELIVERY-ENDED); once answered, deliver again.
 - **Only the user's press of Accept accepts.** Never ask them to accept or merge, in a decision or in
   words: the card is the only Accept. Words in chat ("I merged it", "looks good") are never one:

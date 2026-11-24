@@ -68,6 +68,12 @@ describe("installWithRetry", () => {
     expect(calls).toBe(1);
   });
 
+  it("takes Paseo 0.16's wording of the same answer timeout as no failure too", async () => {
+    let calls = 0;
+    await installWithRetry(async () => (calls++, outcome({ code: 1, stderr: "Error: No response to plugin.source.install.request after 300000ms" })), noWait);
+    expect(calls).toBe(1);
+  });
+
   it("retries a not-ready failure and succeeds", async () => {
     const answers = [notReady, outcome({})];
     let calls = 0;

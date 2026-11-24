@@ -39,10 +39,20 @@ export function alive(pid: number): boolean {
   }
 }
 
+/**
+ * The environment a benchmark command gets: the caller's own, minus the Paseo agent identity. Since Paseo 0.16
+ * `paseo run` defaults to the caller's workspace, which does not exist on a throwaway daemon, so a run started
+ * by an agent (as every benchmark is) failed every `paseo run` it made, such as the decider's.
+ */
+export function commandEnvironment(extra: Record<string, string | undefined> | undefined, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const { PASEO_AGENT_ID: _agent, PASEO_WORKSPACE_ID: _workspace, PASEO_AGENT_CWD: _directory, ...rest } = base;
+  return { ...rest, ...extra };
+}
+
 /** Runs a command to its end (or `timeoutMs`, then its group is killed). Never rejects. */
 export function run(command: string, args: readonly string[], options: { cwd?: string; env?: Record<string, string | undefined>; timeoutMs?: number; input?: string } = {}): Promise<RunResult> {
   return new Promise((resolve) => {
-    const child = spawn(command, args, { cwd: options.cwd, env: { ...process.env, ...options.env }, detached: true, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(command, args, { cwd: options.cwd, env: commandEnvironment(options.env), detached: true, stdio: ["pipe", "pipe", "pipe"] });
     if (child.pid !== undefined) started.set(child.pid, `${command} ${args.slice(0, 3).join(" ")}`);
     let stdout = "";
     let stderr = "";
@@ -69,7 +79,7 @@ export function run(command: string, args: readonly string[], options: { cwd?: s
 
 /** Starts a long-lived command in its own group, output to a file descriptor; the caller kills it by pid. */
 export function startDetached(command: string, args: readonly string[], options: { cwd?: string; env?: Record<string, string | undefined>; logFd: number }): ChildProcess {
-  const child = spawn(command, args, { cwd: options.cwd, env: { ...process.env, ...options.env }, detached: true, stdio: ["ignore", options.logFd, options.logFd] });
+  const child = spawn(command, args, { cwd: options.cwd, env: commandEnvironment(options.env), detached: true, stdio: ["ignore", options.logFd, options.logFd] });
   if (child.pid !== undefined) started.set(child.pid, `${command} ${args.slice(0, 3).join(" ")}`);
   return child;
 }
