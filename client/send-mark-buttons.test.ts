@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const chat = readFileSync(join(__dirname, "agent-chat.tsx"), "utf8");
-const markLine = chat.slice(chat.indexOf("function SendMarkLine"), chat.indexOf("function TranscriptGroupView"));
+const markLine = chat.slice(chat.indexOf("function SendMarkLine"), chat.indexOf("function ToolLine("));
 
 describe("a mark's actions", () => {
   it("are the shared labelled button, with no text link left", () => {

@@ -129,9 +129,9 @@ describe("transcriptRows tool calls (TR-150)", () => {
       "/home/user/notes-app",
     );
     expect(rows).toEqual([
-      { key: "1", kind: "tool", text: "Shell T=$(date -u +%Y-%m-%dT%H:%MZ); taro ticket edit NA-12 -s Done", label: "Shell", summary: "T=$(date -u +%Y-%m-%dT%H:%MZ); taro ticket edit NA-12 -s Done", icon: "SquareTerminal", tally: { kind: "command" }, alone: false, status: "completed" },
-      { key: "2", kind: "tool", text: "Read client/notes.ts", label: "Read", summary: "client/notes.ts", icon: "Eye", tally: { kind: "read", filePath: "/home/user/notes-app/client/notes.ts" }, alone: false, status: "failed" },
-      { key: "3", kind: "tool", text: "Plan", label: "Plan", icon: "Brain", tally: { kind: "other" }, alone: true, status: "completed" },
+      { key: "1", kind: "tool", text: "Shell T=$(date -u +%Y-%m-%dT%H:%MZ); taro ticket edit NA-12 -s Done", label: "Shell", summary: "T=$(date -u +%Y-%m-%dT%H:%MZ); taro ticket edit NA-12 -s Done", icon: "SquareTerminal", tally: { kind: "command" }, alone: false, status: "completed", callId: "c1", detail: { type: "shell", command: "T=$(date -u +%Y-%m-%dT%H:%MZ); taro ticket edit NA-12 -s Done" }, error: null },
+      { key: "2", kind: "tool", text: "Read client/notes.ts", label: "Read", summary: "client/notes.ts", icon: "Eye", tally: { kind: "read", filePath: "/home/user/notes-app/client/notes.ts" }, alone: false, status: "failed", callId: "c2", detail: { type: "read", filePath: "/home/user/notes-app/client/notes.ts" }, error: null },
+      { key: "3", kind: "tool", text: "Plan", label: "Plan", icon: "Brain", tally: { kind: "other" }, alone: true, status: "completed", callId: "c3", detail: { type: "plan", text: "Plan" }, error: null },
     ]);
   });
 });
