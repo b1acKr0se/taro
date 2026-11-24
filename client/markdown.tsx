@@ -55,15 +55,19 @@ interface MarkdownStyles {
   more: object;
 }
 
+/** The width the corner icon takes: its size and the press padding each side. */
+const COPY_ICON_ROOM = 14 + SPACE.xs * 2;
+
 /** A fenced code block with a copy icon in its corner (TR-286), shown while the pointer is over the block on a desktop. */
 function CodeBlock({ text, styles, theme }: { text: string; styles: MarkdownStyles; theme: PluginTheme }) {
   const reveal = useHoverReveal(false);
   return (
     <View style={styles.codeBlock} {...reveal.handlers}>
-      <Text selectable style={styles.codeText}>
+      {/* Room at the right for the icon, so a long first line does not run under it. */}
+      <Text selectable style={[styles.codeText, { paddingRight: COPY_ICON_ROOM }]}>
         {text}
       </Text>
-      <View style={{ position: "absolute", top: 0, right: 0, opacity: reveal.shown ? 1 : 0 }} pointerEvents={reveal.shown ? "auto" : "none"}>
+      <View style={{ position: "absolute", top: 0, right: 0, zIndex: 1, opacity: reveal.shown ? 1 : 0 }} pointerEvents={reveal.shown ? "auto" : "none"}>
         <CopyButton text={text} label="Copy code" theme={theme} />
       </View>
     </View>

@@ -49,7 +49,8 @@ export type TranscriptRow =
   | { key: string; kind: "event"; text: string }
   /**
    * The agent's reasoning, drawn as one closed line the reader opens: the pieces of one thought are one row.
-   * `durationMs` is how long it took, null while it is the newest entry or when the timeline has no times.
+   * `durationMs` is how long it took: from the entry before it to its last piece (an entry's time is when it last changed,
+   * so the thought's own start is the time of what came before), null when the timeline has no times.
    */
   | { key: string; kind: "thinking"; text: string; durationMs: number | null }
   /**
@@ -184,15 +185,15 @@ export function transcriptRows(entries: readonly TimelineEntry[], cwd?: string |
     if (last !== undefined) last.turn = { copyText: spoken.map((reply) => reply.text.trim()).join("\n\n"), ...(turnEndedAt === undefined ? {} : { completedAt: turnEndedAt }), durationMs: turnDurationMs(turnStartedAt, turnEndedAt), newest };
     turnReplies = [];
   };
-  // The thought still open: it ends when the next entry arrives, which gives how long it took.
+  // The thought still open, to join its next piece to, and the time of the entry before it, which is when it began.
   let thought: { row: Extract<TranscriptRow, { kind: "thinking" }>; startedAt: string | undefined; lastEntry: TimelineEntry } | undefined;
-  entries.forEach((entry) => {
+  let previousTime: string | undefined;
+  entries.forEach((entry, index) => {
     const key = rowKey(entry);
     const item = entry.item;
-    if (item.type !== "reasoning" && thought !== undefined) {
-      thought.row.durationMs = turnDurationMs(thought.startedAt, entry.timestamp);
-      thought = undefined;
-    }
+    const before = index === 0 ? undefined : entries[index - 1]?.timestamp;
+    if (item.type !== "reasoning") thought = undefined;
+    previousTime = before;
     // A watch note the plugin sent still folds into an event line, so only a plain plugin message becomes a received row.
     const received = receivedMessage(item) ?? (item.type === "user_message" && injectedSummary(item.text, item.clientMessageId) !== null ? null : pluginMessage(item));
     if (item.type === "user_message" || received !== null) {
@@ -231,10 +232,11 @@ export function transcriptRows(entries: readonly TimelineEntry[], cwd?: string |
         if (thought !== undefined && last !== undefined && last.kind === "thinking" && thought.lastEntry.seqEnd + 1 === entry.seqStart && thought.lastEntry.turnId === entry.turnId) {
           last.text += item.text;
           thought.lastEntry = entry;
+          thought.row.durationMs = turnDurationMs(thought.startedAt, entry.timestamp);
         } else {
-          const row: Extract<TranscriptRow, { kind: "thinking" }> = { key, kind: "thinking", text: item.text, durationMs: null };
+          const row: Extract<TranscriptRow, { kind: "thinking" }> = { key, kind: "thinking", text: item.text, durationMs: turnDurationMs(previousTime, entry.timestamp) };
           rows.push(row);
-          thought = { row, startedAt: entry.timestamp, lastEntry: entry };
+          thought = { row, startedAt: previousTime, lastEntry: entry };
         }
         break;
       }

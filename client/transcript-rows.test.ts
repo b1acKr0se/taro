@@ -291,14 +291,14 @@ describe("transcriptRows thinking", () => {
     return { seqStart: seq, seqEnd: seq, turnId: "t1", ...(timestamp === undefined ? {} : { timestamp }), item: { type: "assistant_message", text } } as unknown as TimelineEntry;
   }
 
-  it("joins the pieces of one thought and times it to the next entry", () => {
-    const rows = rowsOf([thought(1, "The second ", "2026-01-01T10:00:00.000Z"), thought(2, "write", "2026-01-01T10:00:05.000Z"), spoke(3, "Done", "2026-01-01T10:00:12.000Z")]);
-    expect(rows[0]).toEqual({ key: "1", kind: "thinking", text: "The second write", durationMs: 12000 });
+  it("joins the pieces of one thought and times it from the entry before to its last piece", () => {
+    const rows = rowsOf([spoke(1, "Question", "2026-01-01T10:00:00.000Z"), thought(2, "The second ", "2026-01-01T10:00:05.000Z"), thought(3, "write", "2026-01-01T10:00:12.000Z"), spoke(4, "Done", "2026-01-01T10:00:12.001Z")]);
+    expect(rows[1]).toEqual({ key: "2", kind: "thinking", text: "The second write", durationMs: 12000 });
   });
 
-  it("leaves the duration empty while the thought is the newest entry or the timeline has no times", () => {
+  it("leaves the duration empty when there is nothing before it or the timeline has no times", () => {
     expect(rowsOf([thought(1, "hm", "2026-01-01T10:00:00.000Z")])[0]).toMatchObject({ kind: "thinking", durationMs: null });
-    expect(rowsOf([thought(1, "hm"), spoke(2, "ok")])[0]).toMatchObject({ kind: "thinking", durationMs: null });
+    expect(rowsOf([spoke(1, "q"), thought(2, "hm"), spoke(3, "ok")])[1]).toMatchObject({ kind: "thinking", durationMs: null });
   });
 
   it("keeps thoughts of different turns apart and drops an empty one", () => {
