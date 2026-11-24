@@ -28,8 +28,8 @@ change an approved criterion or Out of scope line.
 ## Fix check
 
 Once you fixed a round's valid blockers or should-fix findings, a reviewer checks the fixes before
-delivery: fixes alone can break what was reviewed. **Skip it** when every fix is text-only or has a
-test that failed before it, and the suite passed after the last fix; say so in the REVIEW. Send it to the same reviewer (`paseo send`: it
+delivery: fixes alone can break what was reviewed. **Skip it** when the round found no blocker, each fix is text-only or has a
+failing-before test, and the suite passed after the last fix; say so in REVIEW. Send it to the same reviewer (`paseo send`: it
 still holds the context), so archive a reviewer only after its fix check; only when it is gone,
 start a fresh one with the user's words, criteria, reviewed range and the valid findings. Send the
 fix range (`<reviewed head>..HEAD`); each behaviour fix with its test and that test's failing output

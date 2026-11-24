@@ -52,8 +52,7 @@ Any visible change, at every level:
    it no longer applies. One you went on with by default after approval is a RULING; delivery closes
    it. The plugin takes a delivery with an open question back to In Progress.
 2. **EVIDENCE** (`reference/tickets.md`): the checks with results, the review outcome, the `ux:`
-   line and coverage map, the screenshots in `$TARO_EVIDENCE/<ID>/` (desktop and phone for visible
-   changes), or `screenshots: none` with a reason. An investigation needs at least one `check:` line.
+   line and coverage map, the screenshots in `$TARO_EVIDENCE/<ID>/` (the ones the coverage map names), or `screenshots: none` with a reason. An investigation needs at least one `check:` line.
    Run the final checks as `taro check -- <command>` on a clean tree (a pass at this commit is not rerun): `taro deliver` offers their results as
    `check:` lines, recorded when you pass `--evidence-from-checks`.
 3. **FINAL** (`--final-summary`, `templates/final.md`: What changed ≤5 bullets, How it was verified

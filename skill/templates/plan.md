@@ -12,7 +12,7 @@
 
 ## Mockups
 - <mockup-what-device.png> — <what changes on that screen>
-<one line per screenshot of the changed screen (phone and desktop, in the theme it touches), saved in `$TARO_EVIDENCE/<ID>/` and described in the user's terms: what is new or different. A plan with no UI change writes `- none — <why>`. The plugin does not show the approval card until this section is complete>
+<one line per side-by-side image of the changed component (before and after, or the options), saved in `$TARO_EVIDENCE/<ID>/` and described in the user's terms: what is new or different. A plan with no UI change writes `- none — <why>`. The plugin does not show the approval card until this section is complete>
 
 ## Out of scope
 - <what this does not do>
