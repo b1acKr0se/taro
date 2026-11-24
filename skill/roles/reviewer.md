@@ -72,8 +72,9 @@ how well it is built (structure, clarity, fit with the codebase, how deep the te
 those, these are prompts, not a form; pick what matters for this change: what is notably good; the
 risks left after merging; how sure you are and what you could not check; what must happen before
 merging. Write what you think, praise included. A concern that needs work is also a finding or a
-question, and names it (F1). A later round says how the picture changed since the last review. A
-plan review writes none, and no comment.
+question, and names it (F1). A later round says how the picture changed; its bottom line, which
+FINAL quotes, still judges the work as a whole, then says where it stands. A plan review writes
+none, and no comment.
 
 ## The comment
 

@@ -3,9 +3,9 @@
 
 ✅ <n> closed · ❌ <n> still open · 🆕 <n> new · open now: <🔴 <n> high · 🟡 <n> medium · 🔵 <n> low, zeros left out> · <the suite result> · *reviewer: <model>*
 
-### 🧭 Overall now: <your bottom line in a few words>
+### 🧭 Overall now: <your bottom line: the work as a whole, then where it stands>
 
-<how the picture changed since the last review, at most about 100 words: what the fixes did to the work as a whole, what still worries you, what must happen before merging>
+<how the picture changed since the last review, at most about 100 words: what the fixes did to the work, what still worries you, what must happen before merging>
 
 | Finding | Status | How I checked |
 | --- | --- | --- |
