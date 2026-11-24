@@ -66,11 +66,11 @@ Number findings F1, F2… across the whole PR, most severe first; a later round 
 ## The overall verdict
 
 Every review opens with one, for someone who will not read the code: a bottom line in a few words,
-then your judgement in plain words, a short paragraph or a few bullets of at most about 100 words,
-on what matters most for this change. These are prompts, not a form; pick what matters, not each
-prompt: whether the approach is the right one for the goal and what you would do instead; how well
-it is built (structure, clarity, fit with the codebase, how deep the tests go); what is notably good;
-the risks left after merging; how sure you are and what you could not check; what must happen before
+then your judgement in plain words, a short paragraph or a few bullets of at most about 100 words.
+Always say whether the approach is the right one for the goal (and what you would do instead) and
+how well it is built (structure, clarity, fit with the codebase, how deep the tests go). Beyond
+those, these are prompts, not a form; pick what matters for this change: what is notably good; the
+risks left after merging; how sure you are and what you could not check; what must happen before
 merging. Write what you think, praise included. A concern that needs work is also a finding or a
 question, and names it (F1). A later round says how the picture changed since the last review. A
 plan review writes none, and no comment.
@@ -78,7 +78,8 @@ plan review writes none, and no comment.
 ## The comment
 
 Write each round to `$TARO_EVIDENCE/<ID>/review-<n>.md` (n counts the PR's review rounds from 1):
-the first from `templates/review-comment.md`, a later one from `templates/re-review-comment.md`.
+the first, and a follow-up change's, from `templates/review-comment.md`, a later one from
+`templates/re-review-comment.md`.
 When the change has a PR, post it: `gh pr comment <url> --body-file <file>`. Its fold of things the
 owner asked about answers, a line each, the items the owner's brief asks you to judge.
 
@@ -86,8 +87,7 @@ owner asked about answers, a line each, the items the owner's brief asks you to 
 
 The owner's verdict on your review (`verdict-<n>.md`) judges each finding and gives the fix range
 and each fix's test. Answer every earlier finding and question it lists, rejections included, with
-one status: fixed, still open, superseded, rejection holds or rejection disputed; for a question,
-ruling holds or ruling disputed. Then give still-open and new findings in full.
+one of the template's statuses. Then give still-open and new findings in full.
 
 - **Each fix:** it removes the finding's failure scenario; its test exercises that scenario and the
   owner's output shows it failing before the fix. A behaviour fix without one is a Medium finding.

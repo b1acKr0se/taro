@@ -7,7 +7,7 @@ FINAL <ISO timestamp>
 
 ## How it was verified
 - <a check or the screenshots, and the result>
-<at most 3 bullets; one is the review: the latest review's bottom line in quotes and its comment's link, or the self-review's outcome>
+<at most 3 bullets; one is the review: the latest review's bottom line in quotes and its comment's link, then what your verdict fixed when no review followed it; or the self-review's outcome>
 
 ## Limitations
 - <what it does not do, or what is left open, the review's follow-ups among them; "None known." when there is nothing>

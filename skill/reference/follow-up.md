@@ -18,7 +18,9 @@ full flow.
    the changed part, with the theme rule of `phases/delivery.md` (a drawn change shows dark and
    light). The coverage map and `ux:` line list only these.
 5. **Review once, on the diff** since the delivered `review-head:`: one reviewer given only that
-   range and the follow-up's screenshot paths. A second look only when the first found a High finding.
-6. **Record briefly**: one EVIDENCE record for the follow-up (checks, review, `ux:` line, its
+   range, the follow-up's screenshot paths, the PR's URL and the next review and finding numbers; it
+   writes a first review (`templates/review-comment.md`), and you answer it with a verdict
+   (`phases/review.md`). A second look only when the first found a High finding.
+6. **Record briefly**: a REVIEW record and one EVIDENCE record for the follow-up (checks, review, `ux:` line, its
    screenshots), and a short "Follow-up change" section in the PR body (`gh pr edit`). Do not
    redraft FINAL or the first EVIDENCE: add one FINAL bullet for the follow-up. Deliver as usual.

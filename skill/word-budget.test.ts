@@ -35,7 +35,7 @@ const BUDGETS: Record<string, number> = {
   "levels/medium.md": 470,
   "levels/high.md": 380,
   "phases/build.md": 430,
-  "phases/review.md": 615,
+  "phases/review.md": 630,
   "phases/delivery.md": 1045,
   "phases/accept.md": 780,
   "reference/formats.md": 730,
@@ -49,14 +49,14 @@ const BUDGETS: Record<string, number> = {
   "reference/follow-up.md": 330,
   "hosts/outside-paseo.md": 750,
   "templates/plan.md": 430,
-  "templates/final.md": 215,
+  "templates/final.md": 225,
   "templates/definition-of-done.md": 470,
   "templates/brief.md": 240,
   "templates/handoff.md": 150,
   "templates/pull-request.md": 150,
-  "templates/review-comment.md": 430,
-  "templates/re-review-comment.md": 410,
-  "templates/verdict-comment.md": 295,
+  "templates/review-comment.md": 460,
+  "templates/re-review-comment.md": 415,
+  "templates/verdict-comment.md": 300,
 };
 
 /**

@@ -103,11 +103,11 @@ rather than exceed it.
 - **REVIEW**: the reviewer (or self-review) and range, the latest review's bottom line in quotes,
   each finding answered (fixed, or rejected with the reason), and what was re-checked (fix check or
   full re-review, its range). For an independent review, one `findings:` line per author model of
-  the reviewed code: valid findings at the owner's grade, only those first raised in the rounds this
+  the reviewed code, by the model id in the author's EXECUTION record: valid findings at the owner's grade, only those first raised in the rounds this
   record covers (the new F-numbers), so no finding counts twice. The last line is `verdict: clean`
   when nothing is left to fix, else `verdict: findings`; the round's newest clean one brings the
-  delivery page (`phases/review.md`). A line starting with an upper-case word of three or more
-  letters would split the record, so every line after the first starts lower-case.
+  delivery page (`phases/review.md`). Every line after the first starts lower-case, or it reads as a
+  record of its own.
 
       REVIEW 2026-01-05T10:00Z — reviewer (Opus) over main..taro/na-12, fix check over 3f2a1b0..9c8d7e6 ("the fixes hold, and the approach is sound"): F1 fixed in 4d5e6f7, F2 rejected (the cache is per user: notes-cache.ts:40), F3 fixed in 8a9b0c1 (re-graded low)
       findings: claude-sonnet-5-5 — high 0, medium 1, low 1

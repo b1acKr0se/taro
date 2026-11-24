@@ -1,11 +1,11 @@
-<!-- The reviewer's first review of a PR: `review-1.md` in `$TARO_EVIDENCE/<ID>/`, posted with `gh pr comment <url> --body-file <file>` when the change has a PR (a later round: `templates/re-review-comment.md`). For someone skimming the PR: verdict and counts first, then your overall verdict for someone who will not read the code (`roles/reviewer.md`), one table row per area, each finding one line that opens. Leave out empty sections and these comments. Number findings F1, F2…, questions Q1…, most severe first. Levels: 🔴 High, 🟡 Medium, 🔵 Low. Link a line at the reviewed head: `<repo URL>/blob/<head SHA>/<path>#L<a>-L<b>`; with no PR or an unpushed head, `file:line` without a link. Keep a blank line after `</summary>`, or GitHub shows the markdown raw. -->
-## 🛠️ Review 1: <fix first | questions open | ready> · `<base>..<head>`
+<!-- The reviewer's first review of a PR, or of a follow-up change's diff: `review-<n>.md` in `$TARO_EVIDENCE/<ID>/` (n is 1, or the number the owner gives), posted with `gh pr comment <url> --body-file <file>` when the change has a PR (a later round: `templates/re-review-comment.md`). For someone skimming the PR: verdict and counts first, then your overall verdict for someone who will not read the code (`roles/reviewer.md`), one table row per area, each finding one line that opens. Leave out empty sections and these comments. Number findings F1, F2…, questions Q1…, most severe first. Levels: 🔴 High, 🟡 Medium, 🔵 Low. Link a line at the reviewed head: `<repo URL>/blob/<head SHA>/<path>#L<a>-L<b>`; with no PR or an unpushed head, `file:line` without a link. In a `<summary>`, write `<b>` and `<code>`, never `**` or backticks, and keep a blank line after `</summary>`: GitHub shows markdown raw otherwise. -->
+## 🛠️ Review <n>: <fix first | questions open | ready> · `<base>..<head>`
 
 🔴 <n> high · 🟡 <n> medium · 🔵 <n> low · ❓ <n> questions · ↪️ <n> follow-ups · *reviewer: <model>*
 
 ### 🧭 Overall: <your bottom line in a few words>
 
-<your judgement of the work as a whole, in plain words: a short paragraph or a few bullets, at most about 100 words, on what matters most for this change; name the finding behind each concern (F1)>
+<your judgement of the work as a whole, in plain words: a short paragraph or a few bullets, at most about 100 words: whether the approach is right and how well it is built, then what else matters most; name the finding behind each concern (F1)>
 
 | Area | Verdict | Checked |
 | --- | --- | --- |
