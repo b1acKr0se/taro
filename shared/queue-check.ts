@@ -79,7 +79,7 @@ export function recount(input: {
 }): Recount {
   const owned = new Set(
     input.queued
-      .filter((ticket) => input.owners.some((owner) => owner.status !== "closed" && owner.labels[TARO_LABELS.role] === "owner" && dependsOn([owner.labels[TARO_LABELS.ticket] ?? ""], ticket.id)))
+      .filter((ticket) => input.owners.some((owner) => (owner.status !== "closed" || owner.rested === true) && owner.labels[TARO_LABELS.role] === "owner" && dependsOn([owner.labels[TARO_LABELS.ticket] ?? ""], ticket.id)))
       .map((ticket) => ticket.id),
   );
   // An owner whose label differs from the ticket's id in case counts once, under the ticket's id.

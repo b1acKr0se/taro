@@ -241,6 +241,7 @@ export function freshState(identity: TaroIdentity): AgentState {
     compaction: "none",
     idleCompaction: "none",
     lastTurnEndedAt: null,
+    lastTurnStartedAt: null,
     evidenceReminded: null,
     noPlanFlagged: false,
     noApprovalFlagged: false,

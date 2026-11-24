@@ -502,6 +502,15 @@ export default function contribute(server: PluginServerContext) {
   }));
   const removeTurnStartHook = server.on("agent.turn_started", async ({ agent }, { paseo }) => {
     await stats.turnStarted(agent.id).catch((error: unknown) => reportFailure(`[taro] recording ${agent.id}'s turn start:`, error));
+    // Kept per owner so a closed one that was mid-turn is told from one Paseo freed after an idle hour; an owner with no record yet gets its first at its turn end.
+    const known = await state.agent(agent.id).catch(() => null);
+    if (known?.role === "owner") {
+      await state
+        .updateAgent(agent.id, () => known, (record) => {
+          record.lastTurnStartedAt = new Date().toISOString();
+        })
+        .catch((error: unknown) => reportFailure(`[taro] recording ${agent.id}'s turn start time:`, error));
+    }
     await ensureCompactHook(paseo, agent)
       .then((done) => (done === null ? undefined : console.log(`[taro] ${agent.id}: ${done}`)))
       .catch((error: unknown) => reportFailure(`[taro] compact hook for ${agent.id}:`, error));

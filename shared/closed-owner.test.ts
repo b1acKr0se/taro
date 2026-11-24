@@ -68,12 +68,21 @@ describe("ticketsWithClosedOwner", () => {
 });
 
 describe("ownerRested", () => {
-  it("is true when the turn ended at or after the last activity, within a minute of slack, and false when unknown or earlier", () => {
-    const active = "2026-01-05T11:00:00Z";
-    expect(ownerRested("2026-01-05T11:00:00Z", active)).toBe(true);
-    expect(ownerRested("2026-01-05T10:59:30Z", active)).toBe(true);
-    expect(ownerRested("2026-01-05T10:50:00Z", active)).toBe(false);
+  const active = "2026-01-05T11:00:00Z";
+  it("without a recorded turn start: true when the turn ended at or after the last activity, within a minute of slack", () => {
+    expect(ownerRested({ lastTurnEndedAt: "2026-01-05T11:00:00Z" }, active)).toBe(true);
+    expect(ownerRested({ lastTurnEndedAt: "2026-01-05T10:59:30Z", lastTurnStartedAt: null }, active)).toBe(true);
+    expect(ownerRested({ lastTurnEndedAt: "2026-01-05T10:50:00Z" }, active)).toBe(false);
+    expect(ownerRested({ lastTurnEndedAt: null }, active)).toBe(false);
+    expect(ownerRested({ lastTurnEndedAt: "not a time" }, active)).toBe(false);
     expect(ownerRested(null, active)).toBe(false);
-    expect(ownerRested("not a time", active)).toBe(false);
+  });
+
+  it("with a recorded turn start: true only when the latest end is not before it, however close the restart", () => {
+    // A nudge started a new turn 20 seconds after the last end; the daemon restarted during it.
+    expect(ownerRested({ lastTurnEndedAt: "2026-01-05T10:59:40Z", lastTurnStartedAt: "2026-01-05T11:00:00Z" }, active)).toBe(false);
+    expect(ownerRested({ lastTurnEndedAt: "2026-01-05T10:59:40Z", lastTurnStartedAt: "2026-01-05T10:59:00Z" }, active)).toBe(true);
+    // The turn's end could not be read, so the end is stale.
+    expect(ownerRested({ lastTurnEndedAt: "2026-01-05T09:00:00Z", lastTurnStartedAt: "2026-01-05T10:59:00Z" }, "2026-01-05T09:00:00Z")).toBe(false);
   });
 });

@@ -366,6 +366,13 @@ describe("requestChanges (TR-131)", () => {
     expect(vi.mocked(recordChangesRequested)).toHaveBeenCalledOnce();
   });
 
+  it("sends the changes to the live owner when a newer closed one exists", async () => {
+    const closedNewer = { ...owner(), id: "closed-1", status: "closed" as const, updatedAt: new Date(now).toISOString() };
+    vi.mocked(listTaroAgents).mockImplementation(async () => [closedNewer, owner()]);
+    await actions.requestChanges({} as PaseoApi, "demo", "DM-1", "Rename the button");
+    expect(vi.mocked(sendWithoutInterrupting).mock.calls[0]?.[1]).toBe("owner-1");
+  });
+
   it("ends nothing when the owner could not be told", async () => {
     vi.mocked(sendWithoutInterrupting).mockRejectedValueOnce(new Error("gone"));
     await expect(actions.requestChanges({} as PaseoApi, "demo", "DM-1", "Rename it")).rejects.toThrow("gone");

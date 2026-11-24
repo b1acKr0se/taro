@@ -139,6 +139,8 @@ export interface JoinedAgent {
   status: string;
   updatedAt: string;
   pendingPermissions: readonly unknown[];
+  /** Closed by Paseo's idle cleanup after its turn ended: it wakes on a message, so it still counts as its ticket's owner. */
+  rested?: boolean;
 }
 
 export interface TicketAgents<Agent> {
@@ -227,9 +229,10 @@ export function hasStarted(status: string): boolean {
   return UNDER_WAY.has(status) || status === "Awaiting acceptance" || status === "Blocked" || status === "Done" || status === "Cancelled";
 }
 
-/** The live owner the board shows; the ticket view acts on the same one (TR-095). */
+/** The live owner the board shows, else the newest one resting after an idle hour; the ticket view acts on the same one (TR-095). */
 export function newestOwner<Agent extends JoinedAgent>(agents: readonly Agent[]): Agent | null {
-  return newest(agents.filter((agent) => agent.labels[TARO_LABELS.role] === "owner" && agent.status !== "closed"));
+  const owners = agents.filter((agent) => agent.labels[TARO_LABELS.role] === "owner");
+  return newest(owners.filter((agent) => agent.status !== "closed")) ?? newest(owners.filter((agent) => agent.rested === true));
 }
 
 function newest<Agent extends JoinedAgent>(agents: readonly Agent[]): Agent | null {

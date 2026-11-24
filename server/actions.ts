@@ -16,7 +16,7 @@ import { doneTicketOf, planRelease } from "../shared/done-release";
 import { EXTERNAL_HOST_LABEL, externalHostRefusal, isExternalHostTicket } from "../shared/external-host";
 import { acceptanceText, handoffText, ownerIsWarm, type AcceptOutcome, type Handover } from "../shared/accept-merge";
 import { acceptanceMerge, acceptedRecord, acceptedRecordText, deliveryMissing, executionBranch, executionWorkspace, localMergeInstruction, pluginAcceptPending, pullRequestMergeInstruction, pullRequestUrl, reviewHead } from "../shared/execution";
-import { ownerRelaunchedText, ownerRelaunchFailedText, ownerRested, ticketsWithClosedOwner } from "../shared/closed-owner";
+import { ownerRelaunchedText, ownerRelaunchFailedText, ticketsWithClosedOwner } from "../shared/closed-owner";
 import { dependsOn, holdsSlot, shouldWakeManager, statusChanges, withRecordedStatuses, type StatusChange } from "../shared/owner-cap";
 import {
   handoffSincePauseRequest,
@@ -71,6 +71,7 @@ import { carriedQuestionLines, dismissDecision, parseTrackerKey, questionsToCarr
 import { TARO_LABELS, TICKET_STATUSES, type ProjectConfig } from "../shared/project";
 import { acceptLocalBranch, acceptPullRequest } from "./accept-merge";
 import { fetchLiveAgent, isAgentGone, isMidTurn, listTaroAgents, projectAgents, projectArchivedAgents } from "./agents";
+import { markRestedOwners } from "./rested-owners";
 import { stopAgent } from "./cli";
 import { taroEnvironment } from "./environment";
 import { requireCompleteEvidence } from "./evidence";
@@ -277,9 +278,9 @@ export class Actions {
     return listTaroAgents(paseo, { [TARO_LABELS.project]: project, [TARO_LABELS.role]: "owner", [TARO_LABELS.ticket]: ticket });
   }
 
-  /** The ticket's newest owner; one Paseo freed after an idle hour counts, as a message loads it again. */
+  /** The ticket's newest live owner, else its newest closed one: one Paseo freed after an idle hour counts, as a message loads it again. */
   private async requireOwner(paseo: PaseoApi, project: string, ticket: string) {
-    const owner = (await this.owners(paseo, project, ticket)).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+    const owner = (await this.owners(paseo, project, ticket)).sort((left, right) => Number(left.status === "closed") - Number(right.status === "closed") || right.updatedAt.localeCompare(left.updatedAt))[0];
     if (owner === undefined) throw new Error(`${ticket} has no live owner. Relaunch it from its card.`);
     return owner;
   }
@@ -1118,7 +1119,7 @@ export class Actions {
     }
     // With nothing queued only a resume needs the count (TR-088); a wake-up does not.
     const counted = withOwners || queued.length > 0;
-    const owners = !counted ? [] : (await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner" && agent.id !== excluding);
+    const owners = !counted ? [] : await markRestedOwners((await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner" && agent.id !== excluding), this.state);
     const headroom = !counted ? null : await readHeadroom();
     return recount({ owners, tickets, queued, cap, threads: headroom === null ? null : { current: headroom.current, max: headroom.max } });
   }
@@ -1275,11 +1276,7 @@ export class Actions {
     const tickets = await listTickets(paths.tracker);
     // A ticket worked outside Paseo keeps its closed owner closed: that session works it now.
     const candidates = (await this.pauseCandidates(project, tickets)).filter(({ ticket }) => !isExternalHostTicket(ticket));
-    const owners = await Promise.all(
-      (await projectAgents(paseo, project))
-        .filter((agent) => agent.labels[TARO_LABELS.role] === "owner")
-        .map(async (agent) => Object.assign(agent, { rested: agent.status === "closed" && ownerRested((await this.state.agent(agent.id))?.lastTurnEndedAt ?? null, agent.updatedAt) })),
-    );
+    const owners = await markRestedOwners((await projectAgents(paseo, project)).filter((agent) => agent.labels[TARO_LABELS.role] === "owner"), this.state);
     const stored = await this.state.allDecisions();
     // An owner's open question, or one withdrawn when its owner went away, is the user's to answer.
     const waitingOnUser = new Set(

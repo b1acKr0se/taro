@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { boardColumn, childrenWorking, columnCounts, complexityOf, inboxCount, isInboxTicket, needsYouExtras, questionsForUser, ticketAgents, waitingOnUser, type CardInputs, type JoinedAgent } from "./board";
+import { boardColumn, childrenWorking, columnCounts, complexityOf, inboxCount, isInboxTicket, needsYouExtras, questionsForUser, newestOwner, ticketAgents, waitingOnUser, type CardInputs, type JoinedAgent } from "./board";
 
 const base: CardInputs = { status: "In Progress", ownerElsewhere: false, agent: { status: "idle", pendingPermissions: 0 }, lastStatus: "waiting", openQuestions: 0, stalledAfterNudge: false };
 
@@ -430,5 +430,17 @@ describe("a ticket worked outside Paseo", () => {
     expect(inboxCount({ cards: [{ column, decisions: [] }], managerDecisions: [], alerts: [] }, false)).toBe(0);
     const unlabelled = boardColumn({ ...base, agent: null });
     expect(inboxCount({ cards: [{ column: unlabelled, decisions: [] }], managerDecisions: [], alerts: [] }, false)).toBe(1);
+  });
+});
+
+describe("newestOwner", () => {
+  const agent = (id: string, status: string, updatedAt: string, rested = false) => ({ id, status, updatedAt, rested, labels: { "taro.role": "owner", "taro.ticket": "DM-1" }, pendingPermissions: [] });
+  it("is the newest live owner, else the newest rested closed one, never a cut-off closed one", () => {
+    const live = agent("live", "idle", "2026-01-01T00:00:00Z");
+    const rested = agent("rested", "closed", "2026-01-03T00:00:00Z", true);
+    const cutOff = agent("cut", "closed", "2026-01-04T00:00:00Z");
+    expect(newestOwner([rested, live, cutOff])?.id).toBe("live");
+    expect(newestOwner([agent("old", "closed", "2026-01-02T00:00:00Z", true), rested, cutOff])?.id).toBe("rested");
+    expect(newestOwner([cutOff])).toBeNull();
   });
 });

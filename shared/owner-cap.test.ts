@@ -18,6 +18,11 @@ describe("holdsSlot", () => {
 });
 
 describe("ticketsCountingTowardsCap", () => {
+  it("counts a closed owner only when it rested after an idle hour, which keeps its ticket's slot", () => {
+    const tickets = [ticket("DM-1", "In Progress"), ticket("DM-2", "In Progress")];
+    expect(ticketsCountingTowardsCap([{ ...owner("DM-1", "closed"), rested: true }, owner("DM-2", "closed")], tickets)).toEqual(["DM-1"]);
+  });
+
   it("is empty with no owners", () => {
     expect(ticketsCountingTowardsCap([], [ticket("DM-1", "In Progress")])).toEqual([]);
   });

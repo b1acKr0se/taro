@@ -38,14 +38,18 @@ export interface ClosedOwnerAgent {
 }
 
 /**
- * An owner closed after its turn ended was freed by Paseo's idle cleanup, not cut off: the plugin saw the
- * turn end at or after the agent's last activity (a minute of slack, as the hook's clock and Paseo's differ).
+ * An owner closed after its turn ended was freed by Paseo's idle cleanup, not cut off. With a turn start
+ * recorded, its latest end must come at or after it; without one (a record from before starts were kept),
+ * the end must come at or after the agent's last activity, with a minute of slack for the clocks.
  */
-export function ownerRested(lastTurnEndedAt: string | null, updatedAt: string): boolean {
-  if (lastTurnEndedAt === null) return false;
-  const ended = Date.parse(lastTurnEndedAt);
+export function ownerRested(turns: { lastTurnEndedAt: string | null; lastTurnStartedAt?: string | null } | null, updatedAt: string): boolean {
+  if (turns === null || turns.lastTurnEndedAt === null) return false;
+  const ended = Date.parse(turns.lastTurnEndedAt);
+  if (!Number.isFinite(ended)) return false;
+  const started = turns.lastTurnStartedAt === null || turns.lastTurnStartedAt === undefined ? Number.NaN : Date.parse(turns.lastTurnStartedAt);
+  if (Number.isFinite(started)) return ended >= started;
   const active = Date.parse(updatedAt);
-  return Number.isFinite(ended) && Number.isFinite(active) && ended >= active - 60_000;
+  return Number.isFinite(active) && ended >= active - 60_000;
 }
 
 /** The ticket's OWNER-RELAUNCHED and OWNER-RELAUNCH-FAILED records within the window. */
