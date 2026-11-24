@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { noteRecords } from "./execution";
+import { wholeRecords } from "./execution";
 
 export const MilestoneSchema = z.object({
   kind: z.string(),
@@ -21,37 +21,10 @@ function milestoneOf(record: string): Milestone | null {
   return { kind: match[1] ?? "", time: match[2] ?? null, text: (match[3] ?? "").replace(/\s+/g, " ").trim() };
 }
 
-/** The records the skill and the plugin write; any other name needs a time to count as a record. */
-export const RECORD_KINDS: ReadonlySet<string> = new Set([
-  "MILESTONE",
-  "EXECUTION",
-  "APPROVAL",
-  // An owner's call after the plan's approval (TR-263): `RULING <time> — <decision> — <why> — <cost if wrong>`.
-  "RULING",
-  "REVIEW",
-  "FINAL",
-  "ACCEPTANCE",
-  "RECOVERY",
-  "ANSWER",
-  "HANDOFF",
-  "ACCEPT-HANDOFF",
-  "DISPATCH-INTENT",
-  "TOOL-MISS",
-  "CONTEXT",
-  "PR-TEMPLATE",
-]);
-
 /** Every record in a ticket's notes, whole, in note order (notes are append-only, so oldest first). */
 export function ticketMilestones(notes: string | null): Milestone[] {
-  // A body line opening with capitals ("README updated") splits off as a record; join it back.
-  const records: string[] = [];
-  for (const record of noteRecords(notes)) {
-    const milestone = milestoneOf(record);
-    const continuation = milestone !== null && milestone.time === null && !RECORD_KINDS.has(milestone.kind);
-    if (continuation && records.length > 0) records[records.length - 1] += `\n${record}`;
-    else records.push(record);
-  }
-  return records.flatMap((record) => {
+  // A body line opening with capitals ("README updated") splits off as a record; wholeRecords joins it back.
+  return wholeRecords(notes).flatMap((record) => {
     const milestone = milestoneOf(record);
     return milestone === null ? [] : [milestone];
   });

@@ -19,9 +19,55 @@ export function noteRecords(notes: string | null): string[] {
     .filter((block) => block !== "");
 }
 
+/** The records the skill and the plugin write; any other name needs a time to count as a record. */
+export const RECORD_KINDS: ReadonlySet<string> = new Set([
+  "MILESTONE",
+  "EXECUTION",
+  "APPROVAL",
+  // An owner's call after the plan's approval (TR-263): `RULING <time> — <decision> — <why> — <cost if wrong>`.
+  "RULING",
+  "REVIEW",
+  "EVIDENCE",
+  "FINAL",
+  "ACCEPTANCE",
+  "RECOVERY",
+  "ANSWER",
+  "HANDOFF",
+  "ACCEPT-HANDOFF",
+  "DISPATCH-INTENT",
+  "TOOL-MISS",
+  "CONTEXT",
+  "PR-TEMPLATE",
+  "ESCAPE",
+  "CORRECTION",
+]);
+
+// A block's record name, then its time when it has one.
+const RECORD_HEAD = /^([A-Z][A-Z-]{2,})\b(?:[ \t]+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}))?/;
+
+/**
+ * The notes split into whole records. A body line opening with capitals ("README updated", "FINDINGS: …")
+ * splits off in `noteRecords`; a block with no time whose name is no record's is joined back to the one above.
+ */
+export function wholeRecords(notes: string | null): string[] {
+  const records: string[] = [];
+  noteRecords(notes).forEach((block) => {
+    const head = RECORD_HEAD.exec(block);
+    const continuation = head !== null && head[2] === undefined && !RECORD_KINDS.has(head[1] ?? "");
+    if (continuation && records.length > 0) records[records.length - 1] += `\n${block}`;
+    else records.push(block);
+  });
+  return records;
+}
+
 /** The records of the round in progress (TR-229): after the latest REOPENED record, else all of them. */
 export function roundRecords(notes: string | null): string[] {
   return noteRecords(roundNotes(notes));
+}
+
+/** The round's records whole, as `wholeRecords` joins them. */
+export function wholeRoundRecords(notes: string | null): string[] {
+  return wholeRecords(roundNotes(notes));
 }
 
 /** The owners named in every round's EXECUTION records (`owner <id>`), oldest first, each once. */

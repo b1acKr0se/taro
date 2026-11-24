@@ -91,6 +91,17 @@ describe("findingsByModel", () => {
     expect(findingsByModel(tickets)).toEqual([{ model: "claude-opus-5-5", tickets: 1, high: 1, medium: 0, low: 0, escapes: 0 }]);
   });
 
+  it("keeps a capitalised body line, and the findings after it, in their REVIEW record", () => {
+    const tickets = [{ id: "NA-1", notes: review(["README example fixed (F3)", "findings: claude-opus-5-5 — high 0, medium 1, low 0"]) }];
+    expect(findingsSummary(tickets).reviews).toBe(1);
+    expect(findingsByModel(tickets)).toEqual([{ model: "claude-opus-5-5", tickets: 1, high: 0, medium: 1, low: 0, escapes: 0 }]);
+  });
+
+  it("still counts an ESCAPE record written without a time", () => {
+    const tickets = [{ id: "NA-1", notes: notes(review(["findings: claude-opus-5-5 — high 0, medium 1, low 0"]), "ESCAPE — the export lost the last note") }];
+    expect(findingsByModel(tickets)[0]?.escapes).toBe(1);
+  });
+
   it("counts a model's tickets once across rounds", () => {
     const tickets = [
       {

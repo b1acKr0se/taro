@@ -5,7 +5,7 @@
  * lines by hand: the usual variants are read, and a line missing a level is skipped rather than guessed.
  */
 
-import { noteRecords } from "./execution.ts";
+import { wholeRecords } from "./execution.ts";
 import { isPlanReview } from "./plan-lint.ts";
 
 export interface ModelFindings {
@@ -47,19 +47,6 @@ export function parseFindingsLines(record: string): ModelFindings[] {
   });
 }
 
-/**
- * A ticket's records, with a line an owner wrote as `FINDINGS: …` kept in the record it belongs to: the notes split
- * at any line starting with an upper-case word, which would cut it off its REVIEW record.
- */
-function recordsOf(notes: string | null): string[] {
-  const records: string[] = [];
-  noteRecords(notes).forEach((record) => {
-    if (/^FINDINGS[ \t]*:/.test(record) && records.length > 0) records[records.length - 1] += `\n${record}`;
-    else records.push(record);
-  });
-  return records;
-}
-
 interface TicketFindings {
   id: string;
   /** One entry per findings line of every work REVIEW record. */
@@ -74,7 +61,8 @@ const REVIEW_RECORD = /^REVIEW(?=[\s:]|$)/;
 const ESCAPE_RECORD = /^ESCAPE(?=[\s:]|$)/;
 
 function ticketFindings(ticket: TicketNotes): TicketFindings {
-  const records = recordsOf(ticket.notes);
+  // Whole records: a line an owner wrote as `FINDINGS: …` or `README …` stays in its REVIEW record.
+  const records = wholeRecords(ticket.notes);
   const reviews = records.filter((record) => REVIEW_RECORD.test(record) && !isPlanReview(record)).map(parseFindingsLines);
   return {
     id: ticket.id,

@@ -159,6 +159,14 @@ describe("the delivery page", () => {
     expect(nextStep(ticket({ status: "Reviewing", notes: notes(EXECUTION, APPROVAL, open) }))?.page).not.toBe("phases/delivery.md");
   });
 
+  it("a multi-line REVIEW with a line starting upper-case still brings delivery", () => {
+    const page = (review: string) => nextStep(ticket({ status: "Reviewing", notes: notes(EXECUTION, APPROVAL, review) }))?.page;
+    expect(page(MULTI_LINE_REVIEW.replace("findings:", "FINDINGS:"))).toBe("phases/delivery.md");
+    expect(page(MULTI_LINE_REVIEW.replace("\nfindings:", "\nREADME example fixed (F3)\nfindings:"))).toBe("phases/delivery.md");
+    expect(page(MULTI_LINE_REVIEW.replace("verdict: clean", "VERDICT: clean"))).toBe("phases/delivery.md");
+    expect(page(MULTI_LINE_REVIEW.replace("findings:", "FINDINGS:").replace("verdict: clean", "verdict: findings"))).not.toBe("phases/delivery.md");
+  });
+
   it("an old one-line REVIEW still brings delivery", () => {
     const old = "REVIEW 2026-11-01T12:30Z — reviewer r1 over main..taro/sh-12: 1 blocker, fixed in 3f2a1b0 — verdict: clean";
     expect(nextStep(ticket({ status: "Reviewing", notes: notes(EXECUTION, APPROVAL, old) }))?.page).toBe("phases/delivery.md");
