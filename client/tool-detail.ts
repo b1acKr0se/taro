@@ -3,6 +3,7 @@
  * reads it. Paseo records each tool's own fields (a shell's output and exit code, a read's content…),
  * which this turns into two blocks of text; a detail it does not know is shown as its raw input and output.
  */
+import type { CallTime } from "../shared/tool-times";
 import { formatDuration } from "./format";
 
 /** Longest result drawn: a build log can run to megabytes, and one `Text` that long freezes a phone. */
@@ -141,9 +142,10 @@ function span(ms: number): string {
  * A call's time. Paseo records when a call last changed (`changedAt`), not when it began: a running
  * call has not changed since it started, so that is its start; a finished call's duration is known only
  * from its own field (`ownMs`) or from the chat having watched it run (`watchedStartedAt`), else
- * only when it finished.
+ * only when it finished. The plugin's own record (`recorded`, `shared/tool-times.ts`) fills the rest: the
+ * call's start and end it saw, or only a bound on its length when it began and ended between two reads.
  */
-export function toolTiming(input: { status: string; changedAt: string | undefined; now: number; watchedStartedAt?: number; ownMs?: number }): ToolTiming {
+export function toolTiming(input: { status: string; changedAt: string | undefined; now: number; watchedStartedAt?: number; ownMs?: number; recorded?: CallTime }): ToolTiming {
   const changed = input.changedAt === undefined ? Number.NaN : Date.parse(input.changedAt);
   if (input.status === "running") {
     const startedAt = input.watchedStartedAt ?? changed;
@@ -151,8 +153,12 @@ export function toolTiming(input: { status: string; changedAt: string | undefine
   }
   const finished = Number.isFinite(changed) ? `finished ${clockWithSeconds(changed)}` : "";
   const watched = input.watchedStartedAt !== undefined && Number.isFinite(changed) && changed >= input.watchedStartedAt ? changed - input.watchedStartedAt : undefined;
-  const took = input.ownMs ?? watched;
-  return { text: [took === undefined ? "" : `took ${span(took)}`, finished].filter((part) => part !== "").join(" · "), ticking: false };
+  const rec = input.recorded;
+  const recordedMs = rec?.startedAt !== undefined && rec.endedAt !== undefined && rec.endedAt >= rec.startedAt ? rec.endedAt - rec.startedAt : undefined;
+  const took = input.ownMs ?? watched ?? recordedMs;
+  // A bound is claimed only when nothing better is known; whole seconds, rounded up.
+  const bound = took === undefined && rec?.underMs !== undefined ? `took under ${Math.max(1, Math.ceil(rec.underMs / 1000))}s` : "";
+  return { text: [took === undefined ? bound : `took ${span(took)}`, finished].filter((part) => part !== "").join(" · "), ticking: false };
 }
 
 export interface ToolState {
