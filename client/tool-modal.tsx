@@ -5,6 +5,7 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon, Modal } from "@getpaseo/plugin/client/react-native";
+import { createContext, useContext } from "react";
 import { Text, View } from "react-native";
 
 import { SPACE } from "./spacing";
@@ -14,6 +15,14 @@ import { watchedStart } from "./tool-watch";
 import { FONT_SIZE } from "./type-scale";
 import { MONOSPACE } from "./ui";
 import { useNow } from "./use-now";
+
+/**
+ * Opens a call's modal by its row's key. The chat draws the modal itself, not the call's line: a lone
+ * call's line is replaced by a run's when the next call joins it, and a modal kept by the line would
+ * close under the reader while the call finishes.
+ */
+export const OpenToolContext = createContext<(rowKey: string) => void>(() => {});
+export const useOpenTool = () => useContext(OpenToolContext);
 
 const STATUS_WORDS: Record<string, string> = { running: "Running", completed: "Completed", failed: "Failed", canceled: "Stopped" };
 

@@ -19,13 +19,22 @@ export interface ToolText {
   durationMs?: number;
 }
 
+/**
+ * Terminal colour codes and control characters out of the text: a command's output carries them, the
+ * modal's text does not interpret them, and each one would draw as an empty box.
+ */
+export function readable(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "").replace(/\r\n/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "");
+}
+
 function text(value: unknown): string {
-  return typeof value === "string" ? value : "";
+  return typeof value === "string" ? readable(value) : "";
 }
 
 function json(value: unknown): string {
   if (value === undefined || value === null) return "";
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return readable(value);
   try {
     return JSON.stringify(value, null, 2) ?? "";
   } catch {
@@ -41,6 +50,15 @@ function number(value: unknown): number | undefined {
 export function errorWords(error: unknown): string {
   if (error === undefined || error === null) return "";
   if (typeof error === "object" && "message" in error && typeof error.message === "string") return error.message;
+  // Claude's failed call arrives as its tool result: {type: "tool_result", content, is_error, tool_use_id}.
+  if (typeof error === "object" && "content" in error) {
+    const content = error.content;
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      const words = content.map((part) => (typeof part === "object" && part !== null && "text" in part && typeof part.text === "string" ? part.text : "")).filter((part) => part !== "");
+      if (words.length > 0) return words.join("\n");
+    }
+  }
   return json(error);
 }
 
@@ -101,7 +119,7 @@ export function cutResult(value: string): { shown: string; cut: number } {
 }
 
 export interface ToolTiming {
-  /** "Running for 12s", "took 5s · finished 07:17:50", "finished 07:17:50". */
+  /** Follows the status word: "for 12s" (after "Running"), "took 5s · finished 07:17:50", "finished 07:17:50". */
   text: string;
   /** Whether the text changes with the clock, so the modal ticks. */
   ticking: boolean;
@@ -129,7 +147,7 @@ export function toolTiming(input: { status: string; changedAt: string | undefine
   const changed = input.changedAt === undefined ? Number.NaN : Date.parse(input.changedAt);
   if (input.status === "running") {
     const startedAt = input.watchedStartedAt ?? changed;
-    return Number.isFinite(startedAt) ? { text: `Running for ${span(Math.max(0, input.now - startedAt))}`, ticking: true } : { text: "Running", ticking: false };
+    return Number.isFinite(startedAt) ? { text: `for ${span(Math.max(0, input.now - startedAt))}`, ticking: true } : { text: "", ticking: false };
   }
   const finished = Number.isFinite(changed) ? `finished ${clockWithSeconds(changed)}` : "";
   const watched = input.watchedStartedAt !== undefined && Number.isFinite(changed) && changed >= input.watchedStartedAt ? changed - input.watchedStartedAt : undefined;

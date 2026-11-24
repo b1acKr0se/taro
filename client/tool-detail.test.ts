@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { cutResult, errorWords, RESULT_LIMIT, toolText, toolTiming } from "./tool-detail";
+import { cutResult, errorWords, readable, RESULT_LIMIT, toolText, toolTiming } from "./tool-detail";
 import { noteRunningCalls, watchedStart } from "./tool-watch";
 
 describe("toolText", () => {
@@ -45,12 +45,21 @@ describe("toolText", () => {
   });
 });
 
+describe("readable", () => {
+  it("drops colour codes and control characters but keeps lines and tabs", () => {
+    expect(readable("\u001b[31mred\u001b[0m\u0000\u0007 ok\r\nnext\tcol")).toBe("red ok\nnext\tcol");
+    expect(toolText({ type: "shell", command: "x", output: "a\u0000b" }).result).toBe("ab");
+  });
+});
+
 describe("errorWords", () => {
   it("reads an error as its message, a string or JSON", () => {
     expect(errorWords({ message: "boom" })).toBe("boom");
     expect(errorWords("bad")).toBe("bad");
     expect(errorWords({ code: 2 })).toBe('{\n  "code": 2\n}');
     expect(errorWords(null)).toBe("");
+    expect(errorWords({ type: "tool_result", content: "Exit code 1\nno such file", is_error: true })).toBe("Exit code 1\nno such file");
+    expect(errorWords({ content: [{ type: "text", text: "one" }, { type: "text", text: "two" }] })).toBe("one\ntwo");
   });
 });
 
@@ -67,9 +76,9 @@ describe("toolTiming", () => {
   const at = "2026-11-24T07:17:50.000Z";
   const base = Date.parse(at);
   it("counts a running call from when it last changed, or from when it was watched starting", () => {
-    expect(toolTiming({ status: "running", changedAt: at, now: base + 12_000 })).toEqual({ text: "Running for 12s", ticking: true });
-    expect(toolTiming({ status: "running", changedAt: at, now: base + 12_000, watchedStartedAt: base + 2_000 }).text).toBe("Running for 10s");
-    expect(toolTiming({ status: "running", changedAt: undefined, now: base })).toEqual({ text: "Running", ticking: false });
+    expect(toolTiming({ status: "running", changedAt: at, now: base + 12_000 })).toEqual({ text: "for 12s", ticking: true });
+    expect(toolTiming({ status: "running", changedAt: at, now: base + 12_000, watchedStartedAt: base + 2_000 }).text).toBe("for 10s");
+    expect(toolTiming({ status: "running", changedAt: undefined, now: base })).toEqual({ text: "", ticking: false });
   });
   it("says took and finished for a call watched to its end", () => {
     const text = toolTiming({ status: "completed", changedAt: at, now: base + 99_000, watchedStartedAt: base - 5_000 }).text;

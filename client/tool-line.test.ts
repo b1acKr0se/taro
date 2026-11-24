@@ -34,8 +34,10 @@ describe("a tool call's line", () => {
   });
 
   it("opens the call in a modal when pressed, in a lone call and in an opened run (TR-282)", () => {
-    expect(pressable).toMatch(/<Pressable[^>]*onPress=\{\(\) => setShown\(true\)\}/);
-    expect(pressable).toMatch(/<ToolModal tool=\{tool\}/);
+    expect(pressable).toMatch(/<Pressable[^>]*onPress=\{\(\) => open\(tool\.key\)\}/);
+    // The chat draws the modal, so it survives a lone call's line becoming a run's as the call finishes.
+    expect(pressable).not.toContain("<ToolModal");
+    expect(chat).toMatch(/<ToolModal tool=\{openTool\}/);
     expect(between("function TranscriptGroupView(")).toMatch(/<ToolLine key=\{tool\.key\}/);
   });
 
