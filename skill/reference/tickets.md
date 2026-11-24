@@ -100,10 +100,19 @@ rather than exceed it.
   sets Planning in the same write. A ticket already past Queued keeps its status.
 - **DELIVERY-ENDED**: written by the plugin when an owner asks a blocking question while its ticket
   awaits acceptance; it moves the ticket to In Progress in the same write (`phases/delivery.md`).
-- **REVIEW**: reviewer (or self-review), the range, every finding answered (fixed, or rejected with
-  the reason); after fixes, what the fix check re-checked: its range, fix check or full re-review, and
-  its verdict. It ends with `verdict: clean` when nothing is left to fix, else `verdict: findings`;
-  the round's newest clean one brings the delivery page (`phases/review.md`).
+- **REVIEW**: the reviewer (or self-review) and range, the latest review's bottom line in quotes,
+  each finding answered (fixed, or rejected with the reason), and what was re-checked (fix check or
+  full re-review, its range). For an independent review, one `findings:` line per author model of
+  the reviewed code: valid findings at the owner's grade, only those first raised in the rounds this
+  record covers (the new F-numbers), so no finding counts twice. The last line is `verdict: clean`
+  when nothing is left to fix, else `verdict: findings`; the round's newest clean one brings the
+  delivery page (`phases/review.md`). A line starting with an upper-case word of three or more
+  letters would split the record, so every line after the first starts lower-case.
+
+      REVIEW 2026-01-05T10:00Z — reviewer (Opus) over main..taro/na-12, fix check over 3f2a1b0..9c8d7e6 ("the fixes hold, and the approach is sound"): F1 fixed in 4d5e6f7, F2 rejected (the cache is per user: notes-cache.ts:40), F3 fixed in 8a9b0c1 (re-graded low)
+      findings: claude-sonnet-5-5 — high 0, medium 1, low 1
+      verdict: clean
+
 - **EVIDENCE**: what the user sees before Accept; the newest record counts. One fact per line,
   label in any case, separator ` — ` (` -- ` and ` - ` also work):
   `check: <command> — <result>` (one or more), `review: <outcome>`,
@@ -120,7 +129,7 @@ rather than exceed it.
 
       EVIDENCE 2026-01-05T10:00Z — before FINAL
       check: npm test — 37 files, 360 passed
-      review: one independent round (Sonnet) — 1 blocker, fixed; fix check by the same reviewer (fix range, callers, suite) — pass
+      review: one independent round (Opus) — 2 findings (1 high, 1 medium), fixed; fix check by the same reviewer — pass
       ux: list rows: titles and dates start at one x on both; no placeholder text; own pass fixed a clipped Save button; reviewer agrees
       coverage: notes list, 40 notes with long titles — notes-list-desktop.png, notes-list-phone.png
       coverage: empty list — notes-empty-phone.png

@@ -16,12 +16,12 @@ describe("parseEvidence and judgeEvidence", () => {
 
   it("completes a change with a check, a review and an existing screenshot", () => {
     const judged = judge(
-      record("check: npm test — 37 files, 360 passed", "review: one independent round (Sonnet) — 1 blocker, fixed", "ux: own pass fixed 2; reviewer — nothing open", "coverage: the board — board-phone.png", "screenshot: board-phone.png — the board on a phone"),
+      record("check: npm test — 37 files, 360 passed", "review: one independent round (Opus) — 2 findings (1 high, 1 medium), fixed", "ux: own pass fixed 2; reviewer — nothing open", "coverage: the board — board-phone.png", "screenshot: board-phone.png — the board on a phone"),
       change(["board-phone.png"]),
     );
     expect(judged).toEqual({
       checks: [{ command: "npm test", result: "37 files, 360 passed" }],
-      review: "one independent round (Sonnet) — 1 blocker, fixed",
+      review: "one independent round (Opus) — 2 findings (1 high, 1 medium), fixed",
       screenshots: [{ file: "board-phone.png", caption: "the board on a phone", present: true }],
       screenshotsNone: null,
       ux: "own pass fixed 2; reviewer — nothing open",
@@ -52,7 +52,7 @@ describe("parseEvidence and judgeEvidence", () => {
     expect(judged.review).toBe("clean");
     expect(judged.complete).toBe(true);
     // A real REVIEW record after the evidence is not taken into it.
-    const later = judge(`${record("check: npm test — 5 passed", "review: clean", "screenshots: none — no ui")}\n\nREVIEW 2026-10-13T12:00Z — reviewer r, blockers 0`);
+    const later = judge(`${record("check: npm test — 5 passed", "review: clean", "screenshots: none — no ui")}\n\nREVIEW 2026-10-13T12:00Z — reviewer r over main..taro/sh-12 (\"fix first\"): F1 open\nfindings: claude-sonnet-5-5 — high 1, medium 0, low 0\nverdict: findings`);
     expect(later.review).toBe("clean");
   });
 
