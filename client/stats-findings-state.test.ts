@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { findingsSection, highPerTicketText, reviewedText } from "./stats-findings-state";
+import { findingsFolded, findingsSection, highPerTicketText, reviewedText } from "./stats-findings-state";
 
 const sonnet = { model: "claude-sonnet-5-5", tickets: 12, high: 3, medium: 14, low: 6, escapes: 2 };
 const all = { model: "All models", tickets: 12, high: 3, medium: 14, low: 6, escapes: 2 };
@@ -45,5 +45,23 @@ describe("cell text", () => {
 
   it("gives the phone's reviewed count", () => {
     expect(reviewedText(sonnet)).toBe("· 12 reviewed");
+  });
+});
+
+describe("findingsFolded", () => {
+  it("folds a desktop pane too narrow for the columns", () => {
+    expect(findingsFolded(460, false)).toBe(true);
+  });
+
+  it("draws the columns on a desktop pane wide enough", () => {
+    expect(findingsFolded(700, false)).toBe(false);
+  });
+
+  it("always folds on a phone", () => {
+    expect(findingsFolded(700, true)).toBe(true);
+  });
+
+  it("draws the columns on a desktop before the pane is measured", () => {
+    expect(findingsFolded(0, false)).toBe(false);
   });
 });

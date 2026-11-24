@@ -5,13 +5,13 @@
  * the five numbers under it. Hidden while nothing has loaded, so a daemon without the RPC leaves the tab as it was.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
-import { useMemo } from "react";
-import { Text, View, type TextStyle } from "react-native";
+import { useMemo, useState } from "react";
+import { Text, View, type LayoutChangeEvent, type TextStyle } from "react-native";
 
 import { SectionHeading } from "./badges";
 import { useReviewFindings } from "./queries";
 import { SPACE } from "./spacing";
-import { findingsSection, highPerTicketText, reviewedText, type FindingsRowData } from "./stats-findings-state";
+import { COLUMN_WIDTHS, FINDINGS_SIDE, findingsFolded, findingsSection, highPerTicketText, MODEL_WIDTH, reviewedText, type FindingsRowData } from "./stats-findings-state";
 import { FONT_SIZE, labelLineHeightFor } from "./type-scale";
 
 type DotColour = "statusDanger" | "statusWarning" | "foregroundMuted";
@@ -28,25 +28,25 @@ interface Column {
 
 // A two-word header breaks onto two lines, so its column is only as wide as its numbers need.
 const COLUMNS: readonly Column[] = [
-  { key: "tickets", label: "Tickets\nreviewed", width: 84, phone: false, value: (row) => String(row.tickets) },
-  { key: "high", label: "High", width: 60, phone: true, dot: "statusDanger", value: (row) => String(row.high) },
-  { key: "medium", label: "Medium", width: 76, phone: true, dot: "statusWarning", value: (row) => String(row.medium) },
-  { key: "low", label: "Low", width: 56, phone: true, dot: "foregroundMuted", value: (row) => String(row.low) },
-  { key: "per-ticket", label: "High per\nticket", width: 80, phone: true, value: highPerTicketText },
-  { key: "escapes", label: "Escapes", width: 64, phone: true, value: (row) => String(row.escapes) },
+  { key: "tickets", label: "Tickets\nreviewed", width: COLUMN_WIDTHS.tickets, phone: false, value: (row) => String(row.tickets) },
+  { key: "high", label: "High", width: COLUMN_WIDTHS.high, phone: true, dot: "statusDanger", value: (row) => String(row.high) },
+  { key: "medium", label: "Medium", width: COLUMN_WIDTHS.medium, phone: true, dot: "statusWarning", value: (row) => String(row.medium) },
+  { key: "low", label: "Low", width: COLUMN_WIDTHS.low, phone: true, dot: "foregroundMuted", value: (row) => String(row.low) },
+  { key: "per-ticket", label: "High per\nticket", width: COLUMN_WIDTHS.perTicket, phone: true, value: highPerTicketText },
+  { key: "escapes", label: "Escapes", width: COLUMN_WIDTHS.escapes, phone: true, value: (row) => String(row.escapes) },
 ];
 
-const MODEL_WIDTH = 220;
 const DOT = 6;
 const HEADER_LINE = labelLineHeightFor(FONT_SIZE.micro);
 const CELL_LINE = labelLineHeightFor(FONT_SIZE.small);
 
 export function StatsFindings({ project, theme, compact }: { project: string; theme: PluginTheme; compact: boolean }) {
   const query = useReviewFindings(project);
+  const [width, setWidth] = useState(0);
   const { colors } = theme;
   const styles = useMemo(
     () => ({
-      section: { paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg },
+      section: { paddingHorizontal: FINDINGS_SIDE, paddingTop: SPACE.lg },
       heading: { paddingBottom: SPACE.md },
       headerRow: { flexDirection: "row" as const, alignItems: "flex-end" as const, paddingTop: SPACE.sm, paddingBottom: SPACE.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
       header: { color: colors.foregroundMuted, fontSize: FONT_SIZE.micro, lineHeight: HEADER_LINE, fontWeight: "700" as const },
@@ -64,7 +64,13 @@ export function StatsFindings({ project, theme, compact }: { project: string; th
   const section = findingsSection({ data: query.data, error: query.error });
   if (section.kind === "hidden") return null;
 
-  const columns = COLUMNS.filter((column) => !compact || column.phone);
+  // A desktop pane too narrow for the columns folds its rows as a phone does.
+  const folded = findingsFolded(width, compact);
+  const onLayout = (event: LayoutChangeEvent) => {
+    const measured = Math.round(event.nativeEvent.layout.width);
+    setWidth((current) => (current === measured ? current : measured));
+  };
+  const columns = COLUMNS.filter((column) => !folded || column.phone);
   // Every row's columns take the same widths, so they shrink alike on a narrow screen and stay lined up.
   const columnStyle = (column: Column) => ({ width: column.width, flexShrink: 1, minWidth: 0 });
   const modelStyle = { width: MODEL_WIDTH, flexShrink: 1, minWidth: 120 };
@@ -86,7 +92,7 @@ export function StatsFindings({ project, theme, compact }: { project: string; th
 
   const header = (
     <View style={styles.headerRow}>
-      {compact ? null : (
+      {folded ? null : (
         <Text style={[styles.header, modelStyle]} numberOfLines={1}>
           MODEL
         </Text>
@@ -110,7 +116,7 @@ export function StatsFindings({ project, theme, compact }: { project: string; th
 
   function tableRow(row: FindingsRowData, bold: boolean) {
     const style = bold ? styles.total : styles.cell;
-    if (compact) {
+    if (folded) {
       return (
         <View key={row.model} style={styles.row}>
           <Text style={[style, { paddingRight: 0 }]} numberOfLines={1}>
@@ -131,7 +137,7 @@ export function StatsFindings({ project, theme, compact }: { project: string; th
   }
 
   return (
-    <View style={styles.section}>
+    <View style={styles.section} onLayout={onLayout}>
       {heading}
       {header}
       {tableRow(section.all, true)}

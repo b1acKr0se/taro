@@ -38,3 +38,19 @@ export function highPerTicketText(row: FindingsRowData): string {
 export function reviewedText(row: FindingsRowData): string {
   return `· ${row.tickets} reviewed`;
 }
+
+/** The desktop table's widths: the model column, then Tickets reviewed, High, Medium, Low, High per ticket and Escapes. */
+export const MODEL_WIDTH = 220;
+export const COLUMN_WIDTHS = { tickets: 84, high: 60, medium: 76, low: 56, perTicket: 80, escapes: 64 } as const;
+/** The section's padding on each side (`SPACE.lg`). */
+export const FINDINGS_SIDE = 16;
+
+const COLUMNS_WIDTH = MODEL_WIDTH + Object.values(COLUMN_WIDTHS).reduce((total, width) => total + width, 0) + 2 * FINDINGS_SIDE;
+
+/**
+ * Whether rows fold to the model over its numbers, as on a phone: always there, and on a desktop pane narrower than
+ * the columns, whose headers would otherwise break mid-word and run into each other. An unmeasured pane (0) gets columns.
+ */
+export function findingsFolded(width: number, compact: boolean): boolean {
+  return compact || (width > 0 && width < COLUMNS_WIDTH);
+}
