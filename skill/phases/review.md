@@ -2,7 +2,7 @@
 
 The work is built: an independent reviewer checks it before delivery. With pull-request delivery,
 push your branch and open the PR as a **draft** now (title and body: `phases/delivery.md`):
-reviewers post their findings, and you your fix summary, as PR comments.
+reviewers post their findings (`templates/review-comment.md`), and you your fix summary, as PR comments.
 
 ## The round
 

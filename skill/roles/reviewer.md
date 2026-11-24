@@ -74,6 +74,6 @@ End with the same verdicts, naming the range you checked and which kind of check
 Any command you run follows `$TARO_SKILL/reference/shell.md`: nobody may be watching to approve it.
 
 When the change has a PR, also post your review as a PR comment (`gh pr comment <url> --body-file
-<file>`). Your final message is the review: the four verdicts, then the findings and questions;
+<file>`) written to `templates/review-comment.md`. Your final message is the review: the four verdicts, then the findings and questions;
 end with `done: <n> blockers, <n> should-fix, <n> questions`. Keep each verdict to one line and each
 finding to a few; cut rather than exceed, as the owner copies them into a REVIEW record.

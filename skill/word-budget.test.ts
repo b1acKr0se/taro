@@ -54,6 +54,7 @@ const BUDGETS: Record<string, number> = {
   "templates/brief.md": 240,
   "templates/handoff.md": 150,
   "templates/pull-request.md": 150,
+  "templates/review-comment.md": 230,
 };
 
 /**
