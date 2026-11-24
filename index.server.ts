@@ -86,7 +86,7 @@ import { withSavedContext } from "./shared/past-context";
 import { summarize, waitingTickets } from "./shared/stats";
 import { idleCompactAfterMs } from "./shared/idle-compaction";
 import { Supervisor, identityFromLabels } from "./server/supervision";
-import { forgetCallTimes, readCallTimes, toolTimePollers } from "./server/tool-times";
+import { forgetCallTimes, readCallTimes, resumeToolTimes, toolTimePollers } from "./server/tool-times";
 import { nextStepAnswer } from "./server/next-step";
 import { sessionEnvironment } from "./server/environment";
 import { readTextIfPresent, writeTextAtomically } from "./server/files";
@@ -124,6 +124,8 @@ export default function contribute(server: PluginServerContext) {
   // Each Needs-you check also records which cards wait on the user, for Stats' Waiting on you (TR-100).
   const crashTrail = createCrashTrail();
   const notifier = new Notifier({ onBoard: (project, board) => stats.waitingSeen(project, waitingTickets(board.cards)) });
+  const toolTimes = toolTimePollers();
+  const toolTimeFailure = (agentId: string) => (error: unknown) => reportFailure(`[taro] recording ${agentId}'s tool call times:`, error);
   // The server half is given Paseo only inside handlers and hooks; keep the first one for timers.
   let kept: PaseoApi | null = null;
   const keep = (paseo: PaseoApi): PaseoApi => {
@@ -136,6 +138,10 @@ export default function contribute(server: PluginServerContext) {
           if (repaired > 0) console.log(`[taro] reconciled ${repaired} agents after start`);
         })
         .catch((error: unknown) => reportFailure("[taro] reconcile after start failed:", error));
+      // A turn running at a reload has no turn start to begin its tool call times (TR-284).
+      void listProjectConfigs()
+        .then((configs) => resumeToolTimes(paseo, configs.map((config) => config.project), toolTimes, (error) => reportFailure("[taro] resuming tool call times:", error)))
+        .catch((error: unknown) => reportFailure("[taro] resuming tool call times failed:", error));
       // Changes made while the plugin was down (TR-043: the merge at an accept reloads it as the ticket
       // goes Done), and Done tickets whose agents were left open (an owner mid-turn at a reload).
       void actions.catchUpAfterStart(paseo).catch((error: unknown) => reportFailure("[taro] catching up after start failed:", error));
@@ -504,10 +510,10 @@ export default function contribute(server: PluginServerContext) {
     managerIdleCompactions: (await stats.projectCounts(project)).idleCompactions,
   }));
   // Each Taro agent's running turn is read every few seconds for when its tool calls begin and end (TR-284).
-  const toolTimes = toolTimePollers();
-  const toolTimeFailure = (agentId: string) => (error: unknown) => reportFailure(`[taro] recording ${agentId}'s tool call times:`, error);
   const removeTurnStartHook = server.on("agent.turn_started", async ({ agent }, { paseo }) => {
+    toolTimes.turnStarted(agent.id);
     const live = await fetchLiveAgent(paseo, agent.id).catch(() => null);
+    if (live === null || identityFromLabels(live.labels, live.title ?? null) === null) toolTimes.cancel(agent.id);
     if (live !== null && identityFromLabels(live.labels, live.title ?? null) !== null) toolTimes.start(paseo, agent.id, toolTimeFailure(agent.id));
     await stats.turnStarted(agent.id).catch((error: unknown) => reportFailure(`[taro] recording ${agent.id}'s turn start:`, error));
     // Kept per owner so a closed one that was mid-turn is told from one Paseo freed after an idle hour; an owner with no record yet gets its first at its turn end.

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PaseoApi } from "./host-types";
-import { forgetCallTimes, readAndRecord, readCallTimes, toolTimePollers } from "./tool-times";
+import { forgetCallTimes, readAndRecord, readCallTimes, resumeToolTimes, toolTimePollers } from "./tool-times";
 
 let home: string;
 const saved = process.env.PASEO_HOME;
@@ -66,6 +66,48 @@ describe("tool call times", () => {
     const ended = reads();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(reads()).toBe(ended);
+    pollers.stopAll();
+  });
+
+  it("leaves no poller running when the turn ended before the start's lookup finished", async () => {
+    vi.useFakeTimers();
+    const { paseo, reads } = fakePaseo(() => []);
+    const pollers = toolTimePollers();
+    pollers.turnStarted("agent-4");
+    await pollers.finish(paseo, "agent-4", () => undefined);
+    pollers.start(paseo, "agent-4", () => undefined);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(reads()).toBe(1);
+    pollers.stopAll();
+  });
+
+  it("does not write a record back after the agent was archived during a read", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const paseo = { agents: { ref: () => ({ timeline: { refetch: async () => (await held, { entries: [entry("a", "running", Date.now())] }) } }) } } as unknown as PaseoApi;
+    const reading = readAndRecord(paseo, "agent-5");
+    const forgetting = forgetCallTimes("agent-5");
+    release();
+    await Promise.all([reading, forgetting]);
+    expect(await readCallTimes("agent-5")).toEqual({});
+    expect(await readdir(join(home, "plugin-data", "taro", "tool-times")).catch(() => [])).toEqual([]);
+  });
+
+  it("starts reading the Taro agents already mid-turn when the plugin starts, and no idle one", async () => {
+    vi.useFakeTimers();
+    const agent = (id: string, status: string) => ({ agent: { id, status, archivedAt: null } });
+    let reads = 0;
+    const paseo = {
+      agents: {
+        list: async () => ({ entries: [agent("busy", "running"), agent("rested", "idle")], pageInfo: { hasMore: false, nextCursor: null } }),
+        ref: (id: string) => ({ timeline: { refetch: async () => (id === "busy" ? reads++ : reads--, { entries: [] }) } }),
+      },
+    } as unknown as PaseoApi;
+    const pollers = toolTimePollers();
+    expect(await resumeToolTimes(paseo, ["demo"], pollers, () => undefined)).toBe(1);
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(reads).toBeGreaterThanOrEqual(2);
+    await pollers.finish(paseo, "busy", () => undefined);
     pollers.stopAll();
   });
 });
