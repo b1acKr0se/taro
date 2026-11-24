@@ -26,6 +26,7 @@ import { focusRingStyle } from "./focus-ring";
 import { ImageThumbnail } from "./image-view";
 import { inlineTokens, type FileLookup, type InlineToken } from "./file-links";
 import { blockImages, parseMarkdownCached, type Block, type ImageReference } from "./markdown-parse";
+import { CopyButton, useHoverReveal } from "./copy-button";
 import { MONOSPACE } from "./ui";
 import { drawnPieces } from "./whole-ids";
 import { SPACE } from "./spacing";
@@ -52,6 +53,21 @@ interface MarkdownStyles {
   tableHeader: object;
   images: object;
   more: object;
+}
+
+/** A fenced code block with a copy icon in its corner (TR-286), shown while the pointer is over the block on a desktop. */
+function CodeBlock({ text, styles, theme }: { text: string; styles: MarkdownStyles; theme: PluginTheme }) {
+  const reveal = useHoverReveal(false);
+  return (
+    <View style={styles.codeBlock} {...reveal.handlers}>
+      <Text selectable style={styles.codeText}>
+        {text}
+      </Text>
+      <View style={{ position: "absolute", top: 0, right: 0, opacity: reveal.shown ? 1 : 0 }} pointerEvents={reveal.shown ? "auto" : "none"}>
+        <CopyButton text={text} label="Copy code" theme={theme} />
+      </View>
+    </View>
+  );
 }
 
 /** A folded paragraph shows this many lines; text shorter than the minimum never needs folding, so it is not measured. */
@@ -248,13 +264,7 @@ function renderBlocks(blocks: readonly Block[], styles: MarkdownStyles, context:
           </View>
         );
       case "code":
-        return (
-          <View key={index} style={styles.codeBlock}>
-            <Text selectable style={styles.codeText}>
-              {block.text}
-            </Text>
-          </View>
-        );
+        return <CodeBlock key={index} text={block.text} styles={styles} theme={context.theme} />;
       case "quote":
         return (
           <View key={index} style={styles.quote}>

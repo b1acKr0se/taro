@@ -6,7 +6,7 @@
  * The full transcript is one click away — the pane's Open button shows the
  * agent in Paseo itself, with every tool call and its output. This pane
  * is for the conversation with the user, so it keeps the words and folds
- * the machinery: a tool call is one line, reasoning is left out, and the
+ * the machinery: a tool call is one line, reasoning is one closed line, and the
  * notes Paseo and the board inject into the agent's inbox are shown as
  * the one line that says what happened rather than as the raw envelope.
  */
@@ -47,6 +47,11 @@ export type TranscriptRow =
    */
   | { key: string; kind: "agent"; text: string; at?: string; asking?: boolean; turn?: TurnFooter }
   | { key: string; kind: "event"; text: string }
+  /**
+   * The agent's reasoning, drawn as one closed line the reader opens: the pieces of one thought are one row.
+   * `durationMs` is how long it took, null while it is the newest entry or when the timeline has no times.
+   */
+  | { key: string; kind: "thinking"; text: string; durationMs: number | null }
   /**
    * A message another agent sent this one (a manager's starting prompt), which Paseo 0.12 logs as an
    * `agent_message` tool call rather than a user message (TR-218). Drawn folded: it is long.
@@ -179,9 +184,15 @@ export function transcriptRows(entries: readonly TimelineEntry[], cwd?: string |
     if (last !== undefined) last.turn = { copyText: spoken.map((reply) => reply.text.trim()).join("\n\n"), ...(turnEndedAt === undefined ? {} : { completedAt: turnEndedAt }), durationMs: turnDurationMs(turnStartedAt, turnEndedAt), newest };
     turnReplies = [];
   };
+  // The thought still open: it ends when the next entry arrives, which gives how long it took.
+  let thought: { row: Extract<TranscriptRow, { kind: "thinking" }>; startedAt: string | undefined; lastEntry: TimelineEntry } | undefined;
   entries.forEach((entry) => {
     const key = rowKey(entry);
     const item = entry.item;
+    if (item.type !== "reasoning" && thought !== undefined) {
+      thought.row.durationMs = turnDurationMs(thought.startedAt, entry.timestamp);
+      thought = undefined;
+    }
     // A watch note the plugin sent still folds into an event line, so only a plain plugin message becomes a received row.
     const received = receivedMessage(item) ?? (item.type === "user_message" && injectedSummary(item.text, item.clientMessageId) !== null ? null : pluginMessage(item));
     if (item.type === "user_message" || received !== null) {
@@ -215,6 +226,18 @@ export function transcriptRows(entries: readonly TimelineEntry[], cwd?: string |
         previousReply = entry;
         break;
       }
+      case "reasoning": {
+        const last = rows[rows.length - 1];
+        if (thought !== undefined && last !== undefined && last.kind === "thinking" && thought.lastEntry.seqEnd + 1 === entry.seqStart && thought.lastEntry.turnId === entry.turnId) {
+          last.text += item.text;
+          thought.lastEntry = entry;
+        } else {
+          const row: Extract<TranscriptRow, { kind: "thinking" }> = { key, kind: "thinking", text: item.text, durationMs: null };
+          rows.push(row);
+          thought = { row, startedAt: entry.timestamp, lastEntry: entry };
+        }
+        break;
+      }
       case "tool_call": {
         const detail = item.detail as ToolDetail;
         const display = toolDisplay(detail, item.name, cwd, "metadata" in item ? item.metadata : undefined);
@@ -236,7 +259,7 @@ export function transcriptRows(entries: readonly TimelineEntry[], cwd?: string |
     }
   });
   endTurn(true);
-  return endStoppedCompactions(rows.filter((row) => row.kind !== "agent" || row.text.trim() !== ""));
+  return endStoppedCompactions(rows.filter((row) => (row.kind !== "agent" && row.kind !== "thinking") || row.text.trim() !== ""));
 }
 
 /**

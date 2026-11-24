@@ -63,7 +63,7 @@ and `client/turn-time.ts` (`src/utils/time.ts` and `src/timeline/turn-time.ts`).
 `src/agent-controls/labels.ts`) and `client/provider-icon-data.ts` (the provider marks of `src/components/icons/*-icon.tsx`,
 drawn to PNG). The project tabs' letter avatars are ported from Paseo too: `shared/project-avatar.ts` (the ten tones of
 `src/styles/identity-colors.ts`, the name hash, the letter of `src/utils/project-display-name.ts` and the corner radius of
-`src/components/project-icon-view.tsx`). Paseo ships
+`src/components/project-icon-view.tsx`). The message rows are ported at commit `cf1a5a9e`: `client/message-parts.tsx` (the time and copy row, the "Sent by" line and the fold's fade from `UserMessage`, `MessageSender` and `MessagePreview` in `src/components/message.tsx` and `src/components/user-message/index.tsx`) and `client/copy-button.tsx` (`TurnCopyButton`). Paseo ships
 no NOTICE file. Its license, with the Apache License 2.0 in full:
 
 ```

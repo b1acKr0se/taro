@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { footerLabels, formatMessageTimestamp, formatTurnDuration, turnDurationMs } from "./turn-time";
+import { footerLabels, thinkingLabel, formatMessageTimestamp, formatTurnDuration, turnDurationMs } from "./turn-time";
 
 describe("formatTurnDuration", () => {
   it("writes whole seconds under a minute, rounding down", () => {
@@ -59,5 +59,13 @@ describe("footerLabels", () => {
     expect(footerLabels({ durationMs: 11_000 }).duration).toBe("Worked for 11s");
     expect(footerLabels({ durationMs: null, completedAt: "2026-10-20T10:00:11Z" }).duration).toBe("");
     expect(footerLabels({ durationMs: 0 }).endedAt).toBe("");
+  });
+});
+
+describe("thinkingLabel", () => {
+  it("says how long the thought took, or just that there was one", () => {
+    expect(thinkingLabel(12_000)).toBe("Thought for 12s");
+    expect(thinkingLabel(125_000)).toBe("Thought for 2m 5s");
+    expect(thinkingLabel(null)).toBe("Thought");
   });
 });

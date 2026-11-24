@@ -66,3 +66,8 @@ export function footerLabels(turn: { durationMs: number | null; completedAt?: st
     endedAt: formatMessageTimestamp(turn.completedAt, now),
   };
 }
+
+/** What a thinking line says (TR-286): "Thought for 12s", or "Thought" when the timeline gave no duration. */
+export function thinkingLabel(durationMs: number | null): string {
+  return durationMs === null ? "Thought" : `Thought for ${formatTurnDuration(durationMs)}`;
+}
