@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { cutResult, errorWords, readable, RESULT_LIMIT, toolText, toolTiming } from "./tool-detail";
+import { cutResult, errorWords, readable, toolState, RESULT_LIMIT, toolText, toolTiming } from "./tool-detail";
 import { noteRunningCalls, watchedStart } from "./tool-watch";
 
 describe("toolText", () => {
@@ -97,10 +97,36 @@ describe("toolTiming", () => {
 
 describe("noteRunningCalls", () => {
   it("keeps the first sighting", () => {
-    noteRunningCalls(["call-a"], 1000);
-    noteRunningCalls(["call-a", "call-b"], 5000);
+    noteRunningCalls([{ callId: "call-a", at: undefined }], 1000);
+    noteRunningCalls([{ callId: "call-a", at: undefined }, { callId: "call-b", at: undefined }], 5000);
     expect(watchedStart("call-a")).toBe(1000);
     expect(watchedStart("call-b")).toBe(5000);
     expect(watchedStart(undefined)).toBeUndefined();
+  });
+});
+
+describe("opening the chat partway through a running call", () => {
+  it("counts from the call's own time, not from the first sighting", () => {
+    const startedAt = "2026-11-24T07:00:00.000Z";
+    const start = Date.parse(startedAt);
+    // The chat is opened two minutes into the call.
+    noteRunningCalls([{ callId: "long-call", at: startedAt }], start + 120_000);
+    expect(watchedStart("long-call")).toBe(start);
+    expect(toolTiming({ status: "running", changedAt: startedAt, now: start + 120_000, watchedStartedAt: watchedStart("long-call") as number }).text).toBe("for 2m");
+    expect(toolTiming({ status: "completed", changedAt: "2026-11-24T07:02:03.000Z", now: start + 200_000, watchedStartedAt: watchedStart("long-call") as number }).text).toMatch(/^took 2m · finished/);
+  });
+  it("never starts a call before now when its own time is later (a replay's stamp)", () => {
+    noteRunningCalls([{ callId: "replayed-call", at: "2099-01-01T00:00:00.000Z" }], 5000);
+    expect(watchedStart("replayed-call")).toBe(5000);
+  });
+});
+
+describe("toolState", () => {
+  it("names each state, and a call drawn finished without an end, or cancelled, is Stopped", () => {
+    expect(toolState("running", undefined)).toEqual({ word: "Running", kind: "running" });
+    expect(toolState("completed", undefined)).toEqual({ word: "Completed", kind: "done" });
+    expect(toolState("failed", undefined)).toEqual({ word: "Failed", kind: "failed" });
+    expect(toolState("canceled", undefined).word).toBe("Stopped");
+    expect(toolState("completed", true)).toEqual({ word: "Stopped", kind: "stopped" });
   });
 });

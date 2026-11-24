@@ -162,6 +162,12 @@ describe("endStoppedTools (TR-190)", () => {
     expect(statuses(endStoppedTools(rowsOf(replayed), false))).toEqual(["user", "completed", "agent", "user", "completed"]);
   });
 
+  it("marks the calls it finishes as stopped, so no time of theirs is shown as real (TR-282)", () => {
+    const rows = endStoppedTools(rowsOf(replayed), true);
+    expect(rows.map((row) => (row.kind === "tool" ? row.stopped === true : null))).toEqual([null, true, null, null, false]);
+    expect(endStoppedTools(rowsOf([toolCall(1, "Bash", { type: "shell", command: "ls" })]), false).map((row) => (row.kind === "tool" ? row.stopped : null))).toEqual([undefined]);
+  });
+
   it("keeps the current turn's running call while the agent works, and finishes an earlier turn's", () => {
     expect(statuses(endStoppedTools(rowsOf(replayed), true))).toEqual(["user", "completed", "agent", "user", "running"]);
   });

@@ -213,7 +213,7 @@ export function AgentChat({
   const openTool = rows.find((row): row is ToolRow => row.kind === "tool" && row.key === openToolKey);
   // A call watched running shows how long it took in its modal (TR-282).
   useEffect(() => {
-    noteRunningCalls(rows.flatMap((row) => (row.kind === "tool" && row.status === "running" && row.callId !== undefined ? [row.callId] : [])));
+    noteRunningCalls(rows.flatMap((row) => (row.kind === "tool" && row.status === "running" && row.callId !== undefined ? [{ callId: row.callId, at: row.at }] : [])));
   }, [rows]);
   // The newest entry's position, not the count: the timeline is a tail and stops growing in length.
   const sentImages = useSentImages(agent.id, timeline.entries[timeline.entries.length - 1]?.seqStart ?? 0);

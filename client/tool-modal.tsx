@@ -9,7 +9,7 @@ import { createContext, useContext } from "react";
 import { Text, View } from "react-native";
 
 import { SPACE } from "./spacing";
-import { cutResult, errorWords, toolText, toolTiming } from "./tool-detail";
+import { cutResult, errorWords, toolState, toolText, toolTiming } from "./tool-detail";
 import type { ToolRow } from "./tool-runs";
 import { watchedStart } from "./tool-watch";
 import { FONT_SIZE } from "./type-scale";
@@ -24,8 +24,6 @@ import { useNow } from "./use-now";
 export const OpenToolContext = createContext<(rowKey: string) => void>(() => {});
 export const useOpenTool = () => useContext(OpenToolContext);
 
-const STATUS_WORDS: Record<string, string> = { running: "Running", completed: "Completed", failed: "Failed", canceled: "Stopped" };
-
 export function ToolModal({ tool, open, onOpenChange, theme }: { tool: ToolRow; open: boolean; onOpenChange: (open: boolean) => void; theme: PluginTheme }) {
   return (
     <Modal title={tool.label} open={open} onOpenChange={onOpenChange}>
@@ -39,9 +37,11 @@ function ToolModalBody({ tool, theme }: { tool: ToolRow; theme: PluginTheme }) {
   // Once a second while the call runs; a finished call's text never changes.
   const now = useNow(1000);
   const parts = toolText(tool.detail);
-  const failed = tool.status === "failed";
-  const running = tool.status === "running";
-  const timing = toolTiming({ status: tool.status, changedAt: tool.at, now, ...(watchedStart(tool.callId) === undefined ? {} : { watchedStartedAt: watchedStart(tool.callId) as number }), ...(parts.durationMs === undefined ? {} : { ownMs: parts.durationMs }) });
+  const state = toolState(tool.status, tool.stopped);
+  const failed = state.kind === "failed";
+  const running = state.kind === "running";
+  // A stopped call has no time of its own to show.
+  const timing = state.kind === "stopped" ? { text: "", ticking: false } : toolTiming({ status: tool.status, changedAt: tool.at, now, ...(watchedStart(tool.callId) === undefined ? {} : { watchedStartedAt: watchedStart(tool.callId) as number }), ...(parts.durationMs === undefined ? {} : { ownMs: parts.durationMs }) });
   const error = failed ? errorWords(tool.error) : "";
   const result = cutResult(parts.result);
   const heading = { color: colors.foregroundMuted, fontSize: FONT_SIZE.micro, fontWeight: "700" as const, letterSpacing: 0.8 };
@@ -50,8 +50,8 @@ function ToolModalBody({ tool, theme }: { tool: ToolRow; theme: PluginTheme }) {
   return (
     <>
       <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: SPACE.sm }}>
-        <Icon name={failed ? "TriangleAlert" : running ? "Loader" : "Check"} size={14} color={failed ? colors.statusDanger : colors.foreground} />
-        <Text style={{ color: failed ? colors.statusDanger : colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" }}>{STATUS_WORDS[tool.status] ?? tool.status}</Text>
+        <Icon name={failed ? "TriangleAlert" : running ? "Loader" : state.kind === "stopped" ? "Ban" : "Check"} size={14} color={failed ? colors.statusDanger : colors.foreground} />
+        <Text style={{ color: failed ? colors.statusDanger : colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600" }}>{state.word}</Text>
         {timing.text === "" ? null : <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.body }}>{timing.text}</Text>}
       </View>
       {parts.call === "" ? null : (

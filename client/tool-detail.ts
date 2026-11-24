@@ -154,3 +154,19 @@ export function toolTiming(input: { status: string; changedAt: string | undefine
   const took = input.ownMs ?? watched;
   return { text: [took === undefined ? "" : `took ${span(took)}`, finished].filter((part) => part !== "").join(" · "), ticking: false };
 }
+
+export interface ToolState {
+  word: string;
+  kind: "running" | "done" | "failed" | "stopped";
+}
+
+/**
+ * A call's state for the modal. A call the chat draws finished without it ever reporting an end
+ * (history Paseo replays, a turn the user stopped) is "Stopped": its time is the replay's, not its own.
+ */
+export function toolState(status: string, stopped: boolean | undefined): ToolState {
+  if (status === "canceled" || stopped === true) return { word: "Stopped", kind: "stopped" };
+  if (status === "running") return { word: "Running", kind: "running" };
+  if (status === "failed") return { word: "Failed", kind: "failed" };
+  return { word: "Completed", kind: "done" };
+}

@@ -7,10 +7,16 @@ const MAX_WATCHED = 500;
 
 const watched = new Map<string, number>();
 
-/** Notes the calls in `running` as seen at `now`, the first sighting winning. */
-export function noteRunningCalls(callIds: readonly string[], now: number = Date.now()): void {
-  callIds.forEach((callId) => {
-    if (!watched.has(callId)) watched.set(callId, now);
+/**
+ * Notes running calls: the start of each is the earlier of now and the call's own time (a running
+ * call has not changed since it began), so a chat opened partway through a call does not start the
+ * clock at zero. The first note wins.
+ */
+export function noteRunningCalls(calls: readonly { callId: string; at: string | undefined }[], now: number = Date.now()): void {
+  calls.forEach(({ callId, at }) => {
+    if (watched.has(callId)) return;
+    const own = at === undefined ? Number.NaN : Date.parse(at);
+    watched.set(callId, Number.isFinite(own) ? Math.min(now, own) : now);
   });
   while (watched.size > MAX_WATCHED) {
     const [oldest] = watched.keys();

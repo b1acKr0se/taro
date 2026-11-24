@@ -54,10 +54,10 @@ export type TranscriptRow =
   | { key: string; kind: "received"; sender: string; text: string; at?: string }
   /**
    * A tool call as Paseo shows it (TR-150): its label, detail and icon (`text` is both, for what reads
-   * every row's words), `callId`, `detail` and `error` for the call's modal (TR-282), what it adds to its run's counts, and `alone` for a call Paseo never puts in a run.
+   * every row's words), `stopped` for a call drawn finished that never reported an end (TR-190), `callId`, `detail` and `error` for the call's modal (TR-282), what it adds to its run's counts, and `alone` for a call Paseo never puts in a run.
    * `at`: when the call last changed (its start while it runs), to place a permission ask it raised after it (TR-149).
    */
-  | { key: string; kind: "tool"; text: string; label: string; summary?: string; icon: string; tally: ToolTally; alone: boolean; status: ToolCallItem["status"]; at?: string; callId?: string; detail?: unknown; error?: unknown }
+  | { key: string; kind: "tool"; text: string; label: string; summary?: string; icon: string; tally: ToolTally; alone: boolean; status: ToolCallItem["status"]; at?: string; callId?: string; detail?: unknown; error?: unknown; stopped?: boolean }
   | { key: string; kind: "error"; text: string };
 
 /** A user row's text when the message had attachments and no words. */
@@ -257,7 +257,7 @@ export function endStoppedCompactions<Row extends { kind: string; text?: string 
  */
 export function endStoppedTools(rows: TranscriptRow[], working: boolean): TranscriptRow[] {
   const lastUser = rows.map((row) => row.kind).lastIndexOf("user");
-  return rows.map((row, index) => (row.kind === "tool" && row.status === "running" && (!working || index < lastUser) ? { ...row, status: "completed" } : row));
+  return rows.map((row, index) => (row.kind === "tool" && row.status === "running" && (!working || index < lastUser) ? { ...row, status: "completed", stopped: true } : row));
 }
 
 /**
