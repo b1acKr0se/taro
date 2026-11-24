@@ -74,6 +74,18 @@ describe("findingsByModel", () => {
     expect(findingsByModel(tickets)).toEqual([]);
   });
 
+  it("does not count an ESCAPE-NOTE record as an escape", () => {
+    const tickets = [{ id: "NA-1", notes: notes(review(["findings: claude-opus-5-5 — high 0, medium 1, low 0"]), "ESCAPE-NOTE 2026-11-02T10:00Z — see NA-2's ESCAPE records") }];
+    expect(findingsByModel(tickets)[0]?.escapes).toBe(0);
+    expect(allModels(tickets).escapes).toBe(0);
+  });
+
+  it("ignores findings lines in a REVIEW-NOTE record", () => {
+    const tickets = [{ id: "NA-1", notes: "REVIEW-NOTE 2026-11-02T10:00Z — the reviewer asked for a follow-up\nfindings: claude-haiku-5-5 — high 9, medium 0, low 0" }];
+    expect(findingsByModel(tickets)).toEqual([]);
+    expect(findingsSummary(tickets).reviews).toBe(0);
+  });
+
   it("keeps an upper-case FINDINGS line in its REVIEW record", () => {
     const tickets = [{ id: "NA-1", notes: notes(review(["FINDINGS: claude-opus-5-5 — high 1, medium 0, low 0"]), "EXECUTION 2026-01-06T10:00Z\nFINDINGS: claude-opus-5-5 — high 5, medium 0, low 0") }];
     expect(findingsByModel(tickets)).toEqual([{ model: "claude-opus-5-5", tickets: 1, high: 1, medium: 0, low: 0, escapes: 0 }]);

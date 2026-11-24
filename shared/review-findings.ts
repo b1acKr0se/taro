@@ -69,14 +69,18 @@ interface TicketFindings {
   escapes: number;
 }
 
+// The record names exactly: `\b` also matches before a hyphen, so `ESCAPE-NOTE` or `REVIEW-NOTE` would count.
+const REVIEW_RECORD = /^REVIEW(?=[\s:]|$)/;
+const ESCAPE_RECORD = /^ESCAPE(?=[\s:]|$)/;
+
 function ticketFindings(ticket: TicketNotes): TicketFindings {
   const records = recordsOf(ticket.notes);
-  const reviews = records.filter((record) => /^REVIEW\b/.test(record) && !isPlanReview(record)).map(parseFindingsLines);
+  const reviews = records.filter((record) => REVIEW_RECORD.test(record) && !isPlanReview(record)).map(parseFindingsLines);
   return {
     id: ticket.id,
     lines: reviews.flat(),
     reviews: reviews.filter((lines) => lines.length > 0).length,
-    escapes: records.filter((record) => /^ESCAPE\b/.test(record)).length,
+    escapes: records.filter((record) => ESCAPE_RECORD.test(record)).length,
   };
 }
 
