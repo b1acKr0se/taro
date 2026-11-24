@@ -153,6 +153,8 @@ export function StatsView({
   // The web's one scroll box is the page; a phone's page holds the sideways scroll of the numbers.
   const page = useRef<ScrollView>(null);
   const offset = useRef({ x: 0, y: 0 });
+  // The findings section's height: the table's heading starts there, under it in the same scroll box.
+  const findingsHeight = useRef(0);
   const scrollX = useRef(new Animated.Value(0)).current;
   const headerShift = useMemo(() => Animated.multiply(scrollX, -1), [scrollX]);
   const [edges, setEdges] = useState<ScrollEdges>({ moreLeft: false, moreRight: false });
@@ -361,10 +363,14 @@ export function StatsView({
 
   function showPage(index: number) {
     setPageIndex(index);
-    // A new page starts from its first rows.
-    if (WEB) page.current?.scrollTo({ x: offset.current.x, y: 0, animated: false });
-    else page.current?.scrollTo({ y: 0, animated: false });
+    // A new page starts from its first rows: the table's heading at the top, the findings section above it.
+    const y = findingsHeight.current;
+    if (WEB) page.current?.scrollTo({ x: offset.current.x, y, animated: false });
+    else page.current?.scrollTo({ y, animated: false });
   }
+  const onFindingsLayout = (event: LayoutChangeEvent) => {
+    findingsHeight.current = event.nativeEvent.layout.height;
+  };
   const range = pageRange(pages, shownPage);
   const heading = (
     <View style={[{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg, paddingBottom: SPACE.md }, pinToView]}>
@@ -419,7 +425,9 @@ export function StatsView({
         onScroll={onWebScroll}
         scrollEventThrottle={16}
       >
-        <View style={pinToView}>{findings}</View>
+        <View style={pinToView} onLayout={onFindingsLayout}>
+          {findings}
+        </View>
         {heading}
         {/* The rows, then a fade as tall as they are, pinned by the browser to the box's right edge. */}
         <View style={{ flexDirection: "row" }}>
@@ -453,7 +461,7 @@ export function StatsView({
   // A phone: React Native's sticky header holds the header row; its labels follow the numbers' sideways scroll.
   return (
     <ScrollView ref={page} style={styles.root} stickyHeaderIndices={[2]} onLayout={(event: LayoutChangeEvent) => measured(event.nativeEvent.layout.width)}>
-      {findings}
+      <View onLayout={onFindingsLayout}>{findings}</View>
       {heading}
       <View style={[styles.row, { height: HEADER_HEIGHT }]}>
         {ticketCell(<Text style={styles.header}>TICKET</Text>, HEADER_HEIGHT - 1, "flex-end", 0, { zIndex: 1 })}
