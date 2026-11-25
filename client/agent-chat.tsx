@@ -86,6 +86,7 @@ import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
 import { pendingSends } from "./pending-send-store";
 import { heldSends, STOP_SETTLE_MS, stopHolds, type StopPress } from "./stop-state";
+import { drawnStatus, TURN_END_SETTLE_MS, type TurnEnd } from "./turn-end";
 import { Shimmer, WorkingStatus } from "./loading";
 import { fadeColour, SHIMMER_LIGHT, shimmerCopyText } from "./shimmer";
 import { useLatestCallback } from "./latest-callback";
@@ -227,6 +228,27 @@ export function AgentChat({
   useEffect(() => {
     if (stopPress !== null && !stopHeld) setStopPress(null);
   }, [stopPress, stopHeld]);
+  // The last Stop's boundary count: the end it asked for already showed at the press, so it is never held.
+  const stopped = useRef<{ agentId: string; turnCount: number } | null>(null);
+  // What the transcript draws (TR-291): a turn the stream ended stays under way until the read showing its end lands, with the reply.
+  const turnEnd: TurnEnd = {
+    turn: timeline.turn,
+    endedAt: timeline.turnAt,
+    fromWork: timeline.turnEndFromWork,
+    turnCount: timeline.turnCount,
+    stoppedAtCount: stopped.current?.agentId === agent.id ? stopped.current.turnCount : null,
+  };
+  const transcriptStatus = drawnStatus(status, turnEnd, Date.now());
+  const endHeld = transcriptStatus !== status;
+  const transcriptWorking = isWorking(transcriptStatus);
+  // Drawn again when the hold's cap passes, as no read may land by then.
+  const [, redrawAfterEnd] = useState(0);
+  const heldEndAt = endHeld ? timeline.turnAt : null;
+  useEffect(() => {
+    if (heldEndAt === null) return;
+    const timer = setTimeout(() => redrawAfterEnd((count) => count + 1), Math.max(0, heldEndAt + TURN_END_SETTLE_MS - Date.now()) + 1);
+    return () => clearTimeout(timer);
+  }, [heldEndAt]);
   const writing = status === "running";
   useEffect(() => {
     onStatus?.(status);
@@ -256,7 +278,10 @@ export function AgentChat({
   // A tool call shimmers only while its turn runs (TR-190). The reply before a sent message the timeline
   // does not show yet is not being written, so its status line stays (TR-210, as its footer does, TR-208).
   const writingReply = replyIsBeingWritten(status, sends.turnOpen);
-  const rows = useMemo(() => whileWriting(endStoppedTools(withoutOpenTurn(transcriptRows(timeline.entries, cwd), sends.turnOpen), working), writingReply), [timeline.entries, cwd, working, sends.turnOpen, writingReply]);
+  const rows = useMemo(
+    () => whileWriting(endStoppedTools(withoutOpenTurn(transcriptRows(timeline.entries, cwd), sends.turnOpen || endHeld), transcriptWorking), writingReply),
+    [timeline.entries, cwd, transcriptWorking, sends.turnOpen, endHeld, writingReply],
+  );
   const groups = useMemo(() => groupRows(rows), [rows]);
   // The call open in its modal, by its row's key (TR-282); the modal closes if the row is gone.
   const [openToolKey, setOpenToolKey] = useState<string | null>(null);
@@ -287,7 +312,7 @@ export function AgentChat({
   const compacting = queueCompacting(timelineCompacting, queue.compacting);
   const marksByRow = useMemo(() => new Map(sends.views.flatMap((view) => (view.rowKey === null ? [] : [[view.rowKey, view] as const]))), [sends.views]);
   // From the moment a message leaves, as in Paseo, not once the daemon reports the turn it starts (TR-201).
-  const loaderShown = showsLoader(status, sends.views.map((view) => view.mark));
+  const loaderShown = showsLoader(transcriptStatus, sends.views.map((view) => view.mark));
   // Rows Edit or Send now took out: hidden until a queue read that began after the action's last call answered (null while under way).
   const [handedOver, setHandedOver] = useState<ReadonlyMap<string, number | null>>(new Map());
   // Daemon rows whose Retry is under way, or answered but not read since: drawn without their Not sent line.
@@ -712,6 +737,8 @@ export function AgentChat({
     const pressedAt = Date.now();
     const matches = (current: StopPress | null) => current !== null && current.agentId === agentId && current.pressedAt === pressedAt;
     setStopPress({ agentId, pressedAt, turnCountAtPress: timeline.turnCount, answeredAt: null, failed: false });
+    const stop = { agentId, turnCount: timeline.turnCount };
+    stopped.current = stop;
     const refreshTimeline = timeline.refresh;
     void stopTurn({ agentId }).then(
       () => {
@@ -722,6 +749,8 @@ export function AgentChat({
       },
       (caught: unknown) => {
         setStopPress((current) => (matches(current) && current !== null ? { ...current, failed: true } : current));
+        // Not stopped after all: the turn's own end, later, waits for its reply as any other.
+        if (stopped.current === stop) stopped.current = null;
         heldSends(pendingSends.get(agentId), pressedAt).forEach((id) => pendingSends.update(agentId, id, { sentWhileIdle: false }));
         toast.error(errorText(caught));
       },
@@ -1099,7 +1128,7 @@ export function AgentChat({
               </View>
             ))}
             {/* An agent held up by a permission request waits for the user, not at work. */}
-            {pending.length > 0 ? null : <WorkingStatus theme={theme} shown={loaderShown} turnStartedAt={working ? agent.turnStartedAt : null} />}
+            {pending.length > 0 ? null : <WorkingStatus theme={theme} shown={loaderShown} turnStartedAt={transcriptWorking ? agent.turnStartedAt : null} />}
             </OpenToolContext.Provider>
           </KeyboardRevealProvider>
           {keyboardScroll.room > 0 ? <View style={{ height: keyboardScroll.room }} /> : null}
