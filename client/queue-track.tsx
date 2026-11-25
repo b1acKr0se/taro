@@ -12,6 +12,7 @@ import { useMemo } from "react";
 import { Text, View } from "react-native";
 
 import { listChatQueue } from "../shared/contracts";
+import { useDelayedFlag } from "./delayed-flag";
 import { Pressable } from "./focus";
 import { polled } from "./polling";
 import { chatQueueKey, QUEUE_POLL_BUSY_MS, queuePollMs, queueRowActions, queueRowText, RETRYING_ACTIONS, type QueueRowAction, type QueueRowMessage, type TrackRow } from "./queue-rows";
@@ -136,6 +137,8 @@ function QueueRow({
   // A retried row waits on its Retry: Edit held, Retry busy.
   const underWay: QueueRowAction | null = retrying ? "retry" : busy;
   const buttons = retrying ? RETRYING_ACTIONS : queueRowActions(message, compacting);
+  // The buttons hold at once; the spinner only once the wait has lasted a moment, so a quick answer shows none.
+  const spinnerShown = useDelayedFlag(underWay !== null);
   return (
     <View style={styles.row}>
       <View style={styles.words}>
@@ -154,7 +157,7 @@ function QueueRow({
       <View style={styles.actions}>
         {buttons.map((button) => {
           const tint = button.accent ? colors.accentForeground : colors.foreground;
-          const spinning = underWay === button.action;
+          const spinning = spinnerShown && underWay === button.action;
           return (
             <Pressable
               key={button.action}

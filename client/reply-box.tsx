@@ -34,9 +34,10 @@ export interface ReplyBoxProps {
   sendState?: "busy" | "done" | undefined;
   /**
    * Given while the agent works (TR-181): with nothing to send, the send button becomes Paseo's red stop
-   * button, which calls `onStop`, and Escape in the box calls it whatever the box holds. `busy` while it stops.
+   * button, which calls `onStop`, and Escape in the box calls it whatever the box holds. A press turns it
+   * into Send at once (the chat holds the turn as ended), so it never spins.
    */
-  stop?: { onStop: () => void; busy: boolean } | undefined;
+  stop?: { onStop: () => void } | undefined;
   /** A phone-sized layout, where Enter makes a new line; by default, a window narrower than Paseo's `md`. */
   compact?: boolean | undefined;
   /** The fill behind the text: the chat's surface1 on a plain pane, surface0 inside a card that is surface1. */
@@ -221,7 +222,7 @@ export function ReplyBox({
                   return;
                 }
                 if (stopKey && isStopKey(event.nativeEvent)) {
-                  if (!stop.busy) stop.onStop();
+                  stop.onStop();
                   return;
                 }
                 if (!submitOnEnter) return;
@@ -242,18 +243,12 @@ export function ReplyBox({
             {onSend === undefined ? null : stops && stop !== undefined ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={stop.busy ? "Stopping agent" : "Stop agent"}
-                accessibilityState={{ disabled: stop.busy, busy: stop.busy }}
-                disabled={stop.busy}
+                accessibilityLabel="Stop agent"
                 style={styles.stop}
                 onPress={stop.onStop}
               >
-                {stop.busy ? (
-                  <Spinner size={metrics.iconSize} color={colors.accentForeground} />
-                ) : (
-                  // Lucide's filled Square, as Paseo draws it: the host's Icon has no fill.
-                  <View style={{ width: stopSquare, height: stopSquare, borderRadius: 2, backgroundColor: colors.accentForeground }} />
-                )}
+                {/* Lucide's filled Square, as Paseo draws it: the host's Icon has no fill. */}
+                <View style={{ width: stopSquare, height: stopSquare, borderRadius: 2, backgroundColor: colors.accentForeground }} />
               </Pressable>
             ) : (
               <Pressable

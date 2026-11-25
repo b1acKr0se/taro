@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { keptMap } from "./kept";
 import { addOlderPage, joinTail, withOlder, type OlderPages } from "./older-pages";
 import type { TurnBoundary } from "../shared/pending-sends";
-import { drawnWithPieces, MAX_PIECES, streamedPiece, turnBoundary, turnTracker, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
+import { drawnWithPieces, MAX_PIECES, readQueue, streamedPiece, turnBoundary, turnTracker, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
 import { CACHED_AGENTS, cacheable, createTimelineCache } from "./timeline-cache";
 import type { TimelinePage, TimelineEntry } from "./transcript-rows";
 
@@ -43,6 +43,10 @@ export interface AgentTimeline {
   turn: TurnBoundary | null;
   /** When (client ms) the tail read shown began, null before one landed: anything it lacks was not in the timeline then. */
   readStartedAt: number | null;
+  /** The stream's turn starts and ends seen since this agent's subscription began: 0 again when it starts over. */
+  turnCount: number;
+  /** A tail read at once, or one more after the read in flight lands: a read begun after the call always follows. */
+  refresh: () => void;
 }
 
 /** The tail alone: earlier pages are kept only while the chat is open. */
@@ -75,6 +79,9 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
   const paseo = usePaseo();
   /** The current subscription's re-read, for the revision effect below. */
   const reread = useRef<() => void>(() => {});
+  /** The current subscription's read at once. */
+  const readNow = useRef<() => void>(() => {});
+  const [refresh] = useState(() => () => readNow.current());
   /** The current subscription's read of an earlier page. */
   const readOlder = useRef<() => void>(() => {});
   const [loadOlder] = useState(() => () => readOlder.current());
@@ -88,6 +95,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
   const [loading, setLoading] = useState(agentId !== null);
   const [turn, setTurn] = useState<TurnBoundary | null>(null);
   const [readStartedAt, setReadStartedAt] = useState<number | null>(null);
+  const [turnCount, setTurnCount] = useState(0);
 
   useEffect(() => {
     if (agentId === null) {
@@ -100,13 +108,13 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
       setOlderAsked(false);
       setTurn(null);
       setReadStartedAt(null);
+      setTurnCount(0);
       return;
     }
     const id = agentId;
     const timeline = paseo.agents.ref(id).timeline;
     let alive = true;
-    let inFlight = false;
-    let queued = false;
+    const reads = readQueue();
     let quiet: ReturnType<typeof setTimeout> | undefined;
     let ceiling: ReturnType<typeof setTimeout> | undefined;
     let draw: ReturnType<typeof setTimeout> | undefined;
@@ -130,6 +138,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     setOlderAsked(false);
     setTurn(null);
     setReadStartedAt(null);
+    setTurnCount(0);
 
     function clearTimers(): void {
       clearTimeout(quiet);
@@ -149,11 +158,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     // An async function, not an async arrow: Hermes evaluates an async arrow
     // in an eval'd bundle to `undefined`.
     async function load(): Promise<void> {
-      if (inFlight) {
-        queued = true;
-        return;
-      }
-      inFlight = true;
+      if (!reads.ask()) return;
       const readToken = turns.readStarted();
       const startedAt = Date.now();
       try {
@@ -174,13 +179,10 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
       } catch (cause) {
         if (alive) setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
-        inFlight = false;
+        const followUp = reads.landed();
         if (alive) {
           setLoading(false);
-          if (queued) {
-            queued = false;
-            void load();
-          }
+          if (followUp) void load();
         }
       }
     }
@@ -227,6 +229,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
         // Drawn at once, and read at once rather than after a pause: a busy turn start held it up to the ceiling.
         turns.boundary(boundary);
         setTurn(turns.current());
+        setTurnCount(turns.count());
         refresh();
         return;
       }
@@ -240,11 +243,13 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     }
 
     reread.current = schedule;
+    readNow.current = refresh;
     readOlder.current = () => void loadOlderPage();
     void load();
     const unsubscribe = timeline.subscribe(onEvent);
     return () => {
       alive = false;
+      readNow.current = () => {};
       clearTimers();
       unsubscribe();
     };
@@ -260,5 +265,5 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     if (revision !== "") reread.current();
   }, [revision]);
 
-  return { entries, agent, hasOlder, loadOlder, loadingOlder, olderAsked, error, loading, turn, readStartedAt };
+  return { entries, agent, hasOlder, loadOlder, loadingOlder, olderAsked, error, loading, turn, readStartedAt, turnCount, refresh };
 }

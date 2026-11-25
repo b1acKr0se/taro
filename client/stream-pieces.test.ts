@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { drawnWithPieces, streamedPiece, turnBoundary, turnTracker, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
+import { drawnWithPieces, readQueue, streamedPiece, turnBoundary, turnTracker, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
 import { transcriptRows, whileWriting, type TimelineEntry } from "./transcript-rows";
 
 const EPOCH = "epoch-1";
@@ -158,5 +158,37 @@ describe("turnTracker (TR-201)", () => {
     turns.boundary("started");
     turns.boundary("ended");
     expect(turns.current()).toBe("ended");
+  });
+});
+
+describe("turnTracker count (TR-287)", () => {
+  it("counts every boundary the stream reports, a start after a start included", () => {
+    const turns = turnTracker();
+    expect(turns.count()).toBe(0);
+    turns.boundary("ended");
+    expect(turns.count()).toBe(1);
+    turns.boundary("started");
+    turns.boundary("started");
+    expect(turns.count()).toBe(3);
+  });
+});
+
+describe("readQueue (TR-287)", () => {
+  it("begins a read at once when none is in flight", () => {
+    const reads = readQueue();
+    expect(reads.ask()).toBe(true);
+    expect(reads.landed()).toBe(false);
+    expect(reads.ask()).toBe(true);
+  });
+
+  it("owes one follow-up for asks made while a read is in flight, begun when it lands", () => {
+    const reads = readQueue();
+    expect(reads.ask()).toBe(true);
+    expect(reads.ask()).toBe(false);
+    expect(reads.ask()).toBe(false);
+    expect(reads.landed()).toBe(true);
+    // The follow-up itself begins, and nothing more is owed after it.
+    expect(reads.ask()).toBe(true);
+    expect(reads.landed()).toBe(false);
   });
 });

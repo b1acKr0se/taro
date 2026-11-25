@@ -84,6 +84,8 @@ import { QueueTrack, useChatQueue } from "./queue-track";
 import { COMPOSER_CONTROL_SIZE, composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
+import { pendingSends } from "./pending-send-store";
+import { heldSends, STOP_SETTLE_MS, stopHolds, type StopPress } from "./stop-state";
 import { Shimmer, WorkingStatus } from "./loading";
 import { fadeColour, SHIMMER_LIGHT, shimmerCopyText } from "./shimmer";
 import { useLatestCallback } from "./latest-callback";
@@ -208,7 +210,23 @@ export function AgentChat({
   // The timeline's read of the agent when it is newer than the board's: it follows the stream.
   const live = timeline.agent !== null && timeline.agent.updatedAt >= agent.updatedAt ? timeline.agent : null;
   // The stream's turn start or end over the last read (TR-201): the stop button and loader follow it at once.
-  const status = statusWithTurn(live?.status ?? agent.status, timeline.turn);
+  const statusBeforeStop = statusWithTurn(live?.status ?? agent.status, timeline.turn);
+  // Stop pressed: the turn shows as ended at once, until the reads or the stream catch up (`stopHolds`).
+  const [stopPress, setStopPress] = useState<StopPress | null>(null);
+  const stopHeld = stopHolds(stopPress, { agentId: agent.id, working: isWorking(statusBeforeStop), turnCount: timeline.turnCount }, Date.now());
+  const status = stopHeld ? "idle" : statusBeforeStop;
+  const stopAnsweredAt = stopHeld ? (stopPress?.answeredAt ?? null) : null;
+  // Drawn again when the hold's cap passes, as nothing else may change by then.
+  const [, redrawAfterStop] = useState(0);
+  useEffect(() => {
+    if (stopAnsweredAt === null) return;
+    const timer = setTimeout(() => redrawAfterStop((count) => count + 1), Math.max(0, stopAnsweredAt + STOP_SETTLE_MS - Date.now()) + 1);
+    return () => clearTimeout(timer);
+  }, [stopAnsweredAt]);
+  // A press released is forgotten: a later working read (a turn the queue starts) must not be held again.
+  useEffect(() => {
+    if (stopPress !== null && !stopHeld) setStopPress(null);
+  }, [stopPress, stopHeld]);
   const writing = status === "running";
   useEffect(() => {
     onStatus?.(status);
@@ -682,16 +700,31 @@ export function AgentChat({
   const sendQueuedNow = useRpc(sendQueuedMessageNow);
   const retryQueued = useRpc(retryQueuedMessage);
   const stopTurn = useRpc(stopAgentTurn);
-  // The agent a stop is under way for, so another agent's chat opened meanwhile shows its own button.
-  const [stoppingAgent, setStoppingAgent] = useState<string | null>(null);
-  /** The stop button and Escape (TR-181): ends this agent's turn; the queue then sends as after any turn. */
+  /**
+   * The stop button and Escape (TR-181): ends this agent's turn; the queue then sends as after any turn.
+   * The chat shows the turn ended at once; a failed stop brings Stop back, and moves the messages sent
+   * meanwhile as if to an idle agent to the queue track, where the daemon holds them.
+   */
   function stopAgent(): void {
     const agentId = agent.id;
-    if (stoppingAgent === agentId) return;
-    setStoppingAgent(agentId);
-    void stopTurn({ agentId })
-      .catch((caught: unknown) => toast.error(errorText(caught)))
-      .finally(() => setStoppingAgent((current) => (current === agentId ? null : current)));
+    if (stopHeld) return;
+    const pressedAt = Date.now();
+    const matches = (current: StopPress | null) => current !== null && current.agentId === agentId && current.pressedAt === pressedAt;
+    setStopPress({ agentId, pressedAt, turnCountAtPress: timeline.turnCount, answeredAt: null, failed: false });
+    const refreshTimeline = timeline.refresh;
+    void stopTurn({ agentId }).then(
+      () => {
+        // A read begun after the stop, so by the hold's cap the agent's status is one read since.
+        refreshTimeline();
+        const answeredAt = Date.now();
+        setStopPress((current) => (matches(current) && current !== null ? { ...current, answeredAt } : current));
+      },
+      (caught: unknown) => {
+        setStopPress((current) => (matches(current) && current !== null ? { ...current, failed: true } : current));
+        heldSends(pendingSends.get(agentId), pressedAt).forEach((id) => pendingSends.update(agentId, id, { sentWhileIdle: false }));
+        toast.error(errorText(caught));
+      },
+    );
   }
   const [queueBusy, setQueueBusy] = useState<ReadonlyMap<string, QueueRowAction>>(new Map());
   // What the awaited steps of a queue action read when they answer, not when it was pressed.
@@ -1162,7 +1195,7 @@ export function AgentChat({
                 enterHint
                 onSend={sendDraft}
                 canSend={!nothingToSend}
-                stop={working ? { onStop: stopAgent, busy: stoppingAgent === agent.id } : undefined}
+                stop={working ? { onStop: stopAgent } : undefined}
                 sendLabel={sendLabel({ working, requestPending: pending.length > 0 })}
                 above={<AttachmentPreviews theme={theme} attachments={attachments} onRemove={(id) => setAttachments(attachments.filter((attachment) => attachment.id !== id))} />}
                 leading={
