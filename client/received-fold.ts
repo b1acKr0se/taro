@@ -93,7 +93,7 @@ export const FADE_LINES = 3;
 /** How much of the bubble's colour covers the last line at its very bottom: never all of it, so the last line stays whole. */
 export const FADE_COVER = 0.9;
 
-/** The layers of a fade `height` points tall: about two points of height per step. */
+/** The strips of a fade `height` points tall: about two points each, so no band shows. */
 export function fadeSteps(height: number): number {
   return Math.max(1, Math.round(height / 2));
 }
@@ -137,17 +137,4 @@ export function rememberFold(key: string, fold: MeasuredFold): void {
     const oldest = folds.keys().next();
     if (!oldest.done) folds.delete(oldest.value);
   }
-}
-
-/**
- * The opacity each overlapping layer of the fade needs so the layers, each running from its own top to the fade's bottom,
- * add up to `fadeOpacities` at every step. Side-by-side strips left hairlines of unfaded text where their edges fell between
- * device pixels; layers that overlap have no shared edge to leave a gap.
- */
-export function fadeLayerOpacities(steps: number): number[] {
-  const targets = fadeOpacities(steps);
-  return targets.map((target, index) => {
-    const before = index === 0 ? 0 : (targets[index - 1] ?? 0);
-    return Math.round((((target ?? 0) - before) / (1 - before)) * 10000) / 10000;
-  });
 }
