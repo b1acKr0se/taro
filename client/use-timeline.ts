@@ -6,6 +6,7 @@ import { addOlderPage, joinTail, withOlder, type OlderPages } from "./older-page
 import type { TurnBoundary } from "../shared/pending-sends";
 import { drawnWithPieces, MAX_PIECES, readQueue, streamedPiece, turnBoundary, turnTracker, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
 import { CACHED_AGENTS, cacheable, createTimelineCache } from "./timeline-cache";
+import { endFollowsWork } from "./turn-end";
 import type { TimelinePage, TimelineEntry } from "./transcript-rows";
 
 /** Wait for a pause in the stream before re-reading, so one burst is one read. */
@@ -43,6 +44,8 @@ export interface AgentTimeline {
   turn: TurnBoundary | null;
   /** When (client ms) the stream told of `turn`: the chat draws an end only so long ahead of a read (TR-291). */
   turnAt: number | null;
+  /** Whether the chat drew the turn under way when the stream told of this end, decided then (`endFollowsWork`). */
+  turnEndFromWork: boolean;
   /** When (client ms) the tail read shown began, null before one landed: anything it lacks was not in the timeline then. */
   readStartedAt: number | null;
   /** The stream's turn starts and ends seen since this agent's subscription began: 0 again when it starts over. */
@@ -97,6 +100,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
   const [loading, setLoading] = useState(agentId !== null);
   const [turn, setTurn] = useState<TurnBoundary | null>(null);
   const [turnAt, setTurnAt] = useState<number | null>(null);
+  const [turnEndFromWork, setTurnEndFromWork] = useState(false);
   const [readStartedAt, setReadStartedAt] = useState<number | null>(null);
   const [turnCount, setTurnCount] = useState(0);
 
@@ -111,6 +115,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
       setOlderAsked(false);
       setTurn(null);
       setTurnAt(null);
+      setTurnEndFromWork(false);
       setReadStartedAt(null);
       setTurnCount(0);
       return;
@@ -131,6 +136,8 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     let tailHasOlder = cache.get(id)?.hasOlder ?? false;
     let olderInFlight = false;
     const turns = turnTracker();
+    /** The agent's status in the last read landed, for what a turn's end follows. */
+    let readStatus = cache.get(id)?.agent?.status;
     // Another agent in the same mount: its cached read, or a blank pane rather than the last agent's words.
     const cached = cache.get(id);
     setEntries(cached?.entries ?? []);
@@ -142,6 +149,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     setOlderAsked(false);
     setTurn(null);
     setTurnAt(null);
+    setTurnEndFromWork(false);
     setReadStartedAt(null);
     setTurnCount(0);
 
@@ -178,7 +186,10 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
         tailHasOlder = page.hasOlder;
         pieces = unreadPieces(pieces, epoch, read);
         setEntries(withOlder(older, withStreamed(read, epoch, pieces) as TimelineEntry[]) as TimelineEntry[]);
-        if (page.agent !== null) setAgent(page.agent);
+        if (page.agent !== null) {
+          readStatus = page.agent.status;
+          setAgent(page.agent);
+        }
         setHasOlder(older?.hasOlder ?? tailHasOlder);
         setError(page.error ?? null);
       } catch (cause) {
@@ -232,9 +243,11 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
       const boundary = turnBoundary(event);
       if (boundary !== null) {
         // Drawn at once, and read at once rather than after a pause: a busy turn start held it up to the ceiling.
+        const fromWork = boundary === "ended" && endFollowsWork(turns.current(), readStatus);
         turns.boundary(boundary);
         setTurn(turns.current());
         setTurnAt(Date.now());
+        setTurnEndFromWork(fromWork);
         setTurnCount(turns.count());
         refresh();
         return;
@@ -271,5 +284,5 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     if (revision !== "") reread.current();
   }, [revision]);
 
-  return { entries, agent, hasOlder, loadOlder, loadingOlder, olderAsked, error, loading, turn, turnAt, readStartedAt, turnCount, refresh };
+  return { entries, agent, hasOlder, loadOlder, loadingOlder, olderAsked, error, loading, turn, turnAt, turnEndFromWork, readStartedAt, turnCount, refresh };
 }

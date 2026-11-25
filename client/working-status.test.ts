@@ -54,7 +54,7 @@ describe("the chat's status (TR-201)", () => {
   });
 
   it("keeps a turn the stream ended drawn under way until the read with its reply lands, never one a Stop ended (TR-291)", () => {
-    expect(chat).toMatch(/endedAt: timeline\.turnAt,\s*readStatus: timeline\.agent\?\.status,/);
+    expect(chat).toMatch(/endedAt: timeline\.turnAt,\s*fromWork: timeline\.turnEndFromWork,/);
     expect(chat).toMatch(/const transcriptStatus = drawnStatus\(status, turnEnd, Date\.now\(\)\);/);
     // The newest footer and a running call wait with the loader; Stop, Send and the queue follow `status`.
     expect(chat).toMatch(/withoutOpenTurn\(transcriptRows\(timeline\.entries, cwd\), sends\.turnOpen \|\| endHeld\), transcriptWorking\)/);

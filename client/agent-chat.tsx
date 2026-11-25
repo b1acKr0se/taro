@@ -234,7 +234,7 @@ export function AgentChat({
   const turnEnd: TurnEnd = {
     turn: timeline.turn,
     endedAt: timeline.turnAt,
-    readStatus: timeline.agent?.status,
+    fromWork: timeline.turnEndFromWork,
     turnCount: timeline.turnCount,
     stoppedAtCount: stopped.current?.agentId === agent.id ? stopped.current.turnCount : null,
   };

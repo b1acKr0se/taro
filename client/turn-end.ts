@@ -17,8 +17,8 @@ export interface TurnEnd {
   turn: TurnBoundary | null;
   /** When the stream told of it (ms). */
   endedAt: number | null;
-  /** The agent's status in the last read: a read begun before the end. */
-  readStatus: string | null | undefined;
+  /** The chat drew the turn under way as the end came (`endFollowsWork`), decided then and kept: a read that lands later never changes it. */
+  fromWork: boolean;
   /** The stream's boundaries seen so far. */
   turnCount: number;
   /** The boundaries seen when Stop was last pressed and not failed, null when it was not. */
@@ -26,17 +26,27 @@ export interface TurnEnd {
 }
 
 /**
- * Whether the chat still draws the turn as under way: the stream said it ended, the last read still
- * shows it working, and within `TURN_END_SETTLE_MS`. Never the end a Stop asked for (the stream's
+ * Whether the chat drew a turn under way just before the stream told of its end: the stream's start
+ * was still ahead of the reads, or the last read showed it working. A turn shorter than a read has
+ * only the start to show for it, and a read begun before the end that lands after it must not turn
+ * the hold on then: the loader would go and come back.
+ */
+export function endFollowsWork(ahead: TurnBoundary | null, readStatus: string | null | undefined): boolean {
+  return ahead === "started" || isWorking(readStatus);
+}
+
+/**
+ * Whether the chat still draws the turn as under way: the stream said it ended, the turn was drawn
+ * under way as it did, and within `TURN_END_SETTLE_MS`. Never the end a Stop asked for (the stream's
  * first boundary after the press), which the chat already showed as ended at the press.
  */
 export function holdsTurnEnd(end: TurnEnd, now: number): boolean {
-  if (end.turn !== "ended" || end.endedAt === null || !isWorking(end.readStatus)) return false;
+  if (end.turn !== "ended" || end.endedAt === null || !end.fromWork) return false;
   if (end.stoppedAtCount !== null && end.turnCount === end.stoppedAtCount + 1) return false;
   return now - end.endedAt < TURN_END_SETTLE_MS;
 }
 
-/** The status the transcript draws: the last read's while an end is held, else `status`. */
+/** The status the transcript draws: running while an end is held, else `status`. */
 export function drawnStatus(status: string, end: TurnEnd, now: number): string {
-  return holdsTurnEnd(end, now) ? (end.readStatus ?? status) : status;
+  return holdsTurnEnd(end, now) ? "running" : status;
 }
