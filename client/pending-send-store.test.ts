@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { PendingSend } from "../shared/pending-sends";
 import { keptMap } from "./kept";
 import { createPendingSendStore, migrateKeptSends, type PendingSendStore } from "./pending-send-store";
-import { afterQueueRead } from "./queue-rows";
 
 function send(id: string, state: PendingSend["state"] = "sent"): PendingSend {
   return { id, text: id, attachments: [], at: 1, state };
@@ -343,38 +342,24 @@ describe("sending (TR-102)", () => {
   });
 });
 
-describe("the chat queue on the daemon (TR-171)", () => {
-  it("forgets a message the daemon queued, at once: it shows in the queue, not as Sending or Waiting", async () => {
-    const store = createPendingSendStore({});
+describe("the chat queue on the daemon (TR-171, TR-287)", () => {
+  it("queued answer keeps the message, marked queued with when the answer came, and sends the next", async () => {
+    let clock = 1000;
+    const store = createPendingSendStore({}, () => clock);
     const wire = manualTransport();
     store.setTransport("agent-1", wire.transport);
     store.add("agent-1", send("chat-a", "sending"));
     store.add("agent-1", send("chat-b", "sending"));
     await settled();
+    clock = 5000;
     wire.calls[0]?.queue();
     await settled();
-    expect(states(store)).toEqual(["chat-b:sending"]);
+    expect(store.get("agent-1")[0]).toMatchObject({ id: "chat-a", state: "queued", queuedAt: 5000 });
+    expect(states(store)).toEqual(["chat-a:queued", "chat-b:sending"]);
+    expect(wire.ids()).toEqual(["chat-a", "chat-b"]);
     wire.calls[1]?.settle();
     await settled();
-    expect(states(store)).toEqual(["chat-b:sent"]);
-  });
-
-  it("keeps a queued message until the queue was read again, so its row never leaves and comes back (TR-188)", async () => {
-    const store = createPendingSendStore({});
-    const wire = manualTransport();
-    let readDone = () => {};
-    const readQueue = vi.fn(() => new Promise<void>((resolve) => (readDone = resolve)));
-    const never = () => new Promise<void>(() => {});
-    store.setTransport("agent-1", async (pending) => afterQueueRead(await wire.transport(pending), readQueue, never));
-    store.add("agent-1", send("chat-a", "sending"));
-    await settled();
-    wire.calls[0]?.queue();
-    await settled();
-    expect(readQueue).toHaveBeenCalledTimes(1);
-    expect(states(store)).toEqual(["chat-a:sending"]);
-    readDone();
-    await settled();
-    expect(states(store)).toEqual([]);
+    expect(states(store)).toEqual(["chat-a:queued", "chat-b:sent"]);
   });
 
   it("hands the transport whether the message answers a pending request", async () => {
@@ -387,7 +372,270 @@ describe("the chat queue on the daemon (TR-171)", () => {
   });
 });
 
-describe("migrateKeptSends (TR-171)", () => {
+describe("takeOut (TR-287)", () => {
+  async function inFlight(retryWait: (ms: number) => Promise<void> = async () => {}) {
+    const store = createPendingSendStore({}, () => 50, retryWait);
+    const wire = manualTransport();
+    store.setTransport("agent-1", wire.transport);
+    store.add("agent-1", send("chat-a", "sending"));
+    store.add("agent-1", send("chat-b", "sending"));
+    await settled();
+    return { store, wire };
+  }
+  function outcomeOf(promise: Promise<string>) {
+    const seen: { value: string | null } = { value: null };
+    void promise.then((value) => (seen.value = value));
+    return seen;
+  }
+
+  it("takes one waiting its turn out at once: never handed to the plugin", async () => {
+    const { store, wire } = await inFlight();
+    await expect(store.takeOut("agent-1", "chat-b")).resolves.toBe("never-sent");
+    expect(states(store)).toEqual(["chat-a:sending"]);
+    wire.calls[0]?.settle();
+    await settled();
+    expect(wire.ids()).toEqual(["chat-a"]);
+  });
+
+  it("marks one in flight for Edit, drawn nowhere, then takes it out when the daemon queued it", async () => {
+    const { store, wire } = await inFlight();
+    const outcome = outcomeOf(store.takeOut("agent-1", "chat-a"));
+    await settled();
+    expect(store.get("agent-1")[0]).toMatchObject({ id: "chat-a", handedOver: "edit", state: "sending" });
+    expect(outcome.value).toBeNull();
+    wire.calls[0]?.queue();
+    await settled();
+    expect(outcome.value).toBe("queued");
+    expect(states(store)).toEqual(["chat-b:sending"]);
+    expect(wire.ids()).toEqual(["chat-a", "chat-b"]);
+  });
+
+  it("keeps one in flight that was sent at once as sent, its mark cleared", async () => {
+    const { store, wire } = await inFlight();
+    const outcome = outcomeOf(store.takeOut("agent-1", "chat-a"));
+    wire.calls[0]?.settle();
+    await settled();
+    expect(outcome.value).toBe("sent");
+    expect(store.get("agent-1")[0]).toMatchObject({ id: "chat-a", state: "sent", handedOver: undefined });
+  });
+
+  it("takes out one in flight refused on its first try: the plugin never had it, and it is not Not sent", async () => {
+    const { store, wire } = await inFlight();
+    const outcome = outcomeOf(store.takeOut("agent-1", "chat-a"));
+    wire.calls[0]?.settle(new Error("That agent is no longer running."));
+    await settled();
+    expect(outcome.value).toBe("never-sent");
+    expect(states(store)).toEqual(["chat-b:sending"]);
+  });
+
+  it("stops trying one in flight when a try fails in passing: the daemon may hold it", async () => {
+    const waits: number[] = [];
+    const { store, wire } = await inFlight(async (ms) => {
+      waits.push(ms);
+    });
+    const outcome = outcomeOf(store.takeOut("agent-1", "chat-a"));
+    wire.calls[0]?.settle(new Error("Transport closed (code 1006)"));
+    await settled();
+    expect(outcome.value).toBe("maybe-queued");
+    expect(waits).toEqual([]);
+    // No further try of chat-a: the next one goes instead.
+    expect(wire.ids()).toEqual(["chat-a", "chat-b"]);
+    expect(states(store)).toEqual(["chat-b:sending"]);
+  });
+
+  it("stops trying one marked while it waited to try again after a failure in passing", async () => {
+    let release = () => {};
+    const { store, wire } = await inFlight(() => new Promise<void>((resolve) => (release = resolve)));
+    wire.calls[0]?.settle(new Error("Transport closed (code 1006)"));
+    await settled();
+    const outcome = outcomeOf(store.takeOut("agent-1", "chat-a"));
+    release();
+    await settled();
+    expect(outcome.value).toBe("maybe-queued");
+    expect(wire.ids()).toEqual(["chat-a", "chat-b"]);
+  });
+
+  it("takes out one already queued at once", async () => {
+    const store = createPendingSendStore({});
+    store.add("agent-1", { ...send("chat-c", "queued"), queuedAt: 5 });
+    await expect(store.takeOut("agent-1", "chat-c")).resolves.toBe("queued");
+    expect(store.get("agent-1")).toEqual([]);
+  });
+
+  it("answers sent for one landed in the timeline before its answer, its mark cleared", async () => {
+    const { store, wire } = await inFlight();
+    const outcome = outcomeOf(store.takeOut("agent-1", "chat-a"));
+    store.update("agent-1", "chat-a", { state: "sent", error: undefined });
+    await settled();
+    expect(outcome.value).toBe("sent");
+    expect(store.get("agent-1")[0]).toMatchObject({ id: "chat-a", state: "sent", handedOver: undefined });
+    // Its late answer changes nothing.
+    wire.calls[0]?.queue();
+    await settled();
+    expect(store.get("agent-1")[0]).toMatchObject({ id: "chat-a", state: "sent" });
+  });
+
+  it("settles when the message is forgotten while it waits", async () => {
+    const { store } = await inFlight();
+    const outcome = outcomeOf(store.takeOut("agent-1", "chat-a"));
+    store.remove("agent-1", ["chat-a"]);
+    await settled();
+    expect(outcome.value).toBe("maybe-queued");
+  });
+});
+
+describe("whenSettled (TR-287)", () => {
+  it("resolves once a send in flight is queued", async () => {
+    const store = createPendingSendStore({});
+    const wire = manualTransport();
+    store.setTransport("agent-1", wire.transport);
+    store.add("agent-1", send("chat-a", "sending"));
+    await settled();
+    let result: string | null = null;
+    void store.whenSettled("agent-1", "chat-a").then((value) => (result = value));
+    await settled();
+    expect(result).toBeNull();
+    wire.calls[0]?.queue();
+    await settled();
+    expect(result).toBe("queued");
+  });
+
+  it("resolves at once for one already sent, failed or queued, and gone for one unknown", async () => {
+    const store = createPendingSendStore({});
+    store.add("agent-1", send("chat-a", "sent"));
+    store.add("agent-1", send("chat-b", "failed"));
+    store.add("agent-1", send("chat-c", "queued"));
+    await expect(store.whenSettled("agent-1", "chat-a")).resolves.toBe("sent");
+    await expect(store.whenSettled("agent-1", "chat-b")).resolves.toBe("failed");
+    await expect(store.whenSettled("agent-1", "chat-c")).resolves.toBe("queued");
+    await expect(store.whenSettled("agent-1", "chat-zzz")).resolves.toBe("gone");
+  });
+
+  it("landed before the answer → sent", async () => {
+    const store = createPendingSendStore({});
+    const wire = manualTransport();
+    store.setTransport("agent-1", wire.transport);
+    store.add("agent-1", send("chat-a", "sending"));
+    await settled();
+    const result = store.whenSettled("agent-1", "chat-a");
+    store.update("agent-1", "chat-a", { state: "sent", error: undefined });
+    await expect(result).resolves.toBe("sent");
+  });
+
+  it("forgotten while waiting → gone", async () => {
+    const store = createPendingSendStore({});
+    const wire = manualTransport();
+    store.setTransport("agent-1", wire.transport);
+    store.add("agent-1", send("chat-a", "sending"));
+    await settled();
+    const result = store.whenSettled("agent-1", "chat-a");
+    store.remove("agent-1", ["chat-a"]);
+    await expect(result).resolves.toBe("gone");
+  });
+
+  it("resolves failed once the tries run out", async () => {
+    const store = createPendingSendStore({}, () => 50, async () => {});
+    const wire = manualTransport();
+    store.setTransport("agent-1", wire.transport);
+    store.add("agent-1", send("chat-a", "sending"));
+    await settled();
+    const result = store.whenSettled("agent-1", "chat-a");
+    wire.calls[0]?.settle(new Error("That agent is no longer running."));
+    await expect(result).resolves.toBe("failed");
+  });
+});
+
+describe("sendNow (TR-287)", () => {
+  it("marks one in flight for Send now, still sent in order, and settles queued", async () => {
+    const store = createPendingSendStore({});
+    const wire = manualTransport();
+    store.setTransport("agent-1", wire.transport);
+    store.add("agent-1", send("chat-a", "sending"));
+    await settled();
+    const result = store.sendNow("agent-1", "chat-a");
+    expect(store.get("agent-1")[0]).toMatchObject({ handedOver: "send-now", state: "sending" });
+    wire.calls[0]?.queue();
+    await expect(result).resolves.toBe("queued");
+    expect(store.get("agent-1")[0]).toMatchObject({ handedOver: "send-now", state: "queued" });
+  });
+
+  it("settles queued at once for one already queued", async () => {
+    const store = createPendingSendStore({});
+    store.add("agent-1", send("chat-c", "queued"));
+    await expect(store.sendNow("agent-1", "chat-c")).resolves.toBe("queued");
+    expect(store.get("agent-1")[0]?.handedOver).toBe("send-now");
+  });
+
+  it("settles failed for a send that fails, and gone for one unknown", async () => {
+    const store = createPendingSendStore({});
+    const wire = manualTransport();
+    store.setTransport("agent-1", wire.transport);
+    store.add("agent-1", send("chat-a", "sending"));
+    await settled();
+    const result = store.sendNow("agent-1", "chat-a");
+    wire.calls[0]?.settle(new Error("That agent is no longer running."));
+    await expect(result).resolves.toBe("failed");
+    await expect(store.sendNow("agent-1", "chat-zzz")).resolves.toBe("gone");
+  });
+});
+
+describe("reconnect (TR-287)", () => {
+  it("seed v4 with an Edit-marked send, create the store and give it the agent → it is not sent; a Send-now mark is cleared", async () => {
+    const root = {};
+    keptMap<string, unknown>(root, "pending-sends.v4").set("agent-1", [
+      { ...send("chat-a", "sending"), handedOver: "edit" },
+      { ...send("chat-b", "queued"), queuedAt: 3, handedOver: "send-now" },
+      send("chat-c", "sending"),
+    ]);
+    const store = createPendingSendStore(root);
+    const wire = manualTransport();
+    store.setTransport("agent-1", wire.transport);
+    expect(store.get("agent-1").map((each) => [each.id, each.state, each.handedOver])).toEqual([
+      ["chat-b", "queued", undefined],
+      ["chat-c", "sending", undefined],
+    ]);
+    await settled();
+    expect(wire.ids()).toEqual(["chat-c"]);
+  });
+
+  it("leaves a live store's Edit alone when a second store is created on the same root (Taro on two hosts)", async () => {
+    const root = {};
+    const first = createPendingSendStore(root);
+    const wire = manualTransport();
+    first.setTransport("agent-1", wire.transport);
+    first.add("agent-1", send("chat-a", "sending"));
+    await settled();
+    let outcome: string | null = null;
+    void first.takeOut("agent-1", "chat-a").then((value) => (outcome = value));
+    const second = createPendingSendStore(root);
+    second.setTransport("agent-2", manualTransport().transport);
+    expect(first.get("agent-1")[0]).toMatchObject({ id: "chat-a", handedOver: "edit" });
+    wire.calls[0]?.queue();
+    await settled();
+    expect(outcome).toBe("queued");
+  });
+
+  it("cleans an agent's kept sends when a second store takes that agent over, and sends none marked for Edit", async () => {
+    const root = {};
+    const first = createPendingSendStore(root);
+    first.setTransport("agent-1", manualTransport().transport);
+    first.add("agent-1", send("chat-a", "sending"));
+    await settled();
+    void first.takeOut("agent-1", "chat-a");
+    const second = createPendingSendStore(root);
+    expect(second.get("agent-1").map((each) => each.handedOver)).toEqual(["edit"]);
+    const wire = manualTransport();
+    second.setTransport("agent-1", wire.transport);
+    await settled();
+    expect(second.get("agent-1")).toEqual([]);
+    expect(wire.ids()).toEqual([]);
+    // Taking it again changes nothing more.
+    second.setTransport("agent-1", wire.transport);
+    expect(second.get("agent-1")).toEqual([]);
+  });
+});
+
+describe("migrateKeptSends (TR-171, TR-287)", () => {
   it("turns a held message into one to send, which the daemon queues, and keeps the rest as they were", () => {
     const old = [
       { id: "chat-a", text: "a", attachments: [], at: 1, state: "held" },
@@ -403,18 +651,35 @@ describe("migrateKeptSends (TR-171)", () => {
     ]);
   });
 
+  it("keeps v3's sending, sent and failed messages with their flags", () => {
+    const v3 = [
+      { id: "chat-a", text: "a", attachments: [], at: 1, state: "sending", sentWhileIdle: true, answersRequest: true },
+      { id: "chat-b", text: "b", attachments: [], at: 2, state: "sent", sentWhileIdle: false },
+      { id: "chat-c", text: "c", attachments: [], at: 3, state: "failed", error: "no" },
+    ];
+    expect(migrateKeptSends(v3)).toEqual([
+      { id: "chat-a", text: "a", attachments: [], at: 1, state: "sending", sentWhileIdle: true, answersRequest: true },
+      { id: "chat-b", text: "b", attachments: [], at: 2, state: "sent", sentWhileIdle: false },
+      { id: "chat-c", text: "c", attachments: [], at: 3, state: "failed", error: "no" },
+    ]);
+  });
+
   it("drops what is not a message", () => {
     expect(migrateKeptSends([null, 3, { id: "chat-a" }, { id: "chat-b", text: "b", attachments: [], at: 2, state: "lost" }])).toEqual([]);
     expect(migrateKeptSends("not a list")).toEqual([]);
   });
 
-  it("reads the last version's slot once, so held messages left by the last bundle are sent, not dropped", async () => {
+  it("reads the earlier versions' slots once, so messages left by the last bundle are sent, not dropped", async () => {
     const root = {};
-    const old = keptMap<string, unknown>(root, "pending-sends.v2");
-    old.set("agent-1", [{ id: "chat-a", text: "a", attachments: [], at: 1, state: "held" }, { id: "chat-b", text: "b", attachments: [], at: 2, state: "sent" }]);
+    const v2 = keptMap<string, unknown>(root, "pending-sends.v2");
+    v2.set("agent-1", [{ id: "chat-a", text: "a", attachments: [], at: 1, state: "held" }, { id: "chat-b", text: "b", attachments: [], at: 2, state: "sent" }]);
+    const v3 = keptMap<string, unknown>(root, "pending-sends.v3");
+    v3.set("agent-2", [{ id: "chat-c", text: "c", attachments: [], at: 3, state: "sending" }]);
     const store = createPendingSendStore(root);
     expect(states(store)).toEqual(["chat-a:sending", "chat-b:sent"]);
-    expect(old.size).toBe(0);
+    expect(states(store, "agent-2")).toEqual(["chat-c:sending"]);
+    expect(v2.size).toBe(0);
+    expect(v3.size).toBe(0);
     const wire = manualTransport();
     store.setTransport("agent-1", wire.transport);
     await settled();

@@ -32,8 +32,14 @@ describe("the working status at the end of a chat", () => {
 
 describe("the chat's status (TR-201)", () => {
   it("follows the stream's turn start or end over the last read, everywhere the chat reads the status", () => {
-    expect(chat).toMatch(/const status = statusWithTurn\(live\?\.status \?\? agent\.status, timeline\.turn\);/);
+    expect(chat).toMatch(/const statusBeforeStop = statusWithTurn\(live\?\.status \?\? agent\.status, timeline\.turn\);/);
     expect(chat).not.toMatch(/live\?\.status \?\? agent\.status(?!, timeline\.turn)/);
+  });
+
+  it("shows a stopped turn as ended at once, everywhere the chat reads the status (TR-287)", () => {
+    expect(chat).toMatch(/stopHolds\(stopPress, \{ agentId: agent\.id, working: isWorking\(statusBeforeStop\), turnCount: timeline\.turnCount \}, Date\.now\(\)\)/);
+    expect(chat).toMatch(/const status = stopHeld \? "idle" : statusBeforeStop;/);
+    expect(chat).toMatch(/const working = isWorking\(status\);/);
   });
 
   it("tells the ticket pane, whose header shows the shown agent's status from it rather than the board's older read", () => {

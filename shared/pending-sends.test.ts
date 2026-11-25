@@ -14,6 +14,7 @@ import {
   statusWithTurn,
   STOPPED_GRACE_MS,
   replyIsBeingWritten,
+  settleQueued,
   takeBack,
   turnIsOpen,
   viewSends,
@@ -146,6 +147,25 @@ describe("viewSends", () => {
     expect(landed).toEqual(["chat-a", "chat-b"]);
   });
 
+  it("marks one the daemon queued, not in the timeline, as queued, drawn by the chat (TR-287)", () => {
+    const { views, landed } = viewSends([{ ...sent("chat-a", T0, "queued"), queuedAt: T0 }], [entry("assistant_message")], WORKING, T0);
+    expect(views.map((view) => [view.send.id, view.mark, view.rowKey])).toEqual([["chat-a", "queued", null]]);
+    expect(landed).toEqual([]);
+  });
+
+  it("takes a queued message the timeline shows as landed, on its row (TR-287)", () => {
+    const mine = entry("user_message", T0, "chat-a");
+    const { views, landed } = viewSends([{ ...sent("chat-a", T0, "queued"), queuedAt: T0 }], [mine], WORKING, T0);
+    expect(landed).toEqual(["chat-a"]);
+    expect(views.map((view) => [view.mark, view.rowKey])).toEqual([["waiting", String(mine.seqStart)]]);
+  });
+
+  it("gives a message marked for Edit no view at all, though its landing still counts (TR-287)", () => {
+    const edited: PendingSend = { ...sent("chat-a", T0, "sending"), handedOver: "edit" };
+    expect(viewSends([edited], [], WORKING, T0)).toEqual({ views: [], read: [], landed: [] });
+    expect(viewSends([edited], [entry("user_message", T0, "chat-a")], WORKING, T0)).toEqual({ views: [], read: [], landed: ["chat-a"] });
+  });
+
   it("never says a message on its way was not read, however long the agent has been stopped", () => {
     const { views } = viewSends([sent("chat-a", T0, "sending")], [], { stoppedAt: T0 - 100_000, hasOlder: false }, T0 + 100_000);
     expect(views[0]?.mark).toBe("sending");
@@ -153,6 +173,12 @@ describe("viewSends", () => {
 });
 
 describe("nextToSend (TR-102)", () => {
+  it("skips a message marked for Edit: it is in the box, never sent again (TR-287)", () => {
+    expect(nextToSend([{ ...sent("chat-a", T0, "sending"), handedOver: "edit" }, sent("chat-b", T0, "sending")])?.id).toBe("chat-b");
+    expect(nextToSend([{ ...sent("chat-a", T0, "sending"), handedOver: "send-now" }])?.id).toBe("chat-a");
+    expect(nextToSend([sent("chat-a", T0, "queued"), sent("chat-b", T0, "sending")])?.id).toBe("chat-b");
+  });
+
   it("is the first message sending, in order", () => {
     expect(nextToSend([sent("chat-a", T0, "sending"), sent("chat-b", T0, "sending")])?.id).toBe("chat-a");
   });
@@ -306,6 +332,10 @@ describe("showsLoader (TR-201)", () => {
   it("does not show for a stopped agent with nothing on its way: none, failed, held behind a failure, delivered or unread", () => {
     for (const marks of [[], ["failed"], ["failed", "behind"], ["waiting"], ["unread"]] as const) expect(showsLoader("idle", marks)).toBe(false);
   });
+
+  it("does not count a message the daemon queued, which is not on its way (TR-287)", () => {
+    expect(showsLoader("idle", ["queued"])).toBe(false);
+  });
 });
 
 describe("chat message ids", () => {
@@ -322,26 +352,31 @@ describe("chat message ids", () => {
 });
 
 describe("turnIsOpen (TR-208)", () => {
-  const view = (id: string, mark: "sending" | "failed" | "waiting", rowKey: string | null) => ({ send: sent(id, T0, "sending"), mark, rowKey });
+  const view = (id: string, mark: "sending" | "failed" | "waiting" | "queued", rowKey: string | null, sentWhileIdle = true) => ({ send: { ...sent(id, T0, "sending"), ...(sentWhileIdle ? { sentWhileIdle } : {}) }, mark, rowKey });
 
   it("keeps the footer of the turn before a message sent to an idle agent that started working on it, until the message lands", () => {
-    expect(turnIsOpen(true, [view("a", "sending", null)], new Set(["a"]))).toBe(false);
-    expect(turnIsOpen(true, [view("a", "waiting", null)], new Set(["a"]))).toBe(false);
+    expect(turnIsOpen(true, [view("a", "sending", null)])).toBe(false);
+    expect(turnIsOpen(true, [view("a", "waiting", null)])).toBe(false);
   });
 
   it("is open once the message is in the timeline, or when the agent was working when it was sent", () => {
-    expect(turnIsOpen(true, [view("a", "waiting", "10")], new Set(["a"]))).toBe(true);
-    expect(turnIsOpen(true, [view("a", "sending", null)], new Set())).toBe(true);
+    expect(turnIsOpen(true, [view("a", "waiting", "10")])).toBe(true);
+    expect(turnIsOpen(true, [view("a", "sending", null, false)])).toBe(true);
   });
 
   it("is open while a turn runs with nothing sent, and never when the agent is idle", () => {
-    expect(turnIsOpen(true, [], new Set())).toBe(true);
-    expect(turnIsOpen(false, [], new Set())).toBe(false);
-    expect(turnIsOpen(false, [view("a", "sending", null)], new Set(["a"]))).toBe(false);
+    expect(turnIsOpen(true, [])).toBe(true);
+    expect(turnIsOpen(false, [])).toBe(false);
+    expect(turnIsOpen(false, [view("a", "sending", null)])).toBe(false);
   });
 
   it("does not count a failed message, which never starts a turn", () => {
-    expect(turnIsOpen(true, [view("a", "failed", null)], new Set(["a"]))).toBe(true);
+    expect(turnIsOpen(true, [view("a", "failed", null)])).toBe(true);
+  });
+
+  it("stays open for a message sent as to an idle agent that the daemon queued: it waits for the running turn to end (TR-287)", () => {
+    expect(turnIsOpen(true, [{ mark: "queued", rowKey: null, send: { sentWhileIdle: true } }])).toBe(true);
+    expect(turnIsOpen(true, [{ mark: "sending", rowKey: null, send: { sentWhileIdle: true } }])).toBe(false);
   });
 });
 
@@ -353,5 +388,75 @@ describe("replyIsBeingWritten (TR-210)", () => {
   it("holds the unfinished status line of a reply the agent is writing, and never when it is not running", () => {
     expect(replyIsBeingWritten("running", true)).toBe(true);
     expect(replyIsBeingWritten("idle", true)).toBe(false);
+  });
+});
+
+describe("settleQueued (TR-287)", () => {
+  const queued = (id: string, change: Partial<PendingSend> = {}): PendingSend => ({ ...sent(id, T0, "queued"), queuedAt: 1000, ...change });
+
+  const read = (ids: string[], startedAt: number, answeredAt = startedAt) => ({ ids, startedAt, answeredAt });
+
+  it("says nothing before any read", () => {
+    expect(settleQueued([queued("chat-a")], null, null)).toEqual({ left: [], leftQueueAt: null, gone: [], found: [], failedOnDaemon: [] });
+  });
+
+  it("does not count a queue read that began before the daemon's queued answer", () => {
+    expect(settleQueued([queued("chat-a")], read([], 900), null)).toEqual({ left: [], leftQueueAt: 900, gone: [], found: [], failedOnDaemon: [] });
+  });
+
+  it("notes a queued message a read begun at or after the answer omits, and not one it lists", () => {
+    expect(settleQueued([queued("chat-a")], read([], 1000), null)).toEqual({ left: ["chat-a"], leftQueueAt: 1000, gone: [], found: [], failedOnDaemon: [] });
+    expect(settleQueued([queued("chat-a")], read(["chat-a"], 1500), null).left).toEqual([]);
+  });
+
+  it("ignores one handed over, one already noted, and one not queued", () => {
+    expect(settleQueued([queued("chat-a", { handedOver: "send-now" }), queued("chat-b", { handedOver: "edit" }), queued("chat-c", { leftQueueAt: 3000 }), sent("chat-d", T0, "sending"), sent("chat-e")], read([], 5000), null).left).toEqual([]);
+  });
+
+  it("forgets one gone from the queue that a later timeline read does not show: removed elsewhere, never sent", () => {
+    const left = queued("chat-a", { leftQueueAt: 3000 });
+    expect(settleQueued([left], null, { ids: [], startedAt: 3500 })).toEqual({ left: [], leftQueueAt: null, gone: ["chat-a"], found: [], failedOnDaemon: [] });
+  });
+
+  it("keeps one an earlier timeline read lacks, and one the timeline shows (it landed)", () => {
+    const left = queued("chat-a", { leftQueueAt: 3000 });
+    expect(settleQueued([left], null, { ids: [], startedAt: 2500 }).gone).toEqual([]);
+    expect(settleQueued([left], null, { ids: ["chat-a"], startedAt: 3500 }).gone).toEqual([]);
+  });
+
+  it("leaves the queue, then is gone after a later timeline read without it", () => {
+    const first = settleQueued([queued("chat-a")], read([], 3000), { ids: [], startedAt: 2000 });
+    expect(first).toEqual({ left: ["chat-a"], leftQueueAt: 3000, gone: [], found: [], failedOnDaemon: [] });
+    const noted = queued("chat-a", { leftQueueAt: 3000 });
+    expect(settleQueued([noted], read([], 5000), { ids: [], startedAt: 2000 }).gone).toEqual([]);
+    expect(settleQueued([noted], read([], 5000), { ids: [], startedAt: 4000 }).gone).toEqual(["chat-a"]);
+  });
+
+  it("finds a failed send the queue read lists, to mark queued: the daemon had it, only the answer was lost", () => {
+    const failed = sent("chat-a", T0, "failed");
+    expect(settleQueued([failed], read(["chat-a"], 4000), null).found).toEqual(["chat-a"]);
+    expect(settleQueued([failed], read([], 4000), null).found).toEqual([]);
+    expect(settleQueued([failed], null, null).found).toEqual([]);
+  });
+
+  it("finds a message held as sent to an idle agent that the daemon lists as failed, to draw its Not sent row", () => {
+    // Sent while a stop was under way: the daemon queued it, and its drain failed.
+    const held = queued("chat-d", { sentWhileIdle: true });
+    const failedRead = { ...read(["chat-d", "chat-e"], 4000), failed: ["chat-d"] };
+    expect(settleQueued([held], failedRead, null).failedOnDaemon).toEqual(["chat-d"]);
+    // Listed but not failed, not held as sent to an idle agent, or no read: nothing to move.
+    expect(settleQueued([held], read(["chat-d"], 4000), null).failedOnDaemon).toEqual([]);
+    expect(settleQueued([queued("chat-d")], failedRead, null).failedOnDaemon).toEqual([]);
+    expect(settleQueued([held], null, null).failedOnDaemon).toEqual([]);
+  });
+
+  it("dates leaving the queue from when the omitting read answered, not when it began", () => {
+    // The read began at 1000 and answered at 2500: a timeline read begun in between may have reached the daemon before the drain.
+    const { left, leftQueueAt } = settleQueued([queued("chat-a")], read([], 1000, 2500), null);
+    expect([left, leftQueueAt]).toEqual([["chat-a"], 2500]);
+    const noted = queued("chat-a", { leftQueueAt: 2500 });
+    expect(settleQueued([noted], null, { ids: [], startedAt: 2000 }).gone).toEqual([]);
+    expect(settleQueued([noted], null, { ids: [], startedAt: 2500 }).gone).toEqual(["chat-a"]);
+    expect(settleQueued([noted], null, { ids: [], startedAt: 3000 }).gone).toEqual(["chat-a"]);
   });
 });

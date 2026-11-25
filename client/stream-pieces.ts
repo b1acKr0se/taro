@@ -75,6 +75,37 @@ export function turnTracker() {
     current(): TurnBoundary | null {
       return last;
     },
+    /** The boundaries the stream told of so far: a stop is held until this moves (`client/stop-state.ts`). */
+    count(): number {
+      return boundaries;
+    },
+  };
+}
+
+/**
+ * One read in flight at a time (`useAgentTimeline`): a read asked for meanwhile becomes one follow-up,
+ * begun when the read in flight lands, so a read that began after any ask always follows.
+ */
+export function readQueue() {
+  let inFlight = false;
+  let followUp = false;
+  return {
+    /** A read is asked for: true to begin it now, false when one is in flight (the follow-up is then owed). */
+    ask(): boolean {
+      if (inFlight) {
+        followUp = true;
+        return false;
+      }
+      inFlight = true;
+      return true;
+    },
+    /** The read in flight landed: true when the follow-up should be asked for now. */
+    landed(): boolean {
+      inFlight = false;
+      const owed = followUp;
+      followUp = false;
+      return owed;
+    },
   };
 }
 

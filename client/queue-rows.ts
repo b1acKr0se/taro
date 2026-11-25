@@ -2,11 +2,15 @@
  * The chat queue's rows above the composer (TR-171): what a queued message's row says, which buttons
  * it offers, whether Edit may put it back in the box, and how often the queue is read. Pure, for vitest.
  */
-import { imageFileName, type DraftAttachment, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
+import { attachmentProblem, imageFileName, type DraftAttachment, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
 import { NOT_QUEUED, type QueuedMessageSummary } from "../shared/chat-queue";
-import type { PendingSend, SendView } from "../shared/pending-sends";
+import { leftQueue, takeBack, type PendingSend, type QueueReadOfIds, type ReadOfIds, type SendView } from "../shared/pending-sends";
 
-export type QueueRowMessage = QueuedMessageSummary;
+/**
+ * A row's message; `behind`: one of this app's, waiting for a failed message before it to be sent;
+ * `left`: one of this app's the daemon's queue no longer lists, as it took it from the front.
+ */
+export type QueueRowMessage = QueuedMessageSummary & { behind?: boolean | undefined; left?: boolean | undefined };
 
 export interface QueueRowText {
   /** The user's words, null for a message of attachments only. */
@@ -43,11 +47,20 @@ const RETRY: QueueRowButton = { action: "retry", label: "Retry queued message", 
 
 /**
  * A row's buttons: Edit and Send now; no Send now while the agent compacts, as the daemon hands one
- * back then; Retry in its place on a message whose send failed.
+ * back then, nor on one behind a failed message, which it cannot go before; Retry in its place on a
+ * message whose send failed.
  */
 export function queueRowActions(message: QueueRowMessage, compacting: boolean): QueueRowButton[] {
   if (message.failed !== null) return [EDIT, RETRY];
-  return compacting ? [EDIT] : [EDIT, SEND_NOW];
+  return compacting || message.behind === true ? [EDIT] : [EDIT, SEND_NOW];
+}
+
+/** A retried row's buttons while its Retry is under way: Edit (disabled) and Retry (busy). */
+export const RETRYING_ACTIONS: readonly QueueRowButton[] = [EDIT, RETRY];
+
+/** Whether a press on a row acts: only its own action under way holds it up, never another row's. */
+export function mayAct(busy: ReadonlyMap<string, QueueRowAction>, id: string): boolean {
+  return !busy.has(id);
 }
 
 /**
@@ -105,16 +118,16 @@ export function takenAttachments(messageId: string, taken: { images: readonly Ou
 }
 
 /**
- * The chat's messages on their way to a working agent, drawn as rows of the queue (a spinner, no
- * buttons) rather than in the transcript: the daemon will queue them, and a row that first showed in
- * the transcript would jump to the track once it answered. One answered "sent at once" (the turn had
- * just ended) moves to the transcript as any sent message.
+ * The chat's messages the daemon queues, or will (sent while the agent works): drawn as rows of the
+ * queue track, finished at once with their buttons, rather than in the transcript, from the moment they
+ * leave until the timeline shows them. Whether one is drawn here follows how it was sent, never the
+ * agent's status now, so it does not jump as the status flips. One sent to an idle agent
+ * (`sentWhileIdle`) is the transcript's, and one handed over (Edit, Send now) is drawn elsewhere. One the
+ * queue read shows left the daemon's queue is marked `left` in the same render, so it keeps its place at the front.
  */
-export function sendingToQueue(views: readonly SendView[], working: boolean): QueueRowMessage[] {
-  if (!working) return [];
+export function sendingToQueue(views: readonly SendView[], queueRead: ReadOfIds | null = null): QueueRowMessage[] {
   return views.flatMap((view) =>
-    // One sent to an idle agent starts the turn that now shows as working: it is the transcript's, never the queue's.
-    view.rowKey === null && view.send.sentWhileIdle !== true && (view.mark === "sending" || view.mark === "behind")
+    view.rowKey === null && view.send.sentWhileIdle !== true && view.send.handedOver === undefined && (view.mark === "sending" || view.mark === "behind" || view.mark === "queued")
       ? [
           {
             id: view.send.id,
@@ -123,28 +136,175 @@ export function sendingToQueue(views: readonly SendView[], working: boolean): Qu
             imageCount: view.send.attachments.filter((attachment) => attachment.kind === "image").length,
             fileNames: view.send.attachments.flatMap((attachment) => (attachment.kind === "file" ? [attachment.fileName] : [])),
             failed: null,
+            ...(view.mark === "behind" ? { behind: true } : {}),
+            ...(leftQueue(view.send, queueRead) ? { left: true } : {}),
           },
         ]
       : [],
   );
 }
 
-/** How long a queued message's send waits for the queue to be read again before its arriving row goes anyway. */
-export const QUEUE_READ_WAIT_MS = 3_000;
+/**
+ * Whether a queued message kept from before this chat was mounted waits to be drawn: the agent may have
+ * taken it, or another device removed it, while the chat was closed. Drawn once this mount's first queue
+ * read answered and lists it, or, when that read omits it, once a timeline read begun after that read
+ * answered landed too (the one that settles it: it is then the transcript's, or forgotten as removed); a
+ * timeline read begun earlier may predate the drain or the removal. One queued after mounting is drawn at once.
+ */
+export function waitsForFreshReads(send: PendingSend, mountedAt: number, reads: { queue: QueueReadOfIds | null; timelineStartedAt: number | null }): boolean {
+  if (send.state !== "queued" || send.queuedAt === undefined || send.queuedAt >= mountedAt) return false;
+  if (reads.queue === null || reads.queue.answeredAt < mountedAt) return true;
+  if (reads.queue.ids.includes(send.id)) return false;
+  const leftAt = Math.max(mountedAt, send.leftQueueAt ?? reads.queue.answeredAt);
+  return reads.timelineStartedAt === null || reads.timelineStartedAt < leftAt;
+}
+
+/** One row of the queue track; `local`: only this app's copy lists it (the daemon's read does not yet, or no longer). */
+export interface TrackRow {
+  message: QueueRowMessage;
+  local: boolean;
+  /** Retry is under way: drawn without its Not sent line. */
+  retrying: boolean;
+}
 
 /**
- * The answer of a send the daemon queued, given only once the queue was read again (TR-188): the store
- * forgets the message's arriving row on that answer, and until the read lands no row would show it, so
- * the row went and came back. A read that fails or outlasts the wait lets it go anyway.
+ * The queue track's rows: this app's that left the daemon's queue first (the daemon drains its front),
+ * then the daemon's in its order, then this app's it does not list yet, each message once under its own id. Not those `hidden` (handed over to the box or the transcript, or held as sent
+ * to an idle agent), nor those the timeline shows: a message is the transcript's or the queue's, never both.
  */
-export async function afterQueueRead<Answer extends { queued: boolean }>(
-  answer: Answer,
-  readQueue: () => Promise<unknown>,
-  wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-): Promise<Answer> {
-  if (!answer.queued) return answer;
-  await Promise.race([readQueue().catch(() => undefined), wait(QUEUE_READ_WAIT_MS)]);
-  return answer;
+export function trackRows({
+  daemon,
+  local,
+  hidden,
+  inTimeline,
+  retrying,
+}: {
+  daemon: readonly QueueRowMessage[];
+  local: readonly QueueRowMessage[];
+  hidden: ReadonlySet<string>;
+  inTimeline: ReadonlySet<string>;
+  retrying: ReadonlySet<string>;
+}): TrackRow[] {
+  const listed = new Set(daemon.map((message) => message.id));
+  const unlisted = local.filter((message) => !listed.has(message.id));
+  const rows = [
+    ...unlisted.filter((message) => message.left === true).map((message) => ({ message, local: true })),
+    ...daemon.map((message) => ({ message, local: false })),
+    ...unlisted.filter((message) => message.left !== true).map((message) => ({ message, local: true })),
+  ];
+  return rows
+    .filter((row) => !hidden.has(row.message.id) && !inTimeline.has(row.message.id))
+    .map((row) => (retrying.has(row.message.id) ? { message: { ...row.message, failed: null }, local: row.local, retrying: true } : { ...row, retrying: false }));
+}
+
+/**
+ * Whether a new message goes as one sent to an idle agent (`sentWhileIdle`): the chat shows the agent
+ * idle, with no queue row and no compaction; otherwise the daemon queues it, and it is drawn in the track.
+ */
+export function sendsAsIdle(workingShown: boolean, queueRows: number, compacting: boolean): boolean {
+  return !workingShown && queueRows === 0 && !compacting;
+}
+
+/** How a call on the daemon's queue answered: null before it is made. */
+export type QueueCall = "ok" | "not-queued" | "other-error";
+
+export function queueCallFailure(error: string): Exclude<QueueCall, "ok"> {
+  return error.includes(NOT_QUEUED) ? "not-queued" : "other-error";
+}
+
+/**
+ * What Edit still does after the store took a held message out (`takeOut`), and after the removal on the
+ * daemon answered (`removal`, null before it is asked). "remove": ask `taro.queue.remove`;
+ * "sent-meanwhile": its words stay in the box, with `EDIT_SENT_MEANWHILE`; "still-queued-check": read the
+ * queue again (`editRemoval`). One whose send went unanswered and that the daemon does not hold was never
+ * queued, unless the timeline shows it.
+ */
+export function afterTakeOut(
+  outcome: "never-sent" | "queued" | "sent" | "maybe-queued",
+  removal: QueueCall | null,
+  inTimeline: boolean,
+): "done" | "sent-meanwhile" | "remove" | "still-queued-check" {
+  if (outcome === "never-sent") return "done";
+  if (outcome === "sent") return "sent-meanwhile";
+  if (removal === null) return "remove";
+  if (removal === "ok") return "done";
+  if (removal === "other-error") return "still-queued-check";
+  return outcome === "queued" || inTimeline ? "sent-meanwhile" : "done";
+}
+
+/**
+ * What Send now on a held message does once its send settled (`whenSettled`), and after
+ * `taro.queue.send-now` answered (`call`, null before it is made). "call": make it; "sent": mark it sent
+ * (the daemon also answers "no longer queued" when it had sent it already); "row-back": clear the mark,
+ * the row comes back; "failed": clear the mark, drawn as any failed send.
+ */
+export function afterSendNow(settled: "queued" | "sent" | "failed" | "gone", call: QueueCall | null): "call" | "sent" | "row-back" | "failed" | "nothing" {
+  if (settled === "failed") return "failed";
+  if (settled !== "queued") return "nothing";
+  if (call === null) return "call";
+  return call === "other-error" ? "row-back" : "sent";
+}
+
+/**
+ * The rows the chat still hides after Edit or Send now: by when the action's last call answered (null
+ * while under way), released by a queue read that began at or after it (the refresh the answer starts often
+ * begins in the same millisecond, and reaches the daemon after the answer), so the daemon's row never blinks back.
+ */
+export function hiddenAfterRead(hidden: ReadonlyMap<string, number | null>, readStartedAt: number | null): ReadonlyMap<string, number | null> {
+  if (readStartedAt === null || ![...hidden.values()].some((answeredAt) => answeredAt !== null && readStartedAt >= answeredAt)) return hidden;
+  return new Map([...hidden].filter(([, answeredAt]) => answeredAt === null || readStartedAt < answeredAt));
+}
+
+export interface ComposerBox {
+  text: string;
+  attachments: readonly DraftAttachment[];
+}
+
+/** Whether an attachment in the box is one Edit put there from this message (`takenAttachments`, `heldAttachments`). */
+function fromMessage(attachment: DraftAttachment, messageId: string): boolean {
+  return attachment.id.startsWith(`${messageId}-image-`) || attachment.id.startsWith(`${messageId}-file-`);
+}
+
+/**
+ * The box without a message Edit put in it, when its removal failed and the daemon still queues it: its
+ * words as `takeBack` put them (a block of their own) and its attachments, everything else kept. Null when
+ * they no longer stand there intact (the user changed them): the box is kept as it is.
+ */
+export function withoutTaken(box: ComposerBox, taken: { messageId: string; text: string }): ComposerBox | null {
+  const attachments = box.attachments.filter((attachment) => !fromMessage(attachment, taken.messageId));
+  if (taken.text === "") return attachments.length === box.attachments.length ? null : { text: box.text, attachments };
+  const separator = "\n\n";
+  for (let start = box.text.indexOf(taken.text); start !== -1; start = box.text.indexOf(taken.text, start + 1)) {
+    const end = start + taken.text.length;
+    const before = start === 0 || box.text.slice(start - separator.length, start) === separator;
+    const after = end === box.text.length || box.text.slice(end, end + separator.length) === separator;
+    if (!before || !after) continue;
+    const text = end < box.text.length ? box.text.slice(0, start) + box.text.slice(end + separator.length) : box.text.slice(0, Math.max(0, start - separator.length));
+    return { text, attachments };
+  }
+  return null;
+}
+
+export const STILL_QUEUED_IN_BOX = "That message is still queued; its words are also in the box.";
+
+/**
+ * The box once `taro.queue.take` answered, built from the box as it is then (another Edit may have
+ * answered meanwhile, or the user typed on): refused, with why, when the attachments would not fit
+ * together, before the message leaves the queue.
+ */
+export function boxAfterTake(box: ComposerBox, message: QueueRowMessage, taken: { text: string; images: readonly OutgoingImage[]; files: readonly OutgoingFile[] }): { box: ComposerBox } | { refused: string } {
+  const refusal = editRefusal({ text: box.text, attachments: box.attachments.length }, message);
+  if (refusal !== null) return { refused: refusal };
+  const back = takeBack(box, { text: taken.text, attachments: takenAttachments(message.id, taken) });
+  const problem = attachmentProblem(back.attachments);
+  return problem === null ? { box: back } : { refused: `${problem} Remove some from the box first.` };
+}
+
+/** A held message's attachments as Edit puts them in the box: under ids that say whose they are, as `takenAttachments` does. */
+export function heldAttachments(messageId: string, attachments: readonly DraftAttachment[]): DraftAttachment[] {
+  const images = attachments.filter((attachment) => attachment.kind === "image");
+  const files = attachments.filter((attachment) => attachment.kind !== "image");
+  return [...images.map((image, index) => ({ ...image, id: `${messageId}-image-${index}` })), ...files.map((file, index) => ({ ...file, id: `${messageId}-file-${index}` }))];
 }
 
 /**
@@ -156,9 +316,4 @@ export async function afterQueueRead<Answer extends { queued: boolean }>(
 export function handedOverSend(message: QueueRowMessage, now: number): PendingSend | null {
   if (message.imageCount + message.fileNames.length > 0) return null;
   return { id: message.id, text: message.text, attachments: [], at: now, state: "sent", sentWhileIdle: true };
-}
-
-/** The queue's rows without those already handed over to the transcript. */
-export function withoutHandedOver(messages: readonly QueueRowMessage[], handedOver: ReadonlySet<string>): readonly QueueRowMessage[] {
-  return handedOver.size === 0 ? messages : messages.filter((message) => !handedOver.has(message.id));
 }

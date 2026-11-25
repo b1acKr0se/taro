@@ -4,8 +4,9 @@
  * Paseo puts a message sent to a running agent in its timeline the moment it accepts it, and never
  * says when the agent reads it. So a sent message is "waiting" until the agent's first step after it
  * in the timeline (`isAgentStep`), and "unread" when the agent stopped without one. One sent while the
- * agent works waits in the daemon's queue instead (TR-171, `shared/chat-queue.ts`), and the chat
- * forgets it as soon as the daemon says so. Pure, for vitest.
+ * agent works waits in the daemon's queue instead (TR-171, `shared/chat-queue.ts`): the chat keeps it,
+ * marked "queued", until the timeline shows it or it is known gone from both (`settleQueued`), so its
+ * row never leaves and comes back. Pure, for vitest.
  */
 import { z } from "zod";
 
@@ -57,10 +58,20 @@ export interface PendingSend {
   /** When it was sent (ms). */
   at: number;
   /**
-   * "sending": on its way, or waiting for the messages before it to go; "sent": Paseo has it; "failed":
-   * the plugin did not take it, and nothing after it goes until it is retried or taken back.
+   * "sending": on its way, or waiting for the messages before it to go; "queued": the daemon holds it
+   * for the agent's turn end; "sent": Paseo has it; "failed": the plugin did not take it, and nothing
+   * after it goes until it is retried or taken back.
    */
-  state: "sending" | "sent" | "failed";
+  state: "sending" | "queued" | "sent" | "failed";
+  /** When the daemon's queued answer came (client ms): a queue read begun before it may not list it yet. */
+  queuedAt?: number | undefined;
+  /** When a queue read that no longer listed it answered (client ms): a timeline read begun later shows it, or it was removed elsewhere. */
+  leftQueueAt?: number | undefined;
+  /**
+   * Edit or Send now pressed while this app holds it. "edit": drawn nowhere, never tried again, and taken
+   * out once its send answers; "send-now": drawn as the transcript's echo, still sent in order.
+   */
+  handedOver?: "edit" | "send-now" | undefined;
   /** Why it was not sent, for a failed one. */
   error?: string | undefined;
   /** Sent while the chat showed a permission or question: it goes at once, even mid-turn, and turns that down (TR-171). */
@@ -72,8 +83,8 @@ export interface PendingSend {
   sentWhileIdle?: boolean | undefined;
 }
 
-/** "behind": sending, but waiting for a failed message before it. */
-export type SendMark = "sending" | "behind" | "failed" | "waiting" | "unread";
+/** "behind": sending, but waiting for a failed message before it; "queued": the daemon holds it, silent. */
+export type SendMark = "sending" | "behind" | "queued" | "failed" | "waiting" | "unread";
 
 export interface SendView {
   send: PendingSend;
@@ -103,7 +114,8 @@ export function isAgentStep(item: SendTimelineEntry["item"]): boolean {
 
 /**
  * Each pending message's mark, in the order sent, the ids the agent has taken up (to forget), and the
- * ids found in the timeline while still marked sending or failed (to mark sent).
+ * ids found in the timeline while still marked sending, queued or failed (to mark sent). One marked for
+ * Edit has no view: it is in the box, though its landing still counts.
  * `stoppedAt`: since when the agent has been seen stopped, null while it works.
  */
 export function viewSends(
@@ -120,8 +132,13 @@ export function viewSends(
   sends.forEach((send) => {
     const index = entries.findIndex((entry) => entry.item.type === "user_message" && entry.item.clientMessageId === send.id);
     // In the timeline, Paseo has it, whatever the send's own answer said or has yet to say (an answer lost to a dropped connection).
+    if (send.handedOver === "edit") {
+      if (index !== -1 && send.state !== "sent") landed.push(send.id);
+      return;
+    }
     if (index === -1 && send.state !== "sent") {
-      if (send.state === "failed") {
+      if (send.state === "queued") views.push({ send, mark: "queued", rowKey: null });
+      else if (send.state === "failed") {
         views.push({ send, mark: "failed", rowKey: null });
         failedBefore = true;
       } else views.push({ send, mark: failedBefore ? "behind" : "sending", rowKey: null });
@@ -149,12 +166,12 @@ export function viewSends(
  * Whether the newest turn still counts as open (TR-202's footer waits for it to end). The agent
  * starts working when a message reaches it, before the timeline holds that message: the turn that
  * ended before it was sent is not open, so its footer stays rather than leaving and coming back
- * once the message lands. A message sent to a working agent (`sentWhileIdle` omits it) is a turn
- * that really is open.
+ * once the message lands. A message sent to a working agent (not `sentWhileIdle`) is a turn that
+ * really is open, and so is one the daemon queued: it waits for the running turn to end.
  */
-export function turnIsOpen(working: boolean, views: readonly SendView[], sentWhileIdle: ReadonlySet<string>): boolean {
+export function turnIsOpen(working: boolean, views: readonly { mark: SendMark; rowKey: string | null; send: Pick<PendingSend, "sentWhileIdle"> }[]): boolean {
   if (!working) return false;
-  return !views.some((view) => view.rowKey === null && view.mark !== "failed" && sentWhileIdle.has(view.send.id));
+  return !views.some((view) => view.rowKey === null && view.mark !== "failed" && view.mark !== "queued" && view.send.sentWhileIdle === true);
 }
 
 /**
@@ -168,14 +185,58 @@ export function replyIsBeingWritten(status: string, turnOpen: boolean): boolean 
 
 /**
  * The message to send next: the first one sending, once everything before it has gone. Null while a
- * failed one is before it, so a message never overtakes one sent earlier.
+ * failed one is before it, so a message never overtakes one sent earlier. One marked for Edit is in the
+ * box: never sent again.
  */
 export function nextToSend(sends: readonly PendingSend[]): PendingSend | null {
   for (const send of sends) {
     if (send.state === "failed") return null;
-    if (send.state === "sending") return send;
+    if (send.state === "sending" && send.handedOver !== "edit") return send;
   }
   return null;
+}
+
+/** A read of the daemon's queue or of the timeline: the message ids it held, and when (client ms) it began. */
+export interface ReadOfIds {
+  ids: readonly string[];
+  startedAt: number;
+}
+
+/** A read of the daemon's queue, with when (client ms) it answered: every daemon step before that answer is in it. */
+export interface QueueReadOfIds extends ReadOfIds {
+  answeredAt: number;
+  /** The ids it lists whose send the daemon failed (drawn with Not sent and Retry). */
+  failed?: readonly string[];
+}
+
+/**
+ * What the latest reads say of the messages the daemon queued. `left`: a queue read that began once the
+ * daemon had it no longer lists it; a read begun earlier proves nothing. The chat notes `leftQueueAt` as
+ * that read's answer (`leftQueueAt`, null with no queue read): a timeline read begun before then may reach
+ * the daemon ahead of the drain that took it. `gone`: a timeline read that began at or after it left the
+ * queue does not hold it, so it was removed elsewhere (Edit on another device, a handover, an archive),
+ * not sent: the daemon removes a drained message only once Paseo took it. Until one of these, the chat
+ * keeps drawing it. `found`: failed sends the queue read lists (the daemon queued one whose answer was
+ * lost), to mark queued from that read's start, so each is one row, never a daemon row and a failed echo.
+ * `failedOnDaemon`: ones held as sent to an idle agent that the daemon queued and then failed to send (one
+ * sent while a stop was under way): their mark is cleared, so the daemon's row shows with Not sent and Retry.
+ */
+export function settleQueued(
+  sends: readonly PendingSend[],
+  queueRead: QueueReadOfIds | null,
+  timelineRead: ReadOfIds | null,
+): { left: string[]; leftQueueAt: number | null; gone: string[]; found: string[]; failedOnDaemon: string[] } {
+  const left = sends.filter((send) => send.leftQueueAt === undefined && leftQueue(send, queueRead)).map((send) => send.id);
+  const gone = timelineRead === null ? [] : sends.filter((send) => send.state === "queued" && send.leftQueueAt !== undefined && send.leftQueueAt <= timelineRead.startedAt && !timelineRead.ids.includes(send.id)).map((send) => send.id);
+  const found = queueRead === null ? [] : sends.filter((send) => send.state === "failed" && queueRead.ids.includes(send.id)).map((send) => send.id);
+  const failedOnDaemon = queueRead?.failed === undefined ? [] : sends.filter((send) => send.sentWhileIdle === true && queueRead.failed?.includes(send.id) === true).map((send) => send.id);
+  return { left, leftQueueAt: queueRead?.answeredAt ?? null, gone, found, failedOnDaemon };
+}
+
+/** Whether a queue read shows a queued send has left the daemon's queue: it began once the daemon had it, and omits it. */
+export function leftQueue(send: PendingSend, queueRead: ReadOfIds | null): boolean {
+  if (send.leftQueueAt !== undefined) return true;
+  return queueRead !== null && send.state === "queued" && send.handedOver === undefined && send.queuedAt !== undefined && send.queuedAt <= queueRead.startedAt && !queueRead.ids.includes(send.id);
 }
 
 /**

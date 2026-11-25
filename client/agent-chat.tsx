@@ -55,12 +55,37 @@ import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { IconButton, JumpToEnd, LoadingBar, MONOSPACE, Spinner, errorText } from "./ui";
 import { composerNotice, hasSomethingToSend, sendLabel } from "./composer-notice";
 import { usePendingSends, type ChatSend } from "./use-pending-sends";
-import { isCompacting, isWorking, replyIsBeingWritten, showsLoader, statusWithTurn, takeBack, type SendMark, type SendView } from "../shared/pending-sends";
-import { chatQueueKey, EDIT_SENT_MEANWHILE, editRefusal, editRemoval, queueCompacting, sendingToQueue, takenAttachments, withoutHandedOver, type QueueRowAction, type QueueRowMessage } from "./queue-rows";
+import { isCompacting, isWorking, replyIsBeingWritten, showsLoader, statusWithTurn, takeBack, type PendingSend, type SendMark, type SendView } from "../shared/pending-sends";
+import {
+  afterSendNow,
+  afterTakeOut,
+  boxAfterTake,
+  chatQueueKey,
+  EDIT_SENT_MEANWHILE,
+  editRefusal,
+  editRemoval,
+  heldAttachments,
+  hiddenAfterRead,
+  mayAct,
+  queueCallFailure,
+  queueCompacting,
+  sendingToQueue,
+  sendsAsIdle,
+  STILL_QUEUED_IN_BOX,
+  trackRows,
+  waitsForFreshReads,
+  withoutTaken,
+  type ComposerBox,
+  type QueueCall,
+  type QueueRowAction,
+  type QueueRowMessage,
+} from "./queue-rows";
 import { QueueTrack, useChatQueue } from "./queue-track";
 import { COMPOSER_CONTROL_SIZE, composerMetrics } from "./composer-height";
 import { CHAT_MAX_WIDTH, paneGutter, SPACE } from "./spacing";
 import { useAgentTimeline } from "./use-timeline";
+import { pendingSends } from "./pending-send-store";
+import { heldSends, STOP_SETTLE_MS, stopHolds, type StopPress } from "./stop-state";
 import { Shimmer, WorkingStatus } from "./loading";
 import { fadeColour, SHIMMER_LIGHT, shimmerCopyText } from "./shimmer";
 import { useLatestCallback } from "./latest-callback";
@@ -185,7 +210,23 @@ export function AgentChat({
   // The timeline's read of the agent when it is newer than the board's: it follows the stream.
   const live = timeline.agent !== null && timeline.agent.updatedAt >= agent.updatedAt ? timeline.agent : null;
   // The stream's turn start or end over the last read (TR-201): the stop button and loader follow it at once.
-  const status = statusWithTurn(live?.status ?? agent.status, timeline.turn);
+  const statusBeforeStop = statusWithTurn(live?.status ?? agent.status, timeline.turn);
+  // Stop pressed: the turn shows as ended at once, until the reads or the stream catch up (`stopHolds`).
+  const [stopPress, setStopPress] = useState<StopPress | null>(null);
+  const stopHeld = stopHolds(stopPress, { agentId: agent.id, working: isWorking(statusBeforeStop), turnCount: timeline.turnCount }, Date.now());
+  const status = stopHeld ? "idle" : statusBeforeStop;
+  const stopAnsweredAt = stopHeld ? (stopPress?.answeredAt ?? null) : null;
+  // Drawn again when the hold's cap passes, as nothing else may change by then.
+  const [, redrawAfterStop] = useState(0);
+  useEffect(() => {
+    if (stopAnsweredAt === null) return;
+    const timer = setTimeout(() => redrawAfterStop((count) => count + 1), Math.max(0, stopAnsweredAt + STOP_SETTLE_MS - Date.now()) + 1);
+    return () => clearTimeout(timer);
+  }, [stopAnsweredAt]);
+  // A press released is forgotten: a later working read (a turn the queue starts) must not be held again.
+  useEffect(() => {
+    if (stopPress !== null && !stopHeld) setStopPress(null);
+  }, [stopPress, stopHeld]);
   const writing = status === "running";
   useEffect(() => {
     onStatus?.(status);
@@ -195,6 +236,12 @@ export function AgentChat({
   const working = isWorking(status);
   const queries = useQueryClient();
   const refreshQueue = () => queries.invalidateQueries({ queryKey: chatQueueKey(agent.id) });
+  // The messages waiting on the daemon for the turn to end (TR-171), drawn above the box.
+  const queue = useChatQueue(agent.id, working, readOnly === undefined);
+  const queueRead = useMemo(
+    () => (queue.readStartedAt === null || queue.readAnsweredAt === null ? null : { ids: queue.messages.map((message) => message.id), failed: queue.messages.flatMap((message) => (message.failed === null ? [] : [message.id])), startedAt: queue.readStartedAt, answeredAt: queue.readAnsweredAt }),
+    [queue.messages, queue.readStartedAt, queue.readAnsweredAt],
+  );
   const sends = usePendingSends({
     agentId: agent.id,
     status,
@@ -202,6 +249,9 @@ export function AgentChat({
     hasOlder: timeline.hasOlder,
     onSend,
     onQueued: refreshQueue,
+    queueRead,
+    timelineReadStartedAt: timeline.readStartedAt,
+    onLeftQueue: timeline.refresh,
   });
   // A tool call shimmers only while its turn runs (TR-190). The reply before a sent message the timeline
   // does not show yet is not being written, so its status line stays (TR-210, as its footer does, TR-208).
@@ -233,16 +283,43 @@ export function AgentChat({
     drafts.set(agent.id, back.text);
     draftAttachments.set(agent.id, back.attachments);
   }
-  // The messages waiting on the daemon for the turn to end (TR-171), drawn above the box.
-  const queue = useChatQueue(agent.id, working, readOnly === undefined);
   const timelineCompacting = useMemo(() => isCompacting(timeline.entries), [timeline.entries]);
   const compacting = queueCompacting(timelineCompacting, queue.compacting);
   const marksByRow = useMemo(() => new Map(sends.views.flatMap((view) => (view.rowKey === null ? [] : [[view.rowKey, view] as const]))), [sends.views]);
   // From the moment a message leaves, as in Paseo, not once the daemon reports the turn it starts (TR-201).
   const loaderShown = showsLoader(status, sends.views.map((view) => view.mark));
-  // On their way to a working agent: drawn in the queue track, where the daemon will put them (TR-171).
-  const sendingRows = useMemo(() => sendingToQueue(sends.views, working), [sends.views, working]);
-  const echoes = sends.views.filter((view) => view.rowKey === null && !sendingRows.some((row) => row.id === view.send.id));
+  // Rows Edit or Send now took out: hidden until a queue read that began after the action's last call answered (null while under way).
+  const [handedOver, setHandedOver] = useState<ReadonlyMap<string, number | null>>(new Map());
+  // Daemon rows whose Retry is under way, or answered but not read since: drawn without their Not sent line.
+  const [retrying, setRetrying] = useState<ReadonlyMap<string, number | null>>(new Map());
+  useEffect(() => {
+    setHandedOver((current) => hiddenAfterRead(current, queue.readStartedAt));
+    setRetrying((current) => hiddenAfterRead(current, queue.readStartedAt));
+  }, [queue.readStartedAt]);
+  // When this chat started showing the agent: a queued message kept from before waits for this mount's reads.
+  const mounted = useRef({ agentId: agent.id, at: Date.now() });
+  if (mounted.current.agentId !== agent.id) mounted.current = { agentId: agent.id, at: Date.now() };
+  const mountedAt = mounted.current.at;
+  // Neither in the track nor in the transcript until the reads since mounting say where it is.
+  const freshViews = useMemo(
+    () => sends.views.filter((view) => !waitsForFreshReads(view.send, mountedAt, { queue: queueRead, timelineStartedAt: timeline.readStartedAt })),
+    [sends.views, mountedAt, queueRead, timeline.readStartedAt],
+  );
+  // This app's messages the daemon queues, or will: drawn in the queue track from the moment they leave (TR-171).
+  const localRows = useMemo(() => sendingToQueue(freshViews, queueRead), [freshViews, queueRead]);
+  const shownRows = useMemo(() => {
+    // Held as sent to an idle agent, or handed over: the transcript's (or the box's), so the daemon's row is not drawn either.
+    const hidden = new Set([...handedOver.keys(), ...sends.views.flatMap((view) => (view.send.sentWhileIdle === true || view.send.handedOver !== undefined ? [view.send.id] : []))]);
+    return trackRows({ daemon: queue.messages, local: localRows, hidden, inTimeline: sends.inTimeline, retrying: new Set(retrying.keys()) });
+  }, [queue.messages, localRows, handedOver, retrying, sends.views, sends.inTimeline]);
+  const echoes = useMemo(() => {
+    const inTrack = new Set(shownRows.map((row) => row.message.id));
+    // A queue row the chat hides that is not handed to the transcript (a failed Send now's) waits for its row to come back.
+    const waitsForRow = (send: PendingSend) => handedOver.has(send.id) && send.handedOver === undefined && (send.state === "queued" || send.state === "sending");
+    return freshViews.filter((view) => view.rowKey === null && !inTrack.has(view.send.id) && !waitsForRow(view.send));
+  }, [freshViews, shownRows, handedOver]);
+  /** Whether a message sent now goes as one to an idle agent: else the daemon queues it, and the track draws it. */
+  const nextSendIsIdle = sendsAsIdle(working, shownRows.length, compacting);
   const places = useMemo(() => (asks === undefined || asks.decisions.length === 0 ? null : placeDecisions(agentRows, asks.decisions)), [agentRows, asks?.decisions]);
   // A question stays where it was asked (TR-239): read back to its message rather than draw it as new at the end.
   // A failed read stays failed for this agent: a later tail read clears the error, and the card would flicker between the end and gone.
@@ -614,7 +691,7 @@ export function AgentChat({
     if (onSend === undefined || (text === "" && sent.length === 0)) return;
     setDraft("");
     setAttachments([]);
-    sends.send(text, sent, requestPending.current);
+    sends.send(text, sent, requestPending.current, nextSendIsIdle);
     follow.pin();
   }
 
@@ -624,87 +701,244 @@ export function AgentChat({
   const sendQueuedNow = useRpc(sendQueuedMessageNow);
   const retryQueued = useRpc(retryQueuedMessage);
   const stopTurn = useRpc(stopAgentTurn);
-  // The agent a stop is under way for, so another agent's chat opened meanwhile shows its own button.
-  const [stoppingAgent, setStoppingAgent] = useState<string | null>(null);
-  /** The stop button and Escape (TR-181): ends this agent's turn; the queue then sends as after any turn. */
+  /**
+   * The stop button and Escape (TR-181): ends this agent's turn; the queue then sends as after any turn.
+   * The chat shows the turn ended at once; a failed stop brings Stop back, and moves the messages sent
+   * meanwhile as if to an idle agent to the queue track, where the daemon holds them.
+   */
   function stopAgent(): void {
     const agentId = agent.id;
-    if (stoppingAgent === agentId) return;
-    setStoppingAgent(agentId);
-    void stopTurn({ agentId })
-      .catch((caught: unknown) => toast.error(errorText(caught)))
-      .finally(() => setStoppingAgent((current) => (current === agentId ? null : current)));
+    if (stopHeld) return;
+    const pressedAt = Date.now();
+    const matches = (current: StopPress | null) => current !== null && current.agentId === agentId && current.pressedAt === pressedAt;
+    setStopPress({ agentId, pressedAt, turnCountAtPress: timeline.turnCount, answeredAt: null, failed: false });
+    const refreshTimeline = timeline.refresh;
+    void stopTurn({ agentId }).then(
+      () => {
+        // A read begun after the stop, so by the hold's cap the agent's status is one read since.
+        refreshTimeline();
+        const answeredAt = Date.now();
+        setStopPress((current) => (matches(current) && current !== null ? { ...current, answeredAt } : current));
+      },
+      (caught: unknown) => {
+        setStopPress((current) => (matches(current) && current !== null ? { ...current, failed: true } : current));
+        heldSends(pendingSends.get(agentId), pressedAt).forEach((id) => pendingSends.update(agentId, id, { sentWhileIdle: false }));
+        toast.error(errorText(caught));
+      },
+    );
   }
-  // Rows of messages Send now already echoed in the transcript: hidden until the queue is read again.
-  const [handedOver, setHandedOver] = useState<ReadonlySet<string>>(new Set());
-  const queueShown = useMemo(() => withoutHandedOver(queue.messages, handedOver), [queue.messages, handedOver]);
-  const [queueBusy, setQueueBusy] = useState<{ id: string; action: QueueRowAction } | null>(null);
-  /** Edit, Send now or Retry on a queued message (TR-171); an error's sentence goes to a toast, and the queue is read again either way. */
+  const [queueBusy, setQueueBusy] = useState<ReadonlyMap<string, QueueRowAction>>(new Map());
+  // What the awaited steps of a queue action read when they answer, not when it was pressed.
+  const inTimelineNow = useRef(sends.inTimeline);
+  inTimelineNow.current = sends.inTimeline;
+  // Messages whose removal Edit found already gone: the next timeline read says whether the agent had them.
+  const sentMeanwhileWatch = useRef(new Map<string, number>());
+  useEffect(() => {
+    const readAt = timeline.readStartedAt;
+    sentMeanwhileWatch.current.forEach((since, id) => {
+      if (sends.inTimeline.has(id)) toast.show(EDIT_SENT_MEANWHILE);
+      else if (readAt === null || readAt <= since) return;
+      sentMeanwhileWatch.current.delete(id);
+    });
+  }, [timeline.readStartedAt, sends.inTimeline]);
+  function currentBox(): ComposerBox {
+    return { text: drafts.get(agent.id), attachments: draftAttachments.get(agent.id) };
+  }
+  function setBox(box: ComposerBox): void {
+    setDraft(box.text);
+    setAttachments(box.attachments);
+  }
+  function hideRow(id: string): void {
+    setHandedOver((current) => new Map(current).set(id, null));
+  }
+  /** The action's last call answered: the row stays hidden until a queue read begun from now, then shows as that read has it. */
+  function hideUntilRead(id: string): void {
+    setHandedOver((current) => new Map(current).set(id, Date.now()));
+    void refreshQueue();
+  }
+  function markBusy(id: string, action: QueueRowAction | null): void {
+    setQueueBusy((current) => {
+      const next = new Map(current);
+      if (action === null) next.delete(id);
+      else next.set(id, action);
+      return next;
+    });
+  }
+  /** Asks the daemon, telling apart "no longer queued" from any other failure, with the error for its toast. */
+  async function queueCall(call: Promise<unknown>): Promise<{ answer: QueueCall; error: unknown }> {
+    return call.then(
+      () => ({ answer: "ok" as const, error: null }),
+      (caught: unknown) => ({ answer: queueCallFailure(errorText(caught)), error: caught }),
+    );
+  }
+  /**
+   * The removal failed with the message perhaps still queued: read the queue again (`editRemoval`). Still
+   * there, Edit's words and attachments leave the box when they stand there intact, so the message is not
+   * in both; anything typed since stays.
+   */
+  async function afterFailedRemoval(messageId: string, text: string, caught: unknown): Promise<void> {
+    const queuedIds = await listQueued({ agentId: agent.id }).then(
+      (listed) => listed.messages.map((each) => each.id),
+      () => null,
+    );
+    const removal = editRemoval(errorText(caught), messageId, queuedIds);
+    if (removal === "sent-meanwhile") toast.show(EDIT_SENT_MEANWHILE);
+    if (removal === "sent-meanwhile" || removal === "removed") return;
+    if (removal === "still-queued") {
+      const without = withoutTaken(currentBox(), { messageId, text });
+      if (without === null) {
+        toast.show(STILL_QUEUED_IN_BOX);
+        return;
+      }
+      setBox(without);
+    }
+    toast.error(errorText(caught));
+  }
+  /** Edit on a message this app holds: its own words and attachments go into the box at once, and the row leaves. */
+  async function editHeld(held: PendingSend): Promise<void> {
+    const back = takeBack(currentBox(), { text: held.text, attachments: heldAttachments(held.id, held.attachments) });
+    const problem = attachmentProblem(back.attachments);
+    if (problem !== null) {
+      toast.error(`${problem} Remove some from the box first.`);
+      return;
+    }
+    setBox(back);
+    hideRow(held.id);
+    try {
+      const outcome = await sends.takeOut(held.id);
+      let step = afterTakeOut(outcome, null, inTimelineNow.current.has(held.id));
+      if (step === "remove") {
+        const removal = await queueCall(removeQueued({ agentId: agent.id, messageId: held.id }));
+        step = afterTakeOut(outcome, removal.answer, inTimelineNow.current.has(held.id));
+        // Gone from the queue though its send went unanswered: sent, if the next timeline read shows it.
+        if (step === "done" && removal.answer === "not-queued") sentMeanwhileWatch.current.set(held.id, Date.now());
+        if (step === "still-queued-check") await afterFailedRemoval(held.id, held.text, removal.error);
+      }
+      if (step === "sent-meanwhile") toast.show(EDIT_SENT_MEANWHILE);
+    } finally {
+      hideUntilRead(held.id);
+    }
+  }
+  /** Send now on a message this app holds: its echo, attachments too, goes into the transcript at once and the row leaves. */
+  async function sendHeldNow(held: PendingSend): Promise<void> {
+    hideRow(held.id);
+    try {
+      const settled = await sends.sendNow(held.id);
+      let step = afterSendNow(settled, null);
+      let error: unknown = null;
+      if (step === "call") {
+        const call = await queueCall(sendQueuedNow({ agentId: agent.id, messageId: held.id }));
+        error = call.error;
+        step = afterSendNow(settled, call.answer);
+      }
+      if (step === "sent") {
+        // The echo stays until the timeline has it.
+        sends.update(held.id, { state: "sent", at: Date.now(), handedOver: undefined });
+        follow.pin();
+      } else if (step === "row-back" || step === "failed") {
+        sends.update(held.id, { handedOver: undefined });
+        if (step === "row-back") toast.error(errorText(error));
+      }
+    } finally {
+      hideUntilRead(held.id);
+    }
+  }
+  /** Edit on a row the daemon holds alone: the box is built as the take answers, from the box as it is then. */
+  async function editQueued(message: QueueRowMessage): Promise<void> {
+    const input = { agentId: agent.id, messageId: message.id };
+    // A message without attachments is all in its row: its words go into the box and the row leaves at once (TR-255).
+    const instant = message.imageCount + message.fileNames.length === 0;
+    let hidden = instant;
+    if (instant) {
+      setBox(takeBack(currentBox(), { text: message.text, attachments: [] }));
+      hideRow(message.id);
+    } else markBusy(message.id, "edit");
+    let removing = false;
+    try {
+      const taken = await takeQueued(input);
+      if (!instant) {
+        const after = boxAfterTake(currentBox(), message, taken);
+        if ("refused" in after) {
+          toast.error(after.refused);
+          return;
+        }
+        setBox(after.box);
+        hideRow(message.id);
+        hidden = true;
+      }
+      removing = true;
+      // The box first, then the message out of the queue: a lost answer on either loses nothing.
+      const removal = await queueCall(removeQueued(input));
+      if (removal.answer === "not-queued") toast.show(EDIT_SENT_MEANWHILE);
+      else if (removal.answer === "other-error") await afterFailedRemoval(message.id, taken.text, removal.error);
+    } catch (caught: unknown) {
+      if (removing) throw caught;
+      // Not taken, so not removed: Edit's words leave the box again where they still stand.
+      const without = instant ? withoutTaken(currentBox(), { messageId: message.id, text: message.text }) : null;
+      if (without !== null) setBox(without);
+      toast.error(errorText(caught));
+    } finally {
+      markBusy(message.id, null);
+      // A refused or failed take leaves the row where it was.
+      if (hidden) hideUntilRead(message.id);
+    }
+  }
+  /** Send now on a row the daemon holds alone: echoed at once when its words are all there is (TR-249). */
+  async function sendDaemonRowNow(message: QueueRowMessage): Promise<void> {
+    const echoed = sends.handOver(message);
+    if (echoed) hideRow(message.id);
+    else markBusy(message.id, "send-now");
+    try {
+      await sendQueuedNow({ agentId: agent.id, messageId: message.id });
+      follow.pin();
+      hideUntilRead(message.id);
+    } catch (caught: unknown) {
+      // Not sent: the echo goes and the row, back at the queue's front, comes back with the reason.
+      if (echoed) sends.forget(message.id);
+      if (echoed) hideUntilRead(message.id);
+      else void refreshQueue();
+      toast.error(errorText(caught));
+    } finally {
+      markBusy(message.id, null);
+    }
+  }
+  /** Retry on a row whose send failed: its Not sent line goes at once, back with a toast if the call fails. */
+  async function retryDaemonRow(message: QueueRowMessage): Promise<void> {
+    setRetrying((current) => new Map(current).set(message.id, null));
+    try {
+      await retryQueued({ agentId: agent.id, messageId: message.id });
+      setRetrying((current) => new Map(current).set(message.id, Date.now()));
+      follow.pin();
+    } catch (caught: unknown) {
+      setRetrying((current) => {
+        const next = new Map(current);
+        next.delete(message.id);
+        return next;
+      });
+      toast.error(errorText(caught));
+    } finally {
+      void refreshQueue();
+    }
+  }
+  /** Edit, Send now or Retry on a queue row (TR-171): acts at once on a message this app holds; an error's sentence goes to a toast. */
   function queueAction(message: QueueRowMessage, action: QueueRowAction): void {
-    if (queueBusy !== null) return;
+    if (!mayAct(queueBusy, message.id) || retrying.has(message.id)) return;
+    const held = sends.held(message.id);
+    const holds = held !== null && (held.state === "sending" || held.state === "queued") && held.handedOver === undefined ? held : null;
     if (action === "edit") {
+      if (holds !== null) {
+        void editHeld(holds);
+        return;
+      }
       // Before the call: both sets of attachments might not fit together, and the message would be out of the queue.
       const refusal = editRefusal({ text: drafts.get(agent.id), attachments: draftAttachments.get(agent.id).length }, message);
       if (refusal !== null) {
         toast.error(refusal);
         return;
       }
-    }
-    const input = { agentId: agent.id, messageId: message.id };
-    // A message without attachments is all in its row: its words go into the box and the row leaves at once (TR-255),
-    // the daemon's calls run behind and a failure puts the box and the row back.
-    const instantEdit = action === "edit" && message.imageCount + message.fileNames.length === 0;
-    const boxBefore = { text: drafts.get(agent.id), attachments: draftAttachments.get(agent.id) };
-    const boxAfter = instantEdit ? takeBack(boxBefore, { text: message.text, attachments: [] }) : null;
-    if (boxAfter !== null) {
-      setDraft(boxAfter.text);
-      setAttachments(boxAfter.attachments);
-    }
-    const call =
-      action === "edit"
-        ? takeQueued(input).then(async (taken) => {
-            // The box first, then the message out of the queue: a lost answer on either loses nothing.
-            const before = boxBefore;
-            if (!instantEdit) {
-              const back = takeBack(before, { text: taken.text, attachments: takenAttachments(message.id, taken) });
-              setDraft(back.text);
-              setAttachments(back.attachments);
-            }
-            await removeQueued(input).catch(async (caught: unknown) => {
-              const queuedIds = await listQueued({ agentId: agent.id }).then(
-                (listed) => listed.messages.map((each) => each.id),
-                () => null,
-              );
-              const removal = editRemoval(errorText(caught), message.id, queuedIds);
-              if (removal === "sent-meanwhile") toast.show(EDIT_SENT_MEANWHILE);
-              if (removal === "sent-meanwhile" || removal === "removed") return;
-              if (removal === "still-queued") {
-                setDraft(before.text);
-                setAttachments(before.attachments);
-              }
-              throw caught;
-            });
-          })
-        : (action === "send-now" ? sendQueuedNow(input) : retryQueued(input)).then(() => follow.pin());
-    const echoed = action === "send-now" && sends.handOver(message);
-    if (echoed || instantEdit) setHandedOver((current) => new Set(current).add(message.id));
-    setQueueBusy({ id: message.id, action });
-    void call
-      .catch((caught: unknown) => {
-        // Not sent: the echo goes and the row, back at the queue's front, comes back with the reason.
-        if (echoed) sends.forget(message.id);
-        // Only if the box still holds what Edit put there: words typed meanwhile are not thrown away.
-        if (boxAfter !== null && drafts.get(agent.id) === boxAfter.text) {
-          setDraft(boxBefore.text);
-          setAttachments(boxBefore.attachments);
-        }
-        toast.error(errorText(caught));
-      })
-      .finally(() => {
-        setQueueBusy(null);
-        // The row stays gone (or stays, on a failure) until the queue was read, so it does not blink.
-        void refreshQueue().finally(() => setHandedOver((current) => (current.has(message.id) ? new Set([...current].filter((id) => id !== message.id)) : current)));
-      });
+      void editQueued(message).catch((caught: unknown) => toast.error(errorText(caught)));
+    } else if (action === "send-now") void (holds !== null ? sendHeldNow(holds) : sendDaemonRowNow(message));
+    else void retryDaemonRow(message);
   }
 
   const attachButton = (
@@ -735,7 +969,7 @@ export function AgentChat({
   const openLinkLatest = useLatestCallback(openLink);
   const decisionCardsLatest = useLatestCallback(decisionCards);
   const markActionLatest = useLatestCallback((id: string, action: MarkAction) => {
-    if (action === "resend") sends.resend(id);
+    if (action === "resend") sends.resend(id, nextSendIsIdle);
     else if (action === "retry") sends.retry(id);
     else if (action === "edit") takeBackFailed(id);
     else sends.forget(id);
@@ -939,7 +1173,7 @@ export function AgentChat({
               </View>
             )}
             {/* Directly above the box, as Paseo draws its own queue. */}
-            <QueueTrack messages={queueShown} sending={sendingRows} compacting={compacting} busy={queueBusy} theme={theme} onAction={queueAction} />
+            <QueueTrack rows={shownRows} busy={queueBusy} compacting={compacting} theme={theme} onAction={queueAction} />
             {notice === null ? null : (
               <View style={styles.quick}>
                 <Icon name="AlertTriangle" size={13} color={theme.colors.statusWarning} />
@@ -962,7 +1196,7 @@ export function AgentChat({
                 enterHint
                 onSend={sendDraft}
                 canSend={!nothingToSend}
-                stop={working ? { onStop: stopAgent, busy: stoppingAgent === agent.id } : undefined}
+                stop={working ? { onStop: stopAgent } : undefined}
                 sendLabel={sendLabel({ working, requestPending: pending.length > 0 })}
                 above={<AttachmentPreviews theme={theme} attachments={attachments} onRemove={(id) => setAttachments(attachments.filter((attachment) => attachment.id !== id))} />}
                 leading={
@@ -1125,7 +1359,7 @@ const USER_BUBBLE_PADDING = SPACE.md;
 const USER_BUBBLE_BORDER = 1;
 
 /** A message on its way, or waiting on the agent, says nothing under itself: the loader is the only sign (TR-199). */
-type SilentMark = "sending" | "waiting";
+type SilentMark = "sending" | "queued" | "waiting";
 
 const MARK_TEXT: Record<Exclude<SendMark, SilentMark>, string> = {
   behind: "Waits for the message above to be sent",
@@ -1163,7 +1397,7 @@ function SendMarkLine({
 }) {
   const { colors } = theme;
   const { mark } = view;
-  if (mark === "sending" || mark === "waiting") return null;
+  if (mark === "sending" || mark === "queued" || mark === "waiting") return null;
   return (
     <View style={styles.mark}>
       <View style={styles.markLine}>
