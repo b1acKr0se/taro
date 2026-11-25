@@ -27,7 +27,7 @@ describe("reply box sources", () => {
 
   it("offers the chat's stop button and Escape only while the agent works, through the reply box (TR-181)", () => {
     const chat = clientFiles.find((file) => file.name === "client/agent-chat.tsx")?.source ?? "";
-    expect(chat).toMatch(/stop=\{working \? \{ onStop: stopAgent, busy: stoppingAgent === agent\.id \} : undefined\}/);
+    expect(chat).toMatch(/stop=\{working \? \{ onStop: stopAgent \} : undefined\}/);
     const box = clientFiles.find((file) => file.name === "client/reply-box.tsx")?.source ?? "";
     expect(box).toMatch(/isStopKey\(event\.nativeEvent\)/);
     expect(box).toMatch(/primaryAction\(/);
