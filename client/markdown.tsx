@@ -31,6 +31,7 @@ import { MONOSPACE } from "./ui";
 import { drawnPieces } from "./whole-ids";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
+import { useFoldLines, type FoldLineRef } from "./fold-lines";
 
 interface MarkdownStyles {
   paragraph: object;
@@ -59,10 +60,10 @@ interface MarkdownStyles {
 const COPY_ICON_ROOM = 14 + SPACE.xs * 2;
 
 /** A fenced code block with a copy icon in its corner (TR-286), shown while the pointer is over the block on a desktop. */
-function CodeBlock({ text, styles, theme }: { text: string; styles: MarkdownStyles; theme: PluginTheme }) {
+function CodeBlock({ text, styles, theme, blockRef }: { text: string; styles: MarkdownStyles; theme: PluginTheme; blockRef: ((node: unknown) => (() => void) | undefined) | undefined }) {
   const reveal = useHoverReveal(false);
   return (
-    <View style={styles.codeBlock} {...reveal.handlers}>
+    <View ref={blockRef} style={styles.codeBlock} {...reveal.handlers}>
       {/* Room at the right for the icon, so a long first line does not run under it. */}
       <Text selectable style={[styles.codeText, { paddingRight: COPY_ICON_ROOM }]}>
         {text}
@@ -133,6 +134,13 @@ interface InlineContext {
   lineHeight: number;
   /** Ticket ids in prose stay whole on a line (`./whole-ids`). */
   wholeIds: boolean;
+  /** Inside a folded message: each block registers where its lines are, so the fold ends between two (`./fold-lines`). */
+  foldLines: FoldLineRef | null;
+}
+
+/** A block's ref for the fold around it: by its line height, or null when its lines are not known (it is never cut through). */
+function lineRef(context: InlineContext, lineHeight: number | null): ((node: unknown) => (() => void) | undefined) | undefined {
+  return context.foldLines === null ? undefined : context.foldLines(lineHeight);
 }
 
 /** `white-space: nowrap`, which react-native-web passes to CSS; not in React Native's types. */
@@ -192,7 +200,7 @@ function paragraphText(text: string, style: object | object[], styles: MarkdownS
     );
   }
   return (
-    <Text key={key} selectable style={style}>
+    <Text key={key} ref={lineRef(context, context.lineHeight)} selectable style={style}>
       {renderInline(text, styles, context)}
     </Text>
   );
@@ -248,7 +256,7 @@ function renderBlocks(blocks: readonly Block[], styles: MarkdownStyles, context:
     switch (block.kind) {
       case "heading":
         return (
-          <Text key={index} accessibilityRole="header" style={block.level <= 2 ? styles.headingLarge : styles.heading}>
+          <Text key={index} ref={lineRef(context, null)} accessibilityRole="header" style={block.level <= 2 ? styles.headingLarge : styles.heading}>
             {renderInline(block.text, styles, context)}
           </Text>
         );
@@ -257,18 +265,18 @@ function renderBlocks(blocks: readonly Block[], styles: MarkdownStyles, context:
           <View key={index} style={styles.list}>
             {block.items.map((item, itemIndex) => (
               <View key={itemIndex} style={[styles.listRow, { paddingLeft: item.depth * 14 }]}>
-                <Text style={styles.listMarker}>{item.marker}</Text>
+                <Text ref={lineRef(context, context.lineHeight)} style={styles.listMarker}>{item.marker}</Text>
                 {context.fold ? (
                   <View style={styles.listText}>{paragraphText(item.text, styles.paragraph, styles, context)}</View>
                 ) : (
-                  <Text style={[styles.paragraph, styles.listText]}>{renderInline(item.text, styles, context)}</Text>
+                  <Text ref={lineRef(context, context.lineHeight)} style={[styles.paragraph, styles.listText]}>{renderInline(item.text, styles, context)}</Text>
                 )}
               </View>
             ))}
           </View>
         );
       case "code":
-        return <CodeBlock key={index} text={block.text} styles={styles} theme={context.theme} />;
+        return <CodeBlock key={index} text={block.text} styles={styles} theme={context.theme} blockRef={lineRef(context, null)} />;
       case "quote":
         return (
           <View key={index} style={styles.quote}>
@@ -297,7 +305,7 @@ function renderBlocks(blocks: readonly Block[], styles: MarkdownStyles, context:
         return (
           <View key={index} style={styles.table}>
             {[block.header, ...block.rows].map((cells, rowIndex) => (
-              <View key={rowIndex} style={styles.tableRow}>
+              <View key={rowIndex} ref={lineRef(context, null)} style={styles.tableRow}>
                 {cells.map((cell, cellIndex) => (
                   <View key={cellIndex} style={styles.tableCell}>
                     <Text style={[styles.paragraph, rowIndex === 0 ? styles.tableHeader : null]}>
@@ -338,10 +346,11 @@ export function Markdown({
   wholeIds?: boolean;
 }) {
   const styles = useMarkdownStyles(theme, fontSize);
+  const foldLines = useFoldLines();
   const blocks = useMemo(() => parseMarkdownCached(source), [source]);
   const images = useMemo(() => blockImages(blocks), [blocks]);
   // Blocks a little further apart than lines, so paragraphs and lists read as separate thoughts.
-  return <View style={{ gap: SPACE.sm + 2 }}>{renderBlocks(blocks, styles, { theme, lookup: files, onOpenLink, onOpenFile, images, fold: foldParagraphs, lineHeight: lineHeightFor(fontSize), wholeIds })}</View>;
+  return <View style={{ gap: SPACE.sm + 2 }}>{renderBlocks(blocks, styles, { theme, lookup: files, onOpenLink, onOpenFile, images, fold: foldParagraphs, lineHeight: lineHeightFor(fontSize), wholeIds, foldLines })}</View>;
 }
 
 /**
@@ -363,5 +372,5 @@ export function MarkdownInline({
   wholeIds?: boolean;
 }) {
   const styles = useMarkdownStyles(theme, fontSize);
-  return <>{renderInline(text, styles, { theme, lookup: noFiles, onOpenLink, onOpenFile: null, images: [], fold: false, lineHeight: lineHeightFor(fontSize), wholeIds })}</>;
+  return <>{renderInline(text, styles, { theme, lookup: noFiles, onOpenLink, onOpenFile: null, images: [], fold: false, lineHeight: lineHeightFor(fontSize), wholeIds, foldLines: null })}</>;
 }
