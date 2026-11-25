@@ -15,7 +15,7 @@ import { Pressable } from "./focus";
 import { Markdown } from "./markdown";
 import { fadeColour } from "./shimmer";
 import { FoldLinesContext, measureBlocks, type FoldLineRef } from "./fold-lines";
-import { FADE_LINES, fadeOpacities, fadeSteps, foldClipStyle, foldCut, foldHeight, foldState, mayNeedFold, rememberedFold, rememberFold, settleMeasure, type MeasuredFold } from "./received-fold";
+import { FADE_LINES, fadeLayerOpacities, fadeSteps, foldClipStyle, foldCut, foldHeight, foldState, mayNeedFold, rememberedFold, rememberFold, settleMeasure, type MeasuredFold } from "./received-fold";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { formatMessageTimestamp, thinkingLabel } from "./turn-time";
@@ -38,13 +38,14 @@ export function MessageWithActions({ at, actions, hidden = false, text, copyLabe
   );
 }
 
-/** The last whole lines of a folded message dissolving into the bubble: the plugin has no gradient, so strips of rising opacity stack. */
+/** The last whole lines of a folded message dissolving into the bubble: the plugin has no gradient, so layers of rising opacity overlap. */
 export function FoldFade({ colour, height }: { colour: string; height: number }) {
-  const strips = fadeOpacities(fadeSteps(height));
+  const steps = fadeSteps(height);
+  const layers = fadeLayerOpacities(steps);
   return (
     <View pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, height }}>
-      {strips.map((opacity, index) => (
-        <View key={index} style={{ flex: 1, backgroundColor: fadeColour(colour, opacity) }} />
+      {layers.map((opacity, index) => (
+        <View key={index} style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: Math.round((height * (steps - index)) / steps), backgroundColor: fadeColour(colour, opacity) }} />
       ))}
     </View>
   );

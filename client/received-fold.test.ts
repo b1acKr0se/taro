@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FADE_COVER, fadeOpacities, fadeSteps, foldClipStyle, foldCut, foldHeight, foldState, rememberedFold, rememberFold, mayNeedFold, overflowsFold, RECEIVED_FOLD_LINES, settleMeasure, USER_FOLD_LINES } from "./received-fold";
+import { FADE_COVER, fadeLayerOpacities, fadeOpacities, fadeSteps, foldClipStyle, foldCut, foldHeight, foldState, rememberedFold, rememberFold, mayNeedFold, overflowsFold, RECEIVED_FOLD_LINES, settleMeasure, USER_FOLD_LINES } from "./received-fold";
 
 describe("mayNeedFold", () => {
   const lines = (count: number) => Array.from({ length: count }, (_, index) => `line ${index}`).join("\n");
@@ -162,5 +162,18 @@ describe("remembered folds", () => {
     expect(rememberedFold("keep")).toEqual({ natural: 1, cut: 1 });
     expect(rememberedFold("k0")).toBeNull();
     expect(rememberedFold("k249")).toEqual({ natural: 249, cut: null });
+  });
+});
+
+describe("fadeLayerOpacities", () => {
+  it("overlap to the same cover as the strips they replace", () => {
+    for (const steps of [1, 5, 33]) {
+      const targets = fadeOpacities(steps);
+      let seen = 0;
+      fadeLayerOpacities(steps).forEach((layer, index) => {
+        seen = 1 - (1 - seen) * (1 - layer);
+        expect(Math.abs(seen - targets[index]!)).toBeLessThan(0.002);
+      });
+    }
   });
 });
