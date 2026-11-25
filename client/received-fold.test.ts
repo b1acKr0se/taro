@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FADE_COVER, fadeOpacities, fadeSteps, foldClipStyle, foldCut, foldHeight, foldState, rememberedFold, rememberFold, mayNeedFold, overflowsFold, RECEIVED_FOLD_LINES, settleMeasure, USER_FOLD_LINES } from "./received-fold";
+import { FADE_COVER, FALLBACK_FADE_COVER, fadeGradient, gradientFadeSupported, fadeOpacities, fadeSteps, foldClipStyle, foldCut, foldHeight, foldState, rememberedFold, rememberFold, mayNeedFold, overflowsFold, RECEIVED_FOLD_LINES, settleMeasure, USER_FOLD_LINES } from "./received-fold";
 
 describe("mayNeedFold", () => {
   const lines = (count: number) => Array.from({ length: count }, (_, index) => `line ${index}`).join("\n");
@@ -162,5 +162,38 @@ describe("remembered folds", () => {
     expect(rememberedFold("keep")).toEqual({ natural: 1, cut: 1 });
     expect(rememberedFold("k0")).toBeNull();
     expect(rememberedFold("k249")).toEqual({ natural: 249, cut: null });
+  });
+});
+
+describe("gradientFadeSupported", () => {
+  const phone = (major: number, minor: number) => ({ OS: "android", constants: { reactNativeVersion: { major, minor } } });
+  it("is true on the web and on React Native 0.76 or newer", () => {
+    expect(gradientFadeSupported({ OS: "web" })).toBe(true);
+    expect(gradientFadeSupported(phone(0, 76))).toBe(true);
+    expect(gradientFadeSupported(phone(0, 81))).toBe(true);
+    expect(gradientFadeSupported(phone(1, 0))).toBe(true);
+  });
+  it("is false on an older phone host and on one that does not say its version", () => {
+    expect(gradientFadeSupported(phone(0, 75))).toBe(false);
+    expect(gradientFadeSupported({ OS: "ios" })).toBe(false);
+    expect(gradientFadeSupported({ OS: "ios", constants: {} })).toBe(false);
+    expect(gradientFadeSupported({ OS: "ios", constants: { reactNativeVersion: { major: "0", minor: "81" } } })).toBe(false);
+  });
+});
+
+describe("fadeGradient", () => {
+  it("runs from clear to the fade's cover, easing in, top to bottom", () => {
+    const image = fadeGradient((alpha) => `rgba(0, 0, 0, ${alpha})`);
+    expect(image).toMatch(/^linear-gradient\(to bottom, rgba\(0, 0, 0, 0\) 0%, /);
+    expect(image).toContain(`rgba(0, 0, 0, ${FADE_COVER}) 100%`);
+    expect(image).toContain("rgba(0, 0, 0, 0.318) 50%");
+  });
+});
+
+describe("the fallback fade", () => {
+  it("is lighter than the gradient and never covers the line whole", () => {
+    expect(FALLBACK_FADE_COVER).toBeLessThan(FADE_COVER);
+    const strips = fadeOpacities(10, FALLBACK_FADE_COVER);
+    expect(Math.max(...strips)).toBeLessThan(FALLBACK_FADE_COVER);
   });
 });

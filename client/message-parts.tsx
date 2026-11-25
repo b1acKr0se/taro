@@ -3,7 +3,7 @@
  * over a folded message, the "Sent by" line above a received one, and the agent's thinking as one quiet line.
  * Ported from Paseo (cf1a5a9e, Apache-2.0): the row under a bubble from `UserMessage` in `packages/app/src/components/message.tsx`,
  * the sender line from `MessageSender` and the fold from `MessagePreview` (`src/components/user-message/index.tsx`). Changed: no rewind
- * button, no link on the sender, the fade is stacked strips (the plugin has no gradient) and the theme comes as a prop.
+ * button, no link on the sender, the fade is a gradient style where the host draws one and stacked strips where it does not, and the theme comes as a prop.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Icon } from "@getpaseo/plugin/client/react-native";
@@ -15,7 +15,7 @@ import { Pressable } from "./focus";
 import { Markdown } from "./markdown";
 import { fadeColour } from "./shimmer";
 import { FoldLinesContext, measureBlocks, type FoldLineRef } from "./fold-lines";
-import { FADE_LINES, fadeOpacities, fadeSteps, foldClipStyle, foldCut, foldHeight, foldState, mayNeedFold, rememberedFold, rememberFold, settleMeasure, type MeasuredFold } from "./received-fold";
+import { FADE_LINES, FALLBACK_FADE_COVER, FALLBACK_FADE_LINES, fadeGradient, fadeOpacities, gradientFadeSupported, fadeSteps, foldClipStyle, foldCut, foldHeight, foldState, mayNeedFold, rememberedFold, rememberFold, settleMeasure, type MeasuredFold } from "./received-fold";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { formatMessageTimestamp, thinkingLabel } from "./turn-time";
@@ -38,11 +38,26 @@ export function MessageWithActions({ at, actions, hidden = false, text, copyLabe
   );
 }
 
-/** The last whole lines of a folded message dissolving into the bubble: the plugin has no gradient, so strips of rising opacity stack. */
+/** Whether this host draws a gradient background style; read once, as the host does not change under a running app. */
+const SMOOTH_FADE = gradientFadeSupported(Platform);
+
+/** How many lines the fade over a folded message covers on this host. */
+export const FADE_LINES_HERE = SMOOTH_FADE ? FADE_LINES : FALLBACK_FADE_LINES;
+
+/**
+ * The last whole lines of a folded message dissolving into the bubble: a gradient background style where the host draws
+ * one (the web, React Native 0.76 or newer), else one line of stacked strips of rising opacity, lighter than the gradient.
+ */
 export function FoldFade({ colour, height }: { colour: string; height: number }) {
-  const strips = fadeOpacities(fadeSteps(height));
+  const frame = { position: "absolute", left: 0, right: 0, bottom: 0, height } as const;
+  if (SMOOTH_FADE) {
+    const image = fadeGradient((alpha) => fadeColour(colour, alpha));
+    // The web takes the CSS property, the phone the React Native one.
+    return <View pointerEvents="none" style={Platform.OS === "web" ? ({ ...frame, backgroundImage: image } as object) : ({ ...frame, experimental_backgroundImage: image } as object)} />;
+  }
+  const strips = fadeOpacities(fadeSteps(height), FALLBACK_FADE_COVER);
   return (
-    <View pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, height }}>
+    <View pointerEvents="none" style={frame}>
       {strips.map((opacity, index) => (
         <View key={index} style={{ flex: 1, backgroundColor: fadeColour(colour, opacity) }} />
       ))}
@@ -105,7 +120,7 @@ export function FoldableBody({ text, lines, open, onToggle, colour, buttonStyle,
         >
           <FoldLinesContext.Provider value={candidate ? lineRef : null}>{children}</FoldLinesContext.Provider>
         </View>
-        {clipAt !== null && overflowing ? <FoldFade colour={colour} height={Math.min(lineHeight * FADE_LINES, clipAt)} /> : null}
+        {clipAt !== null && overflowing ? <FoldFade colour={colour} height={Math.min(lineHeight * FADE_LINES_HERE, clipAt)} /> : null}
       </View>
       {overflowing ? (
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={onToggle} style={buttonStyle}>
