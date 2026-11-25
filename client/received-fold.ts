@@ -36,3 +36,12 @@ export const FADE_STEPS = 8;
 export function fadeOpacities(steps: number = FADE_STEPS): number[] {
   return Array.from({ length: steps }, (_, index) => Math.round(((index + 1) / steps) * 1000) / 1000);
 }
+
+/**
+ * What a body shows before and after it is measured: until then it is only clipped (no fade, no button), so a message that
+ * fits never flashes them; once measured, `overflowing` shows the button and the fade, and `folded` the clip.
+ */
+export function foldState(candidate: boolean, natural: number | null, open: boolean, lineHeight: number, foldLines: number = RECEIVED_FOLD_LINES): { overflowing: boolean; folded: boolean } {
+  const overflowing = candidate && natural !== null && overflowsFold(natural, lineHeight, foldLines);
+  return { overflowing, folded: candidate && !open && (natural === null || overflowing) };
+}

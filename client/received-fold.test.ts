@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fadeOpacities, FADE_STEPS, foldHeight, mayNeedFold, overflowsFold, RECEIVED_FOLD_LINES, USER_FOLD_LINES } from "./received-fold";
+import { fadeOpacities, FADE_STEPS, foldHeight, foldState, mayNeedFold, overflowsFold, RECEIVED_FOLD_LINES, USER_FOLD_LINES } from "./received-fold";
 
 describe("mayNeedFold", () => {
   const lines = (count: number) => Array.from({ length: count }, (_, index) => `line ${index}`).join("\n");
@@ -48,5 +48,21 @@ describe("fadeOpacities", () => {
     expect(strips[0]).toBeGreaterThan(0);
     expect(strips[strips.length - 1]).toBe(1);
     expect(strips).toEqual([...strips].sort((first, second) => first - second));
+  });
+});
+
+describe("foldState", () => {
+  it("only clips a candidate that is not measured yet, showing no fade or button", () => {
+    expect(foldState(true, null, false, 20, 6)).toEqual({ overflowing: false, folded: true });
+  });
+  it("never folds or shows a button for a body measured as fitting", () => {
+    expect(foldState(true, 100, false, 20, 6)).toEqual({ overflowing: false, folded: false });
+  });
+  it("folds a measured long body until opened", () => {
+    expect(foldState(true, 300, false, 20, 6)).toEqual({ overflowing: true, folded: true });
+    expect(foldState(true, 300, true, 20, 6)).toEqual({ overflowing: true, folded: false });
+  });
+  it("leaves a short text alone", () => {
+    expect(foldState(false, null, false, 20, 6)).toEqual({ overflowing: false, folded: false });
   });
 });

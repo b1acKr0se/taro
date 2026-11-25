@@ -14,12 +14,25 @@ import { CopyButton, useHoverReveal } from "./copy-button";
 import { Pressable } from "./focus";
 import { Markdown } from "./markdown";
 import { fadeColour } from "./shimmer";
-import { fadeOpacities, foldHeight, mayNeedFold, overflowsFold } from "./received-fold";
+import { fadeOpacities, foldHeight, foldState, mayNeedFold } from "./received-fold";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { formatMessageTimestamp, thinkingLabel } from "./turn-time";
 
 const FADE_HEIGHT_LINES = 2;
+
+/** Natural heights measured for a text, so a row that is drawn again (a pending message becoming its timeline row, a page reloaded) starts with its fold settled instead of measuring from scratch. */
+const rememberedHeights = new Map<string, number>();
+const REMEMBERED_LIMIT = 200;
+
+function rememberHeight(key: string, height: number): void {
+  rememberedHeights.delete(key);
+  rememberedHeights.set(key, height);
+  if (rememberedHeights.size > REMEMBERED_LIMIT) {
+    const oldest = rememberedHeights.keys().next();
+    if (!oldest.done) rememberedHeights.delete(oldest.value);
+  }
+}
 
 /** The wrapper of a message the pointer can be over, and the row under it with the time and the copy icon. */
 export function MessageWithActions({ at, actions, text, copyLabel, always, theme, children }: { at?: string; actions: boolean; text: string; copyLabel: string; always: boolean; theme: PluginTheme; children: ReactNode }) {
@@ -56,16 +69,29 @@ export function FoldFade({ colour, lineHeight }: { colour: string; lineHeight: n
  * measured yet it is drawn folded, so it does not grow a frame later (Paseo's `MessagePreview` paints folded first too).
  */
 export function FoldableBody({ text, lines, open, onToggle, colour, buttonStyle, labelStyle, children }: { text: string; lines: number; open: boolean; onToggle: () => void; colour: string; buttonStyle: object; labelStyle: object; children: ReactNode }) {
-  const [natural, setNatural] = useState<number | null>(null);
+  const cacheKey = `${lines}:${text}`;
+  const [natural, setNatural] = useState<number | null>(() => rememberedHeights.get(cacheKey) ?? null);
   const lineHeight = bodyLineHeight();
   const candidate = mayNeedFold(text, lines);
-  const overflowing = candidate && (natural === null || overflowsFold(natural, lineHeight, lines));
-  const folded = overflowing && !open;
+  // Until measured the body is only clipped: the fade and the button wait for the measure, so a message that fits never flashes them (the chat flickered as rows remounted).
+  const { overflowing, folded } = foldState(candidate, natural, open, lineHeight, lines);
   return (
     <>
       <View style={folded ? { maxHeight: foldHeight(lineHeight, lines), overflow: "hidden" } : undefined}>
-        <View onLayout={candidate ? (event) => setNatural(event.nativeEvent.layout.height) : undefined}>{children}</View>
-        {folded ? <FoldFade colour={colour} lineHeight={lineHeight} /> : null}
+        <View
+          onLayout={
+            candidate
+              ? (event) => {
+                  const height = event.nativeEvent.layout.height;
+                  rememberHeight(cacheKey, height);
+                  setNatural((previous) => (previous === height ? previous : height));
+                }
+              : undefined
+          }
+        >
+          {children}
+        </View>
+        {folded && overflowing ? <FoldFade colour={colour} lineHeight={lineHeight} /> : null}
       </View>
       {overflowing ? (
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={onToggle} style={buttonStyle}>
