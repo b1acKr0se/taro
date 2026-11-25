@@ -41,6 +41,8 @@ export interface AgentTimeline {
    * `agent`, which waits for the read it starts at once. Null once a read after it has landed.
    */
   turn: TurnBoundary | null;
+  /** When (client ms) the tail read shown began, null before one landed: anything it lacks was not in the timeline then. */
+  readStartedAt: number | null;
 }
 
 /** The tail alone: earlier pages are kept only while the chat is open. */
@@ -85,6 +87,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(agentId !== null);
   const [turn, setTurn] = useState<TurnBoundary | null>(null);
+  const [readStartedAt, setReadStartedAt] = useState<number | null>(null);
 
   useEffect(() => {
     if (agentId === null) {
@@ -96,6 +99,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
       setLoadingOlder(false);
       setOlderAsked(false);
       setTurn(null);
+      setReadStartedAt(null);
       return;
     }
     const id = agentId;
@@ -125,6 +129,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     setLoadingOlder(false);
     setOlderAsked(false);
     setTurn(null);
+    setReadStartedAt(null);
 
     function clearTimers(): void {
       clearTimeout(quiet);
@@ -150,10 +155,12 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
       }
       inFlight = true;
       const readToken = turns.readStarted();
+      const startedAt = Date.now();
       try {
         const page = await timeline.refetch({ direction: "tail", limit, projection: "projected" });
         if (!alive) return;
         setTurn(turns.readLanded(readToken));
+        setReadStartedAt(startedAt);
         if (cacheable(page)) cache.set(id, { entries: page.entries, agent: page.agent ?? cache.get(id)?.agent ?? null, hasOlder: page.hasOlder });
         older = joinTail(older, read, page);
         read = page.entries;
@@ -253,5 +260,5 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     if (revision !== "") reread.current();
   }, [revision]);
 
-  return { entries, agent, hasOlder, loadOlder, loadingOlder, olderAsked, error, loading, turn };
+  return { entries, agent, hasOlder, loadOlder, loadingOlder, olderAsked, error, loading, turn, readStartedAt };
 }
