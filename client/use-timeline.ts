@@ -6,7 +6,7 @@ import { addOlderPage, joinTail, withOlder, type OlderPages } from "./older-page
 import type { TurnBoundary } from "../shared/pending-sends";
 import { drawnWithPieces, MAX_PIECES, readQueue, streamedPiece, turnBoundary, turnTracker, unreadPieces, withStreamed, type StreamedPiece } from "./stream-pieces";
 import { CACHED_AGENTS, cacheable, createTimelineCache } from "./timeline-cache";
-import { endFollowsWork } from "./turn-end";
+import { endFollowsWork, readEndsHold } from "./turn-end";
 import type { TimelinePage, TimelineEntry } from "./transcript-rows";
 
 /** Wait for a pause in the stream before re-reading, so one burst is one read. */
@@ -138,6 +138,10 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     const turns = turnTracker();
     /** The agent's status in the last read landed, for what a turn's end follows. */
     let readStatus = cache.get(id)?.agent?.status;
+    /** The boundaries seen once the newest turn start came: a read begun since may end a held end (`readEndsHold`). */
+    let startedAtCount = 0;
+    /** The newest end's hold, as `turnEndFromWork`. */
+    let fromWork = false;
     // Another agent in the same mount: its cached read, or a blank pane rather than the last agent's words.
     const cached = cache.get(id);
     setEntries(cached?.entries ?? []);
@@ -189,6 +193,11 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
         if (page.agent !== null) {
           readStatus = page.agent.status;
           setAgent(page.agent);
+          // A read begun before the end may already show it, with the reply: the loader goes with this read.
+          if (fromWork && readEndsHold(readToken, startedAtCount, page.agent.status)) {
+            fromWork = false;
+            setTurnEndFromWork(false);
+          }
         }
         setHasOlder(older?.hasOlder ?? tailHasOlder);
         setError(page.error ?? null);
@@ -243,8 +252,9 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
       const boundary = turnBoundary(event);
       if (boundary !== null) {
         // Drawn at once, and read at once rather than after a pause: a busy turn start held it up to the ceiling.
-        const fromWork = boundary === "ended" && endFollowsWork(turns.current(), readStatus);
+        fromWork = boundary === "ended" && endFollowsWork(turns.current(), readStatus);
         turns.boundary(boundary);
+        if (boundary === "started") startedAtCount = turns.count();
         setTurn(turns.current());
         setTurnAt(Date.now());
         setTurnEndFromWork(fromWork);

@@ -1,7 +1,31 @@
 import { describe, expect, it } from "vitest";
 
 import { turnTracker } from "./stream-pieces";
-import { drawnStatus, endFollowsWork, holdsTurnEnd, TURN_END_SETTLE_MS, type TurnEnd } from "./turn-end";
+import { drawnStatus, endFollowsWork, holdsTurnEnd, readEndsHold, TURN_END_SETTLE_MS, type TurnEnd } from "./turn-end";
+
+/** The chat's turn end as `useAgentTimeline` keeps it, event by event: boundaries, reads begun and landed. */
+function replay() {
+  const turns = turnTracker();
+  let readStatus = "idle";
+  let fromWork = false;
+  let startedAtCount = 0;
+  let endedAt: number | null = null;
+  return {
+    boundary(turn: "started" | "ended", at: number): void {
+      fromWork = turn === "ended" && endFollowsWork(turns.current(), readStatus);
+      turns.boundary(turn);
+      if (turn === "started") startedAtCount = turns.count();
+      if (turn === "ended") endedAt = at;
+    },
+    readStarts: () => turns.readStarted(),
+    lands(token: number, status: string): void {
+      turns.readLanded(token);
+      readStatus = status;
+      if (fromWork && readEndsHold(token, startedAtCount, status)) fromWork = false;
+    },
+    held: (now: number) => holdsTurnEnd({ turn: turns.current(), endedAt, fromWork, turnCount: turns.count(), stoppedAtCount: null }, now),
+  };
+}
 
 const ended = (change: Partial<TurnEnd> = {}): TurnEnd => ({ turn: "ended", endedAt: 1_000, fromWork: true, turnCount: 3, stoppedAtCount: null, ...change });
 
@@ -43,6 +67,20 @@ describe("the status the chat draws", () => {
   });
 });
 
+describe("a read that lets a held end go", () => {
+  it("is one begun once the turn's start was seen, showing the agent not working", () => {
+    expect(readEndsHold(1, 1, "idle")).toBe(true);
+    expect(readEndsHold(2, 1, "error")).toBe(true);
+    expect(readEndsHold(2, 1, undefined)).toBe(true);
+  });
+
+  it("is not one showing the agent still working, nor one begun before the start", () => {
+    expect(readEndsHold(1, 1, "running")).toBe(false);
+    expect(readEndsHold(1, 1, "initializing")).toBe(false);
+    expect(readEndsHold(0, 1, "idle")).toBe(false);
+  });
+});
+
 describe("what a turn's end follows, decided as it comes", () => {
   it("is work when the stream's start was still ahead of the reads, or the last read showed the turn working", () => {
     expect(endFollowsWork("started", "idle")).toBe(true);
@@ -59,29 +97,37 @@ describe("what a turn's end follows, decided as it comes", () => {
   });
 
   it("holds a turn shorter than a read from its end until a read begun after the end lands, never letting go and back (review F1)", () => {
-    const turns = turnTracker();
-    let readStatus = "idle";
-    let fromWork = false;
-    let endedAt: number | null = null;
-    const boundary = (turn: "started" | "ended", at: number) => {
-      fromWork = turn === "ended" && endFollowsWork(turns.current(), readStatus);
-      turns.boundary(turn);
-      if (turn === "ended") endedAt = at;
-    };
-    const held = (now: number) => holdsTurnEnd({ turn: turns.current(), endedAt, fromWork, turnCount: turns.count(), stoppedAtCount: null }, now);
-    boundary("started", 1_000);
-    const readAtStart = turns.readStarted();
-    boundary("ended", 1_200);
-    const shown = [held(1_200)];
-    // The read begun at the start lands showing the turn running; the end is still ahead of it.
-    turns.readLanded(readAtStart);
-    readStatus = "running";
-    shown.push(held(1_500));
+    const chat = replay();
+    chat.boundary("started", 1_000);
+    const readAtStart = chat.readStarts();
+    chat.boundary("ended", 1_200);
+    const shown = [chat.held(1_200)];
+    // The read begun at the start lands still showing the turn running; the end is still ahead of it.
+    chat.lands(readAtStart, "running");
+    shown.push(chat.held(1_500));
     // The read begun at the end lands, with the reply.
-    const readAtEnd = turns.readStarted();
-    turns.readLanded(readAtEnd);
-    readStatus = "idle";
-    shown.push(held(1_800));
+    chat.lands(chat.readStarts(), "idle");
+    shown.push(chat.held(1_800));
     expect(shown).toEqual([true, true, false]);
+  });
+
+  it("lets go with a read begun before the end that already shows the agent stopped, as it holds the reply (review F3)", () => {
+    const chat = replay();
+    chat.boundary("started", 1_000);
+    const readInTurn = chat.readStarts();
+    chat.boundary("ended", 1_200);
+    const shown = [chat.held(1_200)];
+    chat.lands(readInTurn, "idle");
+    shown.push(chat.held(1_300));
+    expect(shown).toEqual([true, false]);
+  });
+
+  it("keeps holding when a read begun before the turn's start lands idle after its end: it lacks the turn's words", () => {
+    const chat = replay();
+    const readBeforeStart = chat.readStarts();
+    chat.boundary("started", 1_000);
+    chat.boundary("ended", 1_200);
+    chat.lands(readBeforeStart, "idle");
+    expect(chat.held(1_300)).toBe(true);
   });
 });

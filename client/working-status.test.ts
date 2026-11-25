@@ -61,6 +61,10 @@ describe("the chat's status (TR-201)", () => {
     expect(chat).toMatch(/const nextSendIsIdle = sendsAsIdle\(working, /);
     expect(chat).toMatch(/stopped\.current = stop;/);
     expect(chat).toMatch(/redrawAfterEnd\(\(count\) => count \+ 1\), Math\.max\(0, heldEndAt \+ TURN_END_SETTLE_MS - Date\.now\(\)\) \+ 1\)/);
+    // Decided as the end comes (review F1), let go by the read that already shows it (review F3).
+    const timeline = read("use-timeline.ts");
+    expect(timeline).toMatch(/fromWork = boundary === "ended" && endFollowsWork\(turns\.current\(\), readStatus\);\s*turns\.boundary\(boundary\);\s*if \(boundary === "started"\) startedAtCount = turns\.count\(\);/);
+    expect(timeline).toMatch(/if \(fromWork && readEndsHold\(readToken, startedAtCount, page\.agent\.status\)\) \{\s*fromWork = false;\s*setTurnEndFromWork\(false\);/);
   });
 });
 

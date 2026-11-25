@@ -36,6 +36,16 @@ export function endFollowsWork(ahead: TurnBoundary | null, readStatus: string | 
 }
 
 /**
+ * Whether a read landing after the end lets the hold go: begun once the turn's start was seen
+ * (`readToken`, the boundaries seen as it began, at least `startedAtCount`, those seen once the start
+ * came) and showing the agent not working. Such a read holds the reply, so the loader goes with it,
+ * not a read later; one begun before the start shows the agent idle without the turn's words.
+ */
+export function readEndsHold(readToken: number, startedAtCount: number, readStatus: string | null | undefined): boolean {
+  return readToken >= startedAtCount && !isWorking(readStatus);
+}
+
+/**
  * Whether the chat still draws the turn as under way: the stream said it ended, the turn was drawn
  * under way as it did, and within `TURN_END_SETTLE_MS`. Never the end a Stop asked for (the stream's
  * first boundary after the press), which the chat already showed as ended at the press.
