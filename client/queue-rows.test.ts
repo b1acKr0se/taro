@@ -231,6 +231,21 @@ describe("trackRows (TR-287)", () => {
     ]);
   });
 
+  it("draws first this app's row that left the daemon's queue, which drains its front", () => {
+    const result = rows({ daemon: [queued({ id: "B" })], local: [queued({ id: "A", left: true }), queued({ id: "B" }), queued({ id: "C" })] });
+    expect(result.map((row) => [row.message.id, row.local])).toEqual([
+      ["A", true],
+      ["B", false],
+      ["C", true],
+    ]);
+  });
+
+  it("marks a local row that left the queue", () => {
+    const at = Date.parse("2026-10-16T10:00:00.000Z");
+    const view: SendView = { send: { id: "chat-a", text: "a", attachments: [], at, state: "queued", queuedAt: at, leftQueueAt: at + 1 }, mark: "queued", rowKey: null };
+    expect(sendingToQueue([view])[0]?.left).toBe(true);
+  });
+
   it("keeps this app's row when the daemon's read does not list it yet, under the same id", () => {
     expect(rows({ local: [queued({ id: "A" })] }).map((row) => [row.message.id, row.local])).toEqual([["A", true]]);
   });

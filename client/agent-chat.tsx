@@ -219,7 +219,10 @@ export function AgentChat({
   const refreshQueue = () => queries.invalidateQueries({ queryKey: chatQueueKey(agent.id) });
   // The messages waiting on the daemon for the turn to end (TR-171), drawn above the box.
   const queue = useChatQueue(agent.id, working, readOnly === undefined);
-  const queueRead = useMemo(() => (queue.readStartedAt === null ? null : { ids: queue.messages.map((message) => message.id), startedAt: queue.readStartedAt }), [queue.messages, queue.readStartedAt]);
+  const queueRead = useMemo(
+    () => (queue.readStartedAt === null || queue.readAnsweredAt === null ? null : { ids: queue.messages.map((message) => message.id), startedAt: queue.readStartedAt, answeredAt: queue.readAnsweredAt }),
+    [queue.messages, queue.readStartedAt, queue.readAnsweredAt],
+  );
   const sends = usePendingSends({
     agentId: agent.id,
     status,

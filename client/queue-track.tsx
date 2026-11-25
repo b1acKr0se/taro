@@ -27,6 +27,8 @@ export interface ChatQueueView {
   compacting: boolean;
   /** When (client ms) the request of the read shown began, null before one: a row may leave only on a read begun after it changed. */
   readStartedAt: number | null;
+  /** When (client ms) that read answered, null before one. */
+  readAnsweredAt: number | null;
 }
 
 /** The agent's queued messages, oldest first; read every 2 s while there are some or the agent works. Not read for a chat with no composer. */
@@ -36,7 +38,8 @@ export function useChatQueue(agentId: string, working: boolean, enabled: boolean
     queryKey: chatQueueKey(agentId),
     queryFn: async () => {
       const startedAt = Date.now();
-      return { ...(await list({ agentId })), startedAt };
+      const listing = await list({ agentId });
+      return { ...listing, startedAt, answeredAt: Date.now() };
     },
     enabled,
     // Fresh for one short poll only: a chat opened again must not show a row the daemon sent meanwhile.
@@ -47,7 +50,8 @@ export function useChatQueue(agentId: string, working: boolean, enabled: boolean
   const messages = enabled ? (query.data?.messages ?? NO_MESSAGES) : NO_MESSAGES;
   const compacting = enabled && query.data?.compacting === true;
   const readStartedAt = enabled ? (query.data?.startedAt ?? null) : null;
-  return useMemo(() => ({ messages, compacting, readStartedAt }), [messages, compacting, readStartedAt]);
+  const readAnsweredAt = enabled ? (query.data?.answeredAt ?? null) : null;
+  return useMemo(() => ({ messages, compacting, readStartedAt, readAnsweredAt }), [messages, compacting, readStartedAt, readAnsweredAt]);
 }
 
 /** Paseo's queue button: 32 px, round, never shrunk by a long message beside it. */

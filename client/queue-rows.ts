@@ -6,8 +6,11 @@ import { attachmentProblem, imageFileName, type DraftAttachment, type OutgoingFi
 import { NOT_QUEUED, type QueuedMessageSummary } from "../shared/chat-queue";
 import { takeBack, type PendingSend, type SendView } from "../shared/pending-sends";
 
-/** A row's message; `behind`: one of this app's, waiting for a failed message before it to be sent. */
-export type QueueRowMessage = QueuedMessageSummary & { behind?: boolean | undefined };
+/**
+ * A row's message; `behind`: one of this app's, waiting for a failed message before it to be sent;
+ * `left`: one of this app's the daemon's queue no longer lists, as it took it from the front.
+ */
+export type QueueRowMessage = QueuedMessageSummary & { behind?: boolean | undefined; left?: boolean | undefined };
 
 export interface QueueRowText {
   /** The user's words, null for a message of attachments only. */
@@ -133,6 +136,7 @@ export function sendingToQueue(views: readonly SendView[]): QueueRowMessage[] {
             fileNames: view.send.attachments.flatMap((attachment) => (attachment.kind === "file" ? [attachment.fileName] : [])),
             failed: null,
             ...(view.mark === "behind" ? { behind: true } : {}),
+            ...(view.send.leftQueueAt !== undefined ? { left: true } : {}),
           },
         ]
       : [],
@@ -148,8 +152,8 @@ export interface TrackRow {
 }
 
 /**
- * The queue track's rows: the daemon's in its order, then this app's it does not list, each message
- * once under its own id. Not those `hidden` (handed over to the box or the transcript, or held as sent
+ * The queue track's rows: this app's that left the daemon's queue first (the daemon drains its front),
+ * then the daemon's in its order, then this app's it does not list yet, each message once under its own id. Not those `hidden` (handed over to the box or the transcript, or held as sent
  * to an idle agent), nor those the timeline shows: a message is the transcript's or the queue's, never both.
  */
 export function trackRows({
@@ -166,7 +170,12 @@ export function trackRows({
   retrying: ReadonlySet<string>;
 }): TrackRow[] {
   const listed = new Set(daemon.map((message) => message.id));
-  const rows = [...daemon.map((message) => ({ message, local: false })), ...local.filter((message) => !listed.has(message.id)).map((message) => ({ message, local: true }))];
+  const unlisted = local.filter((message) => !listed.has(message.id));
+  const rows = [
+    ...unlisted.filter((message) => message.left === true).map((message) => ({ message, local: true })),
+    ...daemon.map((message) => ({ message, local: false })),
+    ...unlisted.filter((message) => message.left !== true).map((message) => ({ message, local: true })),
+  ];
   return rows
     .filter((row) => !hidden.has(row.message.id) && !inTimeline.has(row.message.id))
     .map((row) => (retrying.has(row.message.id) ? { message: { ...row.message, failed: null }, local: row.local, retrying: true } : { ...row, retrying: false }));

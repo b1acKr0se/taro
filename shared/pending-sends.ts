@@ -65,7 +65,7 @@ export interface PendingSend {
   state: "sending" | "queued" | "sent" | "failed";
   /** When the daemon's queued answer came (client ms): a queue read begun before it may not list it yet. */
   queuedAt?: number | undefined;
-  /** When a queue read that began then (client ms) no longer listed it: a timeline read begun later shows it, or it was removed elsewhere. */
+  /** When a queue read that no longer listed it answered (client ms): a timeline read begun later shows it, or it was removed elsewhere. */
   leftQueueAt?: number | undefined;
   /**
    * Edit or Send now pressed while this app holds it. "edit": drawn nowhere, never tried again, and taken
@@ -202,17 +202,28 @@ export interface ReadOfIds {
   startedAt: number;
 }
 
+/** A read of the daemon's queue, with when (client ms) it answered: every daemon step before that answer is in it. */
+export interface QueueReadOfIds extends ReadOfIds {
+  answeredAt: number;
+}
+
 /**
  * What the latest reads say of the messages the daemon queued. `left`: a queue read that began once the
- * daemon had it no longer lists it (the chat notes `leftQueueAt`); a read begun earlier proves nothing.
- * `gone`: a timeline read that began after it left the queue does not hold it, so it was removed
- * elsewhere (Edit on another device, a handover, an archive), not sent: the daemon removes a drained
- * message only once Paseo took it. Until one of these, the chat keeps drawing it.
+ * daemon had it no longer lists it; a read begun earlier proves nothing. The chat notes `leftQueueAt` as
+ * that read's answer (`leftQueueAt`, null with no queue read): a timeline read begun before then may reach
+ * the daemon ahead of the drain that took it. `gone`: a timeline read that began at or after it left the
+ * queue does not hold it, so it was removed elsewhere (Edit on another device, a handover, an archive),
+ * not sent: the daemon removes a drained message only once Paseo took it. Until one of these, the chat
+ * keeps drawing it.
  */
-export function settleQueued(sends: readonly PendingSend[], queueRead: ReadOfIds | null, timelineRead: ReadOfIds | null): { left: string[]; gone: string[] } {
+export function settleQueued(
+  sends: readonly PendingSend[],
+  queueRead: QueueReadOfIds | null,
+  timelineRead: ReadOfIds | null,
+): { left: string[]; leftQueueAt: number | null; gone: string[] } {
   const left = queueRead === null ? [] : sends.filter((send) => send.state === "queued" && send.handedOver === undefined && send.leftQueueAt === undefined && send.queuedAt !== undefined && send.queuedAt <= queueRead.startedAt && !queueRead.ids.includes(send.id)).map((send) => send.id);
   const gone = timelineRead === null ? [] : sends.filter((send) => send.state === "queued" && send.leftQueueAt !== undefined && send.leftQueueAt <= timelineRead.startedAt && !timelineRead.ids.includes(send.id)).map((send) => send.id);
-  return { left, gone };
+  return { left, leftQueueAt: queueRead?.answeredAt ?? null, gone };
 }
 
 /**

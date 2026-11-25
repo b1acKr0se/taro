@@ -394,27 +394,28 @@ describe("replyIsBeingWritten (TR-210)", () => {
 describe("settleQueued (TR-287)", () => {
   const queued = (id: string, change: Partial<PendingSend> = {}): PendingSend => ({ ...sent(id, T0, "queued"), queuedAt: 1000, ...change });
 
+  const read = (ids: string[], startedAt: number, answeredAt = startedAt) => ({ ids, startedAt, answeredAt });
+
   it("says nothing before any read", () => {
-    expect(settleQueued([queued("chat-a")], null, null)).toEqual({ left: [], gone: [] });
+    expect(settleQueued([queued("chat-a")], null, null)).toEqual({ left: [], leftQueueAt: null, gone: [] });
   });
 
   it("does not count a queue read that began before the daemon's queued answer", () => {
-    expect(settleQueued([queued("chat-a")], { ids: [], startedAt: 900 }, null)).toEqual({ left: [], gone: [] });
+    expect(settleQueued([queued("chat-a")], read([], 900), null)).toEqual({ left: [], leftQueueAt: 900, gone: [] });
   });
 
   it("notes a queued message a read begun at or after the answer omits, and not one it lists", () => {
-    expect(settleQueued([queued("chat-a")], { ids: [], startedAt: 1000 }, null)).toEqual({ left: ["chat-a"], gone: [] });
-    expect(settleQueued([queued("chat-a")], { ids: ["chat-a"], startedAt: 1500 }, null)).toEqual({ left: [], gone: [] });
+    expect(settleQueued([queued("chat-a")], read([], 1000), null)).toEqual({ left: ["chat-a"], leftQueueAt: 1000, gone: [] });
+    expect(settleQueued([queued("chat-a")], read(["chat-a"], 1500), null).left).toEqual([]);
   });
 
   it("ignores one handed over, one already noted, and one not queued", () => {
-    const read = { ids: [], startedAt: 5000 };
-    expect(settleQueued([queued("chat-a", { handedOver: "send-now" }), queued("chat-b", { handedOver: "edit" }), queued("chat-c", { leftQueueAt: 3000 }), sent("chat-d", T0, "sending"), sent("chat-e")], read, null).left).toEqual([]);
+    expect(settleQueued([queued("chat-a", { handedOver: "send-now" }), queued("chat-b", { handedOver: "edit" }), queued("chat-c", { leftQueueAt: 3000 }), sent("chat-d", T0, "sending"), sent("chat-e")], read([], 5000), null).left).toEqual([]);
   });
 
   it("forgets one gone from the queue that a later timeline read does not show: removed elsewhere, never sent", () => {
     const left = queued("chat-a", { leftQueueAt: 3000 });
-    expect(settleQueued([left], null, { ids: [], startedAt: 3500 })).toEqual({ left: [], gone: ["chat-a"] });
+    expect(settleQueued([left], null, { ids: [], startedAt: 3500 })).toEqual({ left: [], leftQueueAt: null, gone: ["chat-a"] });
   });
 
   it("keeps one an earlier timeline read lacks, and one the timeline shows (it landed)", () => {
@@ -424,10 +425,20 @@ describe("settleQueued (TR-287)", () => {
   });
 
   it("leaves the queue, then is gone after a later timeline read without it", () => {
-    const first = settleQueued([queued("chat-a")], { ids: [], startedAt: 3000 }, { ids: [], startedAt: 2000 });
-    expect(first).toEqual({ left: ["chat-a"], gone: [] });
+    const first = settleQueued([queued("chat-a")], read([], 3000), { ids: [], startedAt: 2000 });
+    expect(first).toEqual({ left: ["chat-a"], leftQueueAt: 3000, gone: [] });
     const noted = queued("chat-a", { leftQueueAt: 3000 });
-    expect(settleQueued([noted], { ids: [], startedAt: 5000 }, { ids: [], startedAt: 2000 })).toEqual({ left: [], gone: [] });
-    expect(settleQueued([noted], { ids: [], startedAt: 5000 }, { ids: [], startedAt: 4000 })).toEqual({ left: [], gone: ["chat-a"] });
+    expect(settleQueued([noted], read([], 5000), { ids: [], startedAt: 2000 }).gone).toEqual([]);
+    expect(settleQueued([noted], read([], 5000), { ids: [], startedAt: 4000 }).gone).toEqual(["chat-a"]);
+  });
+
+  it("dates leaving the queue from when the omitting read answered, not when it began", () => {
+    // The read began at 1000 and answered at 2500: a timeline read begun in between may have reached the daemon before the drain.
+    const { left, leftQueueAt } = settleQueued([queued("chat-a")], read([], 1000, 2500), null);
+    expect([left, leftQueueAt]).toEqual([["chat-a"], 2500]);
+    const noted = queued("chat-a", { leftQueueAt: 2500 });
+    expect(settleQueued([noted], null, { ids: [], startedAt: 2000 }).gone).toEqual([]);
+    expect(settleQueued([noted], null, { ids: [], startedAt: 2500 }).gone).toEqual(["chat-a"]);
+    expect(settleQueued([noted], null, { ids: [], startedAt: 3000 }).gone).toEqual(["chat-a"]);
   });
 });

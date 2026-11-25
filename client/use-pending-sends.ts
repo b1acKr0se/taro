@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { outgoingAttachments, type DraftAttachment, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
-import { isWorking, newChatMessageId, settleQueued, STOPPED_GRACE_MS, turnIsOpen, viewSends, type PendingSend, type ReadOfIds, type SendTimelineEntry, type SendView } from "../shared/pending-sends";
+import { isWorking, newChatMessageId, settleQueued, STOPPED_GRACE_MS, turnIsOpen, viewSends, type PendingSend, type QueueReadOfIds, type SendTimelineEntry, type SendView } from "../shared/pending-sends";
 import { useLatestCallback } from "./latest-callback";
 import { pendingSends, type SendSettled, type TakeOutcome } from "./pending-send-store";
 import { handedOverSend, type QueueRowMessage } from "./queue-rows";
@@ -69,7 +69,7 @@ export function usePendingSends({
   /** Told when the daemon queued a message, to read the queue again at once. */
   onQueued: () => Promise<unknown>;
   /** The daemon's queue as last read, null before a read: a queued message leaves it only on a read begun after the daemon had it. */
-  queueRead: ReadOfIds | null;
+  queueRead: QueueReadOfIds | null;
   /** When the timeline's shown read began, null before one. */
   timelineReadStartedAt: number | null;
 }): PendingSends {
@@ -120,8 +120,8 @@ export function usePendingSends({
   // A queued message the daemon's queue no longer lists is noted; one the timeline then lacks as well was removed elsewhere.
   useEffect(() => {
     const timelineRead = timelineReadStartedAt === null ? null : { ids: [...inTimeline], startedAt: timelineReadStartedAt };
-    const { left, gone } = settleQueued(sends, queueRead, timelineRead);
-    if (queueRead !== null) left.forEach((id) => pendingSends.update(agentId, id, { leftQueueAt: queueRead.startedAt }));
+    const { left, leftQueueAt, gone } = settleQueued(sends, queueRead, timelineRead);
+    if (leftQueueAt !== null) left.forEach((id) => pendingSends.update(agentId, id, { leftQueueAt }));
     if (gone.length > 0) pendingSends.remove(agentId, gone);
   }, [agentId, sends, queueRead, timelineReadStartedAt, inTimeline]);
 
