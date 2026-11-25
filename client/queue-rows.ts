@@ -146,15 +146,17 @@ export function sendingToQueue(views: readonly SendView[], queueRead: ReadOfIds 
 
 /**
  * Whether a queued message kept from before this chat was mounted waits to be drawn: the agent may have
- * taken it while the chat was closed. Drawn once this mount's first queue read answered and lists it, or,
- * when that read omits it, once this mount's first timeline read landed too (it then is the transcript's,
- * or left the queue). One queued after mounting is drawn at once.
+ * taken it, or another device removed it, while the chat was closed. Drawn once this mount's first queue
+ * read answered and lists it, or, when that read omits it, once a timeline read begun after that read
+ * answered landed too (the one that settles it: it is then the transcript's, or forgotten as removed); a
+ * timeline read begun earlier may predate the drain or the removal. One queued after mounting is drawn at once.
  */
 export function waitsForFreshReads(send: PendingSend, mountedAt: number, reads: { queue: QueueReadOfIds | null; timelineStartedAt: number | null }): boolean {
   if (send.state !== "queued" || send.queuedAt === undefined || send.queuedAt >= mountedAt) return false;
   if (reads.queue === null || reads.queue.answeredAt < mountedAt) return true;
   if (reads.queue.ids.includes(send.id)) return false;
-  return reads.timelineStartedAt === null || reads.timelineStartedAt < mountedAt;
+  const leftAt = Math.max(mountedAt, send.leftQueueAt ?? reads.queue.answeredAt);
+  return reads.timelineStartedAt === null || reads.timelineStartedAt < leftAt;
 }
 
 /** One row of the queue track; `local`: only this app's copy lists it (the daemon's read does not yet, or no longer). */

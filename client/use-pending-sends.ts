@@ -60,6 +60,7 @@ export function usePendingSends({
   onQueued,
   queueRead,
   timelineReadStartedAt,
+  onLeftQueue,
 }: {
   agentId: string;
   status: string;
@@ -72,6 +73,8 @@ export function usePendingSends({
   queueRead: QueueReadOfIds | null;
   /** When the timeline's shown read began, null before one. */
   timelineReadStartedAt: number | null;
+  /** Told when a queue read shows a message left the daemon's queue, to read the timeline again: only a read begun since settles it, and an idle agent's chat starts none. */
+  onLeftQueue: () => void;
 }): PendingSends {
   const [sends, setSends] = useState(() => pendingSends.get(agentId));
   useEffect(() => {
@@ -120,8 +123,11 @@ export function usePendingSends({
   // A queued message the daemon's queue no longer lists is noted; one the timeline then lacks as well was removed elsewhere.
   useEffect(() => {
     const timelineRead = timelineReadStartedAt === null ? null : { ids: [...inTimeline], startedAt: timelineReadStartedAt };
-    const { left, leftQueueAt, gone, found } = settleQueued(sends, queueRead, timelineRead);
+    const { left, leftQueueAt, gone, found, failedOnDaemon } = settleQueued(sends, queueRead, timelineRead);
     if (leftQueueAt !== null) left.forEach((id) => pendingSends.update(agentId, id, { leftQueueAt }));
+    if (leftQueueAt !== null && left.length > 0) onLeftQueue();
+    // Held as sent to an idle agent, but the daemon queued it and failed: the queue track draws its Not sent row.
+    failedOnDaemon.forEach((id) => pendingSends.update(agentId, id, { sentWhileIdle: false }));
     if (queueRead !== null) found.forEach((id) => pendingSends.update(agentId, id, { state: "queued", queuedAt: queueRead.startedAt, error: undefined }));
     if (gone.length > 0) pendingSends.remove(agentId, gone);
   }, [agentId, sends, queueRead, timelineReadStartedAt, inTimeline]);

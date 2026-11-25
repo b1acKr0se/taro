@@ -205,6 +205,8 @@ export interface ReadOfIds {
 /** A read of the daemon's queue, with when (client ms) it answered: every daemon step before that answer is in it. */
 export interface QueueReadOfIds extends ReadOfIds {
   answeredAt: number;
+  /** The ids it lists whose send the daemon failed (drawn with Not sent and Retry). */
+  failed?: readonly string[];
 }
 
 /**
@@ -216,16 +218,19 @@ export interface QueueReadOfIds extends ReadOfIds {
  * not sent: the daemon removes a drained message only once Paseo took it. Until one of these, the chat
  * keeps drawing it. `found`: failed sends the queue read lists (the daemon queued one whose answer was
  * lost), to mark queued from that read's start, so each is one row, never a daemon row and a failed echo.
+ * `failedOnDaemon`: ones held as sent to an idle agent that the daemon queued and then failed to send (one
+ * sent while a stop was under way): their mark is cleared, so the daemon's row shows with Not sent and Retry.
  */
 export function settleQueued(
   sends: readonly PendingSend[],
   queueRead: QueueReadOfIds | null,
   timelineRead: ReadOfIds | null,
-): { left: string[]; leftQueueAt: number | null; gone: string[]; found: string[] } {
+): { left: string[]; leftQueueAt: number | null; gone: string[]; found: string[]; failedOnDaemon: string[] } {
   const left = sends.filter((send) => send.leftQueueAt === undefined && leftQueue(send, queueRead)).map((send) => send.id);
   const gone = timelineRead === null ? [] : sends.filter((send) => send.state === "queued" && send.leftQueueAt !== undefined && send.leftQueueAt <= timelineRead.startedAt && !timelineRead.ids.includes(send.id)).map((send) => send.id);
   const found = queueRead === null ? [] : sends.filter((send) => send.state === "failed" && queueRead.ids.includes(send.id)).map((send) => send.id);
-  return { left, leftQueueAt: queueRead?.answeredAt ?? null, gone, found };
+  const failedOnDaemon = queueRead?.failed === undefined ? [] : sends.filter((send) => send.sentWhileIdle === true && queueRead.failed?.includes(send.id) === true).map((send) => send.id);
+  return { left, leftQueueAt: queueRead?.answeredAt ?? null, gone, found, failedOnDaemon };
 }
 
 /** Whether a queue read shows a queued send has left the daemon's queue: it began once the daemon had it, and omits it. */

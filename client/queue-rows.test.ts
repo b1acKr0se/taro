@@ -218,6 +218,12 @@ describe("this app's messages in the queue track (TR-171, TR-287)", () => {
   it("are not drawn once handed over to Edit or Send now", () => {
     expect(sendingToQueue([view("chat-a", "sending", null, [], { handedOver: "send-now" }), view("chat-b", "queued", null, [], { handedOver: "send-now" }), view("chat-c", "sending", null, [], { handedOver: "edit" })])).toEqual([]);
   });
+
+  it("draw one held as sent to an idle agent that the daemon failed, once its mark is cleared, as the daemon's row with Not sent", () => {
+    const cleared = view("chat-d", "queued", null, [], { sentWhileIdle: false });
+    const result = trackRows({ daemon: [queued({ id: "chat-d", failed: "the agent is gone" })], local: sendingToQueue([cleared]), hidden: new Set(), inTimeline: new Set(), retrying: new Set() });
+    expect(result.map((row) => [row.message.id, row.local, row.message.failed])).toEqual([["chat-d", false, "the agent is gone"]]);
+  });
 });
 
 describe("trackRows (TR-287)", () => {
@@ -293,9 +299,14 @@ describe("waitsForFreshReads (TR-287)", () => {
     expect(waitsForFreshReads(kept, mountedAt, { queue: read(["chat-a"], 10_500), timelineStartedAt: null })).toBe(false);
   });
 
-  it("holds one that read omits until this mount's first timeline read too: the agent may have taken it meanwhile", () => {
+  it("holds one that read omits until a timeline read begun once it answered: the agent may have taken it meanwhile", () => {
     expect(waitsForFreshReads(kept, mountedAt, { queue: read([], 10_500), timelineStartedAt: null })).toBe(true);
-    expect(waitsForFreshReads(kept, mountedAt, { queue: read([], 10_500), timelineStartedAt: 10_050 })).toBe(false);
+    // The mount's first timeline read began before the queue read answered: it may predate the removal or the drain.
+    expect(waitsForFreshReads(kept, mountedAt, { queue: read([], 10_500), timelineStartedAt: 10_050 })).toBe(true);
+    expect(waitsForFreshReads(kept, mountedAt, { queue: read([], 10_500), timelineStartedAt: 10_500 })).toBe(false);
+    expect(waitsForFreshReads(kept, mountedAt, { queue: read([], 10_500), timelineStartedAt: 10_600 })).toBe(false);
+    // Once noted, dated by the read that first omitted it, not by a later poll's answer.
+    expect(waitsForFreshReads({ ...kept, leftQueueAt: 10_500 }, mountedAt, { queue: read([], 12_500), timelineStartedAt: 10_600 })).toBe(false);
   });
 
   it("draws at once one queued after mounting, and anything not queued", () => {

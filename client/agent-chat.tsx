@@ -239,7 +239,7 @@ export function AgentChat({
   // The messages waiting on the daemon for the turn to end (TR-171), drawn above the box.
   const queue = useChatQueue(agent.id, working, readOnly === undefined);
   const queueRead = useMemo(
-    () => (queue.readStartedAt === null || queue.readAnsweredAt === null ? null : { ids: queue.messages.map((message) => message.id), startedAt: queue.readStartedAt, answeredAt: queue.readAnsweredAt }),
+    () => (queue.readStartedAt === null || queue.readAnsweredAt === null ? null : { ids: queue.messages.map((message) => message.id), failed: queue.messages.flatMap((message) => (message.failed === null ? [] : [message.id])), startedAt: queue.readStartedAt, answeredAt: queue.readAnsweredAt }),
     [queue.messages, queue.readStartedAt, queue.readAnsweredAt],
   );
   const sends = usePendingSends({
@@ -251,6 +251,7 @@ export function AgentChat({
     onQueued: refreshQueue,
     queueRead,
     timelineReadStartedAt: timeline.readStartedAt,
+    onLeftQueue: timeline.refresh,
   });
   // A tool call shimmers only while its turn runs (TR-190). The reply before a sent message the timeline
   // does not show yet is not being written, so its status line stays (TR-210, as its footer does, TR-208).
