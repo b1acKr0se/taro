@@ -12,7 +12,7 @@ const loading = read("loading.tsx");
 
 describe("the working status at the end of a chat", () => {
   it("is hidden while a permission request waits on the user", () => {
-    expect(chat).toMatch(/\{pending\.length > 0 \? null : <WorkingStatus theme=\{theme\} shown=\{loaderShown\} turnStartedAt=\{working \? agent\.turnStartedAt : null\} \/>\}/);
+    expect(chat).toMatch(/\{pending\.length > 0 \? null : <WorkingStatus theme=\{theme\} shown=\{loaderShown\} turnStartedAt=\{transcriptWorking \? agent\.turnStartedAt : null\} \/>\}/);
     expect(chat.match(/<WorkingStatus\b/g)).toHaveLength(1);
   });
 
@@ -50,7 +50,17 @@ describe("the chat's status (TR-201)", () => {
   });
 
   it("shows the loader while a message is on its way, and the turn's time only while a turn runs", () => {
-    expect(chat).toMatch(/const loaderShown = showsLoader\(status, sends\.views\.map\(\(view\) => view\.mark\)\);/);
+    expect(chat).toMatch(/const loaderShown = showsLoader\(transcriptStatus, sends\.views\.map\(\(view\) => view\.mark\)\);/);
+  });
+
+  it("keeps a turn the stream ended drawn under way until the read with its reply lands, never one a Stop ended (TR-291)", () => {
+    expect(chat).toMatch(/endedAt: timeline\.turnAt,\s*readStatus: timeline\.agent\?\.status,/);
+    expect(chat).toMatch(/const transcriptStatus = drawnStatus\(status, turnEnd, Date\.now\(\)\);/);
+    // The newest footer and a running call wait with the loader; Stop, Send and the queue follow `status`.
+    expect(chat).toMatch(/withoutOpenTurn\(transcriptRows\(timeline\.entries, cwd\), sends\.turnOpen \|\| endHeld\), transcriptWorking\)/);
+    expect(chat).toMatch(/const nextSendIsIdle = sendsAsIdle\(working, /);
+    expect(chat).toMatch(/stopped\.current = stop;/);
+    expect(chat).toMatch(/redrawAfterEnd\(\(count\) => count \+ 1\), Math\.max\(0, heldEndAt \+ TURN_END_SETTLE_MS - Date\.now\(\)\) \+ 1\)/);
   });
 });
 

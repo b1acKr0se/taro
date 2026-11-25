@@ -41,6 +41,8 @@ export interface AgentTimeline {
    * `agent`, which waits for the read it starts at once. Null once a read after it has landed.
    */
   turn: TurnBoundary | null;
+  /** When (client ms) the stream told of `turn`: the chat draws an end only so long ahead of a read (TR-291). */
+  turnAt: number | null;
   /** When (client ms) the tail read shown began, null before one landed: anything it lacks was not in the timeline then. */
   readStartedAt: number | null;
   /** The stream's turn starts and ends seen since this agent's subscription began: 0 again when it starts over. */
@@ -94,6 +96,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(agentId !== null);
   const [turn, setTurn] = useState<TurnBoundary | null>(null);
+  const [turnAt, setTurnAt] = useState<number | null>(null);
   const [readStartedAt, setReadStartedAt] = useState<number | null>(null);
   const [turnCount, setTurnCount] = useState(0);
 
@@ -107,6 +110,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
       setLoadingOlder(false);
       setOlderAsked(false);
       setTurn(null);
+      setTurnAt(null);
       setReadStartedAt(null);
       setTurnCount(0);
       return;
@@ -137,6 +141,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     setLoadingOlder(false);
     setOlderAsked(false);
     setTurn(null);
+    setTurnAt(null);
     setReadStartedAt(null);
     setTurnCount(0);
 
@@ -229,6 +234,7 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
         // Drawn at once, and read at once rather than after a pause: a busy turn start held it up to the ceiling.
         turns.boundary(boundary);
         setTurn(turns.current());
+        setTurnAt(Date.now());
         setTurnCount(turns.count());
         refresh();
         return;
@@ -265,5 +271,5 @@ export function useAgentTimeline(agentId: string | null, revision = "", limit = 
     if (revision !== "") reread.current();
   }, [revision]);
 
-  return { entries, agent, hasOlder, loadOlder, loadingOlder, olderAsked, error, loading, turn, readStartedAt, turnCount, refresh };
+  return { entries, agent, hasOlder, loadOlder, loadingOlder, olderAsked, error, loading, turn, turnAt, readStartedAt, turnCount, refresh };
 }
