@@ -17,7 +17,7 @@ export function sameGroup(left: Group, right: Group): boolean {
       return other !== undefined && tool.key === other.key && tool.text === other.text && tool.icon === other.icon && tool.status === other.status;
     });
   }
-  return left.row.kind === right.row.kind && left.row.key === right.row.key && left.row.text === right.row.text && asking(left.row) === asking(right.row) && sameTurn(left.row, right.row);
+  return left.row.kind === right.row.kind && left.row.key === right.row.key && left.row.text === right.row.text && asking(left.row) === asking(right.row) && sameTurn(left.row, right.row) && sameThought(left.row, right.row) && sameTime(left.row, right.row);
 }
 
 /** Whether two lists hold the same items in order, each compared with `same` (identity by default). */
@@ -29,6 +29,16 @@ export function sameItems<Item>(left: readonly Item[] | undefined, right: readon
 
 function asking(row: TranscriptRow): boolean {
   return row.kind === "agent" && row.asking === true;
+}
+
+/** A thought's duration arrives with the entry after it, so a row first drawn "Thought" must redraw once it is known. */
+function sameThought(left: TranscriptRow, right: TranscriptRow): boolean {
+  return left.kind !== "thinking" || right.kind !== "thinking" || left.durationMs === right.durationMs;
+}
+
+/** The time under a message comes from the timeline's entry, which a later page can fill in. */
+function sameTime(left: TranscriptRow, right: TranscriptRow): boolean {
+  return (left.kind !== "user" && left.kind !== "received") || (right.kind !== "user" && right.kind !== "received") || left.at === right.at;
 }
 
 function sameTurn(left: TranscriptRow, right: TranscriptRow): boolean {

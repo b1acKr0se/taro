@@ -74,10 +74,14 @@ describe("transcriptRows separate replies", () => {
     expect(rows).toEqual([{ key: "1", kind: "agent", text: "I will ask the user\n\nok" }]);
   });
 
-  it("starts a reply after a gap in the timeline (a hidden reasoning entry) on a new paragraph", () => {
+  it("puts a reasoning entry between two replies as a thinking row of its own", () => {
     const thinking = { seqStart: 2, seqEnd: 2, turnId: "t1", item: { type: "reasoning", text: "hm" } } as unknown as TimelineEntry;
     const rows = rowsOf([reply(1, "I will ask the user", "t1", "m1"), thinking, reply(3, "ok", "t1", "m1")]);
-    expect(rows).toEqual([{ key: "1", kind: "agent", text: "I will ask the user\n\nok" }]);
+    expect(rows).toEqual([
+      { key: "1", kind: "agent", text: "I will ask the user" },
+      { key: "2", kind: "thinking", text: "hm", durationMs: null },
+      { key: "3", kind: "agent", text: "ok" },
+    ]);
   });
 
   it("keeps one streamed reply whole, however its pieces split", () => {
@@ -276,5 +280,29 @@ describe("compactionState", () => {
     expect(compactionState("Context compacted")).toBe("done");
     expect(compactionState("Compaction stopped before it finished")).toBe("stopped");
     expect(compactionState("Agent notice")).toBeNull();
+  });
+});
+
+describe("transcriptRows thinking", () => {
+  function thought(seq: number, text: string, timestamp?: string, turnId = "t1"): TimelineEntry {
+    return { seqStart: seq, seqEnd: seq, turnId, ...(timestamp === undefined ? {} : { timestamp }), item: { type: "reasoning", text } } as unknown as TimelineEntry;
+  }
+  function spoke(seq: number, text: string, timestamp?: string): TimelineEntry {
+    return { seqStart: seq, seqEnd: seq, turnId: "t1", ...(timestamp === undefined ? {} : { timestamp }), item: { type: "assistant_message", text } } as unknown as TimelineEntry;
+  }
+
+  it("joins the pieces of one thought and times it from the entry before to its last piece", () => {
+    const rows = rowsOf([spoke(1, "Question", "2026-01-01T10:00:00.000Z"), thought(2, "The second ", "2026-01-01T10:00:05.000Z"), thought(3, "write", "2026-01-01T10:00:12.000Z"), spoke(4, "Done", "2026-01-01T10:00:12.001Z")]);
+    expect(rows[1]).toEqual({ key: "2", kind: "thinking", text: "The second write", durationMs: 12000 });
+  });
+
+  it("leaves the duration empty when there is nothing before it or the timeline has no times", () => {
+    expect(rowsOf([thought(1, "hm", "2026-01-01T10:00:00.000Z")])[0]).toMatchObject({ kind: "thinking", durationMs: null });
+    expect(rowsOf([spoke(1, "q"), thought(2, "hm"), spoke(3, "ok")])[1]).toMatchObject({ kind: "thinking", durationMs: null });
+  });
+
+  it("keeps thoughts of different turns apart and drops an empty one", () => {
+    const rows = rowsOf([thought(1, "one", undefined, "t1"), thought(2, "two", undefined, "t2"), thought(3, "  ")]);
+    expect(rows.map((row) => (row.kind === "thinking" ? row.text : row.kind))).toEqual(["one", "two"]);
   });
 });

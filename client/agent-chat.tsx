@@ -65,8 +65,8 @@ import { Shimmer, WorkingStatus } from "./loading";
 import { fadeColour, SHIMMER_LIGHT, shimmerCopyText } from "./shimmer";
 import { useLatestCallback } from "./latest-callback";
 import { BREAK_LONG_WORDS } from "./long-word-wrap";
-import { senderPillColours } from "./sender-pill";
-import { foldHeight, needsFold } from "./received-fold";
+import { RECEIVED_FOLD_LINES, USER_FOLD_LINES } from "./received-fold";
+import { FoldableBody, MessageWithActions, SentByLine, ThinkingLine } from "./message-parts";
 import { bubbleImageRoom, USER_BUBBLE_SHARE } from "./thumbnail-size";
 import { sameGroup, sameItems } from "./transcript-memo";
 import type { SentImage } from "./sent-images";
@@ -838,6 +838,11 @@ export function AgentChat({
               <UserMessage
                 key={view.send.id}
                 text={view.send.text === "" ? ATTACHMENTS_ONLY : view.send.text}
+                at={undefined}
+                pending
+                open={false}
+                onToggle={() => undefined}
+                compact={compact}
                 images={undefined}
                 mark={view}
                 theme={theme}
@@ -1031,6 +1036,11 @@ type MarkAction = "resend" | "dismiss" | "retry" | "edit";
 /** The user's words, with the mark of a message the agent has not taken up yet under them. */
 function UserMessage({
   text,
+  at,
+  pending = false,
+  open,
+  onToggle,
+  compact,
   images,
   mark,
   theme,
@@ -1038,6 +1048,12 @@ function UserMessage({
   onMarkAction,
 }: {
   text: string;
+  at: string | undefined;
+  /** Sent but not in the timeline yet: no time and no copy under it, as in Paseo. */
+  pending?: boolean;
+  open: boolean;
+  onToggle: () => void;
+  compact: boolean;
   images: readonly SentImage[] | undefined;
   mark: SendView | undefined;
   theme: PluginTheme;
@@ -1047,55 +1063,58 @@ function UserMessage({
   // The bubble is as wide as what it holds, so its images are sized to the room the chat gives it (TR-098), measured on a row as wide as the chat (always: the images arrive after the row's first layout); until then they wait, rather than push the bubble off the pane.
   const [chatWidth, setChatWidth] = useState<number | null>(null);
   const room = chatWidth === null ? null : bubbleImageRoom(chatWidth, USER_BUBBLE_PADDING, USER_BUBBLE_BORDER);
+  // A message not in the timeline yet has no row key to keep its fold in, so it keeps its own.
+  const [pendingOpen, setPendingOpen] = useState(false);
+  const words = (
+    <Text selectable style={[styles.userText, BREAK_LONG_WORDS]}>
+      {text}
+    </Text>
+  );
   return (
     <View style={styles.userRow} onLayout={(event) => setChatWidth(event.nativeEvent.layout.width)}>
       <View style={styles.userColumn}>
-        <View style={styles.user}>
-          <Text selectable style={[styles.userText, BREAK_LONG_WORDS]}>
-            {text}
-          </Text>
-          {images === undefined || room === null ? null : (
-            <View style={styles.userImages}>
-              {images.map((image, index) => (
-                <ImageThumbnail
-                  key={index}
-                  source={image.path}
-                  alt="Sent image"
-                  theme={theme}
-                  room={room}
-                  set={images.map((each) => ({ source: each.path, alt: "Sent image" }))}
-                  index={index}
-                />
-              ))}
-            </View>
-          )}
-        </View>
+        <MessageWithActions {...(at === undefined ? {} : { at })} actions={!pending && text !== ATTACHMENTS_ONLY} text={text} copyLabel="Copy message" always={compact} theme={theme}>
+          <View style={styles.user}>
+            <FoldableBody text={text} lines={USER_FOLD_LINES} open={pending ? pendingOpen : open} onToggle={pending ? () => setPendingOpen((previous) => !previous) : onToggle} colour={theme.colors.surface2} buttonStyle={styles.foldButton} labelStyle={styles.foldText}>
+              {words}
+            </FoldableBody>
+            {images === undefined || room === null ? null : (
+              <View style={styles.userImages}>
+                {images.map((image, index) => (
+                  <ImageThumbnail
+                    key={index}
+                    source={image.path}
+                    alt="Sent image"
+                    theme={theme}
+                    room={room}
+                    set={images.map((each) => ({ source: each.path, alt: "Sent image" }))}
+                    index={index}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+        </MessageWithActions>
         {mark === undefined ? null : <SendMarkLine view={mark} theme={theme} styles={styles} onAction={onMarkAction} />}
       </View>
     </View>
   );
 }
 
-/** A message another agent sent: the user's bubble with the sender's name as a pill inside it, folded when long (TR-220). */
-function ReceivedMessage({ sender, text, open, onToggle, theme, onOpenLink, styles }: { sender: string; text: string; open: boolean; onToggle: () => void; theme: PluginTheme; onOpenLink: (url: string) => void; styles: ChatStyles }) {
-  const folds = needsFold(text);
+/** A message another agent sent: the user's bubble with "Sent by <sender>" above it, folded with a fade when long (TR-220, TR-286). */
+function ReceivedMessage({ sender, text, at, open, onToggle, compact, theme, onOpenLink, styles }: { sender: string; text: string; at: string | undefined; open: boolean; onToggle: () => void; compact: boolean; theme: PluginTheme; onOpenLink: (url: string) => void; styles: ChatStyles }) {
   return (
     <View style={styles.userRow}>
       <View style={styles.userColumn}>
-        <View style={[styles.user, styles.receivedBubble]}>
-          <View style={styles.senderPill} accessibilityLabel={`Message from ${sender}`}>
-            <Text style={styles.senderText} numberOfLines={1}>
-              {sender}
-            </Text>
-          </View>
-          <View style={folds && !open ? { maxHeight: foldHeight(lineHeightFor(FONT_SIZE.body)), overflow: "hidden" } : undefined}>
-            <Markdown source={text} theme={theme} onOpenLink={onOpenLink} />
-          </View>
-          {folds ? (
-            <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={onToggle} style={styles.foldButton}>
-              <Text style={styles.foldText}>{open ? "Show less" : "Show more"}</Text>
-            </Pressable>
-          ) : null}
+        <View style={styles.receivedColumn}>
+          <SentByLine sender={sender} theme={theme} />
+          <MessageWithActions {...(at === undefined ? {} : { at })} actions text={text} copyLabel="Copy message" always={compact} theme={theme}>
+            <View style={[styles.user, styles.receivedBubble]}>
+              <FoldableBody text={text} lines={RECEIVED_FOLD_LINES} open={open} onToggle={onToggle} colour={theme.colors.surface2} buttonStyle={styles.foldButton} labelStyle={styles.foldText}>
+                <Markdown source={text} theme={theme} onOpenLink={onOpenLink} />
+              </FoldableBody>
+            </View>
+          </MessageWithActions>
         </View>
       </View>
     </View>
@@ -1260,7 +1279,7 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, pastA
   const row = group.row;
   switch (row.kind) {
     case "user":
-      return <UserMessage key={row.key} text={row.text} images={images} mark={mark} theme={theme} styles={styles} onMarkAction={onMarkAction} />;
+      return <UserMessage key={row.key} text={row.text} at={row.at} open={open} onToggle={() => onToggle(row.key)} compact={compact} images={images} mark={mark} theme={theme} styles={styles} onMarkAction={onMarkAction} />;
     case "agent": {
       const targets = asked.map((decision) => decision.key);
       return (
@@ -1281,7 +1300,9 @@ function TranscriptGroupView({ group, open, images, mark, asked, pastPlan, pastA
       );
     }
     case "received":
-      return <ReceivedMessage key={row.key} sender={row.sender} text={row.text} open={open} onToggle={() => onToggle(row.key)} theme={theme} onOpenLink={onOpenLink} styles={styles} />;
+      return <ReceivedMessage key={row.key} sender={row.sender} text={row.text} at={row.at} open={open} onToggle={() => onToggle(row.key)} compact={compact} theme={theme} onOpenLink={onOpenLink} styles={styles} />;
+    case "thinking":
+      return <ThinkingLine key={row.key} text={row.text} durationMs={row.durationMs} open={open} onToggle={() => onToggle(row.key)} theme={theme} onOpenLink={onOpenLink} />;
     case "error":
       return (
         <Text key={row.key} style={styles.error}>
@@ -1372,7 +1393,6 @@ function EarlierMessages({ hasOlder, loading, theme, styles, onLoad }: { hasOlde
 
 function chatStyles(theme: PluginTheme, compact: boolean) {
   const { colors } = theme;
-  const pill = senderPillColours(colors);
   return {
     pane: { flex: 1, minHeight: 0, backgroundColor: colors.surface0 },
     transcript: { flex: 1 },
@@ -1399,9 +1419,8 @@ function chatStyles(theme: PluginTheme, compact: boolean) {
       paddingHorizontal: USER_BUBBLE_PADDING,
       paddingVertical: SPACE.sm + 2,
     },
+    receivedColumn: { alignSelf: "stretch" as const, alignItems: "stretch" as const, gap: SPACE.xs },
     receivedBubble: { alignSelf: "stretch" as const, gap: SPACE.sm },
-    senderPill: { alignSelf: "flex-start" as const, maxWidth: "100%" as const, backgroundColor: pill.background, borderRadius: 999, paddingHorizontal: SPACE.sm + 2, paddingVertical: SPACE.xs - 1 },
-    senderText: { color: pill.text, fontSize: FONT_SIZE.caption, fontWeight: "600" as const },
     foldButton: { alignSelf: "flex-start" as const, paddingVertical: SPACE.xs },
     foldText: { color: colors.foregroundMuted, fontSize: FONT_SIZE.small },
     userImages: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: SPACE.sm, marginTop: SPACE.sm },

@@ -31,6 +31,15 @@ describe("sameGroup", () => {
     expect(sameGroup(footed(11_000), footed(12_000))).toBe(false);
   });
 
+  it("redraws a thinking row once its duration is known, and a message once its time is", () => {
+    const thought = (durationMs: number | null): Group => ({ key: "t1", row: { key: "t1", kind: "thinking", text: "hm", durationMs } });
+    expect(sameGroup(thought(null), thought(12_000))).toBe(false);
+    expect(sameGroup(thought(12_000), thought(12_000))).toBe(true);
+    const sent = (at?: string): Group => ({ key: "u1", row: at === undefined ? { key: "u1", kind: "user", text: "hi" } : { key: "u1", kind: "user", text: "hi", at } });
+    expect(sameGroup(sent(), sent("2026-10-20T10:00:11Z"))).toBe(false);
+    expect(sameGroup(sent("2026-10-20T10:00:11Z"), sent("2026-10-20T10:00:11Z"))).toBe(true);
+  });
+
   it("redraws a row that became another kind or another row", () => {
     expect(sameGroup(message("m1", "x"), { key: "m1", row: { key: "m1", kind: "error", text: "x" } })).toBe(false);
     expect(sameGroup(message("m1", "x"), message("m2", "x"))).toBe(false);
