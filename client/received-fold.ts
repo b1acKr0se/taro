@@ -103,8 +103,37 @@ export function fadeSteps(height: number): number {
  * `FADE_COVER` at the bottom. The plugin has no gradient, so the fade is these strips stacked. The fold ends between lines
  * (`foldCut`), so the fade dims whole lines and never has to hide a cut one.
  */
-export function fadeOpacities(steps: number): number[] {
-  return Array.from({ length: steps }, (_, index) => Math.round(Math.pow((index + 0.5) / steps, 1.5) * FADE_COVER * 1000) / 1000);
+export function fadeOpacities(steps: number, cover: number = FADE_COVER): number[] {
+  return Array.from({ length: steps }, (_, index) => Math.round(Math.pow((index + 0.5) / steps, 1.5) * cover * 1000) / 1000);
+}
+
+/** The fade a host without gradient styles gets: one line, lighter, so the stacked strips stay too few and too faint to read as bands. */
+export const FALLBACK_FADE_LINES = 1;
+export const FALLBACK_FADE_COVER = 0.7;
+
+/** The first React Native release whose views take a `linear-gradient` background style (`experimental_backgroundImage`). */
+const GRADIENT_MINIMUM_MINOR = 76;
+
+/**
+ * Whether this host draws a gradient background style: the web always does (CSS), the phone app when its React Native is
+ * 0.76 or newer. A host that does not say its version gets the fallback, as an older one ignores the style and would show no fade.
+ */
+export function gradientFadeSupported(platform: { OS: string; constants?: unknown }): boolean {
+  if (platform.OS === "web") return true;
+  const version = typeof platform.constants === "object" && platform.constants !== null ? Reflect.get(platform.constants, "reactNativeVersion") : undefined;
+  const major = typeof version === "object" && version !== null ? Reflect.get(version, "major") : undefined;
+  const minor = typeof version === "object" && version !== null ? Reflect.get(version, "minor") : undefined;
+  if (typeof major !== "number" || typeof minor !== "number") return false;
+  return major > 0 || minor >= GRADIENT_MINIMUM_MINOR;
+}
+
+/** Stops along the fade, as a share of its height: the same easing as the strips, so both look alike. */
+const GRADIENT_STOPS = [0, 0.25, 0.5, 0.75, 1] as const;
+
+/** The CSS `linear-gradient` from clear at the top to `FADE_COVER` of `colour` at the bottom; `shade` turns the colour and a strength into a colour string. */
+export function fadeGradient(shade: (alpha: number) => string): string {
+  const stops = GRADIENT_STOPS.map((at) => `${shade(Math.round(Math.pow(at, 1.5) * FADE_COVER * 1000) / 1000)} ${Math.round(at * 100)}%`);
+  return `linear-gradient(to bottom, ${stops.join(", ")})`;
 }
 
 /**
