@@ -1073,7 +1073,7 @@ function UserMessage({
   return (
     <View style={styles.userRow} onLayout={(event) => setChatWidth(event.nativeEvent.layout.width)}>
       <View style={styles.userColumn}>
-        <MessageWithActions {...(at === undefined ? {} : { at })} actions={!pending && text !== ATTACHMENTS_ONLY} text={text} copyLabel="Copy message" always={compact} theme={theme}>
+        <MessageWithActions {...(at === undefined ? {} : { at })} actions={text !== ATTACHMENTS_ONLY} hidden={pending} text={text} copyLabel="Copy message" always={compact} theme={theme}>
           <View style={styles.user}>
             <FoldableBody text={text} lines={USER_FOLD_LINES} open={pending ? pendingOpen : open} onToggle={pending ? () => setPendingOpen((previous) => !previous) : onToggle} colour={theme.colors.surface2} buttonStyle={styles.foldButton} labelStyle={styles.foldText}>
               {words}

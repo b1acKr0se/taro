@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fadeOpacities, FADE_STEPS, foldHeight, mayNeedFold, overflowsFold, RECEIVED_FOLD_LINES, USER_FOLD_LINES } from "./received-fold";
+import { fadeOpacities, FADE_STEPS, foldHeight, foldState, rememberedHeight, rememberHeight, mayNeedFold, overflowsFold, RECEIVED_FOLD_LINES, USER_FOLD_LINES } from "./received-fold";
 
 describe("mayNeedFold", () => {
   const lines = (count: number) => Array.from({ length: count }, (_, index) => `line ${index}`).join("\n");
@@ -48,5 +48,39 @@ describe("fadeOpacities", () => {
     expect(strips[0]).toBeGreaterThan(0);
     expect(strips[strips.length - 1]).toBe(1);
     expect(strips).toEqual([...strips].sort((first, second) => first - second));
+  });
+});
+
+describe("foldState", () => {
+  it("only clips a candidate that is not measured yet, showing no fade or button", () => {
+    expect(foldState(true, null, false, 20, 6)).toEqual({ overflowing: false, folded: true });
+  });
+  it("never folds or shows a button for a body measured as fitting", () => {
+    expect(foldState(true, 100, false, 20, 6)).toEqual({ overflowing: false, folded: false });
+  });
+  it("folds a measured long body until opened", () => {
+    expect(foldState(true, 300, false, 20, 6)).toEqual({ overflowing: true, folded: true });
+    expect(foldState(true, 300, true, 20, 6)).toEqual({ overflowing: true, folded: false });
+  });
+  it("leaves a short text alone", () => {
+    expect(foldState(false, null, false, 20, 6)).toEqual({ overflowing: false, folded: false });
+  });
+});
+
+describe("remembered heights", () => {
+  it("returns what was stored for the key, and null for an unknown one", () => {
+    rememberHeight("390:6:hello", 80);
+    expect(rememberedHeight("390:6:hello")).toBe(80);
+    expect(rememberedHeight("820:6:hello")).toBeNull();
+  });
+  it("forgets the oldest once past its limit, keeping one just stored again", () => {
+    rememberHeight("keep", 1);
+    Array.from({ length: 250 }, (_, index) => {
+      rememberHeight(`k${index}`, index);
+      if (index % 50 === 0) rememberHeight("keep", 1);
+    });
+    expect(rememberedHeight("keep")).toBe(1);
+    expect(rememberedHeight("k0")).toBeNull();
+    expect(rememberedHeight("k249")).toBe(249);
   });
 });
