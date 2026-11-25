@@ -214,16 +214,24 @@ export interface QueueReadOfIds extends ReadOfIds {
  * the daemon ahead of the drain that took it. `gone`: a timeline read that began at or after it left the
  * queue does not hold it, so it was removed elsewhere (Edit on another device, a handover, an archive),
  * not sent: the daemon removes a drained message only once Paseo took it. Until one of these, the chat
- * keeps drawing it.
+ * keeps drawing it. `found`: failed sends the queue read lists (the daemon queued one whose answer was
+ * lost), to mark queued from that read's start, so each is one row, never a daemon row and a failed echo.
  */
 export function settleQueued(
   sends: readonly PendingSend[],
   queueRead: QueueReadOfIds | null,
   timelineRead: ReadOfIds | null,
-): { left: string[]; leftQueueAt: number | null; gone: string[] } {
-  const left = queueRead === null ? [] : sends.filter((send) => send.state === "queued" && send.handedOver === undefined && send.leftQueueAt === undefined && send.queuedAt !== undefined && send.queuedAt <= queueRead.startedAt && !queueRead.ids.includes(send.id)).map((send) => send.id);
+): { left: string[]; leftQueueAt: number | null; gone: string[]; found: string[] } {
+  const left = sends.filter((send) => send.leftQueueAt === undefined && leftQueue(send, queueRead)).map((send) => send.id);
   const gone = timelineRead === null ? [] : sends.filter((send) => send.state === "queued" && send.leftQueueAt !== undefined && send.leftQueueAt <= timelineRead.startedAt && !timelineRead.ids.includes(send.id)).map((send) => send.id);
-  return { left, leftQueueAt: queueRead?.answeredAt ?? null, gone };
+  const found = queueRead === null ? [] : sends.filter((send) => send.state === "failed" && queueRead.ids.includes(send.id)).map((send) => send.id);
+  return { left, leftQueueAt: queueRead?.answeredAt ?? null, gone, found };
+}
+
+/** Whether a queue read shows a queued send has left the daemon's queue: it began once the daemon had it, and omits it. */
+export function leftQueue(send: PendingSend, queueRead: ReadOfIds | null): boolean {
+  if (send.leftQueueAt !== undefined) return true;
+  return queueRead !== null && send.state === "queued" && send.handedOver === undefined && send.queuedAt !== undefined && send.queuedAt <= queueRead.startedAt && !queueRead.ids.includes(send.id);
 }
 
 /**

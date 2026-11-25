@@ -397,15 +397,15 @@ describe("settleQueued (TR-287)", () => {
   const read = (ids: string[], startedAt: number, answeredAt = startedAt) => ({ ids, startedAt, answeredAt });
 
   it("says nothing before any read", () => {
-    expect(settleQueued([queued("chat-a")], null, null)).toEqual({ left: [], leftQueueAt: null, gone: [] });
+    expect(settleQueued([queued("chat-a")], null, null)).toEqual({ left: [], leftQueueAt: null, gone: [], found: [] });
   });
 
   it("does not count a queue read that began before the daemon's queued answer", () => {
-    expect(settleQueued([queued("chat-a")], read([], 900), null)).toEqual({ left: [], leftQueueAt: 900, gone: [] });
+    expect(settleQueued([queued("chat-a")], read([], 900), null)).toEqual({ left: [], leftQueueAt: 900, gone: [], found: [] });
   });
 
   it("notes a queued message a read begun at or after the answer omits, and not one it lists", () => {
-    expect(settleQueued([queued("chat-a")], read([], 1000), null)).toEqual({ left: ["chat-a"], leftQueueAt: 1000, gone: [] });
+    expect(settleQueued([queued("chat-a")], read([], 1000), null)).toEqual({ left: ["chat-a"], leftQueueAt: 1000, gone: [], found: [] });
     expect(settleQueued([queued("chat-a")], read(["chat-a"], 1500), null).left).toEqual([]);
   });
 
@@ -415,7 +415,7 @@ describe("settleQueued (TR-287)", () => {
 
   it("forgets one gone from the queue that a later timeline read does not show: removed elsewhere, never sent", () => {
     const left = queued("chat-a", { leftQueueAt: 3000 });
-    expect(settleQueued([left], null, { ids: [], startedAt: 3500 })).toEqual({ left: [], leftQueueAt: null, gone: ["chat-a"] });
+    expect(settleQueued([left], null, { ids: [], startedAt: 3500 })).toEqual({ left: [], leftQueueAt: null, gone: ["chat-a"], found: [] });
   });
 
   it("keeps one an earlier timeline read lacks, and one the timeline shows (it landed)", () => {
@@ -426,10 +426,17 @@ describe("settleQueued (TR-287)", () => {
 
   it("leaves the queue, then is gone after a later timeline read without it", () => {
     const first = settleQueued([queued("chat-a")], read([], 3000), { ids: [], startedAt: 2000 });
-    expect(first).toEqual({ left: ["chat-a"], leftQueueAt: 3000, gone: [] });
+    expect(first).toEqual({ left: ["chat-a"], leftQueueAt: 3000, gone: [], found: [] });
     const noted = queued("chat-a", { leftQueueAt: 3000 });
     expect(settleQueued([noted], read([], 5000), { ids: [], startedAt: 2000 }).gone).toEqual([]);
     expect(settleQueued([noted], read([], 5000), { ids: [], startedAt: 4000 }).gone).toEqual(["chat-a"]);
+  });
+
+  it("finds a failed send the queue read lists, to mark queued: the daemon had it, only the answer was lost", () => {
+    const failed = sent("chat-a", T0, "failed");
+    expect(settleQueued([failed], read(["chat-a"], 4000), null).found).toEqual(["chat-a"]);
+    expect(settleQueued([failed], read([], 4000), null).found).toEqual([]);
+    expect(settleQueued([failed], null, null).found).toEqual([]);
   });
 
   it("dates leaving the queue from when the omitting read answered, not when it began", () => {

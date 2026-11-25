@@ -120,8 +120,9 @@ export function usePendingSends({
   // A queued message the daemon's queue no longer lists is noted; one the timeline then lacks as well was removed elsewhere.
   useEffect(() => {
     const timelineRead = timelineReadStartedAt === null ? null : { ids: [...inTimeline], startedAt: timelineReadStartedAt };
-    const { left, leftQueueAt, gone } = settleQueued(sends, queueRead, timelineRead);
+    const { left, leftQueueAt, gone, found } = settleQueued(sends, queueRead, timelineRead);
     if (leftQueueAt !== null) left.forEach((id) => pendingSends.update(agentId, id, { leftQueueAt }));
+    if (queueRead !== null) found.forEach((id) => pendingSends.update(agentId, id, { state: "queued", queuedAt: queueRead.startedAt, error: undefined }));
     if (gone.length > 0) pendingSends.remove(agentId, gone);
   }, [agentId, sends, queueRead, timelineReadStartedAt, inTimeline]);
 

@@ -4,7 +4,7 @@
  */
 import { attachmentProblem, imageFileName, type DraftAttachment, type OutgoingFile, type OutgoingImage } from "../shared/attachments";
 import { NOT_QUEUED, type QueuedMessageSummary } from "../shared/chat-queue";
-import { takeBack, type PendingSend, type SendView } from "../shared/pending-sends";
+import { leftQueue, takeBack, type PendingSend, type QueueReadOfIds, type ReadOfIds, type SendView } from "../shared/pending-sends";
 
 /**
  * A row's message; `behind`: one of this app's, waiting for a failed message before it to be sent;
@@ -122,9 +122,10 @@ export function takenAttachments(messageId: string, taken: { images: readonly Ou
  * queue track, finished at once with their buttons, rather than in the transcript, from the moment they
  * leave until the timeline shows them. Whether one is drawn here follows how it was sent, never the
  * agent's status now, so it does not jump as the status flips. One sent to an idle agent
- * (`sentWhileIdle`) is the transcript's, and one handed over (Edit, Send now) is drawn elsewhere.
+ * (`sentWhileIdle`) is the transcript's, and one handed over (Edit, Send now) is drawn elsewhere. One the
+ * queue read shows left the daemon's queue is marked `left` in the same render, so it keeps its place at the front.
  */
-export function sendingToQueue(views: readonly SendView[]): QueueRowMessage[] {
+export function sendingToQueue(views: readonly SendView[], queueRead: ReadOfIds | null = null): QueueRowMessage[] {
   return views.flatMap((view) =>
     view.rowKey === null && view.send.sentWhileIdle !== true && view.send.handedOver === undefined && (view.mark === "sending" || view.mark === "behind" || view.mark === "queued")
       ? [
@@ -136,11 +137,24 @@ export function sendingToQueue(views: readonly SendView[]): QueueRowMessage[] {
             fileNames: view.send.attachments.flatMap((attachment) => (attachment.kind === "file" ? [attachment.fileName] : [])),
             failed: null,
             ...(view.mark === "behind" ? { behind: true } : {}),
-            ...(view.send.leftQueueAt !== undefined ? { left: true } : {}),
+            ...(leftQueue(view.send, queueRead) ? { left: true } : {}),
           },
         ]
       : [],
   );
+}
+
+/**
+ * Whether a queued message kept from before this chat was mounted waits to be drawn: the agent may have
+ * taken it while the chat was closed. Drawn once this mount's first queue read answered and lists it, or,
+ * when that read omits it, once this mount's first timeline read landed too (it then is the transcript's,
+ * or left the queue). One queued after mounting is drawn at once.
+ */
+export function waitsForFreshReads(send: PendingSend, mountedAt: number, reads: { queue: QueueReadOfIds | null; timelineStartedAt: number | null }): boolean {
+  if (send.state !== "queued" || send.queuedAt === undefined || send.queuedAt >= mountedAt) return false;
+  if (reads.queue === null || reads.queue.answeredAt < mountedAt) return true;
+  if (reads.queue.ids.includes(send.id)) return false;
+  return reads.timelineStartedAt === null || reads.timelineStartedAt < mountedAt;
 }
 
 /** One row of the queue track; `local`: only this app's copy lists it (the daemon's read does not yet, or no longer). */
@@ -231,11 +245,12 @@ export function afterSendNow(settled: "queued" | "sent" | "failed" | "gone", cal
 
 /**
  * The rows the chat still hides after Edit or Send now: by when the action's last call answered (null
- * while under way), released by a queue read that began after it, so the daemon's row never blinks back.
+ * while under way), released by a queue read that began at or after it (the refresh the answer starts often
+ * begins in the same millisecond, and reaches the daemon after the answer), so the daemon's row never blinks back.
  */
 export function hiddenAfterRead(hidden: ReadonlyMap<string, number | null>, readStartedAt: number | null): ReadonlyMap<string, number | null> {
-  if (readStartedAt === null || ![...hidden.values()].some((answeredAt) => answeredAt !== null && readStartedAt > answeredAt)) return hidden;
-  return new Map([...hidden].filter(([, answeredAt]) => answeredAt === null || readStartedAt <= answeredAt));
+  if (readStartedAt === null || ![...hidden.values()].some((answeredAt) => answeredAt !== null && readStartedAt >= answeredAt)) return hidden;
+  return new Map([...hidden].filter(([, answeredAt]) => answeredAt === null || readStartedAt < answeredAt));
 }
 
 export interface ComposerBox {

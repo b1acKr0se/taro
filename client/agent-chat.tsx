@@ -73,6 +73,7 @@ import {
   sendsAsIdle,
   STILL_QUEUED_IN_BOX,
   trackRows,
+  waitsForFreshReads,
   withoutTaken,
   type ComposerBox,
   type QueueCall,
@@ -276,8 +277,17 @@ export function AgentChat({
     setHandedOver((current) => hiddenAfterRead(current, queue.readStartedAt));
     setRetrying((current) => hiddenAfterRead(current, queue.readStartedAt));
   }, [queue.readStartedAt]);
+  // When this chat started showing the agent: a queued message kept from before waits for this mount's reads.
+  const mounted = useRef({ agentId: agent.id, at: Date.now() });
+  if (mounted.current.agentId !== agent.id) mounted.current = { agentId: agent.id, at: Date.now() };
+  const mountedAt = mounted.current.at;
+  // Neither in the track nor in the transcript until the reads since mounting say where it is.
+  const freshViews = useMemo(
+    () => sends.views.filter((view) => !waitsForFreshReads(view.send, mountedAt, { queue: queueRead, timelineStartedAt: timeline.readStartedAt })),
+    [sends.views, mountedAt, queueRead, timeline.readStartedAt],
+  );
   // This app's messages the daemon queues, or will: drawn in the queue track from the moment they leave (TR-171).
-  const localRows = useMemo(() => sendingToQueue(sends.views), [sends.views]);
+  const localRows = useMemo(() => sendingToQueue(freshViews, queueRead), [freshViews, queueRead]);
   const shownRows = useMemo(() => {
     // Held as sent to an idle agent, or handed over: the transcript's (or the box's), so the daemon's row is not drawn either.
     const hidden = new Set([...handedOver.keys(), ...sends.views.flatMap((view) => (view.send.sentWhileIdle === true || view.send.handedOver !== undefined ? [view.send.id] : []))]);
@@ -287,8 +297,8 @@ export function AgentChat({
     const inTrack = new Set(shownRows.map((row) => row.message.id));
     // A queue row the chat hides that is not handed to the transcript (a failed Send now's) waits for its row to come back.
     const waitsForRow = (send: PendingSend) => handedOver.has(send.id) && send.handedOver === undefined && (send.state === "queued" || send.state === "sending");
-    return sends.views.filter((view) => view.rowKey === null && !inTrack.has(view.send.id) && !waitsForRow(view.send));
-  }, [sends.views, shownRows, handedOver]);
+    return freshViews.filter((view) => view.rowKey === null && !inTrack.has(view.send.id) && !waitsForRow(view.send));
+  }, [freshViews, shownRows, handedOver]);
   /** Whether a message sent now goes as one to an idle agent: else the daemon queues it, and the track draws it. */
   const nextSendIsIdle = sendsAsIdle(working, shownRows.length, compacting);
   const places = useMemo(() => (asks === undefined || asks.decisions.length === 0 ? null : placeDecisions(agentRows, asks.decisions)), [agentRows, asks?.decisions]);

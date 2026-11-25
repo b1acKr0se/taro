@@ -580,7 +580,7 @@ describe("sendNow (TR-287)", () => {
 });
 
 describe("reconnect (TR-287)", () => {
-  it("seed v4 with an Edit-marked send, create the store → it is not sent; a Send-now mark is cleared", async () => {
+  it("seed v4 with an Edit-marked send, create the store and give it the agent → it is not sent; a Send-now mark is cleared", async () => {
     const root = {};
     keptMap<string, unknown>(root, "pending-sends.v4").set("agent-1", [
       { ...send("chat-a", "sending"), handedOver: "edit" },
@@ -588,14 +588,50 @@ describe("reconnect (TR-287)", () => {
       send("chat-c", "sending"),
     ]);
     const store = createPendingSendStore(root);
+    const wire = manualTransport();
+    store.setTransport("agent-1", wire.transport);
     expect(store.get("agent-1").map((each) => [each.id, each.state, each.handedOver])).toEqual([
       ["chat-b", "queued", undefined],
       ["chat-c", "sending", undefined],
     ]);
-    const wire = manualTransport();
-    store.setTransport("agent-1", wire.transport);
     await settled();
     expect(wire.ids()).toEqual(["chat-c"]);
+  });
+
+  it("leaves a live store's Edit alone when a second store is created on the same root (Taro on two hosts)", async () => {
+    const root = {};
+    const first = createPendingSendStore(root);
+    const wire = manualTransport();
+    first.setTransport("agent-1", wire.transport);
+    first.add("agent-1", send("chat-a", "sending"));
+    await settled();
+    let outcome: string | null = null;
+    void first.takeOut("agent-1", "chat-a").then((value) => (outcome = value));
+    const second = createPendingSendStore(root);
+    second.setTransport("agent-2", manualTransport().transport);
+    expect(first.get("agent-1")[0]).toMatchObject({ id: "chat-a", handedOver: "edit" });
+    wire.calls[0]?.queue();
+    await settled();
+    expect(outcome).toBe("queued");
+  });
+
+  it("cleans an agent's kept sends when a second store takes that agent over, and sends none marked for Edit", async () => {
+    const root = {};
+    const first = createPendingSendStore(root);
+    first.setTransport("agent-1", manualTransport().transport);
+    first.add("agent-1", send("chat-a", "sending"));
+    await settled();
+    void first.takeOut("agent-1", "chat-a");
+    const second = createPendingSendStore(root);
+    expect(second.get("agent-1").map((each) => each.handedOver)).toEqual(["edit"]);
+    const wire = manualTransport();
+    second.setTransport("agent-1", wire.transport);
+    await settled();
+    expect(second.get("agent-1")).toEqual([]);
+    expect(wire.ids()).toEqual([]);
+    // Taking it again changes nothing more.
+    second.setTransport("agent-1", wire.transport);
+    expect(second.get("agent-1")).toEqual([]);
   });
 });
 

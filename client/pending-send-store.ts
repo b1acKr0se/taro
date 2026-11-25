@@ -78,8 +78,10 @@ export function migrateKeptSends(old: unknown): PendingSend[] {
 }
 
 /**
- * The kept messages as a new bundle starts them: one marked for Edit is in the box and never sent again;
- * one marked for Send now is drawn as a queue row again, as its call's answer was lost with the bundle.
+ * The kept messages as a store that takes their agent over from another starts them: one marked for Edit
+ * is in the box and never sent again; one marked for Send now is drawn as a queue row again, as its call's
+ * answer was lost with the last bundle. Only on taking the agent over: Taro on two hosts runs two live
+ * bundles on one slot, and one must not drop what the other's Edit is waiting on.
  */
 function afterReload(kept: readonly PendingSend[]): PendingSend[] {
   return kept.flatMap((send) => (send.handedOver === "edit" ? [] : send.handedOver === "send-now" ? [{ ...send, handedOver: undefined }] : [send]));
@@ -98,11 +100,6 @@ export function createPendingSendStore(
   wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 ): PendingSendStore {
   const sends = keptMap<string, readonly PendingSend[]>(root, SLOT);
-  sends.forEach((kept, agentId) => {
-    const cleaned = afterReload(kept);
-    if (cleaned.length === 0) sends.delete(agentId);
-    else sends.set(agentId, cleaned);
-  });
   EARLIER_SLOTS.forEach((slot) => {
     const earlier = keptMap<string, unknown>(root, slot);
     earlier.forEach((old, agentId) => {
@@ -326,7 +323,12 @@ export function createPendingSendStore(
     },
     setTransport: (agentId, transport) => {
       transports.set(agentId, transport);
-      owners.set(agentId, self);
+      if (!owns(agentId)) {
+        owners.set(agentId, self);
+        const kept = sends.get(agentId) ?? NONE;
+        const cleaned = afterReload(kept);
+        if (cleaned.some((send, index) => send !== kept[index]) || cleaned.length !== kept.length) put(agentId, cleaned);
+      }
       startSending(agentId);
     },
     subscribe: (listener) => {

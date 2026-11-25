@@ -26,6 +26,7 @@ import {
   sendsAsIdle,
   handedOverSend,
   trackRows,
+  waitsForFreshReads,
   withoutTaken,
 } from "./queue-rows";
 import type { PendingSend, SendView } from "../shared/pending-sends";
@@ -240,6 +241,21 @@ describe("trackRows (TR-287)", () => {
     ]);
   });
 
+  it("draws first, on the very render of the read that omits it, a queued row the daemon drained", () => {
+    const at = Date.parse("2026-10-16T10:00:00.000Z");
+    const queuedView = (id: string): SendView => ({ send: { id, text: id, attachments: [], at, state: "queued", queuedAt: 1000 }, mark: "queued", rowKey: null });
+    // No leftQueueAt stored yet: the read alone says A left.
+    const read = { ids: ["B"], startedAt: 1000 };
+    const local = sendingToQueue([queuedView("A"), queuedView("B")], read);
+    expect(local.map((row) => [row.id, row.left === true])).toEqual([
+      ["A", true],
+      ["B", false],
+    ]);
+    expect(rows({ daemon: [queued({ id: "B" })], local }).map((row) => row.message.id)).toEqual(["A", "B"]);
+    // A read begun before the daemon had it proves nothing.
+    expect(sendingToQueue([queuedView("A")], { ids: [], startedAt: 900 })[0]?.left).toBeUndefined();
+  });
+
   it("marks a local row that left the queue", () => {
     const at = Date.parse("2026-10-16T10:00:00.000Z");
     const view: SendView = { send: { id: "chat-a", text: "a", attachments: [], at, state: "queued", queuedAt: at, leftQueueAt: at + 1 }, mark: "queued", rowKey: null };
@@ -262,6 +278,29 @@ describe("trackRows (TR-287)", () => {
 
   it("draws a retrying row without its Not sent line, flagged retrying", () => {
     expect(rows({ daemon: [queued({ id: "A", failed: "no connection" })], retrying: new Set(["A"]) })).toEqual([{ message: queued({ id: "A", failed: null }), local: false, retrying: true }]);
+  });
+});
+
+describe("waitsForFreshReads (TR-287)", () => {
+  const mountedAt = 10_000;
+  const kept: PendingSend = { id: "chat-a", text: "a", attachments: [], at: 1, state: "queued", queuedAt: 5_000 };
+  const read = (ids: string[], answeredAt: number) => ({ ids, startedAt: answeredAt - 100, answeredAt });
+
+  it("holds a queued message kept from before the mount until this mount's first queue read answered", () => {
+    expect(waitsForFreshReads(kept, mountedAt, { queue: null, timelineStartedAt: null })).toBe(true);
+    // A cached read from before the mount does not count.
+    expect(waitsForFreshReads(kept, mountedAt, { queue: read(["chat-a"], 9_000), timelineStartedAt: 10_050 })).toBe(true);
+    expect(waitsForFreshReads(kept, mountedAt, { queue: read(["chat-a"], 10_500), timelineStartedAt: null })).toBe(false);
+  });
+
+  it("holds one that read omits until this mount's first timeline read too: the agent may have taken it meanwhile", () => {
+    expect(waitsForFreshReads(kept, mountedAt, { queue: read([], 10_500), timelineStartedAt: null })).toBe(true);
+    expect(waitsForFreshReads(kept, mountedAt, { queue: read([], 10_500), timelineStartedAt: 10_050 })).toBe(false);
+  });
+
+  it("draws at once one queued after mounting, and anything not queued", () => {
+    expect(waitsForFreshReads({ ...kept, queuedAt: 10_001 }, mountedAt, { queue: null, timelineStartedAt: null })).toBe(false);
+    expect(waitsForFreshReads({ ...kept, state: "sending", queuedAt: undefined }, mountedAt, { queue: null, timelineStartedAt: null })).toBe(false);
   });
 });
 
@@ -328,9 +367,12 @@ describe("hiddenAfterRead (TR-287)", () => {
     expect(hiddenAfterRead(underWay, 5000)).toBe(underWay);
     const answered = new Map([["A", 4000]]);
     expect(hiddenAfterRead(answered, 3900)).toBe(answered);
-    expect(hiddenAfterRead(answered, 4000)).toBe(answered);
     expect(hiddenAfterRead(answered, null)).toBe(answered);
     expect([...hiddenAfterRead(answered, 4100)]).toEqual([]);
+  });
+
+  it("releases on a read begun in the same millisecond as the answer: the refresh it starts reaches the daemon after it", () => {
+    expect([...hiddenAfterRead(new Map([["A", 4000]]), 4000)]).toEqual([]);
   });
 
   it("releases only those answered before the read", () => {
