@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fadeOpacities, FADE_STEPS, foldHeight, foldState, mayNeedFold, overflowsFold, RECEIVED_FOLD_LINES, USER_FOLD_LINES } from "./received-fold";
+import { fadeOpacities, FADE_STEPS, foldHeight, foldState, rememberedHeight, rememberHeight, mayNeedFold, overflowsFold, RECEIVED_FOLD_LINES, USER_FOLD_LINES } from "./received-fold";
 
 describe("mayNeedFold", () => {
   const lines = (count: number) => Array.from({ length: count }, (_, index) => `line ${index}`).join("\n");
@@ -64,5 +64,23 @@ describe("foldState", () => {
   });
   it("leaves a short text alone", () => {
     expect(foldState(false, null, false, 20, 6)).toEqual({ overflowing: false, folded: false });
+  });
+});
+
+describe("remembered heights", () => {
+  it("returns what was stored for the key, and null for an unknown one", () => {
+    rememberHeight("390:6:hello", 80);
+    expect(rememberedHeight("390:6:hello")).toBe(80);
+    expect(rememberedHeight("820:6:hello")).toBeNull();
+  });
+  it("forgets the oldest once past its limit, keeping one just stored again", () => {
+    rememberHeight("keep", 1);
+    Array.from({ length: 250 }, (_, index) => {
+      rememberHeight(`k${index}`, index);
+      if (index % 50 === 0) rememberHeight("keep", 1);
+    });
+    expect(rememberedHeight("keep")).toBe(1);
+    expect(rememberedHeight("k0")).toBeNull();
+    expect(rememberedHeight("k249")).toBe(249);
   });
 });

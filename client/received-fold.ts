@@ -45,3 +45,20 @@ export function foldState(candidate: boolean, natural: number | null, open: bool
   const overflowing = candidate && natural !== null && overflowsFold(natural, lineHeight, foldLines);
   return { overflowing, folded: candidate && !open && (natural === null || overflowing) };
 }
+
+/** Natural heights measured for a text at a window width, so a row drawn again (a pending message becoming its timeline row) starts with its fold settled. Lost when the app reloads. */
+const heights = new Map<string, number>();
+const REMEMBERED_LIMIT = 200;
+
+export function rememberedHeight(key: string): number | null {
+  return heights.get(key) ?? null;
+}
+
+export function rememberHeight(key: string, height: number): void {
+  heights.delete(key);
+  heights.set(key, height);
+  if (heights.size > REMEMBERED_LIMIT) {
+    const oldest = heights.keys().next();
+    if (!oldest.done) heights.delete(oldest.value);
+  }
+}
