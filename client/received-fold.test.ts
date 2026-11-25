@@ -67,14 +67,18 @@ describe("foldClipStyle", () => {
 });
 
 describe("settleMeasure", () => {
-  it("counts a clipped measure exactly at the clip as taller than the fold", () => {
-    expect(settleMeasure(132, 132, 132)).toBeGreaterThan(132 + 1);
-    expect(settleMeasure(120.6, 120, 132)).toBeGreaterThan(132 + 1);
+  it("keeps the height already known when a clipped measure comes back at the clip, which a capping platform would give", () => {
+    expect(settleMeasure(132, 132, 400)).toBe(400);
+    expect(settleMeasure(120.6, 120, 400)).toBe(400);
+  });
+  it("takes a measure at the clip as it is when no height is known yet: a body that fits exactly is not folded", () => {
+    expect(settleMeasure(132, 132, null)).toBe(132);
   });
   it("keeps any other measure as it is", () => {
-    expect(settleMeasure(100, 132, 132)).toBe(100);
+    expect(settleMeasure(100, 132, 400)).toBe(100);
     expect(settleMeasure(400, 132, 132)).toBe(400);
-    expect(settleMeasure(132, null, 132)).toBe(132);
+    expect(settleMeasure(132, null, 400)).toBe(132);
+    expect(settleMeasure(118, 120, 400)).toBe(118);
   });
 });
 

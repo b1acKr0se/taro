@@ -37,16 +37,19 @@ function layOut(lines: number, clip: { maxHeight: number; overflow: "hidden" | "
   return result;
 }
 
-/** What a phone draws over `passes` redraws of a body of `lines` lines: whether it was folded and the height shown. */
-function redraws(lines: number, passes: number): { folded: boolean; shown: number }[] {
+/**
+ * What a phone draws over `passes` redraws of a body of `lines` lines: whether it was folded, whether it offered Show more,
+ * and the height shown. `overflow` is the clip's: the fold's own, or `hidden`, under which the text measure caps.
+ */
+function redraws(lines: number, passes: number, overflow?: "hidden"): { folded: boolean; overflowing: boolean; shown: number }[] {
   const fold = foldHeight(LINE, USER_FOLD_LINES);
   let natural: number | null = null;
   return Array.from({ length: passes }, () => {
-    const { folded } = foldState(true, natural, false, LINE, USER_FOLD_LINES);
-    const clip = folded ? foldClipStyle(fold, false) : undefined;
+    const { folded, overflowing } = foldState(true, natural, false, LINE, USER_FOLD_LINES);
+    const clip = folded ? { ...foldClipStyle(fold, false), ...(overflow === undefined ? {} : { overflow }) } : undefined;
     const { measured, shown } = layOut(lines, clip);
-    natural = settleMeasure(measured, clip === undefined ? null : clip.maxHeight, fold);
-    return { folded, shown };
+    natural = settleMeasure(measured, clip === undefined ? null : clip.maxHeight, natural);
+    return { folded, overflowing, shown };
   });
 }
 
@@ -67,9 +70,16 @@ describe("the fold on a phone's layout engine", () => {
     expect(layOut(24, foldClipStyle(foldHeight(LINE, USER_FOLD_LINES), false)).measured).toBe(24 * LINE);
   });
 
-  it("keeps a body folded when a clipped measure comes back exactly at the clip, the case a platform's cap produces", () => {
-    const fold = foldHeight(LINE, USER_FOLD_LINES);
-    expect(foldState(true, settleMeasure(fold, fold, fold), false, LINE, USER_FOLD_LINES).folded).toBe(true);
-    expect(foldState(true, settleMeasure(fold - LINE, fold, fold), false, LINE, USER_FOLD_LINES).folded).toBe(false);
+  it("lets a message exactly as tall as the fold settle open, with no Show more that reveals nothing", () => {
+    const frames = redraws(USER_FOLD_LINES, 4);
+    expect(frames.slice(1).map((frame) => frame.folded)).toEqual([false, false, false]);
+    expect(frames.map((frame) => frame.overflowing)).toEqual([false, false, false, false]);
+    expect(frames[frames.length - 1]?.shown).toBe(foldHeight(LINE, USER_FOLD_LINES));
+  });
+
+  it("still settles folded under a clip whose measure caps, as the old hidden clip did, once the true height is known", () => {
+    const frames = redraws(24, 8, "hidden");
+    expect(frames.slice(3).map((frame) => frame.folded)).toEqual([true, true, true, true, true]);
+    expect(frames.slice(3).map((frame) => frame.overflowing)).toEqual([true, true, true, true, true]);
   });
 });

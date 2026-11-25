@@ -38,12 +38,13 @@ export function foldClipStyle(height: number, web: boolean): { maxHeight: number
 }
 
 /**
- * The natural height to keep from a body's measure, given the height it was clipped at when measured (null: not clipped).
- * A clipped body measuring exactly the clip may have been capped by the platform, so it counts as taller than the fold:
- * whatever a platform does, a folded body cannot measure as fitting, unfold and fold again.
+ * The natural height to keep from a body's measure, given the height it was clipped at when measured (null: not clipped)
+ * and the height already known (null: none). A clipped measure exactly at the clip cannot tell a body that fits exactly from
+ * one a platform capped, so it keeps the known height: whatever a platform does, a body measured long stays folded. With
+ * none known it is taken as it is, so a body exactly as tall as the fold opens; a capped one then measures long unclipped.
  */
-export function settleMeasure(height: number, clippedAt: number | null, foldHeight: number): number {
-  if (clippedAt !== null && Math.abs(height - clippedAt) <= 1) return Math.max(height, foldHeight + 2);
+export function settleMeasure(height: number, clippedAt: number | null, known: number | null): number {
+  if (clippedAt !== null && known !== null && Math.abs(height - clippedAt) <= 1) return known;
   return height;
 }
 

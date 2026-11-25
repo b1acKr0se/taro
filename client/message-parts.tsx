@@ -14,8 +14,8 @@ import { CopyButton, useHoverReveal } from "./copy-button";
 import { Pressable } from "./focus";
 import { Markdown } from "./markdown";
 import { fadeColour } from "./shimmer";
-import { FoldLinesContext, type FoldLineRef } from "./fold-lines";
-import { FADE_LINES, fadeOpacities, fadeSteps, foldClipStyle, foldCut, foldHeight, foldState, mayNeedFold, rememberedFold, rememberFold, settleMeasure, type FoldBlock, type MeasuredFold } from "./received-fold";
+import { FoldLinesContext, measureBlocks, type FoldLineRef } from "./fold-lines";
+import { FADE_LINES, fadeOpacities, fadeSteps, foldClipStyle, foldCut, foldHeight, foldState, mayNeedFold, rememberedFold, rememberFold, settleMeasure, type MeasuredFold } from "./received-fold";
 import { SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
 import { formatMessageTimestamp, thinkingLabel } from "./turn-time";
@@ -48,45 +48,6 @@ export function FoldFade({ colour, height }: { colour: string; height: number })
       ))}
     </View>
   );
-}
-
-/** A view the fold can measure against another: React Native's and react-native-web's host views both have it. */
-interface Measurable {
-  measureLayout?: (relativeTo: unknown, onSuccess: (x: number, y: number, width: number, height: number) => void, onFail: () => void) => void;
-}
-
-/** Measures each registered block against the body, then hands the blocks over; null when nothing can be measured. */
-function measureBlocks(body: unknown, registered: Map<unknown, number | null>, done: (blocks: FoldBlock[] | null) => void): void {
-  const entries = Array.from(registered.entries());
-  if (body === null || entries.length === 0) {
-    done(null);
-    return;
-  }
-  const blocks: FoldBlock[] = [];
-  let left = entries.length;
-  const settle = () => {
-    left -= 1;
-    if (left === 0) done(blocks.length === 0 ? null : blocks);
-  };
-  entries.map(([node, lineHeight]) => {
-    const measurable = node as Measurable;
-    if (typeof measurable.measureLayout !== "function") {
-      settle();
-      return;
-    }
-    try {
-      measurable.measureLayout(
-        body,
-        (_x, y, _width, height) => {
-          blocks.push({ top: y, height, lineHeight });
-          settle();
-        },
-        settle,
-      );
-    } catch {
-      settle();
-    }
-  });
 }
 
 /**
@@ -132,7 +93,7 @@ export function FoldableBody({ text, lines, open, onToggle, colour, buttonStyle,
           onLayout={
             candidate
               ? (event) => {
-                  const natural = settleMeasure(event.nativeEvent.layout.height, clipAt, fold);
+                  const natural = settleMeasure(event.nativeEvent.layout.height, clipAt, measured?.natural ?? null);
                   measureBlocks(body.current, registered.current, (blocks) => {
                     const next = { natural, cut: blocks === null ? null : foldCut(blocks, fold) };
                     rememberFold(cacheKey, next);
