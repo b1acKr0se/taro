@@ -13,7 +13,7 @@
  */
 import { acceptHandoffOpen } from "./accept-stall";
 import { planAnswerRecords, workApproved } from "./approval-gate";
-import { executionBranch, roundRecords } from "./execution";
+import { executionBranch, roundRecords, wholeRoundRecords } from "./execution";
 import { isPlanReview } from "./plan-lint";
 import { reopenRound, roundBranch } from "./reopen";
 import { isInvestigation, isLightLevel, type Level, ticketLevel } from "./ticket-level";
@@ -79,10 +79,11 @@ function approvalIndex(records: readonly string[]): number {
 /**
  * The round's newest REVIEW record of the work (a plan review before approval is not one) says nothing
  * is left to fix: `verdict: clean`. Only a REVIEW after the round's newest plan approval counts, when
- * there is one: an investigation turned into a build has its own self-check before the approval.
+ * there is one: an investigation turned into a build has its own self-check before the approval. The record is read
+ * whole: a line of it starting upper-case ("FINDINGS: …") would otherwise cut its verdict off.
  */
 export function reviewClean(notes: string | null): boolean {
-  const records = roundRecords(notes);
+  const records = wholeRoundRecords(notes);
   const reviews = records.slice(approvalIndex(records) + 1).filter(isWorkReview);
   const newest = reviews[reviews.length - 1];
   return newest !== undefined && /\bverdict:\s*clean\b/i.test(newest);

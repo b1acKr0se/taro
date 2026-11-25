@@ -1,4 +1,4 @@
-<!-- The FINAL summary, written with `taro ticket edit <ID> --final-summary`. Keep the three sections, in this order, with these headings, then Rulings when you made any after approval, and the revision line (`taro deliver` fills it); stay within each limit (cut, never exceed). One line per bullet, in the user's terms. The first What changed bullet is the ticket's one-line result; the details live in the EVIDENCE and REVIEW records. -->
+<!-- The FINAL summary, written with `taro ticket edit <ID> --final-summary`. Keep the three sections, in this order, with these headings, then Rulings when you made any after approval, and the revision line (`taro deliver` fills it); stay within each limit (cut, never exceed). One line per bullet, in the user's terms. The details live in the EVIDENCE and REVIEW records. -->
 FINAL <ISO timestamp>
 
 ## What changed
@@ -7,11 +7,11 @@ FINAL <ISO timestamp>
 
 ## How it was verified
 - <a check or the screenshots, and the result>
-<at most 3 bullets; the review's outcome is one of them>
+<at most 3 bullets; one is the review: the latest review's bottom line in quotes and its comment's link, then what your verdict fixed when no review followed it; or the self-review's outcome>
 
 ## Limitations
-- <what it does not do, or what is left open; "None known." when there is nothing>
-<at most 3 bullets>
+- <what it does not do, or what is left open, the review's follow-ups among them; "None known." when there is nothing>
+<at most 3 bullets, then a line "N more in the ticket" when there are more>
 
 ## Rulings
 - <decision> — <why> — <cost if wrong>

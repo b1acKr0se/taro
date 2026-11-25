@@ -34,6 +34,7 @@ import {
   deliverCommand,
   type CommandIo,
 } from "./owner-commands.ts";
+import { escapeLimit, escapesCommand, EscapesUsage } from "./escapes-command.ts";
 import { statsCommand, StatsRefused, StatsUsage } from "./stats-command.ts";
 import { boardCommand } from "./taro-board.ts";
 import { cardsOf, type TrackerCard } from "../shared/tracker-cards.ts";
@@ -92,6 +93,7 @@ The buttons, from a script (they call the running daemon, with the button's own 
   taro decision answer <key> [--label <option>] [--text <words>]
   taro decision dismiss <key>
   taro stats <ID> | --project <name> [--since <date>] [--json]   a round's time to a result: Planning to first Awaiting acceptance, Needs you before and after approval, plugin corrections
+  taro escapes [--all | --limit <n>]   the project's past escapes, newest first (20 by default), for a reviewer to check a change against
   taro next <ID>      the page for the ticket's current step, as the plugin sends it when the step starts
 The owner's mechanical steps (they need $TARO_PROJECT; threads are checked first, waiting up to --wait seconds above 85%):
   taro agent start implementer|reviewer|researcher <ID> --model <id> [--thinking <id>] --brief-file <path>
@@ -1013,6 +1015,11 @@ async function daemonCommand(args: readonly string[], io: CliIo): Promise<number
   );
 }
 
+const ESCAPES_OPTIONS: OptionTable = {
+  "--all": { key: "all", value: false },
+  "--limit": { key: "limit", value: true },
+};
+
 /** The first word of the command line picks the handler. */
 const commands: Record<string, (args: readonly string[], io: CliIo) => Promise<number>> = {
   ticket: ticketCommand,
@@ -1024,6 +1031,19 @@ const commands: Record<string, (args: readonly string[], io: CliIo) => Promise<n
   check: checkVerbCommand,
   deliver: deliverVerbCommand,
   daemon: daemonCommand,
+  escapes: async (args, io) => {
+    const parsed = parseArguments(args, ESCAPES_OPTIONS);
+    expectPositionals(parsed, 0, "no arguments besides options");
+    let limit: number | null;
+    try {
+      limit = escapeLimit(has(parsed, "all"), single(parsed, "limit"));
+    } catch (error) {
+      if (error instanceof EscapesUsage) throw new UsageError(error.message);
+      throw error;
+    }
+    const opened = await openTracker(trackerArguments(parsed), io.env);
+    return escapesCommand({ store: opened.store, project: opened.project ?? opened.trackerPath, limit }, io.stdout);
+  },
   stats: async (args, io) => {
     try {
       return await statsCommand(args, io);

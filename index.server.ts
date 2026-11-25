@@ -5,6 +5,7 @@ import {
   acceptTicket,
   answerDecision,
   getDecision,
+  loadReviewFindings,
   loadStats,
   catchUp,
   compactAgent,
@@ -81,6 +82,7 @@ import { dismissSuggestion, findDecision, invalidateBoards, liveOpenDecisions, l
 import type { PaseoApi } from "./server/host-types";
 import { Recovery } from "./server/recovery";
 import { PluginState } from "./server/state";
+import { projectFindings } from "./server/review-findings";
 import { Stats, turnMayStillEnd } from "./server/stats";
 import { withSavedContext } from "./shared/past-context";
 import { summarize, waitingTickets } from "./shared/stats";
@@ -509,6 +511,7 @@ export default function contribute(server: PluginServerContext) {
     tickets: (await stats.all(project)).map((ticket) => summarize(ticket)),
     managerIdleCompactions: (await stats.projectCounts(project)).idleCompactions,
   }));
+  server.handle(loadReviewFindings, async ({ project }) => projectFindings(project));
   // Each Taro agent's running turn is read every few seconds for when its tool calls begin and end (TR-284).
   const removeTurnStartHook = server.on("agent.turn_started", async ({ agent }, { paseo }) => {
     toolTimes.turnStarted(agent.id);

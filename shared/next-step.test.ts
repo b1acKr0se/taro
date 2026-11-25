@@ -7,7 +7,7 @@ const EXECUTION = "EXECUTION 2026-11-01T10:00Z — owner a1 (claude/sonnet), wor
 const ASKED = 'ANSWER 2026-11-01T10:20:00.000Z — scope-approval: "Approve the plan for SH-12?" → Request changes ("split the export") (the user, from the Taro screen)';
 const APPROVED = 'ANSWER 2026-11-01T10:30:00.000Z — scope-approval: "Approve the plan for SH-12?" → Approve ("Approve the plan for SH-12") (the user, from the Taro screen)';
 const APPROVAL = 'APPROVAL 2026-11-01T10:30Z — user: "Approve the plan for SH-12"';
-const REVIEW_FINDINGS = "REVIEW 2026-11-01T12:00Z — reviewer r1 over main..taro/sh-12: 1 blocker, fixed in 3f2a1b0 — verdict: findings";
+const REVIEW_FINDINGS = "REVIEW 2026-11-01T12:00Z — reviewer r1 over main..taro/sh-12 (\"fix first\"): F1 fixed in 3f2a1b0\nfindings: claude-sonnet-5-5 — high 1, medium 0, low 0\nverdict: findings";
 const REVIEW_CLEAN = "REVIEW 2026-11-01T12:30Z — fix check by r1 of 3f2a1b0..HEAD: pass — verdict: clean";
 const REOPENED = 'REOPENED 2026-11-02T09:00Z — user: "check it on staging"; round 2; past owners: a1';
 const HANDOFF = "ACCEPT-HANDOFF 2026-11-01T13:00Z — owner a1: the head moved since review";
@@ -140,6 +140,36 @@ describe("the delivery page", () => {
 
   it("is not brought back by an older clean review once a newer one has findings", () => {
     expect(reviewClean(notes(REVIEW_CLEAN, REVIEW_FINDINGS))).toBe(false);
+  });
+
+  // The REVIEW example of skill/reference/tickets.md: findings lines, then the verdict as the last line.
+  const MULTI_LINE_REVIEW = [
+    'REVIEW 2026-11-01T12:30Z — reviewer (Opus) over main..taro/sh-12, fix check over 3f2a1b0..9c8d7e6 ("the fixes hold, and the approach is sound"): F1 fixed in 4d5e6f7, F2 rejected (the cache is per user: notes-cache.ts:40), F3 fixed in 8a9b0c1 (re-graded low)',
+    "findings: claude-sonnet-5-5 — high 0, medium 1, low 1",
+    "verdict: clean",
+  ].join("\n");
+
+  it("a multi-line REVIEW with findings lines and verdict: clean brings delivery", () => {
+    expect(nextStep(ticket({ status: "Reviewing", notes: notes(EXECUTION, APPROVAL, MULTI_LINE_REVIEW) }))?.page).toBe("phases/delivery.md");
+  });
+
+  it("a multi-line REVIEW ending verdict: findings does not bring delivery", () => {
+    const open = MULTI_LINE_REVIEW.replace(/verdict: clean$/, "verdict: findings");
+    expect(open.endsWith("verdict: findings")).toBe(true);
+    expect(nextStep(ticket({ status: "Reviewing", notes: notes(EXECUTION, APPROVAL, open) }))?.page).not.toBe("phases/delivery.md");
+  });
+
+  it("a multi-line REVIEW with a line starting upper-case still brings delivery", () => {
+    const page = (review: string) => nextStep(ticket({ status: "Reviewing", notes: notes(EXECUTION, APPROVAL, review) }))?.page;
+    expect(page(MULTI_LINE_REVIEW.replace("findings:", "FINDINGS:"))).toBe("phases/delivery.md");
+    expect(page(MULTI_LINE_REVIEW.replace("\nfindings:", "\nREADME example fixed (F3)\nfindings:"))).toBe("phases/delivery.md");
+    expect(page(MULTI_LINE_REVIEW.replace("verdict: clean", "VERDICT: clean"))).toBe("phases/delivery.md");
+    expect(page(MULTI_LINE_REVIEW.replace("findings:", "FINDINGS:").replace("verdict: clean", "verdict: findings"))).not.toBe("phases/delivery.md");
+  });
+
+  it("an old one-line REVIEW still brings delivery", () => {
+    const old = "REVIEW 2026-11-01T12:30Z — reviewer r1 over main..taro/sh-12: 1 blocker, fixed in 3f2a1b0 — verdict: clean";
+    expect(nextStep(ticket({ status: "Reviewing", notes: notes(EXECUTION, APPROVAL, old) }))?.page).toBe("phases/delivery.md");
   });
 
   it("is what Awaiting acceptance still needs, and nothing once it is complete", () => {

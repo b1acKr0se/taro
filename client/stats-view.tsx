@@ -5,7 +5,8 @@
  * agents' share is marked, and explained under the table. Tapping a ticket opens it, as its board card does (TR-180);
  * its ▸ shows its time per status. The table fits a wide pane; on a narrower one it scrolls sideways beside a ticket
  * column that stays put, with a fade on the right while columns lie beyond it and, on a desktop, buttons that page
- * through them (TR-107). On a phone the status sits under the title so the first numbers fit.
+ * through them (TR-107). On a phone the status sits under the title so the first numbers fit. Above the table, the
+ * review findings by author model (`client/stats-findings.tsx`).
  *
  * TR-155: the header row sticks to the top, and tickets come 25 to a page. Nothing is moved back by the scroll offset
  * any more (that trailed the scroll by a frame and shook): on the web the page is one scroll box, sideways and down,
@@ -33,6 +34,7 @@ import { compareTickets, parentOf, projectTotals, type ProjectTotals } from "../
 import { Pressable } from "./focus";
 import { errorText, formatCost, formatDuration } from "./format";
 import { SectionHeading } from "./badges";
+import { StatsFindings } from "./stats-findings";
 import { useStats } from "./queries";
 import { SPACE } from "./spacing";
 import { clampPage, pageRange, scrollEdges, STATS_PAGE_SIZE, tableFit, ticketPages, trailingSpace, type ScrollEdges } from "./stats-table";
@@ -151,6 +153,8 @@ export function StatsView({
   // The web's one scroll box is the page; a phone's page holds the sideways scroll of the numbers.
   const page = useRef<ScrollView>(null);
   const offset = useRef({ x: 0, y: 0 });
+  // The findings section's height: the table's heading starts there, under it in the same scroll box.
+  const findingsHeight = useRef(0);
   const scrollX = useRef(new Animated.Value(0)).current;
   const headerShift = useMemo(() => Animated.multiply(scrollX, -1), [scrollX]);
   const [edges, setEdges] = useState<ScrollEdges>({ moreLeft: false, moreRight: false });
@@ -215,7 +219,14 @@ export function StatsView({
   if (stats.error !== null && stats.data === undefined) return <Text style={styles.error}>{errorText(stats.error)}</Text>;
   if (stats.data === undefined) return <Text style={styles.note}>Loading…</Text>;
   // The manager's idle compactions count before any ticket moves, and show in the totals row.
-  if (tickets.length === 0 && totals.idleCompactions === 0) return <Text style={styles.note}>No ticket has been recorded yet. Stats start when a ticket first moves.</Text>;
+  if (tickets.length === 0 && totals.idleCompactions === 0)
+    return (
+      <ScrollView style={styles.root}>
+        {/* Review findings come from the tickets' notes, so they can show before any ticket's time does; only rows, not a second "nothing yet". */}
+        <StatsFindings project={project} theme={theme} compact={compact} hideWhenEmpty />
+        <Text style={styles.note}>No ticket has been recorded yet. Stats start when a ticket first moves.</Text>
+      </ScrollView>
+    );
 
   function numbers(counted: Counted, style: TextStyle) {
     return NUMBER_COLUMNS.map((column) => (
@@ -352,10 +363,14 @@ export function StatsView({
 
   function showPage(index: number) {
     setPageIndex(index);
-    // A new page starts from its first rows.
-    if (WEB) page.current?.scrollTo({ x: offset.current.x, y: 0, animated: false });
-    else page.current?.scrollTo({ y: 0, animated: false });
+    // A new page starts from its first rows: the table's heading at the top, the findings section above it.
+    const y = findingsHeight.current;
+    if (WEB) page.current?.scrollTo({ x: offset.current.x, y, animated: false });
+    else page.current?.scrollTo({ y, animated: false });
   }
+  const onFindingsLayout = (event: LayoutChangeEvent) => {
+    findingsHeight.current = event.nativeEvent.layout.height;
+  };
   const range = pageRange(pages, shownPage);
   const heading = (
     <View style={[{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg, paddingBottom: SPACE.md }, pinToView]}>
@@ -372,6 +387,9 @@ export function StatsView({
       </SectionHeading>
     </View>
   );
+
+  // Review findings by author model, above the time and cost table.
+  const findings = <StatsFindings project={project} theme={theme} compact={compact} />;
 
   const footer = (
     <View style={pinToView}>
@@ -407,6 +425,9 @@ export function StatsView({
         onScroll={onWebScroll}
         scrollEventThrottle={16}
       >
+        <View style={pinToView} onLayout={onFindingsLayout}>
+          {findings}
+        </View>
         {heading}
         {/* The rows, then a fade as tall as they are, pinned by the browser to the box's right edge. */}
         <View style={{ flexDirection: "row" }}>
@@ -439,7 +460,8 @@ export function StatsView({
 
   // A phone: React Native's sticky header holds the header row; its labels follow the numbers' sideways scroll.
   return (
-    <ScrollView ref={page} style={styles.root} stickyHeaderIndices={[1]} onLayout={(event: LayoutChangeEvent) => measured(event.nativeEvent.layout.width)}>
+    <ScrollView ref={page} style={styles.root} stickyHeaderIndices={[2]} onLayout={(event: LayoutChangeEvent) => measured(event.nativeEvent.layout.width)}>
+      <View onLayout={onFindingsLayout}>{findings}</View>
       {heading}
       <View style={[styles.row, { height: HEADER_HEIGHT }]}>
         {ticketCell(<Text style={styles.header}>TICKET</Text>, HEADER_HEIGHT - 1, "flex-end", 0, { zIndex: 1 })}

@@ -222,6 +222,13 @@ describe("conformanceViolations", () => {
       expect(kinds(ticket({ finalSummary: rulings(5, "\n- 4 more in the ticket") }))).toEqual([]);
       expect(conformanceViolations(ticket({ finalSummary: rulings(6) }))).toEqual([{ kind: "final-over-limit", detail: '"Rulings" has 6 bullets (limit 5)' }]);
     });
+
+    it("lets every FINAL section close on an \"N more in the ticket\" bullet past its limit", () => {
+      const limitations = (more: string) => FINAL.replace("- None known.", `- one\n- two\n- three${more}`);
+      expect(kinds(ticket({ finalSummary: limitations("\n- 2 more in the ticket") }))).toEqual([]);
+      expect(kinds(ticket({ finalSummary: limitations("\n2 more in the ticket.") }))).toEqual([]);
+      expect(conformanceViolations(ticket({ finalSummary: limitations("\n- four") }))).toEqual([{ kind: "final-over-limit", detail: '"Limitations" has 4 bullets (limit 3)' }]);
+    });
   });
 
   it("does not ask a ticket still in Planning for approval, evidence or a FINAL", () => {

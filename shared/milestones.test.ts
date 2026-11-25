@@ -97,6 +97,13 @@ describe("kindLabel", () => {
   });
 });
 
+describe("records the skill writes", () => {
+  it("an ESCAPE, EVIDENCE or CORRECTION written without a time stays a record of its own", () => {
+    const notes = "MILESTONE 2026-10-13T14:02Z — delivered\nESCAPE — the export lost a note\nEVIDENCE — before FINAL\nCORRECTION — the REVIEW above is a plan review";
+    expect(ticketMilestones(notes).map((milestone) => milestone.kind)).toEqual(["MILESTONE", "ESCAPE", "EVIDENCE", "CORRECTION"]);
+  });
+});
+
 describe("a RULING record (TR-263)", () => {
   it("is a known record, so a body line under it never joins the record above", () => {
     const notes = "MILESTONE 2026-10-13T14:02Z — building\nRULING — kept the old flag — less churn — remove it later";

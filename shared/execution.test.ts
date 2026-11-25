@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { boardColumn } from "./board";
-import { acceptanceMerge, acceptedRecord, acceptedRecordText, deliveryMissing, executionMachine, executionWorkspace, finalSummaryBody, localMergeInstruction, noteRecords, notMergedRecord, pullRequestMergeInstruction, pullRequestMerged, pullRequestUrl, reviewHead } from "./execution";
+import { acceptanceMerge, acceptedRecord, acceptedRecordText, deliveryMissing, executionMachine, executionWorkspace, finalSummaryBody, localMergeInstruction, noteRecords, notMergedRecord, pullRequestMergeInstruction, pullRequestMerged, pullRequestUrl, reviewHead, wholeRecords } from "./execution";
 
 const managerRecord = "EXECUTION 2026-10-13T11:22Z — owner agent d86f, workspace wks_67ddffd9312aa95a, machine devbox, worktree /w/tr-001";
 // As a Haiku owner wrote it on the throwaway daemon: the relaunch could not find its workspace (TR-001).
@@ -52,6 +52,23 @@ describe("noteRecords", () => {
   it("splits on record names and drops empty blocks", () => {
     expect(noteRecords("EXECUTION a\nline two\n\nMILESTONE b")).toEqual(["EXECUTION a\nline two", "MILESTONE b"]);
     expect(noteRecords(null)).toEqual([]);
+  });
+});
+
+describe("wholeRecords", () => {
+  it("joins a block with no time and no record's name back to the record above", () => {
+    const review = "REVIEW 2026-01-05T10:00Z — reviewer over main..taro/na-12\nREADME example fixed (F3)\nFINDINGS: claude-opus-5-5 — high 0, medium 1, low 0\nverdict: clean";
+    expect(wholeRecords(`${review}\n\nMILESTONE 2026-01-05T10:05Z — next`)).toEqual([review, "MILESTONE 2026-01-05T10:05Z — next"]);
+  });
+
+  it("keeps a block with a time, or with a record's name, apart", () => {
+    const notes = "MILESTONE 2026-01-05T10:00Z — a\nNOTE 2026-01-05T10:01Z — b\nESCAPE — c\nEVIDENCE — d\nCORRECTION — e\nREVIEW — f";
+    expect(wholeRecords(notes)).toEqual(["MILESTONE 2026-01-05T10:00Z — a", "NOTE 2026-01-05T10:01Z — b", "ESCAPE — c", "EVIDENCE — d", "CORRECTION — e", "REVIEW — f"]);
+  });
+
+  it("keeps a first block that is no record", () => {
+    expect(wholeRecords("README first\nMILESTONE 2026-01-05T10:00Z — a")).toEqual(["README first", "MILESTONE 2026-01-05T10:00Z — a"]);
+    expect(wholeRecords(null)).toEqual([]);
   });
 });
 
