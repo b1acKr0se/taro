@@ -12,11 +12,18 @@ import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { chooseProjectStart } from "../shared/contracts";
 import type { ProjectStart } from "../shared/project";
 import { Pressable } from "./focus";
+import { keptMap } from "./kept";
 import { errorText } from "./format";
-import { START_CHOICES, START_SUBTITLE, START_TITLE, startInput } from "./project-start";
+import { START_CHOICES, START_SUBTITLE, START_TITLE, startInput, startNotice } from "./project-start";
 import { useRefreshProjects } from "./queries";
 import { paneGutter, SPACE } from "./spacing";
 import { FONT_SIZE, lineHeightFor } from "./type-scale";
+
+/**
+ * The line a press left for the manager's pane, by project: kept across the screen's remounts until
+ * dismissed (a reload may drop it; the summary's pending fact still covers a manager not running).
+ */
+export const startNotices = keptMap<string, string>(globalThis, "start-notices.v1");
 
 export function StartQuestion({ project, theme, compact, onChosen }: { project: string; theme: PluginTheme; compact: boolean; onChosen: () => void }) {
   const choose = useRpc(chooseProjectStart);
@@ -29,7 +36,10 @@ export function StartQuestion({ project, theme, compact, onChosen }: { project: 
     setSending(choice);
     setError(null);
     choose(startInput(project, choice))
-      .then(() => {
+      .then((answer) => {
+        const notice = startNotice(choice, answer);
+        if (notice === null) startNotices.delete(project);
+        else startNotices.set(project, notice);
         refreshProjects();
         onChosen();
       })

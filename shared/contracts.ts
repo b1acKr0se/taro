@@ -80,6 +80,8 @@ export const ProjectSummarySchema = z.object({
   needsYou: z.number().int(),
   /** "Is this a brand new project?" shows in the manager's place: no choice stored, no tickets, an empty repository. */
   askStart: z.boolean().default(false),
+  /** Brand new was chosen and no ticket exists yet: a manager starting now gets the new-project message. */
+  newProjectPending: z.boolean().default(false),
 });
 export type ProjectSummary = z.infer<typeof ProjectSummarySchema>;
 

@@ -4,13 +4,11 @@
  * new-project message (a manager not running gets it when it starts, `managerPrompt`); either
  * choice is stored in `taro.json` so the question never comes back.
  */
-import type { ProjectConfig, ProjectStart } from "../shared/project";
-import { PARENT_AGENT_LABEL } from "../shared/unlabelled-agents";
+import { NO_MANAGER_RUNNING, type ProjectConfig, type ProjectStart } from "../shared/project";
 import type { PaseoApi } from "./host-types";
 import { newProjectMessage, resolveManager, tellManager } from "./manager";
 import { runCommand } from "./process";
 import { projectPaths, trackerHasTickets, updateProjectConfigIf } from "./projects";
-import { identityFromLabels } from "./supervision";
 
 /** What git answers about a repository: empty (at most one commit, no files) or not; null when git failed. */
 export async function repositoryIsEmpty(repoPath: string): Promise<boolean | null> {
@@ -74,43 +72,12 @@ export async function chooseStart(paseo: PaseoApi, project: string, choice: Proj
   );
   const stored = `${project} is a ${CHOICE_WORDS[choice]}.`;
   if (choice === "existing") return { told: false, message: stored };
-  const later = (reason: string) => ({ told: false, reason, message: `${stored} The manager will get this when it starts (${reason}).` });
-  if ((await resolveManager(paseo, config)).agent === null) return later("no manager running");
+  if ((await resolveManager(paseo, config)).agent === null) return { told: false, reason: NO_MANAGER_RUNNING, message: `${stored} The manager will get this when it starts.` };
   try {
     await tellManager(paseo, project, await newProjectMessage(config));
   } catch (error) {
-    return later(error instanceof Error ? error.message : String(error));
+    const reason = error instanceof Error ? error.message : String(error);
+    return { told: false, reason, message: `${stored} The manager could not be told (${reason}); a fresh manager gets this when it starts, or tell it yourself.` };
   }
   return { told: true, message: `${stored} The manager was told and starts asking.` };
-}
-
-/** How far up an unlabelled agent's parents to look, as the ticket buttons' check does. */
-const PARENT_DEPTH = 3;
-
-/**
- * The `taro project start-*` commands are the user's: refused inside any of the project's own
- * agents (its manager, owners and their subagents), which must ask the user. A lookup that fails
- * refuses; an agent Paseo does not know or has archived is not the project's.
- */
-export async function refuseProjectAgent(paseo: PaseoApi, caller: string | undefined, project: string, action: string): Promise<void> {
-  if (caller === undefined || caller === "") return;
-  let agentId = caller;
-  for (let depth = 1; depth <= PARENT_DEPTH; depth++) {
-    let refreshed;
-    try {
-      refreshed = await paseo.agents.ref(agentId).refresh();
-    } catch {
-      throw new Error(`${action}: could not check who is asking; try again.`);
-    }
-    if (refreshed === null || (refreshed.agent.archivedAt !== null && refreshed.agent.archivedAt !== undefined)) return;
-    const labels = refreshed.agent.labels;
-    const identity = identityFromLabels(labels, refreshed.agent.title ?? null);
-    if (identity !== null) {
-      if (identity.project === project) throw new Error(`${action} is the user's: it refuses inside the project's own agents. Ask the user.`);
-      return;
-    }
-    const parent = labels[PARENT_AGENT_LABEL];
-    if (parent === undefined || parent === "") return;
-    agentId = parent;
-  }
 }

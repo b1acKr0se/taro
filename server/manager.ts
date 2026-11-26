@@ -13,7 +13,7 @@ import { runPaseoJson } from "./cli";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import { bypassModeId, knownBypassMode } from "./models";
 import { TEMPLATES, fill, message, readTemplate, skillDirectory } from "./package-files";
-import { projectPaths, requireProjectConfig, trackerHasTickets, updateProjectConfig } from "./projects";
+import { newProjectPending, projectPaths, requireProjectConfig, updateProjectConfig } from "./projects";
 import { sendFromPlugin } from "./send";
 import { hasAttachments, sendWithAttachments, type Attachments } from "./uploads";
 import type { ChatQueue } from "./chat-queue";
@@ -89,14 +89,16 @@ export async function newProjectMessage(config: ProjectConfig): Promise<string> 
 /**
  * A starting manager's first prompt: its opening, the restart note, the reason given, and for a
  * project the user chose as brand new that has no tickets yet, the new-project message, so a choice
- * made while no manager ran is never lost.
+ * made while no manager ran is never lost. The config is read here, just before the prompt is
+ * built, so a choice made while the manager was being set up counts.
  */
-export async function managerPrompt(config: ProjectConfig, restart: boolean, why: string | null): Promise<string> {
+export async function managerPrompt(project: string, restart: boolean, why: string | null): Promise<string> {
+  const config = await requireProjectConfig(project);
   const values = await projectValues(config);
   const parts = [await message(TEMPLATES.managerOpening, values)];
   if (restart) parts.push(await message(TEMPLATES.managerRestart, values));
   if (why !== null) parts.push(why);
-  if (config.start === "new" && !(await trackerHasTickets(values.tracker ?? "").catch(() => true))) parts.push(await newProjectMessage(config));
+  if (await newProjectPending(config)) parts.push(await newProjectMessage(config));
   return parts.join("\n\n");
 }
 
@@ -106,7 +108,7 @@ export type QueueCarrier = Pick<ChatQueue, "carry" | "claim">;
 async function startManager(paseo: PaseoApi, config: ProjectConfig, restart: boolean, why: string | null, queue: QueueCarrier | null): Promise<{ agentId: string; workspaceId: string }> {
   await writeManagerInstructions(config);
   const workspaceId = await ensureManagerWorkspace(paseo, config);
-  const prompt = await managerPrompt(config, restart, why);
+  const prompt = await managerPrompt(config.project, restart, why);
   const modeId = await bypassModeId(paseo, config.manager.model);
   const paths = await projectPaths(config.project);
   const agent = await paseo.workspaces.ref(workspaceId).agents.create({

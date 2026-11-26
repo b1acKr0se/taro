@@ -1,6 +1,6 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 
-import { refuseDecisionWorker, refuseTicketWorker } from "./server/worker-guard";
+import { refuseDecisionWorker, refuseProjectAgent, refuseTicketWorker } from "./server/worker-guard";
 import {
   acceptTicket,
   answerDecision,
@@ -98,14 +98,14 @@ import { ensureCompactHook, installCompactHook, removeReloadFile } from "./serve
 import { forgetOwnerStart, markOwnerStarted } from "./server/owner-start";
 import { catchUpText, compactManager, launchManager, restartManager, resumeManager, tellManager, writeManagerInstructions } from "./server/manager";
 import { onboardProject, onboardingProblems } from "./server/onboard";
-import { asksStart, chooseStart, refuseProjectAgent } from "./server/project-start";
+import { asksStart, chooseStart } from "./server/project-start";
 import { listPaseoProjects, settingsTemplate } from "./server/paseo-projects";
 import { countPermissionWait, onPermissionRequested } from "./server/permission-triage";
 import { readImage } from "./server/images";
 import { Notifier } from "./server/notifications";
 import { allowedMergeMethods } from "./server/merge-methods";
 import { checkPrerequisites } from "./server/prerequisites";
-import { listProjectConfigs, projectPaths, readProjectConfig, requireProjectConfig, taroHome, updateProjectConfig } from "./server/projects";
+import { listProjectConfigs, newProjectPending as newProjectPendingFor, projectPaths, readProjectConfig, requireProjectConfig, taroHome, updateProjectConfig } from "./server/projects";
 import { sentImagesOf } from "./server/sent-images";
 import { agentCommands, projectFiles, recentCommands, rememberRecentCommand, ticketsForPicks } from "./server/composer-picks";
 import { agentBrief, listModelOptions } from "./server/summaries";
@@ -297,7 +297,8 @@ export default function contribute(server: PluginServerContext) {
         const needsYou = inboxCount(board, trackerSyncProblem !== null);
         const managerLastTurnEndedAt = manager === null ? null : ((await state.agent(manager.id))?.lastTurnEndedAt ?? null);
         const askStart = await asksStart(config);
-        return { config, manager: manager === null ? null : agentBrief(manager), managerLastTurnEndedAt, trackerSyncProblem, needsYou, askStart };
+        const newProjectPending = await newProjectPendingFor(config);
+        return { config, manager: manager === null ? null : agentBrief(manager), managerLastTurnEndedAt, trackerSyncProblem, needsYou, askStart, newProjectPending };
       }),
     );
     return { taroHome: await taroHome(), projects };
@@ -322,8 +323,8 @@ export default function contribute(server: PluginServerContext) {
   });
 
   server.handle(chooseProjectStart, async ({ project, choice, caller }, { paseo }) => {
-    await refuseProjectAgent(keep(paseo), caller, project, `taro project start-${choice}`);
-    const answer = await chooseStart(paseo, project, choice);
+    await refuseProjectAgent(paseo, caller, project, `taro project start-${choice}`);
+    const answer = await chooseStart(keep(paseo), project, choice);
     invalidateBoards();
     return answer;
   });

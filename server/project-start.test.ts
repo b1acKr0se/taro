@@ -11,7 +11,7 @@ import type { PaseoApi } from "./host-types";
 import { managerPrompt, resolveManager, tellManager } from "./manager";
 import { onboardProject } from "./onboard";
 import { asksStart, chooseStart, forgetStartAnswers, repositoryIsEmpty } from "./project-start";
-import { projectPaths, readProjectConfig, writeProjectConfig } from "./projects";
+import { newProjectPending, projectPaths, readProjectConfig, writeProjectConfig } from "./projects";
 
 vi.mock("./manager", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./manager")>()),
@@ -179,21 +179,33 @@ describe("choosing", () => {
     resolveManagerMock.mockResolvedValue({ agent: null });
     await project();
     expect(await chooseStart(paseo, "notes-app", "new")).toMatchObject({ told: false, reason: "no manager running" });
-    const config = await readProjectConfig("notes-app");
-    expect(config?.start).toBe("new");
+    const config = (await readProjectConfig("notes-app")) as ProjectConfig;
+    expect(config.start).toBe("new");
     expect(tellManagerMock).not.toHaveBeenCalled();
-    const prompt = await managerPrompt(config as ProjectConfig, false, null);
-    expect(prompt).toContain("The user started notes-app as a brand new project.");
+    expect(await newProjectPending(config)).toBe(true);
+    expect(await managerPrompt("notes-app", false, null)).toContain("The user started notes-app as a brand new project.");
     // Not once the manager has filed a ticket, and never for an existing project.
     await addTicket();
-    expect(await managerPrompt(config as ProjectConfig, true, null)).not.toContain("brand new project");
-    expect(await managerPrompt({ ...(config as ProjectConfig), start: "existing" }, false, null)).not.toContain("brand new project");
+    expect(await newProjectPending(config)).toBe(false);
+    expect(await managerPrompt("notes-app", true, null)).not.toContain("brand new project");
+    await writeProjectConfig({ ...config, start: "existing" });
+    expect(await newProjectPending({ ...config, start: "existing" })).toBe(false);
+    expect(await managerPrompt("notes-app", false, null)).not.toContain("brand new project");
   });
 
-  it("a send that fails keeps the choice and says why", async () => {
+  it("a manager's prompt reads the choice as stored when it is built, not as its starter read it", async () => {
+    const stale = await project();
+    await writeProjectConfig({ ...stale, start: "new" });
+    expect(stale.start).toBeNull();
+    expect(await managerPrompt(stale.project, false, null)).toContain("brand new project");
+  });
+
+  it("a send that fails keeps the choice and says why, without promising the running manager gets it", async () => {
     tellManagerMock.mockRejectedValue(new Error("the manager is gone"));
     await project();
-    expect(await chooseStart(paseo, "notes-app", "new")).toMatchObject({ told: false, reason: "the manager is gone" });
+    const answer = await chooseStart(paseo, "notes-app", "new");
+    expect(answer).toMatchObject({ told: false, reason: "the manager is gone" });
+    expect(answer.message).toContain("could not be told (the manager is gone)");
     expect((await readProjectConfig("notes-app"))?.start).toBe("new");
   });
 
