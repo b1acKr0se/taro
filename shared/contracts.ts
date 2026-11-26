@@ -17,7 +17,7 @@ import { PlanAnswerKindSchema } from "./plan-changes";
 import { PULL_REQUEST_STATES } from "./pull-request-state";
 import { QueuedWaitSchema } from "./queued-wait";
 import { PaseoProjectCandidateSchema, SettingsTemplateSchema } from "./project-candidates";
-import { ProjectConfigSchema, ProjectNameSchema, ProjectSettingsSchema, ROLES, SUBAGENT_ROLES } from "./project";
+import { ProjectConfigSchema, ProjectNameSchema, ProjectSettingsSchema, ProjectStartSchema, ROLES, SUBAGENT_ROLES } from "./project";
 import { CrashReportSchema, DeviceSchema, LaunchIdSchema, TrailReportSchema } from "./crash-trail";
 import { AGENT_JOBS, AGENT_STATES, CARD_STATUSES, type TrackerAgent, type TrackerCard } from "./tracker-cards";
 import { BoardAlertSchema, HeadroomSchema } from "./recovery";
@@ -78,6 +78,8 @@ export const ProjectSummarySchema = z.object({
   trackerSyncProblem: TrackerSyncProblemSchema.nullable(),
   /** Cards in Needs you or Stalled, plus a paused ticket sync, for the sidebar badge and tabs. */
   needsYou: z.number().int(),
+  /** "Is this a brand new project?" shows in the manager's place: no choice stored, no tickets, an empty repository. */
+  askStart: z.boolean().default(false),
 });
 export type ProjectSummary = z.infer<typeof ProjectSummarySchema>;
 
@@ -150,6 +152,18 @@ export const writeProjectSettings = defineRpc({
   name: "taro.project.config.write",
   input: z.object({ project: ProjectNameSchema, settings: ProjectSettingsSchema }),
   output: z.object({ config: ProjectConfigSchema }),
+});
+
+/**
+ * The start question answered (Brand new project or Existing project): stored once, refused when
+ * already chosen or the project has work. `told`: a brand new project's manager got the
+ * new-project message; when false with a `reason`, it gets it when it starts. `caller`: the agent
+ * running `taro project start-new|start-existing`, refused inside the project's own agents.
+ */
+export const chooseProjectStart = defineRpc({
+  name: "taro.project.start",
+  input: z.object({ project: ProjectNameSchema, choice: ProjectStartSchema, caller: z.string().optional() }),
+  output: z.object({ told: z.boolean(), reason: z.string().optional(), message: z.string().optional() }),
 });
 
 export const readStandingOrders = defineRpc({

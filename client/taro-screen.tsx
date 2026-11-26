@@ -41,6 +41,8 @@ import { projectLayout } from "./pane-layout";
 import { CreationProgress, NewProject, resetNewProject, returnToNewProject, useCreation } from "./new-project";
 import { afterCreation, resetCreation } from "./project-creation";
 import { ProjectSetup } from "./project-setup";
+import { StartQuestion } from "./start-question";
+import { phoneTabFor, TOLD_AT_START, waitsForManager } from "./project-start";
 import { ReplaceFirstDialog } from "./replace-first-dialog";
 import { ScreenLayerHost } from "./screen-layer";
 import { ProjectTabs } from "./project-tabs";
@@ -462,6 +464,12 @@ function ProjectView({
   }, [shownState, active]);
   // Android's back is the ticket's Back button: out of a plan, to where View plan was pressed.
   useBackStep(openCard !== null, onTicketBack);
+  // A project asking "Is this a brand new project?" opens on its Manager tab, where the question is.
+  useEffect(() => {
+    if (!active || !compact) return;
+    const opening = phoneTabFor(summary.askStart, phoneTab);
+    if (opening !== phoneTab) onPhoneTab(opening);
+  }, [active, compact, summary.askStart]);
   const tabsVisited = useVisited(active && compact ? phoneTab : null);
   const rightVisited = useVisited(active && !compact && layout.board ? rightPane : null);
   const warmed = useWarmUp(PHONE_TABS.length, active && compact);
@@ -701,10 +709,19 @@ function ManagerPane({
       {onShowBoard === null ? null : <IconButton icon="PanelRightOpen" label="Show the board" showLabel theme={theme} onPress={onShowBoard} />}
     </PaneHeader>
   );
+  if (summary.askStart) {
+    return (
+      <View style={{ flex: 1 }}>
+        {header}
+        <StartQuestion project={project} theme={theme} compact={compact} onChosen={onChanged} />
+      </View>
+    );
+  }
   if (manager === null) {
     return (
       <View style={{ flex: 1 }}>
         {header}
+        {waitsForManager(summary.config.start, false) ? <Text style={{ color: theme.colors.foreground, paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg }}>{TOLD_AT_START}</Text> : null}
         <Text style={{ color: theme.colors.foregroundMuted, padding: SPACE.lg }}>This project has no manager running. Start one from the project's settings (⚙).</Text>
       </View>
     );

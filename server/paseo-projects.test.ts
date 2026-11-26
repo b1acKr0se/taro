@@ -45,6 +45,7 @@ function config(project: string, repoPath: string, overrides: Partial<ProjectCon
     paseoProjectId: `prj_taro_${project}`,
     managerAgentId: "",
     managerWorkspaceId: "",
+    start: null,
     repoPath,
     baseBranch: "main",
     ticketPrefix: "AB",

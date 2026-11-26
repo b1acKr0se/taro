@@ -37,6 +37,7 @@ import {
   sendQueuedMessageNow,
   retryQueuedMessage,
   checkOnboarding,
+  chooseProjectStart,
   checkPrerequisites as checkPrerequisitesRpc,
   compactManager as compactManagerRpc,
   launchManager as launchManagerRpc,
@@ -97,6 +98,7 @@ import { ensureCompactHook, installCompactHook, removeReloadFile } from "./serve
 import { forgetOwnerStart, markOwnerStarted } from "./server/owner-start";
 import { catchUpText, compactManager, launchManager, restartManager, resumeManager, tellManager, writeManagerInstructions } from "./server/manager";
 import { onboardProject, onboardingProblems } from "./server/onboard";
+import { asksStart, chooseStart, refuseProjectAgent } from "./server/project-start";
 import { listPaseoProjects, settingsTemplate } from "./server/paseo-projects";
 import { countPermissionWait, onPermissionRequested } from "./server/permission-triage";
 import { readImage } from "./server/images";
@@ -294,7 +296,8 @@ export default function contribute(server: PluginServerContext) {
         const trackerSyncProblem = config.trackerSync === "remote" ? trackers.syncProblem(config.project) : null;
         const needsYou = inboxCount(board, trackerSyncProblem !== null);
         const managerLastTurnEndedAt = manager === null ? null : ((await state.agent(manager.id))?.lastTurnEndedAt ?? null);
-        return { config, manager: manager === null ? null : agentBrief(manager), managerLastTurnEndedAt, trackerSyncProblem, needsYou };
+        const askStart = await asksStart(config);
+        return { config, manager: manager === null ? null : agentBrief(manager), managerLastTurnEndedAt, trackerSyncProblem, needsYou, askStart };
       }),
     );
     return { taroHome: await taroHome(), projects };
@@ -316,6 +319,13 @@ export default function contribute(server: PluginServerContext) {
     await trackers.refresh();
     await actions.primeStatuses();
     return result;
+  });
+
+  server.handle(chooseProjectStart, async ({ project, choice, caller }, { paseo }) => {
+    await refuseProjectAgent(keep(paseo), caller, project, `taro project start-${choice}`);
+    const answer = await chooseStart(paseo, project, choice);
+    invalidateBoards();
+    return answer;
   });
 
   server.handle(checkOnboarding, async (input) => ({ problems: await onboardingProblems(input) }));

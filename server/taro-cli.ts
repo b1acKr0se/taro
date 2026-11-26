@@ -92,6 +92,7 @@ The buttons, from a script (they call the running daemon, with the button's own 
   taro ticket request-changes|change-spec <ID> --text <text>
   taro decision answer <key> [--label <option>] [--text <words>]
   taro decision dismiss <key>
+  taro project start-new|start-existing   answer "Is this a brand new project?" for an empty project
   taro stats <ID> | --project <name> [--since <date>] [--json]   a round's time to a result: Planning to first Awaiting acceptance, Needs you before and after approval, plugin corrections
   taro escapes [--all | --limit <n>]   the project's past escapes, newest first (20 by default), for a reviewer to check a change against
   taro next <ID>      the page for the ticket's current step, as the plugin sends it when the step starts
@@ -540,8 +541,10 @@ interface Action {
   method: string;
   /** What the button's user alone decides (TR-237): refused to the ticket's own workers, by the daemon. */
   userOnly: boolean;
-  /** `ticket` verbs name a ticket; `decision` verbs a question key. */
-  subject: "ticket" | "decision";
+  /** `ticket` verbs name a ticket; `decision` verbs a question key; `project` verbs name nothing past the project. */
+  subject: "ticket" | "decision" | "project";
+  /** Input the verb itself decides, such as the start question's choice. */
+  fixed?: Record<string, unknown>;
   words?: ActionOptionSpec["words"];
   label?: boolean;
 }
@@ -557,6 +560,8 @@ const ACTIONS: Record<string, Action> = {
   "ticket relaunch-owner": { method: "taro.owner.relaunch", userOnly: false, subject: "ticket" },
   "decision answer": { method: "taro.decision.answer", userOnly: true, subject: "decision", words: "text", label: true },
   "decision dismiss": { method: "taro.decision.dismiss", userOnly: true, subject: "decision" },
+  "project start-new": { method: "taro.project.start", userOnly: true, subject: "project", fixed: { choice: "new" } },
+  "project start-existing": { method: "taro.project.start", userOnly: true, subject: "project", fixed: { choice: "existing" } },
 };
 
 const ACTION_OPTIONS: OptionTable = {
@@ -578,23 +583,25 @@ async function wordsOf(parsed: Parsed, key: string, io: CliIo): Promise<string |
 async function runAction(group: string, verbName: string, args: readonly string[], io: CliIo): Promise<number> {
   const action = ACTIONS[`${group} ${verbName}`] as Action;
   const parsed = parseArguments(args, ACTION_OPTIONS);
-  expectPositionals(parsed, 1, action.subject === "ticket" ? "one ticket id" : "one question key");
+  if (action.subject === "project") expectPositionals(parsed, 0, "no arguments besides options");
+  else expectPositionals(parsed, 1, action.subject === "ticket" ? "one ticket id" : "one question key");
   // The daemon refuses the ticket's own workers (it reads labels); any other session may act for the user.
   const agent = io.env.PASEO_AGENT_ID;
   const caller = action.userOnly && agent !== undefined && agent !== "" ? { caller: agent } : {};
-  const subject = parsed.positionals[0] as string;
+  const project = single(parsed, "project") ?? io.env.TARO_PROJECT;
+  const subject = action.subject === "project" ? (project ?? "") : (parsed.positionals[0] as string);
   const words = action.words === undefined ? undefined : await wordsOf(parsed, action.words, io);
   const label = action.label === true ? single(parsed, "label") : undefined;
   if (action.words !== undefined && (words === undefined || words === "") && !(action.label === true && label !== undefined)) {
     throw new UsageError(action.label === true ? "Give --label <option>, --text <words>, or both." : `${verbName} needs --${action.words} <text>.`);
   }
-  const project = single(parsed, "project") ?? io.env.TARO_PROJECT;
-  if (action.subject === "ticket" || action.words === undefined) {
+  if (action.subject !== "decision" || action.words === undefined) {
     if (project === undefined || project === "") throw new UsageError("No project: pass --project <name> or set TARO_PROJECT.");
   }
   let input: Record<string, unknown>;
   if (action.subject === "decision" && action.label === true) input = { key: subject, label: label ?? null, text: words ?? "", ...caller };
   else if (action.subject === "decision") input = { project, key: subject, ...caller };
+  else if (action.subject === "project") input = { project, ...action.fixed, ...caller };
   else input = { project, ticket: subject, ...(action.words === undefined ? {} : { [action.words]: words }), ...caller };
   const home = single(parsed, "home") ?? io.env.PASEO_HOME ?? join(homedir(), ".paseo");
   const output = await invokePluginRpc(action.method, input, { home });
@@ -617,6 +624,14 @@ async function ticketCommand(args: readonly string[], io: CliIo): Promise<number
   const parsed = parseArguments(args.slice(1), verb.options);
   const { store, trackerPath } = await openTracker(trackerArguments(parsed), io.env);
   return verb.run({ store, trackerPath, io, parsed });
+}
+
+async function projectCommand(args: readonly string[], io: CliIo): Promise<number> {
+  const verbName = args[0];
+  if (verbName === undefined || !Object.hasOwn(ACTIONS, `project ${verbName}`)) {
+    throw new UsageError(verbName === undefined ? "Missing project verb." : `Unknown project verb "${verbName}".`);
+  }
+  return runAction("project", verbName, args.slice(1), io);
 }
 
 async function decisionCommand(args: readonly string[], io: CliIo): Promise<number> {
@@ -1024,6 +1039,7 @@ const ESCAPES_OPTIONS: OptionTable = {
 const commands: Record<string, (args: readonly string[], io: CliIo) => Promise<number>> = {
   ticket: ticketCommand,
   decision: decisionCommand,
+  project: projectCommand,
   next: nextCommand,
   agent: agentCommand,
   card: cardCommand,
