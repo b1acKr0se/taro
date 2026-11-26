@@ -275,6 +275,8 @@ describe("shape and spec-task tickets", () => {
   it("task page while planning, build page once In Progress", () => {
     expect(nextStep(ticket({ labels: ["spec-task"], status: "Planning" }))?.page).toBe("levels/spec-task.md");
     expect(nextStep(ticket({ labels: ["spec-task", "complexity-low"], status: "Queued" }))?.page).toBe("levels/spec-task.md");
+    expect(nextStep(ticket({ labels: ["spec-task"], status: "Planning", notes: notes(EXECUTION, APPROVAL) }))?.page).toBe("levels/spec-task.md");
+    expect(nextStep(ticket({ labels: ["spec-task"], status: "Queued", notes: notes(EXECUTION, APPROVAL) }))?.page).toBe("levels/spec-task.md");
     expect(nextStep(ticket({ labels: ["spec-task"], status: "In Progress", notes: notes(EXECUTION, APPROVAL) }))?.page).toBe("phases/build.md");
   });
 

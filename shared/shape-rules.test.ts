@@ -38,6 +38,13 @@ describe("shape rules", () => {
     expect(ticketLevel([])).toBeNull();
   });
 
+  it("a spec task in Planning with an APPROVAL and a plan is not stopped, and one with no plan is told to plan, not to ask approval", () => {
+    const notes = "APPROVAL 2026-11-01T10:30Z — by spec: \"SPEC.md\"";
+    const task = { status: "Planning", criteria: 0, labels: ["spec-task"], notes };
+    expect(buildGap({ ...task, plan: "## Goal\nx" })).toBeNull();
+    expect(buildGap({ ...task, plan: null })).toBe("no-plan");
+  });
+
   it("recognises the labels", () => {
     expect(isShape(["shape", "complexity-high"])).toBe(true);
     expect(isShape(["spec-task"])).toBe(false);

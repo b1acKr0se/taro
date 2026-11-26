@@ -159,6 +159,8 @@ function pickStep(ticket: StepTicket): Step | null {
     const branch = executionBranch(ticket.notes) ?? roundBranch(ticket.id, round);
     return { page: STEP_PAGES.review, facts: { ...facts, range: `${ticket.baseBranch}..${branch}` } };
   }
+  // The manager approves a spec task before dispatching it: its owner still writes the plan from the spec's section first.
+  if (isSpecTask(ticket.labels) && !asLow && (ticket.status === "Queued" || ticket.status === "Planning")) return { page: STEP_PAGES.specTask, facts };
   if (!light && workApproved(ticket.notes, ticket.parentNotes ?? null)) {
     return { page: STEP_PAGES.build, facts: { ...facts, children: childrenFact(ticket.children) } };
   }
