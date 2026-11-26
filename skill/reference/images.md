@@ -12,7 +12,8 @@ Every image you show the user (evidence screenshots, plan mockups, options) is a
   (`![the board on a phone](/absolute/path/after-phone-board.png)`). A screenshot line without a
   caption fails the evidence check; an option image without one is an incomplete block.
 - Plan mockups: `mockup-<what>-<device>.png`, listed in the plan's Mockups section as `file —
-  description` (`templates/plan.md`); the description says what changes, not just what is shown.
+  description` (`templates/plan.md`); the description says what changes, not just what is shown. A high ticket's is a screenshot of the
+  real component, before beside after.
 - Options with images: `option-<letter>-<what>-<device>.png`, so each file says which option it
   belongs to even outside the card. The card shows them under the option:
 

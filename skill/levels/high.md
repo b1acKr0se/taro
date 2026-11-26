@@ -21,6 +21,13 @@ and after it you work alone to delivery.
   between them, disjoint Owns and example interfaces run at once (`phases/build.md`).
 - A child's decisions, mockups and proof go in the parent's plan. Writing the definitions finds the
   holes (children that disagree, a choice nobody made): ask before the card.
+- **Mockups are rendered, never drawn**: a drawing misleads (the built screen looks different). In
+  a scratch copy (`mktemp -d`; never commit or leave it in the worktree), draw the changed
+  component with the project's real code, styles and theme through its own means (preview
+  server, story, test renderer), once on the base branch for before and once with a throwaway
+  version of the change for after, and join both into one side-by-side image. Real fixture
+  data, the screen size users have. Remove the scratch copy after. Where the project cannot
+  render it, say so in Mockups and draw it as `levels/medium.md` says.
 - **Plan review**: one independent reviewer reads the plan and the child specs for coverage of every
   criterion, interfaces that agree, and Review Focus gaps. Fix its findings, then record
   `REVIEW <time> — plan review by <reviewer>: <findings, each fixed or rejected> — verdict: <clean|findings>`.

@@ -18,8 +18,8 @@ prove it holds the criteria, so the ticket gets no `--acceptance-criteria`.
   user must check it.
 - **Mockups**: a plan that adds or changes UI shows the user what would change before they approve.
   Make one side-by-side image of the changed component only (before and after, or the
-  options), drawn by a top-tier subagent when the project allows one (`reference/model-tiers.md`): it suggests better styles. Do not run a daemon
-  for it. Save it as `$TARO_EVIDENCE/<ID>/mockup-<what>-<device>.png` (`reference/images.md`). The
+  options), drawn by a top-tier subagent when the project allows one (`reference/model-tiers.md`): it suggests better styles. A medium ticket runs no daemon
+  for it; a high ticket renders it instead (`levels/high.md`). Save it as `$TARO_EVIDENCE/<ID>/mockup-<what>-<device>.png` (`reference/images.md`). The
   Mockups section has a `file — what changes` line per image, for someone who has not seen the
   screen; with no UI change it says `- none — <why>`. The plugin holds the approval card while the
   section is incomplete.
