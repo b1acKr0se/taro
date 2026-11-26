@@ -97,15 +97,6 @@ export async function trackerHasTickets(trackerPath: string): Promise<boolean> {
   }
 }
 
-/**
- * Whether a manager starting now gets the new-project message (`managerPrompt`): Brand new was
- * chosen and the tracker has no tickets yet. A tracker that cannot be read answers no.
- */
-export async function newProjectPending(config: ProjectConfig): Promise<boolean> {
-  if (config.start !== "new") return false;
-  return !(await trackerHasTickets((await projectPaths(config.project)).tracker).catch(() => true));
-}
-
 /** Every project with a readable `taro.json`, by name. A broken one is skipped and logged. */
 export async function listProjectConfigs(): Promise<ProjectConfig[]> {
   const root = await projectsDirectory();

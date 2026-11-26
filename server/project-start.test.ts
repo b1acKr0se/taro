@@ -8,10 +8,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectConfig } from "../shared/project";
 import type { PaseoApi } from "./host-types";
-import { managerPrompt, resolveManager, tellManager } from "./manager";
+import { managerPrompt, newProjectPending, resolveManager, tellManager } from "./manager";
 import { onboardProject } from "./onboard";
 import { asksStart, chooseStart, forgetStartAnswers, repositoryIsEmpty } from "./project-start";
-import { newProjectPending, projectPaths, readProjectConfig, writeProjectConfig } from "./projects";
+import { projectPaths, readProjectConfig, writeProjectConfig } from "./projects";
 
 vi.mock("./manager", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./manager")>()),

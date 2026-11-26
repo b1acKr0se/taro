@@ -13,7 +13,7 @@ import { runPaseoJson } from "./cli";
 import type { PaseoAgent, PaseoApi } from "./host-types";
 import { bypassModeId, knownBypassMode } from "./models";
 import { TEMPLATES, fill, message, readTemplate, skillDirectory } from "./package-files";
-import { newProjectPending, projectPaths, requireProjectConfig, updateProjectConfig } from "./projects";
+import { projectPaths, requireProjectConfig, trackerHasTickets, updateProjectConfig } from "./projects";
 import { sendFromPlugin } from "./send";
 import { hasAttachments, sendWithAttachments, type Attachments } from "./uploads";
 import type { ChatQueue } from "./chat-queue";
@@ -79,6 +79,15 @@ export interface ManagerState {
 
 export async function resolveManager(paseo: PaseoApi, config: ProjectConfig): Promise<ManagerState> {
   return { agent: await fetchLiveAgent(paseo, config.managerAgentId) };
+}
+
+/**
+ * Whether a manager starting now gets the new-project message (`managerPrompt`): Brand new was
+ * chosen and the tracker has no tickets yet. A tracker that cannot be read answers no.
+ */
+export async function newProjectPending(config: ProjectConfig): Promise<boolean> {
+  if (config.start !== "new") return false;
+  return !(await trackerHasTickets((await projectPaths(config.project)).tracker).catch(() => true));
 }
 
 /** What a brand new project's manager is told: on the user's choice, and after its opening while the project has no tickets. */
