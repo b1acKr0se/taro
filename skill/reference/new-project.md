@@ -19,7 +19,8 @@ Cover each area, and no more than you need:
 2. Ask the rest as cards of two to four related questions (`reference/several-questions.md`). Shape
    each card's options by what they said, and recommend one. Play each settled part back in a line
    before the next card.
-3. Stop once you could write the brief. A gap that remains is for the Shape owner to ask.
+3. Stop once you could write the brief. Leave details (wording, formats, defaults) to the Shape owner
+   to decide, and never list them as questions for it.
 
 ## File and dispatch
 

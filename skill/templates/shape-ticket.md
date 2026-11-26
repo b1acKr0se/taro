@@ -9,5 +9,5 @@
 
 ## Manager's notes
 
-- Not yet answered: <anything the user skipped, or none>
+- Left open by the user: <an area they chose not to answer, or none>; details (wording, formats, defaults) are the owner's call, never listed here
 - Kind: change, delivered as a PR holding `SPEC.md`. Owner model: <model id> (<tier>)

@@ -29,10 +29,19 @@ describe("the new-project pages", () => {
     expect(page).toMatch(/real gap/);
     expect(page).toContain("SPEC.md");
     expect(page).toMatch(/independent reviewer/);
-    expect(page).toMatch(/Up to four questions share a card/);
+    expect(page).toMatch(/up to four questions share it/);
     expect(page).toMatch(/Accept is the plan\s+approval/);
     expect(page).toMatch(/never create child tickets/);
     expect(page).toMatch(/no `complexity-` label/);
+  });
+
+  it("details are the Shape owner's call, never asked", () => {
+    const page = skill("levels/shape.md");
+    expect(page).toMatch(/never a detail they\s+would let you choose: wording, output format, defaults/);
+    expect(page).toMatch(/Ask at\s+most one card/);
+    expect(skill("templates/shape-ticket.md")).not.toMatch(/Not yet answered/);
+    expect(skill("templates/shape-ticket.md")).toMatch(/details \(wording, formats, defaults\) are the owner's call/);
+    expect(skill("reference/new-project.md")).toMatch(/never list them as questions/);
   });
 
   it("task page conflict rule", () => {

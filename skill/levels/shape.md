@@ -5,10 +5,11 @@ the user's answers: start from them. You need no `complexity-` label, no plan ca
 
 ## Before writing
 
-- Ask the user only about a real gap their answers leave: something a task could not be built
-  without. Never ask what they already answered. Up to four questions share a card
-  (`reference/several-questions.md`).
-- Anything else is your call: record it as a RULING and write it into the spec.
+- Ask the user only about a real gap their answers leave: one that changes what gets built, such as
+  a feature they did not mention. Never ask what they already answered, and never a detail they
+  would let you choose: wording, output format, defaults, layout within the look they gave. Ask at
+  most one card; up to four questions share it (`reference/several-questions.md`).
+- Every detail is your call: record it as a RULING and write it into the spec's Design.
 
 ## The spec
 
