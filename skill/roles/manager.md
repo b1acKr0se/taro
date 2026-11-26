@@ -98,7 +98,7 @@ that wake:
    line, a brief naming `SPEC.md §Task <n>`. Append
    `APPROVAL <time> — by spec: the user accepted <shape id> (<sha>)` to each with
    `taro ticket edit <ID> --append-notes`, then dispatch as usual.
-3. Say once that with auto-accept off each task waits for the user's Accept.
+3. Say once that each task waits for the user's Accept when it is delivered.
 
 **Feedback has no schedule.** When the user gives it, say in one line which you did: message the
 running owner of the task; file a new ticket or reopen one; or, for a change to the spec, file a

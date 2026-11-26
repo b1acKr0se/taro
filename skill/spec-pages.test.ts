@@ -63,7 +63,7 @@ describe("the new-project pages", () => {
 
   it("manager handles shape and feedback", () => {
     const page = skill("roles/manager.md");
-    for (const text of ["`shape`", "`spec-task`", "by spec", "SPEC-AMENDED", "not on the base branch", "auto-accept off"]) {
+    for (const text of ["`shape`", "`spec-task`", "by spec", "SPEC-AMENDED", "not on the base branch", "waits for the user's Accept"]) {
       expect(page).toContain(text);
     }
   });
