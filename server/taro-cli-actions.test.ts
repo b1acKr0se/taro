@@ -9,6 +9,7 @@ import {
   acceptTicket,
   answerDecision,
   changeQueuedSpec,
+  chooseProjectStart,
   closeRound,
   dismissManagerQuestion,
   pauseTicket,
@@ -102,6 +103,8 @@ describe("every button has a command that calls the same RPC with an input its c
     [["decision", "answer", "q1", "--label", "Approve"], answerDecision, { key: "q1", label: "Approve", text: "" }],
     [["decision", "answer", "q1", "--text", "per trade"], answerDecision, { key: "q1", label: null, text: "per trade" }],
     [["decision", "dismiss", "q1"], dismissManagerQuestion, { project: "notes-app", key: "q1" }],
+    [["project", "start-new"], chooseProjectStart, { project: "notes-app", choice: "new" }],
+    [["project", "start-existing", "--project", "other"], chooseProjectStart, { project: "other", choice: "existing" }],
   ];
   for (const [args, contract, expected] of cases) {
     it(args.join(" "), async () => {
@@ -146,6 +149,16 @@ describe("taro ticket accept", () => {
   });
 });
 
+describe("taro project start-new|start-existing", () => {
+  it("needs a project and takes no other argument", async () => {
+    const requests = stubDaemon(() => ({ output: {} }));
+    expect((await run(["project", "start-new"], { TARO_PROJECT: "" })).code).toBe(2);
+    expect((await run(["project", "start-new", "notes-app"])).code).toBe(2);
+    expect((await run(["project", "begin"])).code).toBe(2);
+    expect(requests).toEqual([]);
+  });
+});
+
 describe("words", () => {
   it("reopen reads the note from standard input with --note -", async () => {
     const requests = stubDaemon(() => ({ output: { message: "ok" } }));
@@ -175,6 +188,8 @@ describe("inside an agent session", () => {
       ["ticket", "close-round", "TR-7"],
       ["decision", "answer", "q1", "--label", "Approve"],
       ["decision", "dismiss", "q1"],
+      ["project", "start-new"],
+      ["project", "start-existing"],
     ];
     for (const args of userOnly) await run(args, AGENT);
     for (const verb of ["pause", "resume", "relaunch-owner"]) await run(["ticket", verb, "TR-7"], AGENT);
@@ -183,8 +198,8 @@ describe("inside an agent session", () => {
   });
 
   it("is accepted by every user-only contract, and by each button's input without it", () => {
-    const base = { project: "p", ticket: "TR-7", key: "q1", label: null, text: "x", note: "x" };
-    for (const contract of [acceptTicket, reopenTicket, requestChanges, changeQueuedSpec, closeRound, answerDecision, dismissManagerQuestion]) {
+    const base = { project: "p", ticket: "TR-7", key: "q1", label: null, text: "x", note: "x", choice: "new" };
+    for (const contract of [acceptTicket, reopenTicket, requestChanges, changeQueuedSpec, closeRound, answerDecision, dismissManagerQuestion, chooseProjectStart]) {
       expect(contract.input.parse({ ...base, caller: "a1" })).toMatchObject({ caller: "a1" });
       expect(contract.input.parse(base)).not.toHaveProperty("caller", expect.anything());
     }

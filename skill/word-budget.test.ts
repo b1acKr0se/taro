@@ -26,14 +26,16 @@ function pages(directory = SKILL): string[] {
 
 const BUDGETS: Record<string, number> = {
   "SKILL.md": 540,
-  "roles/owner.md": 1020,
-  "roles/manager.md": 1850,
+  "roles/owner.md": 1040,
+  "roles/manager.md": 2050,
   "roles/reviewer.md": 1280,
   "roles/implementer.md": 370,
   "roles/researcher.md": 300,
   "levels/light.md": 300,
   "levels/medium.md": 470,
   "levels/high.md": 490,
+  "levels/shape.md": 260,
+  "levels/spec-task.md": 300,
   "phases/build.md": 430,
   "phases/review.md": 630,
   "phases/delivery.md": 1045,
@@ -42,16 +44,19 @@ const BUDGETS: Record<string, number> = {
   "reference/images.md": 240,
   "reference/several-questions.md": 330,
   "reference/shell.md": 480,
-  "reference/tickets.md": 2240,
+  "reference/new-project.md": 260,
+  "reference/tickets.md": 2290,
   "reference/paseo.md": 460,
   "reference/model-tiers.md": 280,
-  "reference/actions.md": 330,
+  "reference/actions.md": 360,
   "reference/follow-up.md": 330,
   "hosts/outside-paseo.md": 750,
   "templates/plan.md": 430,
   "templates/final.md": 225,
   "templates/definition-of-done.md": 470,
   "templates/brief.md": 240,
+  "templates/spec.md": 200,
+  "templates/shape-ticket.md": 120,
   "templates/handoff.md": 150,
   "templates/pull-request.md": 150,
   "templates/review-comment.md": 460,
@@ -67,7 +72,15 @@ const BUDGETS: Record<string, number> = {
 const LIGHT_OWNER_READS = ["SKILL.md", "roles/owner.md", "reference/shell.md", "reference/formats.md", "levels/light.md"];
 const LIGHT_OWNER_BUDGET = 3_000;
 
+/** What a Shape owner reads before its first command: the same pages, with shape.md as its level page. */
+const SHAPE_OWNER_READS = ["SKILL.md", "roles/owner.md", "reference/shell.md", "reference/formats.md", "levels/shape.md"];
+
 describe("word budgets", () => {
+  it(`keep what a Shape owner reads first within ${LIGHT_OWNER_BUDGET} words`, () => {
+    const total = SHAPE_OWNER_READS.reduce((sum, page) => sum + words(page), 0);
+    expect(total).toBeLessThanOrEqual(LIGHT_OWNER_BUDGET);
+  });
+
   it("give every page of the skill a budget", () => {
     expect(pages().sort()).toEqual(Object.keys(BUDGETS).sort());
   });

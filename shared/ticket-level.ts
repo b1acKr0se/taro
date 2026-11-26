@@ -8,10 +8,21 @@ export type Level = "trivial" | "low" | "medium" | "high";
 
 const LEVELS: readonly Level[] = ["trivial", "low", "medium", "high"];
 
-/** The highest `complexity-` level among the labels; null when the ticket is unrated. */
+/** A Shape ticket (`shape` label) writes a new project's SPEC.md: it builds before any plan and its Accept is the spec approval. */
+export function isShape(labels: readonly string[]): boolean {
+  return labels.includes("shape");
+}
+
+/** A task of an approved SPEC.md (`spec-task` label): approved by the spec, worked as at least medium. */
+export function isSpecTask(labels: readonly string[]): boolean {
+  return labels.includes("spec-task");
+}
+
+/** The highest `complexity-` level among the labels, a spec task floored at medium; null when the ticket is unrated. */
 export function ticketLevel(labels: readonly string[]): Level | null {
   let found: Level | null = null;
   for (const level of LEVELS) if (labels.includes(`complexity-${level}`)) found = level;
+  if (isSpecTask(labels) && (found === null || found === "trivial" || found === "low")) return "medium";
   return found;
 }
 

@@ -22,6 +22,7 @@ const config: ProjectConfig = {
   paseoProjectId: "p1",
   managerAgentId: "",
   managerWorkspaceId: "",
+  start: null,
   repoPath: "/home/you/code/sample-app",
   baseBranch: "develop",
   ticketPrefix: "SA",
@@ -44,7 +45,7 @@ function validNew(overrides: Partial<SetupDraft> = {}): SetupDraft {
 
 describe("draftFrom and settingsFrom", () => {
   it("round-trips an existing project's settings unchanged", () => {
-    const { schemaVersion, project, paseoProjectId, managerAgentId, managerWorkspaceId, ...settings } = config;
+    const { schemaVersion, project, paseoProjectId, managerAgentId, managerWorkspaceId, start, ...settings } = config;
     expect(settingsFrom(draftFrom(config), "claude/opus")).toEqual(settings);
   });
 

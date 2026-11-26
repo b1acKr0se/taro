@@ -51,6 +51,8 @@ approved and `phases/review.md` when the ticket is set Reviewing or its last chi
 `phases/accept.md` only if Accept is handed to you. `taro next <ID>` prints the current step's
 page: run it when unsure, after a compaction, or when a page did not come.
 
+`shape` tickets: `levels/shape.md`; `spec-task`: `levels/spec-task.md`.
+
 **Investigations** (`investigation` label): no code and no PR. Findings go into the ticket (what you
 did, evidence with commands and `file:line`, a recommendation). Check them yourself and record a
 REVIEW ending `verdict: clean`: it brings the delivery page, and you deliver as for any ticket, with recommended next steps in FINAL.
@@ -87,8 +89,8 @@ home and port); stop it and finished subagents promptly (`taro daemon stop <ID>`
   after any compaction, reread this file, the ticket and `taro next <ID>`.
 - When your ticket fixes a defect an earlier ticket shipped, append an **ESCAPE** record to that
   ticket naming the check that should have caught it (`reference/tickets.md`).
-- If you crash, the plugin restarts you in place and says so: check the checkout and rerun what
-  died. After two recoveries in an hour it leaves your card Stalled for the user.
+- If you crash, the plugin restarts you and says so: check the checkout and rerun what died. After
+  two recoveries in an hour your card is Stalled.
 
 ## What the plugin enforces
 

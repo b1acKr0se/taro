@@ -1,2 +1,4 @@
 <!-- Filled into the manager's wake-up for a ticket with no parent that became Done (TR-147), as {{afterDone}} in dependency-cleared.md and ticket-done.md; empty for any other wake-up. Placeholders: merge (the newest ACCEPTANCE record's merge field, or "no ACCEPTANCE record"). -->
 Merge: {{merge}}. Do what your standing orders ask once a ticket is Done (after a merge, for example) before anything else.
+
+A Done `shape` ticket starts its tasks: follow "A brand new project" in your page, `roles/manager.md`.

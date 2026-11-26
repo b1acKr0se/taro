@@ -8,7 +8,7 @@ import { join } from "node:path";
 
 import { parentTicketId } from "../shared/approval-gate";
 import { deliveryGaps } from "../shared/execution";
-import { lacksPlan } from "../shared/no-plan";
+import { planDue } from "../shared/no-plan";
 import { nextStep, STEP_PAGES, type Step, type StepPage, type StepTicket } from "../shared/next-step";
 import { ticketEvidence } from "./evidence";
 import { message, skillDirectory, TEMPLATES, withoutNotes } from "./package-files";
@@ -26,7 +26,7 @@ export async function stepTicket(project: string, ticket: string): Promise<StepT
   const investigation = detail.labels.includes("investigation");
   const gaps = [...(await ticketEvidence(project, detail.id, detail.implementationNotes, detail.labels)).missing];
   if (config !== null && config !== undefined) gaps.push(...deliveryGaps(config, investigation, detail.implementationNotes, detail.finalSummary));
-  if (lacksPlan({ status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length, labels: [] })) {
+  if (planDue({ status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length, labels: detail.labels })) {
     gaps.push("the plan: write it with `taro ticket edit --plan` (templates/plan.md); the Accept card shows it");
   }
   if ((detail.finalSummary ?? "").trim() === "") gaps.push("the FINAL summary, with the move to Awaiting acceptance (templates/final.md)");
@@ -44,6 +44,8 @@ export async function stepTicket(project: string, ticket: string): Promise<StepT
 
 const STEP_TEMPLATES: Record<StepPage, (typeof TEMPLATES)[keyof typeof TEMPLATES]> = {
   [STEP_PAGES.light]: TEMPLATES.stepLevel,
+  [STEP_PAGES.shape]: TEMPLATES.stepShape,
+  [STEP_PAGES.specTask]: TEMPLATES.stepSpecTask,
   [STEP_PAGES.medium]: TEMPLATES.stepLevel,
   [STEP_PAGES.high]: TEMPLATES.stepLevel,
   [STEP_PAGES.build]: TEMPLATES.stepBuild,

@@ -75,6 +75,9 @@ export const TEMPLATES = {
   stepReview: "messages/step-review.md",
   stepDelivery: "messages/step-delivery.md",
   stepAccept: "messages/step-accept.md",
+  stepShape: "messages/step-shape.md",
+  stepSpecTask: "messages/step-spec-task.md",
+  newProject: "messages/new-project.md",
   permissionRules: "permission-rules.md",
 } as const;
 

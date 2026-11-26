@@ -3,7 +3,7 @@
  * the ticket and stops the owner. A trivial or low ticket is exempt (TR-241): its owner may build first and
  * write the plan afterwards, and the acceptance card shows it. Pure.
  */
-import { isLightLevel, ticketLevel } from "./ticket-level.ts";
+import { isLightLevel, isShape, ticketLevel } from "./ticket-level.ts";
 
 /** Statuses after which nobody builds on the ticket any more. */
 const CLOSED: ReadonlySet<string> = new Set(["Done", "Cancelled"]);
@@ -14,11 +14,19 @@ export function mayBuildBeforePlan(labels: readonly string[]): boolean {
 }
 
 /**
- * Whether a ticket still worked on has no plan: then any commit on its owner's branch came first. An
+ * Whether a ticket still worked on has no plan (a Shape ticket never lacks one: it builds first and delivers a SPEC.md): then any commit on its owner's branch came first. An
  * older ticket kept its criteria as a checklist instead (reference/tickets.md), which counts as one.
  */
 export function lacksPlan(ticket: { status: string; plan: string | null; criteria: number; labels: readonly string[] }): boolean {
-  return !CLOSED.has(ticket.status) && !mayBuildBeforePlan(ticket.labels) && (ticket.plan ?? "").trim() === "" && ticket.criteria === 0;
+  return !CLOSED.has(ticket.status) && !mayBuildBeforePlan(ticket.labels) && !isShape(ticket.labels) && (ticket.plan ?? "").trim() === "" && ticket.criteria === 0;
+}
+
+/**
+ * Whether the plan is still due for the Accept card: a light ticket may build first but writes it by delivery,
+ * so only a Shape ticket (its SPEC.md is its record) is let off.
+ */
+export function planDue(ticket: { status: string; plan: string | null; criteria: number; labels: readonly string[] }): boolean {
+  return lacksPlan({ ...ticket, labels: isShape(ticket.labels) ? ["shape"] : [] });
 }
 
 export function noPlanRecord(at: string, commits: number, branch: string, base: string): string {

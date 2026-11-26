@@ -98,6 +98,12 @@ export const ProjectSettingsSchema = z.object({
 });
 export type ProjectSettings = z.infer<typeof ProjectSettingsSchema>;
 
+/** The start question's two answers: a brand new project, or one with work to carry on. */
+export const ProjectStartSchema = z.enum(["new", "existing"]);
+export type ProjectStart = z.infer<typeof ProjectStartSchema>;
+/** The start answer's reason when Brand new found no manager: the one that starts next gets the message. */
+export const NO_MANAGER_RUNNING = "no manager running";
+
 /** `taro.json`: the settings plus what the daemon records about the project. */
 export const ProjectConfigSchema = ProjectSettingsSchema.extend({
   schemaVersion: z.literal(1),
@@ -106,6 +112,8 @@ export const ProjectConfigSchema = ProjectSettingsSchema.extend({
   paseoProjectId: z.string().min(1),
   managerAgentId: z.string().default(""),
   managerWorkspaceId: z.string().default(""),
+  /** What the user answered to "Is this a brand new project?"; null until they choose. */
+  start: ProjectStartSchema.nullable().default(null),
 });
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
 

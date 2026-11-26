@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PaseoApi } from "./host-types";
-import { refuseDecisionWorker, refuseTicketWorker } from "./worker-guard";
+import { refuseDecisionWorker, refuseProjectAgent, refuseTicketWorker } from "./worker-guard";
 
 /** A Paseo whose agents are the given labels by id. */
 function paseoWith(agents: Record<string, Record<string, string>>, failing: readonly string[] = []): PaseoApi {
@@ -53,5 +53,30 @@ describe("refuseDecisionWorker", () => {
     await expect(refuseDecisionWorker(paseo, "plain", decision, "decision answer")).resolves.toBeUndefined();
     await expect(refuseDecisionWorker(paseo, "manager", { agentId: "owner", project: "p", ticket: null }, "decision dismiss")).resolves.toBeUndefined();
     await expect(refuseDecisionWorker(paseo, "manager", { agentId: "manager", project: "p", ticket: null }, "decision dismiss")).rejects.toThrow();
+  });
+});
+
+describe("refuseProjectAgent", () => {
+  const withOther = paseoWith({ manager: labels(null, "manager"), owner: labels("TR-7"), elsewhere: labels("TR-1", "owner", "q"), kid: { "paseo.parent-agent-id": "owner" }, plain: {} });
+
+  it("refuses the project's own agents, its manager too", async () => {
+    for (const caller of ["manager", "owner"]) {
+      await expect(refuseProjectAgent(withOther, caller, "p", "taro project start-new")).rejects.toThrow("project's own agents");
+    }
+  });
+
+  it("refuses an unlabelled child whose parent is one of the project's agents", async () => {
+    await expect(refuseProjectAgent(withOther, "kid", "p", "taro project start-new")).rejects.toThrow("project's own agents");
+  });
+
+  it("lets another project's agent, an unlabelled or unknown agent and a button through", async () => {
+    for (const caller of ["elsewhere", "plain", "gone", undefined]) {
+      await expect(refuseProjectAgent(withOther, caller, "p", "taro project start-new")).resolves.toBeUndefined();
+    }
+  });
+
+  it("refuses when the caller cannot be looked up", async () => {
+    const failing = paseoWith({ owner: labels("TR-7") }, ["owner"]);
+    await expect(refuseProjectAgent(failing, "owner", "p", "taro project start-new")).rejects.toThrow("could not check");
   });
 });

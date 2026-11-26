@@ -69,6 +69,34 @@ export async function updateProjectConfig(project: string, patch: Partial<Projec
   });
 }
 
+/**
+ * `updateProjectConfig` when `refusal` finds nothing wrong with the config as read under its lock:
+ * `refusal` answers null to go ahead, or the reason to refuse, thrown without writing.
+ */
+export async function updateProjectConfigIf(
+  project: string,
+  refusal: (current: ProjectConfig) => Promise<string | null>,
+  patch: Partial<ProjectConfig>,
+): Promise<ProjectConfig> {
+  const paths = await projectPaths(project);
+  return serialized(paths.config, async () => {
+    const current = await requireProjectConfig(project);
+    const reason = await refusal(current);
+    if (reason !== null) throw new Error(reason);
+    return writeProjectConfig({ ...current, ...patch, project: current.project });
+  });
+}
+
+/** Whether the tracker holds any ticket file (`tickets/<ID>.md`); a tracker without the folder holds none. */
+export async function trackerHasTickets(trackerPath: string): Promise<boolean> {
+  try {
+    return (await readdir(join(trackerPath, "tickets"))).some((name) => /^[^.].*\.md$/.test(name));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
 /** Every project with a readable `taro.json`, by name. A broken one is skipped and logged. */
 export async function listProjectConfigs(): Promise<ProjectConfig[]> {
   const root = await projectsDirectory();

@@ -259,3 +259,32 @@ describe("a reopened round", () => {
     expect(stepKey("SH-12", first)).not.toBe(stepKey("SH-12", second));
   });
 });
+
+describe("shape and spec-task tickets", () => {
+  it("shape ticket gets the shape page unrated and rated high", () => {
+    expect(nextStep(ticket({ labels: ["shape"] }))?.page).toBe("levels/shape.md");
+    expect(nextStep(ticket({ labels: ["shape", "complexity-high"] }))?.page).toBe("levels/shape.md");
+    expect(nextStep(ticket({ labels: ["shape", "investigation"] }))?.page).toBe("levels/shape.md");
+    expect(nextStep(ticket({ labels: ["complexity-low"] }))?.page).toBe("levels/light.md");
+  });
+
+  it("a shape ticket with a clean review gets the delivery page", () => {
+    expect(nextStep(ticket({ labels: ["shape"], status: "Reviewing", notes: notes(EXECUTION, REVIEW_CLEAN) }))?.page).toBe("phases/delivery.md");
+  });
+
+  it("task page while planning, build page once In Progress", () => {
+    expect(nextStep(ticket({ labels: ["spec-task"], status: "Planning" }))?.page).toBe("levels/spec-task.md");
+    expect(nextStep(ticket({ labels: ["spec-task", "complexity-low"], status: "Queued" }))?.page).toBe("levels/spec-task.md");
+    expect(nextStep(ticket({ labels: ["spec-task"], status: "Planning", notes: notes(EXECUTION, APPROVAL) }))?.page).toBe("levels/spec-task.md");
+    expect(nextStep(ticket({ labels: ["spec-task"], status: "Queued", notes: notes(EXECUTION, APPROVAL) }))?.page).toBe("levels/spec-task.md");
+    expect(nextStep(ticket({ labels: ["spec-task"], status: "In Progress", notes: notes(EXECUTION, APPROVAL) }))?.page).toBe("phases/build.md");
+  });
+
+  it("shape step lead names no rating", async () => {
+    const { stepText } = await import("../server/next-step");
+    const step = nextStep(ticket({ labels: ["shape"] }))!;
+    const text = await stepText(step);
+    expect(text).toContain("Shape ticket");
+    expect(text.slice(0, text.indexOf("# Shape tickets"))).not.toMatch(/complexity|rated/i);
+  });
+});

@@ -113,6 +113,8 @@ export function onboardProject(paseo: PaseoApi, input: OnboardInput): Promise<{ 
       paseoProjectId,
       managerAgentId: existing?.managerAgentId ?? "",
       managerWorkspaceId: existing?.managerWorkspaceId ?? "",
+      // Adding again repairs a project; it never asks the start question a second time.
+      start: existing?.start ?? null,
     });
 
     if (!input.startManager) return { config, managerAgentId: null };
