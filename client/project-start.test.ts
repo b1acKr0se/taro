@@ -35,4 +35,9 @@ describe("the start question", () => {
     // No manager ran: the pane's pending line says it, and the manager that starts gets the message.
     expect(startNotice("new", { told: false, reason: "no manager running", message: TOLD_AT_START })).toBeNull();
   });
+
+  it("the waiting line says what was chosen, as the question is gone from the pane", () => {
+    expect(TOLD_AT_START).toMatch(/^Brand new project: /);
+    expect(TOLD_AT_START).not.toMatch(/\bthis\b/i);
+  });
 });

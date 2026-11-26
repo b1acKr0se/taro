@@ -8,7 +8,7 @@ import type { PhoneTab } from "./back-steps";
 export const START_TITLE = "Is this a brand new project?";
 export const START_SUBTITLE = "This repository has no files yet.";
 /** Shown over the no-manager line once Brand new was chosen while no manager ran. */
-export const TOLD_AT_START = "The manager will get this when it starts.";
+export const TOLD_AT_START = "Brand new project: the manager starts asking about it as soon as it runs.";
 
 export interface StartChoice {
   choice: ProjectStart;
