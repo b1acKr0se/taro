@@ -1578,6 +1578,13 @@ describe("Supervisor.onTurnEnded reminds about missing evidence", () => {
     expect(reminders()).toHaveLength(1);
   });
 
+  it("shape delivery has no plan gap", async () => {
+    vi.mocked(viewTicket).mockResolvedValue({ status: "Awaiting acceptance", labels: ["shape", "complexity-low"], implementationPlan: null, acceptanceCriteria: [], implementationNotes: recordWith("check: grep foo — 2 hits") } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+    await turn();
+    expect(reminders()).toHaveLength(1);
+    expect(reminders()[0]).not.toContain("the plan");
+  });
+
   it("sends once per distinct missing set, again after it changes, and again after a complete one clears it", async () => {
     ticket("Awaiting acceptance", null);
     await turn();
@@ -2075,6 +2082,14 @@ describe("Supervisor.onTurnEnded waiting for acceptance too early", () => {
     await end();
     await end();
     expect(told()).toHaveLength(3);
+  });
+
+  it("shape owner is not asked for a plan", async () => {
+    vi.mocked(viewTicket).mockResolvedValue({ status: "Planning", implementationPlan: null, acceptanceCriteria: [], implementationNotes: null, labels: ["shape"], finalSummary: null } as unknown as Awaited<ReturnType<typeof viewTicket>>);
+    await supervisor().onTurnEnded(ending("waiting: user's accept"), hookAgent, completed, null, undefined);
+    expect(told()).toHaveLength(1);
+    expect(told()[0]).not.toContain("the plan");
+    expect(told()[0]).toContain("EVIDENCE record");
   });
 
   it("stays quiet when delivered, and starts over after another ending", async () => {

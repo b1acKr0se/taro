@@ -17,7 +17,7 @@ import { remindsAtCount, waitsPrematurely } from "../shared/premature-wait";
 import { ACCEPT_STALL_LIMIT, acceptHandoffOpen, acceptStallReason } from "../shared/accept-stall";
 import { pullRequestUrl } from "../shared/execution";
 import { runCommand } from "./process";
-import { lacksPlan, mayBuildBeforePlan, noPlanRecord } from "../shared/no-plan";
+import { mayBuildBeforePlan, noPlanRecord, planDue } from "../shared/no-plan";
 import { approvalGate, buildGap, gateRecord, noApprovalRecord, parentTicketId, workApproved, type BuildGap } from "../shared/approval-gate";
 import { asPlanningQuestion, asStored, planningTicket } from "../shared/planning-questions";
 import type { DrainTrigger } from "../shared/chat-queue";
@@ -528,7 +528,7 @@ export class Supervisor {
       if (detail.status === "Awaiting acceptance") {
         missing = (await ticketEvidence(identity.project, identity.ticket, detail.implementationNotes, detail.labels)).missing;
         // A trivial or low owner may build first (TR-241), but the Accept card shows its plan: it is due at delivery.
-        if (mayBuildBeforePlan(detail.labels) && lacksPlan({ status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length, labels: [] })) {
+        if (mayBuildBeforePlan(detail.labels) && planDue({ status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length, labels: detail.labels })) {
           missing = [...missing, "the plan: write it with `taro ticket edit --plan` (what you did and why, following the plan template); the Accept card shows it"];
         }
       }
@@ -596,7 +596,7 @@ export class Supervisor {
         ticketStatus = detail.status;
         premature = waitsPrematurely(status, detail.status);
         if (premature) {
-          if (lacksPlan({ status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length, labels: [] })) {
+          if (planDue({ status: detail.status, plan: detail.implementationPlan, criteria: detail.acceptanceCriteria.length, labels: detail.labels })) {
             missing.push("the plan: write it with `taro ticket edit --plan` and get the user's approval where the ticket needs it");
           }
           missing = [...missing, ...(await ticketEvidence(identity.project, identity.ticket, detail.implementationNotes, detail.labels)).missing];

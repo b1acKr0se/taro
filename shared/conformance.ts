@@ -8,7 +8,7 @@
 import { planAnswerRecords } from "./approval-gate.ts";
 import { reopenRound } from "./reopen.ts";
 import { parseTicket } from "./ticket-format.ts";
-import { isInvestigation, isLightLevel, ticketLevel } from "./ticket-level.ts";
+import { isInvestigation, isLightLevel, isShape, ticketLevel } from "./ticket-level.ts";
 
 export interface ConformanceViolation {
   kind: string;
@@ -179,7 +179,7 @@ export function conformanceViolations(ticketText: string, options: ConformanceOp
 
   // A reopened round or an investigation is worked as low whatever the ticket was rated: no plan up
   // front and no approval is asked (buildGap, the light page).
-  const asLow = reopenRound(ticket.notes) > 1 || isInvestigation(ticket.labels);
+  const asLow = reopenRound(ticket.notes) > 1 || isInvestigation(ticket.labels) || isShape(ticket.labels);
   if (startedBuilding && !trivial && !asLow && ticket.plan.trim() === "") {
     found.push({ kind: "no-plan", detail: `${ticket.status} with no plan` });
   } else if (ticket.plan.trim() !== "" && !trivial) {

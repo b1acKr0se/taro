@@ -12,7 +12,7 @@
  */
 import { lacksPlan, mayBuildBeforePlan } from "./no-plan.ts";
 import { reopenRound, roundNotes } from "./reopen.ts";
-import { isInvestigation } from "./ticket-level.ts";
+import { isInvestigation, isShape } from "./ticket-level.ts";
 
 /** The preset id of an owner's scope approval (`skill/reference/formats.md`). */
 export const SCOPE_APPROVAL = "scope-approval";
@@ -90,7 +90,7 @@ export type BuildGap = "no-plan" | "no-approval";
  * and so may a reopened round or an investigation, worked as low whatever the ticket was rated (`shared/next-step.ts`).
  */
 export function buildGap(ticket: { status: string; plan: string | null; criteria: number; labels: readonly string[]; notes: string | null; parentNotes?: string | null }): BuildGap | null {
-  if (CLOSED.has(ticket.status) || mayBuildBeforePlan(ticket.labels) || reopenRound(ticket.notes) > 1 || isInvestigation(ticket.labels)) return null;
+  if (CLOSED.has(ticket.status) || mayBuildBeforePlan(ticket.labels) || reopenRound(ticket.notes) > 1 || isInvestigation(ticket.labels) || isShape(ticket.labels)) return null;
   if (lacksPlan(ticket)) return "no-plan";
   return workApproved(ticket.notes, ticket.parentNotes ?? null) ? null : "no-approval";
 }

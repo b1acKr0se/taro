@@ -16,12 +16,14 @@ import { planAnswerRecords, workApproved } from "./approval-gate";
 import { executionBranch, roundRecords, wholeRoundRecords } from "./execution";
 import { isPlanReview } from "./plan-lint";
 import { reopenRound, roundBranch } from "./reopen";
-import { isInvestigation, isLightLevel, type Level, ticketLevel } from "./ticket-level";
+import { isInvestigation, isLightLevel, isShape, isSpecTask, type Level, ticketLevel } from "./ticket-level";
 
 export { type Level, ticketLevel } from "./ticket-level";
 
 export const STEP_PAGES = {
   light: "levels/light.md",
+  shape: "levels/shape.md",
+  specTask: "levels/spec-task.md",
   medium: "levels/medium.md",
   high: "levels/high.md",
   build: "phases/build.md",
@@ -136,19 +138,22 @@ export function nextStep(ticket: StepTicket): Step | null {
 
 function pickStep(ticket: StepTicket): Step | null {
   if (FINISHED.has(ticket.status)) return null;
+  const shape = isShape(ticket.labels);
   const rated: Level | null = ticketLevel(ticket.labels);
-  if (rated === null) return null;
+  if (rated === null && !shape) return null;
   const round = reopenRound(ticket.notes);
   const reopened = round > 1;
   const asLow = reopened || isInvestigation(ticket.labels);
-  const level: Level = asLow ? "low" : rated;
-  const worked = reopened ? `${rated}, and this reopened round is worked as low` : rated === level ? rated : `${rated}, and as an investigation it is worked as low`;
+  const level: Level = asLow || rated === null ? "low" : rated;
+  const worked = rated === null ? "none: a Shape ticket is not rated" : reopened ? `${rated}, and this reopened round is worked as low` : rated === level ? rated : `${rated}, and as an investigation it is worked as low`;
   const facts = { ticket: ticket.id, level: worked, round: String(round) };
   if (ticket.status === "Awaiting acceptance") {
     if (acceptHandoffOpen(ticket.notes)) return { page: STEP_PAGES.accept, facts };
     return ticket.deliveryGaps.length === 0 ? null : { page: STEP_PAGES.delivery, facts: { ...facts, missing: gapsFact(ticket.deliveryGaps) } };
   }
   if (reviewClean(ticket.notes)) return { page: STEP_PAGES.delivery, facts: { ...facts, missing: gapsFact(ticket.deliveryGaps) } };
+  // A Shape ticket builds and delivers its SPEC.md with no plan card, approval or review of its own plan.
+  if (shape) return { page: STEP_PAGES.shape, facts };
   const light = isLightLevel(level);
   if (!light && (ticket.status === "Reviewing" || everyChildDone(ticket.children))) {
     const branch = executionBranch(ticket.notes) ?? roundBranch(ticket.id, round);
@@ -157,6 +162,7 @@ function pickStep(ticket: StepTicket): Step | null {
   if (!light && workApproved(ticket.notes, ticket.parentNotes ?? null)) {
     return { page: STEP_PAGES.build, facts: { ...facts, children: childrenFact(ticket.children) } };
   }
+  if (isSpecTask(ticket.labels) && !asLow) return { page: STEP_PAGES.specTask, facts };
   return { page: light ? STEP_PAGES.light : level === "medium" ? STEP_PAGES.medium : STEP_PAGES.high, facts };
 }
 

@@ -187,6 +187,14 @@ describe("conformanceViolations", () => {
   });
 
   // TR-263: the plan approval is a gate; after it the owner decides and asks only with a surprise.
+  it("shape and task are conformant", () => {
+    const transitions = [{ to: "Planning", at: "2026-01-05T10:01Z" }, { to: "In Progress", at: "2026-01-05T10:02Z" }, { to: "Awaiting acceptance", at: "2026-01-05T10:50Z" }];
+    const noApproval = NOTES.replace(/APPROVAL.*\n\n/, "");
+    expect(kinds(ticket({ status: "In Progress", plan: "", labels: '"shape", "complexity-low"', notes: noApproval, finalSummary: "" }), { transitions })).toEqual([]);
+    expect(kinds(ticket({ status: "In Progress", plan: "", labels: '"shape"', notes: noApproval, finalSummary: "" }))).toEqual([]);
+    expect(kinds(ticket({ labels: '"spec-task", "complexity-medium"' }), { transitions: [{ to: "Planning", at: "2026-01-05T10:01Z" }, { to: "In Progress", at: "2026-01-05T10:06Z" }] })).toEqual([]);
+  });
+
   describe("the approval gate", () => {
     const approve = 'ANSWER 2026-01-05T10:05Z — scope-approval: "Approve the plan for AB-001?" → Approve ("Approve the plan for AB-001") (the user, from the Taro screen)';
     const cardNotes = NOTES.replace(/APPROVAL.*\n\n/, `${approve}\n\n`);
