@@ -61,7 +61,7 @@ and `Cancelled`. Trivial and low tasks go from Planning straight to In Progress 
 
 ## Labels
 
-`investigation` (findings, no PR), `complexity-trivial|low|medium|high` (set by the owner).
+`investigation` (findings, no PR), `complexity-trivial|low|medium|high` (set by the owner), `shape` (writes a new project's `SPEC.md`), `spec-task` (one task of it).
 
 ## Records
 
@@ -76,7 +76,9 @@ rather than exceed it.
 - **DISPATCH-INTENT** (manager, before launching): ticket, unique token, intended branch.
 - **EXECUTION**: owner agent id, owner model, workspace id, machine (`hostname`), worktree path, branch, base
   SHA; later the subagents and `review-head: <sha>`, written by `taro agent start` and `taro deliver`.
-- **APPROVAL**: the user's exact words, time, and what they approved (the plan).
+- **APPROVAL**: the user's exact words, time, and what they approved (the plan); the manager writes
+  `by spec: the user accepted <shape id> (<sha>)` for a `spec-task`.
+- **SPEC-AMENDED**: the `SPEC.md` line changed and why, with the same edit in the PR.
 - **MILESTONE**: one line of at most about 150 characters: what happened and what's next, e.g.
   `MILESTONE 2026-10-13T14:02Z — Picker built (6cdd38a), checks green; next: review`. Before a long
   command: its log path and expected duration. Detail belongs in commits and the other records.

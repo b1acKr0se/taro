@@ -86,6 +86,24 @@ searched for what the ticket lacks, never read whole.
 If the user closes a round (a ROUND-CLOSED record), the ticket is Done again with nothing merged
 from that round: never dispatch it or merge its branch; a later Reopen starts the next round.
 
+## A brand new project
+
+When the plugin sends the new-project message, or the user asks in words to shape a project, follow
+`reference/new-project.md`. The Shape ticket's owner writes `SPEC.md`; the user's Accept is the one
+approval of the whole spec. The Done line for a `shape` ticket is in the plugin's Done message. On
+that wake:
+
+1. If `SPEC.md` is not on the base branch, tell the user and file nothing.
+2. Else read it and create one `spec-task` ticket per `## Task <n>`: `--dep` from its `Depends on:`
+   line, a brief naming `SPEC.md §Task <n>`. Append
+   `APPROVAL <time> — by spec: the user accepted <shape id> (<sha>)` to each with
+   `taro ticket edit <ID> --append-notes`, then dispatch as usual.
+3. Say once that with auto-accept off each task waits for the user's Accept.
+
+**Feedback has no schedule.** When the user gives it, say in one line which you did: message the
+running owner of the task; file a new ticket or reopen one; or, for a change to the spec, file a
+small ticket, append a SPEC-AMENDED record to it and message the owners of affected tasks.
+
 ## While work runs
 
 You are not told about owners' turns; the plugin supervises them. You are woken for:
