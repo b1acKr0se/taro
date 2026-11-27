@@ -22,6 +22,12 @@ describe("boardColumn", () => {
     expect(boardColumn({ ...base, agent: { status: "idle", pendingPermissions: 0 }, parked: true })).toBe("parked");
   });
 
+  it("places a delivery parked while awaiting acceptance in Parked with its idle owner, and in Needs you once resumed", () => {
+    const awaiting = { ...base, status: "Awaiting acceptance" };
+    for (const status of ["idle", "closed"]) expect(boardColumn({ ...awaiting, agent: { status, pendingPermissions: 0 }, parked: true })).toBe("parked");
+    expect(boardColumn({ ...awaiting, agent: { status: "idle", pendingPermissions: 0 } })).toBe("needs-you");
+  });
+
   it("queues a ticket resumed with no free slot: it starts next, so it is not parked (TR-088)", () => {
     for (const status of ["Planning", "In Progress", "Reviewing"]) {
       expect(boardColumn({ ...base, status, agent: null, queuedToResume: true })).toBe("queued");
