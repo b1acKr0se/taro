@@ -380,15 +380,17 @@ export function ProjectBoard({
             <View key={id} style={[styles.panel, { width: columnWidth }, loud && counts[id] > 0 ? { borderColor: withAlpha(color, 0.5) } : null]}>
               <View style={styles.columnHead}>
                 <Icon name={meta.icon} size={16} color={color} />
-                <Text style={[styles.columnTitle, { color: meta.tone === "muted" ? colors.foreground : color }]}>{COLUMN_TITLES[id]}</Text>
+                <Text style={[styles.columnTitle, { color: meta.tone === "muted" ? colors.foreground : color }]} numberOfLines={1}>
+                  {COLUMN_TITLES[id]}
+                </Text>
                 <Text style={styles.count}>{counts[id]}</Text>
                 {/* A narrow empty column has room for its title and count only. */}
-                {columnWidth < MIN_COLUMN_WIDTH ? null : (
+                {columnWidth < MIN_COLUMN_WIDTH || (id === "needs-you" && hiddenItems.length > 0 && columnWidth < HIDDEN_HINT_WIDTH) ? null : (
                   <Text style={styles.hint} numberOfLines={1}>
                     {meta.hint}
                   </Text>
                 )}
-                {id === "needs-you" ? <HiddenButton theme={theme} count={hiddenItems.length} onPress={() => setHiddenOpen(true)} /> : null}
+                {id === "needs-you" ? <HiddenButton theme={theme} count={hiddenItems.length} short={columnWidth < HIDDEN_WORDS_WIDTH} onPress={() => setHiddenOpen(true)} /> : null}
               </View>
               {columnCards(id, group)}
             </View>
@@ -400,6 +402,11 @@ export function ProjectBoard({
     </>
   );
 }
+
+/** The narrowest column that has room for "Hidden · N" in words beside Needs you's title and count. */
+const HIDDEN_WORDS_WIDTH = 300;
+/** And the narrowest that also keeps the "your move" hint beside them. */
+const HIDDEN_HINT_WIDTH = 360;
 
 /** A ticket's card on the board, drawn again only when its ticket, stats or selection changed (TR-069). */
 const BoardCard = memo(function BoardCard({ card, onOpenCard, onHideCard, ...rest }: Omit<Parameters<typeof TicketCard>[0], "onOpen" | "onHide"> & { onOpenCard: (card: Card) => void; onHideCard: ((card: Card) => void) | undefined }) {

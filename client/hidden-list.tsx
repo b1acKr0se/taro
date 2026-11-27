@@ -32,8 +32,8 @@ export function HideButton({ theme, label, onPress }: { theme: PluginTheme; labe
   );
 }
 
-/** "Hidden · N" at Needs you's head; nothing while nothing is hidden. */
-export function HiddenButton({ theme, count, onPress }: { theme: PluginTheme; count: number; onPress: () => void }) {
+/** "Hidden · N" at Needs you's head; nothing while nothing is hidden. `short` is the icon and the count, for a column with no room for the words. */
+export function HiddenButton({ theme, count, onPress, short = false }: { theme: PluginTheme; count: number; onPress: () => void; short?: boolean }) {
   const { colors } = theme;
   const control = useMemo(() => controlColors(colors), [colors]);
   if (count === 0) return null;
@@ -45,7 +45,7 @@ export function HiddenButton({ theme, count, onPress }: { theme: PluginTheme; co
       onPress={onPress}
     >
       <Icon name="EyeOff" size={14} color={colors.foreground} />
-      <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "500" }}>Hidden · {count}</Text>
+      <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.caption, lineHeight: labelLineHeightFor(FONT_SIZE.caption), fontWeight: "500" }}>{short ? count : `Hidden · ${count}`}</Text>
     </Pressable>
   );
 }

@@ -151,11 +151,6 @@ export function TicketCard({
         {card.parent === null ? "" : `  ↳ ${card.parent}`}
       </Text>
       <PhaseBadge theme={theme} status={phaseOf(card)} />
-      {onHide === undefined ? null : (
-        <View style={{ marginLeft: "auto" }}>
-          <HideButton theme={theme} label={`Hide ${card.id} for now`} onPress={onHide} />
-        </View>
-      )}
     </View>
   );
   // One PR mark on every card: a Done card's sits on its stats line, any other card's ends its footer. Its icon
@@ -350,7 +345,15 @@ export function TicketCard({
   const whole = (
     <Pressable accessibilityRole="button" onPress={onOpen} style={styles.card}>
       {head}
-      <Text style={styles.title}>{card.title}</Text>
+      {onHide === undefined ? (
+        <Text style={styles.title}>{card.title}</Text>
+      ) : (
+        // Hide sits beside the title, where a narrow column leaves it room; the head above wraps its badge.
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm }}>
+          <Text style={[styles.title, { flex: 1, minWidth: 0 }]}>{card.title}</Text>
+          <HideButton theme={theme} label={`Hide ${card.id} for now`} onPress={onHide} />
+        </View>
+      )}
       {nowLine === null ? null : nowRow(nowLine)}
       {card.children.length === 0 ? null : (
         <View style={{ gap: SPACE.xs }}>
