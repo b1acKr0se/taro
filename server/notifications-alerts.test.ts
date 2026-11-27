@@ -21,7 +21,6 @@ vi.mock("./board", () => ({
       managerDecisions: [],
       ticketQuestions: 0,
       managerPermission: null,
-      hidden: [],
       suggestions: [],
       headroom: null,
       alerts: [...boardAlerts, ...queueAlerts],

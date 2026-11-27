@@ -12,15 +12,11 @@ import {
   chooseProjectStart,
   closeRound,
   dismissManagerQuestion,
-  hideManagerQuestion,
-  hideTicket,
   pauseTicket,
   relaunchOwner,
   reopenTicket,
   requestChanges,
   resumeTicket,
-  unhideManagerQuestion,
-  unhideTicket,
 } from "../shared/contracts";
 import { main } from "./taro-cli.ts";
 
@@ -103,10 +99,6 @@ describe("every button has a command that calls the same RPC with an input its c
     [["ticket", "close-round", "TR-7"], closeRound, { project: "notes-app", ticket: "TR-7" }],
     [["ticket", "pause", "TR-7"], pauseTicket, { project: "notes-app", ticket: "TR-7" }],
     [["ticket", "resume", "TR-7"], resumeTicket, { project: "notes-app", ticket: "TR-7" }],
-    [["ticket", "hide", "TR-7"], hideTicket, { project: "notes-app", ticket: "TR-7" }],
-    [["ticket", "unhide", "TR-7"], unhideTicket, { project: "notes-app", ticket: "TR-7" }],
-    [["decision", "hide", "q1"], hideManagerQuestion, { project: "notes-app", key: "q1" }],
-    [["decision", "unhide", "q1"], unhideManagerQuestion, { project: "notes-app", key: "q1" }],
     [["ticket", "relaunch-owner", "TR-7"], relaunchOwner, { project: "notes-app", ticket: "TR-7" }],
     [["decision", "answer", "q1", "--label", "Approve"], answerDecision, { key: "q1", label: "Approve", text: "" }],
     [["decision", "answer", "q1", "--text", "per trade"], answerDecision, { key: "q1", label: null, text: "per trade" }],
@@ -196,10 +188,6 @@ describe("inside an agent session", () => {
       ["ticket", "close-round", "TR-7"],
       ["decision", "answer", "q1", "--label", "Approve"],
       ["decision", "dismiss", "q1"],
-      ["ticket", "hide", "TR-7"],
-      ["ticket", "unhide", "TR-7"],
-      ["decision", "hide", "q1"],
-      ["decision", "unhide", "q1"],
       ["project", "start-new"],
       ["project", "start-existing"],
     ];
@@ -211,7 +199,7 @@ describe("inside an agent session", () => {
 
   it("is accepted by every user-only contract, and by each button's input without it", () => {
     const base = { project: "p", ticket: "TR-7", key: "q1", label: null, text: "x", note: "x", choice: "new" };
-    for (const contract of [acceptTicket, reopenTicket, requestChanges, changeQueuedSpec, closeRound, answerDecision, dismissManagerQuestion, hideTicket, unhideTicket, hideManagerQuestion, unhideManagerQuestion, chooseProjectStart]) {
+    for (const contract of [acceptTicket, reopenTicket, requestChanges, changeQueuedSpec, closeRound, answerDecision, dismissManagerQuestion, chooseProjectStart]) {
       expect(contract.input.parse({ ...base, caller: "a1" })).toMatchObject({ caller: "a1" });
       expect(contract.input.parse(base)).not.toHaveProperty("caller", expect.anything());
     }

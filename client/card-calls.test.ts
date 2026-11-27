@@ -83,7 +83,6 @@ function card(parts: Partial<Card>): Card {
     pause: null,
     pausable: false,
     queuedWait: null,
-    hideable: false,
     childrenWorking: 0,
     ...parts,
   };

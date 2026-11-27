@@ -9,7 +9,6 @@ import { ActivitySchema } from "./activity";
 import { OutgoingAttachmentsSchema, OutgoingFileSchema, OutgoingImageSchema } from "./attachments";
 import { ChatMessageIdSchema } from "./pending-sends";
 import { ColumnIdSchema } from "./board";
-import { HiddenItemSchema } from "./hidden";
 import { MilestoneSchema } from "./milestones";
 import { PauseViewSchema } from "./pause";
 import { CallTimeSchema } from "./tool-times";
@@ -291,8 +290,6 @@ export const CardSchema = z.object({
   pausable: z.boolean().default(false),
   /** What a Queued ticket waits on: dependencies not yet Done, the manager's HOLD (TR-138), else null. */
   queuedWait: QueuedWaitSchema.nullable().default(null),
-  /** Hide for now is offered (TR-293): in Needs you, and not on a permission ask, which holds a live agent up. */
-  hideable: z.boolean().default(false),
 });
 export type Card = z.infer<typeof CardSchema>;
 
@@ -304,8 +301,6 @@ export const BoardSchema = z.object({
   ticketQuestions: z.number().int().default(0),
   /** The first permission the manager or one of its own subagents (no ticket) waits on (TR-096). */
   managerPermission: AgentAskSchema.nullable().default(null),
-  /** What the user hid from Needs you for now (TR-293), newest first: not among the cards or the counts. */
-  hidden: z.array(HiddenItemSchema).default([]),
   suggestions: z.array(SuggestionSchema),
   /** The host's thread usage, or null where it publishes no limit (TR-012). */
   headroom: HeadroomSchema.nullable(),
@@ -565,11 +560,6 @@ export const dismissManagerQuestion = defineRpc({
   input: z.object({ project: ProjectNameSchema, key: z.string(), caller: CallerSchema }),
   output: Empty,
 });
-/** Hide for now and its way back (TR-293): the card leaves Needs you until Resume or something new for the user; nothing reaches the owner. */
-export const hideTicket = defineRpc({ name: "taro.ticket.hide", input: z.object({ project: ProjectNameSchema, ticket: z.string(), caller: CallerSchema }), output: Empty });
-export const unhideTicket = defineRpc({ name: "taro.ticket.unhide", input: z.object({ project: ProjectNameSchema, ticket: z.string(), caller: CallerSchema }), output: Empty });
-export const hideManagerQuestion = defineRpc({ name: "taro.decision.hide", input: z.object({ project: ProjectNameSchema, key: z.string(), caller: CallerSchema }), output: Empty });
-export const unhideManagerQuestion = defineRpc({ name: "taro.decision.unhide", input: z.object({ project: ProjectNameSchema, key: z.string(), caller: CallerSchema }), output: Empty });
 export const dismissSuggestion = defineRpc({
   name: "taro.suggestions.dismiss",
   input: z.object({ project: ProjectNameSchema, label: z.string(), prompt: z.string() }),

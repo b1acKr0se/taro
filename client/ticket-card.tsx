@@ -19,7 +19,6 @@ import { acceptTicket, nudgeAgent, relaunchOwner, resumeTicket, type Card, type 
 import { pullRequestMark } from "../shared/pull-request-state";
 import { questionsOf } from "../shared/reports";
 import { PhaseBadge } from "./badges";
-import { HideButton } from "./hidden-list";
 import { cardFooterLine, cardNowLine, phaseOf, type NowLine } from "./card-now";
 import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
@@ -46,7 +45,6 @@ export function TicketCard({
   stats = null,
   onOpen,
   onChanged,
-  onHide,
   fill = false,
 }: {
   card: Card;
@@ -58,8 +56,6 @@ export function TicketCard({
   stats?: StatsSummary | null;
   onOpen: () => void;
   onChanged: () => void;
-  /** Sets the card aside from Needs you for now (TR-293); the board gives it to a card that may be hidden. */
-  onHide?: (() => void) | undefined;
   /** Grows to its grid row's height, so cards side by side line up (TR-105). */
   fill?: boolean;
 }) {
@@ -345,15 +341,7 @@ export function TicketCard({
   const whole = (
     <Pressable accessibilityRole="button" onPress={onOpen} style={styles.card}>
       {head}
-      {onHide === undefined ? (
-        <Text style={styles.title}>{card.title}</Text>
-      ) : (
-        // Hide sits beside the title, where a narrow column leaves it room; the head above wraps its badge.
-        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: SPACE.sm }}>
-          <Text style={[styles.title, { flex: 1, minWidth: 0 }]}>{card.title}</Text>
-          <HideButton theme={theme} label={`Hide ${card.id} for now`} onPress={onHide} />
-        </View>
-      )}
+      <Text style={styles.title}>{card.title}</Text>
       {nowLine === null ? null : nowRow(nowLine)}
       {card.children.length === 0 ? null : (
         <View style={{ gap: SPACE.xs }}>
