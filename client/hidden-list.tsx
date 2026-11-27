@@ -51,7 +51,7 @@ export function HiddenButton({ theme, count, onPress, short = false }: { theme: 
 }
 
 /** The hidden items, each with when it was hidden and Resume; closes itself once the last one is back. */
-export function HiddenSheet({ project, items, open, onOpenChange, onChanged, theme }: { project: string; items: readonly HiddenItem[]; open: boolean; onOpenChange: (open: boolean) => void; onChanged: () => void; theme: PluginTheme }) {
+export function HiddenSheet({ project, items, open, onOpenChange, onChanged, onOpenTicket, theme }: { project: string; items: readonly HiddenItem[]; open: boolean; onOpenChange: (open: boolean) => void; onChanged: () => void; onOpenTicket: (ticket: string) => void; theme: PluginTheme }) {
   const { colors } = theme;
   const toast = useToast();
   const resumeTicket = useRpc(unhideTicket);
@@ -78,13 +78,23 @@ export function HiddenSheet({ project, items, open, onOpenChange, onChanged, the
           const key = `${item.kind}:${item.id}`;
           return (
             <View key={key} style={{ flexDirection: "row", alignItems: "center", gap: SPACE.md, borderTopWidth: 1, borderColor: colors.border, paddingTop: SPACE.md }}>
-              <View style={{ flex: 1, minWidth: 0, gap: SPACE.xxs }}>
+              <Pressable
+                accessibilityRole={item.kind === "ticket" ? "button" : undefined}
+                accessibilityLabel={item.kind === "ticket" ? `Open ${item.id}` : undefined}
+                disabled={item.kind !== "ticket"}
+                style={{ flex: 1, minWidth: 0, gap: SPACE.xxs }}
+                onPress={() => {
+                  // The ticket stays hidden: opening it only looks.
+                  onOpenChange(false);
+                  onOpenTicket(item.id);
+                }}
+              >
                 <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption, fontWeight: "600" }}>{item.kind === "ticket" ? item.id : "The manager"}</Text>
                 <Text style={{ color: colors.foreground, fontSize: FONT_SIZE.body, fontWeight: "600", lineHeight: lineHeightFor(FONT_SIZE.body) }} numberOfLines={2}>
                   {item.title}
                 </Text>
                 <Text style={{ color: colors.foregroundMuted, fontSize: FONT_SIZE.caption }}>Hidden {relativeTime(item.at)}</Text>
-              </View>
+              </Pressable>
               <IconButton icon="Eye" label="Resume" accessibilityLabel={`Resume ${item.kind === "ticket" ? item.id : item.title}`} showLabel theme={theme} disabled={pending !== null} state={pending === key ? "busy" : undefined} onPress={() => resume(item)} />
             </View>
           );

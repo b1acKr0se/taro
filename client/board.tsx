@@ -314,7 +314,7 @@ export function ProjectBoard({
 
   // The list cannot outlive its items: forget that it was open, or it opens by itself at the next hide.
   if (hiddenOpen && !listStaysOpen(hiddenOpen, hiddenItems.length)) setHiddenOpen(false);
-  const hiddenSheet = <HiddenSheet project={project} items={hiddenItems} open={listStaysOpen(hiddenOpen, hiddenItems.length)} onOpenChange={setHiddenOpen} onChanged={changed} theme={theme} />;
+  const hiddenSheet = <HiddenSheet project={project} items={hiddenItems} open={listStaysOpen(hiddenOpen, hiddenItems.length)} onOpenChange={setHiddenOpen} onChanged={changed} onOpenTicket={(ticket) => onOpenTicket({ id: ticket })} theme={theme} />;
 
   if (board.error !== null && board.data === undefined) return <Text style={styles.error}>{errorText(board.error)}</Text>;
 
