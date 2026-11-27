@@ -28,6 +28,10 @@ const QUEUED_TO_RESUME = "queued to resume";
 
 const QUEUED_STATUS = TICKET_STATUSES[0];
 
+/** What a park of a ticket awaiting acceptance says: no handoff, its owner and PR untouched; Resume lifts it. */
+const WHILE_AWAITING = "while awaiting acceptance";
+const AWAITING_STATUS = "Awaiting acceptance";
+
 export interface PausedHold {
   /** The HOLD record's time as written, or null when it has none. */
   at: string | null;
@@ -35,6 +39,8 @@ export interface PausedHold {
   withoutHandoff: boolean;
   /** Parked while Queued with no owner: nothing to hand off, and Resume returns it to the queue. */
   notStarted: boolean;
+  /** Parked while Awaiting acceptance: nothing stopped, and Resume brings the Accept card back. */
+  awaiting?: boolean;
 }
 
 /** Whether a HOLD's reason is the user's park, in its current or its pre-TR-166 words. */
@@ -58,7 +64,30 @@ export function pausedHold(notes: string | null): PausedHold | null {
   if (reason === null || !isParkReason(reason)) return null;
   const record = lastHoldOrRelease(notes) ?? "";
   const notStarted = reason.toLowerCase().includes(BEFORE_IT_STARTED);
-  return { at: recordTime(record), withoutHandoff: !notStarted && /\bno handoff\b/i.test(reason), notStarted };
+  const awaiting = reason.toLowerCase().includes(WHILE_AWAITING);
+  return { at: recordTime(record), withoutHandoff: !notStarted && !awaiting && /\bno handoff\b/i.test(reason), notStarted, ...(awaiting ? { awaiting } : {}) };
+}
+
+/**
+ * Whether a park of a ticket awaiting acceptance is in force: the park is in force and no
+ * CHANGES-REQUESTED or DELIVERY-ENDED record follows it, so a ticket reworked and delivered again
+ * shows its Accept card instead of a park from the earlier delivery.
+ */
+export function parkedWhileAwaiting(notes: string | null): boolean {
+  if (pausedHold(notes)?.awaiting !== true) return false;
+  const records = roundRecords(notes);
+  const hold = records.map((record, index) => (/^HOLD\b/.test(record) ? index : -1)).filter((index) => index !== -1).pop() ?? -1;
+  return !records.slice(hold + 1).some((record) => /^(?:CHANGES-REQUESTED|DELIVERY-ENDED)\b/.test(record));
+}
+
+/** The HOLD that parks a ticket awaiting acceptance at once: its owner and PR stay as they are. */
+export function parkedAwaitingHoldText(at: string): string {
+  return `HOLD ${at} — ${PARKED_REASON} ${WHILE_AWAITING}: Resume brings the Accept card back`;
+}
+
+/** The RELEASE that Resume appends to a ticket parked while awaiting acceptance. */
+export function unparkedAwaitingReleaseText(at: string): string {
+  return `RELEASE ${at} — resumed by the user: the Accept card is back`;
 }
 
 /**
@@ -187,11 +216,9 @@ export interface PauseTicket {
 /** Why Park is refused for this ticket, in words for the user, or null when it may be parked; a Queued one may (TR-166). */
 export function pauseRefusal(ticket: PauseTicket, merging: boolean): string | null {
   if (ticket.parentTaskId !== null) return `${ticket.id} is a child: park its parent ${ticket.parentTaskId} instead.`;
-  if (ticket.status === "Awaiting acceptance") {
-    return merging ? `${ticket.id} is merging: wait for it to finish.` : `${ticket.id} is awaiting your acceptance: accept it or request changes instead.`;
-  }
+  if (ticket.status === AWAITING_STATUS && merging) return `${ticket.id} is merging: wait for it to finish.`;
   if (ticket.status === "Done" || ticket.status === "Cancelled") return `${ticket.id} is ${ticket.status}: there is nothing to park.`;
-  if (pausedHold(ticket.notes) !== null) return `${ticket.id} is already parked.`;
+  if (ticket.status === AWAITING_STATUS ? parkedWhileAwaiting(ticket.notes) : pausedHold(ticket.notes) !== null) return `${ticket.id} is already parked.`;
   if (pauseRequestedAt(ticket.notes) !== null) return `${ticket.id} is already being parked: its owner is writing a handoff.`;
   return null;
 }
@@ -224,8 +251,10 @@ export function parksBeforeStart(status: string, ownerAlive: boolean): boolean {
 
 /** Why Resume is refused, in words for the user, or null when it may resume. */
 export function resumeRefusal(ticket: PauseTicket, merging: boolean, ownerAlive: boolean): string | null {
-  if (ticket.status === "Awaiting acceptance") {
-    return merging ? `${ticket.id} is merging: wait for it to finish.` : `${ticket.id} is awaiting your acceptance: accept it or request changes instead.`;
+  if (ticket.status === AWAITING_STATUS) {
+    if (merging) return `${ticket.id} is merging: wait for it to finish.`;
+    // Its owner stays alive and idle while parked, so a live owner is no sign of a park that was not Taro's.
+    return parkedWhileAwaiting(ticket.notes) ? null : `${ticket.id} is not parked.`;
   }
   if (pausedHold(ticket.notes) === null) return queuedToResume(ticket.notes) ? `${ticket.id} is already queued to resume.` : `${ticket.id} is not parked.`;
   if (ownerAlive) return `${ticket.id} still has a live owner: it was not parked by Taro.`;
@@ -255,11 +284,17 @@ export const PauseViewSchema = z.object({
   withoutHandoff: z.boolean(),
   /** Parked while Queued, before any owner (TR-166): Resume returns it to the queue. */
   notStarted: z.boolean().default(false),
+  /** Parked while Awaiting acceptance: Resume brings the Accept card back. */
+  awaiting: z.boolean().optional(),
 });
 export type PauseView = z.infer<typeof PauseViewSchema>;
 
 /** What the card and the ticket view say about a pause; a live owner means it was started again (or never paused by Taro). */
-export function pauseView(notes: string | null, ownerAlive: boolean): PauseView | null {
+export function pauseView(notes: string | null, ownerAlive: boolean, status: string | null = null): PauseView | null {
+  // Awaiting acceptance is parked with its owner left idle and alive: only the records say whether the park holds.
+  if (status === AWAITING_STATUS) {
+    return parkedWhileAwaiting(notes) ? { state: "paused", since: pausedHold(notes)?.at ?? null, withoutHandoff: false, notStarted: false, awaiting: true } : null;
+  }
   const requested = pauseRequestedAt(notes);
   if (requested !== null) return { state: "pausing", since: requested, withoutHandoff: false, notStarted: false };
   if (ownerAlive) return null;

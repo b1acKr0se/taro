@@ -97,6 +97,11 @@ function entries(cards: Card[], managerDecisions: StoredDecision[] = []): NeedsY
 }
 
 describe("needsYouEntries", () => {
+  it("announces nothing for a delivery parked while awaiting acceptance", () => {
+    const pause = { state: "paused" as const, since: null, withoutHandoff: false, notStarted: false, awaiting: true };
+    expect(entries([card({ status: "Awaiting acceptance", column: "parked", pause })])).toEqual([]);
+  });
+
   it("announces a delivery ready to accept with its first sentence, opening the owner", () => {
     expect(entries([card({ status: "Awaiting acceptance", column: "needs-you", delivered: "Drafts sync across devices." })])).toEqual([
       { key: "while-waiting:NA-027:accept", title: "NA-027 is ready to accept", body: "Drafts sync across devices.", agentId: "agent-1", workspaceId: "workspace-1" },

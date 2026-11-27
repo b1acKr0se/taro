@@ -61,6 +61,7 @@ function cardEntries(card: Card): NeedsYouEntry[] {
   // The owner's open question holds Accept back (TR-146): announced instead of the delivery, whatever its flag.
   const holding = card.status === "Awaiting acceptance" && card.accepted === null ? questionHoldingAccept(card.decisions) : null;
   const episode = (): NeedsYouEntry[] => {
+    if (card.pause?.state === "paused" && card.pause.awaiting === true) return [];
     if (card.status === "Awaiting acceptance" && card.accepted === null) {
       // Accepted and not merged (TR-109): the reason is what to act on before accepting again.
       if (card.notMerged !== null)

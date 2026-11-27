@@ -407,6 +407,7 @@ describe("park lines (TR-088, TR-166)", () => {
 
   it("says parked, with or without a handoff or before it started, and queued to resume", () => {
     const paused = (withoutHandoff: boolean) => cardNowLine(card({ column: "parked", owner: null, pause: { state: "paused", since: "2026-01-01T11:00:00Z", withoutHandoff, notStarted: false } }), NOW);
+    expect(cardNowLine(card({ column: "parked", pause: { state: "paused", since: "2026-01-01T11:00Z", withoutHandoff: false, notStarted: false, awaiting: true } }), NOW)).toMatchObject({ detail: "1h ago · Resume brings the Accept card back" });
     expect(paused(false)).toEqual({ kind: "pause", state: "paused", headline: "Parked by you", detail: "1h ago · resumes from its handoff" });
     expect(paused(true)?.detail).toBe("1h ago · no handoff: resumes from the latest milestone");
     const unstarted = cardNowLine(card({ column: "parked", owner: null, pause: { state: "paused", since: "2026-01-01T11:00:00Z", withoutHandoff: false, notStarted: true } }), NOW);

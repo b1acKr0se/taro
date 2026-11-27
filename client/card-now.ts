@@ -220,6 +220,7 @@ function pauseLines(pause: PauseView, now: number): Lines {
 
 /** What Resume does for a parked ticket: back to the queue when it never started (TR-166), else a fresh owner from what the owner left. */
 function resumesFrom(pause: PauseView): string {
+  if (pause.awaiting === true) return "Resume brings the Accept card back";
   if (pause.notStarted) return "not started: Resume puts it back in Queued";
   return pause.withoutHandoff ? "no handoff: resumes from the latest milestone" : "resumes from its handoff";
 }

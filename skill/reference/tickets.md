@@ -93,7 +93,8 @@ rather than exceed it.
   held at once, "before it started") and Resume (a fresh owner starts in the same worktree, at once or,
   as "queued to resume", when a slot frees; a ticket parked before it started goes "back in the
   queue" instead, or gets the manager's HOLD from before the park again). A parked owner is told so
-  by a message.
+  by a message. A ticket Awaiting acceptance is parked at once, "while awaiting acceptance": no
+  handoff, its owner and PR untouched, and Accept and Request changes are off until Resume.
 - **SCOPE-CHANGE**: written by the plugin when the user presses Change spec… on a Queued ticket
   with no owner, with their words; the manager then rewrites the Description to match.
 - **QUEUE-WAKE**, **QUEUE-ALERT**, **QUEUE-RESTART**: written by the plugin as it wakes the manager
