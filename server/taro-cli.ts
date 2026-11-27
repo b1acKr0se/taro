@@ -557,9 +557,13 @@ const ACTIONS: Record<string, Action> = {
   "ticket close-round": { method: "taro.ticket.close-round", userOnly: true, subject: "ticket" },
   "ticket pause": { method: "taro.ticket.pause", userOnly: false, subject: "ticket" },
   "ticket resume": { method: "taro.ticket.resume", userOnly: false, subject: "ticket" },
+  "ticket hide": { method: "taro.ticket.hide", userOnly: true, subject: "ticket" },
+  "ticket unhide": { method: "taro.ticket.unhide", userOnly: true, subject: "ticket" },
   "ticket relaunch-owner": { method: "taro.owner.relaunch", userOnly: false, subject: "ticket" },
   "decision answer": { method: "taro.decision.answer", userOnly: true, subject: "decision", words: "text", label: true },
   "decision dismiss": { method: "taro.decision.dismiss", userOnly: true, subject: "decision" },
+  "decision hide": { method: "taro.decision.hide", userOnly: true, subject: "decision" },
+  "decision unhide": { method: "taro.decision.unhide", userOnly: true, subject: "decision" },
   "project start-new": { method: "taro.project.start", userOnly: true, subject: "project", fixed: { choice: "new" } },
   "project start-existing": { method: "taro.project.start", userOnly: true, subject: "project", fixed: { choice: "existing" } },
 };

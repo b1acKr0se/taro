@@ -15,6 +15,7 @@ import { isExternalHostTicket } from "../shared/external-host";
 import { acceptedRecord, deliveryMissing, executionMachine, notMergedRecord, pullRequestMerged, pullRequestUrl, type AcceptedRecord, type NotMergedRecord } from "../shared/execution";
 import type { Board, BoardPaging, Card, EvidenceView, TicketDetailView } from "../shared/contracts";
 import { latestMilestone, type Milestone } from "../shared/milestones";
+import { hiddenKey, QUESTION_FINGERPRINT, stillHides, ticketFingerprint, type HiddenEntry, type HiddenItem } from "../shared/hidden";
 import { deliveredLine, firstAsk } from "../shared/needs-you";
 import { dependsOn } from "../shared/owner-cap";
 import { pastTicketAgents } from "../shared/past-agents";
@@ -34,6 +35,7 @@ import type { TrackerAgent, TrackerCard } from "../shared/tracker-cards";
 import { currentSuggestions, parseSuggestions, suggestionKey, withoutFixedActions } from "../shared/suggestions";
 import { isMidTurn, projectAgents, projectArchivedAgents } from "./agents";
 import { statePath } from "./data-dir";
+import { dropHidden, readHidden } from "./hidden";
 import { liveListEntry, recordLiveList } from "./live-list";
 import { judgeTicketEvidence, ticketEvidence, ticketMockups } from "./evidence";
 import { readHeadroom } from "./headroom";
@@ -208,7 +210,7 @@ function groupByTicket(agents: readonly PaseoAgent[]): Map<string, PaseoAgent[]>
 async function readBoard(paseo: PaseoApi, state: PluginState, project: string, paging: BoardPaging): Promise<Board> {
   const paths = await projectPaths(project);
   // Live agents come from their own list, so a long archive can never push a live owner past its page limit.
-  const [tickets, problems, agents, archived, decisions, agentStates, headroom] = await Promise.all([
+  const [tickets, problems, agents, archived, decisions, agentStates, headroom, storedHidden] = await Promise.all([
     listTickets(paths.tracker),
     ticketProblems(paths.tracker),
     projectAgents(paseo, project),
@@ -216,6 +218,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
     state.allDecisions(),
     state.allAgents(),
     readHeadroom(),
+    readHidden(project),
   ]);
 
   // An owner Paseo freed after an idle hour stays its ticket's owner on the board: Accept and the chat reach it, and a message loads it.
@@ -277,15 +280,49 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         externalHost: isExternalHostTicket(ticket),
         restingOwner: owner?.status === "closed",
       });
+      // Hide for now (TR-293) is offered on a ticket in Needs you that waits on no permission, and holds while this fingerprint does.
+      const fingerprint =
+        column === "needs-you" && firstAsk(askers) === null
+          ? ticketFingerprint({ status: ticket.status, questionKeys: waitingOnUser(ticketDecisions).map((decision) => decision.key), lastState: ownLine ? ownerState?.lastStatus?.state ?? null : null })
+          : null;
       const working = childrenWorking((childrenOf.get(ticket.id) ?? []).map((child) => child.id), liveSubagents);
-      return { id: ticket.id, updatedAt: ticket.updatedAt, column, ticket, owner, liveSubagents, working, askers, ownLine, ownerState, ticketDecisions, trackerDecisions, facts, accepted, elsewhere, pausing };
+      return { id: ticket.id, updatedAt: ticket.updatedAt, column, fingerprint, ticket, owner, liveSubagents, working, askers, ownLine, ownerState, ticketDecisions, trackerDecisions, facts, accepted, elsewhere, pausing };
     }),
   );
-  const page = pageColumns(placed, paging.limits, paging.include);
+  // What the user hid stays out of the column, the counts and the cards while it waits on what it did; the rest of the entries are forgotten.
+  const hiding = new Map(storedHidden.map((entry) => [entry.key, entry]));
+  const stale = new Map(storedHidden.map((entry) => [entry.key, entry]));
+  const hiddenItems: HiddenItem[] = [];
+  const hiddenTickets = new Set<string>();
+  const hidesTicket = (entry: { id: string; fingerprint: string | null }): boolean => {
+    const stored = hiding.get(hiddenKey("ticket", entry.id));
+    return stored !== undefined && entry.fingerprint !== null && stillHides(stored, entry.fingerprint);
+  };
+  for (const entry of placed) {
+    if (!hidesTicket(entry)) continue;
+    const stored = hiding.get(hiddenKey("ticket", entry.id)) as HiddenEntry;
+    stale.delete(stored.key);
+    hiddenTickets.add(entry.id);
+    hiddenItems.push({ kind: "ticket", id: entry.id, title: entry.ticket.title, at: stored.at });
+  }
+  const managerQuestions = openDecisions.filter((decision) => decision.ticket === null);
+  const shownQuestions = managerQuestions.filter((decision) => {
+    const stored = hiding.get(hiddenKey("question", decision.key));
+    if (stored === undefined || !stillHides(stored, QUESTION_FINGERPRINT)) return true;
+    stale.delete(stored.key);
+    hiddenItems.push({ kind: "question", id: decision.key, title: decision.question, at: stored.at });
+    return false;
+  });
+  await dropHidden(project, [...stale.values()]).catch((error: unknown) => console.warn(`[taro] could not forget ${project}'s stale hidden items: ${error instanceof Error ? error.message : String(error)}`));
+  const page = pageColumns(
+    placed.filter((entry) => !hiddenTickets.has(entry.id)),
+    paging.limits,
+    paging.include,
+  );
   const queue = page.kept.some((entry) => entry.column === "queued") ? await queueRecount(project, paths.tracker, tickets, agents, headroom) : null;
 
   const cards: Card[] = await Promise.all(
-    page.kept.map(async ({ ticket, column, owner, liveSubagents, working, askers, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere, pausing }) => {
+    page.kept.map(async ({ ticket, column, fingerprint, owner, liveSubagents, working, askers, ownLine, ownerState, ticketDecisions, facts, accepted, elsewhere, pausing }) => {
       const subagents = liveSubagents.flatMap((agent) => {
         const role = roleFromLabel(agent.labels[TARO_LABELS.role]);
         return role !== null && isSubagentRole(role) ? [{ ...agentBrief(agent), role }] : [];
@@ -355,6 +392,7 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
         pause: pausing.pause,
         pausable: pausing.pausable,
         queuedWait: waits,
+        hideable: fingerprint !== null,
       };
     }),
   );
@@ -365,8 +403,9 @@ async function readBoard(paseo: PaseoApi, state: PluginState, project: string, p
   return {
     project,
     cards,
-    managerDecisions: openDecisions.filter((decision) => decision.ticket === null),
-    ticketQuestions: waitingOnUser(withTrackerCards(openDecisions.filter((decision) => decision.ticket !== null), placed.flatMap((entry) => entry.trackerDecisions))).length,
+    managerDecisions: shownQuestions,
+    hidden: hiddenItems.sort((left, right) => right.at.localeCompare(left.at)),
+    ticketQuestions: waitingOnUser(withTrackerCards(openDecisions.filter((decision) => decision.ticket !== null && !hiddenTickets.has(decision.ticket)), placed.filter((entry) => !hiddenTickets.has(entry.id)).flatMap((entry) => entry.trackerDecisions))).length,
     managerPermission: firstAsk(managerAskers(agents)),
     suggestions: await readSuggestions(project, tickets),
     headroom,

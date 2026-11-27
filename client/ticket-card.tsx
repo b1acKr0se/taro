@@ -19,6 +19,7 @@ import { acceptTicket, nudgeAgent, relaunchOwner, resumeTicket, type Card, type 
 import { pullRequestMark } from "../shared/pull-request-state";
 import { questionsOf } from "../shared/reports";
 import { PhaseBadge } from "./badges";
+import { HideButton } from "./hidden-list";
 import { cardFooterLine, cardNowLine, phaseOf, type NowLine } from "./card-now";
 import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
@@ -45,6 +46,7 @@ export function TicketCard({
   stats = null,
   onOpen,
   onChanged,
+  onHide,
   fill = false,
 }: {
   card: Card;
@@ -56,6 +58,8 @@ export function TicketCard({
   stats?: StatsSummary | null;
   onOpen: () => void;
   onChanged: () => void;
+  /** Sets the card aside from Needs you for now (TR-293); the board gives it to a card that may be hidden. */
+  onHide?: (() => void) | undefined;
   /** Grows to its grid row's height, so cards side by side line up (TR-105). */
   fill?: boolean;
 }) {
@@ -147,6 +151,11 @@ export function TicketCard({
         {card.parent === null ? "" : `  ↳ ${card.parent}`}
       </Text>
       <PhaseBadge theme={theme} status={phaseOf(card)} />
+      {onHide === undefined ? null : (
+        <View style={{ marginLeft: "auto" }}>
+          <HideButton theme={theme} label={`Hide ${card.id} for now`} onPress={onHide} />
+        </View>
+      )}
     </View>
   );
   // One PR mark on every card: a Done card's sits on its stats line, any other card's ends its footer. Its icon
