@@ -58,26 +58,27 @@ function lastHoldOrRelease(notes: string | null): string | null {
   return records[records.length - 1] ?? null;
 }
 
-/** The pause in force: the newest HOLD or RELEASE record is a HOLD paused by the user. */
+/**
+ * The pause in force: the newest HOLD or RELEASE record is a HOLD paused by the user. A park made
+ * while awaiting acceptance ends with its delivery: a CHANGES-REQUESTED or DELIVERY-ENDED record after
+ * it means the ticket went back to work, so a ticket delivered again shows its Accept card, not that park.
+ */
 export function pausedHold(notes: string | null): PausedHold | null {
   const reason = holdReason(notes);
   if (reason === null || !isParkReason(reason)) return null;
   const record = lastHoldOrRelease(notes) ?? "";
   const notStarted = reason.toLowerCase().includes(BEFORE_IT_STARTED);
   const awaiting = reason.toLowerCase().includes(WHILE_AWAITING);
+  if (awaiting) {
+    const records = roundRecords(notes);
+    if (records.slice(records.lastIndexOf(record) + 1).some((later) => /^(?:CHANGES-REQUESTED|DELIVERY-ENDED)\b/.test(later))) return null;
+  }
   return { at: recordTime(record), withoutHandoff: !notStarted && !awaiting && /\bno handoff\b/i.test(reason), notStarted, ...(awaiting ? { awaiting } : {}) };
 }
 
-/**
- * Whether a park of a ticket awaiting acceptance is in force: the park is in force and no
- * CHANGES-REQUESTED or DELIVERY-ENDED record follows it, so a ticket reworked and delivered again
- * shows its Accept card instead of a park from the earlier delivery.
- */
+/** Whether a park of a ticket awaiting acceptance is in force (see `pausedHold`). */
 export function parkedWhileAwaiting(notes: string | null): boolean {
-  if (pausedHold(notes)?.awaiting !== true) return false;
-  const records = roundRecords(notes);
-  const hold = records.map((record, index) => (/^HOLD\b/.test(record) ? index : -1)).filter((index) => index !== -1).pop() ?? -1;
-  return !records.slice(hold + 1).some((record) => /^(?:CHANGES-REQUESTED|DELIVERY-ENDED)\b/.test(record));
+  return pausedHold(notes)?.awaiting === true;
 }
 
 /** The HOLD that parks a ticket awaiting acceptance at once: its owner and PR stay as they are. */

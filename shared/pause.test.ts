@@ -193,6 +193,16 @@ describe("resumeRefusal", () => {
     expect(resumeRefusal({ ...parked, notes: notes(parked.notes, unparkedAwaitingReleaseText("2026-01-05T11:00Z")) }, false, false)).toBe("NA-1 is not parked.");
   });
 
+  it("ends a park made while awaiting acceptance once the delivery ends, for every reader of the park", () => {
+    const parked = notes(EXECUTION, parkedAwaitingHoldText("2026-01-05T10:04Z"));
+    const ended = notes(parked, "DELIVERY-ENDED 2026-01-05T11:00Z — asked");
+    expect(pausedHold(ended)).toBeNull();
+    expect(pauseView(ended, false, "In Progress")).toBeNull();
+    expect(pauseRefusal({ id: "NA-1", status: "In Progress", parentTaskId: null, notes: ended }, false)).toBeNull();
+    expect(resumeRefusal({ id: "NA-1", status: "In Progress", parentTaskId: null, notes: ended }, false, false)).toBe("NA-1 is not parked.");
+    expect(pausedHold(notes(ended, parkedAwaitingHoldText("2026-01-05T12:00Z")))).toMatchObject({ awaiting: true });
+  });
+
   it("shows a park while awaiting acceptance whatever its owner does, until the delivery is reworked", () => {
     const parked = notes(EXECUTION, parkedAwaitingHoldText("2026-01-05T10:04Z"));
     expect(pauseView(parked, true, "Awaiting acceptance")).toEqual({ state: "paused", since: "2026-01-05T10:04Z", withoutHandoff: false, notStarted: false, awaiting: true });
