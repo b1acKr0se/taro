@@ -1,7 +1,7 @@
 // TR-293: an item stays hidden only while what it waits on is what it was when hidden.
 import { describe, expect, it } from "vitest";
 
-import { hiddenKey, stillHides, ticketFingerprint } from "./hidden";
+import { hiddenKey, listStaysOpen, stillHides, ticketFingerprint } from "./hidden";
 
 describe("ticketFingerprint", () => {
   const base = { status: "Blocked", questionKeys: ["a:one"], lastState: "blocked" };
@@ -28,5 +28,13 @@ describe("stillHides", () => {
   it("keys a ticket and a question apart", () => {
     expect(hiddenKey("ticket", "TR-1")).toBe("ticket:TR-1");
     expect(hiddenKey("question", "a:b")).toBe("question:a:b");
+  });
+});
+
+describe("listStaysOpen", () => {
+  it("closes for good once the last item is gone, so it does not reopen when another is hidden", () => {
+    expect(listStaysOpen(true, 2)).toBe(true);
+    expect(listStaysOpen(true, 0)).toBe(false);
+    expect(listStaysOpen(false, 3)).toBe(false);
   });
 });

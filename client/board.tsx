@@ -13,6 +13,7 @@ import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { memo, useMemo, useRef, useState } from "react";
 import { ScrollView, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 
+import { listStaysOpen } from "../shared/hidden";
 import { BOARD_COLUMNS, boardCounts, COLUMN_IDS, COLUMN_META, COLUMN_TITLES, emptyTotals, isPagedColumn, needsYouExtras, type BoardColumn, type ColumnId, type PagedColumn } from "../shared/board";
 import { dismissManagerQuestion, hideManagerQuestion, hideTicket, type Card, type ProjectSummary } from "../shared/contracts";
 import { AlertCard } from "./alert-card";
@@ -311,7 +312,9 @@ export function ProjectBoard({
       </View>
     );
 
-  const hiddenSheet = <HiddenSheet project={project} items={hiddenItems} open={hiddenOpen && hiddenItems.length > 0} onOpenChange={setHiddenOpen} onChanged={changed} theme={theme} />;
+  // The list cannot outlive its items: forget that it was open, or it opens by itself at the next hide.
+  if (hiddenOpen && !listStaysOpen(hiddenOpen, hiddenItems.length)) setHiddenOpen(false);
+  const hiddenSheet = <HiddenSheet project={project} items={hiddenItems} open={listStaysOpen(hiddenOpen, hiddenItems.length)} onOpenChange={setHiddenOpen} onChanged={changed} theme={theme} />;
 
   if (board.error !== null && board.data === undefined) return <Text style={styles.error}>{errorText(board.error)}</Text>;
 

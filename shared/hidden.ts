@@ -55,3 +55,8 @@ export function stillHides(entry: HiddenEntry, fingerprint: string): boolean {
 export function hiddenSummary(): string {
   return "Hidden for now. A ticket comes back by itself when it has something new for you.";
 }
+
+/** Whether the Hidden list stays open: it cannot outlive its items, or it would open by itself the next time something is hidden. */
+export function listStaysOpen(open: boolean, hiddenCount: number): boolean {
+  return open && hiddenCount > 0;
+}
