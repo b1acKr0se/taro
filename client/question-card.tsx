@@ -18,7 +18,6 @@ import { Pressable } from "./focus";
 import { OptionChips } from "./option-chips";
 import { SPACE } from "./spacing";
 import { withAlpha } from "./tint";
-import { HideButton } from "./hidden-list";
 import { FONT_SIZE, labelLineHeightFor, lineHeightFor } from "./type-scale";
 import { useNow } from "./use-now";
 
@@ -30,7 +29,6 @@ export function QuestionCard({
   onOpen,
   onAnswered,
   onDismiss,
-  onHide,
   fill = false,
 }: {
   decision: StoredDecision;
@@ -43,8 +41,6 @@ export function QuestionCard({
   onAnswered: () => void;
   /** Takes the card off the board without answering (TR-234); given only to the manager's questions in Needs you. */
   onDismiss?: () => void;
-  /** Sets the card aside from Needs you for now (TR-293); given only to the manager's questions there. */
-  onHide?: () => void;
   /** Grows to its grid row's height, its buttons at the bottom, so cards side by side line up (TR-105). */
   fill?: boolean;
 }) {
@@ -94,7 +90,6 @@ export function QuestionCard({
         <Text style={styles.asker} numberOfLines={1}>
           {asker}
         </Text>
-        {onHide === undefined ? null : <HideButton theme={theme} label={`Hide for now: ${decision.question}`} onPress={onHide} />}
         {onDismiss === undefined ? null : (
           <Pressable
             accessibilityRole="button"
