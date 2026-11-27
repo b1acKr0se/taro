@@ -87,11 +87,11 @@ const USAGE = `Usage:
   taro ticket check [--json]
 The buttons, from a script (they call the running daemon, with the button's own checks; --project or $TARO_PROJECT,
 --home or $PASEO_HOME, --json prints the daemon's answer; \`--note -\` and \`--text -\` read standard input):
-  taro ticket accept|close-round|pause|resume|relaunch-owner <ID>
+  taro ticket accept|close-round|pause|resume|hide|unhide|relaunch-owner <ID>
   taro ticket reopen <ID> --note <text>
   taro ticket request-changes|change-spec <ID> --text <text>
   taro decision answer <key> [--label <option>] [--text <words>]
-  taro decision dismiss <key>
+  taro decision dismiss|hide|unhide <key>
   taro project start-new|start-existing   answer "Is this a brand new project?" for an empty project
   taro stats <ID> | --project <name> [--since <date>] [--json]   a round's time to a result: Planning to first Awaiting acceptance, Needs you before and after approval, plugin corrections
   taro escapes [--all | --limit <n>]   the project's past escapes, newest first (20 by default), for a reviewer to check a change against
@@ -117,7 +117,7 @@ Cards and agents kept in the ticket file, for any session (in Paseo or not; noth
                    (via paseo, as of <when that list changed>); an open card or running agent
                    older than a day reads [stale]; --watch reprints on a change until Ctrl-C; --json prints
                    {tickets:[{id,title,status,cards:[],agents:[]}], paseo:{asOf,cards:[],agents:[]}|null}
-Accept, reopen, request-changes, change-spec, close-round and the decision verbs are the user's: they refuse inside the ticket's own owner and subagents.
+Accept, reopen, request-changes, change-spec, close-round, hide and the decision verbs are the user's: they refuse inside the ticket's own owner and subagents.
 Every command that reads a tracker finds it by --tracker <path>, else --project <name>, else $TARO_TRACKER, else $TARO_PROJECT
 (a project's tracker is $PASEO_HOME/plugin-data/taro/home/projects/<name>/tracker, ~/.paseo when PASEO_HOME is unset).
 -l, --dep and --remove-dep accept comma-separated lists.`;
@@ -557,9 +557,13 @@ const ACTIONS: Record<string, Action> = {
   "ticket close-round": { method: "taro.ticket.close-round", userOnly: true, subject: "ticket" },
   "ticket pause": { method: "taro.ticket.pause", userOnly: false, subject: "ticket" },
   "ticket resume": { method: "taro.ticket.resume", userOnly: false, subject: "ticket" },
+  "ticket hide": { method: "taro.ticket.hide", userOnly: true, subject: "ticket" },
+  "ticket unhide": { method: "taro.ticket.unhide", userOnly: true, subject: "ticket" },
   "ticket relaunch-owner": { method: "taro.owner.relaunch", userOnly: false, subject: "ticket" },
   "decision answer": { method: "taro.decision.answer", userOnly: true, subject: "decision", words: "text", label: true },
   "decision dismiss": { method: "taro.decision.dismiss", userOnly: true, subject: "decision" },
+  "decision hide": { method: "taro.decision.hide", userOnly: true, subject: "decision" },
+  "decision unhide": { method: "taro.decision.unhide", userOnly: true, subject: "decision" },
   "project start-new": { method: "taro.project.start", userOnly: true, subject: "project", fixed: { choice: "new" } },
   "project start-existing": { method: "taro.project.start", userOnly: true, subject: "project", fixed: { choice: "existing" } },
 };

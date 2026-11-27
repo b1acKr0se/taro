@@ -9,6 +9,8 @@ user's own terminal.
     taro ticket request-changes|change-spec <ID> --text <text>
     taro decision answer <key> [--label <option>] [--text <words>]
     taro decision dismiss <key>
+    taro ticket hide|unhide <ID>
+    taro decision hide|unhide <key>
     taro project start-new|start-existing
 
 - `--project <name>` or `$TARO_PROJECT`; the daemon is found through `--home` or `$PASEO_HOME`
@@ -16,7 +18,7 @@ user's own terminal.
 - Exit codes: 0 done, 1 the action refused (its reason on stderr), 2 usage, 4 the daemon is not reachable.
 - `project start-new|start-existing` answer "Is this a brand new project?" for an empty project; they
   refuse every agent of that project.
-- **Accept, reopen, request-changes, change-spec, close-round and the decision verbs are the user's**:
+- **Accept, reopen, request-changes, change-spec, close-round, hide and the decision verbs are the user's**:
   they refuse the ticket's own owner and subagents (exit 1);
   ask the user. Never work around that (`env -u PASEO_AGENT_ID`, a raw RPC). Any other session may run them. Pause, resume and relaunch-owner run anywhere.
 

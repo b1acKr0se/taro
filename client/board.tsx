@@ -9,12 +9,13 @@
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
-import { Icon } from "@getpaseo/plugin/client/react-native";
+import { Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { memo, useMemo, useRef, useState } from "react";
 import { ScrollView, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 
+import { listStaysOpen } from "../shared/hidden";
 import { BOARD_COLUMNS, boardCounts, COLUMN_IDS, COLUMN_META, COLUMN_TITLES, emptyTotals, isPagedColumn, needsYouExtras, type BoardColumn, type ColumnId, type PagedColumn } from "../shared/board";
-import { dismissManagerQuestion, type Card, type ProjectSummary } from "../shared/contracts";
+import { dismissManagerQuestion, hideManagerQuestion, hideTicket, type Card, type ProjectSummary } from "../shared/contracts";
 import { AlertCard } from "./alert-card";
 import { SectionHeading } from "./badges";
 import { useBoard, useLoadMore, useRefreshBoard, useShowLess } from "./board-data";
@@ -23,6 +24,7 @@ import { CentredLabel } from "./centred-label";
 import { controlColors } from "./control-colors";
 import { Pressable } from "./focus";
 import { errorText } from "./format";
+import { HiddenButton, HiddenSheet } from "./hidden-list";
 import { keptObject } from "./kept";
 import { useLatestCallback } from "./latest-callback";
 import { KeyboardScrollView } from "./keyboard";
@@ -69,6 +71,10 @@ export function ProjectBoard({
   const stats = useStats(project);
   const refresh = useRefreshBoard(project);
   const dismiss = useRpc(dismissManagerQuestion);
+  const hideCardCall = useRpc(hideTicket);
+  const hideQuestionCall = useRpc(hideManagerQuestion);
+  const toast = useToast();
+  const [hiddenOpen, setHiddenOpen] = useState(false);
   const loadMore = useLoadMore(project);
   const showLess = useShowLess(project);
   // The board's scroller, how far it is scrolled and where the columns start in it, for Show less (TR-117).
@@ -87,6 +93,9 @@ export function ProjectBoard({
   // Stable, so a card whose ticket did not change is not drawn again on each refresh (TR-069).
   const changed = useLatestCallback(refresh);
   const openCard = useLatestCallback(onOpenTicket);
+  // Hide for now (TR-293): the card leaves Needs you; a failure is told, as nothing else shows it.
+  const hideCard = useLatestCallback((card: Card) => void hideCardCall({ project, ticket: card.id }).then(changed).catch((caught: unknown) => toast.error(errorText(caught))));
+  const hideQuestion = (key: string) => void hideQuestionCall({ project, key }).then(changed).catch((caught: unknown) => toast.error(errorText(caught)));
   const [column, setColumn] = useState<BoardColumn>(phoneColumn.current);
   const [showParked, setShowParked] = useState(parkedOpen[project] === true);
   const toggleParked = () => {
@@ -145,6 +154,7 @@ export function ProjectBoard({
   // The manager's questions lead Needs you, blocking first (TR-045).
   const managerQuestions = useMemo(() => walkOrder(board.data?.managerDecisions ?? []), [board.data]);
   const managerAsk = board.data?.managerPermission ?? null;
+  const hiddenItems = board.data?.hidden ?? [];
   // The manager's own requests are answered in its chat; a subagent of its own has a chat only in Paseo.
   const openManagerAsk = useLatestCallback(() =>
     managerAsk !== null && managerAsk.role !== "manager" && managerAsk.agentId !== null && onOpenAgent !== null ? onOpenAgent(managerAsk.agentId) : onOpenManager(),
@@ -170,6 +180,7 @@ export function ProjectBoard({
         stats={card.column === "done" ? (statsByTicket.get(card.id) ?? null) : null}
         onOpenCard={openCard}
         onChanged={changed}
+        onHideCard={card.column === "needs-you" && card.hideable ? hideCard : undefined}
       />
     );
   }
@@ -182,12 +193,14 @@ export function ProjectBoard({
         ? [
             ...(managerAsk === null ? [] : [<PermissionAskCard key="manager-permission" ask={managerAsk} theme={theme} compact={compact} onOpen={openManagerAsk} />]),
             ...managerQuestions.map((decision) => (
-              <QuestionCard key={decision.key} decision={decision} asker="The manager" theme={theme} compact={compact} onOpen={() => onOpenManager(decision.key)} onAnswered={changed} onDismiss={() => void dismiss({ project, key: decision.key }).then(changed)} />
+              <QuestionCard key={decision.key} decision={decision} asker="The manager" theme={theme} compact={compact} onOpen={() => onOpenManager(decision.key)} onAnswered={changed} onDismiss={() => void dismiss({ project, key: decision.key }).then(changed)} onHide={() => hideQuestion(decision.key)} />
             )),
           ]
         : [];
     const parked = id === "queued" ? parkedSection() : null;
-    if (questions.length === 0 && group.length === 0) return [empty(id, id === "needs-you" && waitingAbove ? "See above" : parked === null ? "Nothing here" : "Nothing queued"), parked];
+    // A phone has no column head: with something hidden, the line carrying Hidden · N leads the list (TR-293).
+    const hiddenLine = id === "needs-you" && compact && hiddenItems.length > 0 ? phoneNeedsYouHead() : null;
+    if (questions.length === 0 && group.length === 0) return [hiddenLine, empty(id, id === "needs-you" && waitingAbove ? "See above" : parked === null ? "Nothing here" : "Nothing queued"), parked];
     const end =
       page !== undefined && (page.remaining > 0 || page.foldable) && isPagedColumn(id) ? (
         <ColumnEnd
@@ -202,7 +215,23 @@ export function ProjectBoard({
           onShowLess={fold}
         />
       ) : null;
-    return [...questions, ...group.map(renderCard), end, parked];
+    return [hiddenLine, ...questions, ...group.map(renderCard), end, parked];
+  }
+
+  /** On a phone, Needs you's head line: its title, count and hint, and Hidden · N at the right. */
+  function phoneNeedsYouHead() {
+    const meta = COLUMN_META["needs-you"];
+    return (
+      <View key="needs-you-head" style={styles.columnHead}>
+        <Icon name={meta.icon} size={16} color={toneColor(theme, meta.tone)} />
+        <Text style={[styles.columnTitle, { color: toneColor(theme, meta.tone) }]}>{COLUMN_TITLES["needs-you"]}</Text>
+        <Text style={styles.count}>{counts["needs-you"]}</Text>
+        <Text style={styles.hint} numberOfLines={1}>
+          {meta.hint}
+        </Text>
+        <HiddenButton theme={theme} count={hiddenItems.length} onPress={() => setHiddenOpen(true)} />
+      </View>
+    );
   }
 
   /** The end of Queued (TR-166): a "Parked · N" head that folds and opens its cards; null with nothing parked. */
@@ -283,6 +312,10 @@ export function ProjectBoard({
       </View>
     );
 
+  // The list cannot outlive its items: forget that it was open, or it opens by itself at the next hide.
+  if (hiddenOpen && !listStaysOpen(hiddenOpen, hiddenItems.length)) setHiddenOpen(false);
+  const hiddenSheet = <HiddenSheet project={project} items={hiddenItems} open={listStaysOpen(hiddenOpen, hiddenItems.length)} onOpenChange={setHiddenOpen} onChanged={changed} onOpenTicket={(ticket) => onOpenTicket({ id: ticket })} theme={theme} />;
+
   if (board.error !== null && board.data === undefined) return <Text style={styles.error}>{errorText(board.error)}</Text>;
 
   if (compact) {
@@ -317,6 +350,7 @@ export function ProjectBoard({
           {top}
           {columnCards(column, shown)}
         </KeyboardScrollView>
+        {hiddenSheet}
       </View>
     );
   }
@@ -328,6 +362,7 @@ export function ProjectBoard({
   );
 
   return (
+    <>
     <ScrollView
       ref={scroller}
       style={styles.root}
@@ -348,14 +383,17 @@ export function ProjectBoard({
             <View key={id} style={[styles.panel, { width: columnWidth }, loud && counts[id] > 0 ? { borderColor: withAlpha(color, 0.5) } : null]}>
               <View style={styles.columnHead}>
                 <Icon name={meta.icon} size={16} color={color} />
-                <Text style={[styles.columnTitle, { color: meta.tone === "muted" ? colors.foreground : color }]}>{COLUMN_TITLES[id]}</Text>
+                <Text style={[styles.columnTitle, { color: meta.tone === "muted" ? colors.foreground : color }]} numberOfLines={1}>
+                  {COLUMN_TITLES[id]}
+                </Text>
                 <Text style={styles.count}>{counts[id]}</Text>
                 {/* A narrow empty column has room for its title and count only. */}
-                {columnWidth < MIN_COLUMN_WIDTH ? null : (
+                {columnWidth < MIN_COLUMN_WIDTH || (id === "needs-you" && hiddenItems.length > 0 && columnWidth < HIDDEN_HINT_WIDTH) ? null : (
                   <Text style={styles.hint} numberOfLines={1}>
                     {meta.hint}
                   </Text>
                 )}
+                {id === "needs-you" ? <HiddenButton theme={theme} count={hiddenItems.length} short={columnWidth < HIDDEN_WORDS_WIDTH} onPress={() => setHiddenOpen(true)} /> : null}
               </View>
               {columnCards(id, group)}
             </View>
@@ -363,12 +401,19 @@ export function ProjectBoard({
         })}
       </ScrollView>
     </ScrollView>
+    {hiddenSheet}
+    </>
   );
 }
 
+/** The narrowest column that has room for "Hidden · N" in words beside Needs you's title and count. */
+const HIDDEN_WORDS_WIDTH = 300;
+/** And the narrowest that also keeps the "your move" hint beside them. */
+const HIDDEN_HINT_WIDTH = 360;
+
 /** A ticket's card on the board, drawn again only when its ticket, stats or selection changed (TR-069). */
-const BoardCard = memo(function BoardCard({ card, onOpenCard, ...rest }: Omit<Parameters<typeof TicketCard>[0], "onOpen"> & { onOpenCard: (card: Card) => void }) {
-  return <TicketCard card={card} onOpen={() => onOpenCard(card)} {...rest} />;
+const BoardCard = memo(function BoardCard({ card, onOpenCard, onHideCard, ...rest }: Omit<Parameters<typeof TicketCard>[0], "onOpen" | "onHide"> & { onOpenCard: (card: Card) => void; onHideCard: ((card: Card) => void) | undefined }) {
+  return <TicketCard card={card} onOpen={() => onOpenCard(card)} onHide={onHideCard === undefined ? undefined : () => onHideCard(card)} {...rest} />;
 });
 
 /** The narrowest Load more or Show less keeps its label on one line beside the other. */

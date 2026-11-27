@@ -11,6 +11,8 @@ import {
   compactAgent,
   dismissManagerQuestion as dismissManagerQuestionRpc,
   dismissSuggestion as dismissSuggestionRpc,
+  hideManagerQuestion,
+  hideTicket as hideTicketRpc,
   dismissQueueAlert,
   findAgentTicket,
   answeredPermissionAsks,
@@ -61,6 +63,8 @@ import {
   restartManager as restartManagerRpc,
   resumeManager as resumeManagerRpc,
   tellManager as tellManagerRpc,
+  unhideManagerQuestion,
+  unhideTicket as unhideTicketRpc,
   writeProjectSettings,
   writeStandingOrders,
   reportTrail,
@@ -79,6 +83,7 @@ import { createCrashTrail } from "./server/crash-trail";
 import { backfillCosts, recordArchivedUsage } from "./server/cost-recording";
 import { decisionsOfAgent } from "./server/agent-decisions";
 import { fetchLiveAgent, isAgentLive } from "./server/agents";
+import { hideQuestion, hideTicket, resumeHidden } from "./server/hide-actions";
 import { dismissSuggestion, findDecision, invalidateBoards, liveOpenDecisions, loadBoard, loadTicketDetail, loadTicketPastPlan } from "./server/board";
 import type { PaseoApi } from "./server/host-types";
 import { Recovery } from "./server/recovery";
@@ -486,6 +491,28 @@ export default function contribute(server: PluginServerContext) {
     await refuseDecisionWorker(paseo, caller, await findDecision(state, key), "decision dismiss");
     await actions.dismissDecision(keep(paseo), key);
     invalidateBoards();
+    return {};
+  });
+  server.handle(hideTicketRpc, async ({ project, ticket, caller }, { paseo }) => {
+    await refuseTicketWorker(paseo, caller, project, ticket, "ticket hide");
+    await requireProjectConfig(project);
+    await hideTicket(keep(paseo), state, project, ticket);
+    return {};
+  });
+  server.handle(unhideTicketRpc, async ({ project, ticket, caller }, { paseo }) => {
+    await refuseTicketWorker(paseo, caller, project, ticket, "ticket unhide");
+    await resumeHidden(project, "ticket", ticket);
+    return {};
+  });
+  server.handle(hideManagerQuestion, async ({ project, key, caller }, { paseo }) => {
+    await refuseDecisionWorker(paseo, caller, await findDecision(state, key), "decision hide");
+    await requireProjectConfig(project);
+    await hideQuestion(state, project, key);
+    return {};
+  });
+  server.handle(unhideManagerQuestion, async ({ project, key, caller }, { paseo }) => {
+    await refuseDecisionWorker(paseo, caller, await findDecision(state, key), "decision unhide");
+    await resumeHidden(project, "question", key);
     return {};
   });
   server.handle(dismissSuggestionRpc, async ({ project, label, prompt }) => {
