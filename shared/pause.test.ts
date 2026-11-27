@@ -6,6 +6,8 @@ import {
   pausedAgainHoldText,
   pausedByTaro,
   pausedHold,
+  parkedAwaitingHoldText,
+  unparkedAwaitingReleaseText,
   pausedHoldText,
   isParkReason,
   parkedUnstartedHoldText,
@@ -150,9 +152,16 @@ describe("pauseRefusal", () => {
     for (const status of ["Queued", "Planning", "Ready", "In Progress", "Reviewing", "Blocked"]) expect(pauseRefusal({ ...ticket, status }, false)).toBeNull();
   });
 
-  it("refuses while awaiting acceptance or merging, with different words", () => {
-    expect(pauseRefusal({ ...ticket, status: "Awaiting acceptance" }, false)).toBe("NA-1 is awaiting your acceptance: accept it or request changes instead.");
+  it("allows a ticket awaiting acceptance, and refuses it while merging", () => {
+    expect(pauseRefusal({ ...ticket, status: "Awaiting acceptance" }, false)).toBeNull();
     expect(pauseRefusal({ ...ticket, status: "Awaiting acceptance" }, true)).toBe("NA-1 is merging: wait for it to finish.");
+  });
+
+  it("refuses a ticket already parked while awaiting acceptance, but not after a rework", () => {
+    const parked = notes(EXECUTION, parkedAwaitingHoldText("2026-01-05T10:04Z"));
+    expect(pauseRefusal({ ...ticket, status: "Awaiting acceptance", notes: parked }, false)).toBe("NA-1 is already parked.");
+    const reworked = notes(parked, "CHANGES-REQUESTED 2026-01-05T11:00:00Z — the user: \"more\"");
+    expect(pauseRefusal({ ...ticket, status: "Awaiting acceptance", notes: reworked }, false)).toBeNull();
   });
 
   it("refuses finished, child, parked and parking tickets", () => {
@@ -176,9 +185,30 @@ describe("resumeRefusal", () => {
     expect(resumeRefusal(paused, false, false)).toBeNull();
   });
 
-  it("refuses while awaiting acceptance or merging", () => {
-    expect(resumeRefusal({ ...paused, status: "Awaiting acceptance" }, false, false)).toContain("awaiting your acceptance");
-    expect(resumeRefusal({ ...paused, status: "Awaiting acceptance" }, true, false)).toBe("NA-1 is merging: wait for it to finish.");
+  it("resumes a park while awaiting acceptance with its owner alive, and refuses merging or no park", () => {
+    const parked = { ...paused, status: "Awaiting acceptance", notes: notes(EXECUTION, parkedAwaitingHoldText("2026-01-05T10:04Z")) };
+    expect(resumeRefusal(parked, false, true)).toBeNull();
+    expect(resumeRefusal(parked, true, false)).toBe("NA-1 is merging: wait for it to finish.");
+    expect(resumeRefusal({ ...parked, notes: EXECUTION }, false, false)).toBe("NA-1 is not parked.");
+    expect(resumeRefusal({ ...parked, notes: notes(parked.notes, unparkedAwaitingReleaseText("2026-01-05T11:00Z")) }, false, false)).toBe("NA-1 is not parked.");
+  });
+
+  it("ends a park made while awaiting acceptance once the delivery ends, for every reader of the park", () => {
+    const parked = notes(EXECUTION, parkedAwaitingHoldText("2026-01-05T10:04Z"));
+    const ended = notes(parked, "DELIVERY-ENDED 2026-01-05T11:00Z — asked");
+    expect(pausedHold(ended)).toBeNull();
+    expect(pauseView(ended, false, "In Progress")).toBeNull();
+    expect(pauseRefusal({ id: "NA-1", status: "In Progress", parentTaskId: null, notes: ended }, false)).toBeNull();
+    expect(resumeRefusal({ id: "NA-1", status: "In Progress", parentTaskId: null, notes: ended }, false, false)).toBe("NA-1 is not parked.");
+    expect(pausedHold(notes(ended, parkedAwaitingHoldText("2026-01-05T12:00Z")))).toMatchObject({ awaiting: true });
+  });
+
+  it("shows a park while awaiting acceptance whatever its owner does, until the delivery is reworked", () => {
+    const parked = notes(EXECUTION, parkedAwaitingHoldText("2026-01-05T10:04Z"));
+    expect(pauseView(parked, true, "Awaiting acceptance")).toEqual({ state: "paused", since: "2026-01-05T10:04Z", withoutHandoff: false, notStarted: false, awaiting: true });
+    expect(pauseView(notes(parked, "DELIVERY-ENDED 2026-01-05T11:00Z — asked"), true, "Awaiting acceptance")).toBeNull();
+    expect(pauseView(notes(parked, unparkedAwaitingReleaseText("2026-01-05T11:00Z")), false, "Awaiting acceptance")).toBeNull();
+    expect(pauseView(parked, true, "In Progress")).toBeNull();
   });
 
   it("allows a Queued ticket parked before it started (TR-166)", () => {

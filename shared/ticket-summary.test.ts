@@ -57,6 +57,11 @@ describe("ticketSummary", () => {
     expect(ticketSummary(EMPTY, [{ id: "naming", question: "Rename it?", blocking: false, agentRole: "owner", status: "open" }]).need).toBe("nothing");
   });
 
+  it("needs nothing from the user while a delivery is parked", () => {
+    const pause = { state: "paused", awaiting: true };
+    expect(ticketSummary({ ...SHORT, status: "Awaiting acceptance", pause }, [])).toMatchObject({ need: "nothing", needText: "Resume when you want it continued" });
+  });
+
   it("asks the owner's open question instead of acceptance while it holds Accept back (TR-146)", () => {
     const tone = { id: "tone", question: "Warm or cool tone?", blocking: false, agentRole: "owner", status: "open" };
     expect(ticketSummary({ ...SHORT, status: "Awaiting acceptance" }, [tone])).toMatchObject({ need: "decision", needText: "Warm or cool tone?" });

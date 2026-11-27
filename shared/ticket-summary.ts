@@ -24,7 +24,7 @@ export interface TicketFacts {
   children: readonly { status: string | null; evidence?: EvidenceCounts | null }[];
   evidence: EvidenceCounts | null;
   /** Paused by the user (TR-088): only their Resume moves it on. */
-  pause?: { state: string } | null;
+  pause?: { state: string; awaiting?: boolean | undefined } | null;
   /** The owner is in a turn (TR-153): a delivery is not offered until it ends. */
   ownerRunning?: boolean;
 }
@@ -61,7 +61,7 @@ export function ticketSummary(ticket: TicketFacts, decisions: readonly OpenDecis
   const first = blocking[0];
   const more = blocking.length > 1 ? ` (+${blocking.length - 1} more)` : "";
   const delivering = stillDelivering(ticket.status, ticket.ownerRunning === true ? "running" : null);
-  const need: TicketSummary["need"] = first !== undefined ? "decision" : ticket.status === "Awaiting acceptance" && !delivering ? "acceptance" : "nothing";
+  const need: TicketSummary["need"] = first !== undefined ? "decision" : ticket.status === "Awaiting acceptance" && !delivering && ticket.pause?.awaiting !== true ? "acceptance" : "nothing";
   const needText =
     first !== undefined
       ? `${first.id === SCOPE_APPROVAL ? "Approve the plan" : first.question}${more}`

@@ -137,6 +137,12 @@ describe("cardCalls", () => {
     expect(cardCalls(asking).map((call) => call.kind)).toEqual(["permission"]);
   });
 
+  it("offers no acceptance while the ticket is parked", () => {
+    const pause = { state: "paused" as const, since: null, withoutHandoff: false, notStarted: false, awaiting: true };
+    expect(offersAcceptance(card({ status: "Awaiting acceptance", pause }))).toBe(false);
+    expect(cardCalls(card({ status: "Awaiting acceptance", pause }))).toEqual([]);
+  });
+
   it("offers acceptance in the chat by the card's own test (TR-153)", () => {
     expect(offersAcceptance(card({ status: "Awaiting acceptance" }))).toBe(true);
     expect(offersAcceptance(card({ status: "Reviewing" }))).toBe(false);

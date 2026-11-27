@@ -408,7 +408,7 @@ function ticketPause(
   if (facts === null || ticket.parentTaskId !== null) return { pause: null, pausable: false };
   const ownerAlive = owner !== null && owner.status !== "closed";
   return {
-    pause: pauseView(facts.notes, ownerAlive),
+    pause: pauseView(facts.notes, ownerAlive, ticket.status),
     pausable: pauseRefusal({ id: ticket.id, status: ticket.status, parentTaskId: ticket.parentTaskId, notes: facts.notes }, facts.accepted !== null) === null,
   };
 }

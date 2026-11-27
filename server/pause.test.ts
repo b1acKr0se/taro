@@ -249,13 +249,29 @@ describe("Pause", () => {
     expect(sendFromPlugin).toHaveBeenCalledWith(paseo, "owner-1", "pause");
   });
 
-  it("is refused while awaiting acceptance or merging, and the owner hears nothing", async () => {
+  it("parks a ticket awaiting acceptance at once, leaving its owner alone, and refuses one that is merging", async () => {
     tickets = [ticket("NA-1", "Awaiting acceptance"), ticket("NA-2", "Awaiting acceptance", `${EXECUTION("NA-2")}\n\nACCEPTED 2026-01-05T10:00:00Z — the user accepted; merging: into main`)];
     live = [agent("owner-1", "NA-1"), agent("owner-2", "NA-2")];
-    await expect(actions.pause(paseo, "notes", "NA-1")).rejects.toThrow("NA-1 is awaiting your acceptance: accept it or request changes instead.");
     await expect(actions.pause(paseo, "notes", "NA-2")).rejects.toThrow("NA-2 is merging: wait for it to finish.");
+    await expect(actions.pause(paseo, "notes", "NA-1")).resolves.toContain("NA-1 is parked");
     expect(sendFromPlugin).not.toHaveBeenCalled();
     expect(find("NA-1").notes).not.toContain("PAUSE-REQUESTED");
+    expect(find("NA-1").notes).toMatch(/\nHOLD \S+ — parked by the user while awaiting acceptance/);
+    await expect(actions.pause(paseo, "notes", "NA-1")).rejects.toThrow("NA-1 is already parked.");
+    await expect(actions.accept(paseo, "notes", "NA-1")).rejects.toThrow("NA-1 is parked: resume it first.");
+    await expect(actions.requestChanges(paseo, "notes", "NA-1", "more")).rejects.toThrow("NA-1 is parked: resume it first.");
+    expect(find("NA-1").status).toBe("Awaiting acceptance");
+  });
+
+  it("resumes a parked ticket awaiting acceptance without starting an owner", async () => {
+    tickets = [ticket("NA-1", "Awaiting acceptance")];
+    live = [agent("owner-1", "NA-1")];
+    await actions.pause(paseo, "notes", "NA-1");
+    const result = await actions.resume(paseo, "notes", "NA-1");
+    expect(result.message).toBe("NA-1 is back in Needs you with its Accept card.");
+    expect(created).toEqual([]);
+    expect(find("NA-1").notes).toMatch(/\nRELEASE \S+ — resumed by the user: the Accept card is back$/);
+    await expect(actions.resume(paseo, "notes", "NA-1")).rejects.toThrow("NA-1 is not parked.");
   });
 });
 
@@ -337,7 +353,7 @@ describe("Resume", () => {
   it("is refused for a ticket not paused or awaiting acceptance", async () => {
     tickets = [ticket("NA-1", "In Progress"), { ...paused("NA-2"), status: "Awaiting acceptance" }];
     await expect(actions.resume(paseo, "notes", "NA-1")).rejects.toThrow("NA-1 is not parked.");
-    await expect(actions.resume(paseo, "notes", "NA-2")).rejects.toThrow("NA-2 is awaiting your acceptance");
+    await expect(actions.resume(paseo, "notes", "NA-2")).rejects.toThrow("NA-2 is not parked.");
     expect(created).toEqual([]);
   });
 });

@@ -45,8 +45,8 @@ export function cardCalls(card: Card): CardCall[] {
  * to press; once accepted, nothing is left to press. An owner question still open is answered first
  * (TR-146), and an owner still in its turn finishes it first (TR-153).
  */
-export function offersAcceptance(card: Pick<Card, "status" | "owner" | "accepted" | "decisions">): boolean {
-  return card.status === "Awaiting acceptance" && card.owner !== null && card.accepted === null && questionHoldingAccept(card.decisions) === null && !stillDelivering(card.status, card.owner.status);
+export function offersAcceptance(card: Pick<Card, "status" | "owner" | "accepted" | "decisions" | "pause">): boolean {
+  return card.status === "Awaiting acceptance" && card.pause?.state !== "paused" && card.owner !== null && card.accepted === null && questionHoldingAccept(card.decisions) === null && !stillDelivering(card.status, card.owner.status);
 }
 
 /** An acceptance's readiness in words. */

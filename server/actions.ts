@@ -24,6 +24,9 @@ import {
   pausedAgainHoldText,
   pausedByTaro,
   pausedHold,
+  parkedWhileAwaiting,
+  parkedAwaitingHoldText,
+  unparkedAwaitingReleaseText,
   pausedHoldText,
   parkedUnstartedHoldText,
   parksBeforeStart,
@@ -306,6 +309,7 @@ export class Actions {
     const config = await requireProjectConfig(project);
     const paths = await projectPaths(project);
     const detail = await viewTicket(paths.tracker, ticket);
+    if (parkedWhileAwaiting(detail.implementationNotes)) throw new Error(`${ticket} is parked: resume it first.`);
     // A ticket worked outside Paseo has no Paseo owner: the user's Accept merges it all the same.
     if (!isExternalHostTicket(detail)) await this.requireOwner(paseo, project, ticket);
     // Nothing happens while the evidence is incomplete.
@@ -429,8 +433,10 @@ export class Actions {
 
   private async sendChanges(paseo: PaseoApi, project: string, ticket: string, text: string): Promise<void> {
     const paths = await projectPaths(project);
+    const detail = await viewTicket(paths.tracker, ticket);
+    if (parkedWhileAwaiting(detail.implementationNotes)) throw new Error(`${ticket} is parked: resume it first.`);
     // Worked outside Paseo: the record is what its session reads; there is no Paseo owner to message.
-    if (!isExternalHostTicket(await viewTicket(paths.tracker, ticket))) {
+    if (!isExternalHostTicket(detail)) {
       const owner = await this.requireOwner(paseo, project, ticket);
       await sendWithoutInterrupting(paseo, owner.id, await message(TEMPLATES.requestChanges, { ticket, text: text.trim() }));
     }
@@ -637,6 +643,11 @@ export class Actions {
       await appendTicketNote(paths.tracker, detail.id, parkedUnstartedHoldText(at));
       return `${detail.id} is parked: it stays out of the queue until you resume it.`;
     }
+    // Awaiting acceptance: nothing to hand off. Its owner stays idle and its PR open, so Resume only lifts the hold.
+    if (detail.status === "Awaiting acceptance") {
+      await appendTicketNote(paths.tracker, detail.id, parkedAwaitingHoldText(at));
+      return `${detail.id} is parked: it leaves Needs you until you resume it, and Resume brings its Accept card back.`;
+    }
     const minutes = PAUSE_HANDOFF_TIMEOUT_MS / 60_000;
     await appendTicketNote(paths.tracker, detail.id, `PAUSE-REQUESTED ${new Date().toISOString()} — the user pressed Park; waiting up to ${minutes} minutes for the owner's HANDOFF`);
     if (owner === null) {
@@ -703,6 +714,11 @@ export class Actions {
     const owner = await this.liveOwner(paseo, project, detail.id);
     const refusal = resumeRefusal({ id: detail.id, status: detail.status, parentTaskId: detail.parentTaskId, notes }, merging, owner !== null);
     if (refusal !== null) throw new Error(refusal);
+    // Awaiting acceptance: its owner never stopped and the PR stayed open, so lifting the hold returns the Accept card.
+    if (detail.status === "Awaiting acceptance") {
+      await appendTicketNote(paths.tracker, detail.id, unparkedAwaitingReleaseText(new Date().toISOString().slice(0, 16) + "Z"));
+      return { message: `${detail.id} is back in Needs you with its Accept card.`, agentId: null };
+    }
     // Handed back only once the label is gone: a fresh owner on a ticket worked outside Paseo would work it twice.
     if (isExternalHostTicket(detail)) throw new Error(externalHostRefusal(detail.id));
     const at = new Date().toISOString().slice(0, 16) + "Z";
